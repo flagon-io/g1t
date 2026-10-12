@@ -9,7 +9,7 @@
 //! breaks; no new ones are made.
 
 use g1t_contracts::credentials::{
-    Acting, BindRunCredentialsArgs, CreateRunCredentialArgs, Principal, RevokeRunCredentialsArgs,
+    Acting, BindRunCredentialsArgs, CreateRunCredentialArgs, CredentialUse, Principal, RevokeRunCredentialsArgs,
     RunBinding, RunCredentialKind, intersect, intersect_grants, operations_for,
 };
 use g1t_contracts::identity::{
@@ -28,17 +28,11 @@ const MIN_RUN_TTL_SECONDS: u64 = 60;
 /// More hashes than one sandbox ever holds.
 const MAX_HASHES: usize = 8;
 
-/// The kinds of run a credential is still made for: the sandbox work
-/// that is not an agent's.
-fn issued_for(kind: RunCredentialKind) -> bool {
-    matches!(
-        kind,
-        RunCredentialKind::Checks
-            | RunCredentialKind::Queue
-            | RunCredentialKind::Mergecheck
-            | RunCredentialKind::Deploy
-            | RunCredentialKind::Bump
-    )
+/// Whether a credential is still made for this kind of run and use: a
+/// runner's, for sandbox work that is not one of the retired hosted
+/// agents' (`RunCredentialKind::retired`).
+fn issued_for(kind: RunCredentialKind, usage: CredentialUse) -> bool {
+    !kind.retired() && usage == CredentialUse::Runner
 }
 
 /// A SHA-256 in lowercase hex, as tokens are stored.
@@ -118,10 +112,11 @@ impl Identity {
         &self,
         a: CreateRunCredentialArgs,
     ) -> Result<CreatedAccessToken> {
-        if !issued_for(a.kind) {
+        if !issued_for(a.kind, a.usage) {
             return Err(worker::Error::RustError(format!(
-                "no run credential is made for {} runs",
-                a.kind.as_str()
+                "no run credential is made for {} runs' {}",
+                a.kind.as_str(),
+                a.usage.as_str()
             )));
         }
         let agent = AGENT_NAME.to_owned();
@@ -256,12 +251,18 @@ impl Identity {
 
 #[cfg(test)]
 mod tests {
-    use super::{RunCredentialKind, is_hash, issued_for};
+    use super::{CredentialUse, RunCredentialKind, is_hash, issued_for};
 
     #[test]
     fn credentials_are_made_only_for_sandbox_work_that_is_not_an_agents() {
-        let issued: Vec<&str> = RunCredentialKind::ALL.iter().filter(|kind| issued_for(**kind)).map(|kind| kind.as_str()).collect();
+        let issued: Vec<&str> = RunCredentialKind::ALL
+            .iter()
+            .filter(|kind| issued_for(**kind, CredentialUse::Runner))
+            .map(|kind| kind.as_str())
+            .collect();
         assert_eq!(issued, ["checks", "queue", "mergecheck", "deploy", "bump"]);
+        // A retired hosted agent's tools token is never made.
+        assert!(RunCredentialKind::ALL.iter().all(|kind| !issued_for(*kind, CredentialUse::Tools)));
     }
 
     #[test]

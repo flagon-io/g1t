@@ -245,7 +245,6 @@ pub(crate) fn shape(
                 label: label.to_owned(),
                 micros: meters.iter().map(|m| m.micros).sum(),
                 meters,
-                features: vec![],
             }
         })
         .collect();
@@ -363,9 +362,6 @@ impl Billing {
             days: days_out,
             products,
             projects: all_projects,
-            models: vec![],
-            by_agent: vec![],
-            by_person: vec![],
             included,
             discount_percent: (percent > 0).then_some(percent),
             ai_credit_micros: ai,

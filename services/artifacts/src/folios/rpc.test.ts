@@ -8,8 +8,7 @@ import { FOLIO_RPC, folioHandler } from "./rpc.ts";
 function contractMethods(): string[] {
   const source = readFileSync(new URL("../../../../packages/contracts/src/folios.ts", import.meta.url), "utf8");
   const block = source.slice(source.indexOf("export const FOLIO_RPC_METHODS = ["), source.indexOf("] as const;"));
-  // Leaving out the methods workspace agents called (`RetiredMethod` in rpc.ts).
-  return [...block.matchAll(/^\s*"([a-z_]+)",/gm)].map((m) => m[1]!).filter((m) => !/_(for|as)_agent$/.test(m));
+  return [...block.matchAll(/^\s*"([a-z_]+)",/gm)].map((m) => m[1]!);
 }
 
 test("every folio RPC method in the contract is answered, and nothing else", () => {

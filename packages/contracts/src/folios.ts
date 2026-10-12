@@ -33,7 +33,6 @@ import type { DatasetQuery, DatasetResult } from "./datasets";
 import type {
   DocAgentAbilities,
   DocAgentMode,
-  DocAudience,
   DocBlockOutline,
   DocDiffLine,
   DocEditTarget,
@@ -449,9 +448,6 @@ export type FoliosLiveEvent =
 
 // ── Agents ────────────────────────────────────────────────────────────
 
-/** Who will see what an agent says. More than 20 people reads as the workspace. */
-export type FolioAudience = DocAudience;
-
 export type FolioAgentAbilities = DocAgentAbilities;
 
 /** Options on any agent edit. */
@@ -495,18 +491,6 @@ export type FolioAgentRead = {
   can: FolioAgentAbilities;
   /** False: someone the agent is talking to can't read it, so don't quote it there. */
   audience_can_read: boolean;
-};
-
-/** One passage recalled for an agent: part of a folio, or of a repository's docs. */
-export type FolioPassage = {
-  folio: FolioRef | null;
-  repo_file: { repo: string; path: string; href: string } | null;
-  space_name: string;
-  heading: string | null;
-  text: string;
-  score: number;
-  updated_at: string;
-  stale: boolean;
 };
 
 export type FolioSearchHit = FolioRef & {
@@ -662,16 +646,7 @@ export const FOLIO_RPC_METHODS = [
   // Dashboards.
   "query_tile",
   "query_dataset",
-  "query_dataset_for_agent",
-  // Agents.
-  "folios_for_agent",
-  "read_folio_for_agent",
-  "create_folio_as_agent",
-  "edit_folio_as_agent",
-  "share_folio_as_agent",
-  "attach_file_as_agent",
-  "recall_folios_for_agent",
-  "stale_folios_for_agent",
+  // Staleness and the search index.
   "mark_folio_current",
   "reindex_folios",
 ] as const;
@@ -753,45 +728,6 @@ export type FoliosApi = {
   /** A query as the viewer, for the API. */
   queryDataset(workspace: string, viewer: User, query: DatasetQuery): Promise<Result<DatasetResult>>;
 
-  // ── Agents (services/agents) ────────────────────────────────────────
-  //
-  // Each takes the agent and the person it acts for (`viewer`). The agent
-  // never reads or changes more than that person can, narrowed to what
-  // everyone in `audience` can read. A folio it may not read is not found.
-
-  foliosForAgent(workspace: string, agentId: string, viewer: User, query: FolioListQuery, audience?: FolioAudience | null): Promise<Result<FolioList>>;
-  readForAgent(workspace: string, agentId: string, viewer: User, folioId: string, audience?: FolioAudience | null): Promise<Result<FolioAgentRead>>;
-  /**
-   * A new folio: the viewer owns it, the agent made it and gets `edit` on
-   * it. `where` is a space the viewer can edit, `private`, or
-   * `conversation` (Private plus `view` for these people).
-   */
-  createAsAgent(
-    workspace: string,
-    agentId: string,
-    viewer: User,
-    input: { kind: FolioKind; title: string; content?: FolioContentInput | null; template_id?: string | null; where: { space_id: string } | "private" | { conversation: string[] }; parent_id?: string | null; source?: { title: string; href: string } | null },
-  ): Promise<Result<FolioRef>>;
-  editAsAgent(workspace: string, agentId: string, viewer: User, folioId: string, edit: FolioAgentEdit): Promise<Result<FolioAgentEditResult>>;
-  /** `view` or `comment` for people already in the conversation, when the viewer has `manage`. Never general access, `edit` or `manage`. */
-  shareAsAgent(workspace: string, agentId: string, viewer: User, folioId: string, input: { user_ids: string[]; role: "view" | "comment" }, audience: FolioAudience): Promise<Result<FolioAccessList>>;
-  /**
-   * A file an agent made (`make_file`: a PDF, a Word document, a
-   * spreadsheet) kept with a folio the viewer can edit, as people's
-   * uploads are: served from the usercontent origin at `url`
-   * (`/docs-files/<key>`, under that origin). `data` is the file in base64.
-   */
-  attachAsAgent(
-    workspace: string,
-    agentId: string,
-    viewer: User,
-    folioId: string,
-    file: { name: string; content_type: string; data: string },
-  ): Promise<Result<{ id: string; url: string; name: string; content_type: string; bytes: number }>>;
-  recallForAgent(workspace: string, agentId: string, viewer: User, input: { query: string; limit?: number | null; spaces?: string[] | null; kinds?: FolioKind[] | null }, audience?: FolioAudience | null): Promise<Result<FolioPassage[]>>;
-  staleForAgent(workspace: string, agentId: string, viewer: User, options?: { repo?: string | null; since?: string | null }, audience?: FolioAudience | null): Promise<Result<Folio[]>>;
-  /** As the asker narrowed to repositories every audience member can read; spend only when the audience is the asker alone. */
-  queryDatasetForAgent(workspace: string, agentId: string, viewer: User, input: { query: DatasetQuery } | { folio_id: string; tile_id: string }, audience?: FolioAudience | null): Promise<Result<DatasetResult>>;
   markCurrent(workspace: string, viewer: User, folioId: string): Promise<Result<boolean>>;
   /** Indexes the workspace's folios again in the background. Workspace owners. */
   reindex(workspace: string, viewer: User): Promise<Result<boolean>>;
@@ -847,19 +783,6 @@ export function foliosClient(service: ServiceBinding): FoliosApi {
     threads: (workspace, viewer, folioId) => call("folio_threads", { workspace, viewer, folio_id: folioId }),
     queryTile: (workspace, viewer, folioId, tileId) => call("query_tile", { workspace, viewer, folio_id: folioId, tile_id: tileId }),
     queryDataset: (workspace, viewer, query) => call("query_dataset", { workspace, viewer, query }),
-    foliosForAgent: (workspace, agentId, viewer, query, audience) => call("folios_for_agent", { workspace, agent_id: agentId, viewer, query, audience: audience ?? null }),
-    readForAgent: (workspace, agentId, viewer, folioId, audience) => call("read_folio_for_agent", { workspace, agent_id: agentId, viewer, folio_id: folioId, audience: audience ?? null }),
-    createAsAgent: (workspace, agentId, viewer, input) => call("create_folio_as_agent", { workspace, agent_id: agentId, viewer, input }),
-    editAsAgent: (workspace, agentId, viewer, folioId, edit) => call("edit_folio_as_agent", { workspace, agent_id: agentId, viewer, folio_id: folioId, edit }),
-    shareAsAgent: (workspace, agentId, viewer, folioId, input, audience) =>
-      call("share_folio_as_agent", { workspace, agent_id: agentId, viewer, folio_id: folioId, ...input, audience }),
-    attachAsAgent: (workspace, agentId, viewer, folioId, file) => call("attach_file_as_agent", { workspace, agent_id: agentId, viewer, folio_id: folioId, file }),
-    recallForAgent: (workspace, agentId, viewer, input, audience) =>
-      call("recall_folios_for_agent", { workspace, agent_id: agentId, viewer, ...input, audience: audience ?? null }),
-    staleForAgent: (workspace, agentId, viewer, options, audience) =>
-      call("stale_folios_for_agent", { workspace, agent_id: agentId, viewer, repo: options?.repo ?? null, since: options?.since ?? null, audience: audience ?? null }),
-    queryDatasetForAgent: (workspace, agentId, viewer, input, audience) =>
-      call("query_dataset_for_agent", { workspace, agent_id: agentId, viewer, ...input, audience: audience ?? null }),
     markCurrent: (workspace, viewer, folioId) => call("mark_folio_current", { workspace, viewer, folio_id: folioId }),
     reindex: (workspace, viewer) => call("reindex_folios", { workspace, viewer }),
   };

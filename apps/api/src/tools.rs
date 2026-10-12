@@ -390,7 +390,7 @@ pub const TOOLS: &[Tool] = &[
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite someone by username or email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
-            a("list_integrations", Op::ListIntegrations, "Alert sources and issue trackers"),
+            a("list_integrations", Op::ListIntegrations, "AI providers, alert sources and issue trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
             a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),
             a("disconnect_integration", Op::DisconnectIntegration, "Remove one"),
@@ -812,53 +812,6 @@ mod tests {
     use super::*;
     use g1t_contracts::scopes::{Preset, Scope};
 
-    /// Operations g1t no longer has, which the scopes table in
-    /// g1t-contracts still names until it is trimmed.
-    const RETIRED: &[&str] = &[
-        "message_agent",
-        "answer_message",
-        "take_messages",
-        "search_context",
-        "get_entity",
-        "assign_issue",
-        "delegate",
-        "plan_work",
-        "get_plan",
-        "apply_plan",
-        "get_model_routes",
-        "set_model_routes",
-        "get_agent_computer",
-        "wake_agent_computer",
-        "sleep_agent_computer",
-        "reset_agent_computer",
-        "list_agent_computer_commands",
-        "list_gateway_requests",
-        "fix_security_alert",
-        "list_marketplaces",
-        "add_marketplace",
-        "remove_marketplace",
-        "refresh_marketplace",
-        "discover",
-        "list_plugins",
-        "get_plugin",
-        "install_plugin",
-        "set_plugin_enabled",
-        "uninstall_plugin",
-        "update_plugin",
-        "get_ai_credit",
-        "buy_ai_credit",
-        "list_plugin_agents",
-        "list_connectors",
-        "get_connector",
-        "add_connector",
-        "set_connector_key",
-        "remove_connector",
-        "refresh_connector",
-        "grant_connector",
-        "revoke_connector",
-        "customize_bundle",
-    ];
-
     fn listed(gate: &Gate) -> Vec<Value> {
         TOOLS.iter().filter_map(|tool| tool.listed(gate)).collect()
     }
@@ -905,7 +858,7 @@ mod tests {
             assert_eq!(mapped + usize::from(free), 1, "{}", op.name());
         }
         for (name, _) in OPERATIONS {
-            assert!(Op::by_name(name).is_some() || RETIRED.contains(name), "{name} is not an operation");
+            assert!(Op::by_name(name).is_some(), "{name} is not an operation");
         }
     }
 

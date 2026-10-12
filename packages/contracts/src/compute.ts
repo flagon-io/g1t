@@ -1,10 +1,9 @@
 /**
  * Compute gating: whether a workspace may start something that costs g1t
- * real money, and with what caps. Every place compute starts (agent runs,
- * checks, the merge queue, merge checks and catch-ups in the runner,
- * workflow jobs, deploy builds and context embeddings) asks the billing
- * service through `ComputeGate.admit` first, and settles what it reserved
- * when the work ends.
+ * real money, and with what caps. Every place compute starts (checks, the
+ * merge queue, merge checks and catch-ups in the runner, workflow jobs and
+ * deploy builds) asks the billing service through `ComputeGate.admit`
+ * first, and settles what it reserved when the work ends.
  *
  * The billing service owns the decision (`reserve`); this module only
  * shapes the call, words the refusal, and decides what happens when billing
@@ -37,8 +36,12 @@ import type { Result } from "./result";
 /** What a workspace pays for. */
 export type ComputePlan = "free" | "paid" | "internal" | "enterprise";
 
-/** What kind of compute is being started. */
-export type ComputeKind = "agent" | "check" | "workflow" | "queue" | "deploy" | "embedding";
+/**
+ * What kind of compute is being started. Billing also knows `agent` and
+ * `embedding` from reservations made before g1t's own agents and semantic
+ * search were retired; nothing starts those any more.
+ */
+export type ComputeKind = "check" | "workflow" | "queue" | "deploy";
 
 /** What pays for a reservation. */
 export type PaidBy = "credit" | "trial" | "oss" | "on_demand";
@@ -47,11 +50,10 @@ export type PaidBy = "credit" | "trial" | "oss" | "on_demand";
 export type ComputeRefusalCode = "not_paid" | "trial_used" | "limit" | "paused" | "oss_pool_empty";
 
 /**
- * Codes the gate itself refuses with, besides billing's: `issue_cap` (an
- * issue's agents spent their cap), `billing_unavailable` (a free workspace
- * while billing cannot be reached).
+ * Codes the gate itself refuses with, besides billing's:
+ * `billing_unavailable` (a free workspace while billing cannot be reached).
  */
-export type GateRefusalCode = ComputeRefusalCode | "issue_cap" | "billing_unavailable";
+export type GateRefusalCode = ComputeRefusalCode | "billing_unavailable";
 
 /** The compute side of what a workspace's plan gives it. */
 export type ComputeEntitlements = {
@@ -64,14 +66,10 @@ export type ComputeEntitlements = {
   trialVerified: boolean;
   /** A paid workspace in its first month: tighter caps. */
   firstMonth: boolean;
-  /** Agent runs at once; zero means no cap. */
-  maxConcurrentAgents: number;
   /** The longest any sandbox may run, in minutes; zero means no cap. */
   maxRunMinutes: number;
-  /** The most one agent run may cost; zero means no cap. */
+  /** The most one sandbox run may cost; zero means no cap. */
   runCapMicros: number;
-  /** The most the agents on one issue may cost in all; zero means no cap. */
-  issueCapMicros: number;
   ceilingMicros: number;
   exposureMicros: number;
   /** Why g1t paused the workspace's compute; null when it is not paused. */
@@ -122,10 +120,8 @@ export function readEntitlements(answer: unknown): ComputeEntitlements | null {
     trialMicrosLeft: num(field(raw, "trialMicrosLeft")),
     trialVerified: field(raw, "trialVerified") === true,
     firstMonth: field(raw, "firstMonth") === true,
-    maxConcurrentAgents: num(field(raw, "maxConcurrentAgents")),
     maxRunMinutes: num(field(raw, "maxRunMinutes")),
     runCapMicros: num(field(raw, "runCapMicros")),
-    issueCapMicros: num(field(raw, "issueCapMicros")),
     ceilingMicros: num(field(raw, "ceilingMicros")),
     exposureMicros: num(field(raw, "exposureMicros")),
     paused: typeof paused === "string" && paused.trim() ? paused.trim() : null,
@@ -169,9 +165,8 @@ export function onBillingError(plan: ComputePlan | null | undefined): "allow" | 
 
 /**
  * Whether a workspace can start `kind` at all, from its entitlements alone:
- * the note people see before they try, and the check for work too small to
- * reserve one by one (a search query's embedding). Billing's `reserve` is
- * the decision for everything else. Null when it can; the refusal when not.
+ * the note people see before they try. Billing's `reserve` is the
+ * decision. Null when it can; the refusal when not.
  */
 export function localRefusal(
   ent: ComputeEntitlements,
@@ -192,12 +187,10 @@ export function billingPath(workspace: string): string {
 }
 
 const WHAT: Record<ComputeKind, string> = {
-  agent: "Agents need",
   check: "Checks run in g1t's sandboxes, which need",
   workflow: "Workflows run in g1t's sandboxes, which need",
   queue: "The merge queue runs in g1t's sandboxes, which needs",
   deploy: "Deployments need",
-  embedding: "Semantic search needs",
 };
 
 /** What people are told when compute is refused: plain, with what to do and where. */
@@ -223,8 +216,6 @@ export function refusalMessage(
       return `g1t paused compute for this workspace${detail ? `: ${detail.replace(/.$/, "")}` : ""}. Contact support@g1t.sh to have it looked at.`;
     case "oss_pool_empty":
       return `g1t's open-source pool is used up for this month, so checks and workflows on public repositories wait until next month. Start the $20 plan to run them now: ${link}`;
-    case "issue_cap":
-      return `${detail ?? "This issue's agents reached its spending cap"}. An owner can raise the cap per issue: ${link}#caps`;
     case "billing_unavailable":
       return "g1t could not reach its billing service, so it did not start this. Try again in a minute.";
   }
@@ -256,24 +247,6 @@ export function computeNote(
 
 // ---- Estimates --------------------------------------------------------------
 
-/** The kinds of agent run, as the runner names them. */
-export type AgentRunKind = "implement" | "revise" | "review" | "answer" | "update" | "plan" | "reply";
-
-/**
- * What the model part of each kind of agent run costs g1t, on average, from
- * measured runs: implement about $0.094, review $0.07, plan $0.104. The
- * rest are scaled from those by how much they do.
- */
-export const MODEL_ESTIMATE_MICROS: Record<AgentRunKind, number> = {
-  implement: 100_000,
-  revise: 100_000,
-  review: 70_000,
-  plan: 100_000,
-  update: 50_000,
-  answer: 30_000,
-  reply: 30_000,
-};
-
 /**
  * What one second of a sandbox costs g1t, in millionths of a dollar, when
  * the price book cannot be read: Containers standard-1 with its Durable
@@ -281,82 +254,14 @@ export const MODEL_ESTIMATE_MICROS: Record<AgentRunKind, number> = {
  */
 export const FALLBACK_SANDBOX_MICROS_PER_SECOND = 25;
 
-/** What Workers AI's embedding model costs g1t per token. */
-export const EMBEDDING_MICROS_PER_TOKEN = 0.067;
-
 /** A sandbox for `minutes` at `microsPerSecond`. */
 export function sandboxEstimateMicros(minutes: number, microsPerSecond: number): number {
   return Math.ceil(Math.max(0, minutes) * 60 * Math.max(0, microsPerSecond));
 }
 
-/**
- * An agent run: its model's average, unless the workspace's own provider
- * pays for the model, plus its sandbox for its whole time cap.
- */
-export function agentEstimateMicros(
-  task: AgentRunKind,
-  minutes: number,
-  microsPerSecond: number,
-  ownModel = false,
-): number {
-  return (ownModel ? 0 : MODEL_ESTIMATE_MICROS[task]) + sandboxEstimateMicros(minutes, microsPerSecond);
-}
-
-/** Embedding `tokens` of text. */
-export function embeddingEstimateMicros(tokens: number): number {
-  return Math.ceil(Math.max(0, tokens) * EMBEDDING_MICROS_PER_TOKEN);
-}
-
-/** What a sandbox that ran `seconds` cost, plus a model's cost in dollars. */
-export function actualMicros(seconds: number, microsPerSecond: number, modelUsd = 0): number {
-  const model = Number.isFinite(modelUsd) && modelUsd > 0 ? modelUsd * 1_000_000 : 0;
-  return Math.ceil(Math.max(0, seconds) * Math.max(0, microsPerSecond) + model);
-}
-
-// ---- Caps ---------------------------------------------------------------------
-
-/** The lower of two caps, where null, zero or less means no cap. */
-export function lowerCap(a: number | null | undefined, b: number | null | undefined): number | null {
-  const caps = [a, b].filter((cap): cap is number => typeof cap === "number" && Number.isFinite(cap) && cap > 0);
-  return caps.length ? Math.min(...caps) : null;
-}
-
-/** A run's time cap: the guardrails' and the plan's, whichever is lower. */
-export function runMinutes(guardMinutes: number, ent: ComputeEntitlements | null): number {
-  return lowerCap(guardMinutes, ent?.maxRunMinutes) ?? guardMinutes;
-}
-
-/** A run's cost cap in dollars: the guardrails' and the plan's, whichever is lower. */
-export function runBudgetUsd(guardBudgetUsd: number | null, ent: ComputeEntitlements | null): number | null {
-  const planCap = ent && ent.runCapMicros > 0 ? ent.runCapMicros / 1_000_000 : null;
-  return lowerCap(guardBudgetUsd, planCap);
-}
-
-// ---- Agents at once ---------------------------------------------------------------
-
-/** How a run waiting for room says so; `isWaiting` recognises it. */
-export const WAITING_PREFIX = "Waiting for a free slot";
-
-/** Whether another agent run fits under the workspace's cap. */
-export function slotFree(activeAgents: number, ent: ComputeEntitlements | null): boolean {
-  if (!ent || ent.maxConcurrentAgents <= 0 || alwaysPasses(ent.plan)) return true;
-  return activeAgents < ent.maxConcurrentAgents;
-}
-
-export function waitingMessage(max: number): string {
-  return `${WAITING_PREFIX}: this workspace runs ${max} ${max === 1 ? "agent" : "agents"} at a time and all are busy. It starts by itself when one finishes.`;
-}
-
-export function isWaiting(message: string | null | undefined): boolean {
-  return typeof message === "string" && message.startsWith(WAITING_PREFIX);
-}
-
-/** Why an issue's agents may not start again: they spent its cap. Null when they may. */
-export function issueCapReached(spentMicros: number, ent: ComputeEntitlements | null, issue: number): string | null {
-  if (!ent || ent.issueCapMicros <= 0 || alwaysPasses(ent.plan)) return null;
-  if (spentMicros < ent.issueCapMicros) return null;
-  const dollars = (micros: number) => `$${(micros / 1_000_000).toFixed(2)}`;
-  return `The agents on #${issue} have spent ${dollars(spentMicros)}, its cap of ${dollars(ent.issueCapMicros)}, so g1t will not start on it again`;
+/** What a sandbox that ran `seconds` cost. */
+export function actualMicros(seconds: number, microsPerSecond: number): number {
+  return Math.ceil(Math.max(0, seconds) * Math.max(0, microsPerSecond));
 }
 
 // ---- The gate -------------------------------------------------------------------
@@ -419,8 +324,6 @@ export type ReserveRequest = {
   public: boolean;
   kind: ComputeKind;
   estimateMicros: number;
-  /** An agent run on g1t's hosted models, which g1t's daily spend breaker can pause. Unsaid, an agent run is taken to be one. */
-  hostedModel?: boolean;
 };
 
 /** The gate's answer: go ahead (with what was reserved, if anything), or why not. */
@@ -534,7 +437,6 @@ export class ComputeGate {
         public: request.public,
         kind: request.kind,
         estimateMicros: Math.max(0, Math.ceil(request.estimateMicros)),
-        ...(request.hostedModel === undefined ? {} : { hostedModel: request.hostedModel }),
       });
     } catch (error) {
       return this.unavailable(plan, refuse, ent, request, String(error));

@@ -116,10 +116,9 @@ pub struct Snapshot {
     pub managed: u32,
 }
 
-/// A pull request's columns, with its confidence (confidence.rs) beside
-/// them: what every read of a [`PullRow`] selects.
+/// A pull request's columns, with its milestone's title beside them: what
+/// every read of a [`PullRow`] selects.
 pub const PULL_COLUMNS: &str = "pulls.*,
-  (SELECT detail FROM pull_confidence WHERE pull_confidence.pull_id = pulls.id) AS confidence,
   (SELECT title FROM milestones
    WHERE milestones.repo_id = pulls.repo_id AND milestones.number = pulls.milestone) AS milestone_title";
 
@@ -160,9 +159,6 @@ pub struct PullRow {
     pub requested_by_name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
-    /// JSON of its confidence, once worked out.
-    #[serde(default)]
-    pub confidence: Option<String>,
     /// JSON array of label names.
     #[serde(default)]
     pub labels: Option<String>,
@@ -219,10 +215,6 @@ impl From<PullRow> for Pull {
             requested_by: requester(row.requested_by_id, row.requested_by_name),
             created_at: row.created_at,
             updated_at: row.updated_at,
-            confidence: row
-                .confidence
-                .as_deref()
-                .and_then(|detail| serde_json::from_str(detail).ok()),
             labels: row
                 .labels
                 .as_deref()

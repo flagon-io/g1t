@@ -34,7 +34,7 @@ export async function workspaceConnections(slug: string, viewer: User): Promise<
   const connected: Record<string, ConnectedState> = {};
   if (connections?.ok) {
     for (const connector of CONNECTORS) {
-      if (!connector.provider || !integrationsSection(PROVIDERS[connector.provider].kind)) continue;
+      if (!connector.provider) continue;
       const mine = connections.value.filter((connection) => connection.provider === connector.provider);
       if (mine.length === 0) continue;
       const broken = mine.find((connection) => connection.lastError);

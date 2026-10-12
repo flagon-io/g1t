@@ -6,10 +6,14 @@
 //! the sandbox reports its steps through the API with the run's one-time
 //! token (`report_run`), as checks do. The runner closes it when the
 //! sandbox stops.
+//!
+//! Sessions are the read side of what coding agents record on a pull
+//! request (`append_session`): `list_sessions` and `get_session`.
 
 use g1t_contracts::agents::*;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
+use g1t_contracts::work::{PullStatus, SessionEntry};
 use g1t_contracts::{FailureCode, Membership, Outcome, User, Viewer, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -17,6 +21,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::checks::{hash, new_token};
+use crate::rows::SessionRow;
 use crate::{Work, optional};
 
 /// How the runner starts a step that notes something about the sandbox
@@ -41,13 +46,14 @@ const MAX_STEP_CHARS: usize = 240;
 const SILENT_HOURS: u64 = 3;
 const DEFAULT_LIST: u32 = 50;
 const MAX_LIST: u32 = 200;
+/// The most session entries one view returns.
+const SESSION_ENTRIES: u32 = 2000;
 
 /// Every column but the steps, which only a run's own page needs.
 const COLUMNS: &str = "id, workspace, repo_id, repo, number, pull_id, kind, agent, model, status,
   step, step_count, cost_usd, turns, sandbox, token_hash, started_by, error, created_at,
   started_at, finished_at, updated_at, budget_usd, time_cap_minutes, halted,
-  COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title,
-  (SELECT detail FROM run_confidence WHERE run_confidence.run_id = agent_runs.id) AS confidence";
+  COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title";
 
 #[derive(Deserialize)]
 pub(crate) struct RunRow {
@@ -83,9 +89,6 @@ pub(crate) struct RunRow {
     time_cap_minutes: Option<u32>,
     #[serde(default)]
     halted: Option<String>,
-    /// JSON of how sure g1t was of the change as the run left it.
-    #[serde(default)]
-    confidence: Option<String>,
 }
 
 impl RunRow {
@@ -123,10 +126,6 @@ impl RunRow {
             budget_usd: self.budget_usd.filter(|_| member),
             time_cap_minutes: self.time_cap_minutes,
             halted: self.halted,
-            confidence: self
-                .confidence
-                .as_deref()
-                .and_then(|detail| serde_json::from_str(detail).ok()),
             created_at: self.created_at,
             started_at: self.started_at,
             finished_at: self.finished_at,
@@ -167,6 +166,28 @@ fn is_member(viewer: &Viewer, namespace: &str) -> bool {
     viewer
         .as_ref()
         .is_some_and(|viewer| viewer.is_member(&namespace.to_lowercase()))
+}
+
+#[derive(Deserialize)]
+struct SessionListRow {
+    pull_id: String,
+    number: u32,
+    title: String,
+    status: PullStatus,
+    agent: String,
+    entries: u32,
+    tools: u32,
+    started_at: String,
+    last_at: String,
+    prompt: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RunSumRow {
+    pull_id: String,
+    kind: String,
+    status: String,
+    cost_usd: Option<f64>,
 }
 
 impl Work {
@@ -424,6 +445,132 @@ impl Work {
             Some(row) => Outcome::Ok(row.into_run(member)),
             None => Outcome::fail(FailureCode::NotFound, "Run not found."),
         })
+    }
+
+    // --- Sessions ----------------------------------------------------------
+
+    pub(crate) async fn list_sessions(&self, a: ListSessionsArgs) -> Result<Outcome<Vec<SessionSummary>>> {
+        let Some(path) = &a.repo else {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Name a repository."));
+        };
+        let (repo, member) = match self.visible_repo(path, &a.viewer).await? {
+            Outcome::Ok(found) => found,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let rows = self
+            .db
+            .prepare(
+                "SELECT p.id AS pull_id, p.number, p.title, p.status, p.agent,
+                   count(*) AS entries,
+                   sum(CASE WHEN e.kind = 'tool_call' THEN 1 ELSE 0 END) AS tools,
+                   min(e.at) AS started_at, max(e.at) AS last_at,
+                   (SELECT substr(f.text, 1, 300) FROM session_entries f
+                    WHERE f.pull_id = p.id AND f.kind = 'prompt' ORDER BY f.seq LIMIT 1) AS prompt
+                 FROM pulls p JOIN session_entries e ON e.pull_id = p.id
+                 WHERE p.repo_id = ?1
+                   AND (?2 IS NULL OR p.status = ?2)
+                   AND (?3 IS NULL OR p.number = ?3)
+                   AND (?4 IS NULL OR EXISTS
+                     (SELECT 1 FROM agent_runs r WHERE r.pull_id = p.id AND r.kind = ?4))
+                 GROUP BY p.id ORDER BY last_at DESC LIMIT 100",
+            )
+            .bind(&[
+                repo.id.as_str().into(),
+                a.outcome.map_or(JsValue::NULL, |status| status.as_str().into()),
+                a.number.map_or(JsValue::NULL, JsValue::from),
+                a.kind.map_or(JsValue::NULL, |kind| kind.as_str().into()),
+            ])?
+            .all()
+            .await?
+            .results::<SessionListRow>()?;
+        let ids: Vec<&str> = rows.iter().map(|row| row.pull_id.as_str()).collect();
+        let runs = if ids.is_empty() {
+            Vec::new()
+        } else {
+            self.db
+                .prepare(
+                    "SELECT pull_id, kind, status, cost_usd FROM agent_runs
+                     WHERE repo_id = ? AND pull_id IN (SELECT value FROM json_each(?))",
+                )
+                .bind(&[repo.id.as_str().into(), serde_json::to_string(&ids)?.into()])?
+                .all()
+                .await?
+                .results::<RunSumRow>()?
+        };
+        Ok(Outcome::Ok(
+            rows.into_iter()
+                .map(|row| {
+                    let mine: Vec<&RunSumRow> = runs.iter().filter(|run| run.pull_id == row.pull_id).collect();
+                    let mut kinds: Vec<RunKind> = Vec::new();
+                    for run in &mine {
+                        if let Some(kind) = RunKind::parse(&run.kind)
+                            && !kinds.contains(&kind)
+                        {
+                            kinds.push(kind);
+                        }
+                    }
+                    let spent: f64 = mine.iter().filter_map(|run| run.cost_usd).sum();
+                    SessionSummary {
+                        number: row.number,
+                        title: row.title,
+                        status: row.status,
+                        agent: row.agent,
+                        entries: row.entries,
+                        tools: row.tools,
+                        prompt: row.prompt.map(|prompt| one_line(&prompt, 200)),
+                        runs: mine.len() as u32,
+                        cost_usd: (member && mine.iter().any(|run| run.cost_usd.is_some())).then_some(spent),
+                        active: mine
+                            .iter()
+                            .any(|run| RunStatus::parse(&run.status).is_some_and(RunStatus::is_active)),
+                        kinds,
+                        started_at: row.started_at,
+                        last_at: row.last_at,
+                    }
+                })
+                .collect(),
+        ))
+    }
+
+    pub(crate) async fn get_session(&self, a: GetSessionArgs) -> Result<Outcome<SessionView>> {
+        let (repo, pull) = match self.pull_at(&a.repo, a.number, &a.viewer).await? {
+            Outcome::Ok(found) => found,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let member = is_member(&a.viewer, &repo.namespace);
+        let entries: Vec<SessionEntry> = self
+            .db
+            .prepare(
+                "SELECT seq, kind, text, tool, \"commit\", at FROM session_entries
+                 WHERE pull_id = ? ORDER BY seq LIMIT ?",
+            )
+            .bind(&[pull.id.as_str().into(), SESSION_ENTRIES.into()])?
+            .all()
+            .await?
+            .results::<SessionRow>()?
+            .into_iter()
+            .map(SessionEntry::from)
+            .collect();
+        let runs: Vec<AgentRun> = self
+            .db
+            .prepare(format!(
+                "SELECT {COLUMNS}, steps FROM agent_runs WHERE pull_id = ? ORDER BY created_at DESC LIMIT 50"
+            ))
+            .bind(&[pull.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<RunRow>()?
+            .into_iter()
+            .map(|row| row.into_run(member))
+            .collect();
+        let cost_usd = (member && runs.iter().any(|run| run.cost_usd.is_some()))
+            .then(|| runs.iter().filter_map(|run| run.cost_usd).sum());
+        Ok(Outcome::Ok(SessionView {
+            pull,
+            entries,
+            runs,
+            cost_usd,
+        }))
     }
 }
 

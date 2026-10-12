@@ -1,10 +1,8 @@
-//! The billing service: what agents cost, charged to the workspace they
-//! worked for.
+//! The billing service: what a workspace's usage costs, its plan, credit,
+//! limits and invoices.
 //!
-//! A workspace buys credit and each agent run deducts what it cost, plus
-//! g1t's margin. With no credit, no agent starts. Money is held in
-//! millionths of a US dollar, so that a run costing a fraction of a cent is
-//! recorded exactly.
+//! Money is held in millionths of a US dollar, so that a sandbox run
+//! costing a fraction of a cent is recorded exactly.
 //!
 //! Each `*Args` struct is the argument of the method of the same name,
 //! served at `POST /rpc/<method>`.
@@ -249,101 +247,6 @@ pub struct ConfirmArgs {
     pub session: String,
 }
 
-/// `can_start`: whether a workspace may start an agent now, asked before
-/// anything is opened for it. Returns `Outcome<bool>`: a failure, with the
-/// reason to show, when it has no credit.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CanStartArgs {
-    pub workspace: String,
-}
-
-/// `start_run`: asks whether a workspace may start an agent, and opens the
-/// run it will be charged for. Called by the runner service. Returns
-/// `Outcome<Option<RunTicket>>`: no ticket when billing is off, a failure
-/// when the workspace has no credit.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StartRunArgs {
-    pub workspace: String,
-    pub repo: RepoPath,
-    pub number: u32,
-    /// `implement`, `review` or `update`.
-    pub task: String,
-    /// The model, by its public name.
-    pub model: String,
-    /// `workspace` when the run uses the workspace's own model provider.
-    /// The runner, which is TypeScript, sends it as `billedTo`.
-    #[serde(default = "g1t", alias = "billedTo")]
-    pub billed_to: String,
-    /// The model session's id. Through g1t's AI Gateway, settling charges
-    /// the run what the gateway priced its requests at; on the workspace's
-    /// own provider, it is what the proxy counts the run's tokens under,
-    /// for the agent rate.
-    #[serde(default)]
-    pub session: Option<String>,
-    /// `small`, `large` or `frontier`: the tier g1t routed the run to.
-    /// None when the workspace's own provider names its model.
-    #[serde(default)]
-    pub tier: Option<String>,
-    /// The agent doing the work, by handle: a workspace agent's (the one
-    /// whose budget pays), or `g1t` for g1t's own work on a repository.
-    /// Every line the run puts on the ledger carries it, so Spend's "by
-    /// agent" reads from the ledger that is charged.
-    #[serde(default)]
-    pub agent: Option<String>,
-    /// Who asked for the work, by username; none for a routine's or
-    /// another agent's. The runner, which is TypeScript, sends `askedBy`.
-    #[serde(default, alias = "askedBy")]
-    pub asked_by: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RunTicket {
-    pub run_id: String,
-    /// Lets the sandbox, and nothing else, report what this run cost.
-    pub token: String,
-}
-
-/// `finish_run`: what a run cost, as its sandbox reports it. Charged once.
-/// Returns `Outcome<bool>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FinishRunArgs {
-    pub run_id: String,
-    pub token: String,
-    /// What the model provider charged, in US dollars.
-    pub cost_usd: f64,
-    #[serde(default)]
-    pub turns: u32,
-    /// The tokens the run used, as the harness counted them from the
-    /// provider's answers. On the workspace's own provider, the agent rate
-    /// is charged on no fewer than these. Absent from older sandboxes.
-    #[serde(default)]
-    pub tokens: Option<RunTokens>,
-}
-
-/// The tokens one run used, by kind.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RunTokens {
-    #[serde(default)]
-    pub input: u64,
-    #[serde(default)]
-    pub output: u64,
-    #[serde(default)]
-    pub cache_read: u64,
-    #[serde(default)]
-    pub cache_write: u64,
-}
-
-impl RunTokens {
-    /// Every token, of every kind: what the agent rate is charged on.
-    pub fn total(&self) -> u64 {
-        self.input.saturating_add(self.output).saturating_add(self.cache_read).saturating_add(self.cache_write)
-    }
-}
-
-
 /// `usage`: what a workspace's agents cost over a period, broken down.
 /// Members only. Returns `Outcome<Usage>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -413,584 +316,6 @@ pub struct Usage {
     pub by_model: Vec<UsageSlice>,
     /// Credit bought in the period.
     pub added_micros: i64,
-}
-
-/// `record_tokens`: what one model answer used, added to the day's count
-/// for its run. The model proxy sends it after each answer. For usage
-/// views only: runs are still priced from AI Gateway. Returns
-/// `Outcome<bool>`: false when there was nothing to count.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordTokensArgs {
-    pub workspace: String,
-    /// The model session's id (`ModelSession::id`), one per run.
-    pub session: String,
-    /// The person the run is for, by username. Absent when nobody asked.
-    #[serde(default)]
-    pub person: Option<String>,
-    pub model: String,
-    /// The tier g1t routed the run to: `small`, `large` or `frontier`.
-    #[serde(default)]
-    pub tier: Option<String>,
-    #[serde(default)]
-    pub input: u64,
-    #[serde(default)]
-    pub output: u64,
-    #[serde(default)]
-    pub cache_read: u64,
-    #[serde(default)]
-    pub cache_write: u64,
-}
-
-/// `token_usage`: the model tokens a workspace's runs used, day by day,
-/// for the whole workspace or for one person. Members only; a member may
-/// ask only for themselves, an owner for anyone. Returns
-/// `Outcome<TokenUsage>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TokenUsageArgs {
-    pub workspace: String,
-    pub viewer: Viewer,
-    /// A username: only the runs for them.
-    #[serde(default)]
-    pub person: Option<String>,
-    /// How many days, to today: 42 when absent, 366 at most.
-    #[serde(default)]
-    pub days: Option<u32>,
-}
-
-/// One day's tokens.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DayTokens {
-    /// `YYYY-MM-DD`, UTC.
-    pub day: String,
-    pub tokens: u64,
-}
-
-/// The model tokens runs used over a window of days.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TokenUsage {
-    /// `YYYY-MM-DD`: the first day counted.
-    pub since: String,
-    pub days: u32,
-    /// Null for the whole workspace.
-    pub person: Option<String>,
-    pub total_tokens: u64,
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub cache_read_tokens: u64,
-    pub cache_write_tokens: u64,
-    /// What those runs were charged, as `usage` measures it.
-    pub cost_micros: i64,
-    /// Days in the window with any tokens.
-    pub active_days: u32,
-    /// Every day in the window, oldest first, zeros included.
-    pub by_day: Vec<DayTokens>,
-}
-
-// --- AI Gateway -------------------------------------------------------------
-//
-// A workspace's own model requests, sent with one of its access tokens to
-// the model proxy (`models.g1t.sh/anthropic` in Anthropic's Messages format,
-// `models.g1t.sh/openai/v1` in OpenAI's Chat Completions format). On g1t's
-// models each request
-// is charged to the workspace at the model's price, with the price book's
-// `gateway_models` markup, drawn from AI credit; on the workspace's own
-// provider key it is only counted.
-
-/// A model the AI Gateway offers on g1t's own key, with its price per
-/// million tokens of each kind. `gateway_models` takes nothing and returns
-/// these, in the order they are shown.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GatewayModel {
-    /// The provider's own id, such as `claude-sonnet-5-5` or
-    /// `@cf/openai/gpt-oss-120b`. A request names it as it is or with its
-    /// provider in front (`anthropic/claude-sonnet-5-5`,
-    /// `workers-ai/@cf/openai/gpt-oss-120b`).
-    pub model: String,
-    /// For people: `Claude Sonnet 5.5`.
-    pub name: String,
-    /// `anthropic` or `workers-ai`.
-    pub provider: String,
-    /// `chat`, or `embeddings` for a model that only embeds text.
-    #[serde(default = "chat")]
-    pub kind: String,
-    pub input_micros: i64,
-    pub output_micros: i64,
-    pub cache_read_micros: i64,
-    /// Cache writes that live five minutes.
-    pub cache_write_micros: i64,
-    /// Cache writes that live an hour.
-    #[serde(default)]
-    pub cache_write_1h_micros: i64,
-    /// A model priced by the prompt's length: a request whose prompt (its
-    /// input, cache read and cache write tokens) is longer than this many
-    /// tokens is charged entirely at the `over_` prices. 0 for one price.
-    #[serde(default)]
-    pub threshold: u64,
-    #[serde(default)]
-    pub over_input_micros: i64,
-    #[serde(default)]
-    pub over_output_micros: i64,
-    #[serde(default)]
-    pub over_cache_read_micros: i64,
-    #[serde(default)]
-    pub over_cache_write_micros: i64,
-    #[serde(default)]
-    pub over_cache_write_1h_micros: i64,
-}
-
-fn chat() -> String {
-    "chat".to_owned()
-}
-
-fn anthropic_format() -> String {
-    "anthropic".to_owned()
-}
-
-// --- The model catalogue ----------------------------------------------------
-//
-// Every model g1t can use, in one table (billing's `gateway_models`): the
-// models agents run on, the AI Gateway's, and the embeddings model. New
-// models are found by the models service listing each provider daily
-// (`record_discovery`) and wait as `new` until staff approve them in sudo.
-// Which model each purpose uses by default is staff's choice
-// (`model_defaults`), read by the runner and the AI Gateway.
-
-/// Where a model stands. Only `available` models are routed to; the AI
-/// Gateway offers `available` and `deprecated` ones that have a price.
-pub mod model_status {
-    /// Approved and priced: routed to and offered.
-    pub const AVAILABLE: &str = "available";
-    /// Found by discovery and not approved yet: never routed to, offered or charged.
-    pub const NEW: &str = "new";
-    /// The provider stopped listing it: still offered to anyone who names
-    /// it, but no default routes to it.
-    pub const DEPRECATED: &str = "deprecated";
-    /// Staff retired it: neither routed to nor offered.
-    pub const RETIRED: &str = "retired";
-}
-
-/// One model in the catalogue: its prices (as the AI Gateway reads them)
-/// and what g1t knows about it. `admin_models` returns these.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CatalogueModel {
-    #[serde(flatten)]
-    pub prices: GatewayModel,
-    /// Other ids the provider lists it by, such as a dated one.
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    /// `haiku`, `sonnet`, `opus`, `fable`, or a Workers AI author.
-    #[serde(default)]
-    pub family: String,
-    /// The agent tier it suits: `small`, `large`, `frontier`, or empty.
-    #[serde(default)]
-    pub tier_hint: String,
-    /// Tokens it reads at most; 0 when not known.
-    #[serde(default)]
-    pub context_window: u64,
-    /// Tokens it writes at most; 0 when not known.
-    #[serde(default)]
-    pub max_output: u64,
-    /// Any of `effort`, `thinking`, `tools`, `vision`, `embeddings`.
-    #[serde(default)]
-    pub capabilities: Vec<String>,
-    /// An embeddings model's vector length; 0 otherwise or when not known.
-    #[serde(default)]
-    pub dimensions: u32,
-    /// `available`, `new`, `deprecated` or `retired` (`model_status`).
-    pub status: String,
-    /// Whether its prices are known. An unpriced model is never routed to,
-    /// offered or charged for.
-    pub priced: bool,
-    /// `discovered` (found by listing its provider) or `staff`.
-    pub source: String,
-    #[serde(default)]
-    pub first_seen_at: Option<String>,
-    /// When its provider last listed it.
-    #[serde(default)]
-    pub last_seen_at: Option<String>,
-    /// Since when its provider has not listed it.
-    #[serde(default)]
-    pub missing_since: Option<String>,
-    #[serde(default)]
-    pub approved_by: Option<String>,
-    #[serde(default)]
-    pub approved_at: Option<String>,
-    #[serde(default)]
-    pub note: String,
-    /// What a typical agent run would cost on it, in millionths of a
-    /// dollar, from its prices (`typical_run` in billing's catalogue.rs);
-    /// 0 for an embeddings or unpriced model.
-    #[serde(default)]
-    pub typical_run_micros: i64,
-}
-
-/// A provider's list price per million tokens, as its listing gives it, in
-/// millionths of a dollar.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ListedPrice {
-    pub input_micros: i64,
-    #[serde(default)]
-    pub output_micros: i64,
-}
-
-/// One model as its provider lists it, from the models service's
-/// discovery.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProviderModel {
-    /// The provider's id: `claude-haiku-5-5`, `@cf/openai/gpt-oss-120b`.
-    pub id: String,
-    /// For people, as the provider names it.
-    #[serde(default)]
-    pub name: String,
-    /// `chat`, `embeddings`, or anything else (not added to the catalogue,
-    /// but still counted as listed).
-    #[serde(default)]
-    pub kind: String,
-    #[serde(default)]
-    pub context_window: u64,
-    #[serde(default)]
-    pub max_output: u64,
-    #[serde(default)]
-    pub capabilities: Vec<String>,
-    /// Workers AI lists a price with each model; Anthropic does not.
-    #[serde(default)]
-    pub price: Option<ListedPrice>,
-}
-
-/// `record_discovery`: what one provider lists now, from the models
-/// service (daily, or when staff press "Check for new models"). Billing
-/// adds new ids as `new`, marks ones no longer listed `deprecated`, records
-/// the check and emails staff about anything new. With `error` (the listing
-/// failed) only the check is recorded. Returns `DiscoveryResult`.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordDiscoveryArgs {
-    /// `anthropic` or `workers-ai`.
-    pub provider: String,
-    #[serde(default)]
-    pub models: Vec<ProviderModel>,
-    /// The staff member who asked, or `schedule`.
-    pub by: String,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-/// What one check found.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiscoveryResult {
-    pub provider: String,
-    pub checked_at: String,
-    pub by: String,
-    /// Ids the provider listed.
-    pub listed: u32,
-    /// Ids added to the catalogue as `new`.
-    pub added: Vec<String>,
-    /// Catalogue models the provider no longer lists, now `deprecated`.
-    pub deprecated: Vec<String>,
-    /// Deprecated models listed again.
-    pub restored: Vec<String>,
-    /// The listing failed: nothing changed.
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-/// Which model, tier or effort one purpose uses by default, as staff last
-/// set it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelDefault {
-    /// `tier_small`, `tier_large`, `tier_frontier`, `background`,
-    /// `gateway_first`, or `job_<kind>` for `implement`, `revise`,
-    /// `answer`, `review`, `update` and `plan`.
-    pub purpose: String,
-    /// The model, for a model purpose.
-    #[serde(default)]
-    pub model: Option<String>,
-    /// For a job: `small`, `large`, `frontier`, or `change` (sized by the change).
-    #[serde(default)]
-    pub tier: Option<String>,
-    /// For a job: `low`, `medium`, `high`, `xhigh` or `max`; none for the harness's own.
-    #[serde(default)]
-    pub effort: Option<String>,
-    pub updated_at: String,
-    pub updated_by: String,
-    #[serde(default)]
-    pub reason: String,
-}
-
-/// A model purpose's default as it applies now: the chosen model, or the
-/// one routing falls back to when the chosen one cannot be used.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResolvedModel {
-    pub purpose: String,
-    /// The model staff chose.
-    pub chosen: String,
-    /// The model to use, with its prices; none when neither the chosen
-    /// model nor any other suits (callers keep their own fallback).
-    #[serde(default)]
-    pub model: Option<GatewayModel>,
-    #[serde(default)]
-    pub capabilities: Vec<String>,
-    /// Why it is not the chosen one, in a sentence: `Claude Haiku 5.5 is
-    /// retired; using Claude Haiku 4.5.`
-    #[serde(default)]
-    pub note: Option<String>,
-}
-
-/// One kind of agent job's starting tier and effort.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JobDefault {
-    /// `implement`, `revise`, `answer`, `review`, `update` or `plan`.
-    pub kind: String,
-    /// `small`, `large`, `frontier` or `change`.
-    pub tier: String,
-    #[serde(default)]
-    pub effort: Option<String>,
-}
-
-/// `model_defaults` takes nothing and returns this: every purpose's model
-/// as it applies now, and each job's tier and effort. Read by the runner
-/// (cached a minute) and the AI Gateway.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelDefaults {
-    pub models: Vec<ResolvedModel>,
-    pub jobs: Vec<JobDefault>,
-}
-
-/// A check of one provider, as `model_checks` keeps it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelCheck {
-    pub id: String,
-    pub provider: String,
-    pub checked_at: String,
-    pub by: String,
-    pub listed: u32,
-    pub added: Vec<String>,
-    pub deprecated: Vec<String>,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-/// `admin_models` takes nothing and returns this: sudo's Agents & models.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AdminModels {
-    /// Every model, `new` ones first, then by provider and position.
-    pub catalogue: Vec<CatalogueModel>,
-    pub defaults: Vec<ModelDefault>,
-    pub resolved: ModelDefaults,
-    /// The latest checks, newest first.
-    pub checks: Vec<ModelCheck>,
-    /// The token mix `typical_run_micros` prices, for the page to state.
-    pub typical: TypicalRun,
-}
-
-/// The tokens of the typical agent run estimates are priced from.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TypicalRun {
-    pub requests: u64,
-    /// Per request.
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_write: u64,
-}
-
-/// A model's prices as staff confirm them, per million tokens in
-/// millionths of a dollar.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct ModelPrices {
-    pub input_micros: i64,
-    pub output_micros: i64,
-    pub cache_read_micros: i64,
-    pub cache_write_micros: i64,
-    #[serde(default)]
-    pub cache_write_1h_micros: i64,
-    #[serde(default)]
-    pub threshold: u64,
-    #[serde(default)]
-    pub over_input_micros: i64,
-    #[serde(default)]
-    pub over_output_micros: i64,
-    #[serde(default)]
-    pub over_cache_read_micros: i64,
-    #[serde(default)]
-    pub over_cache_write_micros: i64,
-    #[serde(default)]
-    pub over_cache_write_1h_micros: i64,
-}
-
-/// `admin_decide_model`: `approve` a model (its prices confirmed, made
-/// available), `retire` one, or `restore` a retired or deprecated one.
-/// Audited. Returns `Outcome<CatalogueModel>`.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct AdminDecideModelArgs {
-    pub model: String,
-    pub decision: String,
-    /// On approval: the name people see, and the prices.
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub tier_hint: Option<String>,
-    #[serde(default)]
-    pub prices: Option<ModelPrices>,
-    pub reason: String,
-    pub by: String,
-}
-
-/// `admin_set_model_default`: one purpose's default. A model purpose takes
-/// `model` (available, priced, and suited to the purpose); a job takes
-/// `tier` and `effort`. Audited with the old and new values and why.
-/// Returns `Outcome<ModelDefault>`.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct AdminSetModelDefaultArgs {
-    pub purpose: String,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub tier: Option<String>,
-    #[serde(default)]
-    pub effort: Option<String>,
-    pub reason: String,
-    pub by: String,
-}
-
-/// `gateway_admit`: whether a workspace's next AI Gateway request may go to
-/// g1t's models. Fails with `payment_required` and what to do when it may
-/// not: over its spend limit, out of AI credit, or not on the plan. Returns
-/// `Outcome<bool>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GatewayAdmitArgs {
-    pub workspace: String,
-}
-
-/// `record_gateway`: one AI Gateway request, logged, and charged when it
-/// went to g1t's models and used tokens. The model proxy sends it after
-/// the answer. `id` makes it idempotent: a request recorded twice is
-/// logged and charged once. Returns `Outcome<bool>`: false when it was
-/// already recorded.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordGatewayArgs {
-    /// `gw_…`, chosen by the proxy.
-    pub id: String,
-    pub workspace: String,
-    /// The access token's id and name.
-    pub token_id: String,
-    #[serde(default)]
-    pub token_name: Option<String>,
-    pub model: String,
-    #[serde(default)]
-    pub input: u64,
-    #[serde(default)]
-    pub output: u64,
-    #[serde(default)]
-    pub cache_read: u64,
-    /// Every cache write, of either lifetime.
-    #[serde(default)]
-    pub cache_write: u64,
-    /// Of `cache_write`, those that live an hour.
-    #[serde(default)]
-    pub cache_write_hour: u64,
-    /// The HTTP status the caller was answered with.
-    pub status: u16,
-    /// On the workspace's own provider key: counted, never charged.
-    #[serde(default)]
-    pub own_key: bool,
-    /// The format the request was sent in: `anthropic` or `openai`.
-    #[serde(default = "anthropic_format")]
-    pub format: String,
-    /// Who served it: on g1t's key the catalogue's provider (`anthropic`,
-    /// `workers-ai`); on the workspace's own, its connection's provider
-    /// (`openai`, `openai_endpoint`…). Empty when it never got that far.
-    #[serde(default)]
-    pub provider: String,
-    /// On the workspace's own provider: the connection's name.
-    #[serde(default)]
-    pub connection: Option<String>,
-    #[serde(default)]
-    pub streamed: bool,
-    #[serde(default)]
-    pub duration_ms: u64,
-    /// What went wrong, for a request that was refused or failed.
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-/// `gateway_requests`: a workspace's recent AI Gateway requests, newest
-/// first. Members only. Returns `Outcome<GatewayRequests>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GatewayRequestsArgs {
-    pub workspace: String,
-    pub viewer: Viewer,
-    /// How many, 50 when absent, 200 at most.
-    #[serde(default)]
-    pub limit: Option<u32>,
-    /// Only requests older than this one (a request's `id`), for the next page.
-    #[serde(default)]
-    pub before: Option<String>,
-}
-
-/// One AI Gateway request, as its log keeps it.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GatewayRequest {
-    pub id: String,
-    /// RFC 3339.
-    pub created_at: String,
-    pub model: String,
-    pub token_id: String,
-    pub token_name: Option<String>,
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_write: u64,
-    /// Of `cache_write`, those that live an hour.
-    #[serde(default)]
-    pub cache_write_hour: u64,
-    /// What the tokens cost at the model's price.
-    pub cost_micros: i64,
-    /// What the workspace was charged for it, before included usage and
-    /// credit paid for it: 0 on its own key.
-    pub charged_micros: i64,
-    pub status: u16,
-    pub own_key: bool,
-    /// `anthropic` or `openai`: the format it was sent in.
-    #[serde(default = "anthropic_format")]
-    pub format: String,
-    /// Who served it: `anthropic` or `workers-ai` on g1t's key, the
-    /// connection's provider on the workspace's own.
-    #[serde(default)]
-    pub provider: String,
-    /// On the workspace's own provider: the connection's name.
-    #[serde(default)]
-    pub connection: Option<String>,
-    pub streamed: bool,
-    pub duration_ms: u64,
-    pub error: Option<String>,
-}
-
-/// A page of AI Gateway requests.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GatewayRequests {
-    pub requests: Vec<GatewayRequest>,
-    /// The `before` for the next page, when there is one.
-    pub next: Option<String>,
-    /// How many days requests are kept.
-    pub retention_days: u32,
 }
 
 /// What a workspace pays a monthly price for. There is one plan, `plan`
@@ -1100,7 +425,7 @@ pub struct RecordSandboxArgs {
     pub repo: Option<String>,
     /// Unique to the run.
     pub reference: String,
-    /// What ran: `agent`, `check`, `workflow` or `queue`. Decides whether
+    /// What ran: `check`, `workflow`, `queue` or `deploy`. Decides whether
     /// g1t's open-source pool may pay for it (checks, workflows and the
     /// merge queue on public repositories). Absent: not the pool.
     #[serde(default)]
@@ -1122,14 +447,6 @@ pub struct RecordSandboxArgs {
     /// one. A larger machine's memory and disk cost more each second.
     #[serde(default)]
     pub instance: Option<String>,
-    /// The agent whose work this was, by handle (`g1t` for g1t's own runs
-    /// on a repository), so an agent's sandbox time is attributed with
-    /// the rest of its work. Absent for checks, workflows and builds.
-    #[serde(default)]
-    pub agent: Option<String>,
-    /// Who asked for the work, by username.
-    #[serde(default, alias = "asked_by")]
-    pub asked_by: Option<String>,
 }
 
 /// How much a workspace has earned g1t's trust with money, which sets how
@@ -1563,7 +880,8 @@ impl PlanKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeKind {
-    /// An agent's run: its sandbox and its model.
+    /// An agent run of g1t's own, retired: kept so stored reservations and
+    /// ledger lines parse; never issued.
     Agent,
     /// Checks on a pull request.
     Check,
@@ -1573,7 +891,8 @@ pub enum ComputeKind {
     Queue,
     /// A deployment's build.
     Deploy,
-    /// Semantic search: embeddings in the context hub.
+    /// Semantic search embeddings, retired: kept so stored reservations
+    /// parse; never issued.
     Embedding,
 }
 
@@ -1791,15 +1110,9 @@ pub struct ReserveArgs {
     pub kind: ComputeKind,
     /// The most the work is expected to cost g1t, before the margin, in
     /// millionths of a dollar (billing adds the margin, as it does to every
-    /// charge). For an agent, its model's average plus its sandbox for its
-    /// whole time cap.
+    /// charge): its sandbox for its whole time cap.
     #[serde(alias = "estimate_micros")]
     pub estimate_micros: i64,
-    /// An agent run on g1t's hosted models (not the workspace's own
-    /// provider). Unsaid, an agent run is taken to be one. g1t's daily
-    /// spend breaker pauses these when g1t is paying for them.
-    #[serde(default, alias = "hosted_model")]
-    pub hosted_model: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -4012,10 +3325,8 @@ pub struct CostsRun {
 
 /// The product families the Usage page groups meters into, in order, with
 /// their names.
-pub const PRODUCTS: [(&str, &str); 8] = [
-    ("agent", "Agent"),
+pub const PRODUCTS: [(&str, &str); 6] = [
     ("sandboxes", "Sandboxes"),
-    ("gateway", "AI Gateway"),
     ("deployments", "Deployments"),
     ("git_storage", "Git & storage"),
     ("packages", "Packages"),
@@ -4071,21 +3382,6 @@ pub struct UsageTotals {
     pub pending_charged_micros: i64,
     /// What it cost g1t, before any markup.
     pub cost_micros: i64,
-}
-
-/// One agent's or one person's share of the agent product over the range,
-/// at price, from the ledger lines attributed to them.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageShare {
-    /// The agent's handle or the person's username; empty for lines
-    /// attributed to no one (work from before attribution, or that no
-    /// person asked for).
-    pub key: String,
-    pub label: String,
-    pub micros: i64,
-    /// Ledger lines.
-    pub count: u32,
 }
 
 /// One day's usage of one product, at price.
@@ -4146,29 +3442,6 @@ pub struct MeterLine {
     pub note: Option<String>,
 }
 
-/// A part of a product, such as the agent's runs, reviews and plans.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FeatureUsage {
-    pub key: String,
-    pub label: String,
-    pub micros: i64,
-    pub count: u32,
-}
-
-/// The tokens one model used over the range, as the model proxy counted
-/// them: on g1t's models and the workspace's own provider alike.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelTokens {
-    /// The model's id, as it ran.
-    pub model: String,
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_write: u64,
-}
-
 /// One product family over the range.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -4177,9 +3450,6 @@ pub struct ProductUsage {
     pub label: String,
     pub micros: i64,
     pub meters: Vec<MeterLine>,
-    /// For the agent: by what it was doing (runs, reviews, plans, checks).
-    #[serde(default)]
-    pub features: Vec<FeatureUsage>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -4194,26 +3464,15 @@ pub struct UsageReport {
     pub products: Vec<ProductUsage>,
     /// Every project with usage in the range, for the filter.
     pub projects: Vec<String>,
-    /// Agent tokens by model over the range, most first.
-    #[serde(default)]
-    pub models: Vec<ModelTokens>,
-    /// The agent product (model tokens, the agent rate and agents'
-    /// sandbox time) by the agent that did the work, most first. Their sum
-    /// is the agent product's total: what agents cost is what the ledger
-    /// charges for them, not a second count.
-    #[serde(default)]
-    pub by_agent: Vec<UsageShare>,
-    /// The same by who asked; work no person asked for (routines, agents
-    /// helping agents, lines from before attribution) under an empty key.
-    #[serde(default)]
-    pub by_person: Vec<UsageShare>,
     /// The plan's included usage this month, when the workspace has it.
     #[serde(default)]
     pub included: Option<Allowance>,
     /// The account's discount, in percent, when it has one.
     #[serde(default)]
     pub discount_percent: Option<u32>,
-    /// AI credit left now, and credit from g1t for everything.
+    /// AI credit bought before g1t stopped selling it, left now (kept
+    /// apart: it pays only for usage no longer offered), and credit from
+    /// g1t for everything.
     pub ai_credit_micros: i64,
     pub credit_micros: i64,
     /// The trial credit left, for a workspace on its trial.
@@ -4224,30 +3483,9 @@ pub struct UsageReport {
     pub free: bool,
 }
 
-// --- AI credit -----------------------------------------------------------------
+// --- Card fee -------------------------------------------------------------------
 
-/// Auto-reload: when AI credit falls below `threshold_micros`, the saved
-/// card is charged to bring it back to `target_micros`, at most
-/// `monthly_max_micros` in a calendar month. Off by default. A failed
-/// charge turns it off and tells the owners.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiReload {
-    pub enabled: bool,
-    pub threshold_micros: i64,
-    pub target_micros: i64,
-    pub monthly_max_micros: i64,
-    /// Reloaded this month so far.
-    #[serde(default)]
-    pub reloaded_micros: i64,
-    /// When it last failed and was turned off, and why.
-    #[serde(default)]
-    pub failed_at: Option<String>,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-/// The card fee passed on when AI credit is bought by card.
+/// The card fee passed on when a payment is made by card.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CardFee {
@@ -4255,87 +3493,6 @@ pub struct CardFee {
     /// Per dollar charged, in millionths: 29,000 is 2.9%.
     pub percent_micros: f64,
     pub fixed_cents: u32,
-}
-
-/// `ai_credit` (`AccountArgs`): a workspace's prepaid AI credit, what it
-/// pays for and how it is bought. Members only. Returns `Outcome<AiCredit>`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiCredit {
-    /// What is left to spend on Agent and AI Gateway usage.
-    pub balance_micros: i64,
-    /// Of it, bought (paid) and given (promotional).
-    pub purchased_micros: i64,
-    pub given_micros: i64,
-    /// Its grants, newest first.
-    pub grants: Vec<CreditGrant>,
-    /// A 100% discount: AI usage is free, shown at its price then the
-    /// discount. Nothing to buy.
-    pub free_via_discount: bool,
-    /// Invoiced terms (an enterprise): models are billed after use, so no
-    /// credit is needed.
-    pub postpaid: bool,
-    /// Whether new runs on g1t's models are refused now for want of credit.
-    pub blocked: bool,
-    /// Whether the workspace may buy it: on the plan, not free.
-    pub can_buy: bool,
-    pub presets_cents: Vec<u32>,
-    pub min_cents: u32,
-    pub max_cents: u32,
-    pub card_fee: CardFee,
-    pub reload: AiReload,
-    /// The agent rate per million tokens, now, at price.
-    pub agent_rate_micros: f64,
-    /// The markup on models' provider price, in percent.
-    pub model_markup_percent: u32,
-    /// The markup on AI Gateway's provider price, in percent.
-    pub gateway_markup_percent: u32,
-    /// The AI credit given once on starting the plan.
-    pub upgrade_credit_micros: i64,
-    /// How long bought credit lasts, in days.
-    pub expires_days: u32,
-}
-
-/// `buy_ai_credit`: Stripe's page to buy AI credit, one payment by card,
-/// with the card fee as its own line. Owners only. Returns
-/// `Outcome<Checkout>`; the page's id comes back to `return_url` as
-/// `ai_credit`, for `confirm_ai_credit`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuyAiCreditArgs {
-    pub actor: User,
-    pub workspace: String,
-    /// The credit, in cents; the card fee is added on top.
-    #[serde(alias = "amount_cents")]
-    pub amount_cents: u32,
-    #[serde(alias = "return_url")]
-    pub return_url: String,
-}
-
-/// `confirm_ai_credit`: credits a purchase once Stripe says it was paid,
-/// once. Safe to repeat; the webhook does the same. Returns
-/// `Outcome<AiCredit>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConfirmAiCreditArgs {
-    pub workspace: String,
-    pub viewer: Viewer,
-    pub session: String,
-}
-
-/// `set_ai_reload`: auto-reload's settings. Owners only. Returns
-/// `Outcome<AiCredit>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetAiReloadArgs {
-    pub actor: User,
-    pub workspace: String,
-    pub enabled: bool,
-    #[serde(alias = "threshold_micros")]
-    pub threshold_micros: i64,
-    #[serde(alias = "target_micros")]
-    pub target_micros: i64,
-    #[serde(alias = "monthly_max_micros")]
-    pub monthly_max_micros: i64,
 }
 
 // --- Budgets ------------------------------------------------------------------
@@ -4569,13 +3726,16 @@ mod tests {
         .unwrap();
         assert_eq!(asked.kind, ComputeKind::Check);
         assert!(asked.kind.open_source_pool());
-        assert!(!ComputeKind::Agent.open_source_pool());
+        assert!(!ComputeKind::Deploy.open_source_pool());
+        // Retired kinds still parse from stored rows.
+        let stored: ComputeKind = serde_json::from_value(serde_json::json!("agent")).unwrap();
+        assert_eq!(stored, ComputeKind::Agent);
         // Rust callers that write snake_case are read too.
         let snake: ReserveArgs = serde_json::from_value(serde_json::json!({
             "workspace": "acme",
             "repo": { "namespace": "acme", "name": "web" },
             "public": false,
-            "kind": "agent",
+            "kind": "deploy",
             "estimate_micros": 1,
         }))
         .unwrap();
@@ -4594,19 +3754,5 @@ mod tests {
         assert_eq!(json["error"]["code"], "oss_pool_empty");
         assert_eq!(crate::FailureCode::NotPaid.http_status(), 402);
         assert_eq!(crate::FailureCode::Paused.http_status(), 409);
-    }
-
-    #[test]
-    fn who_pays_is_read_as_the_runner_sends_it() {
-        let run: StartRunArgs = serde_json::from_value(serde_json::json!({
-            "workspace": "acme",
-            "repo": { "namespace": "acme", "name": "web" },
-            "number": 7,
-            "task": "implement",
-            "model": "Claude Sonnet 5.5",
-            "billedTo": "workspace",
-        }))
-        .unwrap();
-        assert_eq!(run.billed_to, "workspace");
     }
 }

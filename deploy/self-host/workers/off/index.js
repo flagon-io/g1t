@@ -5,7 +5,7 @@
 // this Worker stands in for each of them, so a page that asks whether the
 // runner is on here is told no instead of failing.
 //
-// - As the runner (RunnerApi in packages/contracts/src/runner.ts): it is
+// - As the runner, for the methods the site once called on it: it is
 //   not enabled, and starting anything fails with a message that says why.
 // - For the JSON protocol the Rust services speak (`POST /rpc/<method>`):
 //   every method answers with a failed Result.

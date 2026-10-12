@@ -12,6 +12,7 @@ mod alerts;
 mod github;
 mod github_jwt;
 mod http;
+mod models;
 mod refs;
 mod rename;
 mod sentry;
@@ -35,8 +36,6 @@ use g1t_secrets::{self as crypto, Sealer};
 use refs::Reference;
 
 const DELIVERIES_SHOWN: u32 = 30;
-/// Most references looked up in one piece of text.
-const MAX_REFERENCES: u32 = 5;
 /// An alert that keeps firing is mentioned on its issue at these counts.
 const MILESTONES: [u32; 5] = [10, 100, 1_000, 10_000, 100_000];
 
@@ -155,9 +154,6 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
             return Err(format!("The repository has to be in the {workspace} workspace."));
         }
     }
-    // Model providers are no longer connected; settings for them are dropped.
-    config.gateway_models = None;
-    config.assign = false;
     let needs = |present: bool, what: &str| if present { Ok(()) } else { Err(what.to_owned()) };
     match provider {
         Provider::Sentry => {
@@ -174,7 +170,23 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
             needs(secrets.secret.is_some(), "Paste a Jira API token.")
         }
         Provider::Linear => needs(secrets.secret.is_some(), "Paste a Linear API key."),
-        _ => Err(format!("{} can no longer be connected.", provider.label())),
+        Provider::AzureOpenai => {
+            needs(config.base_url.is_some(), "Give your Azure OpenAI resource's endpoint, such as https://acme.openai.azure.com.")?;
+            needs(config.model.is_some(), "Give the name of the deployment to use.")?;
+            needs(secrets.secret.is_some(), "Paste the resource's key.")
+        }
+        Provider::AnthropicEndpoint | Provider::OpenaiEndpoint => {
+            needs(config.base_url.is_some(), "Give the endpoint's address.")?;
+            if let Some(header) = &config.auth_header
+                && header != "x-api-key"
+                && header != "authorization"
+            {
+                return Err("Send the key as x-api-key or authorization.".to_owned());
+            }
+            Ok(())
+        }
+        // Every other AI provider is at a known address and needs only a key.
+        _ => needs(secrets.secret.is_some(), &format!("Paste your {} API key.", provider.label())),
     }
 }
 
@@ -264,6 +276,20 @@ impl Integrations {
     }
 
     /// Notes that talking to a connection worked, or what went wrong.
+    /// Keeps what an AI provider's check found: its models, or what went wrong.
+    async fn after_check(&self, id: &str, checked: &std::result::Result<(String, Vec<String>), String>) -> Result<()> {
+        if let Ok((_, models)) = checked
+            && !models.is_empty()
+        {
+            self.db
+                .prepare("UPDATE connections SET models = ? WHERE id = ?")
+                .bind(&[serde_json::to_string(models)?.into(), id.into()])?
+                .run()
+                .await?;
+        }
+        self.note(id, checked.as_ref().err().map(String::as_str)).await
+    }
+
     async fn note(&self, id: &str, problem: Option<&str>) -> Result<()> {
         let now = rfc3339(now_ms());
         match problem {
@@ -324,9 +350,6 @@ impl Integrations {
             return Ok(fail(FailureCode::Conflict, "Integrations are not set up on this g1t: it has no key to keep secrets with."));
         }
         let provider = a.provider;
-        if provider.kind() == ProviderKind::Models {
-            return Ok(fail(FailureCode::Invalid, "Model providers can no longer be connected."));
-        }
         let tidy = |value: Option<String>| value.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
         let mut secrets = Secrets {
             secret: tidy(a.secret),
@@ -368,6 +391,11 @@ impl Integrations {
             ])?
             .run()
             .await?;
+        // An AI provider is checked at once, which also learns its models.
+        if provider.kind() == ProviderKind::Models {
+            let checked = models::test(provider, &config, secrets.secret.as_deref()).await?;
+            self.after_check(&id, &checked).await?;
+        }
         let Some(row) = self.row(&id).await? else {
             return Ok(fail(FailureCode::NotFound, "The connection was not saved."));
         };
@@ -452,9 +480,11 @@ impl Integrations {
         let secrets = self.secrets(&row);
         let key = secrets.secret.as_deref();
         if provider.kind() == ProviderKind::Models {
-            return Ok(Outcome::Ok(Tested {
-                ok: false,
-                message: "Model providers are no longer used by g1t. Disconnect this one.".to_owned(),
+            let checked = models::test(provider, &config, key).await?;
+            self.after_check(&row.id, &checked).await?;
+            return Ok(Outcome::Ok(match checked {
+                Ok((message, _)) => Tested { ok: true, message },
+                Err(message) => Tested { ok: false, message },
             }));
         }
         let tested = match provider {
@@ -884,90 +914,6 @@ impl Integrations {
         })
     }
 
-    async fn references(&self, a: ReferencesArgs) -> Result<Vec<ContextItem>> {
-        let rows = self.rows(&a.workspace.to_lowercase()).await?;
-        if !rows.iter().any(|row| matches!(row.provider(), Provider::Jira | Provider::Linear | Provider::Sentry)) {
-            return Ok(Vec::new());
-        }
-        let mut items = Vec::new();
-        for reference in refs::find(&a.text).into_iter().take(a.limit.unwrap_or(MAX_REFERENCES).min(MAX_REFERENCES) as usize) {
-            if let Ok(Some(found)) = self.find(&rows, &reference).await? {
-                items.push(found.item);
-            }
-        }
-        Ok(items)
-    }
-
-    /// The item `reference` names, for `actor` acting in
-    /// `workspace`: a member, and a connection that knows it.
-    async fn found_for(&self, actor: &User, workspace: &str, reference: &str) -> Result<std::result::Result<Found, Outcome<ContextItem>>> {
-        if !actor.is_member(workspace) {
-            return Ok(Err(fail(FailureCode::Forbidden, "Only members can act through a workspace's integrations.")));
-        }
-        let Some(parsed) = refs::find(reference).into_iter().next() else {
-            return Ok(Err(fail(FailureCode::Invalid, "Give a ticket key such as TECH-1234, or a Jira, Linear or Sentry address.")));
-        };
-        let rows = self.rows(workspace).await?;
-        Ok(match self.find(&rows, &parsed).await? {
-            Ok(Some(found)) => Ok(found),
-            Ok(None) => Err(fail(FailureCode::NotFound, format!("None of the {workspace} workspace's integrations knows {}.", reference.trim()))),
-            Err(problem) => Err(fail(FailureCode::Conflict, problem)),
-        })
-    }
-
-    /// A comment on an item outside g1t, with the g1t link
-    /// that explains it, through the connection that knows the item.
-    async fn comment_outside(&self, a: CommentArgs) -> Result<Outcome<ContextItem>> {
-        let workspace = a.workspace.to_lowercase();
-        let found = match self.found_for(&a.actor, &workspace, &a.reference).await? {
-            Ok(found) => found,
-            Err(outcome) => return Ok(outcome),
-        };
-        let text = a.text.trim();
-        if text.is_empty() || text.len() > 8_000 {
-            return Ok(fail(FailureCode::Invalid, "A comment is 1 to 8,000 characters."));
-        }
-        let row = &found.connection;
-        let config = row.config();
-        let Some(token) = self.secrets(row).secret else {
-            return Ok(fail(FailureCode::Conflict, format!("{} has no key to act with. An owner can set one under Integrations.", row.name)));
-        };
-        let told = match row.provider() {
-            Provider::Sentry => sentry::comment(&config, &token, &found.external_id, &format!("{text} {}", a.link)).await?,
-            Provider::Jira => trackers::jira_comment(&config, &token, &found.external_id, text, &a.link).await?,
-            Provider::Linear => trackers::linear_comment(&token, &found.external_id, text, &a.link).await?,
-            _ => return Ok(fail(FailureCode::Invalid, "Only Linear, Jira and Sentry items take comments.")),
-        };
-        self.note(&row.id, told.as_ref().err().map(String::as_str)).await?;
-        Ok(match told {
-            Ok(()) => Outcome::Ok(found.item),
-            Err(problem) => fail(FailureCode::Conflict, problem),
-        })
-    }
-
-    /// Marks a Sentry issue resolved, with a note and the g1t link.
-    async fn close_outside(&self, a: CloseArgs) -> Result<Outcome<ContextItem>> {
-        let workspace = a.workspace.to_lowercase();
-        let found = match self.found_for(&a.actor, &workspace, &a.reference).await? {
-            Ok(found) => found,
-            Err(outcome) => return Ok(outcome),
-        };
-        let row = &found.connection;
-        if row.provider() != Provider::Sentry {
-            return Ok(fail(FailureCode::Invalid, "Only Sentry issues can be resolved from here."));
-        }
-        let Some(token) = self.secrets(row).secret else {
-            return Ok(fail(FailureCode::Conflict, format!("{} has no key to act with. An owner can set one under Integrations.", row.name)));
-        };
-        let note = format!("{} {}", a.text.trim(), a.link);
-        let told = sentry::resolve(&row.config(), &token, &found.external_id, &note).await?;
-        self.note(&row.id, told.as_ref().err().map(String::as_str)).await?;
-        Ok(match told {
-            Ok(()) => Outcome::Ok(found.item),
-            Err(problem) => fail(FailureCode::Conflict, problem),
-        })
-    }
-
     async fn import(&self, a: ImportArgs) -> Result<Outcome<Imported>> {
         let workspace = a.repo.namespace.to_lowercase();
         if !a.actor.is_member(&workspace) {
@@ -1173,10 +1119,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             reply(&answer)
         }
         "resolve" => reply(&service.resolve(args(body)?).await?),
-        "references" => reply(&service.references(args(body)?).await?),
         "import" => reply(&service.import(args(body)?).await?),
-        "comment" => reply(&service.comment_outside(args(body)?).await?),
-        "close" => reply(&service.close_outside(args(body)?).await?),
         "links" => reply(&service.links(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
@@ -1216,18 +1159,43 @@ mod config_tests {
     use super::*;
 
     #[test]
-    fn model_providers_and_auto_assign_are_no_longer_taken() {
-        let secrets = Secrets { secret: Some("sk-test".into()), signing_secret: None };
+    fn an_ai_provider_needs_its_key_and_its_address_when_it_has_no_known_one() {
+        let key = Secrets { secret: Some("sk-test".into()), signing_secret: None };
+        let none = Secrets { secret: None, signing_secret: None };
         let mut config = ConnectionConfig::default();
-        assert!(check_config(Provider::Anthropic, "acme", &mut config, &secrets).is_err());
-        let mut alerts = ConnectionConfig {
-            repo: Some("acme/web".into()),
-            assign: true,
-            gateway_models: Some(vec!["*".into()]),
+        assert!(check_config(Provider::Anthropic, "acme", &mut config, &key).is_ok());
+        assert_eq!(
+            check_config(Provider::Openai, "acme", &mut ConnectionConfig::default(), &none).unwrap_err(),
+            "Paste your OpenAI API key."
+        );
+        // Your own endpoint needs its address, over https, and a known header.
+        assert!(check_config(Provider::OpenaiEndpoint, "acme", &mut ConnectionConfig::default(), &none).is_err());
+        let mut endpoint = ConnectionConfig { base_url: Some(" https://llm.acme.dev/v1/ ".into()), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::OpenaiEndpoint, "acme", &mut endpoint, &none).is_ok());
+        assert_eq!(endpoint.base_url.as_deref(), Some("https://llm.acme.dev/v1"));
+        let mut plain = ConnectionConfig { base_url: Some("http://llm.acme.dev".into()), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::AnthropicEndpoint, "acme", &mut plain, &key).is_err());
+        let mut header = ConnectionConfig {
+            base_url: Some("https://llm.acme.dev".into()),
+            auth_header: Some("x-token".into()),
             ..ConnectionConfig::default()
         };
-        assert!(check_config(Provider::Webhook, "acme", &mut alerts, &secrets).is_ok());
-        assert!(!alerts.assign);
-        assert_eq!(alerts.gateway_models, None);
+        assert!(check_config(Provider::AnthropicEndpoint, "acme", &mut header, &key).is_err());
+        // Azure needs its resource and deployment as well as the key.
+        let mut azure = ConnectionConfig { base_url: Some("https://acme.openai.azure.com".into()), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::AzureOpenai, "acme", &mut azure, &key).is_err());
+        azure.model = Some("gpt-5".into());
+        assert!(check_config(Provider::AzureOpenai, "acme", &mut azure, &key).is_ok());
+        let mut alerts = ConnectionConfig { repo: Some("acme/web".into()), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::Webhook, "acme", &mut alerts, &key).is_ok());
+    }
+
+    #[test]
+    fn stored_configs_with_old_model_settings_still_parse() {
+        let config: ConnectionConfig =
+            serde_json::from_str(r#"{"repo":"acme/web","assign":true,"gatewayModels":["*"]}"#).unwrap();
+        assert_eq!(config.repo.as_deref(), Some("acme/web"));
+        let written = serde_json::to_string(&config).unwrap();
+        assert!(!written.contains("assign") && !written.contains("gatewayModels"));
     }
 }

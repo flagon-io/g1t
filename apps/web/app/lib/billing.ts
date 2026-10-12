@@ -3,20 +3,34 @@
  * workspace's alerts. Pure, so it can be tested.
  */
 
-import type { CreditGrant, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, Usage, UsageAlert } from "@g1t/contracts";
+import type { CreditGrant, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, PriceBook, Usage, UsageAlert } from "@g1t/contracts";
 
 import { MICROS_PER_DOLLAR, money, wholeDollars } from "./money.ts";
 
 /** Prices on g1t exclude tax; Stripe adds it at checkout from the billing address. */
 export const PLUS_TAX = "plus tax where it applies";
 
+/** A card processing fee: Stripe's percent (in millionths) and fixed fee. */
+export type CardFee = { on: boolean; percentMicros: number; fixedCents: number };
+
+/**
+ * The card fee as the price book lists it (`card_fee_percent` and
+ * `card_fee_fixed`), or null when it does not.
+ */
+export function cardFeeOf(book: PriceBook | null | undefined): CardFee | null {
+  const percent = book?.prices.find((price) => price.meter === "card_fee_percent");
+  const fixed = book?.prices.find((price) => price.meter === "card_fee_fixed");
+  if (!percent || !fixed) return null;
+  return { on: true, percentMicros: percent.priceMicros, fixedCents: Math.max(0, Math.round(fixed.priceMicros / 10_000)) };
+}
+
 /**
  * The card processing fee on a card payment of `cents`, as billing works it
- * out (`ai::card_fee_cents`): Stripe's percent and fixed fee grossed up, so
+ * out (`tax::card_fee_cents`): Stripe's percent and fixed fee grossed up, so
  * what is left after Stripe's fee is the amount, rounded up to the cent.
  * 0 when the fee is off.
  */
-export function cardFeeCents(cents: number, fee: { on: boolean; percentMicros: number; fixedCents: number } | null | undefined): number {
+export function cardFeeCents(cents: number, fee: CardFee | null | undefined): number {
   if (!fee?.on || !(cents > 0)) return 0;
   const rate = fee.percentMicros / MICROS_PER_DOLLAR;
   if (!(rate >= 0 && rate < 0.5)) return 0;
@@ -372,38 +386,6 @@ export function creditLine(grant: Pick<CreditGrant, "amountMicros" | "leftMicros
     parts.push(grant.state === "used" ? "all used" : grant.state === "expired" ? "expired" : "withdrawn");
   }
   return parts.join(", ");
-}
-
-/** AI credit's amounts, in dollars, as billing takes them. */
-export const AI_CREDIT = { min: 10, max: 1_000 } as const;
-
-/** A purchase of AI credit: a preset or a custom amount, whole dollars. */
-export function parseAiPurchase(form: { amount?: FormDataEntryValue | null; custom?: FormDataEntryValue | null }): Parsed<{ amountCents: number }> {
-  const chosen = String(form.amount ?? "");
-  const micros = chosen === "custom" ? readDollars(form.custom) : readDollars(chosen);
-  if (micros == null) return { ok: false, error: "Choose an amount, or give one." };
-  const dollarsAsked = micros / MICROS_PER_DOLLAR;
-  if (!Number.isInteger(dollarsAsked) || dollarsAsked < AI_CREDIT.min || dollarsAsked > AI_CREDIT.max) {
-    return { ok: false, error: `Buy between $${AI_CREDIT.min} and $${AI_CREDIT.max.toLocaleString("en-US")} of AI credit, in whole dollars.` };
-  }
-  return { ok: true, value: { amountCents: dollarsAsked * 100 } };
-}
-
-/** Auto-reload's form: on or off, below what, back to what, at most what a month. */
-export function parseAiReload(form: {
-  enabled?: FormDataEntryValue | null;
-  threshold?: FormDataEntryValue | null;
-  target?: FormDataEntryValue | null;
-  monthly?: FormDataEntryValue | null;
-}): Parsed<{ enabled: boolean; thresholdMicros: number; targetMicros: number; monthlyMaxMicros: number }> {
-  const threshold = readDollars(form.threshold);
-  const target = readDollars(form.target);
-  const monthly = readDollars(form.monthly);
-  if (threshold == null || target == null || monthly == null) return { ok: false, error: "Give each amount in whole dollars." };
-  if ([threshold, target, monthly].some((m) => m % MICROS_PER_DOLLAR !== 0 || m < 0)) return { ok: false, error: "Use whole dollars." };
-  if (target < threshold + 10 * MICROS_PER_DOLLAR) return { ok: false, error: "Reload to at least $10 more than the amount it reloads below." };
-  if (monthly < target - threshold) return { ok: false, error: "The monthly maximum has to cover at least one reload." };
-  return { ok: true, value: { enabled: form.enabled === "on", thresholdMicros: threshold, targetMicros: target, monthlyMaxMicros: monthly } };
 }
 
 /** The budget's alerts form: the levels ticked, whether usage pauses, and a webhook. */

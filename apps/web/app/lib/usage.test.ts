@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { money } from "./money.ts";
-import { byProject, columns, defaultGrain, isStaff, monthSpan, offeredProducts, pendingSentence, productStyle, quantity, receipt, resolveRange, ticks, usageCsv } from "./usage.ts";
+import { byProject, columns, defaultGrain, isStaff, monthSpan, pendingSentence, productStyle, quantity, receipt, resolveRange, ticks, usageCsv } from "./usage.ts";
 
 const axisMoney = (micros: number) => money(micros, { compact: true });
 
@@ -114,8 +114,7 @@ test("the pending note says what the close will charge, with the fraction of a c
   assert.equal(pendingSentence({ pendingMicros: 9_000 }), "$0.009 of it is metered this month and not yet closed; it is charged when the month closes.");
 });
 
-test("products no longer offered drop out of the filters but still read in older usage", () => {
-  assert.deepEqual(offeredProducts([{ key: "agent" }, { key: "sandboxes" }, { key: "gateway" }]).map((p) => p.key), ["sandboxes"]);
+test("products no longer offered still read in older usage", () => {
   assert.equal(productStyle("agent").label, "Agent");
   assert.equal(productStyle("sandboxes").label, "Sandboxes");
 });

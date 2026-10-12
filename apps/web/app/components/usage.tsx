@@ -102,7 +102,7 @@ export function UsageFilterBar({
   fixedProject,
 }: {
   filters: UsageFilters;
-  products: { key: string; label: string }[];
+  products: readonly { key: string; label: string }[];
   projects: string[];
   report: UsageReport | null;
   apiHref: string;
@@ -644,11 +644,6 @@ export function Breakdown({
                   <h3 className="text-sm font-medium">{product.label}</h3>
                   <span className="text-sm font-medium tabular-nums">{money(product.micros)}</span>
                 </div>
-                {product.features && product.features.length > 0 && (
-                  <p className="px-4 pt-2 text-xs text-faint">
-                    {product.features.map((f) => `${f.label}${f.count ? ` (${f.count})` : ""} ${money(f.micros)}`).join(" · ")}
-                  </p>
-                )}
                 <ul className="divide-y divide-line/60">
                   {shownLines(product.meters).map((meter) => (
                     <MeterRow key={meter.key} meter={meter} color={color} projectHref={projectHref} />

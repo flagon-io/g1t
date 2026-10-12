@@ -88,7 +88,6 @@ export function messageDeliveries(input: {
             name: shown,
             avatar: author.avatar,
             avatar_seed: author.avatar_seed ?? null,
-            look: author.look ?? null,
           },
           channel_id: channel.id,
           thread_root: message.thread_root,

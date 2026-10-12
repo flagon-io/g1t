@@ -38,8 +38,7 @@ test("only integrations are pinned; built-in apps, their pages, old plugins and 
 test("an integration's app opens its page", () => {
   assert.equal(installedAppOf("int-sentry")?.path("acme"), "/acme/-/integrations/alerts");
   assert.equal(installedAppOf("int-linear")?.path("acme"), "/acme/-/integrations/trackers");
-  // Model providers are no app.
-  assert.equal(installedAppOf("int-anthropic"), null);
+  assert.equal(installedAppOf("int-anthropic")?.path("acme"), "/acme/-/integrations/models");
   assert.equal(installedAppOf("int-webhooks")?.path("acme"), "/acme/-/webhooks");
   assert.equal(installedAppOf(integrationAppKey("github"))?.listing, "integration:github");
   // Every key fits what identity keeps (MAX_DOCK_APP_KEY, 32).
@@ -54,7 +53,10 @@ test("installed apps are what the workspace connected, opening where each is man
   assert.deepEqual(installedApps({}), []);
   assert.deepEqual(
     installedApps({ sentry: { manage: null }, anthropic: { manage: null } }).map((app) => [app.key, app.from, app.pinnable]),
-    [["int-sentry", "g1t", true]],
+    [
+      ["int-sentry", "g1t", true],
+      ["int-anthropic", "g1t", true],
+    ],
   );
 });
 

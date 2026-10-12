@@ -3,7 +3,7 @@
 //! projects service keeps them; this is their public shape, in snake_case.
 //!
 //! A person's own: a personal access token or a session, never a
-//! workspace's token or g1t's agents.
+//! workspace's token or a run's token.
 
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Viewer};
 use serde_json::{Value, json};

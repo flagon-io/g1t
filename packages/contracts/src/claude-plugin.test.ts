@@ -19,18 +19,6 @@ import {
   pluginRef,
   subagentOf,
 } from "./claude-plugin.ts";
-import { parseFrontMatter, splitFrontMatter } from "./skill-format.ts";
-
-/** A subagent file read the way the agents service reads one. */
-function parseSubagentFile(text: string) {
-  const split = splitFrontMatter(text);
-  if (!split.ok) return { ok: false as const, message: split.message };
-  try {
-    return subagentOf(parseFrontMatter(split.yaml), split.body);
-  } catch (error) {
-    return { ok: false as const, message: (error as Error).message };
-  }
-}
 
 // The two public marketplaces as they are published, in miniature.
 const OFFICIAL = {
@@ -201,28 +189,26 @@ test(".mcp.json: remote servers, stdio ones, and what is skipped", () => {
 });
 
 test("a subagent file: front-matter and the prompt, skipped the way Claude Code skips it", () => {
-  const read = parseSubagentFile(`---
-name: code-reviewer
-description: Reviews pull requests for risk. Use after a change is ready.
-tools: Read, Grep, Bash
-model: sonnet
-skills:
-  - pr-review
-color: green
----
-
-You are a careful reviewer. Read the diff first.
-`);
+  const read = subagentOf(
+    {
+      name: "code-reviewer",
+      description: "Reviews pull requests for risk. Use after a change is ready.",
+      tools: "Read, Grep, Bash",
+      model: "sonnet",
+      skills: ["pr-review"],
+      color: "green",
+    },
+    "\nYou are a careful reviewer. Read the diff first.\n",
+  );
   assert.ok(read.ok);
   assert.deepEqual(
     { name: read.value.name, tools: read.value.tools, model: read.value.model, skills: read.value.skills, color: read.value.color },
     { name: "code-reviewer", tools: ["Read", "Grep", "Bash"], model: "sonnet", skills: ["pr-review"], color: "green" },
   );
   assert.equal(read.value.prompt, "You are a careful reviewer. Read the diff first.");
-  assert.equal(parseSubagentFile("no front matter").ok, false);
-  assert.equal(parseSubagentFile("---\nname: x\n---\nbody").ok, false);
-  assert.equal(parseSubagentFile("---\nname: a:b\ndescription: d\n---\nbody").ok, false);
-  assert.equal(parseSubagentFile("---\nname: a\ndescription: d\n---\n\n").ok, false);
+  assert.equal(subagentOf({ name: "x" }, "body").ok, false);
+  assert.equal(subagentOf({ name: "a:b", description: "d" }, "body").ok, false);
+  assert.equal(subagentOf({ name: "a", description: "d" }, "\n").ok, false);
 });
 
 test("a plugin's layout is found from its files, its manifest and a strict entry", () => {

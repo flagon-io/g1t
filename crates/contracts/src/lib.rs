@@ -14,7 +14,6 @@ pub mod agents;
 pub mod audit;
 pub mod backups;
 pub mod billing;
-pub mod capture;
 pub mod checks;
 pub mod codeowners;
 pub mod coding_agents;
@@ -144,9 +143,12 @@ pub enum PrincipalKind {
     /// is the workspace's, its `username` the workspace's slug, and it is a
     /// member of that workspace and no other.
     Workspace,
-    /// A g1t agent at work in a sandbox, acting through a token that lives
-    /// as long as its run and can do only what that token's scope lists, in
-    /// one repository. Its `username` is `g1t`.
+    /// A run's token: a sandbox g1t started (checks, the merge queue, a
+    /// merge check), acting through a token that lives as long as its run
+    /// and can do only what that token's scope lists, in one repository.
+    /// Its `username` is `g1t`. g1t no longer runs agents of its own; the
+    /// name stays because identity still issues run credentials with it and
+    /// historical rows written by `@g1t`'s agent were recorded as it.
     Agent,
     /// g1t itself: the platform acting on its own, as when it opens a
     /// pull request to upgrade a vulnerable dependency or merges from the

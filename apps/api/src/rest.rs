@@ -272,7 +272,6 @@ pub const ROUTES: &[Route] = &[
     route("PUT", "/workspaces/:workspace/budget", Op::SetBudget, &[]),
     route("GET", "/workspaces/:workspace/invoices", Op::ListInvoices, &[]),
     route("GET", "/workspaces/:workspace/billing_details", Op::GetBillingDetails, &[]),
-    // The AI Gateway's log of a workspace's requests.
     // Code owners: the CODEOWNERS file, checked.
     route("GET", "/repos/:owner/:name/codeowners/errors", Op::GetCodeownersErrors, &[("ref", "ref")]),
     // Security alerts: secrets and vulnerable dependencies.

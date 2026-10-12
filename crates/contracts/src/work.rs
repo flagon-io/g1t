@@ -469,11 +469,6 @@ pub struct Pull {
     pub created_at: String,
     /// RFC 3339.
     pub updated_at: String,
-    /// How sure g1t is of a g1t agent's change, from what it can observe,
-    /// once the agent has finished it. Absent before then, and on changes
-    /// g1t is not seeing through.
-    #[serde(default)]
-    pub confidence: Option<Confidence>,
     /// Who last moved its head (a user id), and when, RFC 3339: for rules
     /// about the most recent push. Absent until a push after rulesets
     /// arrived.
@@ -481,60 +476,6 @@ pub struct Pull {
     pub head_pushed_by: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_pushed_at: Option<String>,
-}
-
-/// How sure g1t is that an agent's change is right. Low is below medium,
-/// which is below high, so the lower of two is their minimum.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ConfidenceLevel {
-    Low,
-    Medium,
-    High,
-}
-
-impl ConfidenceLevel {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ConfidenceLevel::Low => "low",
-            ConfidenceLevel::Medium => "medium",
-            ConfidenceLevel::High => "high",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<ConfidenceLevel> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "low" => Some(ConfidenceLevel::Low),
-            "medium" => Some(ConfidenceLevel::Medium),
-            "high" => Some(ConfidenceLevel::High),
-            _ => None,
-        }
-    }
-}
-
-/// How sure g1t is of a change an agent made, worked out from what can be
-/// observed: its checks, how often it was sent back, the reviewer agent's
-/// verdict, whether it touched tests, its size, where it reached, how close
-/// it came to its guardrails, and what it asked and was not answered. The
-/// agent may say how sure it is too; what g1t observes can only lower that.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Confidence {
-    pub level: ConfidenceLevel,
-    /// A few words each, most telling first: what lowered it, or for
-    /// `high`, what it rests on.
-    pub reasons: Vec<String>,
-    /// What the agent said of its own change, if it said.
-    #[serde(default)]
-    pub self_reported: Option<ConfidenceLevel>,
-    /// What the agent said it was unsure about.
-    #[serde(default)]
-    pub uncertain_about: Vec<String>,
-    /// The agent run it was worked out after.
-    #[serde(default)]
-    pub run_id: Option<String>,
-    /// RFC 3339.
-    pub assessed_at: String,
 }
 
 /// One file a pull request changes, and by how much.
@@ -855,50 +796,6 @@ impl AgentVerdict {
     }
 }
 
-/// How many comments and reviews one agent may write on one issue or pull
-/// request in [`AGENT_COMMENT_WINDOW_MS`].
-pub const AGENT_COMMENTS_PER_WINDOW: u32 = 5;
-/// An hour.
-pub const AGENT_COMMENT_WINDOW_MS: u64 = 60 * 60 * 1000;
-
-/// `workspace_agent_comment`: one of a workspace's agents comments on an
-/// issue or a pull request as itself, on behalf of `acting_for`. For the
-/// agents service only; never reachable with a person's token. The same
-/// checks as a person commenting apply to `acting_for` (verified, can
-/// read the repository, not archived), and an agent writes at most
-/// [`AGENT_COMMENTS_PER_WINDOW`] comments and reviews on one issue or
-/// pull request an hour. Publishes `comment.created` with `agent`.
-/// Returns `Outcome<Comment>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WorkspaceAgentCommentArgs {
-    pub repo: RepoPath,
-    pub number: u32,
-    pub agent: AgentRef,
-    #[serde(alias = "actingFor")]
-    pub acting_for: User,
-    pub body: String,
-}
-
-/// `workspace_agent_review`: one of a workspace's agents reviews a pull
-/// request as itself, on behalf of `acting_for`. Advisory: the verdict is
-/// shown but never counts toward required approvals or code owners, and a
-/// request for changes never blocks a merge. Not on a draft, nor on a
-/// closed or merged pull request. `body` may be empty only when approving.
-/// The same checks and limit as `workspace_agent_comment`. Publishes
-/// `comment.created` with `agent`, `advisory` and the verdict.
-/// Returns `Outcome<Comment>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct WorkspaceAgentReviewArgs {
-    pub repo: RepoPath,
-    pub number: u32,
-    pub agent: AgentRef,
-    #[serde(alias = "actingFor")]
-    pub acting_for: User,
-    pub verdict: AgentVerdict,
-    #[serde(default)]
-    pub body: String,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionEntryKind {
@@ -957,9 +854,6 @@ pub struct PullDetail {
     /// that it has to catch up before it can merge.
     #[serde(default)]
     pub behind: bool,
-    /// Whether a g1t agent is reviewing it right now.
-    #[serde(default)]
-    pub review_pending: bool,
     /// Where it stands on its way to being merged, for a pull request g1t
     /// is seeing through. Absent on anyone else's.
     #[serde(default)]
@@ -972,9 +866,6 @@ pub struct PullDetail {
     /// be completed, for example.
     #[serde(default)]
     pub stalled: Option<String>,
-    /// Messages people sent the agent while it worked, oldest first.
-    #[serde(default)]
-    pub messages: Vec<AgentMessage>,
     /// What workflow runs said about its head commit, one per workflow.
     #[serde(default)]
     pub statuses: Vec<CommitStatus>,
@@ -1295,86 +1186,6 @@ pub struct SetCommitStatusArgs {
     pub source: Option<String>,
 }
 
-/// A message a person sent an agent at work on a pull request. The agent
-/// receives it at its next step.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentMessage {
-    pub id: String,
-    pub author: String,
-    pub body: String,
-    /// RFC 3339.
-    pub created_at: String,
-    /// RFC 3339. When the agent received it; null until then.
-    pub delivered_at: Option<String>,
-    /// `message` from a person, or from another pull request's agent a
-    /// `question`, a `handoff` of work, or the `answer` to one.
-    #[serde(default = "message_kind")]
-    pub kind: String,
-    /// The pull request whose agent sent it, when an agent did.
-    #[serde(default)]
-    pub from_number: Option<u32>,
-    /// The pull request it was sent to.
-    #[serde(default)]
-    pub to_number: u32,
-    /// For a question or handoff: the reply, once there is one.
-    #[serde(default)]
-    pub answer: Option<String>,
-    /// For a handoff: whether it was declined.
-    #[serde(default)]
-    pub declined: bool,
-    /// For the agent that sent it: what to expect, when the agent it asked
-    /// is not at work and will not answer soon.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hint: Option<String>,
-}
-
-fn message_kind() -> String {
-    "message".to_owned()
-}
-
-/// `message_agent`: sends the agent working on a pull request a message.
-/// The pull request's owner ([`Pull::owner`]: whoever asked g1t for it, or
-/// its author) and members of the workspace may. Returns
-/// `Outcome<AgentMessage>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MessageAgentArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub number: u32,
-    pub body: String,
-    /// For an agent: `question` or `handoff`; a person's is a `message`.
-    #[serde(default)]
-    pub kind: Option<String>,
-    /// For an agent: the pull request it is working on, which the reply
-    /// goes back to.
-    #[serde(default)]
-    pub from_number: Option<u32>,
-}
-
-/// `answer_message`: replies to a question or a handoff an agent received,
-/// accepting or declining a handoff. The reply reaches the asking agent at
-/// its next step. Returns `Outcome<AgentMessage>`, the message answered.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AnswerMessageArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub id: String,
-    pub body: String,
-    #[serde(default)]
-    pub decline: bool,
-}
-
-/// `take_messages`: the messages not yet delivered to the agent working on
-/// a pull request, marked delivered. Only g1t's agents may. Returns
-/// `Outcome<Vec<AgentMessage>>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TakeMessagesArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub number: u32,
-}
-
 /// A step on the way from an assigned issue to a pull request that is ready
 /// to merge. g1t takes each one without being asked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1412,54 +1223,22 @@ pub struct Lifecycle {
     pub revisions: u32,
 }
 
-/// `advance`: works out the next step for a pull request g1t is seeing
-/// through and, if there is one to take now, claims it, so that it is
-/// taken once however many times this is called. Called by the runner
-/// service, which carries the step out. Returns `Advance`.
+/// `advance`: merges a pull request g1t is seeing through once it is ready,
+/// where the repository's settings say ready pull requests land by
+/// themselves. Called by the runner service. Returns `Advance`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdvanceArgs {
     pub pull_id: String,
 }
 
+/// What the runner is to do next for a pull request: always nothing now,
+/// since no step of a pull request is carried out in a sandbox any more.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Advance {
-    /// Nothing to do now: a step is under way, or it is a person's turn.
+    /// Nothing to do.
     None,
-    /// Have a g1t agent review it.
-    Review { job: LifecycleJob },
-    /// Send the agent back to address `job.feedback`.
-    Revise { job: LifecycleJob },
-    /// Merge in the branch it would land on.
-    CatchUp { job: LifecycleJob },
-}
-
-/// What the runner needs to carry out a step of a pull request's lifecycle.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LifecycleJob {
-    pub pull_id: String,
-    pub repo: RepoPath,
-    pub number: u32,
-    /// Who the pull request belongs to ([`Pull::owner`]: whoever asked g1t
-    /// for it, or its author). Sandboxes act as them.
-    pub author: User,
-    /// The repository holding the change: its fork, or the repository
-    /// itself for one made on a branch.
-    pub source: RepoPath,
-    /// The branch of the source holding the change; its default branch
-    /// when absent.
-    #[serde(default)]
-    pub branch: Option<String>,
-    pub default_branch: String,
-    pub title: String,
-    pub description: String,
-    pub issue: Option<Issue>,
-    /// For a revision: the failed checks or the review to address.
-    pub feedback: String,
-    /// For a revision: which one this is, from 1.
-    pub round: u32,
 }
 
 /// How a repository wants its pull requests handled. A repository that has
@@ -1487,20 +1266,10 @@ pub struct RepoSettings {
     /// Whether someone who may merge can bypass required checks that have
     /// not passed, by saying so as they merge.
     pub allow_ignoring_checks: bool,
-    /// Whether a g1t agent's pull request is reviewed by a second agent
-    /// without being asked.
-    pub agent_review: bool,
-    /// How many times a g1t agent is sent back to its pull request before
-    /// a person is asked instead.
-    pub max_revisions: u32,
     /// Merge through a queue: pull requests are tested together with those
     /// ahead of them, and only a combination that passed reaches the default
     /// branch.
     pub merge_queue: bool,
-    /// Ask a person before merging a g1t agent's change whose confidence is
-    /// low: auto-merge and the merge queue leave it, and it needs someone,
-    /// until a person approves it.
-    pub hold_low_confidence: bool,
     /// Refuse to merge until the code owners of every file it changes
     /// (its CODEOWNERS file) have approved, as many as each section asks.
     /// Only people count, and `g1t` only where the file names `@g1t`.
@@ -1520,10 +1289,7 @@ impl Default for RepoSettings {
             required_approvals: 0,
             count_agent_approvals: true,
             allow_ignoring_checks: true,
-            agent_review: true,
-            max_revisions: 2,
             merge_queue: false,
-            hold_low_confidence: true,
             require_code_owner_review: false,
             updated_by: None,
             updated_at: None,
@@ -1540,35 +1306,6 @@ pub struct UpdateSettingsArgs {
     pub repo: RepoPath,
     /// Who changed them and when are filled in by the service.
     pub settings: RepoSettings,
-}
-
-/// `catch_up_job`: what the runner needs to bring a pull request up to date
-/// because a merge of it was asked for. Null if none was. Returns
-/// `Option<LifecycleJob>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CatchUpJobArgs {
-    pub pull_id: String,
-}
-
-/// `wake_for_messages`: the agent on a pull request was asked a question
-/// or handed work while it was not at work. Claims a short step for it to
-/// answer, and hands over what it was sent, marked read. Null when there
-/// is nothing waiting, or the pull request cannot take a step now.
-/// Returns `Option<Wake>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WakeForMessagesArgs {
-    pub pull_id: String,
-}
-
-/// What an agent woken to answer needs: its pull request, and what it was
-/// sent, oldest first.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Wake {
-    pub job: LifecycleJob,
-    pub messages: Vec<AgentMessage>,
 }
 
 /// `stall`: records that a step could not be carried out, so that g1t
@@ -1610,81 +1347,6 @@ pub struct OpenIssueArgs {
     /// The number of the milestone to put it in. Needs the Triage role.
     #[serde(default)]
     pub milestone: Option<u32>,
-}
-
-/// `delegate_issue`: opens an issue to put g1t on at once, refused
-/// before anything is opened unless `actor` may put agents to work in the
-/// repository (Run, which the Write role has). The runner service's
-/// `delegate` calls it and then starts the agent. Returns `Outcome<Issue>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DelegateIssueArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub title: String,
-    #[serde(default)]
-    pub body: String,
-    #[serde(default)]
-    pub labels: Vec<String>,
-    /// Deprecated, as on `OpenIssueArgs`.
-    #[serde(default)]
-    pub checks: Vec<String>,
-}
-
-/// What became of the agent when an issue was opened and handed to it in
-/// one step.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentStartStatus {
-    /// It is at work on the issue's pull request.
-    Started,
-    /// Every agent slot of the workspace is busy: it starts on its own when
-    /// one frees up.
-    Queued,
-    /// It did not start, and will not until someone fixes what `code` says.
-    NotStarted,
-}
-
-/// Whether the agent started, and if not, why and what fixes it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentStart {
-    pub status: AgentStartStatus,
-    /// Why it did not start: `not_paid`, `trial_used`, `limit`, `paused`,
-    /// `issue_cap`, `billing_unavailable` or `no_model`; `waiting` when
-    /// queued.
-    #[serde(default)]
-    pub code: Option<String>,
-    /// What happened, in a sentence or two, with what to do.
-    #[serde(default)]
-    pub message: Option<String>,
-    /// Where the fix is: the workspace's billing or model settings.
-    #[serde(default)]
-    pub fix_url: Option<String>,
-}
-
-/// The runner service's `delegate`: the issue opened, and the agent put on
-/// it. The issue exists whatever became of the agent.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Delegated {
-    pub issue: Issue,
-    /// The pull request the agent opened, when it started.
-    #[serde(default)]
-    pub pull: Option<Pull>,
-    pub agent: AgentStart,
-}
-
-/// `report_confidence`: what the agent of a run says of its own change,
-/// with the run's own token. Kept with the run, and the pull request's
-/// confidence is worked out again with it. Returns `Outcome<bool>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReportConfidenceArgs {
-    pub run_id: String,
-    pub token: String,
-    /// `high`, `medium` or `low`.
-    pub confidence: String,
-    #[serde(default)]
-    pub uncertain_about: Vec<String>,
 }
 
 /// `list_issues`, newest first. Returns `Outcome<Vec<Issue>>`.
@@ -1937,183 +1599,6 @@ pub struct PullActionArgs {
     pub bypass_rules: bool,
 }
 
-/// Where a plan stands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PlanStatus {
-    /// An agent is reading the repository and writing it.
-    Planning,
-    /// Written, and waiting for a person to read and apply it.
-    Ready,
-    /// It could not be written.
-    Failed,
-    /// Its issues have been opened.
-    Applied,
-}
-
-/// One issue a plan proposes.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct PlannedIssue {
-    pub title: String,
-    /// Markdown: what to change, where, and why.
-    pub body: String,
-    pub labels: Vec<String>,
-    /// What is true once it is done, in plain words. Added to the issue's
-    /// body under "Definition of done". Plans written before this was
-    /// called `done` named it `checks`.
-    #[serde(alias = "checks")]
-    pub done: Vec<String>,
-    /// The files it will most likely change.
-    pub files: Vec<String>,
-    /// The positions, counting from 1, of earlier issues in the plan that
-    /// have to be merged first. An agent writes this as `depends_on`.
-    #[serde(alias = "depends_on")]
-    pub depends_on: Vec<u32>,
-    /// Its number, once the plan has been applied and it was kept.
-    pub number: Option<u32>,
-}
-
-/// An outcome someone wrote, and the issues an agent proposes to get there.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Plan {
-    pub id: String,
-    pub repo_id: String,
-    /// The outcome wanted, as written.
-    pub brief: String,
-    pub status: PlanStatus,
-    /// The agent's account of how it split the work.
-    pub summary: String,
-    pub issues: Vec<PlannedIssue>,
-    /// Why it could not be written, when `status` is `failed`.
-    pub error: Option<String>,
-    pub author: User,
-    /// RFC 3339.
-    pub created_at: String,
-    /// RFC 3339.
-    pub finished_at: Option<String>,
-    /// Once applied: where each issue it opened stands now, in plan order.
-    /// Filled in by `get_plan` only.
-    #[serde(default)]
-    pub progress: Vec<IssueProgress>,
-    /// Questions and handoffs between the agents on its pull requests,
-    /// newest first. Filled in by `get_plan` only.
-    #[serde(default)]
-    pub exchanges: Vec<AgentMessage>,
-}
-
-/// Where one issue of an applied plan stands.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IssueProgress {
-    pub number: u32,
-    pub title: String,
-    /// `blocked` (waiting on issues it depends on), `waiting` (for an
-    /// agent), `open` (nobody on it), one of the lifecycle stages
-    /// (`working`, `checking`, `reviewing`, `revising`, `catching_up`,
-    /// `answering`, `queued`, `ready`, `needs_you`), `landed` or `closed`.
-    pub state: String,
-    /// One sentence about where it stands.
-    pub detail: String,
-    /// The issues it is waiting on that are still open.
-    pub blocked_by: Vec<u32>,
-    /// The pull request carrying it, the newest if several.
-    pub pull: Option<u32>,
-    /// Who or what is working on it, e.g. `g1t`.
-    pub agent: Option<String>,
-}
-
-/// `start_plan`: records an outcome to plan for. Members of the
-/// repository's workspace only. Called by the runner service, which starts
-/// the sandbox. Returns `Outcome<PlanJob>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StartPlanArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub brief: String,
-}
-
-/// What a sandbox needs to write a plan.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanJob {
-    pub plan_id: String,
-    /// Lets the sandbox, and nothing else, report this plan.
-    pub token: String,
-    pub brief: String,
-    pub repo: RepoPath,
-}
-
-/// `report_plan`: the plan a sandbox's agent wrote, or why it could not
-/// write one. Returns `Outcome<bool>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReportPlanArgs {
-    pub plan_id: String,
-    pub token: String,
-    #[serde(default)]
-    pub summary: String,
-    #[serde(default)]
-    pub issues: Vec<PlannedIssue>,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-/// `get_plan`. Members only. Returns `Outcome<Plan>`. `list_plans` takes
-/// `ViewArgs` and returns `Outcome<Vec<Plan>>`, newest first.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PlanArgs {
-    pub repo: RepoPath,
-    pub viewer: Viewer,
-    pub id: String,
-}
-
-/// `apply_plan`: opens a plan's issues, each blocked by the ones it depends
-/// on. Members only, and once. Returns `Outcome<Plan>`, its issues now
-/// carrying their numbers.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ApplyPlanArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub id: String,
-    /// Queue every issue for a g1t agent.
-    #[serde(default)]
-    pub assign: bool,
-    /// The positions, counting from 1, of the issues to open. All of them
-    /// when absent.
-    #[serde(default)]
-    pub keep: Option<Vec<u32>>,
-}
-
-/// `queue_issue`: asks for a g1t agent to take an issue as soon as it can,
-/// or withdraws that. The author or a member may. Returns `Outcome<bool>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct QueueIssueArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub number: u32,
-    pub queued: bool,
-}
-
-/// `ready_issues`: issues waiting for a g1t agent that can be given one
-/// now, in one repository or in all. Called by the runner service. Returns
-/// `Vec<ReadyIssue>`.
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReadyIssuesArgs {
-    #[serde(default)]
-    pub repo_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ReadyIssue {
-    pub repo: RepoPath,
-    pub number: u32,
-    /// Who queued it, on whose say-so the agent works.
-    pub actor: User,
-}
-
 /// `update_pull`: changes who a pull request is assigned to, whose review
 /// is asked for, its labels, its milestone and the branch it merges into.
 /// Each list given replaces the whole set. Whoever opened it, or someone
@@ -2221,75 +1706,6 @@ pub struct AppendSessionArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Appended {
     pub count: u32,
-}
-
-/// `start_review`: begins a review of a pull request by a g1t agent. Called
-/// by the runner service, which starts the sandbox. Returns
-/// `Outcome<ReviewJob>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartReviewArgs {
-    pub pull_id: String,
-}
-
-/// What a sandbox needs to review a pull request.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReviewJob {
-    pub run_id: String,
-    /// Lets the sandbox, and nothing else, report this review.
-    pub token: String,
-    /// The repository holding the commit: the fork, or the repository itself.
-    pub source: RepoPath,
-    pub commit: String,
-    pub repo: RepoPath,
-    pub default_branch: String,
-    pub number: u32,
-    pub title: String,
-    pub description: String,
-    /// The issue the pull request is for, which says what it should achieve.
-    pub issue: Option<Issue>,
-    /// Who the pull request is for ([`Pull::owner`]: whoever asked g1t for
-    /// it, or its author), and so can read its source.
-    pub author: User,
-    /// The files it changes, as of its latest push: how large the change
-    /// is, which decides the model that reviews it.
-    #[serde(default)]
-    pub files: Vec<ChangedFile>,
-    /// What among them runs, configures or guards things (CI workflows,
-    /// secrets, infrastructure), once each. Any sends the review to the
-    /// larger model.
-    #[serde(default)]
-    pub sensitive: Vec<String>,
-}
-
-/// A comment on one line, as a reviewing agent reports it.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ReviewComment {
-    pub path: String,
-    #[serde(default)]
-    pub line: u32,
-    pub body: String,
-}
-
-/// `report_review`: the review a sandbox's agent wrote, or why it could not
-/// write one. Returns `Outcome<bool>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReportReviewArgs {
-    pub run_id: String,
-    pub token: String,
-    #[serde(default)]
-    pub verdict: Option<Verdict>,
-    #[serde(default)]
-    pub body: String,
-    #[serde(default)]
-    pub comments: Vec<ReviewComment>,
-    /// The model that wrote it, by its public name.
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub error: Option<String>,
 }
 
 /// Lowercases, trims and de-duplicates labels, dropping empty ones.

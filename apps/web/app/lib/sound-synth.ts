@@ -25,7 +25,6 @@ export type CueSpec = { notes: Note[]; timbre: Timbre };
 const C5 = 523.25;
 const D5 = 587.33;
 const E5 = 659.25;
-const G5 = 783.99;
 const A5 = 880;
 const C6 = 1046.5;
 const D6 = 1174.66;
@@ -70,10 +69,6 @@ export const SOFT: Record<SoundCue, Note[]> = {
     { freq: D6, at: 60, dur: 90, gain: 0.9 },
     { freq: D6, at: 150, dur: 90, gain: 0.75 },
   ],
-  agent_done: [
-    { freq: G5, at: 0, dur: 80, gain: 0.85 },
-    { freq: C5, at: 80, dur: 160, gain: 0.9 },
-  ],
   sent: [{ freq: C6, at: 0, dur: 55, gain: 0.45 }],
   call: [
     { freq: A4, at: 0, dur: 120, gain: 0.9 },
@@ -90,7 +85,6 @@ export const BRIGHT_NOTES: Record<SoundCue, Note[]> = {
   message: brighten(SOFT.message),
   direct: brighten(SOFT.direct),
   mention: brighten(SOFT.mention),
-  agent_done: brighten(SOFT.agent_done),
   sent: brighten(SOFT.sent),
   call: brighten(SOFT.call),
 };

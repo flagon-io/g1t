@@ -11,7 +11,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::Identity;
-use crate::teams::{TeamRow, budget_of, channel_of, may_see, role_of};
+use crate::teams::{TeamRow, channel_of, may_see, role_of};
 
 const MEMBERS_ONLY: &str = "Only members can see who is in a workspace.";
 const NO_SUCH_MEMBER: &str = "There is no member with that username.";
@@ -150,7 +150,6 @@ impl Identity {
                 },
                 lead: row.lead(),
                 channel: channel_of(row.channel_id.as_deref(), row.channel_name.as_deref()),
-                budget_micros: budget_of(row.budget_micros),
                 people: team_people
                     .iter()
                     .filter(|person| person.team_id == row.id)
@@ -159,7 +158,6 @@ impl Identity {
                         role: TeamRole::parse(&person.role).unwrap_or(TeamRole::Member),
                     })
                     .collect(),
-                agent_ids: Vec::new(),
                 repos_count: row.repos_count,
             })
             .collect();

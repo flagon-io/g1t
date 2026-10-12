@@ -1,4 +1,9 @@
 /**
+ * Deprecated: g1t no longer runs agents of its own. Kept only until
+ * apps/mobile drops its Customize screens, which import it; delete it
+ * afterwards.
+ */
+/**
  * Customize (docs.g1t.sh/guides/customize/): one place for what shapes
  * how a workspace's agents work, in three parts, each with what the
  * workspace has (**Yours**) and what it can add (**Discover**). It is the
@@ -22,10 +27,21 @@
  */
 
 import type { FetchPlan, MarketplaceSource, McpServerConfig, PluginLayout, SubagentFile } from "./claude-plugin";
-import type { McpTool } from "./abilities";
 import type { ConnectorCategory } from "./connectors";
 import type { ListingKind } from "./marketplace";
-import type { SkillScope } from "./skill-library";
+
+/** A tool an MCP server offers, as it describes it. */
+export type McpTool = {
+  name: string;
+  description: string;
+  /** `read` when the server says the tool only reads; `write` otherwise, which is also what an unknown tool is. */
+  kind: "read" | "write";
+  /** Its arguments, as the server describes them (JSON Schema). */
+  input_schema: Record<string, unknown>;
+};
+
+/** What a skill was attached to. */
+export type SkillScope = "agent" | "team" | "workspace";
 
 export type CustomizeSection = "skills" | "connectors" | "plugins";
 

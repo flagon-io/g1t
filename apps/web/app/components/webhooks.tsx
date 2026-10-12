@@ -56,7 +56,7 @@ const GROUPS: { title: string; events: string[] }[] = [
       "release.deleted",
     ],
   },
-  { title: "Checks, reviews and the queue", events: ["checks.completed", "workflow.completed", "review.completed", "queue.changed"] },
+  { title: "Checks and the queue", events: ["checks.completed", "workflow.completed", "queue.changed"] },
   {
     title: "Statuses and check runs",
     events: [

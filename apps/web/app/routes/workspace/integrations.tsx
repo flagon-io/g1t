@@ -2,6 +2,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ChevronRight,
+  Cpu,
   Siren,
   Ticket,
   X,
@@ -14,13 +16,16 @@ import {
   type ConnectionConfig,
   type Delivery,
   type Provider,
+  type ProviderKind,
   PROVIDERS,
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
 import { ProviderMark, ProviderTiles } from "../../components/connectors";
-import { type SectionKind, integrationsSection, sectionKind } from "../../lib/integration-sections";
+import { ModelCatalog, ModelProviderFields } from "../../components/model-providers";
+import { AI_PROVIDERS } from "../../lib/ai-providers";
+import { integrationsSection, sectionKind } from "../../lib/integration-sections";
 import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
@@ -43,7 +48,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!role || !kind) throw new Response(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const [connections, listed] = await Promise.all([integrations.list(slug, viewer), repos.list(viewer, { namespace: slug })]);
-  const all = unwrap(connections).filter((connection) => connection.kind !== "models");
+  const all = unwrap(connections);
   // What each alert source has sent lately, to see it is wired up.
   const deliveries: Record<string, Delivery[]> = {};
   await Promise.all(
@@ -62,7 +67,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     connections: all,
     deliveries,
     repos: listed.map((repo) => `${repo.namespace}/${repo.name}`),
-    adding: isProvider(adding) && PROVIDERS[adding].kind !== "models" ? adding : null,
+    adding: isProvider(adding) ? adding : null,
   };
 }
 
@@ -84,6 +89,7 @@ function configFrom(form: FormData): ConnectionConfig {
     keys: keys ? keys.split(/[\s,]+/).filter(Boolean) : [],
     baseUrl: text(form, "baseUrl"),
     authHeader: text(form, "authHeader"),
+    model: text(form, "model"),
   };
 }
 
@@ -109,8 +115,24 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     });
     return updated.ok ? { updated: id } : { error: updated.error.message };
   }
+  if (intent === "provider") {
+    // An AI provider's model and address, and a new key if one was given:
+    // its other settings as they are.
+    const listed = await integrations.list(slug, user);
+    const connection = listed.ok ? listed.value.find((c) => c.id === id) : undefined;
+    if (!connection) return { error: listed.ok ? "No such integration." : listed.error.message };
+    const updated = await integrations.update(user, slug, id, {
+      config: {
+        ...connection.config,
+        model: text(form, "model"),
+        ...(form.has("baseUrl") ? { baseUrl: text(form, "baseUrl") } : {}),
+      },
+      secret: text(form, "secret"),
+    });
+    return updated.ok ? { updated: id } : { error: updated.error.message };
+  }
   const provider = String(form.get("provider") ?? "");
-  if (!isProvider(provider) || PROVIDERS[provider].kind === "models") return { error: "Choose what to connect." };
+  if (!isProvider(provider)) return { error: "Choose what to connect." };
   const connected = await integrations.connect(user, slug, {
     provider,
     name: text(form, "name"),
@@ -121,7 +143,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return connected.ok ? { connected: connected.value } : { error: connected.error.message, provider };
 }
 
-const KIND_INFO: Record<SectionKind, { title: string; icon: ReactNode; blurb: string }> = {
+const KIND_INFO: Record<ProviderKind, { title: string; icon: ReactNode; blurb: string }> = {
+  models: {
+    title: "Your AI providers",
+    icon: <Cpu size={16} />,
+    blurb: "Connect the AI providers your team uses, so g1t can hand work to them.",
+  },
   alerts: {
     title: "Alerts",
     icon: <Siren size={16} />,
@@ -159,6 +186,31 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
       <div className="mt-4">
         <ErrorText>{error}</ErrorText>
       </div>
+
+      {/* AI providers -------------------------------------------------------- */}
+      {kind === "models" && (
+      <Section kind="models">
+        <Connections
+          list={connections.filter((c) => c.kind === "models")}
+          owner={owner}
+          tested={tested}
+          updated={updated}
+          deliveries={deliveries}
+        />
+        <p className="mb-4 text-xs text-faint">
+          Keys are sealed when saved and never shown again. Only an owner of {slug} can add, test, change or remove them.
+        </p>
+        {owner && <ModelCatalog slug={slug} adding={adding} />}
+        {adding && PROVIDERS[adding].kind === "models" && owner && (
+          <AddForm
+            provider={adding}
+            slug={slug}
+            repos={repoNames}
+            error={actionData && "provider" in actionData ? error : null}
+          />
+        )}
+      </Section>
+      )}
 
       {/* Alerts -------------------------------------------------------------- */}
       {kind === "alerts" && (
@@ -210,7 +262,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
 }
 
 /** One kind of connection's page: its heading, then what is connected and what to connect. */
-function Section({ kind, children }: { kind: SectionKind; children: ReactNode }) {
+function Section({ kind, children }: { kind: ProviderKind; children: ReactNode }) {
   const info = KIND_INFO[kind];
   return (
     <section className="mt-4">
@@ -288,6 +340,8 @@ function ConnectionRow({
     config.organization,
     host(config.site),
     host(config.baseUrl),
+    config.model && `model ${config.model}`,
+    connection.models.length > 0 && `${connection.models.length} models`,
     config.keys?.length ? config.keys.join(", ") : null,
     connection.secretHint && `key ${connection.secretHint}`,
   ].filter(Boolean);
@@ -326,6 +380,7 @@ function ConnectionRow({
           {connection.lastError}
         </p>
       )}
+      {owner && connection.kind === "models" && <ProviderSettings connection={connection} updated={updated} />}
       {connection.webhookUrl && (
         <div className="mt-3">
           <p className="mb-1.5 text-xs text-faint">Where it sends alerts</p>
@@ -383,10 +438,65 @@ function ConnectionRow({
 
 /** What a provider is for, in a line. */
 function blurb(provider: Provider): string {
-  return PROVIDER_BLURB[provider] ?? "";
+  return PROVIDER_BLURB[provider] ?? AI_PROVIDERS[provider]?.blurb ?? "";
 }
 
-function Choices({ kind, slug, adding }: { kind: SectionKind; slug: string; adding: Provider | null }) {
+/** Changing an AI provider after it is added: its model, its address, a new key. */
+function ProviderSettings({ connection, updated }: { connection: Connection; updated: boolean }) {
+  const azure = connection.provider === "azure_openai";
+  const ownAddress = azure || connection.provider.endsWith("_endpoint");
+  return (
+    <details className="group mt-3" open={updated || undefined}>
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs text-muted hover:text-fg">
+        <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
+        Change its model, address or key
+      </summary>
+      <Form method="post" className="mt-3 max-w-2xl space-y-3">
+        <input type="hidden" name="intent" value="provider" />
+        <input type="hidden" name="id" value={connection.id} />
+        {ownAddress && (
+          <Field label="Base URL">
+            <Input name="baseUrl" type="url" required defaultValue={connection.config.baseUrl ?? ""} className="max-w-sm" />
+          </Field>
+        )}
+        <Field label={azure ? "Deployment" : "Model"} hint={azure ? undefined : "Optional. The model your team uses on it."}>
+          <Input
+            name="model"
+            required={azure}
+            defaultValue={connection.config.model ?? ""}
+            list={connection.models.length > 0 ? `models-${connection.id}` : undefined}
+            className="max-w-sm font-mono text-[0.8125rem]"
+            autoComplete="off"
+          />
+        </Field>
+        {connection.models.length > 0 && (
+          <datalist id={`models-${connection.id}`}>
+            {connection.models.map((model) => (
+              <option key={model} value={model} />
+            ))}
+          </datalist>
+        )}
+        <Field label="Replace the key" hint="Write-only: g1t never shows it again. Leave it empty to keep the key you have.">
+          <Input
+            name="secret"
+            type="password"
+            placeholder={connection.secretHint ? `Now ${connection.secretHint}` : "Paste a key"}
+            autoComplete="new-password"
+            className="max-w-sm"
+          />
+        </Field>
+        <div className="flex items-center gap-3">
+          <SubmitButton variant="outline" match={{ intent: "provider", id: connection.id }} pending="Saving…">
+            Save
+          </SubmitButton>
+          {updated && <span className="text-sm text-success">Saved.</span>}
+        </div>
+      </Form>
+    </details>
+  );
+}
+
+function Choices({ kind, slug, adding }: { kind: ProviderKind; slug: string; adding: Provider | null }) {
   const providers = (Object.keys(PROVIDERS) as Provider[]).filter((p) => PROVIDERS[p].kind === kind);
   return (
     <div className="mt-3">
@@ -499,7 +609,7 @@ function AddForm({
         </div>
         <Form method="post" className="mt-5 grid max-w-xl gap-4">
           <input type="hidden" name="provider" value={provider} />
-          {fields[provider]}
+          {fields[provider] ?? <ModelProviderFields provider={provider} />}
           <ErrorText>{error}</ErrorText>
           <div>
             <SubmitButton match={{ provider }} pending="Connecting…">
@@ -570,6 +680,15 @@ function Connected({ connected }: { connected: { connection: Connection; signing
       {connection.kind === "tracker" && (
         <p className="mt-2 text-sm text-muted">
           You can import a ticket from any repository's new issue page. Use Test to check the token.
+        </p>
+      )}
+      {connection.kind === "models" && (
+        <p className="mt-2 text-sm text-muted">
+          {connection.lastError
+            ? `It was saved, but the check failed: ${connection.lastError}`
+            : connection.models.length > 0
+              ? `The key works, and it offers ${connection.models.length} models.`
+              : "The key is saved. Use Test to check it again."}
         </p>
       )}
     </div>

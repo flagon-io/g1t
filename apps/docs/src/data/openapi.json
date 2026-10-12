@@ -574,7 +574,7 @@
     },
     {
       "name": "Integrations",
-      "description": "A workspace's connections to outside systems: alert sources and issue trackers.",
+      "description": "A workspace's connections to outside systems: AI providers, alert sources and issue trackers.",
       "x-tools": [
         "list_integrations",
         "connect_integration",
@@ -17169,7 +17169,7 @@
           "Billing"
         ],
         "summary": "Get a workspace's usage",
-        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (sandboxes, deployments, git_storage, packages, security, search, other) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes, counted in any range that reaches into the current month, and `pending_charged_micros` is what of it will be charged then, after the discount and what g1t covers; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, and the split `by_project`), `projects` (every repository with usage in the range), and the credit left now: `credit_micros`, and `ai_credit_micros` for AI credit bought earlier, which still pays toward what is owed. Usage on a meter g1t no longer has, such as agent runs and model requests from before they were retired, is kept on one meter in a last product, `other`, shown only when it has something, so nothing charged is left out. `models`, `by_agent` and `by_person` are always empty, and each product's `features` too. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family with meters is listed, in order, even with nothing used; this example shows two. `other` comes last, and only when it has something: usage on meters g1t no longer has, such as agent runs from before they were retired. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=sandboxes,deployments`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
+        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (sandboxes, deployments, git_storage, packages, security, search, other) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes, counted in any range that reaches into the current month, and `pending_charged_micros` is what of it will be charged then, after the discount and what g1t covers; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, and the split `by_project`), `projects` (every repository with usage in the range), and the credit left now: `credit_micros`, and `ai_credit_micros` for AI credit bought earlier, which still pays toward what is owed. Usage on a meter g1t no longer has, such as agent runs and model requests from before they were retired, is kept on one meter in a last product, `other`, shown only when it has something, so nothing charged is left out. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family with meters is listed, in order, even with nothing used; this example shows two. `other` comes last, and only when it has something: usage on meters g1t no longer has, such as agent runs from before they were retired. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=sandboxes,deployments`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
         "x-operation": "get_usage",
         "x-mcp-tool": "billing",
         "x-mcp-action": "usage",
@@ -17331,8 +17331,7 @@
                             }
                           ]
                         }
-                      ],
-                      "features": []
+                      ]
                     },
                     {
                       "key": "other",
@@ -17370,17 +17369,13 @@
                             }
                           ]
                         }
-                      ],
-                      "features": []
+                      ]
                     }
                   ],
                   "projects": [
                     "flagon-io/g1t",
                     "flagon-io/hello"
                   ],
-                  "models": [],
-                  "by_agent": [],
-                  "by_person": [],
                   "included": {
                     "used": 20,
                     "of": 20,
@@ -17565,7 +17560,7 @@
           "Billing"
         ],
         "summary": "Change a workspace's budget",
-        "description": "Change a workspace's budget. Give only what you change; the rest stays as it is. `amount_micros` is the monthly spend limit, up to `max_amount_micros`, or null for the automatic one. `alerts` is some of 50, 75, 90 and 100, in percent of the limit. `pause_at_limit` false makes the limit alert only, without pausing usage; g1t's own ceiling still applies. `webhook` is an https:// address sent a JSON POST for each alert, or null for none. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents can read the budget but never change it. Returns the budget.\n\nFields left out keep their value. A limit above `max_amount_micros` is refused with `invalid`. Called by anyone but an owner signed in as a person, or by a workspace's own token or one of g1t's agents, it is refused with `forbidden`. Each alert is sent once a month, to the owners by email and, with `webhook`, as a JSON POST.",
+        "description": "Change a workspace's budget. Give only what you change; the rest stays as it is. `amount_micros` is the monthly spend limit, up to `max_amount_micros`, or null for the automatic one. `alerts` is some of 50, 75, 90 and 100, in percent of the limit. `pause_at_limit` false makes the limit alert only, without pausing usage; g1t's own ceiling still applies. `webhook` is an https:// address sent a JSON POST for each alert, or null for none. Owners only, as a person: signed in or with a personal access token. A workspace's own token and a run's token can read the budget but never change it. Returns the budget.\n\nFields left out keep their value. A limit above `max_amount_micros` is refused with `invalid`. Called by anyone but an owner signed in as a person, or by a workspace's own token or a run's token, it is refused with `forbidden`. Each alert is sent once a month, to the owners by email and, with `webhook`, as a JSON POST.",
         "x-operation": "set_budget",
         "x-mcp-tool": "billing",
         "x-mcp-action": "set_budget",
@@ -28311,10 +28306,7 @@
                   "required_approvals": 0,
                   "count_agent_approvals": true,
                   "allow_ignoring_checks": true,
-                  "agent_review": true,
-                  "max_revisions": 2,
                   "merge_queue": false,
-                  "hold_low_confidence": true,
                   "require_code_owner_review": false,
                   "updated_by": null,
                   "updated_at": null
@@ -28370,7 +28362,7 @@
           "Repositories"
         ],
         "summary": "Update repository settings",
-        "description": "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/).",
+        "description": "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/).",
         "x-operation": "update_repo_settings",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_settings",
@@ -28418,10 +28410,7 @@
                   "required_approvals": 1,
                   "count_agent_approvals": false,
                   "allow_ignoring_checks": true,
-                  "agent_review": true,
-                  "max_revisions": 2,
                   "merge_queue": true,
-                  "hold_low_confidence": true,
                   "require_code_owner_review": true,
                   "updated_by": "syntaqx",
                   "updated_at": "2026-10-04T16:20:37.508Z"
@@ -30866,13 +30855,6 @@
                           "exceptions": []
                         },
                         "applies_to": "everyone"
-                      },
-                      {
-                        "type": "cost_cap",
-                        "parameters": {
-                          "max_usd": 25
-                        },
-                        "applies_to": "agents"
                       }
                     ],
                     "created_by": "syntaqx",
@@ -30939,7 +30921,7 @@
           "Rules"
         ],
         "summary": "Create a repository ruleset",
-        "description": "Create a repository ruleset: name, enforcement (active, evaluate or disabled; active by default), target (branch or tag), conditions.ref_name (include and exclude patterns), bypass_actors (each a kind: role, team, user, token or g1t, a value, and a mode: always or pull_requests; nobody bypasses unless listed, g1t included) and rules (each a type, its parameters, and applies_to: everyone, agents or people). Rule types: creation, update, deletion, non_fast_forward, required_linear_history, required_signatures, pull_request, required_status_checks, merge_queue, required_deployments, commit_message_pattern, commit_author_email_pattern, committer_email_pattern, branch_name_pattern, tag_name_pattern, file_path_restriction, file_extension_restriction, max_file_size, max_file_path_length, max_files_changed, secret_scanning, confidence_threshold, cost_cap, path_review, merge_window and agent_auto_merge. Several rulesets stack: every rule of each holds. Takes the Admin role. Returns the ruleset as saved, tidied.\n\nParameters left out take their defaults, and the ruleset comes back as saved: patterns trimmed, roles and teams lowercased. A pattern that does not compile, or a rule the target cannot hold (a pull request rule on tags), is refused with `invalid` and says why.",
+        "description": "Create a repository ruleset: name, enforcement (active, evaluate or disabled; active by default), target (branch or tag), conditions.ref_name (include and exclude patterns), bypass_actors (each a kind: role, team, user, token or g1t, a value, and a mode: always or pull_requests; nobody bypasses unless listed, g1t included) and rules (each a type, its parameters, and applies_to: everyone, agents or people). Rule types: creation, update, deletion, non_fast_forward, required_linear_history, required_signatures, pull_request, required_status_checks, merge_queue, required_deployments, commit_message_pattern, commit_author_email_pattern, committer_email_pattern, branch_name_pattern, tag_name_pattern, file_path_restriction, file_extension_restriction, max_file_size, max_file_path_length, max_files_changed, secret_scanning, path_review, merge_window and agent_auto_merge. Several rulesets stack: every rule of each holds. Takes the Admin role. Returns the ruleset as saved, tidied.\n\nParameters left out take their defaults, and the ruleset comes back as saved: patterns trimmed, roles and teams lowercased. A pattern that does not compile, or a rule the target cannot hold (a pull request rule on tags), is refused with `invalid` and says why.",
         "x-operation": "create_repo_ruleset",
         "x-mcp-tool": "repository",
         "x-mcp-action": "create_ruleset",
@@ -32498,13 +32480,6 @@
                           "exceptions": []
                         },
                         "applies_to": "everyone"
-                      },
-                      {
-                        "type": "cost_cap",
-                        "parameters": {
-                          "max_usd": 25
-                        },
-                        "applies_to": "agents"
                       }
                     ],
                     "created_by": "syntaqx",
@@ -32656,13 +32631,6 @@
                         "exceptions": []
                       },
                       "applies_to": "everyone"
-                    },
-                    {
-                      "type": "cost_cap",
-                      "parameters": {
-                        "max_usd": 25
-                      },
-                      "applies_to": "agents"
                     }
                   ],
                   "created_by": "syntaqx",
@@ -32924,13 +32892,6 @@
                       "exceptions": []
                     },
                     "applies_to": "everyone"
-                  },
-                  {
-                    "type": "cost_cap",
-                    "parameters": {
-                      "max_usd": 25
-                    },
-                    "applies_to": "agents"
                   }
                 ]
               }
@@ -33047,13 +33008,6 @@
                         "exceptions": []
                       },
                       "applies_to": "everyone"
-                    },
-                    {
-                      "type": "cost_cap",
-                      "parameters": {
-                        "max_usd": 25
-                      },
-                      "applies_to": "agents"
                     }
                   ],
                   "created_by": "syntaqx",
@@ -33214,13 +33168,6 @@
                         "exceptions": []
                       },
                       "applies_to": "everyone"
-                    },
-                    {
-                      "type": "cost_cap",
-                      "parameters": {
-                        "max_usd": 25
-                      },
-                      "applies_to": "agents"
                     }
                   ],
                   "created_by": "syntaqx",
@@ -39866,8 +39813,7 @@
                       },
                       "requested_by": null,
                       "created_at": "2026-10-01T18:20:02.117Z",
-                      "updated_at": "2026-10-01T18:35:44.902Z",
-                      "confidence": null
+                      "updated_at": "2026-10-01T18:35:44.902Z"
                     }
                   ]
                 }
@@ -41530,7 +41476,7 @@
           "Integrations"
         ],
         "summary": "List integrations",
-        "description": "A workspace's integrations: the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only.\n\n`kind` is `models`, `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts.",
+        "description": "A workspace's integrations: its AI providers, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only.\n\n`kind` is `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts.",
         "x-operation": "list_integrations",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "list_integrations",
@@ -41561,34 +41507,12 @@
                 "schema": {},
                 "example": [
                   {
-                    "id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
-                    "workspace": "flagon-io",
-                    "provider": "anthropic",
-                    "kind": "models",
-                    "name": "Anthropic",
-                    "config": {
-                      "assign": false,
-                      "write_back": true
-                    },
-                    "secret_hint": "…3f9a",
-                    "webhook_url": null,
-                    "created_by": "syntaqx",
-                    "created_at": "2026-10-04T15:42:07.318Z",
-                    "last_used_at": "2026-10-04T15:42:08.102Z",
-                    "last_error": null,
-                    "models": [
-                      "claude-haiku-4-5",
-                      "claude-sonnet-4-5"
-                    ]
-                  },
-                  {
                     "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc",
                     "workspace": "flagon-io",
                     "provider": "jira",
                     "kind": "tracker",
                     "name": "Jira",
                     "config": {
-                      "assign": false,
                       "write_back": true,
                       "site": "https://acme.atlassian.net",
                       "email": "syntaqx@example.com",
@@ -41659,7 +41583,7 @@
           "Integrations"
         ],
         "summary": "Connect an integration",
-        "description": "Connect a workspace to an outside system. provider is sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). For datadog and webhook, g1t makes the signing secret and returns it once. Owners only.\n\n`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/).",
+        "description": "Connect a workspace to an outside system. provider is an AI provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint), which stores your AI provider credentials for the workspace, or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). An AI provider's key is checked as it is saved. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only.\n\n`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. See [integrations](/guides/integrations/).",
         "x-operation": "connect_integration",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "connect_integration",
@@ -41698,7 +41622,6 @@
                     "config": {
                       "repo": "flagon-io/hello",
                       "label": "bug",
-                      "assign": false,
                       "write_back": true
                     },
                     "secret_hint": null,
@@ -41802,7 +41725,7 @@
                   },
                   "config": {
                     "type": "object",
-                    "description": "Settings. repo (owner/name) is where alerts open issues; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. write_back (default true) tells the outside system when the work lands."
+                    "description": "Settings. repo (owner/name) is where alerts open issues; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. For an AI provider, base_url and auth_header (x-api-key or authorization) are for your own endpoint (and base_url for an Azure OpenAI resource), and model names the model or Azure deployment the team uses. write_back (default true) tells the outside system when the work lands."
                   },
                   "secret": {
                     "type": "string",
@@ -42143,7 +42066,6 @@
                         "release.edited",
                         "release.unpublished",
                         "release.deleted",
-                        "agent.asked",
                         "checks.completed",
                         "status.created",
                         "check_run.created",
@@ -42152,7 +42074,6 @@
                         "check_run.requested_action",
                         "check_suite.completed",
                         "check_suite.rerequested",
-                        "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",
                         "deployment.failed",
@@ -42421,7 +42342,6 @@
                         "release.edited",
                         "release.unpublished",
                         "release.deleted",
-                        "agent.asked",
                         "checks.completed",
                         "status.created",
                         "check_run.created",
@@ -42430,7 +42350,6 @@
                         "check_run.requested_action",
                         "check_suite.completed",
                         "check_suite.rerequested",
-                        "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",
                         "deployment.failed",
@@ -43345,7 +43264,6 @@
                         "release.edited",
                         "release.unpublished",
                         "release.deleted",
-                        "agent.asked",
                         "checks.completed",
                         "status.created",
                         "check_run.created",
@@ -43354,7 +43272,6 @@
                         "check_run.requested_action",
                         "check_suite.completed",
                         "check_suite.rerequested",
-                        "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",
                         "deployment.failed",
@@ -43609,7 +43526,6 @@
                         "release.edited",
                         "release.unpublished",
                         "release.deleted",
-                        "agent.asked",
                         "checks.completed",
                         "status.created",
                         "check_run.created",
@@ -43618,7 +43534,6 @@
                         "check_run.requested_action",
                         "check_suite.completed",
                         "check_suite.rerequested",
-                        "review.completed",
                         "workflow.completed",
                         "deployment.succeeded",
                         "deployment.failed",
@@ -44162,7 +44077,7 @@
           "Integrations"
         ],
         "summary": "Update an integration",
-        "description": "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a key. Fields left out are kept. Secrets are never returned. Owners only.\n\nThe secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. With `gateway_models` set to `ollama/*`, an AI Gateway request for `ollama/qwen3-coder:30b` reaches this endpoint as `qwen3-coder:30b`, on the workspace's own account. See [the AI Gateway guide](/guides/ai-gateway/#your-own-providers).",
+        "description": "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a key, such as an AI provider's. Fields left out are kept. Secrets are never returned. Owners only.\n\nThe secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. Use it to rotate a key.",
         "x-operation": "update_integration",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "update_integration",
@@ -44201,28 +44116,27 @@
               "application/json": {
                 "schema": {},
                 "example": {
-                  "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0",
+                  "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc",
                   "workspace": "flagon-io",
-                  "provider": "openai_endpoint",
-                  "kind": "models",
-                  "name": "Office GPU",
+                  "provider": "jira",
+                  "kind": "tracker",
+                  "name": "Jira",
                   "config": {
                     "write_back": true,
-                    "base_url": "https://gpu.flagon.dev/v1",
-                    "gateway_models": [
-                      "ollama/*"
+                    "site": "https://acme.atlassian.net",
+                    "email": "syntaqx@example.com",
+                    "keys": [
+                      "TECH",
+                      "OPS"
                     ]
                   },
-                  "secret_hint": "…-key",
+                  "secret_hint": "…oken",
                   "webhook_url": null,
                   "created_by": "syntaqx",
-                  "created_at": "2026-10-07T12:10:44.512Z",
+                  "created_at": "2026-10-04T15:42:07.318Z",
                   "last_used_at": "2026-10-07T14:00:02.000Z",
                   "last_error": null,
-                  "models": [
-                    "llama3.3:70b",
-                    "qwen3-coder:30b"
-                  ]
+                  "models": []
                 }
               }
             }
@@ -44305,19 +44219,21 @@
               },
               "example": {
                 "config": {
-                  "base_url": "https://gpu.flagon.dev/v1",
-                  "gateway_models": [
-                    "ollama/*"
+                  "site": "https://acme.atlassian.net",
+                  "email": "syntaqx@example.com",
+                  "keys": [
+                    "TECH",
+                    "OPS"
                   ]
                 },
-                "secret": "sk-office-gpu-key"
+                "secret": "atlassian-api-token"
               }
             }
           }
         },
         "x-example-params": {
           "workspace": "flagon-io",
-          "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0"
+          "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc"
         }
       },
       "delete": {
@@ -44421,7 +44337,7 @@
         },
         "x-example-params": {
           "workspace": "flagon-io",
-          "id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
+          "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bd"
         }
       }
     },
@@ -44472,7 +44388,7 @@
                 "schema": {},
                 "example": {
                   "ok": true,
-                  "message": "Anthropic accepted the key and offers 9 models."
+                  "message": "Connected to https://acme.atlassian.net as Chase Pierce."
                 }
               }
             }
@@ -44530,7 +44446,7 @@
         },
         "x-example-params": {
           "workspace": "flagon-io",
-          "id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
+          "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc"
         }
       }
     },
@@ -55129,7 +55045,6 @@
                     "requested_by": null,
                     "created_at": "2026-10-01T18:20:02.117Z",
                     "updated_at": "2026-10-01T18:35:44.902Z",
-                    "confidence": null,
                     "labels": [],
                     "milestone": null,
                     "base": "main"
@@ -55218,24 +55133,9 @@
                   "checks": null,
                   "overlaps": [],
                   "behind": false,
-                  "review_pending": false,
                   "lifecycle": null,
                   "landing": false,
                   "stalled": null,
-                  "messages": [
-                    {
-                      "id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
-                      "author": "syntaqx",
-                      "body": "Keep \"world\" as the default when no name is given.",
-                      "created_at": "2026-10-01T18:25:00.310Z",
-                      "delivered_at": "2026-10-01T18:25:31.007Z",
-                      "kind": "message",
-                      "from_number": null,
-                      "to_number": 14,
-                      "answer": null,
-                      "declined": false
-                    }
-                  ],
                   "statuses": [
                     {
                       "context": "CI / pull_request",
@@ -55424,8 +55324,7 @@
                   },
                   "requested_by": null,
                   "created_at": "2026-10-01T18:20:02.117Z",
-                  "updated_at": "2026-10-01T18:35:44.902Z",
-                  "confidence": null
+                  "updated_at": "2026-10-01T18:35:44.902Z"
                 }
               }
             }

@@ -1,4 +1,3 @@
-import type { AgentLook } from "./agent-look";
 import type { ChecksApi } from "./checks";
 import type { CodeownersReport, PullCodeOwners } from "./codeowners";
 import type { User, Viewer } from "./identity";
@@ -212,77 +211,9 @@ export type Pull = {
   createdAt: string;
   /** RFC 3339. */
   updatedAt: string;
-  /**
-   * How sure g1t is of a g1t agent's change, from what it can observe, once
-   * the agent has finished it. Absent before then, and on changes g1t is
-   * not seeing through.
-   */
-  confidence?: Confidence | null;
   /** Who last moved its head (a user id), and when; absent until a push after rulesets arrived. */
   headPushedBy?: string;
   headPushedAt?: string;
-};
-
-/** How sure g1t is that an agent's change is right. */
-export type ConfidenceLevel = "low" | "medium" | "high";
-
-/**
- * How sure g1t is of a change an agent made, worked out from what can be
- * observed: its checks, how often it was sent back, the reviewer agent's
- * verdict, whether it touched tests, its size, where it reached, how close
- * it came to its guardrails, and what it asked without an answer. The
- * agent's own word can only lower it.
- */
-export type Confidence = {
-  level: ConfidenceLevel;
-  /** A few words each, most telling first: what lowered it, or for `high`, what it rests on. */
-  reasons: string[];
-  /** What the agent said of its own change, if it said. */
-  selfReported: ConfidenceLevel | null;
-  /** What the agent said it was unsure about. */
-  uncertainAbout: string[];
-  /** The agent run it was worked out after. */
-  runId: string | null;
-  /** RFC 3339. */
-  assessedAt: string;
-};
-
-/** What became of the agent when an issue was opened and handed to it in one step. */
-export type AgentStartStatus = "started" | "queued" | "not_started";
-
-/** Whether the agent started, and if not, why and what fixes it. */
-export type AgentStart = {
-  status: AgentStartStatus;
-  /**
-   * Why it did not start: `not_paid`, `trial_used`, `limit`, `paused`,
-   * `issue_cap`, `billing_unavailable` or `no_model`; `waiting` when queued.
-   */
-  code: string | null;
-  /** What happened, in a sentence or two, with what to do. */
-  message: string | null;
-  /** Where the fix is: the workspace's billing or model settings. */
-  fixUrl: string | null;
-};
-
-/** An issue opened and handed to g1t in one step. The issue exists whatever became of the agent. */
-export type Delegated = {
-  issue: Issue;
-  /** The pull request the agent opened, when it started. */
-  pull: Pull | null;
-  agent: AgentStart;
-};
-
-/**
- * What to put an agent on: an issue's title, and what to do in plain words,
- * with what done means if you like (a "Definition of done" section). What
- * has to pass before it merges is the branch's required checks.
- */
-export type DelegateInput = {
-  title: string;
-  body: string;
-  labels?: string[];
-  /** Deprecated: commands, added to the body under "Definition of done". */
-  checks?: string[];
 };
 
 /** One file a pull request changes, and by how much. */
@@ -384,29 +315,16 @@ export type Comment = {
 };
 
 /**
- * One of a workspace's own agents as a comment or review it wrote shows
- * it: Margo (@margo), with the face drawn from `avatarSeed` or chosen as `look`. Its page
- * is `/<workspace>/-/agents/<handle>`.
+ * One of a workspace's own agents, as a comment or review it wrote before
+ * g1t's agents were removed shows it: Margo (@margo), with the face drawn
+ * from `avatarSeed`. Kept so those comments still render.
  */
 export type AgentRef = {
   id: string;
   handle: string;
   displayName: string;
   avatarSeed: string;
-  /** Its chosen face (./agent-look.ts), when it has one. */
-  look?: AgentLook | null;
 };
-
-/** An agent's review: all of them advisory. */
-export type AgentVerdict = "comment" | "approve" | "request_changes";
-
-/** How many comments and reviews one agent may write on one issue or pull request an hour. */
-export const AGENT_COMMENTS_PER_HOUR = 5;
-
-/** An agent as its comments name it, from the agents service's record of it. */
-export function agentRef(agent: { id: string; handle: string; display_name: string; avatar_seed: string; look?: AgentLook | null }): AgentRef {
-  return { id: agent.id, handle: agent.handle, displayName: agent.display_name, avatarSeed: agent.avatar_seed, look: agent.look ?? null };
-}
 
 export type NewComment = {
   /** May be empty when approving. */
@@ -474,8 +392,6 @@ export type PullDetail = {
    * it has to catch up before it can merge.
    */
   behind: boolean;
-  /** Whether a g1t agent is reviewing it right now. */
-  reviewPending: boolean;
   /**
    * Where it stands on its way to being merged, for a pull request g1t is
    * seeing through. Null on anyone else's.
@@ -488,8 +404,6 @@ export type PullDetail = {
   landing: boolean;
   /** Why g1t stopped working on it, if it did. */
   stalled: string | null;
-  /** Messages people sent the agent while it worked, oldest first. */
-  messages: AgentMessage[];
   /** What workflow runs said about its head commit, one per workflow. */
   statuses?: CommitStatus[];
   /**
@@ -637,96 +551,6 @@ export type Lifecycle = {
   revisions: number;
 };
 
-/** What the runner needs to carry out a step of a pull request's lifecycle. */
-export type LifecycleJob = {
-  pullId: string;
-  repo: RepoPath;
-  number: number;
-  /** Who the pull request belongs to (`workOwner`: whoever asked g1t for it, or its author). Sandboxes act as them. */
-  author: User;
-  /** The repository holding the change: its fork, or the repository itself. */
-  source: RepoPath;
-  /** The branch of the source holding the change; its default branch when null. */
-  branch: string | null;
-  defaultBranch: string;
-  title: string;
-  description: string;
-  issue: Issue | null;
-  /** For a revision: the failed checks or the review to address. */
-  feedback: string;
-  /** For a revision: which one this is, from 1. */
-  round: number;
-};
-
-/** An agent woken to answer what other agents sent it while it was not at work. */
-export type Wake = { job: LifecycleJob; messages: AgentMessage[] };
-
-/**
- * `planning` while an agent reads the repository and writes it; `ready` for
- * a person to read and apply; `failed` if it could not be written;
- * `applied` once its issues are open.
- */
-export type PlanStatus = "planning" | "ready" | "failed" | "applied";
-
-/** One issue a plan proposes. */
-export type PlannedIssue = {
-  title: string;
-  /** Markdown: what to change, where, and why. */
-  body: string;
-  labels: string[];
-  /** What is true once it is done, in plain words; added to the issue's body under "Definition of done". */
-  done: string[];
-  /** The files it will most likely change. */
-  files: string[];
-  /**
-   * The positions, counting from 1, of earlier issues in the plan that have
-   * to be merged first.
-   */
-  dependsOn: number[];
-  /** Its number, once the plan has been applied and it was kept. */
-  number: number | null;
-};
-
-/** An outcome someone wrote, and the issues an agent proposes to get there. */
-export type Plan = {
-  id: string;
-  repoId: string;
-  /** The outcome wanted, as written. */
-  brief: string;
-  status: PlanStatus;
-  /** The agent's account of how it split the work. */
-  summary: string;
-  issues: PlannedIssue[];
-  /** Why it could not be written, when `status` is `failed`. */
-  error: string | null;
-  author: User;
-  /** RFC 3339. */
-  createdAt: string;
-  /** RFC 3339. */
-  finishedAt: string | null;
-  /** Once applied: where each issue it opened stands now, in plan order. */
-  progress: IssueProgress[];
-  /** Questions and handoffs between its pull requests' agents, newest first. */
-  exchanges: AgentMessage[];
-};
-
-/** What a sandbox needs to write a plan. */
-export type PlanJob = {
-  planId: string;
-  /** Lets the sandbox, and nothing else, report this plan. */
-  token: string;
-  brief: string;
-  repo: RepoPath;
-};
-
-/** An issue waiting for a g1t agent that can be given one now. */
-export type ReadyIssue = {
-  repo: RepoPath;
-  number: number;
-  /** Who queued it, on whose say-so the agent works. */
-  actor: User;
-};
-
 /**
  * How a repository wants its pull requests handled. A repository that has
  * changed nothing has the defaults.
@@ -759,24 +583,12 @@ export type RepoSettings = {
   countAgentApprovals: boolean;
   /** Whether someone who may merge can bypass required checks that have not passed. */
   allowIgnoringChecks: boolean;
-  /** Whether a g1t agent's pull request is reviewed by a second agent unasked. */
-  agentReview: boolean;
-  /**
-   * How many times a g1t agent is sent back to its pull request before a
-   * person is asked instead.
-   */
-  maxRevisions: number;
   /**
    * Merge through a queue: pull requests are tested together with those
    * ahead of them, and only a combination that passed reaches the default
    * branch.
    */
   mergeQueue: boolean;
-  /**
-   * Ask a person before merging a g1t agent's change whose confidence is
-   * low: auto-merge and the merge queue leave it until a person approves it.
-   */
-  holdLowConfidence: boolean;
   /**
    * Refuse to merge until the code owners of every file it changes have
    * approved, as many as each section asks. People only; `g1t` only where
@@ -792,40 +604,11 @@ export type RepoSettings = {
 /** The settings a member can change. */
 export type RepoSettingsInput = Omit<RepoSettings, "updatedBy" | "updatedAt">;
 
-/** The next step for a pull request g1t is seeing through, already claimed. */
-export type Advance =
-  | { action: "none" }
-  | { action: "review" | "revise" | "catch_up"; job: LifecycleJob };
-
-/** What a sandbox needs to review a pull request. */
-export type ReviewJob = {
-  runId: string;
-  /** Lets the sandbox, and nothing else, report this review. */
-  token: string;
-  /** The repository holding the commit: the fork, or the repository itself. */
-  source: RepoPath;
-  commit: string;
-  repo: RepoPath;
-  defaultBranch: string;
-  number: number;
-  title: string;
-  description: string;
-  /** The issue the pull request is for, which says what it should achieve. */
-  issue: Issue | null;
-  /** Who the pull request is for (`workOwner`: whoever asked g1t for it, or its author), and so can read its source. */
-  author: User;
-  /**
-   * The files it changes, as of its latest push: how large the change is,
-   * which decides the model that reviews it.
-   */
-  files: ChangedFile[];
-  /**
-   * What among them runs, configures or guards things (CI workflows,
-   * secrets, infrastructure), once each. Any sends the review to the
-   * larger model.
-   */
-  sensitive: string[];
-};
+/**
+ * What the runner is to do next for a pull request: always nothing now,
+ * since no step of a pull request is carried out in a sandbox any more.
+ */
+export type Advance = { action: "none" };
 
 export type OpenIssueInput = {
   title: string;
@@ -882,12 +665,6 @@ export type RepoPulls = {
 /** Issues, pull requests, comments and sessions. */
 export interface WorkApi extends RulesApi, ChecksApi {
   openIssue(actor: User, repo: RepoPath, input: OpenIssueInput): Promise<Result<Issue>>;
-  /**
-   * Opens an issue to put g1t on at once: refused, with nothing
-   * opened, unless `actor` may put agents to work in `repo`. The runner's
-   * `delegate` calls it, then starts the agent.
-   */
-  delegateIssue(actor: User, repo: RepoPath, input: DelegateInput): Promise<Result<Issue>>;
   /** Newest first. */
   listIssues(
     repo: RepoPath,
@@ -954,39 +731,6 @@ export interface WorkApi extends RulesApi, ChecksApi {
    * higher. A review that gave a verdict cannot be deleted, only edited.
    */
   deleteComment(actor: User, repo: RepoPath, commentId: string): Promise<Result<boolean>>;
-  /**
-   * One of the workspace's agents comments on an issue or a pull request
-   * as itself, on behalf of `actingFor`: the person whose access caps it.
-   * The checks a person's comment has apply to them (verified, can read
-   * the repository, not archived). At most `AGENT_COMMENTS_PER_HOUR`
-   * comments and reviews per agent per issue or pull request
-   * (`conflict` past it). Publishes `comment.created` with `agent`. For
-   * the agents service only: never reachable with a person's token.
-   */
-  workspaceAgentComment(
-    repo: RepoPath,
-    number: number,
-    agent: AgentRef,
-    actingFor: User,
-    body: string,
-  ): Promise<Result<Comment>>;
-  /**
-   * One of the workspace's agents reviews a pull request as itself, on
-   * behalf of `actingFor`. Advisory: the verdict is shown but never counts
-   * toward required approvals or code owners, and never blocks a merge.
-   * Refused on a draft and on a closed or merged pull request (`conflict`);
-   * `body` may be empty only when approving. Same checks and limit as
-   * `workspaceAgentComment`. Publishes `comment.created` with `agent`,
-   * `advisory` and the verdict.
-   */
-  workspaceAgentReview(
-    repo: RepoPath,
-    number: number,
-    agent: AgentRef,
-    actingFor: User,
-    verdict: AgentVerdict,
-    body: string,
-  ): Promise<Result<Comment>>;
 
   /**
    * Always refused now: a pull request's checks are the workflows run on
@@ -998,10 +742,6 @@ export interface WorkApi extends RulesApi, ChecksApi {
    * one still finishing is recorded.
    */
   reportChecks(runId: string, token: string, report: CheckReport): Promise<Result<CheckRun>>;
-  /** Begins a review by a g1t agent. For the runner service. */
-  startReview(pullId: string): Promise<Result<ReviewJob>>;
-  /** Records that a review could not be written. For the runner service. */
-  failReview(runId: string, token: string, error: string): Promise<Result<boolean>>;
   /**
    * Claims the probe of whether a pull request merges cleanly that a
    * `pull.mergecheck` event asked for. Refused when it is no longer wanted
@@ -1031,8 +771,6 @@ export interface WorkApi extends RulesApi, ChecksApi {
   queueBuild(repoId: string): Promise<QueueJob[]>;
   /** Reports that a combined state could not be built or checked. */
   failQueue(entryId: string, token: string, error: string): Promise<Result<QueueState>>;
-  /** Sends the agent working on a pull request a message, for its next step. */
-  messageAgent(actor: User, repo: RepoPath, number: number, body: string): Promise<Result<AgentMessage>>;
   /** Takes a pull request out of the merge queue. Members only. */
   removeFromQueue(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
 
@@ -1043,18 +781,6 @@ export interface WorkApi extends RulesApi, ChecksApi {
   updateSettings(actor: User, repo: RepoPath, settings: RepoSettingsInput): Promise<Result<RepoSettings>>;
   /** The CODEOWNERS file at a branch (the default when left out), checked. Needs Read. */
   codeownersErrors(repo: RepoPath, viewer: Viewer, ref?: string | null): Promise<Result<CodeownersReport>>;
-  /**
-   * What the runner needs to bring a pull request up to date because a
-   * merge of it was asked for. Null if none was.
-   */
-  catchUpJob(pullId: string): Promise<LifecycleJob | null>;
-  /**
-   * Claims a short step for the agent on a pull request to answer the
-   * questions and handoffs it was sent while not at work, and hands them
-   * over, marked read. Null when there is nothing waiting or it cannot
-   * take a step now.
-   */
-  wakeForMessages(pullId: string): Promise<Wake | null>;
 
   /**
    * Opens a pull request: a draft with a fork to push to, or, given a
@@ -1151,32 +877,6 @@ export interface WorkApi extends RulesApi, ChecksApi {
    */
   contributions(username: string, viewer: Viewer): Promise<Result<Contributions>>;
 
-  /**
-   * Records an outcome to plan for. Members only. For the runner service,
-   * which starts the sandbox in which an agent writes the plan.
-   */
-  startPlan(actor: User, repo: RepoPath, brief: string): Promise<Result<PlanJob>>;
-  /** Records that a plan could not be written. For the runner service. */
-  failPlan(planId: string, token: string, error: string): Promise<Result<boolean>>;
-  /** Members only. */
-  getPlan(repo: RepoPath, viewer: Viewer, id: string): Promise<Result<Plan>>;
-  /** Newest first. Members only. */
-  listPlans(repo: RepoPath, viewer: Viewer): Promise<Result<Plan[]>>;
-  /**
-   * Opens a plan's issues, each blocked by the ones it depends on. With
-   * `assign`, each is queued for a g1t agent. `keep` holds the positions,
-   * from 1, of the issues to open; all of them when absent. Once.
-   */
-  applyPlan(
-    actor: User,
-    repo: RepoPath,
-    id: string,
-    options?: { assign?: boolean; keep?: number[] },
-  ): Promise<Result<Plan>>;
-  /** Asks for a g1t agent to take an issue as soon as it can, or withdraws that. */
-  queueIssue(actor: User, repo: RepoPath, number: number, queued: boolean): Promise<Result<boolean>>;
-  /** Issues waiting for a g1t agent that can be given one now. For the runner. */
-  readyIssues(repoId?: string): Promise<ReadyIssue[]>;
 
   /** Open issues assigned to the viewer, most recently changed first. */
   listAssignedIssues(viewer: Viewer): Promise<Issue[]>;
@@ -1210,44 +910,6 @@ export function pullComparison(pull: Pull): {
   };
 }
 
-
-/** Where a pull request in a merge queue stands. */
-/** Where one issue of an applied plan stands. */
-export type IssueProgress = {
-  number: number;
-  title: string;
-  /**
-   * `blocked`, `waiting` (for an agent), `open`, a lifecycle stage,
-   * `landed` or `closed`.
-   */
-  state: string;
-  detail: string;
-  /** The issues it is waiting on that are still open. */
-  blockedBy: number[];
-  pull: number | null;
-  agent: string | null;
-};
-
-/** A message a person sent an agent at work on a pull request. */
-export type AgentMessage = {
-  id: string;
-  author: string;
-  body: string;
-  createdAt: string;
-  /** When the agent received it; null until then. */
-  deliveredAt: string | null;
-  /** `message` from a person; from an agent a `question`, `handoff` or `answer`. */
-  kind: "message" | "question" | "handoff" | "answer";
-  /** The pull request whose agent sent it, when an agent did. */
-  fromNumber: number | null;
-  /** The pull request it was sent to. */
-  toNumber: number;
-  /** The reply to a question or handoff, once there is one. */
-  answer: string | null;
-  declined: boolean;
-  /** For the sending agent: what to expect when the one it asked is not at work. */
-  hint?: string;
-};
 
 export type QueueState = "waiting" | "testing" | "passed" | "failed" | "landed" | "removed";
 

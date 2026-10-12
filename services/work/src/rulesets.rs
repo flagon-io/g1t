@@ -844,10 +844,6 @@ impl Work {
             behind,
             files: &files,
             commits: commits.as_ref(),
-            // Confidence and cost caps were about g1t's own agents: neither
-            // is known for a change any more, so neither rule holds one.
-            confidence: None,
-            spent_usd: 0.0,
             now_ms: now_ms(),
             method: Some(MergeMethod::Merge),
             team_members: Some(&team_members),

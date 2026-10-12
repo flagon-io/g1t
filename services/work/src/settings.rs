@@ -16,7 +16,6 @@ use worker::Result;
 use crate::Work;
 
 const MAX_REQUIRED_APPROVALS: u32 = 6;
-const MAX_REVISIONS: u32 = 5;
 
 #[derive(Deserialize)]
 struct SettingsRow {
@@ -25,8 +24,6 @@ struct SettingsRow {
     required_approvals: u32,
     count_agent_approvals: u8,
     allow_ignoring_checks: u8,
-    agent_review: u8,
-    max_revisions: u32,
     #[serde(default)]
     merge_queue: u8,
     /// JSON array of names.
@@ -51,11 +48,7 @@ impl From<SettingsRow> for RepoSettings {
             required_approvals: row.required_approvals,
             count_agent_approvals: row.count_agent_approvals != 0,
             allow_ignoring_checks: row.allow_ignoring_checks != 0,
-            agent_review: row.agent_review != 0,
-            max_revisions: row.max_revisions,
             merge_queue: row.merge_queue != 0,
-            // Nothing is held for low confidence any more.
-            hold_low_confidence: false,
             require_code_owner_review: row.require_code_owner_review != 0,
             updated_by: Some(row.updated_by),
             updated_at: Some(row.updated_at),
@@ -117,7 +110,6 @@ impl Work {
         let before = self.default_branch_settings(&repo).await?;
         let settings = RepoSettings {
             required_approvals: a.settings.required_approvals.min(MAX_REQUIRED_APPROVALS),
-            max_revisions: a.settings.max_revisions.min(MAX_REVISIONS),
             required_checks: tidy_required(&a.settings.required_checks),
             updated_by: Some(a.actor.username.clone()),
             updated_at: Some(rfc3339(now_ms())),
@@ -134,17 +126,15 @@ impl Work {
             .prepare(
                 "INSERT INTO repo_settings
                    (repo_id, auto_merge, require_up_to_date, required_approvals,
-                    count_agent_approvals, allow_ignoring_checks, agent_review, max_revisions,
+                    count_agent_approvals, allow_ignoring_checks,
                     merge_queue, required_checks, require_code_owner_review, updated_by, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id) DO UPDATE SET
                    auto_merge = excluded.auto_merge,
                    require_up_to_date = excluded.require_up_to_date,
                    required_approvals = excluded.required_approvals,
                    count_agent_approvals = excluded.count_agent_approvals,
                    allow_ignoring_checks = excluded.allow_ignoring_checks,
-                   agent_review = excluded.agent_review,
-                   max_revisions = excluded.max_revisions,
                    merge_queue = excluded.merge_queue,
                    required_checks = excluded.required_checks,
                    require_code_owner_review = excluded.require_code_owner_review,
@@ -158,8 +148,6 @@ impl Work {
                 settings.required_approvals.into(),
                 u32::from(settings.count_agent_approvals).into(),
                 u32::from(settings.allow_ignoring_checks).into(),
-                u32::from(settings.agent_review).into(),
-                settings.max_revisions.into(),
                 u32::from(settings.merge_queue).into(),
                 serde_json::to_string(&settings.required_checks)?.into(),
                 u32::from(settings.require_code_owner_review).into(),
@@ -198,8 +186,8 @@ mod tests {
     #[test]
     fn only_protection_changes_count_as_protection_changes() {
         let before = RepoSettings::default();
-        let agents = RepoSettings { auto_merge: true, agent_review: false, max_revisions: 4, ..RepoSettings::default() };
-        assert!(!protection_changed(&before, &agents));
+        let auto = RepoSettings { auto_merge: true, ..RepoSettings::default() };
+        assert!(!protection_changed(&before, &auto));
         let checks = RepoSettings { required_checks: vec!["CI".into()], ..RepoSettings::default() };
         assert!(protection_changed(&before, &checks));
         let same = RepoSettings { required_checks: vec!["ci".into()], ..RepoSettings::default() };

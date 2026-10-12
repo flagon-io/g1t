@@ -24,7 +24,6 @@
  *   where that person can edit AND the space lets agents edit
  *   (`agent_mode: "edit"`). Otherwise its edit becomes a suggestion.
  */
-import type { AgentLook } from "./agent-look";
 import type { MemberProfile, Principal } from "./chat";
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
@@ -112,7 +111,6 @@ export type DocSpaceMember = {
   display_name: string;
   avatar: string | null;
   avatar_seed?: string | null;
-  look?: AgentLook | null;
   role: DocRole;
 };
 
@@ -211,18 +209,6 @@ export type DocStaleChange = {
 
 /** Why a page is possibly out of date: every change since it was last marked current, newest first. */
 export type DocStaleness = { since: string; changes: DocStaleChange[] };
-
-/** A page an agent may bring up to date, with what changed. */
-export type DocStalePage = {
-  page: DocPageRef & { updated_at: string };
-  space: { id: string; slug: string; name: string; agent_mode: DocAgentMode };
-  can: DocAgentAbilities;
-  owners: MemberProfile[];
-  citations: DocCitation[];
-  /** Changes in repositories the viewer (and audience) can read; newest first. */
-  changes: DocStaleChange[];
-  since: string;
-};
 
 // ── A project's docs ──────────────────────────────────────────────────────
 //
@@ -428,35 +414,6 @@ export type DocBlockOutline = {
  */
 export type DocAgentAbilities = { read: boolean; suggest: boolean; edit: boolean; attach: boolean };
 
-export type DocAgentPage = {
-  page: DocPageRef & { updated_at: string };
-  space: { id: string; slug: string; name: string; agent_mode: DocAgentMode };
-  markdown: string;
-  blocks: DocBlockOutline[];
-  can: DocAgentAbilities;
-};
-
-/** Who will see what an agent says; it reads only what they all can. */
-export type DocAudience =
-  /** These people (by user id), e.g. a DM's or a private channel's members. */
-  | { kind: "people"; user_ids: string[] }
-  /** Everyone in the workspace, e.g. a public channel: only workspace-wide spaces. */
-  | { kind: "workspace" };
-
-/** An agent's edit to a page. */
-export type DocAgentEdit = {
-  target: DocEditTarget;
-  markdown: string;
-  note?: string | null;
-  /** The edit brings the page up to date with the code it cites: once applied, the page is no longer possibly out of date. */
-  marks_current?: boolean | null;
-};
-
-/** What `apply_edit` did: applied it, or filed a suggestion because it may not edit there. */
-export type DocAgentEditResult =
-  | { mode: "applied"; version_id: string | null; page: DocPageRef }
-  | { mode: "suggested"; suggestion: DocSuggestion; page: DocPageRef };
-
 export type NewDocSpace = {
   name: string;
   slug?: string | null;
@@ -569,24 +526,6 @@ export const DOC_FRAGMENT = "document-store";
 /** The name of the Yjs map that holds a page's comment threads. */
 export const DOC_THREADS = "threads";
 
-/** One passage of Docs, recalled for an agent: a section of a page or of a repository's docs. */
-export type DocPassage = {
-  /** The page; null for a repository's docs file. */
-  page: DocPageRef | null;
-  /** A repository's docs file: `owner/name`, its path, and where it reads in Docs. */
-  repo_file: { repo: string; path: string; href: string } | null;
-  space_name: string;
-  /** The heading the passage sits under, if any. */
-  heading: string | null;
-  /** The passage as Markdown, at most about 1,500 characters. */
-  text: string;
-  /** How close it is, 0 to 1. */
-  score: number;
-  updated_at: string;
-  /** The page is marked possibly out of date. */
-  stale: boolean;
-};
-
 export type DocsApi = {
   // ── The site ─────────────────────────────────────────────────────────
 
@@ -664,81 +603,6 @@ export type DocsApi = {
    */
   reindexDocs(workspace: string, viewer: User): Promise<Result<boolean>>;
 
-  // ── Agents (services/agents) ─────────────────────────────────────────
-  //
-  // Each takes the agent and the person it acts for (`viewer`, the asker).
-  // The service checks the agent is a live agent of the workspace and caps
-  // everything by the viewer's access; `audience`, when given, narrows
-  // reads further to what every person in it can read. A page the agent
-  // may not read is not found, exactly as one that does not exist.
-
-  /** Spaces the agent may read for the viewer (and audience), with what it may do in each. */
-  spacesForAgent(workspace: string, agentId: string, viewer: User, audience?: DocAudience | null): Promise<Result<(Pick<DocSpace, "id" | "slug" | "name" | "description" | "kind" | "agent_mode" | "projects"> & { can: DocAgentAbilities })[]>>;
-  /** A page's Markdown and its top-level blocks (ids for `blocks` targets). */
-  pageMarkdown(workspace: string, agentId: string, viewer: User, pageId: string, audience?: DocAudience | null): Promise<Result<DocAgentPage>>;
-  /** Full-text search over pages every reader can read; at most 20, best first. */
-  searchForAgent(workspace: string, agentId: string, viewer: User, query: DocSearchQuery, audience?: DocAudience | null): Promise<Result<DocSearchHit[]>>;
-  /** Files a tracked suggestion; people with edit access accept or reject it inline. Needs the viewer's comment role. Notifies the page's owners. */
-  suggestEdit(workspace: string, agentId: string, viewer: User, pageId: string, edit: DocAgentEdit): Promise<Result<DocSuggestion>>;
-  /**
-   * Applies an edit to the live document when the space lets agents edit
-   * and the viewer can edit; otherwise files it as a suggestion (and says
-   * so in `mode`). Attributed to the agent in the page's history.
-   */
-  applyEdit(workspace: string, agentId: string, viewer: User, pageId: string, edit: DocAgentEdit): Promise<Result<DocAgentEditResult>>;
-  /**
-   * A new page, written by the agent: in `space_id` (the General space
-   * when null), under `parent_id`. Needs the viewer's edit role there
-   * (whatever the space's agent mode: a new page changes nothing anyone
-   * wrote). `source` links where it came from ("write this up").
-   */
-  createPageAsAgent(
-    workspace: string,
-    agentId: string,
-    viewer: User,
-    input: { space_id?: string | null; parent_id?: string | null; title: string; icon?: string | null; markdown: string; source?: { title: string; href: string } | null },
-  ): Promise<Result<DocPageRef>>;
-  /**
-   * What the workspace's Docs say about `query`, for an agent about to
-   * answer: the passages closest in meaning (and, where meaning finds too
-   * little, in words), each with the page and heading it came from. Only
-   * from spaces the viewer can read and, with `audience`, everyone it
-   * covers; repository docs only from repositories they can all read.
-   * `spaces` narrows to these space ids first (an agent's required
-   * reading) and fills from the rest. Empty when nothing is close enough.
-   */
-  recallForAgent(
-    workspace: string,
-    agentId: string,
-    viewer: User,
-    input: { query: string; limit?: number | null; spaces?: string[] | null },
-    audience?: DocAudience | null,
-  ): Promise<Result<DocPassage[]>>;
-  /** A page's comment threads, for an agent asked about them. */
-  threadsForAgent(workspace: string, agentId: string, viewer: User, pageId: string, audience?: DocAudience | null): Promise<Result<DocThread[]>>;
-  /**
-   * Pages possibly out of date that the agent may read for the viewer (and
-   * audience), each with the changes that made it so: for a documenter
-   * routine to bring them up to date. At most 50, most recently flagged
-   * first.
-   *
-   * - `repo` (`owner/name`): only pages made stale by a change there.
-   * - `since` (RFC 3339): only pages flagged at or after it.
-   *
-   * Changes in repositories the viewer can't read are left out, and a page
-   * whose every change is one of those is left out too: an agent never
-   * learns of code its person can't see. To update a page, read it
-   * (`pageMarkdown`), then `applyEdit` or `suggestEdit` with
-   * `marks_current: true`: the page is marked current when the edit is
-   * applied (at once, or when a person accepts the suggestion).
-   */
-  stalePagesForAgent(
-    workspace: string,
-    agentId: string,
-    viewer: User,
-    options?: { repo?: string | null; since?: string | null },
-    audience?: DocAudience | null,
-  ): Promise<Result<DocStalePage[]>>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -791,18 +655,5 @@ export function docsClient(service: ServiceBinding): DocsApi {
     removeRepoSpace: (workspace, viewer, id) => call("remove_repo_space", { workspace, viewer, id }),
     repoPage: (workspace, viewer, repo, path) => call("repo_page", { workspace, viewer, repo, path }),
     reindexDocs: (workspace, viewer) => call("reindex_docs", { workspace, viewer }),
-    spacesForAgent: (workspace, agentId, viewer, audience) => call("spaces_for_agent", { workspace, agent_id: agentId, viewer, audience: audience ?? null }),
-    pageMarkdown: (workspace, agentId, viewer, pageId, audience) =>
-      call("page_markdown", { workspace, agent_id: agentId, viewer, page_id: pageId, audience: audience ?? null }),
-    searchForAgent: (workspace, agentId, viewer, query, audience) => call("search_for_agent", { workspace, agent_id: agentId, viewer, query, audience: audience ?? null }),
-    suggestEdit: (workspace, agentId, viewer, pageId, edit) => call("suggest_edit", { workspace, agent_id: agentId, viewer, page_id: pageId, edit }),
-    applyEdit: (workspace, agentId, viewer, pageId, edit) => call("apply_edit", { workspace, agent_id: agentId, viewer, page_id: pageId, edit }),
-    createPageAsAgent: (workspace, agentId, viewer, input) => call("create_page_as_agent", { workspace, agent_id: agentId, viewer, input }),
-    recallForAgent: (workspace, agentId, viewer, input, audience) =>
-      call("recall_for_agent", { workspace, agent_id: agentId, viewer, ...input, audience: audience ?? null }),
-    threadsForAgent: (workspace, agentId, viewer, pageId, audience) =>
-      call("threads_for_agent", { workspace, agent_id: agentId, viewer, page_id: pageId, audience: audience ?? null }),
-    stalePagesForAgent: (workspace, agentId, viewer, options, audience) =>
-      call("stale_pages_for_agent", { workspace, agent_id: agentId, viewer, repo: options?.repo ?? null, since: options?.since ?? null, audience: audience ?? null }),
   };
 }

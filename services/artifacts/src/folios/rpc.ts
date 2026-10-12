@@ -12,13 +12,7 @@ import type { Folios } from "./service.ts";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handler = (service: Folios, args: any) => Promise<unknown>;
 
-/**
- * Methods workspace agents called, which g1t no longer has. The contract
- * may still list them until it is trimmed; nothing here answers them.
- */
-type RetiredMethod = Extract<FolioRpcMethod, `${string}_for_agent` | `${string}_as_agent`>;
-
-export const FOLIO_RPC: Record<Exclude<FolioRpcMethod, RetiredMethod>, Handler> = {
+export const FOLIO_RPC: Record<FolioRpcMethod, Handler> = {
   folio_list: (s, a) => s.list(a),
   folio_sidebar: (s, a) => s.sidebar(a),
   folio: (s, a) => s.folio(a),

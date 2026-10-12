@@ -1,6 +1,7 @@
 /**
  * Chat: channels, direct messages, threads and messages, kept by the chat
- * service (`services/chat`). People and agents are members alike.
+ * service (`services/chat`). Members are people; messages from the agents
+ * workspaces once had stay readable under the names they had.
  *
  * Wire shapes are snake_case end to end, so the site, the public API and
  * the live socket all carry the same objects.
@@ -8,10 +9,8 @@
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
 import type { Result } from "./result";
-import type { AgentLook } from "./agent-look";
-import type { AskerAccess } from "./workspace-agents";
 
-/** Who is speaking: a person (by user id) or a workspace agent (by agent id). */
+/** Who is speaking: a person (by user id), or, on older messages, a former workspace agent (by agent id). */
 export type Principal = { kind: "user" | "agent"; id: string };
 
 export function principalKey(principal: Principal): string {
@@ -52,8 +51,6 @@ export type MemberProfile = Principal & {
   title?: string | null;
   /** What an agent's face is drawn from when it chose none; null for a person. Always set by chat. */
   avatar_seed?: string | null;
-  /** An agent's chosen face (./agent-look.ts); null for a person, or an agent wearing its seed's face. */
-  look?: AgentLook | null;
   /**
    * An archived agent (docs.g1t.sh/guides/chat/, "Archived and deleted
    * agents"): when, and by whom. Its conversations stay readable; it is
@@ -132,7 +129,7 @@ export type MessageCard = {
    * updates the card in place. A card without `owner` has no actions.
    */
   actions?: CardAction[];
-  /** The service whose card this is and that answers its actions: `agents`. */
+  /** The service whose card this was and that answered its actions: `agents`, on older cards only. */
   owner?: "agents" | null;
   /** What the card is about, for its owner: a session id, a draft id. */
   ref?: string | null;
@@ -153,9 +150,6 @@ export type CardAction = {
   /** A link instead of an action: opens this place in the site. */
   href?: string | null;
 };
-
-/** What pressing a card's action did, as the person who pressed it is told. */
-export type CardActionResult = { ok: boolean; message: string | null };
 
 export type ChatMessage = {
   /** Time-sortable (ULID-like), so ordering by id is ordering by time. */
@@ -341,96 +335,6 @@ export type NewChannel = { name: string; topic?: string | null; private?: boolea
 export type PostMessage = { body: string; thread_root?: string | null };
 
 /**
- * Who will read what is said in a conversation: a direct message's or
- * private channel's people, or, for a public channel, the whole workspace.
- * An agent answers there only with what every one of them may see.
- */
-export type ChatAudience = {
-  kind: "dm" | "private" | "public";
-  /** The people in it (agents left out). For a public channel, its current members, for reference only. */
-  member_user_ids: string[];
-  member_count: number;
-};
-
-/** A message an agent found by searching, with the conversation it is in. */
-export type AgentFoundMessage = {
-  channel_id: string;
-  /** The channel's name, or null for a direct message. */
-  channel: string | null;
-  message: ChatMessage;
-};
-
-/** The most agent-to-agent hops one person's request may start. */
-export const CHAT_MAX_HOPS = 6;
-
-/**
- * What an agent posts. An agent's message never wakes another agent, even
- * when it @mentions one: only a hand-off does (`handOffAsAgent`). Its
- * mentions of anyone who is not a member of the conversation lose their
- * `@`, so they show as plain names and notify nobody. When it answers a
- * delivery, it passes that delivery's `hops`, `asked_by`, `asker` and
- * `chain` back, which a card that waits on the asker uses. Left out: asked
- * by the person who created the agent.
- */
-export type AgentPostMessage = PostMessage & {
-  card?: MessageCard | null;
-  hops?: number;
-  asked_by?: string | null;
-  /** The delivery's `asker`, handed on to agents this message wakes. Absent: none (they treat the asker as unable to change code). */
-  asker?: AskerAccess | null;
-  /**
-   * The delivery's `chain`: the agents that handled this request before
-   * the one posting, oldest first. Chat adds the poster, and never hands
-   * the message to the agent that sent the work to it (no ping-pong).
-   */
-  chain?: string[];
-};
-
-/**
- * A conversation as an agent is told about it before every turn: what it
- * is and who is in it, so it knows who reads what it says and who doesn't.
- * Every agent member is listed; people up to `CONVERSATION_PEOPLE_SHOWN`
- * (the person who asked always among them), with the totals beside.
- */
-export type ConversationForAgent = {
-  channel: Channel;
-  /** Agents first, then people. */
-  members: MemberProfile[];
-  /** How many people and agents are in it, listed or not. */
-  people: number;
-  agents: number;
-};
-
-/** The most people `conversationForAgent` lists; the rest are a count. */
-export const CONVERSATION_PEOPLE_SHOWN = 20;
-
-/**
- * An agent handing work to a colleague agent for the person who asked
- * (docs.g1t.sh/guides/agents/, "Hand off"). The fields after `brief`
- * are the delivery the agent is answering, passed back as for a post.
- */
-export type AgentHandOff = {
-  /** The colleague, by agent id. */
-  colleague_id: string;
-  /** What they are asked to do, addressed to them. */
-  brief: string;
-  thread_root?: string | null;
-  hops?: number;
-  asked_by: string;
-  asker?: AskerAccess | null;
-  chain?: string[];
-};
-
-/**
- * Where a hand-off went. `here`: the colleague is in this channel or group
- * direct message, and the brief was posted here. `group_dm`: the brief was
- * posted in the direct message of the person who asked, the agent and the
- * colleague (`opened` when it was new), and a card linking to it was
- * posted here.
- */
-export type HandOffResult = { where: "here" | "group_dm"; channel_id: string; message_id: string; opened: boolean };
-
-/**
  * What the live socket sends. The site opens
  * `wss://<site>/<workspace>/chat/live?channel=<id>`; the site checks the
  * session and forwards the upgrade to the chat service with the viewer.
@@ -495,14 +399,7 @@ export type ChatApi = {
   openDm(workspace: string, viewer: User, members: Principal[]): Promise<Result<Channel>>;
   join(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
   leave(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
-  /**
-   * Internal, from the agents service: an agent was deleted for good. It
-   * leaves every channel of the workspace; its direct messages stay their
-   * people's, readable, and its messages everywhere stay, shown under the
-   * name it had (`former_agents`) and marked deleted.
-   */
-  agentDestroyed(input: { workspace_id: string; agent_id: string; handle: string; display_name: string; avatar_seed: string | null; look: AgentLook | null }): Promise<Result<null>>;
-  /** Adds a person or an agent. An invite grants read, never write. */
+  /** Adds a person. An invite grants read, never write. */
   invite(workspace: string, channelId: string, viewer: User, member: Principal): Promise<Result<null>>;
   /**
    * Newest first. Without `thread_root`, the channel's top-level messages;
@@ -530,108 +427,12 @@ export type ChatApi = {
     prefs: { starred?: boolean; muted?: boolean },
   ): Promise<Result<null>>;
   /**
-   * Posts as an agent. Only the agents service calls this, for replies and
-   * cards; the agent must be a member of the channel.
-   */
-  postAsAgent(
-    workspace: string,
-    channelId: string,
-    agentId: string,
-    message: AgentPostMessage,
-  ): Promise<Result<ChatMessage>>;
-  /**
-   * Changes a message an agent posted: its body, its card, or both. Only
-   * the agents service calls this, to keep a session's live card current.
-   * Changing a message wakes nobody.
-   */
-  updateAsAgent(
-    workspace: string,
-    channelId: string,
-    agentId: string,
-    id: string,
-    change: { body?: string; card?: MessageCard | null },
-  ): Promise<Result<ChatMessage>>;
-  /**
-   * A person presses an action on a card in a conversation they can read.
-   * Chat hands it to the card's owner with the person, and the owner
-   * decides, acts and updates the card.
-   */
-  cardAction(
-    workspace: string,
-    channelId: string,
-    viewer: User,
-    messageId: string,
-    actionId: string,
-    input?: string | null,
-  ): Promise<Result<CardActionResult>>;
-  /** Shows "is typing" for an agent while it works on a reply. */
-  agentTyping(workspace: string, channelId: string, agentId: string): Promise<Result<null>>;
-  /**
-   * What an agent reads before it replies, oldest first: with
-   * `thread_root`, that thread (its root, then its replies); without, the
-   * channel's or direct message's latest top-level messages. Only the
-   * agents service calls this; the agent must be a member of the channel,
-   * so it reads only what was said where it was invited. `limit` defaults
-   * to 30, at most 100.
-   */
-  historyForAgent(
-    workspace: string,
-    channelId: string,
-    agentId: string,
-    page?: { thread_root?: string | null; limit?: number },
-  ): Promise<Result<ChatMessage[]>>;
-  /** Internal: who reads a conversation. */
-  audience(workspace: string, channelId: string): Promise<Result<ChatAudience>>;
-  /**
-   * Internal, for an agent about to answer in `channelId`, which it must be
-   * a member of: the conversation and its members (`ConversationForAgent`).
-   * `askedBy` (a user id) is always among the people listed.
-   */
-  conversationForAgent(workspace: string, channelId: string, agentId: string, askedBy?: string | null): Promise<Result<ConversationForAgent>>;
-  /**
-   * Internal: `agentId`, answering in `channelId`, hands work to a
-   * colleague agent for the person who asked. If the colleague is in this
-   * channel or group direct message, the brief is posted here; otherwise in
-   * the group direct message of the person, the agent and the colleague
-   * (opened on first use), with a card here linking to it. Either way the
-   * brief wakes the colleague, one hop further along the same chain, and
-   * nobody else. Refused for an agent that is not of the workspace, the
-   * agent itself, @g1t, one already in the chain, past the hop limit, or
-   * when the person who asked is not in this conversation.
-   */
-  handOffAsAgent(workspace: string, channelId: string, agentId: string, handOff: AgentHandOff): Promise<Result<HandOffResult>>;
-  /**
-   * Internal, for an agent replying in `channelId`: messages matching
-   * `query` (newest first, at most 20) from conversations every person in
-   * that conversation's audience is in, and from public channels. Never
-   * another direct message unless it has exactly the same people. The
-   * audience is worked out here from `channelId`, never taken from the
-   * caller.
-   */
-  searchForAgent(workspace: string, channelId: string, query: string, limit?: number): Promise<Result<AgentFoundMessage[]>>;
-  /**
-   * Internal, for an agent replying in `channelId`: a thread (`id`, its
-   * root or any reply) in `targetChannelId`, oldest first, under the same
-   * rule. A conversation the audience may not read is not found, exactly
-   * as one that does not exist.
-   */
-  threadForAgent(workspace: string, channelId: string, targetChannelId: string, id: string): Promise<Result<AgentFoundMessage[]>>;
-  /**
    * Reacts to a message with `emoji` (one Unicode emoji, or `:name:` for
    * one of the workspace's own). Once per member per emoji; at most 50
    * different emoji on a message. Answers the message's reactions now.
    */
   react(workspace: string, channelId: string, viewer: User, messageId: string, emoji: string): Promise<Result<ChatReaction[]>>;
   unreact(workspace: string, channelId: string, viewer: User, messageId: string, emoji: string): Promise<Result<ChatReaction[]>>;
-  /** Internal, for the agents service: an agent reacts (or, with `remove`, takes it back). It must be in the channel. */
-  reactAsAgent(
-    workspace: string,
-    channelId: string,
-    agentId: string,
-    messageId: string,
-    emoji: string,
-    remove?: boolean,
-  ): Promise<Result<ChatReaction[]>>;
   /** The workspace's own emoji, by name, and who may add them. */
   listEmoji(workspace: string, viewer: User): Promise<Result<EmojiList>>;
   /** Adds an emoji: a PNG, GIF or WebP of at most 256 KB and 512×512. */
@@ -671,7 +472,6 @@ export function chatClient(service: ServiceBinding): ChatApi {
     openDm: (workspace, viewer, members) => call("open_dm", { workspace, viewer, members }),
     join: (workspace, channelId, viewer) => call("join", { workspace, channel_id: channelId, viewer }),
     leave: (workspace, channelId, viewer) => call("leave", { workspace, channel_id: channelId, viewer }),
-    agentDestroyed: (input) => call("agent_destroyed", input),
     invite: (workspace, channelId, viewer, member) =>
       call("invite", { workspace, channel_id: channelId, viewer, member }),
     messages: (workspace, channelId, viewer, page) =>
@@ -690,41 +490,14 @@ export function chatClient(service: ServiceBinding): ChatApi {
     markRead: (workspace, channelId, viewer, id) => call("mark_read", { workspace, channel_id: channelId, viewer, id }),
     setPreferences: (workspace, channelId, viewer, prefs) =>
       call("set_preferences", { workspace, channel_id: channelId, viewer, prefs }),
-    postAsAgent: (workspace, channelId, agentId, message) =>
-      call("post_as_agent", { workspace, channel_id: channelId, agent_id: agentId, message }),
-    cardAction: (workspace, channelId, viewer, messageId, actionId, input) =>
-      call("card_action", { workspace, channel_id: channelId, viewer, message_id: messageId, action_id: actionId, input: input ?? null }),
-    updateAsAgent: (workspace, channelId, agentId, id, change) =>
-      call("update_as_agent", { workspace, channel_id: channelId, agent_id: agentId, id, change }),
-    agentTyping: (workspace, channelId, agentId) =>
-      call("agent_typing", { workspace, channel_id: channelId, agent_id: agentId }),
-    audience: (workspace, channelId) => call("audience", { workspace, channel_id: channelId }),
-    conversationForAgent: (workspace, channelId, agentId, askedBy) =>
-      call("conversation_for_agent", { workspace, channel_id: channelId, agent_id: agentId, asked_by: askedBy ?? null }),
-    handOffAsAgent: (workspace, channelId, agentId, handOff) =>
-      call("hand_off_as_agent", { workspace, channel_id: channelId, agent_id: agentId, hand_off: handOff }),
-    searchForAgent: (workspace, channelId, query, limit) =>
-      call("search_for_agent", { workspace, channel_id: channelId, query, limit: limit ?? null }),
-    threadForAgent: (workspace, channelId, targetChannelId, id) =>
-      call("thread_for_agent", { workspace, channel_id: channelId, target_channel_id: targetChannelId, id }),
     react: (workspace, channelId, viewer, messageId, emoji) =>
       call("react", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
     unreact: (workspace, channelId, viewer, messageId, emoji) =>
       call("unreact", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
-    reactAsAgent: (workspace, channelId, agentId, messageId, emoji, remove) =>
-      call("react_as_agent", { workspace, channel_id: channelId, agent_id: agentId, message_id: messageId, emoji, remove: remove ?? false }),
     listEmoji: (workspace, viewer) => call("list_emoji", { workspace, viewer }),
     addEmoji: (workspace, viewer, name, file) => call("add_emoji", { workspace, viewer, name, file }),
     aliasEmoji: (workspace, viewer, name, target) => call("alias_emoji", { workspace, viewer, name, target }),
     removeEmoji: (workspace, viewer, name) => call("remove_emoji", { workspace, viewer, name }),
     setEmojiUpload: (workspace, viewer, value) => call("set_emoji_upload", { workspace, viewer, value }),
-    historyForAgent: (workspace, channelId, agentId, page) =>
-      call("history_for_agent", {
-        workspace,
-        channel_id: channelId,
-        agent_id: agentId,
-        thread_root: page?.thread_root ?? null,
-        limit: page?.limit ?? null,
-      }),
   };
 }

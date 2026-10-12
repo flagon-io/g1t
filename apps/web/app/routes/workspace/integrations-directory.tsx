@@ -17,7 +17,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 /**
  * The workspace's integrations: every connector g1t has or will have, by
  * category, with what this workspace has connected first. Each one is set
- * up on its own page (the alerts and trackers pages, the GitHub import,
+ * up on its own page (the AI providers, alerts and trackers pages, the GitHub import,
  * webhooks); this page only finds them.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -29,8 +29,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
   // An older link to one provider's form (`?add=sentry`): its own page now.
   const add = new URL(request.url).searchParams.get("add");
-  const section = add && add in PROVIDERS ? integrationsSection(PROVIDERS[add as Provider].kind) : null;
-  if (section) throw redirect(`/${slug}/-/integrations/${section}?add=${add}#add`);
+  if (add && add in PROVIDERS) {
+    throw redirect(`/${slug}/-/integrations/${integrationsSection(PROVIDERS[add as Provider].kind)}?add=${add}#add`);
+  }
 
   return { slug, owner: role === "owner", connected: await connectedStates(slug, viewer) };
 }
@@ -42,8 +43,7 @@ export default function WorkspaceIntegrationsDirectory({ loaderData }: Route.Com
       <ScopeNote scope="workspace" workspace={slug} />
       <ConnectorDirectory
         scope="workspace"
-        // Model providers were for g1t's own agents; they are not offered.
-        views={connectorsFor("workspace").filter((view) => !view.provider || integrationsSection(PROVIDERS[view.provider].kind))}
+        views={connectorsFor("workspace")}
         connected={connected}
         workspace={slug}
         canManage={owner}

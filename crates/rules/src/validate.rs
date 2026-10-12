@@ -13,8 +13,6 @@ use crate::{glob, text, window};
 pub const MAX_NAME_CHARS: usize = 100;
 /// Required checks in one rule.
 pub const MAX_CHECKS: usize = 50;
-/// The largest cost cap, in US dollars.
-pub const MAX_COST_USD: f64 = 10_000.0;
 
 fn tidy_list(list: &[String], what: &str) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();
@@ -165,18 +163,6 @@ fn rule(rule: &Rule, target: Target) -> Result<Rule, String> {
             }
             Rule::MaxFilesChanged(params.clone())
         }
-        Rule::ConfidenceThreshold(params) => {
-            if !(1..=MAX_APPROVALS).contains(&params.required_approvals) {
-                return Err(format!("A confidence threshold asks for 1 to {MAX_APPROVALS} approvals."));
-            }
-            Rule::ConfidenceThreshold(params.clone())
-        }
-        Rule::CostCap(params) => {
-            if !(params.max_usd.is_finite() && params.max_usd > 0.0 && params.max_usd <= MAX_COST_USD) {
-                return Err(format!("A cost cap is more than $0 and at most ${MAX_COST_USD:.0}."));
-            }
-            Rule::CostCap(g1t_contracts::rules::CostCapRule { max_usd: (params.max_usd * 100.0).round() / 100.0 })
-        }
         Rule::PathReview(params) => {
             let paths = tidy_list(&params.paths, "path")?;
             if paths.is_empty() {
@@ -322,7 +308,7 @@ pub fn validate(spec: &RulesetSpec, level: Level) -> Result<RulesetSpec, String>
 mod tests {
     use super::*;
     use g1t_contracts::rules::{
-        BypassActor, BypassMode, Conditions, CostCapRule, MergeQueueRule, MergeWindowRule, NoParameters, PatternOperator,
+        BypassActor, BypassMode, Conditions, MergeQueueRule, MergeWindowRule, NoParameters, PatternOperator,
         Period, RefCondition, RuleEntry, StatusChecksRule, WeeklyWindow, Weekday,
     };
 
@@ -389,10 +375,6 @@ mod tests {
         assert!(validate(&queue, Level::Repository).is_err());
         let checks = spec(vec![Rule::RequiredStatusChecks(StatusChecksRule::default())]);
         assert!(validate(&checks, Level::Repository).is_err());
-        let cost = spec(vec![Rule::CostCap(CostCapRule { max_usd: -1.0 })]);
-        assert!(validate(&cost, Level::Repository).is_err());
-        let rounded = validate(&spec(vec![Rule::CostCap(CostCapRule { max_usd: 2.499 })]), Level::Repository).unwrap();
-        assert_eq!(rounded.rules[0].rule, Rule::CostCap(CostCapRule { max_usd: 2.5 }));
         let window = spec(vec![Rule::MergeWindow(MergeWindowRule {
             time_zone: "Mars/Olympus".into(),
             windows: vec![WeeklyWindow { days: vec![Weekday::Mon], start: "09:00".into(), end: "17:00".into() }],

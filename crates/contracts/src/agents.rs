@@ -1,13 +1,16 @@
-//! Agents at work and what they remember. Kept by the work service.
+//! Runs, recorded sessions and memory. Kept by the work service.
 //!
-//! Every sandbox g1t starts for an agent is an [`AgentRun`]: what it is
-//! doing, on which pull request or issue, step by step, what it cost, and
-//! how it ended. People watch runs live, stop them and message them.
+//! Every sandbox g1t starts for checks, the merge queue or a merge check is
+//! an [`AgentRun`]: what it is doing, on which pull request, step by step,
+//! and how it ended. Runs of the agents g1t once ran itself stay readable.
 //!
-//! Memory is what agents and people have learned that the next agent
-//! should know: about one project (its codebase), or about the whole
-//! workspace (true across its projects). It is members-only, is given to
-//! every g1t agent run, and never holds a secret.
+//! A session is what a coding agent recorded on a pull request
+//! (`append_session`, `read_session`), summed up and listed here.
+//!
+//! Memory is what people and their coding agents have written down that
+//! the next one should know: about one project (its codebase), or about
+//! the whole workspace (true across its projects). It is members-only,
+//! read with `recall`, and never holds a secret.
 //!
 //! Each `*Args` struct is the argument of the method of the same name,
 //! served at `POST /rpc/<method>`.
@@ -18,7 +21,10 @@ use crate::repos::RepoPath;
 use crate::work::{Pull, PullStatus, SessionEntry};
 use crate::{User, Viewer};
 
-/// The work an agent run does.
+/// The work a run does. Only `Checks`, `Queue` and `Mergecheck` are
+/// started now; the others are runs of the agents g1t once ran itself,
+/// kept so the runs and run credentials already stored still parse. None
+/// of them is started or granted any more.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunKind {
@@ -73,17 +79,6 @@ impl RunKind {
         RunKind::ALL.into_iter().find(|kind| kind.as_str() == value)
     }
 
-    /// Whether a model does the work, rather than commands g1t runs.
-    pub fn is_agent(self) -> bool {
-        !matches!(self, RunKind::Checks | RunKind::Queue | RunKind::Mergecheck)
-    }
-
-    /// Whether a message reaches the agent while it runs: the harness asks
-    /// for messages after each tool call in these. Others read nothing new
-    /// until the next run on the same pull request.
-    pub fn takes_messages(self) -> bool {
-        matches!(self, RunKind::Implement | RunKind::Revise | RunKind::Answer)
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,7 +129,8 @@ pub struct RunStep {
     pub text: String,
 }
 
-/// One sandbox g1t started: an agent at work, or a run of checks.
+/// One sandbox g1t started: a run of checks, a merge queue build or a
+/// merge check (or, on older rows, one of its former agents at work).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentRun {
@@ -176,10 +172,6 @@ pub struct AgentRun {
     /// `budget` or `time` when g1t stopped it for reaching a cap.
     #[serde(default)]
     pub halted: Option<String>,
-    /// How sure g1t was of the change as this run left it, for a run that
-    /// made or revised one.
-    #[serde(default)]
-    pub confidence: Option<crate::work::Confidence>,
     /// RFC 3339.
     pub created_at: String,
     pub started_at: Option<String>,
@@ -246,23 +238,6 @@ pub struct ReportRunArgs {
     /// `budget` or `time`: the run reached a cap of its guardrails and
     /// stopped. Ends it as stopped, like a person's stop.
     pub halt: Option<crate::guardrails::Halt>,
-}
-
-/// `stop_run`: a member stops a run. Marks it stopped and returns where its
-/// sandbox is, for the runner to destroy. A pull request it worked on waits
-/// for a person. Returns `Outcome<StoppedRun>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StopRunArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StoppedRun {
-    pub run: AgentRun,
-    pub sandbox: String,
 }
 
 /// `list_runs`: runs in a repository, or with `workspace` instead, in every
@@ -425,7 +400,8 @@ pub struct MemorySource {
     #[serde(default)]
     pub number: Option<u32>,
     /// What it was captured from: `run:<id>`, `comment:<id>`,
-    /// `pull:<repo id>#<n>`, `doc:<repo id>:<path>`. See `crate::capture`.
+    /// `pull:<repo id>#<n>`, `doc:<repo id>:<path>`, on memories captured
+    /// before automatic capture was retired.
     #[serde(default)]
     pub reference: Option<String>,
     /// What it was learned from, quoted.
@@ -433,9 +409,9 @@ pub struct MemorySource {
     pub evidence: Option<String>,
 }
 
-/// Whether agents are given a memory: `kept` ones are; a `candidate` waits
-/// for review (see `crate::capture`); a `dismissed` one is never suggested
-/// again from the same wording.
+/// Whether a memory is recalled: `kept` ones are. `candidate` and
+/// `dismissed` are on memories captured automatically before that was
+/// retired, kept so those rows still parse; neither is recalled.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryStatus {
@@ -482,7 +458,7 @@ pub struct Memory {
     pub updated_at: String,
     /// When it was last given to an agent.
     pub last_used_at: Option<String>,
-    /// Kept memories are given to agents; candidates wait for review.
+    /// Only kept memories are recalled.
     #[serde(default)]
     pub status: MemoryStatus,
     /// 0 to 1: how sure its source was. None for what people wrote.
@@ -556,8 +532,8 @@ pub struct DeleteMemoryArgs {
 }
 
 /// `recall`: what a project and its workspace remember, matching `query`
-/// when given (every word, in any order), pinned first. Members and g1t's
-/// agents. Returns `Outcome<Memories>`.
+/// when given (every word, in any order), pinned first. Members only.
+/// Returns `Outcome<Memories>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RecallArgs {
     pub viewer: Viewer,
@@ -566,31 +542,6 @@ pub struct RecallArgs {
     pub query: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
-}
-
-/// `memory_context`: what to tell an agent starting work in `repo`, within
-/// `budget` characters: pinned first, then the most recently used, the
-/// workspace's and the project's labelled apart. Marks what it gives as
-/// used. Called by the runner service only. Returns `MemoryContext`.
-///
-/// `requester` is the person the run acts for. The workspace's memory is
-/// its members': for a requester who is not one (an outside collaborator),
-/// only the project's memory is given. None, as from a runner that does not
-/// say, is the workspace's own step and gets both.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MemoryContextArgs {
-    pub repo: RepoPath,
-    #[serde(default)]
-    pub budget: Option<u32>,
-    #[serde(default)]
-    pub requester: Option<User>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct MemoryContext {
-    /// None when there is nothing to tell.
-    pub text: Option<String>,
-    pub count: u32,
 }
 
 /// The longest a memory may be.
@@ -726,112 +677,6 @@ pub fn secret_in(text: &str) -> Option<&'static str> {
     None
 }
 
-// --- Compute gating ---------------------------------------------------------
-//
-// What the runner needs from the work service to apply a workspace's plan
-// caps: how many agents it has at work, what an issue's agents have spent,
-// and somewhere for runs to wait for a free slot.
-
-/// The kinds of run that count against a workspace's agents-at-once cap.
-pub const AGENT_KINDS: [RunKind; 6] = [
-    RunKind::Implement,
-    RunKind::Revise,
-    RunKind::Review,
-    RunKind::Answer,
-    RunKind::Update,
-    RunKind::Plan,
-];
-
-/// `active_agents`: how many agent runs a workspace has queued or running
-/// now. Called by the runner. Returns `u32`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ActiveAgentsArgs {
-    pub workspace: String,
-}
-
-/// `issue_spend`: what the agents on an issue have cost so far, in all its
-/// pull requests' runs and the runs on the issue itself. `number` may name
-/// the issue or one of its pull requests. Called by the runner. Returns
-/// `Outcome<IssueSpend>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct IssueSpendArgs {
-    pub repo: RepoPath,
-    pub number: u32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IssueSpend {
-    /// The issue counted: the one `number` names, or its pull request's.
-    /// A pull request with no issue counts as its own.
-    pub issue: u32,
-    /// What the model providers charged for its runs, in millionths of a
-    /// dollar.
-    pub spent_micros: i64,
-}
-
-/// `wait_for_slot`: gives back a lifecycle step the runner claimed but
-/// could not start because the workspace's agents were all busy, so the
-/// next sweep takes it again, and says so on the pull request. Returns
-/// `bool`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WaitForSlotArgs {
-    pub pull_id: String,
-    pub reason: String,
-}
-
-/// `agent_comment`: a comment from g1t on an issue or pull request,
-/// for what it could not do there. Called by the runner. Returns `bool`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AgentCommentArgs {
-    pub repo: RepoPath,
-    pub number: u32,
-    pub body: String,
-}
-
-/// `add_wait`: a run a person asked for, waiting for one of the
-/// workspace's agent slots. `payload` is what the runner needs to start it
-/// later; the work service only keeps it. Returns `bool`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AddWaitArgs {
-    pub workspace: String,
-    pub kind: String,
-    pub payload: serde_json::Value,
-}
-
-/// `waiting_workspaces`: the workspaces with runs waiting, oldest first.
-/// Returns `Vec<String>`.
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct WaitingWorkspacesArgs {}
-
-/// `take_wait`: the oldest run waiting in a workspace, taken out of the
-/// queue in one statement. Returns `Option<AgentWait>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TakeWaitArgs {
-    pub workspace: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentWait {
-    pub id: String,
-    pub workspace: String,
-    pub kind: String,
-    pub payload: serde_json::Value,
-    pub created_at: String,
-}
-
-/// `run_cost`: what a run's model cost, as its sandbox reported it, for
-/// the runner settling the run's reservation. Needs the run's token.
-/// Returns `Option<f64>`, in US dollars.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RunCostArgs {
-    pub run_id: String,
-    pub token: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -880,8 +725,6 @@ mod tests {
         for kind in RunKind::ALL {
             assert_eq!(RunKind::parse(kind.as_str()), Some(kind));
         }
-        assert!(RunKind::Implement.takes_messages() && !RunKind::Review.takes_messages());
-        assert!(!RunKind::Checks.is_agent());
         assert_eq!(RunStatus::parse("stopped"), Some(RunStatus::Stopped));
         assert!(RunStatus::Queued.is_active() && !RunStatus::Failed.is_active());
         assert_eq!(MemoryKind::parse("gotcha"), Some(MemoryKind::Gotcha));

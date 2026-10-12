@@ -1,4 +1,9 @@
 /**
+ * Deprecated: g1t no longer runs agents of its own. Kept only until
+ * apps/mobile drops its Customize screens, which import it; delete it
+ * afterwards.
+ */
+/**
  * The Marketplace: what adds functionality to a workspace, the installs it
  * has, and members' requests to add things. Extensions add pages, data and
  * cards; integrations connect what a team already uses so agents can work

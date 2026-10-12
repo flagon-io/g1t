@@ -1093,7 +1093,6 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         read: [repo],
         push: [{ repo, branch: args.branch }],
         ttlSeconds: BUMP_TOKEN_TTL_SECONDS,
-        agent: actor.username,
       });
       const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(bumpSandboxName(args)));
       await sandbox.run({

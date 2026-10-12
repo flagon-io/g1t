@@ -139,19 +139,6 @@ export type CreditOptions = {
   refundDay?: string | null;
 };
 
-/** What lets a sandbox, and nothing else, report what its run cost. */
-export type RunTicket = { runId: string; token: string };
-
-/**
- * What agents cost, charged to the workspace they worked for. A workspace
- * buys credit; each run deducts its cost plus g1t's margin; with no credit,
- * no agent starts.
- */
-/**
- * The free allowance on g1t's hosted models for a workspace not otherwise
- * open to them: a few dollars of model cost each, out of one pool, until a
- * date. Mirrors `Trial` in `crates/contracts/src/billing.rs`.
- */
 /**
  * How an account is charged. Standard unless g1t set otherwise in sudo:
  * custom terms are a discount (0 to 100%), a ceiling, or both. A 100%
@@ -676,7 +663,7 @@ export interface BillingAdminApi {
   costAlerts(): Promise<MarginAlert[]>;
   /** g1t's own spend against its caps: the daily breaker and comped budgets. */
   spendCaps(): Promise<SpendCaps>;
-  /** Lets hosted-model runs start again for the rest of today (UTC); needs a note. */
+  /** Lets compute start again for the rest of today (UTC) after the daily breaker; needs a note. */
   liftBreaker(note: string, by: string): Promise<Result<SpendCaps>>;
   /** Platform pauses, the last hour of platform usage, the month so far and the last day's breaches (billing's platform.rs). */
   platformGuard(): Promise<PlatformGuard>;
@@ -688,23 +675,6 @@ export interface BillingAdminApi {
   setCostMapping(mapping: CostMappingInput, by: string): Promise<Result<CostMapping>>;
   /** Reads Cloudflare's bill and reconciles now, as the daily run does. */
   runCosts(by: string): Promise<Result<CostsRun>>;
-  /** Agents & models: the catalogue, each purpose's default, and the latest checks. */
-  models(): Promise<AdminModels>;
-  /** Approve a model (its prices confirmed), retire it, or restore it. Needs a reason. */
-  decideModel(
-    model: string,
-    decision: "approve" | "retire" | "restore",
-    details: { name?: string | null; tierHint?: string | null; prices?: ModelPrices | null },
-    reason: string,
-    by: string,
-  ): Promise<Result<CatalogueModel>>;
-  /** One purpose's default: a model, or for a job its tier and effort. Needs a reason. */
-  setModelDefault(
-    purpose: string,
-    value: { model?: string | null; tier?: string | null; effort?: string | null },
-    reason: string,
-    by: string,
-  ): Promise<Result<ModelDefault>>;
 }
 
 /** How much a workspace has earned g1t's trust with money. */
@@ -956,46 +926,6 @@ export interface BillingApi {
   /** What the workspace's agents cost since `since`, broken down. Members only. */
   usage(workspace: string, viewer: Viewer, since: string): Promise<Result<Usage>>;
   /**
-   * The model tokens the workspace's runs used, day by day over the last
-   * `days` (42, at most 366), for everyone or for one `person`. Members
-   * only; a member may ask only for themselves, an owner for anyone.
-   */
-  tokenUsage(workspace: string, viewer: User, options?: { person?: string; days?: number }): Promise<Result<TokenUsage>>;
-  /**
-   * What one model answer used, added to its run's count for the day. The
-   * model proxy sends it; for usage views only, as runs are priced from AI
-   * Gateway. False when there was nothing to count.
-   */
-  /** What the AI Gateway offers on g1t's key, with prices per million tokens. */
-  gatewayModels(): Promise<GatewayModel[]>;
-  /** Every purpose's default model as it applies now, and each job's tier and effort. */
-  modelDefaults(): Promise<ModelDefaults>;
-  /** What one provider lists now, from the models service's discovery. */
-  recordDiscovery(provider: string, models: ProviderModel[], by: string, error?: string | null): Promise<DiscoveryResult>;
-  /**
-   * Whether a workspace's next AI Gateway request may go to g1t's models:
-   * fails with `payment_required` and what to do when it is over its spend
-   * limit, out of AI credit, or not on the plan.
-   */
-  gatewayAdmit(workspace: string): Promise<Result<boolean>>;
-  /** Logs one AI Gateway request, and charges it when it used tokens on g1t's models. */
-  recordGateway(record: GatewayRecord): Promise<Result<boolean>>;
-  /** A workspace's recent AI Gateway requests, newest first. Members only. */
-  gatewayRequests(workspace: string, viewer: Viewer, options?: { limit?: number; before?: string | null }): Promise<Result<GatewayRequests>>;
-  recordTokens(usage: {
-    workspace: string;
-    /** The model session's id, one per run. */
-    session: string;
-    /** The person the run is for, by username. */
-    person?: string | null;
-    model: string;
-    tier?: "small" | "large" | "frontier" | null;
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-  }): Promise<Result<boolean>>;
-  /**
    * Prepays usage ($25 at least) and returns the page to send the person to:
    * by card with 3-D Secure, or by bank transfer from $1,000. Owners only.
    * The payment's id comes back to `returnUrl` as `session`.
@@ -1014,17 +944,8 @@ export interface BillingApi {
   billingPortal(actor: User, workspace: string, returnUrl: string): Promise<Result<{ url: string }>>;
   /** Credits a payment once the processor says it was made. Safe to repeat. */
   confirm(workspace: string, viewer: Viewer, session: string): Promise<Result<BillingAccount>>;
-  /**
-   * Whether a workspace may start an agent now, asked before anything is
-   * opened for it. A failure, with the reason to show, when it has no credit.
-   */
-  canStart(workspace: string): Promise<Result<boolean>>;
-  /** A workspace's free allowance on g1t's hosted models; `exempt` are open to them anyway. */
+  /** A workspace's free trial allowance; `exempt` workspaces are open anyway. */
   trial(workspace: string, exempt: string[]): Promise<Trial>;
-  /**
-   * Asks whether a workspace may start an agent and opens the run it will be
-   * charged for. Null when billing is off; a failure when there is no credit.
-   */
   /** Every paid feature and the workspace's plan for each. Members only. */
   features(workspace: string, viewer: Viewer): Promise<Result<FeatureState[]>>;
   /**
@@ -1148,50 +1069,13 @@ export interface BillingApi {
     selfHosted?: boolean;
     /** The machine it ran on, by label (`g1t-4core`); absent, the standard one. */
     instance?: string | null;
-    /** The agent whose work this was, by handle (`g1t` for g1t's own runs on a repository); absent for checks, workflows and builds. */
-    agent?: string | null;
-    /** Who asked for the work, by username. */
-    askedBy?: string | null;
   }): Promise<Result<boolean>>;
-  startRun(run: {
-    workspace: string;
-    repo: RepoPath;
-    number: number;
-    task: string;
-    model: string;
-    /** `workspace` when the run uses the workspace's own model provider. */
-    billedTo?: "g1t" | "workspace";
-    /**
-     * The model session's id: the run is settled at AI Gateway's price by
-     * it, and on the workspace's own provider its tokens are counted under
-     * it for the agent rate.
-     */
-    session?: string | null;
-    /** The tier g1t routed the run to: `small`, `large` or `frontier`. */
-    tier?: "small" | "large" | "frontier" | null;
-    /** The agent doing the work, by handle: a workspace agent's, or `g1t` for g1t's own work on a repository. Every line of the run carries it. */
-    agent?: string | null;
-    /** Who asked, by username; none for a routine's or another agent's work. */
-    askedBy?: string | null;
-  }): Promise<Result<RunTicket | null>>;
   /** Usage over a range of days (`YYYY-MM-DD`, both included), at price, by product, meter, project and day. Members only. */
   usageReport(
     workspace: string,
     viewer: Viewer,
     range: { from: string; until: string; products?: string[]; projects?: string[] },
   ): Promise<Result<UsageReport>>;
-  /** The workspace's prepaid AI credit, auto-reload and prices. Members only. */
-  aiCredit(workspace: string, viewer: Viewer): Promise<Result<AiCredit>>;
-  /** Stripe's page to buy AI credit ( to ,000, the card fee on its own line). Owners only. The page's id comes back to `returnUrl` as `ai_credit`. */
-  buyAiCredit(actor: User, workspace: string, amountCents: number, returnUrl: string): Promise<Result<{ url: string }>>;
-  /** Credits a purchase once Stripe says it was paid, once. Safe to repeat. */
-  confirmAiCredit(workspace: string, viewer: Viewer, session: string): Promise<Result<AiCredit>>;
-  /** Auto-reload's settings. Owners only. */
-  setAiReload(
-    actor: User,
-    workspace: string,
-    reload: { enabled: boolean; thresholdMicros: number; targetMicros: number; monthlyMaxMicros: number },
-  ): Promise<Result<AiCredit>>;
   /** The monthly budget: the spend limit, its alerts, whether usage pauses at 100%, and a webhook. Owners only. */
   setBudget(
     actor: User,
@@ -1207,271 +1091,6 @@ export interface BillingApi {
 
 /** One slice of usage: what it was for, what it cost, how many runs. */
 export type UsageSlice = { key: string; micros: number; runs: number };
-
-/** The model tokens runs used over a window of days. */
-export type TokenUsage = {
-  /** `YYYY-MM-DD`, the first day counted. */
-  since: string;
-  /** The window's length: 42 unless asked, 366 at most. */
-  days: number;
-  /** Null for the whole workspace. */
-  person: string | null;
-  totalTokens: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  /** What those runs were charged, as `usage` measures it. */
-  costMicros: number;
-  /** Days in the window with any tokens. */
-  activeDays: number;
-  /** Every day in the window, oldest first, zeros included. */
-  byDay: { day: string; tokens: number }[];
-};
-
-// --- AI Gateway -------------------------------------------------------------
-
-/** A model the AI Gateway offers on g1t's key, with its prices per million tokens. */
-export type GatewayModel = {
-  /**
-   * The provider's own id, such as `claude-sonnet-5-5` or
-   * `@cf/openai/gpt-oss-120b`. A request names it as it is or with its
-   * provider in front (`anthropic/claude-sonnet-5-5`).
-   */
-  model: string;
-  /** For people: `Claude Sonnet 5.5`. */
-  name: string;
-  /** `anthropic` or `workers-ai`. */
-  provider: string;
-  /** `chat`, or `embeddings` for a model that only embeds text. */
-  kind?: "chat" | "embeddings";
-  inputMicros: number;
-  outputMicros: number;
-  cacheReadMicros: number;
-  /** Cache writes that live five minutes. */
-  cacheWriteMicros: number;
-  /** Cache writes that live an hour. */
-  cacheWrite1hMicros?: number;
-  /**
-   * Priced by the prompt's length: a request whose prompt (input, cache
-   * read and cache write tokens) is longer than this is charged entirely at
-   * the `over` prices. 0 or absent for one price.
-   */
-  threshold?: number;
-  overInputMicros?: number;
-  overOutputMicros?: number;
-  overCacheReadMicros?: number;
-  overCacheWriteMicros?: number;
-  overCacheWrite1hMicros?: number;
-};
-
-// --- The model catalogue ------------------------------------------------------
-
-/** Where a model stands: only `available` ones are routed to. */
-export type ModelStatus = "available" | "new" | "deprecated" | "retired";
-
-/** One model in g1t's catalogue: its prices and what g1t knows about it. */
-export type CatalogueModel = GatewayModel & {
-  /** Other ids the provider lists it by, such as a dated one. */
-  aliases: string[];
-  family: string;
-  /** The agent tier it suits: `small`, `large`, `frontier`, or empty. */
-  tierHint: string;
-  contextWindow: number;
-  maxOutput: number;
-  /** Any of `effort`, `thinking`, `tools`, `vision`, `embeddings`. */
-  capabilities: string[];
-  dimensions: number;
-  status: ModelStatus;
-  /** Its prices are known. An unpriced model is never routed to, offered or charged for. */
-  priced: boolean;
-  source: "discovered" | "staff";
-  firstSeenAt: string | null;
-  lastSeenAt: string | null;
-  missingSince: string | null;
-  approvedBy: string | null;
-  approvedAt: string | null;
-  note: string;
-  /** A typical agent run on it, in millionths of a dollar; 0 when unpriced or embeddings. */
-  typicalRunMicros: number;
-};
-
-/** One model as its provider lists it, from the models service's discovery. */
-export type ProviderModel = {
-  id: string;
-  name: string;
-  /** `chat`, `embeddings`, or anything else (counted as listed, never added). */
-  kind: string;
-  contextWindow: number;
-  maxOutput: number;
-  capabilities: string[];
-  /** Workers AI lists a price per million tokens; Anthropic does not. */
-  price: { inputMicros: number; outputMicros: number } | null;
-};
-
-/** What one check of a provider found. */
-export type DiscoveryResult = {
-  provider: string;
-  checkedAt: string;
-  by: string;
-  listed: number;
-  added: string[];
-  deprecated: string[];
-  restored: string[];
-  error: string | null;
-};
-
-/** The purposes a default model is chosen for. */
-export type ModelPurpose = "tier_small" | "tier_large" | "tier_frontier" | "background" | "gateway_first";
-
-/** One purpose's default, as staff last set it. */
-export type ModelDefault = {
-  /** A `ModelPurpose`, or `job_<kind>`. */
-  purpose: string;
-  model: string | null;
-  /** For a job: `small`, `large`, `frontier` or `change`. */
-  tier: string | null;
-  effort: string | null;
-  updatedAt: string;
-  updatedBy: string;
-  reason: string;
-};
-
-/** A model purpose's default as it applies now. */
-export type ResolvedModel = {
-  purpose: string;
-  chosen: string;
-  /** The model to use; null when nothing suits (callers keep their own fallback). */
-  model: GatewayModel | null;
-  capabilities: string[];
-  /** Why it is not the chosen model, in a sentence. */
-  note: string | null;
-};
-
-/** One kind of agent job's starting tier and effort. */
-export type JobDefault = { kind: string; tier: string; effort: string | null };
-
-/** Every purpose's model as it applies now, and each job's tier and effort. */
-export type ModelDefaults = { models: ResolvedModel[]; jobs: JobDefault[] };
-
-/** One check of one provider. */
-export type ModelCheck = {
-  id: string;
-  provider: string;
-  checkedAt: string;
-  by: string;
-  listed: number;
-  added: string[];
-  deprecated: string[];
-  error: string | null;
-};
-
-/** The tokens of the typical agent run estimates are priced from. */
-export type TypicalRun = { requests: number; input: number; output: number; cacheRead: number; cacheWrite: number };
-
-/** sudo's Agents & models. */
-export type AdminModels = {
-  catalogue: CatalogueModel[];
-  defaults: ModelDefault[];
-  resolved: ModelDefaults;
-  checks: ModelCheck[];
-  typical: TypicalRun;
-};
-
-/** A model's prices as staff confirm them, per million tokens in millionths of a dollar. */
-export type ModelPrices = {
-  inputMicros: number;
-  outputMicros: number;
-  cacheReadMicros: number;
-  cacheWriteMicros: number;
-  cacheWrite1hMicros: number;
-  threshold: number;
-  overInputMicros: number;
-  overOutputMicros: number;
-  overCacheReadMicros: number;
-  overCacheWriteMicros: number;
-  overCacheWrite1hMicros: number;
-};
-
-/** The models service's `Discovery` entrypoint, for sudo's "Check for new models". */
-export interface ModelDiscoveryApi {
-  /** Lists every provider's models now and records what changed: one result per provider. */
-  check(by: string): Promise<DiscoveryResult[]>;
-}
-
-/** The format a gateway request was sent in. */
-export type GatewayFormat = "anthropic" | "openai";
-
-/** One AI Gateway request, as the model proxy reports it to billing. */
-export type GatewayRecord = {
-  /** `gw_…`, chosen by the proxy; recording it twice records it once. */
-  id: string;
-  workspace: string;
-  tokenId: string;
-  tokenName?: string | null;
-  model: string;
-  input: number;
-  output: number;
-  cacheRead: number;
-  /** Every cache write, of either lifetime. */
-  cacheWrite: number;
-  /** Of `cacheWrite`, those that live an hour. */
-  cacheWriteHour?: number;
-  /** The HTTP status the caller was answered with. */
-  status: number;
-  /** On the workspace's own provider key: counted, never charged. */
-  ownKey: boolean;
-  format: GatewayFormat;
-  /**
-   * Who served it: `anthropic` or `workers-ai` on g1t's key, the
-   * connection's provider on the workspace's own. Empty when it never got
-   * that far.
-   */
-  provider: string;
-  /** On the workspace's own provider: the connection's name. */
-  connection?: string | null;
-  streamed: boolean;
-  durationMs: number;
-  error?: string | null;
-};
-
-/** One AI Gateway request, as its log keeps it. */
-export type GatewayRequest = {
-  id: string;
-  createdAt: string;
-  model: string;
-  tokenId: string;
-  tokenName: string | null;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  /** Of `cacheWrite`, those that live an hour. */
-  cacheWriteHour: number;
-  /** What the tokens cost at the model's price. */
-  costMicros: number;
-  /** What the workspace was charged, before included usage and credit paid for it; 0 on its own key. */
-  chargedMicros: number;
-  status: number;
-  ownKey: boolean;
-  format: GatewayFormat;
-  /** `anthropic` or `workers-ai` on g1t's key; the connection's provider on the workspace's own. */
-  provider: string;
-  /** On the workspace's own provider: the connection's name. */
-  connection: string | null;
-  streamed: boolean;
-  durationMs: number;
-  error: string | null;
-};
-
-/** A page of AI Gateway requests, newest first. */
-export type GatewayRequests = {
-  requests: GatewayRequest[];
-  /** The `before` for the next page, when there is one. */
-  next: string | null;
-  /** How many days requests are kept. */
-  retentionDays: number;
-};
 
 /** What a workspace's agents cost over a period. */
 export type Usage = {
@@ -1888,9 +1507,7 @@ export type CostsRun = { lines: number; days: number; proposals: number; alerts:
 
 /** The product families the Usage page groups meters into, in order. */
 export const PRODUCTS = [
-  { key: "agent", label: "Agent" },
   { key: "sandboxes", label: "Sandboxes" },
-  { key: "gateway", label: "AI Gateway" },
   { key: "deployments", label: "Deployments" },
   { key: "git_storage", label: "Git & storage" },
   { key: "packages", label: "Packages" },
@@ -1921,7 +1538,6 @@ export type UsageTotals = {
 export type UsageDay = { day: string; product: string; micros: number };
 
 /** One agent's (by handle) or one person's (by username) share of the agent product, at price; an empty key for lines attributed to no one. */
-export type UsageShare = { key: string; label: string; micros: number; count: number };
 
 export type UsageAllowance = { used: number; of: number; unit: string };
 
@@ -1945,12 +1561,7 @@ export type MeterLine = {
   note?: string | null;
 };
 
-export type FeatureUsage = { key: string; label: string; micros: number; count: number };
-
-export type ProductUsage = { key: string; label: string; micros: number; meters: MeterLine[]; features?: FeatureUsage[] };
-
-/** The tokens one model used over a range, as the model proxy counted them. */
-export type ModelTokens = { model: string; input: number; output: number; cacheRead: number; cacheWrite: number };
+export type ProductUsage = { key: string; label: string; micros: number; meters: MeterLine[] };
 
 export type UsageReport = {
   from: string;
@@ -1959,58 +1570,15 @@ export type UsageReport = {
   days: UsageDay[];
   products: ProductUsage[];
   projects: string[];
-  /** Agent tokens by model over the range, most first. */
-  models?: ModelTokens[];
-  /** The agent product by the agent that did the work, most first; their sum is the agent product's total. */
-  byAgent?: UsageShare[];
-  /** The agent product by who asked; work no person asked for under an empty key. */
-  byPerson?: UsageShare[];
   /** The plan's included usage this month, in micros. */
   included?: UsageAllowance | null;
   discountPercent?: number | null;
+  /** AI credit bought before g1t stopped selling it, left now; kept apart from credit for everything. */
   aiCreditMicros: number;
   creditMicros: number;
   trialMicros?: number | null;
   plan: PlanKind;
   free: boolean;
-};
-
-export type AiReload = {
-  enabled: boolean;
-  thresholdMicros: number;
-  targetMicros: number;
-  monthlyMaxMicros: number;
-  reloadedMicros?: number;
-  failedAt?: string | null;
-  error?: string | null;
-};
-
-export type CardFee = { on: boolean; percentMicros: number; fixedCents: number };
-
-/** Prepaid AI credit: what Agent and AI Gateway usage draws on. */
-export type AiCredit = {
-  balanceMicros: number;
-  purchasedMicros: number;
-  givenMicros: number;
-  grants: CreditGrant[];
-  /** A 100% discount pays for AI usage: nothing to buy. */
-  freeViaDiscount: boolean;
-  /** Invoiced after use (an enterprise). */
-  postpaid: boolean;
-  /** New runs on g1t's models are refused for want of credit. */
-  blocked: boolean;
-  canBuy: boolean;
-  presetsCents: number[];
-  minCents: number;
-  maxCents: number;
-  cardFee: CardFee;
-  reload: AiReload;
-  /** The agent rate per million tokens, at price. */
-  agentRateMicros: number;
-  modelMarkupPercent: number;
-  gatewayMarkupPercent: number;
-  upgradeCreditMicros: number;
-  expiresDays: number;
 };
 
 export type PostalAddress = { line1: string; line2: string; city: string; state: string; postalCode: string; country: string };

@@ -133,7 +133,7 @@ impl Resource {
             Resource::Checks => "Checks and statuses",
             Resource::Deployments => "Deployments",
             Resource::Observability => "Observability",
-            Resource::Memory => "Memory and context",
+            Resource::Memory => "Memory",
             Resource::Access => "Who has access",
             Resource::Webhooks => "Webhooks",
             Resource::Secrets => "Secrets and variables",
@@ -143,15 +143,24 @@ impl Resource {
         }
     }
 
-    /// Whether tokens are offered it yet. A resource being built can be in
+    /// Whether tokens are offered it. A resource being built can be in
     /// the table before its API ships (so its scopes parse, and the
     /// TypeScript mirror lists it under `UPCOMING_RESOURCES`) while nothing
     /// hands it out: presets, full access, OAuth and the token form leave
-    /// it out, and no operation needs it. Every resource is offered now;
-    /// Artifacts was the last.
+    /// it out, and no operation needs it. A [`Resource::retired`] one is
+    /// never offered again.
     pub fn offered(self) -> bool {
-        let _ = self;
-        true
+        !self.retired()
+    }
+
+    /// Whether it belonged to something g1t no longer has: `agents` (g1t's
+    /// own agents) and `models` (its model proxy and AI Gateway). Their
+    /// scopes still parse, so tokens and OAuth grants that stored them read
+    /// as before, but [`parse_scopes`] leaves them out, nothing hands them
+    /// out and no operation needs them: they grant nothing. The TypeScript
+    /// mirror lists them under `RETIRED_RESOURCES` and `RETIRED_SCOPES`.
+    pub fn retired(self) -> bool {
+        matches!(self, Resource::Agents | Resource::Models)
     }
 }
 
@@ -160,7 +169,7 @@ impl Resource {
 pub enum Level {
     Read,
     Write,
-    /// Starting g1t's agents, which spends the workspace's money.
+    /// Starting g1t's own agents: only `agents:run`, which is retired.
     Run,
     /// Deleting what cannot be brought back, such as a package's versions.
     Delete,
@@ -197,6 +206,8 @@ pub enum Scope {
     IssuesWrite,
     PullRequestsRead,
     PullRequestsWrite,
+    /// Retired with g1t's own agents ([`Resource::retired`]): parses, so
+    /// stored tokens still read, but is never granted and gates nothing.
     AgentsRun,
     WorkflowsRead,
     WorkflowsWrite,
@@ -227,6 +238,8 @@ pub enum Scope {
     SecretsAdmin,
     RunnersRead,
     RunnersAdmin,
+    /// Retired with the AI Gateway ([`Resource::retired`]): parses, so
+    /// stored tokens still read, but is never granted and gates nothing.
     ModelsRead,
     ModelsWrite,
     ArtifactsRead,
@@ -390,11 +403,11 @@ impl Scope {
             Scope::PackagesRead => "Pull container images and install private packages",
             Scope::PackagesWrite => "Push container images and publish packages",
             Scope::PackagesDelete => "Delete and restore packages and their versions",
-            Scope::IssuesRead => "Read issues, comments and plans",
+            Scope::IssuesRead => "Read issues and comments",
             Scope::IssuesWrite => "Open, edit, close and comment on issues",
             Scope::PullRequestsRead => "Read pull requests, their changes, sessions and merge queues",
             Scope::PullRequestsWrite => "Open, review, close and merge pull requests",
-            Scope::AgentsRun => "Put g1t agents to work and message them, which uses the workspace's money",
+            Scope::AgentsRun => "Retired: put g1t's own agents to work. Grants nothing now",
             Scope::WorkflowsRead => "Read workflows, runs and logs",
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
             Scope::WorkflowFilesWrite => "Add, change and delete workflow files under .g1t/workflows and .github/workflows, with git or the API",
@@ -404,28 +417,28 @@ impl Scope {
             Scope::DeploymentsWrite => "Report deployments and their statuses, from any CI",
             Scope::ObservabilityRead => "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports",
             Scope::ObservabilityWrite => "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports",
-            Scope::MemoryRead => "Recall memory and search the workspace's context",
-            Scope::MemoryWrite => "Save memory for the next agent",
+            Scope::MemoryRead => "Recall memory",
+            Scope::MemoryWrite => "Save memory for whoever works on the project next",
             Scope::AccountRead => "Read your email addresses, invites, invitations, pinned projects and stars",
             Scope::AccountWrite => "Change your email addresses, make invites, answer invitations, pin projects and star repositories",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
             Scope::ChatRead => "Read the conversations you are in: channels, direct messages, threads and reactions, live",
             Scope::ChatWrite => "Send, edit and delete your messages, react, mark conversations read, and answer cards in chat",
-            Scope::WorkspaceRead => "Read workspace settings, invites, integrations, model routes, teams and rulesets",
+            Scope::WorkspaceRead => "Read workspace settings, invites, integrations, teams and rulesets",
             Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, create, change and delete teams, and change the workspace's rulesets",
-            Scope::BillingRead => "See a workspace's usage, budget, AI credit and invoices",
-            Scope::BillingWrite => "Change a workspace's budget and buy AI credit",
+            Scope::BillingRead => "See a workspace's usage, budget and invoices",
+            Scope::BillingWrite => "Change a workspace's budget",
             Scope::AccessRead => "See who has access to repositories",
             Scope::AccessAdmin => "Give and take away access to repositories, a team's included",
             Scope::WebhooksRead => "See webhooks and their deliveries",
             Scope::WebhooksAdmin => "Create, change and delete webhooks",
             Scope::SecretsRead => "List secrets (never their values) and read variables",
             Scope::SecretsAdmin => "Set and delete secrets and variables",
-            Scope::RunnersRead => "See self-hosted runners, their groups and where agents run",
+            Scope::RunnersRead => "See self-hosted runners and their groups",
             Scope::RunnersAdmin => "Register and remove self-hosted runners, change their groups and settings",
-            Scope::ModelsRead => "See the workspace's AI Gateway requests: their models, tokens, cost and status",
-            Scope::ModelsWrite => "Send model requests through the AI Gateway, which uses the workspace's AI credit",
+            Scope::ModelsRead => "Retired: see the AI Gateway's requests. Grants nothing now",
+            Scope::ModelsWrite => "Retired: send requests through the AI Gateway. Grants nothing now",
             Scope::ArtifactsRead => "List, read and search artifacts you can see, their versions, and the numbers their dashboards show",
             Scope::ArtifactsWrite => "Create, rename, move, edit, trash and restore artifacts, and propose changes to them",
             Scope::ArtifactsAdmin => "Share artifacts, change who can open them, and delete them for good",
@@ -639,7 +652,6 @@ impl Preset {
                     Scope::CodeWrite,
                     Scope::IssuesWrite,
                     Scope::PullRequestsWrite,
-                    Scope::AgentsRun,
                     Scope::MemoryWrite,
                     Scope::NotificationsWrite,
                 ]);
@@ -944,32 +956,6 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_integration", Scope::WorkspaceAdmin),
     ("disconnect_integration", Scope::WorkspaceAdmin),
     ("test_integration", Scope::WorkspaceAdmin),
-    ("get_model_routes", Scope::WorkspaceRead),
-    ("set_model_routes", Scope::WorkspaceAdmin),
-    // Customize: the marketplaces a workspace reads, the plugins it installs
-    // and the connectors it signs in. Members see them, owners change them,
-    // and a job's agent token reads the bundle its Claude Code loads.
-    ("list_marketplaces", Scope::WorkspaceRead),
-    ("add_marketplace", Scope::WorkspaceAdmin),
-    ("remove_marketplace", Scope::WorkspaceAdmin),
-    ("refresh_marketplace", Scope::WorkspaceAdmin),
-    ("discover", Scope::WorkspaceRead),
-    ("list_plugins", Scope::WorkspaceRead),
-    ("get_plugin", Scope::WorkspaceRead),
-    ("install_plugin", Scope::WorkspaceAdmin),
-    ("set_plugin_enabled", Scope::WorkspaceAdmin),
-    ("uninstall_plugin", Scope::WorkspaceAdmin),
-    ("update_plugin", Scope::WorkspaceAdmin),
-    ("list_plugin_agents", Scope::WorkspaceRead),
-    ("list_connectors", Scope::WorkspaceRead),
-    ("get_connector", Scope::WorkspaceRead),
-    ("add_connector", Scope::WorkspaceAdmin),
-    ("set_connector_key", Scope::WorkspaceAdmin),
-    ("remove_connector", Scope::WorkspaceAdmin),
-    ("refresh_connector", Scope::WorkspaceAdmin),
-    ("grant_connector", Scope::WorkspaceAdmin),
-    ("revoke_connector", Scope::WorkspaceAdmin),
-    ("customize_bundle", Scope::AgentsRun),
     // Teams: reading them, and managing them. A team's role on a
     // repository is who has access.
     ("list_teams", Scope::WorkspaceRead),
@@ -990,14 +976,12 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("set_team_member", Scope::WorkspaceAdmin),
     ("remove_team_member", Scope::WorkspaceAdmin),
     ("set_team_review_assignment", Scope::WorkspaceAdmin),
-    // A workspace's billing: usage, budget, AI credit and invoices.
+    // A workspace's billing: usage, budget and invoices.
     ("get_usage", Scope::BillingRead),
     ("get_budget", Scope::BillingRead),
-    ("get_ai_credit", Scope::BillingRead),
     ("list_invoices", Scope::BillingRead),
     ("get_billing_details", Scope::BillingRead),
     ("set_budget", Scope::BillingWrite),
-    ("buy_ai_credit", Scope::BillingWrite),
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
@@ -1097,7 +1081,6 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_code_scanning_alert", Scope::SecurityWrite),
     ("upload_sarif", Scope::SecurityWrite),
     ("update_vulnerability_alert", Scope::SecurityWrite),
-    ("fix_security_alert", Scope::SecurityWrite),
     ("update_security_settings", Scope::SecurityWrite),
     ("update_workspace_security_settings", Scope::SecurityWrite),
     ("create_security_advisory", Scope::SecurityWrite),
@@ -1105,10 +1088,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("set_security_advisory_state", Scope::SecurityWrite),
     ("report_vulnerability", Scope::SecurityWrite),
     ("review_vulnerability_report", Scope::SecurityWrite),
-    // Issues and plans.
+    // Issues.
     ("list_issues", Scope::IssuesRead),
     ("get_issue", Scope::IssuesRead),
-    ("get_plan", Scope::IssuesRead),
     ("create_issue", Scope::IssuesWrite),
     ("update_issue", Scope::IssuesWrite),
     ("list_issue_labels", Scope::IssuesRead),
@@ -1121,7 +1103,6 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("edit_comment", Scope::IssuesWrite),
     ("delete_comment", Scope::IssuesWrite),
     ("import_issue", Scope::IssuesWrite),
-    ("apply_plan", Scope::IssuesWrite),
     // Pull requests.
     ("list_pull_requests", Scope::PullRequestsRead),
     ("get_pull_request", Scope::PullRequestsRead),
@@ -1139,20 +1120,6 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("merge_pull_request", Scope::PullRequestsWrite),
     ("request_reviewers", Scope::PullRequestsWrite),
     ("remove_requested_reviewers", Scope::PullRequestsWrite),
-    // g1t's agents.
-    ("assign_issue", Scope::AgentsRun),
-    ("delegate", Scope::AgentsRun),
-    ("plan_work", Scope::AgentsRun),
-    ("message_agent", Scope::AgentsRun),
-    ("answer_message", Scope::AgentsRun),
-    // A workspace agent's own computer: waking it spends the workspace's
-    // money, so the same scope covers reading and managing it.
-    ("get_agent_computer", Scope::AgentsRun),
-    ("wake_agent_computer", Scope::AgentsRun),
-    ("sleep_agent_computer", Scope::AgentsRun),
-    ("reset_agent_computer", Scope::AgentsRun),
-    ("list_agent_computer_commands", Scope::AgentsRun),
-    ("take_messages", Scope::AgentsRun),
     // Workflows.
     ("list_workflows", Scope::WorkflowsRead),
     ("list_workflow_runs", Scope::WorkflowsRead),
@@ -1244,10 +1211,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_token_requests", Scope::AccessRead),
     ("review_token_request", Scope::AccessAdmin),
     ("revoke_member_token", Scope::AccessAdmin),
-    // Memory and the context hub.
+    // Memory.
     ("recall", Scope::MemoryRead),
-    ("search_context", Scope::MemoryRead),
-    ("get_entity", Scope::MemoryRead),
     ("get_context", Scope::MemoryRead),
     ("remember", Scope::MemoryWrite),
     // Who has access.
@@ -1315,9 +1280,6 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("restore_package", Scope::PackagesDelete),
     ("delete_package_version", Scope::PackagesDelete),
     ("restore_package_version", Scope::PackagesDelete),
-    // The AI Gateway. Sending a request to a model needs `models:write`,
-    // checked by the model proxy at models.g1t.sh, not here.
-    ("list_gateway_requests", Scope::ModelsRead),
     // Artifacts mode's docs, slides, designs and dashboards (the `artifact`
     // MCP tool). Reading takes artifacts:read, making and changing them
     // artifacts:write, and sharing them or deleting them for good
@@ -1355,24 +1317,10 @@ pub fn scope_for(operation: &str) -> Option<Scope> {
 }
 
 /// What a token needs for `operation` with this input beyond its own
-/// scope: starting agents from an operation that can, and making a
+/// scope: changing who has access, rerunning a workflow, and making a
 /// repository public or private.
 pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
     let mut extra = Vec::new();
-    let assigns = input["assign"].as_bool() == Some(true)
-        || input["agent"].as_bool() == Some(true)
-        || input["assign_agent"].as_bool() == Some(true);
-    if assigns && matches!(operation, "apply_plan" | "import_issue" | "create_issue") {
-        extra.push(Scope::AgentsRun);
-    }
-    // Fixing an alert opens an issue and puts g1t on it.
-    if operation == "fix_security_alert" {
-        extra.extend([Scope::IssuesWrite, Scope::AgentsRun]);
-    }
-    // Opening the issue an agent is put on.
-    if operation == "delegate" {
-        extra.push(Scope::IssuesWrite);
-    }
     // A workspace's base permission is who has access.
     if operation == "update_workspace" && input.get("base_permission").is_some_and(|v| !v.is_null()) {
         extra.push(Scope::AccessAdmin);
@@ -1570,7 +1518,7 @@ mod tests {
         let scopes = oauth_default();
         assert!(scopes.contains(&Scope::IssuesWrite));
         assert!(scopes.contains(&Scope::PullRequestsWrite));
-        assert!(scopes.contains(&Scope::AgentsRun));
+        assert!(!scopes.contains(&Scope::AgentsRun));
         assert!(scopes.iter().all(|scope| !scope.dangerous()), "{scopes:?}");
         for read in Scope::ALL.into_iter().filter(|scope| scope.level() == Level::Read && scope.offered()) {
             // Every read offered but the machines work runs on, and chat.
@@ -1581,33 +1529,37 @@ mod tests {
     }
 
     #[test]
+    fn retired_scopes_parse_but_are_never_granted() {
+        // Stored tokens and OAuth grants that hold them still read.
+        for text in ["agents:run", "models:read", "models:write"] {
+            let scope = Scope::parse(text).unwrap();
+            assert!(scope.resource().retired() && !scope.offered(), "{text}");
+            let back: Scope = serde_json::from_value(json!(text)).unwrap();
+            assert_eq!(back, scope);
+        }
+        // But nothing hands them out, and asking for them gets the rest.
+        assert_eq!(parse_scopes("agents:run issues:read models:write"), vec![Scope::IssuesRead]);
+        assert!(!offered_scopes().iter().any(|scope| scope.resource().retired()));
+        assert!(!everything().iter().any(|scope| scope.resource().retired()));
+        for preset in Preset::ALL {
+            let scopes = preset.scopes().unwrap_or_default();
+            assert!(!scopes.iter().any(|scope| scope.resource().retired()), "{}", preset.as_str());
+        }
+        // And no operation needs them.
+        assert!(!OPERATIONS.iter().any(|(_, scope)| scope.resource().retired()));
+    }
+
+    #[test]
     fn billing_is_read_by_presets_and_changed_by_none_but_full_access() {
         assert!(Preset::ReadOnly.scopes().unwrap().contains(&Scope::BillingRead));
         for preset in [Preset::ReadOnly, Preset::Agent, Preset::Ci] {
             assert!(!preset.scopes().unwrap().contains(&Scope::BillingWrite), "{}", preset.as_str());
         }
         assert_eq!(scope_for("set_budget"), Some(Scope::BillingWrite));
-        assert_eq!(scope_for("buy_ai_credit"), Some(Scope::BillingWrite));
         assert_eq!(scope_for("get_usage"), Some(Scope::BillingRead));
         let reader = token(&[Scope::BillingRead]);
         assert!(decide(&reader, "list_invoices", &json!({})).allowed);
         assert!(decide(&reader, "set_budget", &json!({})).reason.unwrap().contains("billing:write"));
-    }
-
-    #[test]
-    fn the_ai_gateway_spends_only_with_models_write_which_no_preset_gives() {
-        // Reading the log is a read like any other.
-        assert_eq!(scope_for("list_gateway_requests"), Some(Scope::ModelsRead));
-        assert!(Preset::ReadOnly.scopes().unwrap().contains(&Scope::ModelsRead));
-        // Sending requests spends the workspace's AI credit: chosen on purpose.
-        for preset in [Preset::ReadOnly, Preset::Agent, Preset::Ci] {
-            assert!(!preset.scopes().unwrap().contains(&Scope::ModelsWrite), "{}", preset.as_str());
-        }
-        assert!(Scope::ModelsWrite.includes(Scope::ModelsRead));
-        assert!(!Scope::ModelsWrite.dangerous());
-        assert!(token(&[Scope::ModelsWrite]).allows(Scope::ModelsWrite));
-        assert!(!token(&[Scope::BillingWrite]).allows(Scope::ModelsWrite));
-        assert!(TokenAccess::full().allows(Scope::ModelsWrite));
     }
 
     #[test]
@@ -1633,7 +1585,7 @@ mod tests {
         assert_eq!(Resource::Artifacts.group(), ResourceGroup::Workspace);
         let asked = std::collections::BTreeMap::from([("artifacts".to_owned(), "write".to_owned())]);
         assert_eq!(resolve_permissions(&asked, true), Ok(vec![Scope::ArtifactsWrite]));
-        assert_eq!(offered_scopes().len(), Scope::ALL.len());
+        assert!(offered_scopes().contains(&Scope::ArtifactsAdmin));
         // Sharing and deleting for good need admin; editing needs write.
         assert_eq!(scope_for("set_workspace_artifact_access"), Some(Scope::ArtifactsAdmin));
         assert_eq!(scope_for("purge_workspace_artifact"), Some(Scope::ArtifactsAdmin));
@@ -1798,7 +1750,8 @@ mod tests {
         assert!(resolve_permissions(&one("workflow_files", "read"), true).is_err(), "workflow files are written only");
         assert!(resolve_permissions(&one("notifications", "read"), false).unwrap_err().contains("account"));
         assert_eq!(resolve_permissions(&one("notifications", "read"), true).unwrap(), vec![Scope::NotificationsRead]);
-        assert_eq!(resolve_permissions(&one("agents", "run"), false).unwrap(), vec![Scope::AgentsRun]);
+        assert!(resolve_permissions(&one("agents", "run"), false).unwrap_err().contains("agents"), "retired");
+        assert!(resolve_permissions(&one("models", "read"), false).is_err(), "retired");
         for resource in Resource::ALL {
             assert_eq!(Resource::parse(resource.as_str()), Some(resource));
             assert!(!resource.scopes().is_empty());
@@ -1827,11 +1780,7 @@ mod tests {
     }
 
     #[test]
-    fn starting_agents_from_another_operation_needs_agents_run() {
-        let writer = token(&[Scope::IssuesWrite]);
-        assert!(decide(&writer, "apply_plan", &json!({})).allowed);
-        let refused = decide(&writer, "apply_plan", &json!({ "assign": true }));
-        assert!(refused.reason.unwrap().contains("agents:run"));
+    fn making_a_repository_public_or_private_needs_repo_admin() {
         let maintainer = token(&[Scope::RepoWrite]);
         assert!(decide(&maintainer, "update_repo", &json!({ "description": "x" })).allowed);
         assert!(!decide(&maintainer, "update_repo", &json!({ "private": true })).allowed);
@@ -1846,14 +1795,6 @@ mod tests {
         let both = token(&[Scope::WorkspaceAdmin, Scope::AccessAdmin]);
         assert!(decide(&both, "update_workspace", &json!({ "base_permission": "read" })).allowed);
         assert!(!decide(&token(&[Scope::WorkspaceRead]), "update_workspace", &json!({ "name": "Acme" })).allowed);
-    }
-
-    #[test]
-    fn delegating_needs_both_agents_and_issues() {
-        let agents = token(&[Scope::AgentsRun]);
-        assert!(decide(&agents, "delegate", &json!({})).reason.unwrap().contains("issues:write"));
-        let both = token(&[Scope::AgentsRun, Scope::IssuesWrite]);
-        assert!(decide(&both, "delegate", &json!({})).allowed);
     }
 
     #[test]
@@ -1944,11 +1885,12 @@ mod tests {
                 .filter_map(|line| line.split_once("scope: \"").and_then(|(_, rest)| rest.split_once('"')).map(|(scope, _)| scope.to_owned()))
                 .collect()
         };
-        // Offered scopes in `SCOPES`, the rest in `UPCOMING_SCOPES`.
-        let offered: Vec<String> = Scope::ALL.iter().filter(|scope| scope.offered()).map(|scope| scope.as_str().to_owned()).collect();
-        let upcoming: Vec<String> = Scope::ALL.iter().filter(|scope| !scope.offered()).map(|scope| scope.as_str().to_owned()).collect();
-        assert_eq!(names("export const SCOPES = ["), offered);
-        assert_eq!(names("export const UPCOMING_SCOPES"), upcoming);
+        // Offered scopes in `SCOPES`, retired ones in `RETIRED_SCOPES`, the
+        // rest in `UPCOMING_SCOPES`.
+        let listed = |keep: fn(&Scope) -> bool| -> Vec<String> { Scope::ALL.iter().filter(|scope| keep(scope)).map(|scope| scope.as_str().to_owned()).collect() };
+        assert_eq!(names("export const SCOPES = ["), listed(|scope| scope.offered()));
+        assert_eq!(names("export const UPCOMING_SCOPES"), listed(|scope| !scope.offered() && !scope.resource().retired()));
+        assert_eq!(names("export const RETIRED_SCOPES"), listed(|scope| scope.resource().retired()));
         let operations: Vec<(String, String)> = section("export const OPERATION_SCOPES = [")
             .lines()
             .filter_map(|line| {
@@ -1975,8 +1917,14 @@ mod tests {
             assert_eq!(mirrored, expected, "{}", preset.as_str());
         }
         // Each resource with its group, in the same order: offered ones in
-        // `SCOPE_RESOURCES`, the rest in `UPCOMING_RESOURCES`.
-        for (table, offered) in [("export const SCOPE_RESOURCES", true), ("export const UPCOMING_RESOURCES", false)] {
+        // `SCOPE_RESOURCES`, retired ones in `RETIRED_RESOURCES`, the rest in
+        // `UPCOMING_RESOURCES`.
+        let tables: [(&str, fn(Resource) -> bool); 3] = [
+            ("export const SCOPE_RESOURCES", |resource| resource.offered()),
+            ("export const UPCOMING_RESOURCES", |resource| !resource.offered() && !resource.retired()),
+            ("export const RETIRED_RESOURCES", |resource| resource.retired()),
+        ];
+        for (table, keep) in tables {
             let resources = ts
                 .split_once(table)
                 .and_then(|(_, rest)| rest.split_once("
@@ -1984,7 +1932,7 @@ mod tests {
                 .map(|(table, _)| table)
                 .unwrap_or_else(|| panic!("{table} in scopes.ts"));
             let rows: Vec<&str> = resources.lines().filter(|line| line.trim_start().starts_with("{ resource:")).collect();
-            let expected: Vec<Resource> = Resource::ALL.into_iter().filter(|resource| resource.offered() == offered).collect();
+            let expected: Vec<Resource> = Resource::ALL.into_iter().filter(|resource| keep(*resource)).collect();
             assert_eq!(rows.len(), expected.len(), "{table}");
             for (row, resource) in rows.iter().zip(expected) {
                 assert!(row.contains(&format!("resource: \"{}\"", resource.as_str())), "{row}");

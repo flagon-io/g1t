@@ -82,8 +82,6 @@ pub(crate) struct TeamRow {
     pub members_count: u32,
     pub repos_count: u32,
     pub child_teams_count: u32,
-    #[serde(default)]
-    pub agents_count: u32,
     /// The viewer's role in it, if they are in it.
     #[serde(default)]
     pub viewer_role: Option<String>,
@@ -102,9 +100,6 @@ pub(crate) struct TeamRow {
     pub channel_id: Option<String>,
     #[serde(default)]
     pub channel_name: Option<String>,
-    /// D1 hands numbers over as doubles.
-    #[serde(default)]
-    pub budget_micros: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -138,14 +133,6 @@ pub(crate) fn channel_of(id: Option<&str>, name: Option<&str>) -> Option<TeamCha
         _ => None,
     }
 }
-
-/// A stored budget: a whole positive number of micros, or none.
-pub(crate) fn budget_of(micros: Option<f64>) -> Option<i64> {
-    micros.filter(|m| m.is_finite() && *m > 0.0).map(|m| m as i64)
-}
-
-/// The most a team budget may be: a million dollars a month.
-pub const MAX_TEAM_BUDGET_MICROS: i64 = 1_000_000 * 1_000_000;
 
 impl TeamRow {
     pub fn visibility(&self) -> TeamVisibility {
@@ -194,10 +181,8 @@ impl TeamRow {
             members_count: self.members_count,
             repos_count: self.repos_count,
             child_teams_count: self.child_teams_count,
-            agents_count: self.agents_count,
             lead: self.lead(),
             channel: channel_of(self.channel_id.as_deref(), self.channel_name.as_deref()),
-            budget_micros: budget_of(self.budget_micros),
             viewer_role,
             can_manage: may_manage(owner, viewer_role),
             created_at: self.created_at.clone(),
@@ -225,9 +210,8 @@ const TEAM_COLUMNS: &str = "t.id, t.workspace_id, w.slug AS workspace, t.slug, t
   (SELECT count(*) FROM repo_grants g WHERE g.principal_kind = 'team' AND g.principal_id = t.id) AS repos_count,
   (SELECT count(*) FROM teams c WHERE c.parent_id = t.id) AS child_teams_count,
   (SELECT role FROM team_members me WHERE me.team_id = t.id AND me.user_id = ?1) AS viewer_role,
-  0 AS agents_count,
   t.lead_kind, t.lead_id, lu.username AS lead_username, lu.display_name AS lead_name, lu.avatar AS lead_avatar,
-  t.channel_id, t.channel_name, t.budget_micros,
+  t.channel_id, t.channel_name,
   t.created_at, t.updated_at
   FROM teams t
   JOIN workspaces w ON w.id = t.workspace_id AND w.deleted_at IS NULL
@@ -856,7 +840,7 @@ impl Identity {
                         }
                         ("user".into(), user_id.into())
                     }
-                    Some(LeadInput::Agent(_)) | None => {
+                    None => {
                         return Ok(Outcome::fail(FailureCode::Invalid, "A team's lead is a person on it: name them as @username."));
                     }
                 }
@@ -886,16 +870,6 @@ impl Identity {
                     set("channel_name", name.into(), &mut binds);
                 }
                 changes.push("channel");
-            }
-        }
-        if let Some(budget) = a.budget_micros {
-            if budget > MAX_TEAM_BUDGET_MICROS {
-                return Ok(Outcome::fail(FailureCode::Invalid, "A team budget can be at most $1,000,000 a month."));
-            }
-            let budget = (budget > 0).then_some(budget);
-            if budget != budget_of(row.budget_micros) {
-                set("budget_micros", budget.map_or(JsValue::NULL, |m| JsValue::from_f64(m as f64)), &mut binds);
-                changes.push("budget");
             }
         }
         if !changes.is_empty() {
@@ -1740,7 +1714,7 @@ mod tests {
     }
 
     #[test]
-    fn a_teams_lead_channel_and_budget_read_from_their_columns() {
+    fn a_teams_lead_and_channel_read_from_their_columns() {
         // An agent recorded as lead, from before, leads nothing.
         assert_eq!(lead_of(Some("agent"), Some("agt_1"), None, None, None), None);
         assert_eq!(
@@ -1752,9 +1726,6 @@ mod tests {
         assert_eq!(lead_of(None, None, None, None, None), None);
         assert_eq!(channel_of(Some("chn_1"), Some("sales")).map(|c| c.name), Some("sales".into()));
         assert_eq!(channel_of(Some(""), Some("sales")), None);
-        assert_eq!(budget_of(Some(150_000_000.0)), Some(150_000_000));
-        assert_eq!(budget_of(Some(0.0)), None);
-        assert_eq!(budget_of(None), None);
     }
 
     #[test]

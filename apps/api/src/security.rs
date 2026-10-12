@@ -2,8 +2,7 @@
 //! each secret is, push protection bypasses and their review, validity
 //! checks, custom patterns), code scanning (alerts, analyses, SARIF
 //! uploads), vulnerability alerts, the dependency graph with its SBOM and
-//! dependency review, "Fix with g1t", settings, and the workspace's
-//! overview.
+//! dependency review, settings, and the workspace's overview.
 //!
 //! The addresses follow the common ones (`/repos/{owner}/{name}/secret-
 //! scanning/alerts`, `/code-scanning/sarifs`, `/dependency-graph/sbom`),
@@ -1242,11 +1241,8 @@ mod tests {
         }
         assert_eq!(scope_for("get_sbom"), Some(Scope::SecurityRead));
         assert_eq!(scope_for("upload_sarif"), Some(Scope::SecurityWrite));
-        // Fixing an alert also opens an issue and spends agent time.
-        let needed = g1t_contracts::scopes::needed("fix_security_alert", &json!({}));
-        assert_eq!(needed, [Scope::SecurityWrite, Scope::IssuesWrite, Scope::AgentsRun]);
-        // No agent decides about security.
-        for name in ["bypass_push_protection", "review_bypass_request", "update_security_settings", "fix_security_alert"] {
+        // No run decides about security.
+        for name in ["bypass_push_protection", "review_bypass_request", "update_security_settings"] {
             assert!(g1t_contracts::credentials::NEVER.contains(&name), "{name}");
         }
     }

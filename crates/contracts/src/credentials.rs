@@ -1,11 +1,18 @@
 //! Run credentials: the least-privilege tokens a sandbox works with.
 //!
-//! Every sandbox run gets its own tokens, bound to the run, its repository
-//! (and the pull request's fork), what that kind of run needs to do, and an
-//! expiry no later than the run's timeout. Each carries a composite
-//! identity: an agent acting on behalf of the person who started the work.
-//! What it may do is the intersection of the two: the run's scope, and what
-//! that person may do right now.
+//! Every sandbox run (checks, the merge queue, a merge check, a deployment,
+//! a security update's bump) gets its own tokens, bound to the run, its
+//! repository, what that kind of run needs to do, and an expiry no later
+//! than the run's timeout. Each carries a composite identity: g1t acting on
+//! behalf of the person who started the work. What it may do is the
+//! intersection of the two: the run's scope, and what that person may do
+//! right now.
+//!
+//! g1t's retired hosted agents had run credentials too (`implement`,
+//! `revise`, `review`, `answer`, `update`, `plan`). Those kinds still parse,
+//! so stored tokens and the history they wrote read as before, but no
+//! credential is made for them and they grant nothing
+//! ([`RunCredentialKind::retired`]).
 //!
 //! The policy lives here, as pure functions, so that identity (which mints
 //! the tokens), the API (which serves REST and MCP) and repos (which serves
@@ -18,16 +25,23 @@ use crate::repos::RepoPath;
 use crate::access::{BasePermission, RepoGrant, RepoRole};
 use crate::{Membership, PrincipalKind, Role, User};
 
-/// What a run does, as far as its credentials are concerned. The same names
-/// as [`crate::agents::RunKind`], plus `deploy`, a build of one commit.
+/// What a run does, as far as its credentials are concerned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunCredentialKind {
+    /// Retired with g1t's hosted agents, as are `revise`, `review`,
+    /// `answer`, `update` and `plan`: kept so stored tokens parse; never
+    /// issued, and they grant nothing.
     Implement,
+    /// Retired: see [`RunCredentialKind::Implement`].
     Revise,
+    /// Retired: see [`RunCredentialKind::Implement`].
     Review,
+    /// Retired: see [`RunCredentialKind::Implement`].
     Answer,
+    /// Retired: see [`RunCredentialKind::Implement`].
     Update,
+    /// Retired: see [`RunCredentialKind::Implement`].
     Plan,
     Checks,
     Queue,
@@ -69,15 +83,18 @@ impl RunCredentialKind {
         }
     }
 
-    /// Whether the run works on one pull request, whose session and
-    /// readiness it reports.
-    fn works_on_a_pull(self) -> bool {
+    /// Whether this kind was one of g1t's retired hosted agents' runs: it
+    /// still parses, but no credential is made for it and it grants
+    /// nothing.
+    pub fn retired(self) -> bool {
         matches!(
             self,
             RunCredentialKind::Implement
                 | RunCredentialKind::Revise
+                | RunCredentialKind::Review
                 | RunCredentialKind::Answer
                 | RunCredentialKind::Update
+                | RunCredentialKind::Plan
         )
     }
 }
@@ -86,11 +103,12 @@ impl RunCredentialKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialUse {
-    /// g1t's runner: cloning, pushing the result, recording the session.
-    /// It acts as the person downstream, so that what it pushes and records
-    /// is theirs, within the run's scope.
+    /// g1t's runner: cloning, fetching and pushing what the run needs. It
+    /// acts as the person downstream, so that what it pushes is theirs,
+    /// within the run's scope.
     Runner,
-    /// The agent's own tools, over MCP. It acts as the agent.
+    /// A retired hosted agent's own tools, over MCP. Kept so stored tokens
+    /// parse; never issued.
     Tools,
 }
 
@@ -113,21 +131,21 @@ pub struct GitGrant {
     pub branch: Option<String>,
 }
 
-/// What binds an agent's token to one run. Absent on agent tokens made
-/// before run credentials, which keep working for the API only.
+/// What binds a token to one run. Absent on tokens g1t's retired hosted
+/// agents were issued before run credentials.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunBinding {
     pub kind: RunCredentialKind,
     #[serde(rename = "use")]
     pub usage: CredentialUse,
-    /// The agent run, once the sandbox has recorded it.
+    /// The run, once the sandbox has recorded it.
     #[serde(default)]
     pub run_id: Option<String>,
     /// The pull request the run works on, for the kinds that work on one.
     #[serde(default)]
     pub number: Option<u32>,
-    /// The agent's name, such as `g1t`.
+    /// Who acts, as the audit log names it: `g1t`.
     pub agent: String,
     /// Repositories it may clone and fetch, besides those it may push to.
     #[serde(default)]
@@ -135,7 +153,7 @@ pub struct RunBinding {
     /// Where it may push.
     #[serde(default)]
     pub push: Vec<GitGrant>,
-    /// g1t's own run (a security update, an agent g1t put on one): the
+    /// g1t's own run (a security update): the
     /// credential belongs to the workspace, and acts on behalf of g1t
     /// (`system::ID`), so what it does is g1t's, and the pull request g1t
     /// opened, and its working copy, are its own.
@@ -159,7 +177,7 @@ impl From<&User> for Principal {
     }
 }
 
-/// Set on a [`User`] resolved from an agent's token: the composite
+/// Set on a [`User`] resolved from a run credential: the composite
 /// identity, "g1t on behalf of syntaqx", and what it may do.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -177,10 +195,11 @@ impl Acting {
     }
 }
 
-/// `create_run_credential`: a token for one sandbox run. It acts as
-/// `agent` on behalf of `on_behalf_of`, can do only what `kind` and `usage`
-/// allow in `repo`, and expires after `ttl_seconds`, which should be the
-/// run's timeout. Returns `CreatedAccessToken`.
+/// `create_run_credential`: a token for one sandbox run. It acts as g1t on
+/// behalf of `on_behalf_of`, can do only what `kind` and `usage` allow in
+/// `repo`, and expires after `ttl_seconds`, which should be the run's
+/// timeout. A [retired](RunCredentialKind::retired) kind is refused.
+/// Returns `CreatedAccessToken`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunCredentialArgs {
@@ -196,13 +215,10 @@ pub struct CreateRunCredentialArgs {
     #[serde(default)]
     pub push: Vec<GitGrant>,
     pub ttl_seconds: u64,
-    /// Defaults to `g1t`.
-    #[serde(default)]
-    pub agent: Option<String>,
 }
 
 /// `bind_run_credentials`: ties tokens, named by the SHA-256 of their
-/// text in hex, to the agent run their sandbox recorded. Returns how many.
+/// text in hex, to the run their sandbox recorded. Returns how many.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BindRunCredentialsArgs {
@@ -229,7 +245,6 @@ pub const READ_OPERATIONS: &[&str] = &[
     "whoami",
     "get_usage",
     "get_budget",
-    "get_ai_credit",
     "list_invoices",
     "get_billing_details",
     "list_repos",
@@ -255,7 +270,6 @@ pub const READ_OPERATIONS: &[&str] = &[
     "recall",
     "list_issues",
     "get_issue",
-    "get_plan",
     "list_labels",
     "list_issue_labels",
     "list_milestones",
@@ -266,8 +280,6 @@ pub const READ_OPERATIONS: &[&str] = &[
     "get_pull_request_changes",
     "list_events",
     "get_context",
-    "search_context",
-    "get_entity",
     "search",
     "list_workflows",
     "list_workflow_runs",
@@ -284,7 +296,6 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_check_suites_for_ref",
     "get_check_suite",
     "list_integrations",
-    "get_model_routes",
     "list_webhooks",
     "list_webhook_deliveries",
     "list_actions_secrets",
@@ -318,14 +329,12 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_pinned_projects",
 ];
 
-/// What no agent's token may ever do, whatever its scope says: workspaces,
-/// repositories' settings, members, tokens, billing, integrations,
-/// webhooks, secrets, workflows' controls, merging, and putting more agents
-/// to work.
+/// What no run credential may ever do, whatever its scope says:
+/// workspaces, repositories' settings, members, tokens, billing,
+/// integrations, webhooks, secrets, workflows' controls and merging.
 pub const NEVER: &[&str] = &[
-    // Billing is people's: agents never spend or change it.
+    // Billing is people's: runs never spend or change it.
     "set_budget",
-    "buy_ai_credit",
     "create_workspace",
     "delete_workspace",
     "update_workspace",
@@ -351,17 +360,12 @@ pub const NEVER: &[&str] = &[
     "delete_branch",
     "update_repo_settings",
     "merge_pull_request",
-    "assign_issue",
-    "plan_work",
-    "apply_plan",
     "import_issue",
     "list_integrations",
     "connect_integration",
     "update_integration",
     "disconnect_integration",
     "test_integration",
-    "get_model_routes",
-    "set_model_routes",
     "list_webhooks",
     "create_webhook",
     "update_webhook",
@@ -429,9 +433,8 @@ pub const NEVER: &[&str] = &[
     "dismiss_security_alert",
     "reopen_security_alert",
     // Nor any other decision about security: closing or reopening an
-    // alert, pushing past push protection or deciding who may, changing
-    // what is looked for or when checks fail, or putting more agents to
-    // work. An agent fixes what it finds in its own pull request.
+    // alert, pushing past push protection or deciding who may, or changing
+    // what is looked for or when checks fail.
     "update_secret_scanning_alert",
     "bypass_push_protection",
     "review_bypass_request",
@@ -440,10 +443,9 @@ pub const NEVER: &[&str] = &[
     "delete_custom_pattern",
     "update_code_scanning_alert",
     "update_vulnerability_alert",
-    "fix_security_alert",
     "update_security_settings",
     "update_workspace_security_settings",
-    // A person's own inbox: g1t's agents act as g1t, which has none.
+    // A person's own inbox: a run acts as g1t, which has none.
     "list_notifications",
     "get_notification_thread",
     "mark_notifications_read",
@@ -476,46 +478,9 @@ pub const NEVER: &[&str] = &[
     "restore_package",
     "delete_package_version",
     "restore_package_version",
-    // Sharing an artifact and deleting one for good are for people: an
-    // agent shares only through the agents service, with the people
-    // already in its conversation.
+    // Sharing an artifact and deleting one for good are for people.
     "set_workspace_artifact_access",
     "purge_workspace_artifact",
-];
-
-/// Reading what an agent needs to know about its repository.
-const TOOLS_READ: &[&str] = &[
-    "get_repo",
-    "list_issues",
-    "get_issue",
-    "list_labels",
-    "list_issue_labels",
-    "list_milestones",
-    "get_milestone",
-    "list_pull_requests",
-    "get_pull_request",
-    "get_pull_request_changes",
-    "read_session",
-    "get_merge_queue",
-    "list_events",
-    "recall",
-    "search_context",
-    "get_entity",
-    "search",
-    "list_workflows",
-    "list_workflow_runs",
-    "get_workflow_run",
-    "get_job_logs",
-    "get_pending_deployments",
-    "get_workflow_permissions",
-    "get_fork_pr_approval",
-    "list_commit_statuses",
-    "get_combined_status",
-    "list_check_runs_for_ref",
-    "get_check_run",
-    "list_check_run_annotations",
-    "list_check_suites_for_ref",
-    "get_check_suite",
 ];
 
 pub fn is_read(operation: &str) -> bool {
@@ -523,49 +488,13 @@ pub fn is_read(operation: &str) -> bool {
 }
 
 /// The API and MCP operations a run of `kind` may use with a credential
-/// for `usage`. Git is separate: see [`decide_git`].
+/// for `usage`. Git is separate: see [`decide_git`]. None today: every run
+/// still issued works through git alone, and a
+/// [retired](RunCredentialKind::retired) kind grants nothing. A stored
+/// token keeps the operations it was made with until it expires.
 pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'static str> {
-    use RunCredentialKind as K;
-    let mut operations: Vec<&'static str> = Vec::new();
-    match usage {
-        CredentialUse::Runner => {
-            if kind.works_on_a_pull() {
-                operations.extend(["get_repo", "get_pull_request", "record_session"]);
-            }
-            if kind == K::Implement {
-                operations.push("mark_pull_request_ready");
-            }
-        }
-        CredentialUse::Tools => match kind {
-            K::Implement | K::Revise | K::Answer => {
-                operations.extend(TOOLS_READ.iter().copied());
-                operations.extend([
-                    "create_issue",
-                    "add_comment",
-                    "take_messages",
-                    "remember",
-                    "message_agent",
-                    "answer_message",
-                    "get_context",
-                    "customize_bundle",
-                ]);
-            }
-            K::Review => {
-                operations.extend(TOOLS_READ.iter().copied());
-                operations.extend(["add_comment", "review_pull_request", "get_context", "customize_bundle"]);
-            }
-            K::Plan => {
-                operations.extend(TOOLS_READ.iter().copied());
-                operations.extend(["create_issue", "get_context", "customize_bundle"]);
-            }
-            K::Update => {
-                operations.extend(TOOLS_READ.iter().copied());
-                operations.push("customize_bundle");
-            }
-            K::Checks | K::Queue | K::Mergecheck | K::Deploy | K::Bump => {}
-        },
-    }
-    operations
+    let _ = (kind, usage);
+    Vec::new()
 }
 
 /// What a run's credential may do, in the scope vocabulary that access
@@ -578,16 +507,9 @@ pub fn run_scopes(kind: RunCredentialKind, usage: CredentialUse) -> Vec<crate::s
         .into_iter()
         .filter_map(scope_for)
         .collect();
-    if usage == CredentialUse::Runner {
+    if usage == CredentialUse::Runner && !kind.retired() {
         scopes.push(Scope::CodeRead);
-        if matches!(
-            kind,
-            RunCredentialKind::Implement
-                | RunCredentialKind::Revise
-                | RunCredentialKind::Answer
-                | RunCredentialKind::Update
-                | RunCredentialKind::Bump
-        ) {
+        if kind == RunCredentialKind::Bump {
             scopes.push(Scope::CodeWrite);
         }
     }
@@ -640,7 +562,7 @@ fn scope_rule(scope: &AgentScope) -> String {
     }
 }
 
-/// Whether `user`, resolved from an agent's token with `scope`, may use
+/// Whether `user`, resolved from a run credential with `scope`, may use
 /// `operation`. `repo` is the repository the call names, if any, and
 /// `needs_repo` whether the operation is about one; `number` the issue or
 /// pull request it names.
@@ -652,7 +574,7 @@ pub fn decide_operation(
     needs_repo: bool,
     number: Option<u32>,
 ) -> Decision {
-    let who = "A g1t agent's token";
+    let who = "A run's token";
     if NEVER.contains(&operation) {
         return Decision::deny(
             "never",
@@ -684,7 +606,7 @@ pub fn decide_operation(
         return Decision::deny(
             "on-behalf-of:membership",
             format!(
-                "The person this agent works for is no longer a member of {}.",
+                "The person this run works for is no longer a member of {}.",
                 scope.repo.namespace
             ),
         );
@@ -716,7 +638,7 @@ pub fn decide_git(scope: &AgentScope, repo: &RepoPath, write: bool) -> Decision 
     else {
         return Decision::deny(
             "git:not-a-run",
-            "A g1t agent's tools token cannot be used with git.",
+            "A tools token cannot be used with git.",
         );
     };
     let pushable = run.push.iter().any(|grant| same_repo(&grant.repo, repo));
@@ -892,43 +814,34 @@ mod tests {
                 assert!(scopes.iter().all(|scope| !scope.dangerous()), "{kind:?} {usage:?}: {scopes:?}");
             }
         }
-        let review = run_scopes(RunCredentialKind::Review, CredentialUse::Tools);
-        assert!(review.contains(&crate::scopes::Scope::PullRequestsWrite));
-        assert!(!review.contains(&crate::scopes::Scope::CodeWrite));
+        use crate::scopes::Scope;
+        let bump = run_scopes(RunCredentialKind::Bump, CredentialUse::Runner);
+        assert!(bump.len() == 2 && bump.contains(&Scope::CodeRead) && bump.contains(&Scope::CodeWrite));
+        assert_eq!(run_scopes(RunCredentialKind::Checks, CredentialUse::Runner), [Scope::CodeRead]);
     }
 
+    /// The hosted agents' kinds still parse, so stored tokens read, but
+    /// they grant nothing: no operations, no scopes.
     #[test]
-    fn agents_can_search_the_context_hub() {
-        for kind in [RunCredentialKind::Implement, RunCredentialKind::Review, RunCredentialKind::Plan] {
-            let tools = operations_for(kind, CredentialUse::Tools);
-            assert!(tools.contains(&"search_context") && tools.contains(&"get_entity"));
+    fn retired_kinds_parse_and_grant_nothing() {
+        for kind in RunCredentialKind::ALL {
+            let parsed: RunCredentialKind = serde_json::from_value(serde_json::json!(kind.as_str())).unwrap();
+            assert_eq!(parsed, kind);
+            for usage in [CredentialUse::Runner, CredentialUse::Tools] {
+                assert!(operations_for(kind, usage).is_empty(), "{kind:?} {usage:?}");
+                if kind.retired() {
+                    assert!(run_scopes(kind, usage).is_empty(), "{kind:?} {usage:?}");
+                }
+            }
         }
-        assert!(is_read("search_context") && is_read("get_entity"));
+        let retired: Vec<&str> = RunCredentialKind::ALL.iter().filter(|kind| kind.retired()).map(|kind| kind.as_str()).collect();
+        assert_eq!(retired, ["implement", "revise", "review", "answer", "update", "plan"]);
     }
 
     #[test]
-    fn agents_can_search_all_of_g1t() {
-        // Site-wide search only reads: every run that reads its repository
-        // may use it, and nothing that never reads gets it.
+    fn site_wide_search_only_reads() {
         assert!(is_read("search"));
         assert!(!NEVER.contains(&"search"));
-        for kind in [
-            RunCredentialKind::Implement,
-            RunCredentialKind::Revise,
-            RunCredentialKind::Answer,
-            RunCredentialKind::Review,
-            RunCredentialKind::Plan,
-            RunCredentialKind::Update,
-        ] {
-            let tools = operations_for(kind, CredentialUse::Tools);
-            assert!(tools.contains(&"search"), "{kind:?} should search");
-            // The context hub's search stays its own tool beside it.
-            assert!(tools.contains(&"search_context"), "{kind:?} keeps search_context");
-        }
-        for kind in [RunCredentialKind::Checks, RunCredentialKind::Queue, RunCredentialKind::Mergecheck, RunCredentialKind::Deploy, RunCredentialKind::Bump] {
-            assert!(!operations_for(kind, CredentialUse::Tools).contains(&"search"));
-        }
-        assert!(!operations_for(RunCredentialKind::Implement, CredentialUse::Runner).contains(&"search"));
     }
 
     fn path(namespace: &str, name: &str) -> RepoPath {
@@ -938,13 +851,31 @@ mod tests {
         }
     }
 
+    /// What a token stored before the hosted agents were retired lists:
+    /// the operations it was made with, which it keeps until it expires.
+    fn stored_operations(kind: RunCredentialKind, usage: CredentialUse) -> Vec<String> {
+        use RunCredentialKind as K;
+        let names: Vec<&str> = match usage {
+            CredentialUse::Runner => match kind {
+                K::Implement => vec!["get_repo", "get_pull_request", "record_session", "mark_pull_request_ready"],
+                K::Revise | K::Answer | K::Update => vec!["get_repo", "get_pull_request", "record_session"],
+                _ => vec![],
+            },
+            CredentialUse::Tools => match kind {
+                K::Implement | K::Revise | K::Answer => vec!["get_issue", "get_pull_request", "create_issue", "add_comment", "remember"],
+                K::Review => vec!["get_issue", "get_pull_request", "add_comment", "review_pull_request"],
+                K::Plan => vec!["get_issue", "get_pull_request", "create_issue"],
+                K::Update => vec!["get_issue", "get_pull_request"],
+                _ => vec![],
+            },
+        };
+        names.into_iter().map(str::to_owned).collect()
+    }
+
     fn scope(kind: RunCredentialKind, usage: CredentialUse) -> AgentScope {
         AgentScope {
             repo: path("acme", "rocket"),
-            operations: operations_for(kind, usage)
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
+            operations: stored_operations(kind, usage),
             run: Some(RunBinding {
                 kind,
                 usage,
@@ -1013,53 +944,18 @@ mod tests {
     use CredentialUse::{Runner, Tools};
     use RunCredentialKind as K;
 
-    /// Which operations each kind of run may use through its tools: the
-    /// allowed and denied matrix.
+    /// A stored token may use only what it lists, and never what no run
+    /// may.
     #[test]
-    fn tools_matrix() {
-        let cases: [(&str, [bool; 6]); 12] = [
-            //                       implement revise answer review plan checks
-            ("get_issue", [true, true, true, true, true, false]),
-            ("create_issue", [true, true, true, false, true, false]),
-            ("add_comment", [true, true, true, true, false, false]),
-            (
-                "review_pull_request",
-                [false, false, false, true, false, false],
-            ),
-            ("remember", [true, true, true, false, false, false]),
-            ("take_messages", [true, true, true, false, false, false]),
-            ("record_session", [false, false, false, false, false, false]),
-            (
-                "merge_pull_request",
-                [false, false, false, false, false, false],
-            ),
-            (
-                "update_repo_settings",
-                [false, false, false, false, false, false],
-            ),
-            ("create_webhook", [false, false, false, false, false, false]),
-            (
-                "set_actions_secret",
-                [false, false, false, false, false, false],
-            ),
-            ("assign_issue", [false, false, false, false, false, false]),
-        ];
-        let kinds = [
-            K::Implement,
-            K::Revise,
-            K::Answer,
-            K::Review,
-            K::Plan,
-            K::Checks,
-        ];
-        for (operation, expected) in cases {
-            for (kind, allowed) in kinds.into_iter().zip(expected) {
-                assert_eq!(
-                    op(kind, Tools, operation).allowed,
-                    allowed,
-                    "{operation} by a {} run's tools",
-                    kind.as_str()
-                );
+    fn a_stored_token_uses_only_what_it_lists() {
+        assert!(op(K::Implement, Tools, "create_issue").allowed);
+        assert!(op(K::Review, Tools, "review_pull_request").allowed);
+        assert!(!op(K::Review, Tools, "create_issue").allowed);
+        assert!(!op(K::Plan, Tools, "add_comment").allowed);
+        assert!(!op(K::Checks, Tools, "get_issue").allowed);
+        for operation in ["record_session", "merge_pull_request", "update_repo_settings", "create_webhook", "set_actions_secret"] {
+            for kind in [K::Implement, K::Revise, K::Answer, K::Review, K::Plan, K::Checks] {
+                assert!(!op(kind, Tools, operation).allowed, "{operation} by a {} run's tools", kind.as_str());
             }
         }
     }

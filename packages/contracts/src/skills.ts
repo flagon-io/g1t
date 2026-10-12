@@ -1,4 +1,9 @@
 /**
+ * Deprecated: g1t no longer runs agents of its own. Kept only until
+ * apps/mobile drops its Customize screens, which import it; delete it
+ * afterwards.
+ */
+/**
  * Agent skills (docs.g1t.sh/guides/agent-skills/): how an agent does a kind
  * of work with the tools it already has. A skill never adds a tool or a
  * permission: it names the tools it uses, and an agent without one of them

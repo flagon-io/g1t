@@ -50,7 +50,7 @@ export type ConnectorCapability =
   | "Alerts into chat"
   | "Sets your status"
   | "Finds a time"
-  | "Runs models"
+  | "AI provider"
   | "Deploys"
   | "Syncs people";
 
@@ -126,7 +126,7 @@ const W: ConnectorScope[] = ["workspace"];
 const P: ConnectorScope[] = ["personal"];
 const BOTH: ConnectorScope[] = ["workspace", "personal"];
 
-/** A model provider: set up on the workspace's model providers page. */
+/** An AI provider: its credentials are kept on the workspace's AI providers page. */
 function model(provider: Provider, name: string, description: string, keywords: string[] = []): Connector {
   return {
     id: provider.replace(/_/g, "-"),
@@ -136,7 +136,7 @@ function model(provider: Provider, name: string, description: string, keywords: 
     scopes: W,
     status: "available",
     href: { workspace: `/:workspace/-/integrations/models?add=${provider}#add` },
-    capabilities: ["Runs models"],
+    capabilities: ["AI provider"],
     provider,
     keywords: ["model", "llm", ...keywords],
   };
@@ -344,31 +344,20 @@ export const CONNECTORS: Connector[] = [
   soon("kubernetes", "Kubernetes", "cloud", W, "Roll out to your own clusters from workflows, with each rollout's status on g1t.", ["Deploys"]),
 
   // AI models -------------------------------------------------------------
-  model("anthropic", "Anthropic", "Claude models on your own Anthropic account, billed there.", ["claude"]),
-  model("openai", "OpenAI", "GPT models on your own OpenAI account, billed there.", ["gpt"]),
-  model("gemini", "Google Gemini", "Gemini models on your own Google AI account, billed there.", ["google"]),
-  model("xai", "xAI", "Grok models on your own xAI account, billed there.", ["grok"]),
-  model("mistral", "Mistral", "Mistral models on your own account, billed there."),
-  model("deepseek", "DeepSeek", "DeepSeek models on your own account, billed there."),
-  model("azure_openai", "Azure OpenAI", "Your Azure OpenAI deployments, in your own subscription.", ["microsoft"]),
-  model("openrouter", "OpenRouter", "Many labs' models through one OpenRouter key."),
-  model("groq", "Groq", "Fast open models on your own Groq account."),
-  model("together", "Together AI", "Open models on your own Together AI account."),
-  model("fireworks", "Fireworks AI", "Open models on your own Fireworks AI account."),
-  model("cerebras", "Cerebras", "Fast open models on your own Cerebras account."),
-  model("anthropic_endpoint", "Anthropic-compatible endpoint", "Any server that speaks the Anthropic API, such as your own gateway.", ["self-hosted", "proxy"]),
+  model("anthropic", "Anthropic", "Keep your team's Anthropic API key, sealed, for the workspace.", ["claude"]),
+  model("openai", "OpenAI", "Keep your team's OpenAI API key, sealed, for the workspace.", ["gpt"]),
+  model("gemini", "Google Gemini", "Keep your team's Google AI Studio key, sealed, for the workspace.", ["google"]),
+  model("xai", "xAI", "Keep your team's xAI API key, sealed, for the workspace.", ["grok"]),
+  model("mistral", "Mistral", "Keep your team's Mistral API key, sealed, for the workspace."),
+  model("deepseek", "DeepSeek", "Keep your team's DeepSeek API key, sealed, for the workspace."),
+  model("azure_openai", "Azure OpenAI", "Keep your Azure OpenAI resource, deployment and key for the workspace.", ["microsoft"]),
+  model("openrouter", "OpenRouter", "Keep your team's OpenRouter key, sealed, for the workspace."),
+  model("groq", "Groq", "Keep your team's Groq API key, sealed, for the workspace."),
+  model("together", "Together AI", "Keep your team's Together AI key, sealed, for the workspace."),
+  model("fireworks", "Fireworks AI", "Keep your team's Fireworks AI key, sealed, for the workspace."),
+  model("cerebras", "Cerebras", "Keep your team's Cerebras API key, sealed, for the workspace."),
+  model("anthropic_endpoint", "Anthropic-compatible endpoint", "Any server that speaks the Anthropic API, such as your own gateway or proxy.", ["self-hosted", "proxy"]),
   model("openai_endpoint", "OpenAI-compatible endpoint", "Any server that speaks the OpenAI API, such as a model you host yourself.", ["self-hosted", "proxy", "ollama", "vllm"]),
-  {
-    id: "ai-gateway",
-    name: "AI Gateway",
-    category: "ai",
-    description: "Your own code's model requests through g1t, with the workspace's access tokens, logged and costed.",
-    scopes: W,
-    status: "available",
-    href: { workspace: "/:workspace/-/gateway" },
-    capabilities: ["Runs models"],
-    keywords: ["proxy", "api", "tokens"],
-  },
   {
     id: "mcp",
     name: "MCP clients",
@@ -380,8 +369,8 @@ export const CONNECTORS: Connector[] = [
     capabilities: ["Agents can act"],
     keywords: ["model context protocol", "agent", "applications", "oauth"],
   },
-  soon("amazon-bedrock", "Amazon Bedrock", "ai", W, "Models in your own AWS account, billed there.", ["Runs models"]),
-  soon("vertex-ai", "Google Vertex AI", "ai", W, "Models in your own Google Cloud project, billed there.", ["Runs models"]),
+  soon("amazon-bedrock", "Amazon Bedrock", "ai", W, "Models in your own AWS account, billed there.", ["AI provider"]),
+  soon("vertex-ai", "Google Vertex AI", "ai", W, "Models in your own Google Cloud project, billed there.", ["AI provider"]),
   mcp("hugging-face", "Hugging Face", "ai", "Agents search models, datasets, papers and Spaces on the Hub, through Hugging Face's MCP server.", { url: "https://huggingface.co/mcp", auth: "oauth" }, ["Agents can read"], ["models", "datasets", "hub"]),
   mcp("context7", "Context7", "docs", "Agents read current documentation for the libraries a codebase uses, through Context7's MCP server.", { url: "https://mcp.context7.com/mcp", auth: "none" }, ["Agents can read"], ["documentation", "libraries"]),
   mcp("microsoft-learn", "Microsoft Learn", "docs", "Agents search Microsoft's documentation for Azure, .NET and Windows, through Microsoft Learn's MCP server.", { url: "https://learn.microsoft.com/api/mcp", auth: "none" }, ["Agents can read"], ["azure", "dotnet", "documentation"]),

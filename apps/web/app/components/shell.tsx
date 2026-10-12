@@ -6,6 +6,7 @@ import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Membershi
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
+import { AskButton } from "./ask-composer";
 import { NotificationsBell } from "./inbox";
 import { desktopBridge, useDesktopApp, useTitleBarSearch } from "../lib/notify-client";
 import { PinButton } from "./pin-button";
@@ -1823,7 +1824,7 @@ function useSidebarKey(): string {
  * against it with a hairline between, which folds away with Ctrl B and is
  * a drawer below 1024px; and the page, flat against the sidebar and
  * filling the rest of the window, with its top bar across the top and a
- * line under it: the sidebar's toggle, where you are, search, the bell and
+ * line under it: the sidebar's toggle, where you are, search, Ask AI, the bell and
  * Create new. On a phone the rail is a bar along the bottom and the page
  * fills the window above it, flat as well. Only for someone signed in; without a workspace yet, there
  * is no rail. The rail and the sidebar are drawn from the sidebar kit
@@ -1996,7 +1997,7 @@ export function AppShell({
               </span>
             )}
             <Breadcrumbs pathname={pathname} missing={missing} repo={shell.repo} workspace={ws?.slug ?? null} />
-            {/* Search, then the bell and Create new: one height, one rhythm. */}
+            {/* Search, Ask AI, then the bell and Create new: one height, one rhythm. */}
             <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
               {/* With the sidebar open, search is at its top. */}
               {!titleSearch && (
@@ -2004,6 +2005,7 @@ export function AppShell({
                   <SearchButton place="bar" onClick={() => setPalette(true)} />
                 </span>
               )}
+              {ws && <AskButton slug={ws.slug} />}
               <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5 max-md:hidden" />
               {/* On a phone, Notifications is in the bottom bar. */}
               <span className="flex max-md:hidden">

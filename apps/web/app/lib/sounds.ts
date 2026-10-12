@@ -1,6 +1,6 @@
 /**
- * The sound layer: named cues (`message`, `direct`, `mention`,
- * `agent_done`, `sent`, and `call`, reserved), the person's sound settings
+ * The sound layer: named cues (`message`, `direct`, `mention`, `sent`,
+ * and `call`, reserved), the person's sound settings
  * as the page knows them, and a `SoundPort` that plays a cue.
  *
  * The default port is Web Audio: each cue of a set is rendered once from

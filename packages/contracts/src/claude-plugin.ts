@@ -1,4 +1,9 @@
 /**
+ * Deprecated: g1t no longer runs agents of its own. Kept only until
+ * apps/mobile drops its Customize screens, which import it; delete it
+ * afterwards.
+ */
+/**
  * The open plugin formats (docs.g1t.sh/guides/customize/, "The formats"):
  * what Claude Code reads, read here the same way, so a marketplace, a
  * plugin, a skill, a subagent or an MCP server published anywhere installs

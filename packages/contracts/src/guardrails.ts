@@ -1,6 +1,6 @@
 /**
- * Guardrails: what a workspace lets its agents do in a sandbox, kept by the
- * work service. Mirrors `g1t_contracts::guardrails`.
+ * Guardrails: which hosts a workspace's sandboxes may reach and how long a
+ * run may take, kept by the work service. Mirrors `g1t_contracts::guardrails`.
  */
 import type { ServiceBinding } from "./clients";
 import type { User, Viewer } from "./identity";
@@ -16,12 +16,6 @@ export type GuardrailSettings = {
   domains?: string[];
   /** Hosts only workflow jobs may reach, never agents; they add to the other level's. */
   workflowDomains?: WorkflowDomain[];
-  /** Built-in command rules turned on or off, by id. */
-  rules?: Record<string, boolean>;
-  /** Permission rules to refuse; they add to the other level's. */
-  deny?: string[];
-  /** The most a run may cost, in US dollars. Zero means no cap. */
-  budgetUsd?: number | null;
   /** How long each kind of run may take, in minutes. */
   minutes?: Record<string, number>;
   updatedBy?: string | null;
@@ -37,10 +31,14 @@ export type Guardrails = {
   hosts: string[];
   /** Hosts only some workflow jobs may reach (never in `hosts`). */
   workflowDomains?: WorkflowDomain[];
-  rules: Record<string, boolean>;
-  deny: string[];
-  /** Null: no cap. */
-  budgetUsd: number | null;
+  /**
+   * No longer sent: command rules, deny patterns and the cost cap were for
+   * g1t's own agents. Kept optional for the runner, which still passes
+   * them on (and a plan's cost cap) when they are there.
+   */
+  rules?: Record<string, boolean>;
+  deny?: string[];
+  budgetUsd?: number | null;
   minutes: Record<string, number>;
 };
 
@@ -59,7 +57,6 @@ export type WorkflowDomain = {
 };
 
 export type RegistryInfo = { id: string; name: string; hosts: string[] };
-export type RuleInfo = { id: string; title: string; about: string };
 
 export type GuardrailsView = {
   workspace: GuardrailSettings;
@@ -70,7 +67,6 @@ export type GuardrailsView = {
   effective: Guardrails;
   g1tHosts: string[];
   registries: RegistryInfo[];
-  rules: RuleInfo[];
 };
 
 export interface GuardrailsApi {

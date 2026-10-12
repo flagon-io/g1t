@@ -320,7 +320,7 @@ impl Work {
         };
         let rules_allow_auto_merge = gate
             .as_ref()
-            .is_none_or(|gate| g1t_rules::merge::auto_merge_refusal(&gate.requirements, None).is_none());
+            .is_none_or(|gate| g1t_rules::merge::auto_merge_refusal(&gate.requirements).is_none());
         let (lifecycle, next) = decide(Facts {
             draft: pull.status == PullStatus::Draft,
             stalled: progress.stalled,

@@ -10,7 +10,6 @@ import type { WebhooksApi } from "./webhooks";
 import type { ReposApi } from "./repos";
 import type { PullDetail, WorkApi } from "./work";
 import type { Result } from "./result";
-import type { RunnerComputerApi } from "./runner";
 import type { RunnersAdminApi, RunnersApi } from "./runners";
 
 /** A service binding, as far as these clients need it. */
@@ -193,8 +192,6 @@ export function identityClient(service: ServiceBinding): IdentityApi {
         scopes: grant?.scopes ?? null,
         listed: grant?.listed ?? false,
       }),
-    createAgentToken: (onBehalfOf, scope, ttlSeconds) =>
-      call("create_agent_token", { onBehalfOf, scope, ttlSeconds }),
     removeAccessToken: (user, id) => call("remove_access_token", { user, id }),
     createRunCredential: (input) => call("create_run_credential", input),
     bindRunCredentials: (tokenHashes, runId) => call("bind_run_credentials", { tokenHashes, runId }),
@@ -241,12 +238,6 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("remove_team_repo", { actor, workspace, team, repo: { namespace: owner, name } }),
     userTeams: (viewer, workspace, username) => call("user_teams", { viewer, workspace, username }),
     teamMemberships: (viewer, workspace) => call("team_memberships", { viewer, workspace }),
-    teamAgents: (viewer, workspace, team) => call("team_agents", { viewer, workspace, team }),
-    setTeamAgent: (actor, workspace, team, agentId) => call("set_team_agent", { actor, workspace, team, agent_id: agentId }),
-    removeTeamAgent: (actor, workspace, team, agentId) => call("remove_team_agent", { actor, workspace, team, agent_id: agentId }),
-    agentTeams: (workspace, agentId) => call("agent_teams", { workspace, agent_id: agentId }),
-    teamAgentIndex: (workspace) => call("team_agent_index", { workspace }),
-    adoptAgentTeams: (workspaceId, agents) => call("adopt_agent_teams", { workspace_id: workspaceId, agents }),
     // People; see people.ts.
     peopleDirectory: (viewer, workspace) => call("people_directory", { viewer, workspace }),
     setMemberProfile: (actor, workspace, username, changes) => call("set_member_profile", { actor, workspace, username, ...changes }),
@@ -417,7 +408,6 @@ export function reposClient(service: ServiceBinding): ReposApi {
  * it holds (`Pull`, `CheckRun` and the rest) does. Each with its name here.
  */
 const PULL_DETAIL_FIELDS = [
-  ["review_pending", "reviewPending"],
   ["earlier_checks", "earlierChecks"],
   ["required_checks", "requiredChecks"],
   ["code_owners", "codeOwners"],
@@ -437,7 +427,6 @@ export function pullDetailFromWire(raw: Record<string, unknown>): PullDetail {
       delete detail[snake];
     }
   }
-  if (typeof detail.reviewPending !== "boolean") detail.reviewPending = false;
   return detail as PullDetail;
 }
 
@@ -445,7 +434,6 @@ export function workClient(service: ServiceBinding): WorkApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
     openIssue: (actor, repo, input) => call("open_issue", { actor, repo, ...input }),
-    delegateIssue: (actor, repo, input) => call("delegate_issue", { actor, repo, ...input }),
     listIssues: (repo, viewer, filter = {}) => call("list_issues", { repo, viewer, ...filter }),
     getIssue: (repo, number, viewer) => call("get_issue", { repo, number, viewer }),
     updateIssue: (actor, repo, number, input) =>
@@ -468,15 +456,9 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("add_comment", { actor, repo, number, ...comment }),
     editComment: (actor, repo, commentId, body) => call("edit_comment", { actor, repo, commentId, body }),
     deleteComment: (actor, repo, commentId) => call("delete_comment", { actor, repo, commentId }),
-    workspaceAgentComment: (repo, number, agent, actingFor, body) =>
-      call("workspace_agent_comment", { repo, number, agent, acting_for: actingFor, body }),
-    workspaceAgentReview: (repo, number, agent, actingFor, verdict, body) =>
-      call("workspace_agent_review", { repo, number, agent, acting_for: actingFor, verdict, body }),
     startChecks: (pullId) => call("start_checks", { pullId }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
-    startReview: (pullId) => call("start_review", { pullId }),
-    failReview: (runId, token, error) => call("report_review", { runId, token, error }),
     startMergecheck: (pullId) => call("start_mergecheck", { pullId }),
     failMergecheck: (pullId, token, error) => call("report_mergecheck", { pullId, token, error }),
     advance: (pullId) => call("advance", { pullId }),
@@ -486,9 +468,6 @@ export function workClient(service: ServiceBinding): WorkApi {
     queueBuild: (repoId) => call("queue_build", { repoId }),
     failQueue: (entryId, token, error) => call("report_queue", { entryId, token, error }),
     removeFromQueue: (actor, repo, number) => call("remove_from_queue", { actor, repo, number }),
-    messageAgent: (actor, repo, number, body) => call("message_agent", { actor, repo, number, body }),
-    catchUpJob: (pullId) => call("catch_up_job", { pullId }),
-    wakeForMessages: (pullId) => call("wake_for_messages", { pullId }),
     getSettings: (repo, viewer) => call("get_settings", { repo, viewer }),
     // Rulesets travel in snake_case (rules.ts).
     listRulesets: (owner, viewer, includeParents = false) =>
@@ -528,15 +507,6 @@ export function workClient(service: ServiceBinding): WorkApi {
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
     byAuthor: (username, viewer, filter = {}) => call("by_author", { username, viewer, ...filter }),
     contributions: (username, viewer) => call("contributions", { username, viewer }),
-    startPlan: (actor, repo, brief) => call("start_plan", { actor, repo, brief }),
-    failPlan: (planId, token, error) => call("report_plan", { planId, token, error }),
-    getPlan: (repo, viewer, id) => call("get_plan", { repo, viewer, id }),
-    listPlans: (repo, viewer) => call("list_plans", { repo, viewer }),
-    applyPlan: (actor, repo, id, options = {}) =>
-      call("apply_plan", { actor, repo, id, ...options }),
-    queueIssue: (actor, repo, number, queued) =>
-      call("queue_issue", { actor, repo, number, queued }),
-    readyIssues: (repoId) => call("ready_issues", { repoId }),
     listAssignedIssues: (viewer) => call("list_assigned_issues", { viewer }),
     appendSession: (actor, repo, number, entries) =>
       call("append_session", { actor, repo, number, entries }),
@@ -564,22 +534,10 @@ export function billingClient(service: ServiceBinding): BillingApi {
         before: filter.before ?? null,
       }),
     usage: (workspace, viewer, since) => call("usage", { workspace, viewer, since }),
-    tokenUsage: (workspace, viewer, options = {}) =>
-      call("token_usage", { workspace, viewer, person: options.person ?? null, days: options.days ?? null }),
-    recordTokens: (usage) => call("record_tokens", usage),
-    gatewayModels: () => call("gateway_models", {}),
-    modelDefaults: () => call("model_defaults", {}),
-    recordDiscovery: (provider, models, by, error = null) => call("record_discovery", { provider, models, by, error }),
-    gatewayAdmit: (workspace) => call("gateway_admit", { workspace }),
-    recordGateway: (record) => call("record_gateway", record),
-    gatewayRequests: (workspace, viewer, options = {}) =>
-      call("gateway_requests", { workspace, viewer, limit: options.limit ?? null, before: options.before ?? null }),
     checkout: (actor, workspace, amountCents, returnUrl, method = "card") =>
       call("checkout", { actor, workspace, amountCents, returnUrl, method }),
     confirm: (workspace, viewer, session) => call("confirm", { workspace, viewer, session }),
-    canStart: (workspace) => call("can_start", { workspace }),
     trial: (workspace, exempt) => call("trial", { workspace, exempt }),
-    startRun: (run) => call("start_run", run),
     features: (workspace, viewer) => call("features", { workspace, viewer }),
     subscribe: (actor, workspace, feature, returnUrl) =>
       call("subscribe", { actor, workspace, feature, returnUrl }),
@@ -611,10 +569,6 @@ export function billingClient(service: ServiceBinding): BillingApi {
     setCaps: (actor, workspace, caps) => call("set_caps", { actor, workspace, ...caps }),
     usageReport: (workspace, viewer, range) =>
       call("usage_report", { workspace, viewer, from: range.from, until: range.until, products: range.products ?? [], projects: range.projects ?? [] }),
-    aiCredit: (workspace, viewer) => call("ai_credit", { workspace, viewer }),
-    buyAiCredit: (actor, workspace, amountCents, returnUrl) => call("buy_ai_credit", { actor, workspace, amountCents, returnUrl }),
-    confirmAiCredit: (workspace, viewer, session) => call("confirm_ai_credit", { workspace, viewer, session }),
-    setAiReload: (actor, workspace, reload) => call("set_ai_reload", { actor, workspace, ...reload }),
     setBudget: (actor, workspace, budget) => call("set_budget", { actor, workspace, ...budget }),
     billingDetails: (workspace, viewer) => call("billing_details", { workspace, viewer }),
     setBillingDetails: (actor, workspace, details) => call("set_billing_details", { actor, workspace, ...details }),
@@ -704,40 +658,6 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
         by,
       }),
     runCosts: (by) => call("admin_run_costs", { by }),
-    models: () => call("admin_models", {}),
-    decideModel: (model, decision, details, reason, by) =>
-      call("admin_decide_model", {
-        model,
-        decision,
-        name: details.name ?? null,
-        tier_hint: details.tierHint ?? null,
-        prices: details.prices
-          ? {
-              input_micros: details.prices.inputMicros,
-              output_micros: details.prices.outputMicros,
-              cache_read_micros: details.prices.cacheReadMicros,
-              cache_write_micros: details.prices.cacheWriteMicros,
-              cache_write_1h_micros: details.prices.cacheWrite1hMicros,
-              threshold: details.prices.threshold,
-              over_input_micros: details.prices.overInputMicros,
-              over_output_micros: details.prices.overOutputMicros,
-              over_cache_read_micros: details.prices.overCacheReadMicros,
-              over_cache_write_micros: details.prices.overCacheWriteMicros,
-              over_cache_write_1h_micros: details.prices.overCacheWrite1hMicros,
-            }
-          : null,
-        reason,
-        by,
-      }),
-    setModelDefault: (purpose, value, reason, by) =>
-      call("admin_set_model_default", {
-        purpose,
-        model: value.model ?? null,
-        tier: value.tier ?? null,
-        effort: value.effort ?? null,
-        reason,
-        by,
-      }),
   };
 }
 
@@ -760,20 +680,8 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     test: (actor, workspace, id) => call("test", { actor, workspace, id }),
     deliveries: (workspace, viewer, id) => call("deliveries", { workspace, viewer, id }),
     resolve: (workspace, viewer, reference) => call("resolve", { workspace, viewer, reference }),
-    references: (workspace, text, limit) => call("references", { workspace, text, limit }),
-    import: (actor, repo, reference, assign) => call("import", { actor, repo, reference, assign }),
-    comment: (actor, workspace, reference, text, link) => call("comment", { actor, workspace, reference, text, link }),
-    close: (actor, workspace, reference, text, link) => call("close", { actor, workspace, reference, text, link }),
+    import: (actor, repo, reference) => call("import", { actor, repo, reference }),
     links: (repo, number) => call("links", { repo, number }),
-    modelProvider: (workspace) => call("model_provider", { workspace }),
-    openModelSession: (run) => call("open_model_session", run),
-    modelUpstream: (token) => call("model_upstream", { token }),
-    gatewayUpstream: (workspace) => call("gateway_upstream", { workspace }),
-    gatewayProviders: (workspace) => call("gateway_providers", { workspace }),
-    closeModelSessions: (tokenHashes) => call("close_model_sessions", { token_hashes: tokenHashes }),
-    capModelSessions: (tokenHashes, capMicros) => call("cap_model_sessions", { token_hashes: tokenHashes, cap_micros: capMicros }),
-    routes: (workspace, viewer) => call("routes", { workspace, viewer }),
-    setRoutes: (actor, workspace, routes) => call("set_routes", { actor, workspace, routes }),
   };
 }
 
@@ -970,27 +878,5 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     reorderPins: (actor, workspace, slugs) => call("reorder_pins", { actor, workspace, slugs }),
     visited: (actor, projectId) => call("visited", { actor, projectId }),
     publicLinks: (repos) => call("public_links", { repos }),
-  };
-}
-
-/**
- * An agent's own computer, on the runner (services/runner `AgentComputer`):
- * what the agents service calls for a session's `run_command` and file
- * tools, and for the Computer tab. Arguments and answers are snake_case.
- */
-export function runnerComputerClient(service: ServiceBinding): RunnerComputerApi {
-  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
-  return {
-    computerStatus: (agentId) => call("computer_status", { agent_id: agentId }),
-    computerWake: (args) => call("computer_wake", args),
-    computerExec: (args) => call("computer_exec", args),
-    computerReadFile: (args) => call("computer_read_file", args),
-    computerWriteFile: (args) => call("computer_write_file", args),
-    computerSleep: (agentId) => call("computer_sleep", { agent_id: agentId }),
-    computerReset: (agentId) => call("computer_reset", { agent_id: agentId }),
-    computerForget: (agentId) => call("computer_forget", { agent_id: agentId }),
-    computerKeep: (agentId) => call("computer_keep", { agent_id: agentId }),
-    computerErase: (agentId) => call("computer_erase", { agent_id: agentId }),
-    computerCommands: (agentId, sessionId) => call("computer_commands", { agent_id: agentId, session_id: sessionId ?? null }),
   };
 }

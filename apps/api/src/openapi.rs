@@ -536,7 +536,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Integrations",
-        "A workspace's connections to outside systems: alert sources and issue trackers.",
+        "A workspace's connections to outside systems: AI providers, alert sources and issue trackers.",
         &[
             Op::ListIntegrations,
             Op::ConnectIntegration,

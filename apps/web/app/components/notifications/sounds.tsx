@@ -14,15 +14,15 @@ import { permission, pushChoice, setPresence, useOwnPresence } from "../../lib/n
 import { PAUSE_FOR, type PauseFor, dndOn, pauseUntil, untilLabel } from "../../lib/presence";
 import { applySoundSettings, preview, saveSoundSettings, useSoundSettings } from "../../lib/sounds";
 
-const CUE: Partial<Record<Exclude<SoundCue, "call">, { label: string; detail: string }>> = {
+const CUE: Record<Exclude<SoundCue, "call">, { label: string; detail: string }> = {
   message: { label: "New message", detail: "In a conversation you have open, while you're looking elsewhere." },
   direct: { label: "Direct message", detail: "Someone messages you directly." },
   mention: { label: "Mention", detail: "You were @mentioned." },
   sent: { label: "Sent", detail: "A soft tick as your message goes." },
 };
 
-/** The cues offered: every one that still plays (an agent's `agent_done` no longer does). */
-const CUES = SOUND_CUES.filter((cue) => CUE[cue] != null);
+/** The cues offered, in the settings' order. */
+const CUES = SOUND_CUES;
 
 const SETS: { set: SoundSet; label: string; detail: string }[] = [
   { set: "soft", label: "Soft", detail: "Warm and low." },
@@ -190,7 +190,7 @@ export function SoundSettingsSection({ initial }: { initial: SoundSettings | nul
 
         <ul className={off ? "opacity-60" : ""} aria-label="Sounds">
           {CUES.map((cue) => {
-            const { label, detail } = CUE[cue]!;
+            const { label, detail } = CUE[cue];
             return (
             <li key={cue} className="flex items-center gap-3 px-4 py-2.5">
               <Hint label={`Play ${label.toLowerCase()}`}>

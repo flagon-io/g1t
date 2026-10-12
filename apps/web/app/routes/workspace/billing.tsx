@@ -28,6 +28,7 @@ import {
 import { StatementView } from "../../components/statement";
 import {
   cardCheckResult,
+  cardFeeOf,
   parseBudgetAlerts,
   parseInvoiceDetails,
   parseLimitRequest,
@@ -106,7 +107,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     .billingDetails(slug, viewer)
     .then((result) => (result.ok ? result.value : null))
     .catch(() => null);
-  const [account, statement, features, limit, invoices, entitlements, requests, book, credits, fees, report] = await Promise.all([
+  const [account, statement, features, limit, invoices, entitlements, requests, book, credits, report] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
@@ -116,8 +117,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     billing.limitRequests(slug, viewer).catch(() => null),
     billing.prices().catch(() => null),
     billing.credits(slug, viewer).catch(() => null),
-    // Only for the card processing fee Prepay shows before you pay.
-    billing.aiCredit(slug, viewer).catch(() => null),
     billing.usageReport(slug, viewer, { from: monthStart, until: today }).catch(() => null),
   ]);
   const featureStates = unwrap(features);
@@ -141,7 +140,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     entitlements,
     requests: requests?.ok ? requests.value : [],
     credits: general.length > 0 && credits?.ok ? { ...credits.value, grants: general } : null,
-    cardFee: fees?.ok ? fees.value.cardFee : null,
+    // The card processing fee Prepay shows before you pay.
+    cardFee: cardFeeOf(book),
     report: report?.ok ? report.value : null,
     details,
     trialMicros,

@@ -30,7 +30,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (!current.ok) return { saved: false, error: current.error.message };
   const settings = settingsFromForm(form, {
     registries: current.value.registries.map((registry) => registry.id),
-    rules: current.value.rules.map((rule) => rule.id),
     kinds: SANDBOX_RUN_KINDS,
   });
   const saved = await guardrails.updateGuardrails(user, params.owner, { namespace: params.owner, name: params.repo }, settings);

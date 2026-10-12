@@ -1324,13 +1324,14 @@ mod tests {
 
     /// Migration 0041 writes full access out as every permission: the
     /// same lists the code made then, before Artifacts, Chat and
-    /// Observability were offered, so tokens from before keep exactly
-    /// what they had.
+    /// Observability were offered and while `agents` and `models` still
+    /// were (they are retired now, and grant nothing), so tokens from
+    /// before keep exactly what they had.
     #[test]
     fn the_migration_sets_full_access_out_as_every_permission() {
-        use g1t_contracts::scopes::{Resource, ResourceGroup, everything};
+        use g1t_contracts::scopes::{Resource, ResourceGroup, top_scopes};
         let sql = include_str!("../migrations/0041_one_kind_of_token.sql");
-        let then: Vec<Scope> = everything()
+        let then: Vec<Scope> = top_scopes(&Scope::ALL)
             .into_iter()
             .filter(|scope| !matches!(scope.resource(), Resource::Artifacts | Resource::Chat | Resource::Observability))
             .collect();

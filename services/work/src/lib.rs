@@ -1561,11 +1561,9 @@ impl Work {
             checks,
             overlaps,
             behind,
-            review_pending: false,
             lifecycle,
             landing,
             stalled,
-            messages: Vec::new(),
             statuses,
             mergeable,
             conflicts,
@@ -2711,6 +2709,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "report_run" => reply(&work.report_run(args(body)?).await?),
         "list_runs" => reply(&work.list_runs(args(body)?).await?),
         "get_run" => reply(&work.get_run(args(body)?).await?),
+        "list_sessions" => reply(&work.list_sessions(args(body)?).await?),
+        "get_session" => reply(&work.get_session(args(body)?).await?),
         "list_memories" => reply(&work.list_memories(args(body)?).await?),
         "add_memory" => reply(&work.add_memory(args(body)?).await?),
         "update_memory" => reply(&work.update_memory(args(body)?).await?),
@@ -2821,7 +2821,7 @@ mod owner_rules {
 
     #[test]
     fn sandboxes_act_as_whoever_asked() {
-        // LifecycleJob, ReviewJob, MergecheckJob and the merge queue's job
+        // MergecheckJob and the merge queue's job
         // carry who the sandbox's credential acts for: a real account.
         let made = pull(G1T, Some(ASKER));
         assert_eq!(made.owner().id, ASKER.0);

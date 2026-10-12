@@ -34,14 +34,6 @@ export function productStyle(key: string): { key: string; label: string; color: 
   return PRODUCT_STYLE.find((p) => p.key === key) ?? { key, label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "), color: "#86868e" };
 }
 
-/** Products no longer offered: older usage may still name them, but the filters do not. */
-const RETIRED_PRODUCTS: ReadonlySet<string> = new Set(["agent", "gateway"]);
-
-/** The products the filters offer. */
-export function offeredProducts<T extends { key: string }>(products: readonly T[]): T[] {
-  return products.filter((product) => !RETIRED_PRODUCTS.has(product.key));
-}
-
 /** The periods the page offers. Billing cycles are calendar months (UTC). */
 export const PERIODS = {
   cycle: "Current billing cycle",

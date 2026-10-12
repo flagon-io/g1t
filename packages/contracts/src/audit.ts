@@ -36,7 +36,7 @@ export type CredentialUse = "runner" | "tools";
 /** A repository a run may push to; `branch` null means any branch of it. */
 export type GitGrant = { repo: RepoPath; branch?: string | null };
 
-/** What binds an agent's token to one run. */
+/** What binds a run's token to one run. */
 export type RunBinding = {
   kind: RunCredentialKind;
   use: CredentialUse;
@@ -49,7 +49,7 @@ export type RunBinding = {
   system?: boolean;
 };
 
-/** Set on an agent resolved from its token: the composite identity. */
+/** Set on a run's token (or a historical `@g1t` agent's) resolved from its token: the composite identity. */
 export type Acting = {
   credentialId: string;
   agent: string;
@@ -69,8 +69,6 @@ export type CreateRunCredentialInput = {
   push?: GitGrant[];
   /** The run's timeout. */
   ttlSeconds: number;
-  /** Defaults to `g1t`. */
-  agent?: string | null;
 };
 
 export type ActorKind = "person" | "agent" | "workspace" | "runner" | "system";

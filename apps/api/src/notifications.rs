@@ -5,8 +5,8 @@
 //! thing, brought back to the top as things happen to it.
 //!
 //! Every operation here is the person's own: a personal access token or a
-//! session, never a workspace's token or g1t's agents (which act as g1t,
-//! and g1t is never told anything).
+//! session, never a workspace's token or a run's token (which acts as
+//! g1t, and g1t is never told anything).
 
 use g1t_contracts::inbox::*;
 use g1t_contracts::repos::{GetArgs, Repo, RepoPath};

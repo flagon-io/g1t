@@ -73,7 +73,7 @@ What you found, where, how to reproduce it, and what an attacker could do with i
 
 ### In scope
 
-- g1t.sh, api.g1t.sh, mcp.g1t.sh, models.g1t.sh, og.g1t.sh, docs.g1t.sh and status.g1t.sh;
+- g1t.sh, api.g1t.sh, mcp.g1t.sh, og.g1t.sh, docs.g1t.sh and status.g1t.sh;
 - the g1t.page platform itself: routing, isolation between apps, custom domains;
 - the sandboxes: escaping one, reaching another run or workspace, or getting around guardrails, run credentials or the network allowlist;
 - authentication, authorization, the API, the MCP server and git over HTTPS;

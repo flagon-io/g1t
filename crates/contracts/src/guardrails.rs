@@ -1,16 +1,18 @@
-//! Guardrails: what a workspace lets its agents do in a sandbox. Kept by
-//! the work service.
+//! Guardrails: what a workspace lets its sandboxes do. Kept by the work
+//! service.
 //!
-//! A workspace sets defaults and each project may override them. Three
-//! kinds of rule come out of the two:
+//! A workspace sets defaults and each project may override them. Two kinds
+//! of rule come out of the two:
 //!
 //! - **Network**: which hosts a sandbox may reach. g1t's own hosts always,
 //!   the package registries the project needs, and any domains listed.
-//!   Everything else is refused at the sandbox's edge.
-//! - **Commands**: what the agent's harness refuses to run: built-in rules
-//!   that can be turned off, and the workspace's own deny patterns.
-//! - **Caps**: the most one run may cost, and how long each kind of run
-//!   may take, before g1t stops it.
+//!   Everything else is refused at the sandbox's edge. Some domains can be
+//!   opened to workflow jobs only.
+//! - **Time**: how long each kind of run may take before g1t stops it.
+//!
+//! Levels saved when guardrails also had command rules, deny patterns and
+//! a cost cap (for g1t's own agents, since removed) still read: those
+//! fields are ignored.
 //!
 //! Each `*Args` struct is the argument of the method of the same name,
 //! served at `POST /rpc/<method>`.
@@ -24,8 +26,8 @@ use crate::repos::RepoPath;
 use crate::{User, Viewer};
 
 /// g1t's own hosts. Always reachable: without them a sandbox could not
-/// clone, push, report or reach its model.
-pub const G1T_HOSTS: &[&str] = &["g1t.sh", "api.g1t.sh", "models.g1t.sh", "mcp.g1t.sh"];
+/// clone, push or report.
+pub const G1T_HOSTS: &[&str] = &["g1t.sh", "api.g1t.sh", "mcp.g1t.sh"];
 
 /// A package registry, which a project turns on or off as one.
 #[derive(Clone, Copy, Debug)]
@@ -68,63 +70,17 @@ pub const REGISTRIES: &[Registry] = &[
     },
 ];
 
-/// A command rule the harness enforces, which can be turned off.
-#[derive(Clone, Copy, Debug)]
-pub struct CommandRule {
-    pub id: &'static str,
-    pub title: &'static str,
-    pub about: &'static str,
-}
-
-/// The built-in command rules, all on by default.
-pub const COMMAND_RULES: &[CommandRule] = &[
-    CommandRule {
-        id: "force_push",
-        title: "No force-pushing",
-        about: "git push with --force, --force-with-lease, --mirror, a + refspec, or deleting a branch.",
-    },
-    CommandRule {
-        id: "rewrite_default_branch",
-        title: "No rewriting the default branch",
-        about: "Pushing to the default branch, moving or deleting it with git branch or git update-ref, and git filter-branch, filter-repo or replace.",
-    },
-    CommandRule {
-        id: "outside_workspace",
-        title: "No reading files outside the project",
-        about: "File tools may use the checked-out project, /tmp and package caches only. Shell commands may not touch g1t's own files or other processes' environments.",
-    },
-    CommandRule {
-        id: "print_env",
-        title: "No printing the environment",
-        about: "env, printenv, export -p, set, /proc/*/environ, and echoing variables that look like keys or tokens.",
-    },
-    CommandRule {
-        id: "sudo",
-        title: "No sudo",
-        about: "sudo, su and doas are refused, and the sandbox gives up root before the agent starts.",
-    },
-];
-
-/// The most deny patterns or domains one level keeps.
-pub const MAX_PATTERNS: usize = 50;
+/// The most domains one level keeps.
 pub const MAX_DOMAINS: usize = 100;
 /// The most workflow-only domains one level keeps.
 pub const MAX_WORKFLOW_DOMAINS: usize = 50;
 const MAX_NAME_CHARS: usize = 255;
-const MAX_PATTERN_CHARS: usize = 200;
-/// The most a run may be allowed to cost, in US dollars.
-pub const MAX_BUDGET_USD: f64 = 100.0;
 /// The longest any run may be allowed to take, in minutes.
 pub const MAX_MINUTES: u32 = 240;
 
 /// One run's spend cap unless an owner or g1t staff set another, in
-/// micro-dollars. The one source for both caps a run gets: billing's spend
-/// cap per run and the guardrails' cost per run, so the two never disagree.
+/// micro-dollars: billing's spend cap per run.
 pub const DEFAULT_RUN_CAP_MICROS: i64 = 2_000_000;
-
-/// The cost cap on one run unless the workspace sets another, in US dollars:
-/// [`DEFAULT_RUN_CAP_MICROS`].
-pub const DEFAULT_BUDGET_USD: f64 = DEFAULT_RUN_CAP_MICROS as f64 / 1_000_000.0;
 
 /// How long each kind of run may take unless the workspace says otherwise.
 pub fn default_minutes(kind: RunKind) -> u32 {
@@ -143,7 +99,7 @@ pub fn default_minutes(kind: RunKind) -> u32 {
 
 /// What one level, the workspace or a project, sets. Anything left unset
 /// is inherited: a project from its workspace, a workspace from g1t's
-/// defaults. Domains and deny patterns add up across the two levels.
+/// defaults. Domains add up across the two levels.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct GuardrailSettings {
@@ -158,13 +114,6 @@ pub struct GuardrailSettings {
     /// say. Each can be limited to some workflows and environments. They
     /// add to the other level's.
     pub workflow_domains: Vec<WorkflowDomain>,
-    /// Built-in command rules turned on or off, by id.
-    pub rules: BTreeMap<String, bool>,
-    /// Commands and tools to refuse, as permission rules:
-    /// `Bash(terraform apply:*)`, `Read(/etc/**)`, `WebFetch`.
-    pub deny: Vec<String>,
-    /// The most a run may cost, in US dollars. Zero means no cap.
-    pub budget_usd: Option<f64>,
     /// How long a run may take, in minutes, by kind of run.
     pub minutes: BTreeMap<String, u32>,
     /// Username of whoever last changed this level.
@@ -221,19 +170,13 @@ pub struct Guardrails {
     /// workspace first. Never in `hosts`.
     #[serde(default)]
     pub workflow_domains: Vec<WorkflowDomain>,
-    /// Every built-in rule, on or off.
-    pub rules: BTreeMap<String, bool>,
-    /// The deny patterns of both levels, workspace first.
-    pub deny: Vec<String>,
-    /// None: no cap.
-    pub budget_usd: Option<f64>,
     /// Every kind of run.
     pub minutes: BTreeMap<String, u32>,
 }
 
 impl Guardrails {
-    /// g1t's defaults: network restricted to g1t and every registry, every
-    /// command rule on, a cost cap and a time cap for each kind of run.
+    /// g1t's defaults: network restricted to g1t and every registry, and a
+    /// time cap for each kind of run.
     pub fn defaults() -> Self {
         let mut defaults = Guardrails {
             restrict_network: true,
@@ -241,9 +184,6 @@ impl Guardrails {
             domains: Vec::new(),
             hosts: Vec::new(),
             workflow_domains: Vec::new(),
-            rules: COMMAND_RULES.iter().map(|rule| (rule.id.to_owned(), true)).collect(),
-            deny: Vec::new(),
-            budget_usd: Some(DEFAULT_BUDGET_USD),
             minutes: RunKind::ALL
                 .into_iter()
                 .map(|kind| (kind.as_str().to_owned(), default_minutes(kind)))
@@ -274,19 +214,6 @@ impl Guardrails {
             if !self.workflow_domains.contains(entry) {
                 self.workflow_domains.push(entry.clone());
             }
-        }
-        for (id, on) in &level.rules {
-            if let Some(rule) = self.rules.get_mut(id) {
-                *rule = *on;
-            }
-        }
-        for pattern in &level.deny {
-            if !self.deny.contains(pattern) {
-                self.deny.push(pattern.clone());
-            }
-        }
-        if let Some(budget) = level.budget_usd {
-            self.budget_usd = (budget > 0.0).then_some(budget);
         }
         for (kind, minutes) in &level.minutes {
             if let Some(cap) = self.minutes.get_mut(kind) {
@@ -375,31 +302,6 @@ pub fn normalize_domain(input: &str) -> Result<String, String> {
     }
 }
 
-/// A deny pattern as it is kept: a permission rule such as
-/// `Bash(terraform apply:*)`. Plain text is taken as the start of a shell
-/// command: `rm -rf` becomes `Bash(rm -rf:*)`.
-pub fn normalize_pattern(input: &str) -> Result<String, String> {
-    let pattern = input.trim();
-    if pattern.is_empty() || pattern.chars().count() > MAX_PATTERN_CHARS || pattern.contains('\n') {
-        return Err(format!("A deny pattern is one line of at most {MAX_PATTERN_CHARS} characters."));
-    }
-    let tool_end = pattern.find('(').unwrap_or(pattern.len());
-    let tool = &pattern[..tool_end];
-    let is_rule = !tool.is_empty()
-        && tool.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-        && tool.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-        && (tool_end == pattern.len() || (pattern.ends_with(')') && pattern.len() > tool_end + 2));
-    if is_rule {
-        return Ok(pattern.to_owned());
-    }
-    if pattern.contains(['(', ')']) {
-        return Err(format!(
-            "{pattern} is not a rule. Write a tool and what to refuse, such as Bash(terraform apply:*), or just the start of a command."
-        ));
-    }
-    Ok(format!("Bash({pattern}:*)"))
-}
-
 /// One level's settings, checked and tidied before they are kept.
 pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String> {
     let mut domains = Vec::new();
@@ -428,24 +330,6 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
     if workflow_domains.len() > MAX_WORKFLOW_DOMAINS {
         return Err(format!("At most {MAX_WORKFLOW_DOMAINS} workflow-only domains can be listed."));
     }
-    let mut deny = Vec::new();
-    for pattern in &settings.deny {
-        if pattern.trim().is_empty() {
-            continue;
-        }
-        let pattern = normalize_pattern(pattern)?;
-        if !deny.contains(&pattern) {
-            deny.push(pattern);
-        }
-    }
-    if deny.len() > MAX_PATTERNS {
-        return Err(format!("At most {MAX_PATTERNS} deny patterns can be listed."));
-    }
-    if let Some(budget) = settings.budget_usd
-        && (!budget.is_finite() || !(0.0..=MAX_BUDGET_USD).contains(&budget))
-    {
-        return Err(format!("A run's cost cap is between $0 (no cap) and ${MAX_BUDGET_USD:.0}."));
-    }
     let mut minutes = BTreeMap::new();
     for (kind, cap) in settings.minutes {
         if RunKind::parse(&kind).is_none() {
@@ -456,11 +340,6 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
         }
         minutes.insert(kind, cap);
     }
-    let rules = settings
-        .rules
-        .into_iter()
-        .filter(|(id, _)| COMMAND_RULES.iter().any(|rule| rule.id == id))
-        .collect();
     let registries = settings.registries.map(|ids| {
         REGISTRIES
             .iter()
@@ -473,9 +352,6 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
         registries,
         domains,
         workflow_domains,
-        rules,
-        deny,
-        budget_usd: settings.budget_usd,
         minutes,
         updated_by: settings.updated_by,
         updated_at: settings.updated_at,
@@ -520,14 +396,6 @@ pub struct RegistryInfo {
     pub hosts: Vec<String>,
 }
 
-/// A command rule as the settings page shows it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RuleInfo {
-    pub id: String,
-    pub title: String,
-    pub about: String,
-}
-
 /// Everything the settings pages show: each level as it was set, what
 /// each inherits, and what is in force.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -543,7 +411,6 @@ pub struct GuardrailsView {
     pub effective: Guardrails,
     pub g1t_hosts: Vec<String>,
     pub registries: Vec<RegistryInfo>,
-    pub rules: Vec<RuleInfo>,
 }
 
 impl GuardrailsView {
@@ -563,14 +430,6 @@ impl GuardrailsView {
                     id: registry.id.to_owned(),
                     name: registry.name.to_owned(),
                     hosts: registry.hosts.iter().map(|host| (*host).to_owned()).collect(),
-                })
-                .collect(),
-            rules: COMMAND_RULES
-                .iter()
-                .map(|rule| RuleInfo {
-                    id: rule.id.to_owned(),
-                    title: rule.title.to_owned(),
-                    about: rule.about.to_owned(),
                 })
                 .collect(),
         }
@@ -656,16 +515,8 @@ mod tests {
         assert!(defaults.hosts.iter().any(|host| host == "registry.npmjs.org"));
         assert!(defaults.hosts.iter().any(|host| host == "codeload.github.com"));
         assert!(!defaults.hosts.iter().any(|host| host == "github.com"));
-        assert!(defaults.rules.values().all(|on| *on));
-        assert_eq!(defaults.budget_usd, Some(DEFAULT_BUDGET_USD));
+        assert!(!defaults.hosts.iter().any(|host| host == "models.g1t.sh"));
         assert_eq!(defaults.minutes_for(RunKind::Implement), 90);
-    }
-
-    #[test]
-    fn the_default_cost_cap_is_billings_run_cap() {
-        // One number: the guardrails never promise more than billing allows.
-        assert_eq!((DEFAULT_BUDGET_USD * 1_000_000.0).round() as i64, DEFAULT_RUN_CAP_MICROS);
-        assert_eq!(DEFAULT_BUDGET_USD, 2.0);
     }
 
     #[test]
@@ -677,21 +528,15 @@ mod tests {
     fn a_project_overrides_its_workspace() {
         let workspace = GuardrailSettings {
             registries: Some(vec!["npm".into(), "pypi".into()]),
-            budget_usd: Some(2.0),
-            rules: BTreeMap::from([("sudo".to_owned(), false)]),
             minutes: BTreeMap::from([("implement".to_owned(), 30)]),
             ..level()
         };
         let project = GuardrailSettings {
             registries: Some(vec!["crates".into()]),
-            budget_usd: Some(8.0),
-            rules: BTreeMap::from([("sudo".to_owned(), true), ("print_env".to_owned(), false)]),
             ..level()
         };
         let inherited = Guardrails::merge(&workspace, None);
         assert_eq!(inherited.registries, vec!["npm", "pypi"]);
-        assert_eq!(inherited.budget_usd, Some(2.0));
-        assert!(!inherited.rules["sudo"]);
         assert!(inherited.hosts.iter().any(|host| host == "pypi.org"));
         assert!(!inherited.hosts.iter().any(|host| host == "crates.io"));
 
@@ -699,9 +544,6 @@ mod tests {
         assert_eq!(effective.registries, vec!["crates"]);
         assert!(effective.hosts.iter().any(|host| host == "crates.io"));
         assert!(!effective.hosts.iter().any(|host| host == "pypi.org"));
-        assert_eq!(effective.budget_usd, Some(8.0));
-        assert!(effective.rules["sudo"]);
-        assert!(!effective.rules["print_env"]);
         // Inherited where the project says nothing.
         assert_eq!(effective.minutes_for(RunKind::Implement), 30);
         assert_eq!(effective.minutes_for(RunKind::Review), 30);
@@ -710,20 +552,11 @@ mod tests {
     }
 
     #[test]
-    fn domains_and_deny_patterns_add_up() {
-        let workspace = GuardrailSettings {
-            domains: vec!["api.stripe.com".into()],
-            deny: vec!["Bash(terraform apply:*)".into()],
-            ..level()
-        };
-        let project = GuardrailSettings {
-            domains: vec!["*.example.com".into(), "api.stripe.com".into()],
-            deny: vec!["Bash(kubectl:*)".into()],
-            ..level()
-        };
+    fn domains_add_up() {
+        let workspace = GuardrailSettings { domains: vec!["api.stripe.com".into()], ..level() };
+        let project = GuardrailSettings { domains: vec!["*.example.com".into(), "api.stripe.com".into()], ..level() };
         let effective = Guardrails::merge(&workspace, Some(&project));
         assert_eq!(effective.domains, vec!["api.stripe.com", "*.example.com"]);
-        assert_eq!(effective.deny, vec!["Bash(terraform apply:*)", "Bash(kubectl:*)"]);
         assert!(effective.hosts.iter().any(|host| host == "*.example.com"));
     }
 
@@ -791,17 +624,18 @@ mod tests {
         }))
         .unwrap();
         assert!(old.workflow_hosts("deploy.yml", Some("production")).is_empty());
+        // Command rules, deny patterns and a cost cap, from when g1t's own
+        // agents had them, are ignored.
+        let old: GuardrailSettings =
+            serde_json::from_str(r#"{"rules":{"sudo":false},"deny":["Bash(rm:*)"],"budgetUsd":2.5,"domains":["example.com"]}"#).unwrap();
+        assert_eq!(old.domains, vec!["example.com"]);
+        assert!(validate(old).is_ok());
     }
 
     #[test]
-    fn a_zero_budget_means_no_cap_and_unrestricted_is_kept() {
-        let project = GuardrailSettings {
-            budget_usd: Some(0.0),
-            restrict_network: Some(false),
-            ..level()
-        };
+    fn unrestricted_is_kept() {
+        let project = GuardrailSettings { restrict_network: Some(false), ..level() };
         let effective = Guardrails::merge(&level(), Some(&project));
-        assert_eq!(effective.budget_usd, None);
         assert!(!effective.restrict_network);
     }
 
@@ -817,30 +651,15 @@ mod tests {
     }
 
     #[test]
-    fn plain_text_patterns_become_shell_rules() {
-        assert_eq!(normalize_pattern("rm -rf").unwrap(), "Bash(rm -rf:*)");
-        assert_eq!(normalize_pattern("Bash(git push --force:*)").unwrap(), "Bash(git push --force:*)");
-        assert_eq!(normalize_pattern("WebFetch").unwrap(), "WebFetch");
-        assert_eq!(normalize_pattern("Read(/etc/**)").unwrap(), "Read(/etc/**)");
-        assert!(normalize_pattern("Bash()").is_err());
-        assert!(normalize_pattern("echo (x").is_err());
-        assert!(normalize_pattern("").is_err());
-    }
-
-    #[test]
     fn validation_clamps_and_drops_unknowns() {
         let settings = validate(GuardrailSettings {
             registries: Some(vec!["npm".into(), "nonsense".into()]),
-            rules: BTreeMap::from([("force_push".to_owned(), false), ("made_up".to_owned(), true)]),
             domains: vec!["Example.com".into(), "example.com".into(), " ".into()],
             ..level()
         })
         .unwrap();
         assert_eq!(settings.registries, Some(vec!["npm".to_owned()]));
-        assert_eq!(settings.rules.len(), 1);
         assert_eq!(settings.domains, vec!["example.com"]);
-        assert!(validate(GuardrailSettings { budget_usd: Some(1000.0), ..level() }).is_err());
-        assert!(validate(GuardrailSettings { budget_usd: Some(f64::NAN), ..level() }).is_err());
         assert!(
             validate(GuardrailSettings {
                 minutes: BTreeMap::from([("implement".to_owned(), 0)]),

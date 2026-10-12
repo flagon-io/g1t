@@ -18,6 +18,12 @@ import type {
   Target,
 } from "@g1t/contracts";
 
+/**
+ * Rule types no longer offered (contracts' RETIRED_RULES): an import that
+ * has one leaves it out, as the service does with a stored ruleset.
+ */
+const RETIRED_RULES: readonly string[] = ["confidence_threshold", "cost_cap"];
+
 /** The default branch, whatever it is called (contracts' DEFAULT_BRANCH). */
 export const DEFAULT_BRANCH = "~DEFAULT_BRANCH";
 /** Every branch, tag or repository (contracts' ALL). */
@@ -92,11 +98,9 @@ export const RULES: RuleTypeInfo[] = [
   { type: "max_file_path_length", label: "Restrict file path length", about: "No path longer than this.", group: "files", targets: ["branch", "tag"], defaults: { max_file_path_length: 255 } },
   { type: "max_files_changed", label: "Restrict files changed", about: "A commit may change at most this many files.", group: "files", targets: ["branch", "tag"], defaults: { max_files: 100 } },
   { type: "secret_scanning", label: "Block pushes that add secrets", about: "Every push is scanned; one too large to scan is refused instead of let through.", group: "files", targets: ["branch", "tag"], defaults: none },
-  { type: "confidence_threshold", label: "Confidence threshold", about: "An agent's change rated below this needs approvals from people.", group: "agents", targets: ["branch"], defaults: { minimum: "medium", required_approvals: 1 } },
-  { type: "cost_cap", label: "Cost cap", about: "Over this much agent spend, a pull request waits for a person before it merges or its agent continues.", group: "agents", targets: ["branch"], defaults: { max_usd: 10 } },
   { type: "path_review", label: "Review for sensitive paths", about: "Changes to these paths need approvals from people, from a team if you name one.", group: "agents", targets: ["branch"], defaults: { paths: [], required_approvals: 1, team: null }, repeatable: true },
   { type: "merge_window", label: "Merge window", about: "When pull requests may merge: weekly hours, freezes and exceptions.", group: "agents", targets: ["branch"], defaults: { time_zone: "UTC", windows: [], freezes: [], exceptions: [] } },
-  { type: "agent_auto_merge", label: "Agent auto-merge", about: "Whether an agent's ready change lands here without a person, and how sure g1t must be.", group: "agents", targets: ["branch"], defaults: { allowed: true, minimum_confidence: null } },
+  { type: "agent_auto_merge", label: "Agent auto-merge", about: "Whether an agent's ready change lands here without a person.", group: "agents", targets: ["branch"], defaults: { allowed: true } },
 ];
 
 export const RULE_GROUPS: { id: RuleTypeInfo["group"]; label: string }[] = [
@@ -104,7 +108,7 @@ export const RULE_GROUPS: { id: RuleTypeInfo["group"]; label: string }[] = [
   { id: "pull_requests", label: "Pull requests and checks" },
   { id: "commits", label: "Commits" },
   { id: "files", label: "Files" },
-  { id: "agents", label: "Agents, review and timing" },
+  { id: "agents", label: "Review, timing and auto-merge" },
 ];
 
 /** A rule type's information, or undefined for an unknown type. */
@@ -158,7 +162,10 @@ export function importRuleset(text: string, level: Level): RulesetSpec {
   const found = raw as Record<string, unknown>;
   const base = newRuleset(level);
   const name = typeof found.name === "string" ? found.name : typeof found.ruleset_name === "string" ? found.ruleset_name : "";
-  const rules = Array.isArray(found.rules) ? (found.rules as Record<string, unknown>[]) : [];
+  // Rule types no longer offered are left out, as the service does.
+  const rules = (Array.isArray(found.rules) ? (found.rules as Record<string, unknown>[]) : []).filter(
+    (rule) => !(typeof rule?.type === "string" && RETIRED_RULES.includes(rule.type)),
+  );
   for (const rule of rules) {
     if (typeof rule?.type !== "string" || !ruleInfo(rule.type)) throw new Error(`${String(rule?.type)} is not a rule type.`);
   }

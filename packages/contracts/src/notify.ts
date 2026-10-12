@@ -8,7 +8,6 @@
  * events service about every inbox item, and the site forwards each tab's
  * `/-/live` socket to it. Wire shapes are snake_case end to end.
  */
-import type { AgentLook } from "./agent-look";
 import type { CardAction } from "./chat";
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
@@ -19,9 +18,9 @@ import type { User } from "./identity";
  * push, a vulnerability report), shown like a mention; the rest of the
  * security items are ordinary `inbox` ones.
  */
-export type NotificationKind = "dm" | "mention" | "thread_reply" | "inbox" | "agent_waiting" | "approval" | "security";
+export type NotificationKind = "dm" | "mention" | "thread_reply" | "inbox" | "approval" | "security";
 
-export const NOTIFICATION_KINDS: readonly NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "agent_waiting", "approval", "security"];
+export const NOTIFICATION_KINDS: readonly NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "approval", "security"];
 
 /** Who it is from: a person, an agent, or g1t itself. */
 export type NotificationActor = {
@@ -33,8 +32,6 @@ export type NotificationActor = {
   avatar?: string | null;
   /** What an agent's face is drawn from when it chose none. */
   avatar_seed?: string | null;
-  /** An agent's chosen face (./agent-look.ts). */
-  look?: AgentLook | null;
 };
 
 export type FeedNotification = {

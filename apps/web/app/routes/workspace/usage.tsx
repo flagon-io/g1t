@@ -5,7 +5,7 @@ import { PRODUCTS, type UsageReport } from "@g1t/contracts";
 
 import type { Route } from "./+types/usage";
 import { Breakdown, IncludedAndCredit, UsageChart, UsageFilterBar, type UsageFilters, UsageSkeleton } from "../../components/usage";
-import { columns, defaultGrain, type Grain, type GroupBy, offeredProducts, resolveRange } from "../../lib/usage";
+import { columns, defaultGrain, type Grain, type GroupBy, resolveRange } from "../../lib/usage";
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
 import { getViewer, managesBilling, roleIn } from "../../lib/session.server";
@@ -81,7 +81,7 @@ export function UsageView({
   const bar = (
     <UsageFilterBar
       filters={filters}
-      products={offeredProducts(PRODUCTS)}
+      products={PRODUCTS}
       projects={report?.projects ?? filters.projects}
       report={report}
       apiHref={USAGE_API}
@@ -125,7 +125,7 @@ export default function UsagePage({ loaderData }: Route.ComponentProps) {
     <Suspense
       fallback={
         <UsageSkeleton>
-          <UsageFilterBar filters={filters} products={offeredProducts(PRODUCTS)} projects={filters.projects} report={null} apiHref={USAGE_API} />
+          <UsageFilterBar filters={filters} products={PRODUCTS} projects={filters.projects} report={null} apiHref={USAGE_API} />
         </UsageSkeleton>
       }
     >

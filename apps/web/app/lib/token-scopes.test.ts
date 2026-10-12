@@ -40,7 +40,7 @@ test("ticked boxes store the highest level of each resource", () => {
   const parsed = scopesFromForm(
     form({ scope: ["issues:read", "issues:write", "code:read", "agents:run", "bogus:read"] }),
   );
-  assert.deepEqual(parsed, { ok: true, value: ["code:read", "issues:write", "agents:run"] });
+  assert.deepEqual(parsed, { ok: true, value: ["code:read", "issues:write"] });
   assert.deepEqual(normalizeScopes(["repo:read", "repo:admin", "repo:write"]), ["repo:admin"]);
 });
 
@@ -62,7 +62,7 @@ test("a higher level ticks the lower ones of its resource only", () => {
 test("full access ticks the top level of everything", () => {
   const all = everyScope();
   assert.ok(all.includes("repo:admin"));
-  assert.ok(all.includes("agents:run"));
+  assert.ok(!all.includes("agents:run"), "retired");
   assert.ok(all.includes("code:write"));
   assert.ok(!all.includes("code:read"));
 });

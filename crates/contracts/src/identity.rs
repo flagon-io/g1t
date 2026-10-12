@@ -862,7 +862,11 @@ pub struct UpdateOAuthGrantArgs {
 }
 
 
-/// What an agent's token may do: these operations, in this repository.
+/// What a scoped token may do: these operations, in this repository. Run
+/// credentials (a token for one CI or sandbox run, see
+/// [`crate::credentials`]) carry one today, and so do tokens g1t's retired
+/// hosted agents were issued, which still parse so their stored rows and
+/// the `@g1t` history they wrote read as before.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentScope {
     pub repo: crate::repos::RepoPath,
@@ -874,24 +878,10 @@ pub struct AgentScope {
     pub run: Option<crate::credentials::RunBinding>,
 }
 
-/// `create_agent_token`: a token for a g1t agent working on someone's
-/// behalf. It acts as `g1t`, a member of the repository's workspace,
-/// and only for the operations in `scope`. Returns `CreatedAccessToken`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateAgentTokenArgs {
-    /// The person the agent works for; the token is recorded as theirs.
-    pub on_behalf_of: User,
-    pub scope: AgentScope,
-    pub ttl_seconds: u64,
-}
-
-// `agent_scope` takes `TokenArgs` and returns `Option<AgentScope>`: what an
-// agent's token may do, or null for any other token.
-
-/// The id g1t's agent acts under. Only ever stored, never shown: it keeps
-/// the agent's work apart from g1t's own ([`crate::system::ID`]) where
-/// that matters, such as whether its approval counts.
+/// The id g1t's retired hosted agent acted under. Only ever stored, never
+/// shown: rows it wrote keep it, and still render as g1t's
+/// ([`crate::system::ID`]) work without counting as g1t itself, such as
+/// for whether an approval counts.
 pub const AGENT_ID: &str = "usr_g1t_agent";
 /// The name g1t's agent is shown by: g1t's own, [`crate::system::USERNAME`].
 /// Everything it does, people see g1t do.
@@ -1116,7 +1106,11 @@ pub struct SetDockPinsArgs {
 /// The sets of sounds a person can choose from.
 pub const SOUND_SETS: [&str; 2] = ["soft", "bright"];
 /// The cues a person can turn on and off. `call` is reserved and has no setting.
-pub const SOUND_CUES: [&str; 5] = ["message", "direct", "mention", "agent_done", "sent"];
+pub const SOUND_CUES: [&str; 4] = ["message", "direct", "mention", "sent"];
+/// Cues that no longer play: `agent_done`, from g1t's retired hosted
+/// agents. Saved settings that name one still read, without it, and a
+/// change that names one leaves it out rather than failing.
+pub const RETIRED_SOUND_CUES: [&str; 1] = ["agent_done"];
 /// Before anyone changes them: every cue but the tick as you send.
 pub const SOUND_CUES_OFF_BY_DEFAULT: [&str; 1] = ["sent"];
 pub const DEFAULT_SOUND_SET: &str = "soft";

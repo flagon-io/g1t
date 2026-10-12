@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use g1t_contracts::rules::{
-    Applicable, ConfidenceLevel, Enforcement, InspectedCommits, Integration, MergeMethod, MergeQueueRule, Rule,
+    Applicable, Enforcement, InspectedCommits, Integration, MergeMethod, MergeQueueRule, Rule,
     StatusChecksRule,
 };
 use g1t_contracts::work::{CommitStatus, RequiredState, Verdict, check_name, required_checks};
@@ -57,10 +57,6 @@ pub struct MergeFacts<'a> {
     pub files: &'a [String],
     /// Its commits, read, when a rule about commits holds.
     pub commits: Option<&'a InspectedCommits>,
-    /// How sure g1t is of an agent's change, once rated.
-    pub confidence: Option<ConfidenceLevel>,
-    /// What agents have spent on it, in US dollars.
-    pub spent_usd: f64,
     /// Milliseconds since the epoch.
     pub now_ms: u64,
     pub method: Option<MergeMethod>,
@@ -242,14 +238,6 @@ pub fn reported_deployment_context(environment: &str) -> String {
     format!("deploy / {}", environment.trim())
 }
 
-fn level_rank(level: ConfidenceLevel) -> u8 {
-    match level {
-        ConfidenceLevel::Low => 0,
-        ConfidenceLevel::Medium => 1,
-        ConfidenceLevel::High => 2,
-    }
-}
-
 /// The problems one rule finds in a merge.
 fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
     match rule {
@@ -304,39 +292,6 @@ fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
             Some(inspected) => content::problems(rule, &inspected.commits, inspected.complete),
             None => Vec::new(),
         },
-        Rule::ConfidenceThreshold(rule) if facts.agent_change => {
-            let below = facts.confidence.is_none_or(|level| level_rank(level) < level_rank(rule.minimum));
-            let approvals = people_approving(facts, false).count() as u32;
-            if below && approvals < rule.required_approvals.max(1) {
-                let rated = match facts.confidence {
-                    Some(level) => format!("g1t rates this agent's change {} confidence", level.as_str()),
-                    None => "This is an agent's change and has no confidence rating".to_owned(),
-                };
-                vec![Problem::new(
-                    format!(
-                        "{rated}; below {} it needs {}.",
-                        rule.minimum.as_str(),
-                        plural(rule.required_approvals.max(1), "approval from a person", "approvals from people")
-                    ),
-                    "Review the change and approve it if it is right.",
-                )]
-            } else {
-                Vec::new()
-            }
-        }
-        Rule::CostCap(rule) if facts.spent_usd > rule.max_usd => {
-            if people_approving(facts, false).next().is_some() {
-                Vec::new()
-            } else {
-                vec![Problem::new(
-                    format!(
-                        "Agents have spent ${:.2} on this pull request, over its ${:.2} cap.",
-                        facts.spent_usd, rule.max_usd
-                    ),
-                    "A person must approve it before it merges or its agent continues.",
-                )]
-            }
-        }
         Rule::PathReview(rule) => {
             let touched: Vec<&String> = facts
                 .files
@@ -443,12 +398,8 @@ pub struct Requirements {
     pub require_code_owner_review: bool,
     /// The merge queue, if a rule requires it.
     pub merge_queue: Option<MergeQueueRule>,
-    /// Whether g1t may land an agent's change here by itself, and the
-    /// confidence it needs to.
+    /// Whether g1t may land an agent's change here by itself.
     pub agent_auto_merge: bool,
-    pub auto_merge_confidence: Option<ConfidenceLevel>,
-    /// The highest cost cap below which an agent continues on its own.
-    pub cost_cap: Option<f64>,
 }
 
 /// What the active rules hold for, stacked: the most restrictive wins.
@@ -501,15 +452,6 @@ pub fn requirements(rulesets: &[Applicable], git_ref: &str, default_branch: &str
                 }
                 Rule::AgentAutoMerge(rule) => {
                     found.agent_auto_merge &= rule.allowed;
-                    if let Some(minimum) = rule.minimum_confidence {
-                        found.auto_merge_confidence = Some(match found.auto_merge_confidence {
-                            Some(have) if level_rank(have) >= level_rank(minimum) => have,
-                            _ => minimum,
-                        });
-                    }
-                }
-                Rule::CostCap(rule) => {
-                    found.cost_cap = Some(found.cost_cap.map_or(rule.max_usd, |have| have.min(rule.max_usd)));
                 }
                 _ => {}
             }
@@ -522,17 +464,10 @@ pub fn requirements(rulesets: &[Applicable], git_ref: &str, default_branch: &str
     found
 }
 
-/// Whether g1t may land an agent's change into the branch by itself, given
-/// how sure of it g1t is; why not, if it may not.
-pub fn auto_merge_refusal(requirements: &Requirements, confidence: Option<ConfidenceLevel>) -> Option<String> {
-    if !requirements.agent_auto_merge {
-        return Some("Rules for this branch do not let agents' changes merge by themselves.".to_owned());
-    }
-    let minimum = requirements.auto_merge_confidence?;
-    if confidence.is_some_and(|level| level_rank(level) >= level_rank(minimum)) {
-        return None;
-    }
-    Some(format!("Rules for this branch let an agent's change merge by itself only at {} confidence or higher.", minimum.as_str()))
+/// Whether g1t may land an agent's change into the branch by itself; why
+/// not, if it may not.
+pub fn auto_merge_refusal(requirements: &Requirements) -> Option<String> {
+    (!requirements.agent_auto_merge).then(|| "Rules for this branch do not let agents' changes merge by themselves.".to_owned())
 }
 
 /// Whether a violation is about checks or being up to date, which g1t's
@@ -547,7 +482,7 @@ mod tests {
     use crate::content::tests_support::commit;
     use crate::outcome::{blocking, refused};
     use g1t_contracts::rules::{
-        AppliesTo, BypassMode, ConfidenceRule, CostCapRule, DeploymentsRule, Level, MergeWindowRule, NoParameters,
+        AppliesTo, BypassMode, DeploymentsRule, Level, MergeWindowRule, NoParameters,
         PathReviewRule, Period, PullRequestRule, RefCondition, RequiredCheck, RuleEntry, Verdict as Outcome,
     };
 
@@ -758,33 +693,6 @@ mod tests {
     }
 
     #[test]
-    fn agent_changes_below_the_confidence_threshold_need_a_person() {
-        let rules = [ruleset(vec![all(Rule::ConfidenceThreshold(ConfidenceRule { minimum: ConfidenceLevel::High, required_approvals: 1 }))])];
-        let mut agent = facts(&[], &[], &[]);
-        agent.agent_change = true;
-        agent.confidence = Some(ConfidenceLevel::Medium);
-        assert_eq!(
-            messages(&judge(&rules, "main", &agent)),
-            vec!["g1t rates this agent's change medium confidence; below high it needs 1 approval from a person."]
-        );
-        agent.confidence = Some(ConfidenceLevel::High);
-        assert!(!refused(&judge(&rules, "main", &agent)));
-        agent.confidence = None;
-        assert!(refused(&judge(&rules, "main", &agent)));
-        let approved = [review("bob", Verdict::Approve, "x")];
-        let mut seen = facts(&approved, &[], &[]);
-        seen.agent_change = true;
-        assert!(!refused(&judge(&rules, "main", &seen)));
-        // A g1t approval is not a person's.
-        let robot = [review("g1t", Verdict::Approve, "x")];
-        let mut unseen = facts(&robot, &[], &[]);
-        unseen.agent_change = true;
-        assert!(refused(&judge(&rules, "main", &unseen)));
-        // A person's change is not rated.
-        assert!(!refused(&judge(&rules, "main", &facts(&[], &[], &[]))));
-    }
-
-    #[test]
     fn rules_for_agents_and_for_people() {
         let agents_need_a_human = RuleEntry {
             rule: Rule::PullRequest(PullRequestRule { required_approvals: 1, count_agent_approvals: false, ..PullRequestRule::default() }),
@@ -796,24 +704,6 @@ mod tests {
         agent.agent_change = true;
         assert_eq!(messages(&judge(&rules, "main", &agent)), vec!["It needs 1 approving review from people; it has 0."]);
         assert!(!refused(&judge(&rules, "main", &facts(&robot, &[], &[]))), "people's changes are not held");
-    }
-
-    #[test]
-    fn a_cost_cap_holds_until_a_person_approves() {
-        let rules = [ruleset(vec![all(Rule::CostCap(CostCapRule { max_usd: 5.0 }))])];
-        let mut costly = facts(&[], &[], &[]);
-        costly.spent_usd = 7.5;
-        assert_eq!(
-            messages(&judge(&rules, "main", &costly)),
-            vec!["Agents have spent $7.50 on this pull request, over its $5.00 cap."]
-        );
-        costly.spent_usd = 4.0;
-        assert!(!refused(&judge(&rules, "main", &costly)));
-        let approved = [review("bob", Verdict::Approve, "x")];
-        let mut seen = facts(&approved, &[], &[]);
-        seen.spent_usd = 7.5;
-        assert!(!refused(&judge(&rules, "main", &seen)));
-        assert_eq!(requirements(&rules, "refs/heads/main", "main", false, &[]).cost_cap, Some(5.0));
     }
 
     #[test]
@@ -906,17 +796,12 @@ mod tests {
     }
 
     #[test]
-    fn agent_auto_merge_by_branch_and_confidence() {
-        let rules = [ruleset(vec![all(Rule::AgentAutoMerge(g1t_contracts::rules::AgentAutoMergeRule {
-            allowed: true,
-            minimum_confidence: Some(ConfidenceLevel::High),
-        }))])];
-        let found = requirements(&rules, "refs/heads/main", "main", true, &[]);
-        assert!(auto_merge_refusal(&found, Some(ConfidenceLevel::Medium)).is_some());
-        assert_eq!(auto_merge_refusal(&found, Some(ConfidenceLevel::High)), None);
-        let off = [ruleset(vec![all(Rule::AgentAutoMerge(g1t_contracts::rules::AgentAutoMergeRule { allowed: false, minimum_confidence: None }))])];
-        assert!(auto_merge_refusal(&requirements(&off, "refs/heads/main", "main", true, &[]), Some(ConfidenceLevel::High)).is_some());
-        assert_eq!(auto_merge_refusal(&requirements(&[], "refs/heads/main", "main", true, &[]), None), None);
+    fn agent_auto_merge_by_branch() {
+        let on = [ruleset(vec![all(Rule::AgentAutoMerge(g1t_contracts::rules::AgentAutoMergeRule { allowed: true }))])];
+        assert_eq!(auto_merge_refusal(&requirements(&on, "refs/heads/main", "main", true, &[])), None);
+        let off = [ruleset(vec![all(Rule::AgentAutoMerge(g1t_contracts::rules::AgentAutoMergeRule { allowed: false }))])];
+        assert!(auto_merge_refusal(&requirements(&off, "refs/heads/main", "main", true, &[])).is_some());
+        assert_eq!(auto_merge_refusal(&requirements(&[], "refs/heads/main", "main", true, &[])), None);
     }
 
     #[test]

@@ -825,10 +825,7 @@
       "required_approvals": 0,
       "count_agent_approvals": true,
       "allow_ignoring_checks": true,
-      "agent_review": true,
-      "max_revisions": 2,
       "merge_queue": false,
-      "hold_low_confidence": true,
       "require_code_owner_review": false,
       "updated_by": null,
       "updated_at": null
@@ -855,15 +852,12 @@
       "required_approvals": 1,
       "count_agent_approvals": false,
       "allow_ignoring_checks": true,
-      "agent_review": true,
-      "max_revisions": 2,
       "merge_queue": true,
-      "hold_low_confidence": true,
       "require_code_owner_review": true,
       "updated_by": "syntaqx",
       "updated_at": "2026-10-04T16:20:37.508Z"
     },
-    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6 and `max_revisions` at most 5. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). `hold_low_confidence` is on unless turned off: see [confidence](/guides/working-with-g1t/#how-sure-the-agent-is). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/)."
+    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/)."
   },
   "list_check_names": {
     "response": [
@@ -1555,7 +1549,6 @@
         "requested_by": null,
         "created_at": "2026-10-01T18:20:02.117Z",
         "updated_at": "2026-10-01T18:35:44.902Z",
-        "confidence": null,
         "labels": [],
         "milestone": null,
         "base": "main"
@@ -1644,24 +1637,9 @@
       "checks": null,
       "overlaps": [],
       "behind": false,
-      "review_pending": false,
       "lifecycle": null,
       "landing": false,
       "stalled": null,
-      "messages": [
-        {
-          "id": "msg_01m43tx5egeh4t3f9zcnjenqvz",
-          "author": "syntaqx",
-          "body": "Keep \"world\" as the default when no name is given.",
-          "created_at": "2026-10-01T18:25:00.310Z",
-          "delivered_at": "2026-10-01T18:25:31.007Z",
-          "kind": "message",
-          "from_number": null,
-          "to_number": 14,
-          "answer": null,
-          "declined": false
-        }
-      ],
       "statuses": [
         {
           "context": "CI / pull_request",
@@ -3660,34 +3638,12 @@
     },
     "response": [
       {
-        "id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab",
-        "workspace": "flagon-io",
-        "provider": "anthropic",
-        "kind": "models",
-        "name": "Anthropic",
-        "config": {
-          "assign": false,
-          "write_back": true
-        },
-        "secret_hint": "…3f9a",
-        "webhook_url": null,
-        "created_by": "syntaqx",
-        "created_at": "2026-10-04T15:42:07.318Z",
-        "last_used_at": "2026-10-04T15:42:08.102Z",
-        "last_error": null,
-        "models": [
-          "claude-haiku-4-5",
-          "claude-sonnet-4-5"
-        ]
-      },
-      {
         "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc",
         "workspace": "flagon-io",
         "provider": "jira",
         "kind": "tracker",
         "name": "Jira",
         "config": {
-          "assign": false,
           "write_back": true,
           "site": "https://acme.atlassian.net",
           "email": "syntaqx@example.com",
@@ -3704,7 +3660,7 @@
         "models": []
       }
     ],
-    "notes": "`kind` is `models`, `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts."
+    "notes": "`kind` is `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts."
   },
   "connect_integration": {
     "params": {
@@ -3727,7 +3683,6 @@
         "config": {
           "repo": "flagon-io/hello",
           "label": "bug",
-          "assign": false,
           "write_back": true
         },
         "secret_hint": null,
@@ -3740,63 +3695,64 @@
       },
       "signing_secret": "g1ts_9f2c4a7e1b0d3c6f8a2e5b7d9c1f4a6e8b0d2c4f6a8e1b3d"
     },
-    "notes": "`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. A model provider is tested as it is connected. See [integrations](/guides/integrations/) and [model providers](/guides/models/)."
+    "notes": "`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. See [integrations](/guides/integrations/)."
   },
   "update_integration": {
     "params": {
       "workspace": "flagon-io",
-      "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0"
+      "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc"
     },
     "request": {
       "config": {
-        "base_url": "https://gpu.flagon.dev/v1",
-        "gateway_models": [
-          "ollama/*"
+        "site": "https://acme.atlassian.net",
+        "email": "syntaqx@example.com",
+        "keys": [
+          "TECH",
+          "OPS"
         ]
       },
-      "secret": "sk-office-gpu-key"
+      "secret": "atlassian-api-token"
     },
     "response": {
-      "id": "con_01kpx5c2d8e4f6g0h2j4k6m8n0",
+      "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc",
       "workspace": "flagon-io",
-      "provider": "openai_endpoint",
-      "kind": "models",
-      "name": "Office GPU",
+      "provider": "jira",
+      "kind": "tracker",
+      "name": "Jira",
       "config": {
         "write_back": true,
-        "base_url": "https://gpu.flagon.dev/v1",
-        "gateway_models": [
-          "ollama/*"
+        "site": "https://acme.atlassian.net",
+        "email": "syntaqx@example.com",
+        "keys": [
+          "TECH",
+          "OPS"
         ]
       },
-      "secret_hint": "…-key",
+      "secret_hint": "…oken",
       "webhook_url": null,
       "created_by": "syntaqx",
-      "created_at": "2026-10-07T12:10:44.512Z",
+      "created_at": "2026-10-04T15:42:07.318Z",
       "last_used_at": "2026-10-07T14:00:02.000Z",
       "last_error": null,
-      "models": [
-        "llama3.3:70b",
-        "qwen3-coder:30b"
-      ]
+      "models": []
     },
-    "notes": "The secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. With `gateway_models` set to `ollama/*`, an AI Gateway request for `ollama/qwen3-coder:30b` reaches this endpoint as `qwen3-coder:30b`, on the workspace's own account. See [the AI Gateway guide](/guides/ai-gateway/#your-own-providers)."
+    "notes": "The secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. Use it to rotate a key."
   },
   "disconnect_integration": {
     "params": {
       "workspace": "flagon-io",
-      "id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
+      "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bd"
     },
     "response": true
   },
   "test_integration": {
     "params": {
       "workspace": "flagon-io",
-      "id": "con_01kpx3m7q2f8r9t4v6w0y1z2ab"
+      "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc"
     },
     "response": {
       "ok": true,
-      "message": "Anthropic accepted the key and offers 9 models."
+      "message": "Connected to https://acme.atlassian.net as Chase Pierce."
     },
     "notes": "Credentials that do not work still answer `200`, with `ok` false and `message` saying what went wrong."
   },
@@ -5709,8 +5665,7 @@
                 }
               ]
             }
-          ],
-          "features": []
+          ]
         },
         {
           "key": "other",
@@ -5748,17 +5703,13 @@
                 }
               ]
             }
-          ],
-          "features": []
+          ]
         }
       ],
       "projects": [
         "flagon-io/g1t",
         "flagon-io/hello"
       ],
-      "models": [],
-      "by_agent": [],
-      "by_person": [],
       "included": {
         "used": 20,
         "of": 20,
@@ -5838,7 +5789,7 @@
       "state": "ok",
       "message": null
     },
-    "notes": "Fields left out keep their value. A limit above `max_amount_micros` is refused with `invalid`. Called by anyone but an owner signed in as a person, or by a workspace's own token or one of g1t's agents, it is refused with `forbidden`. Each alert is sent once a month, to the owners by email and, with `webhook`, as a JSON POST."
+    "notes": "Fields left out keep their value. A limit above `max_amount_micros` is refused with `invalid`. Called by anyone but an owner signed in as a person, or by a workspace's own token or a run's token, it is refused with `forbidden`. Each alert is sent once a month, to the owners by email and, with `webhook`, as a JSON POST."
   },
   "list_invoices": {
     "params": {
@@ -8336,8 +8287,7 @@
           },
           "requested_by": null,
           "created_at": "2026-10-01T18:20:02.117Z",
-          "updated_at": "2026-10-01T18:35:44.902Z",
-          "confidence": null
+          "updated_at": "2026-10-01T18:35:44.902Z"
         }
       ]
     }
@@ -8397,8 +8347,7 @@
       },
       "requested_by": null,
       "created_at": "2026-10-01T18:20:02.117Z",
-      "updated_at": "2026-10-01T18:35:44.902Z",
-      "confidence": null
+      "updated_at": "2026-10-01T18:35:44.902Z"
     },
     "notes": "A new base takes it out of the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base."
   },
@@ -8561,13 +8510,6 @@
               "exceptions": []
             },
             "applies_to": "everyone"
-          },
-          {
-            "type": "cost_cap",
-            "parameters": {
-              "max_usd": 25
-            },
-            "applies_to": "agents"
           }
         ],
         "created_by": "syntaqx",
@@ -9227,13 +9169,6 @@
               "exceptions": []
             },
             "applies_to": "everyone"
-          },
-          {
-            "type": "cost_cap",
-            "parameters": {
-              "max_usd": 25
-            },
-            "applies_to": "agents"
           }
         ],
         "created_by": "syntaqx",
@@ -9308,13 +9243,6 @@
             "exceptions": []
           },
           "applies_to": "everyone"
-        },
-        {
-          "type": "cost_cap",
-          "parameters": {
-            "max_usd": 25
-          },
-          "applies_to": "agents"
         }
       ],
       "created_by": "syntaqx",
@@ -9384,13 +9312,6 @@
             "exceptions": []
           },
           "applies_to": "everyone"
-        },
-        {
-          "type": "cost_cap",
-          "parameters": {
-            "max_usd": 25
-          },
-          "applies_to": "agents"
         }
       ]
     },
@@ -9454,13 +9375,6 @@
             "exceptions": []
           },
           "applies_to": "everyone"
-        },
-        {
-          "type": "cost_cap",
-          "parameters": {
-            "max_usd": 25
-          },
-          "applies_to": "agents"
         }
       ],
       "created_by": "syntaqx",
@@ -9538,13 +9452,6 @@
             "exceptions": []
           },
           "applies_to": "everyone"
-        },
-        {
-          "type": "cost_cap",
-          "parameters": {
-            "max_usd": 25
-          },
-          "applies_to": "agents"
         }
       ],
       "created_by": "syntaqx",

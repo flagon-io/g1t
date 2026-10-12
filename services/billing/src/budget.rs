@@ -135,10 +135,10 @@ pub(crate) fn breaker_open(today: i64, cap: i64, lifted: bool) -> bool {
 }
 
 /// Whether the breaker is about this start: any compute g1t would pay
-/// for. Every kind costs g1t sandbox time, whatever model an agent uses,
-/// so none is left out; a workspace whose spend is covered is left out by
-/// [`covered_by_revenue`] instead.
-pub(crate) fn breaker_applies(_kind: ComputeKind, _hosted_model: Option<bool>) -> bool {
+/// for. Every kind costs g1t sandbox time, so none is left out; a
+/// workspace whose spend is covered is left out by [`covered_by_revenue`]
+/// instead.
+pub(crate) fn breaker_applies(_kind: ComputeKind) -> bool {
     true
 }
 
@@ -321,9 +321,8 @@ impl Billing {
         plan: PlanKind,
         account: &BillingAccount,
         kind: ComputeKind,
-        hosted_model: Option<bool>,
     ) -> Result<Option<String>> {
-        if self.caps.daily <= 0 || !breaker_applies(kind, hosted_model) {
+        if self.caps.daily <= 0 || !breaker_applies(kind) {
             return Ok(None);
         }
         let comped = account.terms.full_discount();
@@ -685,11 +684,9 @@ mod tests {
 
     #[test]
     fn the_breaker_is_about_all_compute_g1t_pays_for() {
-        assert!(breaker_applies(ComputeKind::Agent, Some(true)));
-        assert!(breaker_applies(ComputeKind::Agent, None));
-        assert!(breaker_applies(ComputeKind::Agent, Some(false)));
-        assert!(breaker_applies(ComputeKind::Check, None));
-        assert!(breaker_applies(ComputeKind::Workflow, Some(true)));
+        assert!(breaker_applies(ComputeKind::Check));
+        assert!(breaker_applies(ComputeKind::Workflow));
+        assert!(breaker_applies(ComputeKind::Deploy));
     }
 
     #[test]

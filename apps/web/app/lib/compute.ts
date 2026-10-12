@@ -25,8 +25,3 @@ export function linkPaths(message: string): Piece[] {
   if (at < message.length) pieces.push({ text: message.slice(at) });
   return pieces;
 }
-
-/** How a run waiting for a free slot says so (`WAITING_PREFIX`). */
-export function isWaitingMessage(message: string): boolean {
-  return message.startsWith("Waiting for a free slot");
-}

@@ -216,9 +216,6 @@ pub struct PullEvent {
     /// On close: the pull request that was merged instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<u32>,
-    /// How sure g1t is of a g1t agent's change, once it has worked that out.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub confidence: Option<crate::work::Confidence>,
     /// On `pull.assigned`: the people it is now assigned to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignees: Option<Vec<String>>,
@@ -369,19 +366,6 @@ pub struct WorkflowEvent {
     /// The pull request it ran for, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pull: Option<u32>,
-}
-
-/// `review.completed`: a g1t agent finished reviewing a pull request, or
-/// could not.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReviewEvent {
-    pub pull_id: String,
-    pub repo_id: String,
-    pub number: u32,
-    /// `approve` or `request_changes`; absent when no review was written.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub verdict: Option<&'static str>,
 }
 
 /// `comment.created`. `number` is the issue or pull request commented on.

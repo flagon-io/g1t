@@ -82,7 +82,7 @@ export type InstalledApp = {
 };
 
 /** Where an integration is looked after: its setup page, by kind, or its own page. */
-const SECTION_BY_CATEGORY: Partial<Record<Connector["category"], string>> = { monitoring: "alerts", issues: "trackers" };
+const SECTION_BY_CATEGORY: Partial<Record<Connector["category"], string>> = { ai: "models", monitoring: "alerts", issues: "trackers" };
 
 function integrationPath(connector: Connector): (slug: string) => string {
   const section = connector.provider ? SECTION_BY_CATEGORY[connector.category] : undefined;
@@ -108,8 +108,6 @@ export function installedAppOf(key: string): InstalledApp | null {
   if (key.length > MAX_KEY || !/^int-[a-z0-9][a-z0-9-]*$/.test(key)) return null;
   const connector = CONNECTORS.find((c) => c.id === key.slice(4));
   if (!connector || connector.status !== "available" || !connector.scopes.includes("workspace")) return null;
-  // Model providers were for g1t's own agents: no longer an app.
-  if (connector.provider && connector.category === "ai") return null;
   return {
     key,
     name: connector.name,

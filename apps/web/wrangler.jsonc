@@ -34,7 +34,6 @@
 		// The package registries, on g1t.sh/v2/ (workers/app.ts).
 		{ "binding": "PACKAGES", "service": "g1t-packages" },
 		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "RUNNER", "service": "g1t-runner" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "EVENTS", "service": "g1t-events" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },

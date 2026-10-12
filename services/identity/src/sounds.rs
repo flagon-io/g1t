@@ -40,6 +40,9 @@ pub fn apply_change(current: &SoundSettings, change: &SoundSettingsChange) -> st
     }
     if let Some(cues) = &change.sound_cues {
         for (cue, on) in cues {
+            if RETIRED_SOUND_CUES.contains(&cue.as_str()) {
+                continue;
+            }
             if !SOUND_CUES.contains(&cue.as_str()) {
                 return Err("That is not a sound g1t plays.".to_owned());
             }
@@ -184,6 +187,9 @@ mod tests {
         assert!(apply_change(&d, &SoundSettingsChange { sound_volume: Some(-1), ..Default::default() }).is_err());
         assert!(apply_change(&d, &SoundSettingsChange { sound_cues: Some(cues(&[("call", false)])), ..Default::default() }).is_err());
         assert!(apply_change(&d, &SoundSettingsChange { sound_cues: Some(cues(&[("klaxon", true)])), ..Default::default() }).is_err());
+        // A retired cue is left out, not refused.
+        let next = apply_change(&d, &SoundSettingsChange { sound_cues: Some(cues(&[("agent_done", false)])), ..Default::default() }).unwrap();
+        assert_eq!(next.sound_cues.get("agent_done"), None);
     }
 
     #[test]
@@ -195,9 +201,10 @@ mod tests {
         assert_eq!(s.sound_volume, 100);
         assert_eq!(s.sound_cues, SoundSettings::default().sound_cues);
         assert!(s.desktop_toasts);
-        let row = Row { sounds_enabled: 1, sound_set: "bright".to_owned(), sound_volume: 20, sound_cues: r#"{"sent":true,"old_cue":true}"#.to_owned(), desktop_toasts: 0 };
+        let row = Row { sounds_enabled: 1, sound_set: "bright".to_owned(), sound_volume: 20, sound_cues: r#"{"sent":true,"old_cue":true,"agent_done":false}"#.to_owned(), desktop_toasts: 0 };
         let s = settings_from(row);
         assert_eq!(s.sound_cues.get("sent"), Some(&true));
         assert_eq!(s.sound_cues.get("old_cue"), None);
+        assert_eq!(s.sound_cues.get("agent_done"), None);
     }
 }

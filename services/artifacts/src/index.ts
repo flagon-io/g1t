@@ -785,7 +785,7 @@ class Docs {
         const key = memberKey(m.principal);
         if (key?.kind === "team") return { key: m.principal, kind: "team", name: key.id, display_name: `@${workspace.slug}/${key.id}`, avatar: null, role: m.role };
         const p = people.get(m.principal)!;
-        return { key: m.principal, kind: p.kind, name: p.name, display_name: p.display_name, avatar: p.avatar, avatar_seed: p.avatar_seed ?? null, look: p.look ?? null, role: m.role };
+        return { key: m.principal, kind: p.kind, name: p.name, display_name: p.display_name, avatar: p.avatar, avatar_seed: p.avatar_seed ?? null, role: m.role };
       })
       .sort((x, y) => RANK[y.role] - RANK[x.role] || x.display_name.localeCompare(y.display_name));
   }
@@ -1964,7 +1964,7 @@ class Docs {
               title: `${who.display_name} mentioned you on ${page.title || "Untitled"}`,
               body: text.slice(0, 140),
               href,
-              actor: { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null, look: who.look ?? null },
+              actor: { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null },
               created_at: now(),
             },
           )

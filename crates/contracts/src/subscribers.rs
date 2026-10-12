@@ -55,13 +55,11 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "pull.merged",
             "pull.closed",
             "checks.completed",
-            "review.completed",
             "queue.changed",
             "comment.created",
             "issue.opened",
             "issue.updated",
             "issue.closed",
-            "agent.asked",
             "repo.archived",
         ],
     ),
@@ -82,7 +80,6 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "release.*",
             "deployment.created",
             "deployment_status.created",
-            "review.completed",
             "workflow.completed",
             "repo.archived",
         ],
@@ -119,7 +116,6 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "pull.updated",
             "pull.merged",
             "pull.closed",
-            "review.completed",
             "comment.created",
             "deployment.succeeded",
             "deployment.failed",
@@ -163,19 +159,6 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "repo.visibility_changed",
         ],
     ),
-    // What agents are told about a repository (context/src/index.ts).
-    (
-        "SUBSCRIBER_CONTEXT",
-        &[
-            "git.push",
-            "issue.opened",
-            "issue.updated",
-            "issue.closed",
-            "pull.ready",
-            "pull.merged",
-            "memory.changed",
-        ],
-    ),
     // The site-wide search index (search/src/index.rs).
     ("SUBSCRIBER_SEARCH", &["git.push", "repo.*", "issue.*", "pull.*", "user.*", "workspace.*"]),
     // Composer packages read from repositories, and packages that follow
@@ -195,25 +178,6 @@ pub const ROUTES: &[(&str, &[&str])] = &[
     // changed become possibly out of date, and projects' docs folders shown
     // in Docs are read again (docs/src/staleness.ts, repo-spaces.ts).
     ("SUBSCRIBER_DOCS", &["git.push", "pull.merged"]),
-    // Agents' routines that run on events: a pull request ready for
-    // review or merged, checks or a deploy failing, an issue opened
-    // (agents/src/triggers.ts); pushes, which skill libraries that
-    // follow a repository read again (agents/src/skill-library.ts); and
-    // a person joining a workspace, whom its @g1t welcomes
-    // (agents/src/welcome.ts).
-    (
-        "SUBSCRIBER_AGENTS",
-        &[
-            "git.push",
-            "pull.opened",
-            "pull.ready",
-            "pull.merged",
-            "checks.completed",
-            "issue.opened",
-            "deployment.failed",
-            "workspace.member_joined",
-        ],
-    ),
 ];
 
 /// Whether `pattern` (see the module's notes) matches the type `kind`.
@@ -303,7 +267,7 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), count);
-        assert_eq!(count, 15);
+        assert_eq!(count, 13);
     }
 
     #[test]
@@ -325,10 +289,6 @@ mod tests {
         assert!(!routed("SUBSCRIBER_REPOS", "git.push"));
         assert!(routed("SUBSCRIBER_DOCS", "pull.merged"));
         assert!(!routed("SUBSCRIBER_DOCS", "pull.opened"));
-        assert!(routed("SUBSCRIBER_AGENTS", "git.push"));
-        assert!(routed("SUBSCRIBER_AGENTS", "workspace.member_joined"));
-        assert!(!routed("SUBSCRIBER_AGENTS", "comment.created"));
-        assert!(!routed("SUBSCRIBER_AGENTS", "workspace.updated"));
         assert!(routed("SUBSCRIBER_PROJECTS", "deployment_status.created"));
         assert!(!routed("SUBSCRIBER_PROJECTS", "deployment.created"));
         // Every subscriber follows what moves or removes a repository.

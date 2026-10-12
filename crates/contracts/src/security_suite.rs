@@ -829,28 +829,6 @@ pub struct PullResult {
     pub failing: bool,
 }
 
-/// `fix_alert`: puts g1t on an issue to fix a code scanning alert, a
-/// vulnerable dependency or a leaked secret (removing it from the code;
-/// rotating it stays with you). Write and up, and agents allowed to run.
-/// The agent's work is billed as agent usage. Returns
-/// `Outcome<AlertFix>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FixAlertArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    /// `cod_…`, `vul_…` or `sec_…`.
-    pub id: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AlertFix {
-    pub issue: u32,
-    /// Whether an agent was started on it.
-    pub started: bool,
-    pub message: Option<String>,
-}
-
 // --- Supply chain -----------------------------------------------------------
 
 /// One package in the dependency graph.

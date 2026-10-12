@@ -45,8 +45,9 @@ export type User = {
    */
   avatar?: string;
   /**
-   * Set on an agent resolved from its token: who it acts for ("g1t
-   * on behalf of syntaqx"), with which credential, and what it may do.
+   * Set on a run credential resolved from its token: who it acts for,
+   * with which credential, and what it may do. Older rows written by
+   * g1t's retired hosted agents carry it too ("g1t on behalf of syntaqx").
    */
   acting?: Acting;
   /**
@@ -886,8 +887,8 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   /**
    * Internal: the people behind these ids (at most 50) with their
    * workspaces, roles and repository grants, as a signed-in viewer has
-   * them. For the agents service's audience checks only. Ids of no live
-   * account are left out.
+   * them. For artifacts' audience checks only. Ids of no live account are
+   * left out.
    */
   usersForAudience(ids: string[]): Promise<User[]>;
 
@@ -937,23 +938,14 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   /**
    * A credential minted for a person or workspace by another service. The
    * plaintext token is returned once and never stored. With `ttlSeconds`
-   * the token expires and is left out of token lists; that form is used
-   * for hosted agents. Tokens people make use `createToken`.
+   * the token expires and is left out of token lists. Tokens people make
+   * use `createToken`.
    */
   createAccessToken(
     user: User,
     name: string,
     ttlSeconds?: number,
     grant?: TokenGrant & { listed?: boolean },
-  ): Promise<{ token: string; info: AccessToken }>;
-  /**
-   * A token for a g1t agent working for `onBehalfOf`: it acts as
-   * `g1t`, in `scope.repo` only, and only for `scope.operations`.
-   */
-  createAgentToken(
-    onBehalfOf: User,
-    scope: AgentScope,
-    ttlSeconds: number,
   ): Promise<{ token: string; info: AccessToken }>;
   removeAccessToken(user: User, id: string): Promise<void>;
   /**
@@ -969,7 +961,12 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
 }
 
 
-/** What an agent's token may do: these operations, in this repository. */
+/**
+ * What a scoped token may do: these operations, in this repository. Run
+ * credentials carry one today; tokens g1t's retired hosted agents were
+ * issued carry one too and still parse, so their rows and the `@g1t`
+ * history they wrote read as before.
+ */
 export type AgentScope = { repo: RepoPath; operations: string[]; run?: RunBinding };
 
 /** The most apps a person pins in one workspace. Mirrors `MAX_DOCK_PINS` in `crates/contracts/src/identity.rs`. */

@@ -6,25 +6,15 @@ import {
   type ComputeKind,
   type PlanMemory,
   ComputeGate,
-  MODEL_ESTIMATE_MICROS,
   actualMicros,
-  agentEstimateMicros,
   alwaysPasses,
-  embeddingEstimateMicros,
   entitlementsKeptSeconds,
-  isWaiting,
-  issueCapReached,
   localRefusal,
-  lowerCap,
   onBillingError,
   readEntitlements,
   refusalCode,
   refusalMessage,
-  runBudgetUsd,
-  runMinutes,
   sandboxEstimateMicros,
-  slotFree,
-  waitingMessage,
 } from "../../../packages/contracts/src/compute.ts";
 import { BUILD_HOSTS, buildHosts, dockerFor, withPlanLimits } from "./egress.ts";
 
@@ -37,10 +27,8 @@ function ent(change: Partial<ComputeEntitlements> = {}): ComputeEntitlements {
     trialMicrosLeft: 0,
     trialVerified: true,
     firstMonth: false,
-    maxConcurrentAgents: 10,
     maxRunMinutes: 0,
     runCapMicros: 2_000_000,
-    issueCapMicros: 10_000_000,
     ceilingMicros: 100_000_000,
     exposureMicros: 0,
     paused: null,
@@ -94,11 +82,11 @@ const request = (kind: ComputeKind, isPublic = false) => ({
 
 test("a paid workspace's start is reserved and goes ahead", async () => {
   const { binding, asked } = billing({ entitlements: wire(ent()) });
-  const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("agent"));
+  const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("deploy"));
   assert.equal(admitted.ok, true);
   assert.deepEqual(admitted.ok && admitted.reservation, { id: "rsv_1", paidBy: "credit" });
   const reserve = asked.find((call) => call.method === "reserve")!;
-  assert.deepEqual(reserve.body, { workspace: "acme", repo, public: false, kind: "agent", estimateMicros: 100_000 });
+  assert.deepEqual(reserve.body, { workspace: "acme", repo, public: false, kind: "deploy", estimateMicros: 100_000 });
 });
 
 test("billing's refusal is shown in its own words", async () => {
@@ -119,9 +107,9 @@ test("a refusal without words gets g1t's, with what to do and where", async () =
     entitlements: wire(ent({ plan: "free", compute: false })),
     reserve: { ok: false, error: { code: "not_paid", message: "" } },
   });
-  const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("agent"));
-  assert.equal(!admitted.ok && admitted.message, refusalMessage("not_paid", "acme", "agent"));
-  assert.match(refusalMessage("not_paid", "acme", "agent"), /^Agents need a paid workspace\. Start the \$20 plan or try it with \$5 of free usage after a card check: \/acme\/-\/billing$/);
+  const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("deploy"));
+  assert.equal(!admitted.ok && admitted.message, refusalMessage("not_paid", "acme", "deploy"));
+  assert.match(refusalMessage("not_paid", "acme", "deploy"), /^Deployments need a paid workspace\. Start the \$20 plan or try it with \$5 of free usage after a card check: \/acme\/-\/billing$/);
 });
 
 test("a paused workspace starts nothing, and billing is not asked to reserve", async () => {
@@ -146,7 +134,7 @@ test("internal and enterprise plans pass even when billing refuses", async () =>
       entitlements: wire(ent({ plan })),
       reserve: { ok: false, error: { code: "limit", message: "Over." } },
     });
-    const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("agent"));
+    const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("deploy"));
     assert.equal(admitted.ok, true, plan);
   }
   assert.equal(alwaysPasses("internal") && alwaysPasses("enterprise") && !alwaysPasses("paid"), true);
@@ -154,17 +142,15 @@ test("internal and enterprise plans pass even when billing refuses", async () =>
 
 test("a pause from billing holds for every plan: g1t's own budget and its daily breaker", async () => {
   for (const plan of ["internal", "enterprise", "paid"] as const) {
-    const message = "flagon-io's monthly budget for g1t's own agents is used up ($150.00 of $150.00 this month at cost), so new runs wait.";
-    const { binding, asked } = billing({ entitlements: wire(ent({ plan })), reserve: { ok: false, error: { code: "paused", message } } });
-    const admitted = await new ComputeGate(binding, memory(), quiet).admit({ ...request("agent"), hostedModel: true });
+    const message = "flagon-io's monthly budget is used up ($150.00 of $150.00 this month at cost), so new runs wait.";
+    const { binding } = billing({ entitlements: wire(ent({ plan })), reserve: { ok: false, error: { code: "paused", message } } });
+    const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("workflow"));
     assert.equal(!admitted.ok && admitted.code, "paused", plan);
     assert.equal(!admitted.ok && admitted.message, message);
-    // Billing hears whether the run is on g1t's hosted models.
-    assert.equal(asked.find((call) => call.method === "reserve")!.body.hostedModel, true);
   }
   // Billing's pause reason reads cleanly inside g1t's sentence.
   assert.equal(
-    refusalMessage("paused", "acme", "agent", "Its budget is used up."),
+    refusalMessage("paused", "acme", "workflow", "Its budget is used up."),
     "g1t paused compute for this workspace: Its budget is used up. Contact support@g1t.sh to have it looked at.",
   );
 });
@@ -173,18 +159,18 @@ test("billing down: free workspaces fail closed, paying ones go on", async () =>
   const down = new Set(["entitlements", "reserve"]);
   // Nothing known about the workspace: treated as free.
   let gate = new ComputeGate(billing({ fail: down }).binding, memory(null), quiet);
-  let admitted = await gate.admit(request("agent"));
+  let admitted = await gate.admit(request("deploy"));
   assert.equal(!admitted.ok && admitted.code, "billing_unavailable");
   // Last seen paid: goes ahead, without a reservation.
   gate = new ComputeGate(billing({ fail: down }).binding, memory("paid"), quiet);
-  admitted = await gate.admit(request("agent"));
+  admitted = await gate.admit(request("deploy"));
   assert.deepEqual(admitted, { ok: true, reservation: null, entitlements: null });
   // Entitlements answer, reserve errors: the plan decides.
   gate = new ComputeGate(billing({ entitlements: wire(ent({ plan: "free", compute: false, trialMicrosLeft: 5_000_000 })), fail: new Set(["reserve"]) }).binding, memory(), quiet);
-  admitted = await gate.admit(request("agent"));
+  admitted = await gate.admit(request("deploy"));
   assert.equal(admitted.ok, false);
   gate = new ComputeGate(billing({ entitlements: wire(ent()), fail: new Set(["reserve"]) }).binding, memory(), quiet);
-  assert.equal((await gate.admit(request("agent"))).ok, true);
+  assert.equal((await gate.admit(request("deploy"))).ok, true);
   assert.equal(onBillingError("free"), "refuse");
   assert.equal(onBillingError(null), "refuse");
   assert.equal(onBillingError("paid"), "allow");
@@ -195,7 +181,7 @@ test("an answer that is not a refusal counts as billing being down", async () =>
     entitlements: wire(ent({ plan: "free", compute: false })),
     reserve: { ok: false, error: { code: "invalid", message: "Unknown method" } },
   });
-  const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("agent"));
+  const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("deploy"));
   assert.equal(!admitted.ok && admitted.code, "billing_unavailable");
   assert.equal(refusalCode({ code: "payment_required" }), "not_paid");
   assert.equal(refusalCode({ code: "conflict", reason: "trial_used" }), "trial_used");
@@ -203,9 +189,9 @@ test("an answer that is not a refusal counts as billing being down", async () =>
 });
 
 test("entitlements read in either case, and not at all without a plan", () => {
-  const snake = readEntitlements({ plan: "free", trial_micros_left: 5, trial_verified: true, max_concurrent_agents: 2, paused: "" });
+  const snake = readEntitlements({ plan: "free", trial_micros_left: 5, trial_verified: true, max_run_minutes: 30, paused: "" });
   assert.equal(snake?.trialMicrosLeft, 5);
-  assert.equal(snake?.maxConcurrentAgents, 2);
+  assert.equal(snake?.maxRunMinutes, 30);
   assert.equal(snake?.paused, null);
   assert.equal(readEntitlements({ team: true })?.plan, undefined);
   assert.equal(readEntitlements({ ok: true, value: { plan: "paid" } })?.plan, "paid");
@@ -213,37 +199,29 @@ test("entitlements read in either case, and not at all without a plan", () => {
 
 test("before they try: what a free workspace can start, by kind and repository", () => {
   const free = ent({ plan: "free", compute: false, trialVerified: false });
-  assert.equal(localRefusal(free, "agent", false), "not_paid");
+  assert.equal(localRefusal(free, "deploy", false), "not_paid");
   assert.equal(localRefusal(free, "check", true), "not_paid", "the pool needs a card check");
   const verified = ent({ plan: "free", compute: false, trialVerified: true, trialMicrosLeft: 0 });
   // The open-source path: public repositories' checks, workflows and queue.
   for (const kind of ["check", "workflow", "queue"] as const) assert.equal(localRefusal(verified, kind, true), null, kind);
-  for (const kind of ["agent", "deploy", "embedding"] as const) assert.equal(localRefusal(verified, kind, true), "trial_used", kind);
+  assert.equal(localRefusal(verified, "deploy", true), "trial_used");
   assert.equal(localRefusal(verified, "check", false), "trial_used");
   const trial = ent({ plan: "free", compute: true, trialVerified: true, trialMicrosLeft: 4_000_000 });
-  assert.equal(localRefusal(trial, "agent", false), null);
+  assert.equal(localRefusal(trial, "deploy", false), null);
   assert.equal(localRefusal(ent(), "deploy", false), null);
-  assert.equal(localRefusal(ent({ paused: "Held." }), "agent", false), "paused");
+  assert.equal(localRefusal(ent({ paused: "Held." }), "deploy", false), "paused");
 });
 
 // ---- Estimates ------------------------------------------------------------------------
 
-test("an agent's estimate is its model's average plus its sandbox for its time cap", () => {
+test("an estimate is the sandbox for its whole time cap", () => {
   assert.equal(sandboxEstimateMicros(60, 25), 90_000);
-  assert.equal(agentEstimateMicros("implement", 90, 25), 100_000 + 135_000);
-  assert.equal(agentEstimateMicros("review", 30, 25), 70_000 + 45_000);
-  assert.equal(agentEstimateMicros("plan", 30, 20), 100_000 + 36_000);
-  // The workspace's own provider pays for the model.
-  assert.equal(agentEstimateMicros("implement", 90, 25, true), 135_000);
-  assert.equal(MODEL_ESTIMATE_MICROS.implement, 100_000);
-  assert.equal(embeddingEstimateMicros(1_000_000), 67_000);
   assert.equal(sandboxEstimateMicros(-5, 25), 0);
 });
 
-test("what work cost: its seconds, plus its model in dollars", () => {
+test("what work cost: its seconds at the sandbox price", () => {
   assert.equal(actualMicros(600, 20), 12_000);
-  assert.equal(actualMicros(600, 20, 0.094), 12_000 + 94_000);
-  assert.equal(actualMicros(10, 20, Number.NaN), 200);
+  assert.equal(actualMicros(-10, 20), 0);
 });
 
 test("the gate reads the sandbox price from the price book", async () => {
@@ -256,15 +234,6 @@ test("the gate reads the sandbox price from the price book", async () => {
 // ---- Caps -------------------------------------------------------------------------------
 
 test("caps are the lower of the guardrails' and the plan's", () => {
-  assert.equal(lowerCap(90, 60), 60);
-  assert.equal(lowerCap(30, 60), 30);
-  assert.equal(lowerCap(null, 60), 60);
-  assert.equal(lowerCap(0, 0), null);
-  assert.equal(runMinutes(90, ent({ maxRunMinutes: 60 })), 60);
-  assert.equal(runMinutes(45, ent({ maxRunMinutes: 0 })), 45);
-  assert.equal(runBudgetUsd(5, ent({ runCapMicros: 2_000_000 })), 2);
-  assert.equal(runBudgetUsd(1, ent({ runCapMicros: 2_000_000 })), 1);
-  assert.equal(runBudgetUsd(null, ent({ runCapMicros: 0 })), null);
   const guard = { policy: { budgetUsd: 5 } as never, minutes: 90 };
   const limited = withPlanLimits(guard as never, { minutes: 60, budgetUsd: 2 });
   assert.equal(limited.minutes, 60);
@@ -272,28 +241,6 @@ test("caps are the lower of the guardrails' and the plan's", () => {
   const unlimited = withPlanLimits(guard as never, { minutes: null, budgetUsd: null });
   assert.equal(unlimited.minutes, 90);
   assert.equal((unlimited.policy as { budgetUsd: number }).budgetUsd, 5);
-});
-
-test("agents at once: a run waits for a free slot past the plan's cap", () => {
-  const first = ent({ firstMonth: true, maxConcurrentAgents: 2 });
-  assert.equal(slotFree(1, first), true);
-  assert.equal(slotFree(2, first), false);
-  assert.equal(slotFree(50, ent({ plan: "internal", maxConcurrentAgents: 2 })), true);
-  assert.equal(slotFree(50, ent({ maxConcurrentAgents: 0 })), true);
-  assert.equal(slotFree(50, null), true);
-  const said = waitingMessage(2);
-  assert.equal(isWaiting(said), true);
-  assert.match(said, /runs 2 agents at a time/);
-  assert.equal(isWaiting("Agents need a paid workspace."), false);
-});
-
-test("an issue's agents stop at its cap, with a way to raise it", () => {
-  assert.equal(issueCapReached(9_999_999, ent(), 12), null);
-  const capped = issueCapReached(10_000_000, ent(), 12);
-  assert.match(capped ?? "", /#12 have spent \$10\.00, its cap of \$10\.00/);
-  assert.equal(issueCapReached(50_000_000, ent({ issueCapMicros: 0 }), 12), null);
-  assert.equal(issueCapReached(50_000_000, ent({ plan: "internal" }), 12), null);
-  assert.match(refusalMessage("issue_cap", "acme", "agent", capped), /raise the cap per issue: \/acme\/-\/billing#caps$/);
 });
 
 // ---- Builds' network ---------------------------------------------------------------------

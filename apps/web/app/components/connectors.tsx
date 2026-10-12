@@ -24,6 +24,7 @@ import { Link, useSearchParams } from "react-router";
 import { type Provider, PROVIDERS } from "@g1t/contracts";
 import { type ConnectorScope, type ConnectorView, connectorPath } from "@g1t/contracts/connectors";
 
+import { AI_PROVIDERS } from "../lib/ai-providers";
 import { CONTACT } from "../lib/legal";
 import {
   type CategoryFilter,
@@ -70,16 +71,17 @@ const PROVIDER_COLORS: Partial<Record<Provider, string>> = {
   linear: "#8b8ff0",
 };
 
-/** A provider's mark: its initial in its colour, or an icon for the generic ones. */
+/** A provider's mark: its initials in its colour, or an icon for the generic ones. */
 export function ProviderMark({ provider, size = 32 }: { provider: Provider; size?: number }) {
-  const color = PROVIDER_COLORS[provider] ?? "#a1a1aa";
+  const entry = AI_PROVIDERS[provider];
+  const color = entry?.color ?? PROVIDER_COLORS[provider] ?? "#a1a1aa";
   const content =
     provider === "webhook" ? (
       <Webhook size={size * 0.5} />
     ) : provider.endsWith("_endpoint") ? (
       <Bot size={size * 0.5} />
     ) : (
-      PROVIDERS[provider].label[0]
+      entry?.mark || PROVIDERS[provider].label[0]
     );
   return (
     <span
@@ -89,9 +91,9 @@ export function ProviderMark({ provider, size = 32 }: { provider: Provider; size
         width: size,
         height: size,
         borderRadius: size * 0.28,
-        fontSize: size * 0.42,
+        fontSize: size * (String(content).length > 1 ? 0.34 : 0.42),
         background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        // Toward the text colour, so the letter reads on the tile in both themes.
+        // Toward the text colour, so the letters read on the tile in both themes.
         color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
         boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
       }}

@@ -60,23 +60,17 @@ export const SANDBOX_RUN_KINDS = ["checks", "queue", "mergecheck"] as const sati
 /** What one level's form says, as the settings that level keeps. */
 export function settingsFromForm(
   form: FormData,
-  catalog: { registries: string[]; rules: string[]; kinds: readonly RunKind[] },
+  catalog: { registries: string[]; kinds: readonly RunKind[] },
 ): GuardrailSettings {
   const choice = (name: string): boolean | null => {
     const value = form.get(name);
     return value === "on" ? true : value === "off" ? false : null;
   };
-  const rules: Record<string, boolean> = {};
-  for (const id of catalog.rules) {
-    const on = choice(`rule:${id}`);
-    if (on != null) rules[id] = on;
-  }
   const minutes: Record<string, number> = {};
   for (const kind of catalog.kinds) {
     const cap = amount(form.get(`minutes:${kind}`));
     if (cap != null) minutes[kind] = Number.isNaN(cap) ? 0 : Math.trunc(cap);
   }
-  const budget = amount(form.get("budgetUsd"));
   return {
     restrictNetwork: choice("restrictNetwork"),
     registries:
@@ -85,10 +79,6 @@ export function settingsFromForm(
         : null,
     domains: lines(form.get("domains")),
     workflowDomains: workflowDomains(form.get("workflowDomains")),
-    rules,
-    deny: lines(form.get("deny")),
-    // Not a number is sent as one the service refuses, with why.
-    budgetUsd: budget == null ? null : Number.isNaN(budget) ? -1 : budget,
     minutes,
   };
 }

@@ -27,7 +27,6 @@ import type {
   AppliesTo,
   BypassActor,
   BypassActorKind,
-  ConfidenceLevel,
   EffectiveRules,
   Enforcement,
   Evaluation,
@@ -260,11 +259,6 @@ const OPERATORS: { value: PatternOperator; label: string }[] = [
   { value: "ends_with", label: "Ends with" },
   { value: "contains", label: "Contains" },
   { value: "regex", label: "Matches regex" },
-];
-const LEVELS: { value: ConfidenceLevel; label: string }[] = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
 ];
 const DAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DAY_LABEL: Record<Weekday, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
@@ -557,20 +551,6 @@ function Parameters({
       return <NumberField label="Longest path" min={1} max={4096} suffix="characters" value={entry.parameters.max_file_path_length} disabled={disabled} onChange={(max_file_path_length) => set({ max_file_path_length })} />;
     case "max_files_changed":
       return <NumberField label="Most files one commit changes" min={1} max={100000} value={entry.parameters.max_files} disabled={disabled} onChange={(max_files) => set({ max_files })} />;
-    case "confidence_threshold": {
-      const p = entry.parameters;
-      return (
-        <div className="divide-y divide-line">
-          <label className="flex items-center justify-between gap-4 py-1.5">
-            <span className="text-sm text-fg">Changes rated below</span>
-            <Choice label="Lowest confidence that merges without people" value={p.minimum} options={LEVELS} disabled={disabled} onChange={(minimum) => set({ ...p, minimum })} />
-          </label>
-          <NumberField label="need approvals from people" min={1} max={10} value={p.required_approvals} disabled={disabled} onChange={(required_approvals) => set({ ...p, required_approvals })} />
-        </div>
-      );
-    }
-    case "cost_cap":
-      return <NumberField label="Most agents may spend on one pull request" min={0.5} max={10000} step={0.5} suffix="USD" value={entry.parameters.max_usd} disabled={disabled} onChange={(max_usd) => set({ max_usd })} />;
     case "path_review": {
       const p = entry.parameters;
       return (
@@ -655,16 +635,6 @@ function Parameters({
       return (
         <div className="divide-y divide-line">
           <Toggle title="Agents' ready changes may merge here by themselves" about="The repository's auto-merge setting must be on too." checked={p.allowed} disabled={disabled} onChange={(allowed) => set({ ...p, allowed })} />
-          <label className="flex items-center justify-between gap-4 py-1.5">
-            <span className="text-sm text-fg">Only at this confidence or higher</span>
-            <Choice
-              label="Lowest confidence that merges by itself"
-              value={p.minimum_confidence ?? "any"}
-              options={[{ value: "any", label: "Any" }, ...LEVELS]}
-              disabled={disabled}
-              onChange={(value) => set({ ...p, minimum_confidence: value === "any" ? null : value })}
-            />
-          </label>
         </div>
       );
     }

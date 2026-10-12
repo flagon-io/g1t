@@ -132,7 +132,7 @@ test("Do not disturb silences everything", () => {
   const quiet = ctx({ dnd: true, focus: { visible: false, focused: false, viewingChannel: null } });
   assert.equal(cueFor(chat(message({ body: "@ana" })), quiet), null);
   assert.equal(cueFor(chat(message({ channel_id: "chn_dm" }), "dm"), quiet), null);
-  assert.equal(cueFor(feed(notification({ kind: "agent_waiting" })), quiet), null);
+  assert.equal(cueFor(feed(notification({ kind: "mention" })), quiet), null);
 });
 
 test("sounds off, or one cue off, is silent for that", () => {
@@ -155,8 +155,6 @@ test("an old agent's message counts like a person's", () => {
     card: { kind: "session", title: "Fix the flaky test", detail: "2 files changed", state: "Done", href: "/acme/web/pull/4" },
   });
   assert.equal(cueFor(chat(card), away), "message");
-  // An old "waiting on you" notification makes no sound of its own.
-  assert.equal(cueFor(feed(notification({ kind: "agent_waiting", actor: { kind: "agent", id: "a1", name: "Margo" } })), away), null);
 });
 
 test("a deleted message, and an inbox notification, make no sound", () => {

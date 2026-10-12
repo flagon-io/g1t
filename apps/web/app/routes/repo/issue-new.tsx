@@ -51,7 +51,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       user,
       { namespace: params.owner, name: params.repo },
       String(form.get("reference") ?? ""),
-      false,
     );
     if (!imported.ok) return { importError: imported.error.message };
     throw redirect(`/${params.owner}/${params.repo}/issues/${imported.value.number}`);

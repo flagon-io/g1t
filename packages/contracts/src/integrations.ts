@@ -5,6 +5,10 @@ import type { Result } from "./result";
 /**
  * A workspace's connections to systems outside g1t. Mirrors
  * `crates/contracts/src/integrations.rs`, which says what each does.
+ *
+ * The AI providers (`anthropic` through `openai_endpoint`, of kind
+ * `models`) keep the credentials for the AI providers a workspace's team
+ * uses.
  */
 export type Provider =
   | "anthropic"
@@ -27,13 +31,12 @@ export type Provider =
   | "jira"
   | "linear";
 
+/** `models`: an AI provider whose credentials the workspace keeps. */
 export type ProviderKind = "models" | "alerts" | "tracker";
 
 export type ConnectionConfig = {
   /** For alerts: where issues are opened, `owner/name`. */
   repo?: string;
-  /** For alerts: put a g1t agent on each issue opened. */
-  assign?: boolean;
   /** For alerts: the label put on each issue. `bug` when unset. */
   label?: string;
   /** Tell the outside system when the work lands. On unless turned off. */
@@ -50,44 +53,9 @@ export type ConnectionConfig = {
   baseUrl?: string;
   /** Your own endpoint: `x-api-key` (default) or `authorization`. */
   authHeader?: string;
-  /** Models: the model used when a route to this connection names none. */
+  /** For an AI provider: the model (or Azure deployment) the team uses on it. */
   model?: string;
-  /**
-   * Models: which AI Gateway requests go to this connection, by the model
-   * they name: ids (`gpt-5.5`) or prefixes ending in `*` (`gpt-*`,
-   * `ollama/*`, `*`). A `/*` prefix is taken off before sending. Absent:
-   * `claude-*` on an Anthropic key or Anthropic-compatible endpoint,
-   * nothing on the others.
-   */
-  gatewayModels?: string[];
 };
-
-/** One of a workspace's own model providers, for the AI Gateway. Carries its key: for the model proxy only. */
-export type GatewayProvider = {
-  id: string;
-  name: string;
-  /** `anthropic`, `openai`, `openai_endpoint`… */
-  provider: string;
-  api: "anthropic" | "openai";
-  /** OpenAI's own API (or Azure's). */
-  official: boolean;
-  /** Without `/v1` for Anthropic's API, with it for OpenAI's. */
-  baseUrl: string;
-  apiKey: string | null;
-  /** `x-api-key`, `authorization` (as `Bearer`) or `api-key`. */
-  authHeader: string;
-  gatewayToken?: string | null;
-  /** The models it takes: ids and `*` prefixes. */
-  patterns: string[];
-  /** The models the provider listed when last checked. */
-  models: string[];
-};
-
-/** The AI Gateway models a connection takes when it names none. */
-export function gatewayPatterns(provider: Provider, config: ConnectionConfig): string[] {
-  if (config.gatewayModels) return config.gatewayModels;
-  return provider === "anthropic" || provider === "anthropic_endpoint" ? ["claude-*"] : [];
-}
 
 export type Connection = {
   id: string;
@@ -107,13 +75,6 @@ export type Connection = {
   /** For a model provider: the models it offered when last checked. */
   models: string[];
 };
-
-/** The kinds of work a model is chosen for, and `default` for the rest. */
-export const MODEL_TASKS = ["default", "implement", "review", "plan", "update"] as const;
-export type ModelTask = (typeof MODEL_TASKS)[number];
-
-/** Where one kind of work's model requests go: g1t's hosted models when `connectionId` is null. */
-export type ModelRoute = { task: ModelTask; connectionId: string | null; model: string | null };
 
 export type Connected = {
   connection: Connection;
@@ -152,65 +113,6 @@ export type Link = {
   lastSeen: string;
 };
 
-/**
- * How capable, and how costly, a model g1t routes to is: `small` (fast),
- * `large` (standard) or `frontier` (most capable).
- */
-export type ModelTier = "small" | "large" | "frontier";
-
-/** The tiers, cheapest first. */
-export const MODEL_TIERS: ModelTier[] = ["small", "large", "frontier"];
-
-export type ModelSession = {
-  token: string;
-  billedTo: "g1t" | "workspace";
-  providerName: string | null;
-  model: string | null;
-  /**
-   * Names the run in AI Gateway's logs (`metadata.session`) and its tokens
-   * in billing's count, on g1t's models and the workspace's own alike.
-   */
-  id: string;
-  /**
-   * The tier the workspace chose for this work on g1t's models, instead of
-   * Auto; the run goes there. Null for Auto, and on its own providers.
-   */
-  tierChoice?: ModelTier | null;
-};
-
-export type ModelUpstream = {
-  route: "g1t" | "anthropic" | "endpoint";
-  /** The API the provider speaks, which the proxy translates to. */
-  api: "anthropic" | "openai";
-  /** The model every request of the run goes to, when the route names one. */
-  model: string | null;
-  /** OpenAI's own API. */
-  official: boolean;
-  /** Which provider, by name, for its quirks. */
-  provider: string;
-  workspace: string;
-  repo: string;
-  number: number;
-  task: string;
-  /** The session's id; see `ModelSession.id`. */
-  session: string;
-  /** For `g1t`: the tier the run was routed to. */
-  tier?: ModelTier | null;
-  /** The person the run is for, by username. Null when nobody asked; never `g1t`. */
-  requestedBy: string | null;
-  baseUrl: string | null;
-  apiKey: string | null;
-  authHeader: string | null;
-  /** For an endpoint behind an authenticated Cloudflare AI Gateway: its token. */
-  gatewayToken?: string | null;
-  /**
-   * The most the run may spend on models, in millionths of a dollar: the
-   * lower of its project's cost cap and its plan's. The proxy refuses the
-   * run's requests once it has spent this. Null until the sandbox sets it.
-   */
-  capMicros?: number | null;
-};
-
 export type ConnectInput = {
   provider: Provider;
   name?: string;
@@ -234,59 +136,8 @@ export interface IntegrationsApi {
   test(actor: User, workspace: string, id: string): Promise<Result<{ ok: boolean; message: string }>>;
   deliveries(workspace: string, viewer: Viewer, id: string): Promise<Result<Delivery[]>>;
   resolve(workspace: string, viewer: Viewer, reference: string): Promise<Result<ContextItem>>;
-  /** For g1t's agents: what `text` refers to outside g1t, fetched. */
-  references(workspace: string, text: string, limit?: number): Promise<ContextItem[]>;
-  import(actor: User, repo: RepoPath, reference: string, assign: boolean): Promise<Result<{ number: number; item: ContextItem; created: boolean }>>;
-  /**
-   * For g1t's agents (docs.g1t.sh/guides/agent-abilities/): comments on
-   * the item `reference` names, in the system that knows it (Linear, Jira
-   * or Sentry), on the workspace's connection, with `link` (a g1t address)
-   * at the end. The actor is the person the agent acts for; they must be a
-   * member. Returns the item.
-   */
-  comment(actor: User, workspace: string, reference: string, text: string, link: string): Promise<Result<ContextItem>>;
-  /** For g1t's agents: marks a Sentry issue resolved, with a note and `link`. Only Sentry items can be closed. */
-  close(actor: User, workspace: string, reference: string, text: string, link: string): Promise<Result<ContextItem>>;
+  import(actor: User, repo: RepoPath, reference: string): Promise<Result<{ number: number; item: ContextItem; created: boolean }>>;
   links(repo: RepoPath, number: number): Promise<Link[]>;
-  modelProvider(workspace: string): Promise<Connection | null>;
-  openModelSession(run: {
-    workspace: string;
-    repo: RepoPath;
-    number: number;
-    task: string;
-    hostedOpen: boolean;
-    /** The tier the run is routed to on g1t's hosted models, for the gateway's logs. */
-    tier?: ModelTier | null;
-    /** The person the run is for, by username, so its tokens show under them. */
-    requestedBy?: string | null;
-  }): Promise<Result<ModelSession>>;
-  routes(workspace: string, viewer: Viewer): Promise<Result<ModelRoute[]>>;
-  setRoutes(actor: User, workspace: string, routes: ModelRoute[]): Promise<Result<ModelRoute[]>>;
-  modelUpstream(token: string): Promise<ModelUpstream | null>;
-  /**
-   * Where a workspace's AI Gateway requests go on its own key: its first
-   * Anthropic or Anthropic-compatible model provider, with task `gateway`.
-   * Null sends them to g1t's models.
-   */
-  gatewayUpstream(workspace: string): Promise<ModelUpstream | null>;
-  /**
-   * The workspace's own model providers, in the order they were connected,
-   * with their keys and which AI Gateway models each takes. For the model
-   * proxy only.
-   */
-  gatewayProviders(workspace: string): Promise<GatewayProvider[]>;
-  /**
-   * Ends the model sessions whose tokens hash to these (SHA-256, lowercase
-   * hex) when their run finishes, so the tokens stop working then. Returns
-   * how many were open.
-   */
-  closeModelSessions(tokenHashes: string[]): Promise<number>;
-  /**
-   * Sets the most the runs whose model tokens hash to these may spend on
-   * models, in millionths of a dollar, which the model proxy holds them
-   * to. Zero clears it. Returns how many open sessions it set.
-   */
-  capModelSessions(tokenHashes: string[], capMicros: number): Promise<number>;
 }
 
 /** What each provider is for, as people choose between them. */

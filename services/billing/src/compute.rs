@@ -549,7 +549,7 @@ impl Billing {
         if let Some(why) = self.comped_stop(&account).await? {
             return Ok(Outcome::fail(FailureCode::Paused, why));
         }
-        if let Some(why) = self.breaker_refuses(plan, &account, a.kind, a.hosted_model).await? {
+        if let Some(why) = self.breaker_refuses(plan, &account, a.kind).await? {
             return Ok(Outcome::fail(FailureCode::Paused, why));
         }
         let limit = if plan == PlanKind::Internal { None } else { Some(self.limit_with(&workspace, &account, plan).await?) };

@@ -1,16 +1,9 @@
-//! People: a workspace's directory of everyone in it, people and agents,
-//! and what each person's place is: a title and what they own. Kept by
-//! identity beside membership; agents come from the
-//! agents service, which identity names only by id.
+//! People: a workspace's directory of the people in it, and what each
+//! person's place is: a title and what they own. Kept by identity beside
+//! membership.
 //!
 //! **Profiles.** A member's title and what they own are theirs to write,
 //! and the workspace's owners can write anyone's.
-//!
-//! **Agents on teams.** A team can have agents as well as people: mixed,
-//! people only or agents only. An agent is on a team when it was added to
-//! it (`set_team_agent`) and on the team its own profile names, its home
-//! team. Agents are told who is on their visible teams every turn
-//! (`agent_teams`).
 //!
 //! Every method is served by identity at `POST /rpc/<method>`.
 
@@ -59,8 +52,8 @@ pub struct TeamPersonRef {
     pub role: TeamRole,
 }
 
-/// A team as the directory needs it: who is on it, by username and agent
-/// id, and who leads it.
+/// A team as the directory needs it: who is on it, by username, and who
+/// leads it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectoryTeam {
     pub slug: String,
@@ -70,12 +63,8 @@ pub struct DirectoryTeam {
     pub parent: Option<TeamRef>,
     pub lead: Option<TeamLead>,
     pub channel: Option<TeamChannel>,
-    pub budget_micros: Option<i64>,
     /// Its own people, not its child teams'.
     pub people: Vec<TeamPersonRef>,
-    /// The agents added to it, by id. Agents whose home team it is are
-    /// on it too; the agents service names those.
-    pub agent_ids: Vec<String>,
     /// Repositories it has a role on itself.
     pub repos_count: u32,
 }

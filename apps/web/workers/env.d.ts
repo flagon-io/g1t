@@ -1,4 +1,4 @@
-import type { RateLimitBinding, RunnerApi, ServiceBinding } from "@g1t/contracts";
+import type { RateLimitBinding, ServiceBinding } from "@g1t/contracts";
 
 declare global {
   namespace Cloudflare {
@@ -9,7 +9,6 @@ declare global {
       /** Also serves the container registry (`/v2/`) through `fetch`. */
       PACKAGES: ServiceBinding & { fetch(request: Request): Promise<Response> };
       WORK: ServiceBinding;
-      RUNNER: RunnerApi;
       BILLING: ServiceBinding;
       EVENTS: ServiceBinding;
       INTEGRATIONS: ServiceBinding;

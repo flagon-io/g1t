@@ -3,7 +3,7 @@ import { type ComponentProps, Fragment, type ReactNode, useState } from "react";
 import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react-router";
 
 import { cn } from "../../lib/cn";
-import { isWaitingMessage, linkPaths } from "../../lib/compute";
+import { linkPaths } from "../../lib/compute";
 import { type Submission, isPending } from "../../lib/pending";
 import { Button, type ButtonSize, type ButtonVariant, buttonVariants } from "./button";
 
@@ -208,9 +208,8 @@ export function Linked({ text }: { text: string }) {
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
   if (typeof children !== "string") return <p className="text-sm text-danger">{children}</p>;
-  // Waiting for a free slot is not an error: it starts by itself.
   return (
-    <p className={`text-sm ${isWaitingMessage(children) ? "text-muted" : "text-danger"}`}>
+    <p className="text-sm text-danger">
       <Linked text={children} />
     </p>
   );

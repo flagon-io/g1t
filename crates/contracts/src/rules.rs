@@ -29,7 +29,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::repos::RepoPath;
-pub use crate::work::ConfidenceLevel;
 use crate::{User, Viewer};
 
 /// The repository's default branch, whatever it is called at the time.
@@ -519,36 +518,6 @@ impl Default for MaxFilesChangedRule {
     }
 }
 
-/// `confidence_threshold`: an agent's change g1t rates below `minimum`
-/// needs approvals from people before it merges.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ConfidenceRule {
-    pub minimum: ConfidenceLevel,
-    pub required_approvals: u32,
-}
-
-impl Default for ConfidenceRule {
-    fn default() -> Self {
-        ConfidenceRule { minimum: ConfidenceLevel::Medium, required_approvals: 1 }
-    }
-}
-
-/// `cost_cap`: once agents have spent more than this on a pull request, in
-/// US dollars, it neither merges nor is sent back to its agent until a
-/// person approves it after that.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct CostCapRule {
-    pub max_usd: f64,
-}
-
-impl Default for CostCapRule {
-    fn default() -> Self {
-        CostCapRule { max_usd: 10.0 }
-    }
-}
-
 /// `path_review`: a pull request that changes a file matching `paths`
 /// needs `required_approvals` from people, from `team` when one is named
 /// (its slug, or `workspace/slug`).
@@ -651,20 +620,35 @@ impl Default for MergeWindowRule {
 }
 
 /// `agent_auto_merge`: whether g1t lands an agent's ready pull request into
-/// the branch without a person pressing merge, and how sure of it g1t must
-/// be. The repository's auto-merge setting must be on as well.
+/// the branch without a person pressing merge. The repository's auto-merge
+/// setting must be on as well. A `minimum_confidence` written before
+/// confidence ratings were removed is ignored.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentAutoMergeRule {
     pub allowed: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub minimum_confidence: Option<ConfidenceLevel>,
 }
 
 impl Default for AgentAutoMergeRule {
     fn default() -> Self {
-        AgentAutoMergeRule { allowed: true, minimum_confidence: None }
+        AgentAutoMergeRule { allowed: true }
     }
+}
+
+/// Rule types that are no longer offered: `confidence_threshold` and
+/// `cost_cap`, which were about g1t's own agents. A stored ruleset that has
+/// one still reads; the rule is left out, so it holds for nothing.
+pub const RETIRED_RULES: [&str; 2] = ["confidence_threshold", "cost_cap"];
+
+/// Reads a list of rules, leaving out those of a [retired](RETIRED_RULES)
+/// type.
+fn live_rules<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<RuleEntry>, D::Error> {
+    let written = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    written
+        .into_iter()
+        .filter(|entry| !entry.get("type").and_then(serde_json::Value::as_str).is_some_and(|kind| RETIRED_RULES.contains(&kind)))
+        .map(|entry| serde_json::from_value(entry).map_err(serde::de::Error::custom))
+        .collect()
 }
 
 /// One rule and its parameters, tagged by `type`.
@@ -700,8 +684,6 @@ pub enum Rule {
     /// Pushes that add a secret are refused, whatever the repository's own
     /// push protection setting says.
     SecretScanning(NoParameters),
-    ConfidenceThreshold(ConfidenceRule),
-    CostCap(CostCapRule),
     PathReview(PathReviewRule),
     MergeWindow(MergeWindowRule),
     AgentAutoMerge(AgentAutoMergeRule),
@@ -732,8 +714,6 @@ impl Rule {
             Rule::MaxFilePathLength(_) => "max_file_path_length",
             Rule::MaxFilesChanged(_) => "max_files_changed",
             Rule::SecretScanning(_) => "secret_scanning",
-            Rule::ConfidenceThreshold(_) => "confidence_threshold",
-            Rule::CostCap(_) => "cost_cap",
             Rule::PathReview(_) => "path_review",
             Rule::MergeWindow(_) => "merge_window",
             Rule::AgentAutoMerge(_) => "agent_auto_merge",
@@ -764,8 +744,6 @@ impl Rule {
             Rule::MaxFilePathLength(_) => "Restrict file path length",
             Rule::MaxFilesChanged(_) => "Restrict files changed",
             Rule::SecretScanning(_) => "Block pushes that add secrets",
-            Rule::ConfidenceThreshold(_) => "Confidence threshold",
-            Rule::CostCap(_) => "Cost cap",
             Rule::PathReview(_) => "Review for sensitive paths",
             Rule::MergeWindow(_) => "Merge window",
             Rule::AgentAutoMerge(_) => "Agent auto-merge",
@@ -808,8 +786,6 @@ impl Rule {
                 | Rule::MergeQueue(_)
                 | Rule::RequiredDeployments(_)
                 | Rule::BranchNamePattern(_)
-                | Rule::ConfidenceThreshold(_)
-                | Rule::CostCap(_)
                 | Rule::PathReview(_)
                 | Rule::MergeWindow(_)
                 | Rule::AgentAutoMerge(_)
@@ -867,6 +843,7 @@ pub struct RulesetSpec {
     pub target: Target,
     pub conditions: Conditions,
     pub bypass_actors: Vec<BypassActor>,
+    #[serde(deserialize_with = "live_rules")]
     pub rules: Vec<RuleEntry>,
 }
 
@@ -1195,6 +1172,7 @@ pub struct Applicable {
     pub enforcement: Enforcement,
     pub target: Target,
     pub conditions: RefCondition,
+    #[serde(deserialize_with = "live_rules")]
     pub rules: Vec<RuleEntry>,
     /// How the actor may bypass it, if they may.
     #[serde(default)]
@@ -1386,8 +1364,6 @@ mod tests {
             Rule::MaxFilePathLength(MaxFilePathLengthRule::default()),
             Rule::MaxFilesChanged(MaxFilesChangedRule::default()),
             Rule::SecretScanning(NoParameters {}),
-            Rule::ConfidenceThreshold(ConfidenceRule::default()),
-            Rule::CostCap(CostCapRule::default()),
             Rule::PathReview(PathReviewRule::default()),
             Rule::MergeWindow(MergeWindowRule::default()),
             Rule::AgentAutoMerge(AgentAutoMergeRule::default()),
@@ -1417,6 +1393,25 @@ mod tests {
         let Rule::RequiredStatusChecks(checks) = &ruleset.rules[1].rule else { panic!() };
         assert_eq!(checks.checks[0].integration, Some(Integration::Actions));
         assert!(checks.strict);
+    }
+
+    #[test]
+    fn retired_rule_types_still_read_and_are_left_out() {
+        let ruleset: RulesetSpec = serde_json::from_value(json!({
+            "name": "Agents",
+            "rules": [
+                { "type": "confidence_threshold", "parameters": { "minimum": "high", "required_approvals": 1 } },
+                { "type": "cost_cap", "parameters": { "max_usd": 5.0 } },
+                { "type": "agent_auto_merge", "parameters": { "allowed": false, "minimum_confidence": "high" } },
+                { "type": "deletion" }
+            ]
+        }))
+        .unwrap();
+        let kinds: Vec<&str> = ruleset.rules.iter().map(|entry| entry.rule.kind()).collect();
+        assert_eq!(kinds, ["agent_auto_merge", "deletion"]);
+        assert_eq!(ruleset.rules[0].rule, Rule::AgentAutoMerge(AgentAutoMergeRule { allowed: false }));
+        // A type nobody ever offered is still refused.
+        assert!(serde_json::from_value::<RulesetSpec>(json!({ "rules": [{ "type": "made_up" }] })).is_err());
     }
 
     #[test]

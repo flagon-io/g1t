@@ -2,7 +2,7 @@
 //! signature, when to try again, and which addresses may be sent to.
 
 use g1t_contracts::events::Event;
-use g1t_contracts::webhooks::EVENT_TYPES;
+use g1t_contracts::webhooks::{EVENT_TYPES, RETIRED_EVENT_TYPES};
 use serde_json::{Value, json};
 
 /// How long to wait after each failed attempt before the next, so a
@@ -21,11 +21,18 @@ pub fn wants(wanted: &[String], kind: &str) -> bool {
 }
 
 /// Event types as given, checked and in catalogue order. `["*"]` when none
-/// or all are given. `Err` names the first that is not one.
+/// or all are given. Types no longer sent ([`RETIRED_EVENT_TYPES`]), as a
+/// list saved before may hold, are left out. `Err` names the first that is
+/// not one, or says when only retired ones were given.
 pub fn tidy_events(given: &[String]) -> Result<Vec<String>, String> {
     if given.is_empty() || given.iter().any(|event| event == "*") {
         return Ok(vec!["*".to_owned()]);
     }
+    let retired = |event: &String| RETIRED_EVENT_TYPES.contains(&event.as_str());
+    if given.iter().all(retired) {
+        return Err(format!("g1t no longer sends {}. Choose other events.", given.join(", ")));
+    }
+    let given: Vec<String> = given.iter().filter(|event| !retired(event)).cloned().collect();
     if let Some(unknown) = given.iter().find(|event| !EVENT_TYPES.contains(&event.as_str())) {
         return Err(format!("There is no event called {unknown}."));
     }
@@ -152,6 +159,10 @@ mod tests {
         assert_eq!(tidy_events(&given).unwrap(), vec!["git.push", "pull.merged"]);
         assert_eq!(tidy_events(&[]).unwrap(), vec!["*"]);
         assert!(tidy_events(&["pull.exploded".to_owned()]).is_err());
+        // A list saved when agent.asked was offered saves again without it.
+        let old = vec!["agent.asked".to_owned(), "pull.merged".to_owned(), "review.completed".to_owned()];
+        assert_eq!(tidy_events(&old).unwrap(), vec!["pull.merged"]);
+        assert!(tidy_events(&["agent.asked".to_owned()]).is_err());
         assert!(wants(&["*".to_owned()], "issue.opened"));
         assert!(!wants(&["git.push".to_owned()], "issue.opened"));
     }

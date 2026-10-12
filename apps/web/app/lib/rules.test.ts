@@ -27,7 +27,7 @@ test("a new ruleset protects the default branch, and a workspace's holds everywh
 test("every rule type has a label, a group and its defaults", () => {
   const types = new Set(RULES.map((rule) => rule.type));
   assert.equal(types.size, RULES.length, "each type once");
-  assert.equal(RULES.length, 26);
+  assert.equal(RULES.length, 24);
   for (const rule of RULES) {
     assert.ok(rule.label && rule.about && rule.targets.length > 0, rule.type);
   }
@@ -46,7 +46,7 @@ test("an export imports back as it was", () => {
   const ruleset = {
     ...newRuleset("repository"),
     name: "Protect main",
-    rules: [newRule("deletion"), newRule("cost_cap", "agents")],
+    rules: [newRule("deletion"), newRule("path_review", "agents")],
   };
   const text = JSON.stringify({ ...exportRuleset(ruleset), id: "rs_1", created_by: "ada" });
   const back = importRuleset(text, "repository");
@@ -66,6 +66,9 @@ test("an import fills in what it leaves out and refuses what is not a ruleset", 
   assert.throws(() => importRuleset("{", "repository"), /not JSON/);
   assert.throws(() => importRuleset("[]", "repository"), /one JSON object/);
   assert.throws(() => importRuleset(JSON.stringify({ rules: [{ type: "teleport" }] }), "repository"), /teleport is not a rule type/);
+  // Rule types no longer offered are left out rather than refused.
+  const retired = importRuleset(JSON.stringify({ rules: [{ type: "cost_cap", parameters: { max_usd: 5 } }, { type: "deletion" }] }), "repository");
+  assert.deepEqual(retired.rules.map((rule) => rule.type), ["deletion"]);
 });
 
 test("who may bypass, and whose changes a rule holds for, read plainly", () => {

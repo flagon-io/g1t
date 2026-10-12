@@ -1,7 +1,6 @@
 import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 import type { User, Viewer } from "./identity";
-import type { ConfidenceLevel } from "./work";
 
 /**
  * Rulesets: what may happen to a repository's branches and tags, and what a
@@ -98,11 +97,16 @@ export type Rule =
   | { type: "max_file_path_length"; parameters: { max_file_path_length: number } }
   | { type: "max_files_changed"; parameters: { max_files: number } }
   | { type: "secret_scanning"; parameters: Record<string, never> }
-  | { type: "confidence_threshold"; parameters: { minimum: ConfidenceLevel; required_approvals: number } }
-  | { type: "cost_cap"; parameters: { max_usd: number } }
   | { type: "path_review"; parameters: { paths: string[]; required_approvals: number; team?: string | null } }
   | { type: "merge_window"; parameters: MergeWindowParameters }
-  | { type: "agent_auto_merge"; parameters: { allowed: boolean; minimum_confidence?: ConfidenceLevel | null } };
+  | { type: "agent_auto_merge"; parameters: { allowed: boolean } };
+
+/**
+ * Rule types no longer offered, which were about g1t's own agents. A stored
+ * ruleset that has one still reads: the rule is left out. Mirrors
+ * `RETIRED_RULES` in `crates/contracts/src/rules.rs`.
+ */
+export const RETIRED_RULES: readonly string[] = ["confidence_threshold", "cost_cap"];
 
 export type RuleType = Rule["type"];
 export type RuleEntry = Rule & { applies_to: AppliesTo };

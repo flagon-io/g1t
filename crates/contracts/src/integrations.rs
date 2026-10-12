@@ -1,18 +1,15 @@
 //! The integrations service: a workspace's connections to systems outside
 //! g1t, and everything that crosses between them.
 //!
-//! - **Models.** A workspace connects as many model providers as it uses
-//!   (Anthropic, OpenAI, Gemini, and anything compatible with either API)
-//!   and routes each kind of work to one of them, or to g1t's hosted models.
-//!   Sandboxes never hold a key: they hold a token for one run, and the
-//!   model proxy puts the credentials on each request, translating to
-//!   OpenAI's API where the provider speaks it.
+//! - **AI providers.** A workspace keeps the credentials for the AI
+//!   providers its team uses (Anthropic, OpenAI, Gemini, and anything
+//!   compatible with either API), sealed, so work can be handed to them.
+//!   Workspace admins add, test, update and remove them.
 //! - **Alerts.** Sentry, Datadog or any signed webhook opens an issue in a
-//!   repository, once per problem however often it fires, and can put an
-//!   agent on it.
+//!   repository, once per problem however often it fires.
 //! - **Trackers.** A Jira or Linear key, such as `TECH-1234`, resolves to the
-//!   ticket: agents read it, people import it as an issue, and when the work
-//!   lands the ticket is told.
+//!   ticket: people and their tools read it, people import it as an issue,
+//!   and when the work lands the ticket is told.
 //!
 //! Mirrors `packages/contracts/src/integrations.ts`.
 
@@ -167,23 +164,14 @@ impl Provider {
     }
 }
 
-/// The kinds of work a model is chosen for, and `default` for the rest.
-pub const MODEL_TASKS: [&str; 5] = ["default", "implement", "review", "plan", "update"];
-
-/// The tiers g1t routes its hosted models' work to, cheapest first: `small`
-/// (fast), `large` (standard) and `frontier` (most capable). A route to
-/// g1t's models may name one instead of leaving the choice to Auto.
-pub const MODEL_TIERS: [&str; 3] = ["small", "large", "frontier"];
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
-    /// Where agents' model requests go. A workspace can have several and
-    /// routes each kind of work to one.
+    /// An AI provider whose credentials the workspace keeps.
     Models,
     /// Problems that become issues.
     Alerts,
-    /// Tickets that agents read and people import.
+    /// Tickets that people read and import.
     Tracker,
 }
 
@@ -196,9 +184,6 @@ pub struct ConnectionConfig {
     /// tracker: where an imported ticket goes when no repository is named.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo: Option<String>,
-    /// For alerts: put a g1t agent on each issue opened.
-    #[serde(default)]
-    pub assign: bool,
     /// For alerts: the label put on each issue opened. `bug` when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
@@ -227,61 +212,9 @@ pub struct ConnectionConfig {
     /// `authorization: Bearer`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_header: Option<String>,
-    /// Models: the model used when a route to this connection names none.
-    /// Required for providers that speak OpenAI's API; for Anthropic, g1t's
-    /// choice for the kind of work when unset.
+    /// For an AI provider: the model the team uses on it, when it names one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// Models: which AI Gateway requests go to this connection, by the
-    /// model they name. Each is a model id (`gpt-5.5`), or a prefix ending
-    /// in `*` (`gpt-*`, `ollama/*`, or `*` for every model). A prefix that
-    /// ends in `/*` is taken off before the request is sent, so
-    /// `ollama/llama3.3` reaches the endpoint as `llama3.3`. Absent: Claude
-    /// models (`claude-*`) on an Anthropic key or Anthropic-compatible
-    /// endpoint, and nothing on the others. Empty: nothing.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gateway_models: Option<Vec<String>>,
-}
-
-impl ConnectionConfig {
-    /// The AI Gateway models this connection takes: its own list, or its
-    /// provider's default.
-    pub fn gateway_patterns(&self, provider: Provider) -> Vec<String> {
-        match &self.gateway_models {
-            Some(models) => models.clone(),
-            None if provider.kind() == ProviderKind::Models && provider.api() == "anthropic" => vec!["claude-*".to_owned()],
-            None => Vec::new(),
-        }
-    }
-}
-
-/// The most models a connection can list for the AI Gateway, and how long
-/// each may be.
-pub const GATEWAY_MODELS_MAX: usize = 100;
-pub const GATEWAY_MODEL_LEN: usize = 200;
-
-/// Tidies a connection's AI Gateway models, or says what is wrong.
-pub fn tidy_gateway_models(models: &[String]) -> std::result::Result<Vec<String>, String> {
-    let mut tidy: Vec<String> = Vec::new();
-    for model in models {
-        let model = model.trim();
-        if model.is_empty() {
-            continue;
-        }
-        if model.len() > GATEWAY_MODEL_LEN || model.chars().any(|c| c.is_whitespace() || c.is_control()) {
-            return Err(format!("{model} is not a model id: one word of at most {GATEWAY_MODEL_LEN} characters, such as gpt-5.5 or gpt-*."));
-        }
-        if model.contains('*') && !model.ends_with('*') || model.matches('*').count() > 1 {
-            return Err(format!("{model}: a * can only end a model id, as in gpt-*."));
-        }
-        if !tidy.iter().any(|seen| seen == model) {
-            tidy.push(model.to_owned());
-        }
-    }
-    if tidy.len() > GATEWAY_MODELS_MAX {
-        return Err(format!("A connection can take at most {GATEWAY_MODELS_MAX} AI Gateway models."));
-    }
-    Ok(tidy)
 }
 
 fn yes() -> bool {
@@ -292,7 +225,6 @@ impl Default for ConnectionConfig {
     fn default() -> Self {
         ConnectionConfig {
             repo: None,
-            assign: false,
             label: None,
             write_back: true,
             organization: None,
@@ -302,7 +234,6 @@ impl Default for ConnectionConfig {
             base_url: None,
             auth_header: None,
             model: None,
-            gateway_models: None,
         }
     }
 }
@@ -331,20 +262,6 @@ pub struct Connection {
     /// For a model provider: the models it offered when last checked.
     #[serde(default)]
     pub models: Vec<String>,
-}
-
-/// Where one kind of work's model requests go in a workspace.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelRoute {
-    /// One of [`MODEL_TASKS`].
-    pub task: String,
-    /// The workspace's own model connection, or `None` for g1t's hosted
-    /// models.
-    pub connection_id: Option<String>,
-    /// The model at that connection; its default model when `None`. On
-    /// g1t's hosted models, one of [`MODEL_TIERS`], or `None` for Auto.
-    pub model: Option<String>,
 }
 
 /// One request an outside system sent, and what g1t did with it.
@@ -397,81 +314,6 @@ pub struct Link {
     pub last_seen: String,
 }
 
-/// Where a workspace's agents' model requests go.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelSession {
-    /// What the sandbox sends instead of a key. Lives as long as one run.
-    pub token: String,
-    /// `g1t` when g1t pays the provider and charges the workspace,
-    /// `workspace` when the workspace's own account does.
-    pub billed_to: String,
-    /// The connection's name, when it is the workspace's own.
-    pub provider_name: Option<String>,
-    /// The model to use instead of g1t's choice, if the connection names one.
-    pub model: Option<String>,
-    /// Names the run in AI Gateway's logs (`metadata.session`), so billing
-    /// can charge each run what the gateway priced its requests at, and its
-    /// tokens in billing's count (the agent rate). Not a secret: it cannot
-    /// be turned back into the token.
-    #[serde(default)]
-    pub id: String,
-    /// The tier the workspace chose for this work on g1t's models instead
-    /// of Auto: the run goes there. `None` for Auto and on its own
-    /// providers.
-    #[serde(default)]
-    pub tier_choice: Option<String>,
-}
-
-/// What the model proxy needs to forward one run's requests.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelUpstream {
-    /// `g1t`, `anthropic` or `endpoint`.
-    pub route: String,
-    /// The API the provider speaks: `anthropic` or `openai`, which the proxy
-    /// translates to.
-    pub api: String,
-    /// The model every request of the run is sent to, when the route names
-    /// one.
-    pub model: Option<String>,
-    /// For `openai`: OpenAI's own API, which shapes requests its own way.
-    pub official: bool,
-    /// Which provider it is, by name, so the proxy can meet its quirks.
-    #[serde(default)]
-    pub provider: String,
-    pub workspace: String,
-    pub repo: String,
-    pub number: u32,
-    pub task: String,
-    /// The session's id; see `ModelSession::id`.
-    #[serde(default)]
-    pub session: String,
-    /// For `g1t`: the tier the run was routed to, `small` or `large`.
-    #[serde(default)]
-    pub tier: Option<String>,
-    /// The person the run is for, by username: who asked g1t for the work.
-    /// Null when nobody did. Never `g1t`, the agent itself.
-    #[serde(default)]
-    pub requested_by: Option<String>,
-    /// For `endpoint`: where to send requests.
-    pub base_url: Option<String>,
-    /// For `anthropic` and `endpoint`: the workspace's key.
-    pub api_key: Option<String>,
-    /// `x-api-key` or `authorization`.
-    pub auth_header: Option<String>,
-    /// For an endpoint behind an authenticated Cloudflare AI Gateway: the
-    /// gateway's own token, sent as `cf-aig-authorization`.
-    #[serde(default)]
-    pub gateway_token: Option<String>,
-    /// The most the run may spend on models, in millionths of a dollar: the
-    /// lower of its project's cost cap and its plan's. The proxy refuses
-    /// the run's requests once it has spent this. `None` until the sandbox
-    /// sets it (`cap_model_sessions`), and for the AI Gateway.
-    #[serde(default)]
-    pub cap_micros: Option<i64>,
-}
-
 // --- Methods -----------------------------------------------------------------
 
 /// `list`. Returns `Outcome<Vec<Connection>>`. Members only.
@@ -496,9 +338,7 @@ pub struct ConnectArgs {
     #[serde(default)]
     pub secret: Option<String>,
     /// What it signs its requests to g1t with: Sentry's client secret.
-    /// Made by g1t for Datadog and webhooks, and shown once. For a model
-    /// endpoint behind an authenticated Cloudflare AI Gateway, the gateway's
-    /// token.
+    /// Made by g1t for Datadog and webhooks, and shown once.
     #[serde(default)]
     pub signing_secret: Option<String>,
 }
@@ -580,50 +420,12 @@ pub struct ResolveArgs {
     pub reference: String,
 }
 
-/// `references`: every outside reference in `text` that one of the
-/// workspace's connections answers for, fetched. Returns `Vec<ContextItem>`.
-/// For g1t's own agents, about work in that workspace.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ReferencesArgs {
-    pub workspace: String,
-    pub text: String,
-    #[serde(default)]
-    pub limit: Option<u32>,
-}
-
-/// `comment`: for g1t's agents, a comment on the item `reference` names in
-/// the system that knows it (Linear, Jira or Sentry), on the workspace's
-/// connection, with `link` (a g1t address) at the end. The actor is the
-/// person the agent acts for. Returns `Outcome<ContextItem>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CommentArgs {
-    pub actor: User,
-    pub workspace: String,
-    pub reference: String,
-    pub text: String,
-    pub link: String,
-}
-
-/// `close`: for g1t's agents, marks a Sentry issue resolved with a note and
-/// `link`. Only Sentry items can be closed. Returns `Outcome<ContextItem>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CloseArgs {
-    pub actor: User,
-    pub workspace: String,
-    pub reference: String,
-    pub text: String,
-    pub link: String,
-}
-
 /// `import`: opens an issue from a ticket. Returns `Outcome<Imported>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportArgs {
     pub actor: User,
     pub repo: RepoPath,
     pub reference: String,
-    /// Put a g1t agent on it.
-    #[serde(default)]
-    pub assign: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -644,134 +446,6 @@ pub struct LinksArgs {
     pub number: u32,
 }
 
-/// `open_model_session`: where one run's model requests go, by the
-/// workspace's routes. Returns `Outcome<ModelSession>`: a failure, with the
-/// reason to show, when the route goes nowhere it can use.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenModelSessionArgs {
-    pub workspace: String,
-    pub repo: RepoPath,
-    pub number: u32,
-    pub task: String,
-    /// Whether g1t's hosted models are open to the workspace. The runner
-    /// decides that; this service only follows the routes.
-    #[serde(default = "yes")]
-    pub hosted_open: bool,
-    /// `small`, `large` or `frontier`: the tier the runner routed the run
-    /// to on g1t's hosted models, tagged on its requests at the gateway.
-    /// Kept only when the run goes to g1t's models, where a tier the
-    /// workspace chose for the work takes its place.
-    #[serde(default)]
-    pub tier: Option<String>,
-    /// The person the run is for, by username, so usage can be shown per
-    /// person. Null when nobody asked; `g1t`, the agent, is kept as null.
-    #[serde(default)]
-    pub requested_by: Option<String>,
-}
-
-/// `routes`: a workspace's model routes, one per kind of work that has its
-/// own. Returns `Outcome<Vec<ModelRoute>>`. Members only.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RoutesArgs {
-    pub workspace: String,
-    pub viewer: Viewer,
-}
-
-/// `set_routes`: replaces a workspace's model routes. A kind of work left
-/// out follows `default`; with no `default`, g1t's hosted models where they
-/// are open. Returns `Outcome<Vec<ModelRoute>>`. Owners only.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SetRoutesArgs {
-    pub actor: User,
-    pub workspace: String,
-    pub routes: Vec<ModelRoute>,
-}
-
-/// `model_upstream`: what a model session's token stands for, or null when
-/// it is unknown or expired. Returns `Option<ModelUpstream>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ModelUpstreamArgs {
-    pub token: String,
-}
-
-/// `gateway_upstream`: where a workspace's AI Gateway requests go when it
-/// has its own Anthropic key: its first Anthropic or Anthropic-compatible
-/// model provider, with the credentials to forward them. Null sends them to
-/// g1t's models. Returns `Option<ModelUpstream>`, with `task` `gateway`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GatewayUpstreamArgs {
-    pub workspace: String,
-}
-
-/// `gateway_providers`: the workspace's own model providers, in the order
-/// they were connected, with what the AI Gateway needs to send requests to
-/// each and which models it takes. Returns `Vec<GatewayProvider>`. For the
-/// model proxy only: it carries keys.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GatewayProvidersArgs {
-    pub workspace: String,
-}
-
-/// One of a workspace's own model providers, for the AI Gateway.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GatewayProvider {
-    /// The connection's id and name.
-    pub id: String,
-    pub name: String,
-    /// The provider, by name: `anthropic`, `openai`, `openai_endpoint`…
-    pub provider: String,
-    /// The API it speaks: `anthropic` or `openai`.
-    pub api: String,
-    /// OpenAI's own API (or Azure's), which shapes requests its own way.
-    pub official: bool,
-    /// Where requests go: without `/v1` for Anthropic's API, with it for OpenAI's.
-    pub base_url: String,
-    pub api_key: Option<String>,
-    /// `x-api-key`, `authorization` (as `Bearer`) or `api-key`.
-    pub auth_header: String,
-    /// For an endpoint behind an authenticated Cloudflare AI Gateway.
-    #[serde(default)]
-    pub gateway_token: Option<String>,
-    /// Which models it takes: ids and `*` prefixes (see
-    /// `ConnectionConfig::gateway_models`).
-    pub patterns: Vec<String>,
-    /// The models the provider listed when last checked.
-    #[serde(default)]
-    pub models: Vec<String>,
-}
-
-/// `close_model_sessions`: ends the model sessions whose tokens hash to
-/// these (SHA-256, lowercase hex), so a run's model token stops working
-/// when its run does rather than when it would lapse. Returns how many
-/// were open.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CloseModelSessionsArgs {
-    #[serde(alias = "tokenHashes")]
-    pub token_hashes: Vec<String>,
-}
-
-/// `cap_model_sessions`: sets the most the runs whose model tokens hash to
-/// these (SHA-256, lowercase hex) may spend on models, in millionths of a
-/// dollar, which the model proxy holds them to. The sandbox sets it once
-/// it knows the run's guardrails and plan; zero or less clears it. Returns
-/// how many open sessions it set.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CapModelSessionsArgs {
-    #[serde(alias = "tokenHashes")]
-    pub token_hashes: Vec<String>,
-    #[serde(alias = "capMicros")]
-    pub cap_micros: i64,
-}
-
-/// `model_provider`: the workspace's own model connection, if it has one.
-/// Returns `Option<Connection>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ModelProviderArgs {
-    pub workspace: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,28 +462,22 @@ mod tests {
     }
 
     #[test]
-    fn gateway_models_default_to_claude_on_anthropic_and_nothing_elsewhere() {
-        let config = ConnectionConfig::default();
-        assert_eq!(config.gateway_patterns(Provider::Anthropic), ["claude-*"]);
-        assert_eq!(config.gateway_patterns(Provider::AnthropicEndpoint), ["claude-*"]);
-        assert!(config.gateway_patterns(Provider::Openai).is_empty());
-        assert!(config.gateway_patterns(Provider::OpenaiEndpoint).is_empty());
-        let chosen = ConnectionConfig { gateway_models: Some(vec!["gpt-*".into()]), ..ConnectionConfig::default() };
-        assert_eq!(chosen.gateway_patterns(Provider::Openai), ["gpt-*"]);
-        let none = ConnectionConfig { gateway_models: Some(Vec::new()), ..ConnectionConfig::default() };
-        assert!(none.gateway_patterns(Provider::Anthropic).is_empty());
+    fn ai_providers_are_connections_like_any_other() {
+        assert_eq!(Provider::parse("anthropic"), Some(Provider::Anthropic));
+        let stored: Provider = serde_json::from_str("\"openai_endpoint\"").unwrap();
+        assert_eq!(stored.kind(), ProviderKind::Models);
+        assert!(stored.own_address());
+        assert!(!Provider::Anthropic.own_address());
+        assert!(Provider::all().any(|provider| provider == Provider::Groq));
+        assert!(Provider::all().any(|provider| provider == Provider::Sentry));
     }
 
     #[test]
-    fn gateway_models_are_ids_or_prefixes() {
-        let tidy = tidy_gateway_models(&[" gpt-5.5 ".into(), "".into(), "ollama/*".into(), "gpt-5.5".into(), "*".into()]).unwrap();
-        assert_eq!(tidy, ["gpt-5.5", "ollama/*", "*"]);
-        assert!(tidy_gateway_models(&["gpt *".into()]).is_err());
-        assert!(tidy_gateway_models(&["g*t".into()]).is_err());
-        assert!(tidy_gateway_models(&["**".into()]).is_err());
-        assert!(tidy_gateway_models(&["x".repeat(201)]).is_err());
-        let many: Vec<String> = (0..101).map(|n| format!("m{n}")).collect();
-        assert!(tidy_gateway_models(&many).is_err());
+    fn stored_configs_with_old_fields_parse() {
+        let config: ConnectionConfig =
+            serde_json::from_str(r#"{"repo":"acme/web","assign":true,"gatewayModels":["*"],"writeBack":false}"#).unwrap();
+        assert_eq!(config.repo.as_deref(), Some("acme/web"));
+        assert!(!config.write_back);
     }
 
     #[test]

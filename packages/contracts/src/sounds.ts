@@ -13,14 +13,15 @@
 /**
  * The sounds, by what they are for. `message`: a new message in a
  * conversation you have open but are not looking at. `direct`: a direct
- * message. `mention`: you were @mentioned. `agent_done`: an agent finished
- * something for you. `sent`: a soft tick as you send (off unless turned
- * on). `call` is reserved for calls and has no setting yet.
+ * message. `mention`: you were @mentioned. `sent`: a soft tick as you send
+ * (off unless turned on). `call` is reserved for calls and has no setting
+ * yet. Saved settings may still name `agent_done`, a retired cue: identity
+ * drops it when it reads them.
  */
-export type SoundCue = "message" | "direct" | "mention" | "agent_done" | "sent" | "call";
+export type SoundCue = "message" | "direct" | "mention" | "sent" | "call";
 
 /** The cues a person can turn on and off, in the order the settings list them. */
-export const SOUND_CUES: readonly Exclude<SoundCue, "call">[] = ["message", "direct", "mention", "agent_done", "sent"];
+export const SOUND_CUES: readonly Exclude<SoundCue, "call">[] = ["message", "direct", "mention", "sent"];
 
 /** A set of sounds: the same roles, a different character. */
 export type SoundSet = "soft" | "bright";
@@ -48,7 +49,7 @@ export type SoundSettings = {
 export type SoundSettingsChange = Partial<Omit<SoundSettings, "sound_cues">> & { sound_cues?: Partial<Record<SoundCue, boolean>> };
 
 /** Which cues play before anyone changed them: all but the tick as you send. */
-export const DEFAULT_SOUND_CUES: Record<Exclude<SoundCue, "call">, boolean> = { message: true, direct: true, mention: true, agent_done: true, sent: false };
+export const DEFAULT_SOUND_CUES: Record<Exclude<SoundCue, "call">, boolean> = { message: true, direct: true, mention: true, sent: false };
 
 export const DEFAULT_SOUND_SETTINGS: SoundSettings = { sounds_enabled: true, sound_set: "soft", sound_volume: 60, sound_cues: { ...DEFAULT_SOUND_CUES }, desktop_toasts: false };
 

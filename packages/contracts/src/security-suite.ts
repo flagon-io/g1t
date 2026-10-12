@@ -265,8 +265,6 @@ export type PullScanning = {
   codeDescription: string | null;
 };
 
-export type AlertFix = { issue: number; started: boolean; message: string | null };
-
 export type GraphDependency = {
   ecosystem: string;
   name: string;
@@ -326,7 +324,6 @@ export interface SecuritySuiteApi {
   codeAlert(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<CodeAlertDetail>>;
   setCodeAlertState(actor: User, repo: RepoPath, number: number, state: "open" | "dismissed", reason: DismissReason | null, comment: string): Promise<Result<CodeAlert>>;
   pullScanning(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<PullScanning>>;
-  fixAlert(actor: User, repo: RepoPath, id: string): Promise<Result<AlertFix>>;
   dependencyGraph(repo: RepoPath, viewer: Viewer): Promise<Result<DependencyGraph>>;
   sbom(repo: RepoPath, viewer: Viewer): Promise<Result<unknown>>;
   overview(workspace: string, viewer: Viewer, days?: number): Promise<Result<WorkspaceOverview>>;
@@ -374,7 +371,6 @@ export function securitySuiteClient(service: ServiceBinding): SecuritySuiteApi {
     setCodeAlertState: (actor, repo, number, state, reason, comment) =>
       call("set_code_alert_state", { actor, repo, number, state, reason, comment }),
     pullScanning: (repo, number, viewer) => call("pull_code_scanning", { repo, number, viewer }),
-    fixAlert: (actor, repo, id) => call("fix_alert", { actor, repo, id }),
     dependencyGraph: (repo, viewer) => call("dependency_graph", { repo, viewer }),
     sbom: (repo, viewer) => call("sbom", { repo, viewer }),
     overview: (workspace, viewer, days) => call("security_overview", { workspace, viewer, days: days ?? null }),

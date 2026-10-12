@@ -15,7 +15,7 @@ use crate::repos::RepoPath;
 use crate::{User, Viewer};
 
 /// Every event a webhook can be sent, in the order people are shown them.
-pub const EVENT_TYPES: [&str; 109] = [
+pub const EVENT_TYPES: [&str; 107] = [
     "git.push",
     "git.deleted",
     "branch.renamed",
@@ -84,7 +84,6 @@ pub const EVENT_TYPES: [&str; 109] = [
     "release.edited",
     "release.unpublished",
     "release.deleted",
-    "agent.asked",
     "checks.completed",
     "status.created",
     "check_run.created",
@@ -93,7 +92,6 @@ pub const EVENT_TYPES: [&str; 109] = [
     "check_run.requested_action",
     "check_suite.completed",
     "check_suite.rerequested",
-    "review.completed",
     "workflow.completed",
     "deployment.succeeded",
     "deployment.failed",
@@ -126,6 +124,11 @@ pub const EVENT_TYPES: [&str; 109] = [
     "security_advisory.withdrawn",
     "security_advisory.reported",
 ];
+
+/// Event types webhooks were once offered that g1t no longer sends: they
+/// came from g1t's own agents, since removed. A webhook saved with one
+/// still reads, and saving its list again leaves them out.
+pub const RETIRED_EVENT_TYPES: [&str; 2] = ["agent.asked", "review.completed"];
 
 /// What a webhook belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -275,7 +278,14 @@ pub struct RedeliverArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::EVENT_TYPES;
+    use super::{EVENT_TYPES, RETIRED_EVENT_TYPES};
+
+    #[test]
+    fn retired_events_are_not_offered() {
+        for kind in RETIRED_EVENT_TYPES {
+            assert!(!EVENT_TYPES.contains(&kind), "{kind}");
+        }
+    }
 
     /// The TypeScript mirror lists the same events, in the same order.
     #[test]

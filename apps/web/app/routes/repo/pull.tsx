@@ -591,7 +591,6 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     checks,
     overlaps,
     behind,
-    reviewPending,
     lifecycle,
     statuses = [],
     requiredChecks = [],
@@ -711,7 +710,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // Whether it merges cleanly is being worked out, so the box will change.
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
-  useRefreshWhile(working || checking || reviewPending || settling || moving || landing || probing);
+  useRefreshWhile(working || checking || settling || moving || landing || probing);
   // New commits, checks, reviews and comments, and its merge or close, as
   // they happen: the timeline grows where the reader is, and one reading
   // at its end follows it.

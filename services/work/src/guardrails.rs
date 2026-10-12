@@ -6,7 +6,7 @@
 //! `report_run`).
 //!
 //! Command rules, deny patterns and cost caps were for g1t's own agents:
-//! they are no longer kept or given to runs.
+//! levels saved with them still read, and they are dropped when saved again.
 //!
 //! See `g1t_contracts::guardrails` for the rules and how levels merge.
 
@@ -167,7 +167,6 @@ impl Work {
         };
         settings.updated_by = None;
         settings.updated_at = None;
-        without_agent_rules(&mut settings);
         let (scope, key) = match &repo {
             Some(repo) => ("project", repo.id.clone()),
             None => ("workspace", workspace.clone()),
@@ -228,11 +227,7 @@ impl Work {
         };
         let level = self.guardrail_level("workspace", &workspace).await?;
         let project = self.guardrail_level("project", &repo.id).await?;
-        let mut merged = Guardrails::merge(&level, Some(&project));
-        merged.rules.clear();
-        merged.deny.clear();
-        merged.budget_usd = None;
-        Ok(Outcome::Ok(merged))
+        Ok(Outcome::Ok(Guardrails::merge(&level, Some(&project))))
     }
 
     /// The project a run's guardrails come from, where it is now. By id
@@ -315,14 +310,6 @@ impl Work {
         }
         Ok(Outcome::Ok(RunStatus::Stopped))
     }
-}
-
-/// Clears what only g1t's own agents used: command rules, deny patterns
-/// and the cost cap.
-fn without_agent_rules(settings: &mut GuardrailSettings) {
-    settings.rules.clear();
-    settings.deny.clear();
-    settings.budget_usd = None;
 }
 
 /// What a change to one level did, for the audit log: the workflow-only
@@ -416,7 +403,7 @@ mod tests {
         };
         let open = WorkflowDomain { domain: "*.example.com".into(), ..WorkflowDomain::default() };
         let before = GuardrailSettings { workflow_domains: vec![open.clone()], ..GuardrailSettings::default() };
-        let after = GuardrailSettings { workflow_domains: vec![deploy], budget_usd: Some(2.0), ..GuardrailSettings::default() };
+        let after = GuardrailSettings { workflow_domains: vec![deploy], restrict_network: Some(false), ..GuardrailSettings::default() };
         assert_eq!(
             guardrails_change(&before, &after),
             "Workflow-only domains added: api.cloudflare.com (deploy.yml; production). Workflow-only domains removed: *.example.com (any workflow; any environment). Other guardrails changed."
@@ -439,7 +426,6 @@ mod tests {
             updated_at: "2026-10-04T00:00:00Z".to_owned(),
         };
         let settings = GuardrailSettings::from(row);
-        assert_eq!(settings.budget_usd, Some(2.5));
         assert_eq!(settings.domains, vec!["example.com"]);
         assert_eq!(settings.updated_by.as_deref(), Some("ada"));
     }
@@ -451,6 +437,7 @@ mod tests {
             updated_by: "ada".to_owned(),
             updated_at: "2026-10-04T00:00:00Z".to_owned(),
         };
-        assert_eq!(GuardrailSettings::from(row).budget_usd, None);
+        let settings = GuardrailSettings::from(row);
+        assert!(settings.domains.is_empty() && settings.restrict_network.is_none());
     }
 }

@@ -49,11 +49,10 @@ export const SCOPES = [
   { scope: "packages:read", description: "Pull container images and install private packages" },
   { scope: "packages:write", description: "Push container images and publish packages" },
   { scope: "packages:delete", description: "Delete and restore packages and their versions" },
-  { scope: "issues:read", description: "Read issues, comments and plans" },
+  { scope: "issues:read", description: "Read issues and comments" },
   { scope: "issues:write", description: "Open, edit, close and comment on issues" },
   { scope: "pull_requests:read", description: "Read pull requests, their changes, sessions and merge queues" },
   { scope: "pull_requests:write", description: "Open, review, close and merge pull requests" },
-  { scope: "agents:run", description: "Put g1t agents to work and message them, which uses the workspace's money" },
   { scope: "workflows:read", description: "Read workflows, runs and logs" },
   { scope: "workflows:write", description: "Run, cancel, rerun and turn workflows on or off" },
   { scope: "workflow_files:write", description: "Add, change and delete workflow files under .g1t/workflows and .github/workflows, with git or the API" },
@@ -63,28 +62,26 @@ export const SCOPES = [
   { scope: "deployments:write", description: "Report deployments and their statuses, from any CI" },
   { scope: "observability:read", description: "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports" },
   { scope: "observability:write", description: "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports" },
-  { scope: "memory:read", description: "Recall memory and search the workspace's context" },
-  { scope: "memory:write", description: "Save memory for the next agent" },
+  { scope: "memory:read", description: "Recall memory" },
+  { scope: "memory:write", description: "Save memory for whoever works on the project next" },
   { scope: "account:read", description: "Read your email addresses, invites, invitations, pinned projects and stars" },
   { scope: "account:write", description: "Change your email addresses, make invites, answer invitations, pin projects and star repositories" },
   { scope: "notifications:read", description: "See your inbox, its threads, and what you subscribe to and watch" },
   { scope: "notifications:write", description: "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories" },
   { scope: "chat:read", description: "Read the conversations you are in: channels, direct messages, threads and reactions, live" },
   { scope: "chat:write", description: "Send, edit and delete your messages, react, mark conversations read, and answer cards in chat" },
-  { scope: "workspace:read", description: "Read workspace settings, invites, integrations, model routes, teams and rulesets" },
+  { scope: "workspace:read", description: "Read workspace settings, invites, integrations, teams and rulesets" },
   { scope: "workspace:admin", description: "Create and delete workspaces, invite members, connect integrations, create, change and delete teams, and change the workspace's rulesets" },
-  { scope: "billing:read", description: "See a workspace's usage, budget, AI credit and invoices" },
-  { scope: "billing:write", description: "Change a workspace's budget and buy AI credit" },
+  { scope: "billing:read", description: "See a workspace's usage, budget and invoices" },
+  { scope: "billing:write", description: "Change a workspace's budget" },
   { scope: "access:read", description: "See who has access to repositories" },
   { scope: "access:admin", description: "Give and take away access to repositories, a team's included" },
   { scope: "webhooks:read", description: "See webhooks and their deliveries" },
   { scope: "webhooks:admin", description: "Create, change and delete webhooks" },
   { scope: "secrets:read", description: "List secrets (never their values) and read variables" },
   { scope: "secrets:admin", description: "Set and delete secrets and variables" },
-  { scope: "runners:read", description: "See self-hosted runners, their groups and where agents run" },
+  { scope: "runners:read", description: "See self-hosted runners and their groups" },
   { scope: "runners:admin", description: "Register and remove self-hosted runners, change their groups and settings" },
-  { scope: "models:read", description: "See the workspace's AI Gateway requests: their models, tokens, cost and status" },
-  { scope: "models:write", description: "Send model requests through the AI Gateway, which uses the workspace's AI credit" },
   { scope: "artifacts:read", description: "List, read and search artifacts you can see, their versions, and the numbers their dashboards show" },
   { scope: "artifacts:write", description: "Create, rename, move, edit, trash and restore artifacts, and propose changes to them" },
   { scope: "artifacts:admin", description: "Share artifacts, change who can open them, and delete them for good" },
@@ -100,6 +97,19 @@ export const SCOPES = [
 export const UPCOMING_SCOPES: readonly { scope: Scope; description: string }[] = [
 ] as const;
 
+/**
+ * Scopes of what g1t no longer has (Rust: `Resource::retired`): `agents`
+ * (g1t's own agents) and `models` (its model proxy and AI Gateway). Tokens
+ * and OAuth grants that stored them still read, but they are never offered
+ * or granted and no operation needs them: they give nothing. `isScope` and
+ * `parseScopes` leave them out.
+ */
+export const RETIRED_SCOPES = [
+  { scope: "agents:run", description: "Retired: put g1t's own agents to work. Grants nothing now" },
+  { scope: "models:read", description: "Retired: see the AI Gateway's requests. Grants nothing now" },
+  { scope: "models:write", description: "Retired: send requests through the AI Gateway. Grants nothing now" },
+] as const;
+
 export type Scope = (typeof SCOPES)[number]["scope"];
 
 /** Where a resource sits on the token form; only a person's token may hold account ones. */
@@ -113,13 +123,12 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "packages", label: "Packages", group: "repository" },
   { resource: "issues", label: "Issues", group: "repository" },
   { resource: "pull_requests", label: "Pull requests", group: "repository" },
-  { resource: "agents", label: "g1t agents", group: "repository" },
   { resource: "workflows", label: "Workflows", group: "repository" },
   { resource: "workflow_files", label: "Workflow files", group: "repository" },
   { resource: "checks", label: "Checks and statuses", group: "repository" },
   { resource: "deployments", label: "Deployments", group: "repository" },
   { resource: "observability", label: "Observability", group: "repository" },
-  { resource: "memory", label: "Memory and context", group: "repository" },
+  { resource: "memory", label: "Memory", group: "repository" },
   { resource: "account", label: "Your account", group: "account" },
   { resource: "notifications", label: "Notifications", group: "account" },
   { resource: "chat", label: "Chat", group: "account" },
@@ -129,12 +138,17 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "webhooks", label: "Webhooks", group: "repository" },
   { resource: "secrets", label: "Secrets and variables", group: "repository" },
   { resource: "runners", label: "Self-hosted runners", group: "workspace" },
-  { resource: "models", label: "AI Gateway", group: "workspace" },
   { resource: "artifacts", label: "Artifacts", group: "workspace" },
 ];
 
 /** Resources not offered yet, as `UPCOMING_SCOPES`: settings never show them. */
 export const UPCOMING_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
+];
+
+/** Resources of what g1t no longer has, as `RETIRED_SCOPES`: settings never show them. */
+export const RETIRED_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
+  { resource: "agents", label: "g1t agents", group: "repository" },
+  { resource: "models", label: "AI Gateway", group: "workspace" },
 ];
 
 const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
@@ -236,10 +250,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. No preset gives chat: an application gets it only by asking for it. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read", "artifacts:read",
+    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "artifacts:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read", "artifacts:read",
+    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
@@ -251,7 +265,7 @@ export const PRESET_SCOPES = {
 
 export const PRESETS: { id: PresetId; label: string; description: string }[] = [
   { id: "read_only", label: "Read only", description: "Read everything you can read; change nothing." },
-  { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, push code and run g1t agents." },
+  { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, and push code." },
   { id: "ci", label: "CI", description: "Clone and push code, push and pull packages, run workflows, and report checks and deployments." },
   { id: "full", label: "Full access", description: "Everything you can do, including deleting repositories and changing who has access." },
 ];
@@ -320,29 +334,6 @@ export const OPERATION_SCOPES = [
   ["update_integration", "workspace:admin"],
   ["disconnect_integration", "workspace:admin"],
   ["test_integration", "workspace:admin"],
-  ["get_model_routes", "workspace:read"],
-  ["set_model_routes", "workspace:admin"],
-  ["list_marketplaces", "workspace:read"],
-  ["add_marketplace", "workspace:admin"],
-  ["remove_marketplace", "workspace:admin"],
-  ["refresh_marketplace", "workspace:admin"],
-  ["discover", "workspace:read"],
-  ["list_plugins", "workspace:read"],
-  ["get_plugin", "workspace:read"],
-  ["install_plugin", "workspace:admin"],
-  ["set_plugin_enabled", "workspace:admin"],
-  ["uninstall_plugin", "workspace:admin"],
-  ["update_plugin", "workspace:admin"],
-  ["list_plugin_agents", "workspace:read"],
-  ["list_connectors", "workspace:read"],
-  ["get_connector", "workspace:read"],
-  ["add_connector", "workspace:admin"],
-  ["set_connector_key", "workspace:admin"],
-  ["remove_connector", "workspace:admin"],
-  ["refresh_connector", "workspace:admin"],
-  ["grant_connector", "workspace:admin"],
-  ["revoke_connector", "workspace:admin"],
-  ["customize_bundle", "agents:run"],
   ["list_teams", "workspace:read"],
   ["get_team", "workspace:read"],
   ["list_team_members", "workspace:read"],
@@ -361,14 +352,12 @@ export const OPERATION_SCOPES = [
   ["set_team_member", "workspace:admin"],
   ["remove_team_member", "workspace:admin"],
   ["set_team_review_assignment", "workspace:admin"],
-  // A workspace's billing: usage, budget, AI credit and invoices.
+  // A workspace's billing: usage, budget and invoices.
   ["get_usage", "billing:read"],
   ["get_budget", "billing:read"],
-  ["get_ai_credit", "billing:read"],
   ["list_invoices", "billing:read"],
   ["get_billing_details", "billing:read"],
   ["set_budget", "billing:write"],
-  ["buy_ai_credit", "billing:write"],
   ["list_repos", "repo:read"],
   ["get_repo", "repo:read"],
   ["download_tarball_archive", "code:read"],
@@ -462,7 +451,6 @@ export const OPERATION_SCOPES = [
   ["update_code_scanning_alert", "security:write"],
   ["upload_sarif", "security:write"],
   ["update_vulnerability_alert", "security:write"],
-  ["fix_security_alert", "security:write"],
   ["update_security_settings", "security:write"],
   ["update_workspace_security_settings", "security:write"],
   ["create_security_advisory", "security:write"],
@@ -472,7 +460,6 @@ export const OPERATION_SCOPES = [
   ["review_vulnerability_report", "security:write"],
   ["list_issues", "issues:read"],
   ["get_issue", "issues:read"],
-  ["get_plan", "issues:read"],
   ["create_issue", "issues:write"],
   ["update_issue", "issues:write"],
   ["list_issue_labels", "issues:read"],
@@ -485,7 +472,6 @@ export const OPERATION_SCOPES = [
   ["edit_comment", "issues:write"],
   ["delete_comment", "issues:write"],
   ["import_issue", "issues:write"],
-  ["apply_plan", "issues:write"],
   ["list_pull_requests", "pull_requests:read"],
   ["get_pull_request", "pull_requests:read"],
   ["get_pull_request_changes", "pull_requests:read"],
@@ -502,19 +488,6 @@ export const OPERATION_SCOPES = [
   ["merge_pull_request", "pull_requests:write"],
   ["request_reviewers", "pull_requests:write"],
   ["remove_requested_reviewers", "pull_requests:write"],
-  ["assign_issue", "agents:run"],
-  ["delegate", "agents:run"],
-  ["plan_work", "agents:run"],
-  ["message_agent", "agents:run"],
-  ["answer_message", "agents:run"],
-  // A workspace agent's own computer: waking it spends the workspace's
-  // money, so the same scope covers reading and managing it.
-  ["get_agent_computer", "agents:run"],
-  ["wake_agent_computer", "agents:run"],
-  ["sleep_agent_computer", "agents:run"],
-  ["reset_agent_computer", "agents:run"],
-  ["list_agent_computer_commands", "agents:run"],
-  ["take_messages", "agents:run"],
   ["list_workflows", "workflows:read"],
   ["list_workflow_runs", "workflows:read"],
   ["get_workflow_run", "workflows:read"],
@@ -603,8 +576,6 @@ export const OPERATION_SCOPES = [
   ["review_token_request", "access:admin"],
   ["revoke_member_token", "access:admin"],
   ["recall", "memory:read"],
-  ["search_context", "memory:read"],
-  ["get_entity", "memory:read"],
   ["get_context", "memory:read"],
   ["remember", "memory:write"],
   ["list_collaborators", "access:read"],
@@ -667,9 +638,6 @@ export const OPERATION_SCOPES = [
   ["restore_package", "packages:delete"],
   ["delete_package_version", "packages:delete"],
   ["restore_package_version", "packages:delete"],
-  // The AI Gateway. Sending a request to a model needs `models:write`,
-  // checked by the model proxy at models.g1t.sh.
-  ["list_gateway_requests", "models:read"],
   // Artifacts mode's docs, slides, designs and dashboards (the `artifact`
   // MCP tool). The artifacts service then checks the person's role on each.
   ["list_workspace_artifacts", "artifacts:read"],
@@ -711,19 +679,17 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "security", label: "Security", scopes: ["security:read", "security:write"] },
   { id: "packages", label: "Packages", scopes: ["packages:read", "packages:write"] },
   { id: "work", label: "Issues & pull requests", scopes: ["issues:read", "issues:write", "pull_requests:read", "pull_requests:write"] },
-  { id: "agents", label: "Agents", scopes: ["agents:run"] },
   { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write", "workflow_files:write"] },
   { id: "checks", label: "Checks", scopes: ["checks:read", "checks:write"] },
   { id: "deployments", label: "Deployments", scopes: ["deployments:read", "deployments:write"] },
   { id: "observability", label: "Observability", scopes: ["observability:read", "observability:write"] },
-  { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
+  { id: "memory", label: "Memory", scopes: ["memory:read", "memory:write"] },
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
   { id: "notifications", label: "Notifications", scopes: ["notifications:read", "notifications:write"] },
   { id: "chat", label: "Chat", scopes: ["chat:read", "chat:write"] },
   { id: "workspace", label: "Workspace", scopes: ["workspace:read", "access:read", "webhooks:read", "secrets:read"] },
   { id: "billing", label: "Billing", scopes: ["billing:read", "billing:write"] },
   { id: "runners", label: "Runners", scopes: ["runners:read"] },
-  { id: "models", label: "AI Gateway", scopes: ["models:read", "models:write"] },
   { id: "artifacts", label: "Artifacts", scopes: ["artifacts:read", "artifacts:write"] },
 ];
 

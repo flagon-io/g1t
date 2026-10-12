@@ -77,7 +77,6 @@ export const EVENT_TYPES = [
   "release.edited",
   "release.unpublished",
   "release.deleted",
-  "agent.asked",
   "checks.completed",
   "status.created",
   "check_run.created",
@@ -86,7 +85,6 @@ export const EVENT_TYPES = [
   "check_run.requested_action",
   "check_suite.completed",
   "check_suite.rerequested",
-  "review.completed",
   "workflow.completed",
   "deployment.succeeded",
   "deployment.failed",
@@ -119,6 +117,13 @@ export const EVENT_TYPES = [
   "security_advisory.withdrawn",
   "security_advisory.reported",
 ] as const;
+
+/**
+ * Event types webhooks were once offered that g1t no longer sends (from
+ * g1t's own agents, since removed). A webhook saved with one still reads;
+ * saving its list again leaves them out. Mirrors `RETIRED_EVENT_TYPES`.
+ */
+export const RETIRED_EVENT_TYPES: readonly string[] = ["agent.asked", "review.completed"];
 
 export type Hook = {
   id: string;

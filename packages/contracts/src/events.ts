@@ -12,7 +12,7 @@ import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
-import type { AgentRef, Confidence, Verdict } from "./work";
+import type { AgentRef, Verdict } from "./work";
 
 /** What every `package.*` event names. */
 export type PackageEventData = {
@@ -260,17 +260,16 @@ export type EventPayloads = {
     author?: { id: string; username: string };
     requestedBy?: { id: string; username: string };
   };
-  /** `confidence`, on a g1t agent's change once g1t has worked it out, is on every pull request event. */
-  "pull.ready": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
+  "pull.ready": { pullId: string; repoId: string; number: number; issue?: number };
   /** A push moved the head of a pull request that is ready for review. */
-  "pull.updated": { pullId: string; repoId: string; number: number; issue?: number; commit: string; confidence?: Confidence };
+  "pull.updated": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
   /** A merge was asked for while the pull request was behind; it has to catch up first. */
-  "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
-  "pull.closed": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
+  "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
   /** A closed pull request was opened again. `commit` is its head. */
-  "pull.reopened": { pullId: string; repoId: string; number: number; issue?: number; commit?: string; confidence?: Confidence };
+  "pull.reopened": { pullId: string; repoId: string; number: number; issue?: number; commit?: string };
   /** A pull request that was ready for review was turned back into a draft. */
-  "pull.converted_to_draft": { pullId: string; repoId: string; number: number; issue?: number; confidence?: Confidence };
+  "pull.converted_to_draft": { pullId: string; repoId: string; number: number; issue?: number };
   /** People were assigned to a pull request: `assignees` is the new set, `added` those newly assigned. */
   "pull.assigned": { pullId: string; repoId: string; number: number; issue?: number; assignees: string[]; added: string[] };
   /** Reviewers were asked for a pull request (`reviewers`), or no longer are. */
@@ -305,9 +304,7 @@ export type EventPayloads = {
   "pull.mergecheck": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
   /** Whether the pull request merges cleanly was settled. */
   "pull.mergeability": { pullId: string; repoId: string; number: number; issue?: number };
-  /** Another agent asked the agent on a pull request, which was not at work, a question or handed it work. */
-  "agent.asked": { pullId: string; repoId: string; number: number; issue?: number };
-  "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string; confidence?: Confidence };
+  "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
   /** A run of the acceptance checks finished. `commit` is what was checked. */
   "checks.completed": {
     pullId: string;
@@ -326,7 +323,7 @@ export type EventPayloads = {
   /** A reporter's check runs on a commit all completed, or it was asked to run them again. */
   "check_suite.completed": CheckSuiteEventData;
   "check_suite.rerequested": CheckSuiteEventData;
-  /** A g1t agent finished reviewing a pull request; no verdict if it could not. */
+  /** A g1t agent finished reviewing a pull request; no verdict if it could not. No longer published: on older events only. */
   "review.completed": {
     pullId: string;
     repoId: string;
@@ -479,12 +476,6 @@ export type EventPayloads = {
    * Services undo what they did on `workspace.deleting`, and only that.
    */
   "workspace.restored": { workspaceId: string; slug: string };
-  /**
-   * A memory was added, changed, reviewed or forgotten. No text: ask the
-   * work service for it by id. `repoId` is the project's, or null for the
-   * workspace's memory. `status` is `deleted` once forgotten.
-   */
-  "memory.changed": { memoryId: string; workspace: string; status: "candidate" | "kept" | "dismissed" | "deleted" };
   /**
    * A sandbox was stopped because it looked like it was mining: CPU pinned
    * with little I/O and no progress, or a miner seen by name. For g1t's
