@@ -342,7 +342,10 @@ runs:
   folder Windows Sandbox reads, and in a container's environment. The
   first thing the runner in the sandbox does is fetch the job with it,
   and g1t answers with a new token that only the sandbox has; the first
-  stops working at once, for that and for everything else. A copy left
+  stops working at once for everything that can be asked through g1t's
+  API (inside g1t, only the lookup of [brokered
+  secrets](/guides/secrets-and-variables/#brokered-secrets) still takes it, and that is not reachable
+  from your computer or a job). A copy left
   behind can't fetch the job, its secrets or a `G1T_TOKEN` again. A job's
   folder is deleted when the job ends, and a runner that was stopped
   mid-job (a crash, or `taskkill`) deletes what it left when it next

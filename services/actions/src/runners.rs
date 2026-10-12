@@ -1212,7 +1212,7 @@ impl Actions {
             let claimed = self
                 .db
                 .prepare(
-                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, runner_id = ?, runner_name = ?, reason = NULL, started_at = ?, seen_at = ?
+                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, first_token_hash = NULL, runner_id = ?, runner_name = ?, reason = NULL, started_at = ?, seen_at = ?
                      WHERE id = ? AND status = 'queued' RETURNING id",
                 )
                 .bind(&[
