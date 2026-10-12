@@ -740,7 +740,7 @@ function CodeMain({ frame }: { frame: Frame }) {
             )}
           >
             <p className="text-[11px] font-medium text-muted">Preview</p>
-            <p className="mt-1 truncate font-mono text-[11px] text-accent">pr-431.web.acme.g1t.page</p>
+            <p className="mt-1 truncate font-mono text-[11px] text-accent">web-git-csv-acme.g1t.page</p>
           </div>
         </div>
       </div>
@@ -1231,7 +1231,7 @@ export function ProductTour({ className }: { className?: string }) {
               aria-selected={on}
               onClick={() => clock.jump(index)}
               className={cn(
-                "group relative overflow-hidden rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors",
+                "group relative overflow-hidden rounded-full px-2 py-1.5 text-[11px] font-medium whitespace-nowrap ring-1 transition-colors sm:px-3 sm:text-xs",
                 on ? "bg-surface text-fg ring-line-strong" : "text-muted ring-line hover:text-fg-soft",
               )}
             >

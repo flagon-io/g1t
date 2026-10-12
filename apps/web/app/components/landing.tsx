@@ -226,14 +226,13 @@ const MODES: {
     name: "Artifacts",
     about:
       "Docs now, and slides, designs and dashboards next, made together live.",
-    soon: true,
     to: `${DOCS}/guides/artifacts/`,
   },
   {
     icon: <Bot size={18} />,
     name: "Your coding agents",
     about:
-      "Claude Code, Codex, Cursor or any MCP client, working as you with the access you give them.",
+      "Claude Code, Codex, Cursor or any MCP client, working as you through MCP, the g1t CLI or the API, with only the access you give them.",
     to: `${DOCS}/guides/bring-your-own-agent/`,
   },
 ];
@@ -308,6 +307,7 @@ const FORGE = [
   "Import from any git host",
   "REST API and OpenAPI",
   "MCP server",
+  "The g1t CLI",
 ];
 
 const SECURE: { icon: ReactNode; title: string; about: string; to: string }[] =
@@ -402,7 +402,7 @@ export function Landing() {
           </p>
           <div className="mt-9 flex animate-fade-up flex-wrap items-center justify-center gap-3">
             <ButtonLink to="/register" size="lg" className="rounded-full">
-              Start for free
+              Get started
               <ArrowRight size={15} />
             </ButtonLink>
             <ButtonLink
@@ -454,8 +454,8 @@ export function Landing() {
           </h2>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
             Code, Chat and Artifacts share one set of members, one sign-in and
-            one bill. The coding agents you connect work as you, through MCP
-            and the API.
+            one bill. The coding agents you connect work as you, through MCP,
+            the g1t CLI and the API.
           </p>
         </div>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -599,7 +599,7 @@ export function Landing() {
                 text: "Pull requests, checks and deploys as cards in the channel",
                 soon: true,
               },
-              { text: "Mentions and approvals in Notifications", soon: true },
+              { text: "Chat mentions in Notifications", soon: true },
               {
                 text: "A phone app with notifications, Android first, for g1t.sh or your own g1t",
                 soon: true,
@@ -746,10 +746,7 @@ export function Landing() {
           <More to={`${DOCS}/guides/merge-queue/`}>The merge queue</More>
         </div>
         <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
-          <div className="flex items-center gap-3">
-            <Eyebrow>Artifacts</Eyebrow>
-            <Soon />
-          </div>
+          <Eyebrow>Artifacts</Eyebrow>
           <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">
             A knowledge base that keeps itself true
           </h3>
@@ -759,7 +756,7 @@ export function Landing() {
             change touches something a doc cites, the doc is flagged for its
             owner to update.
           </p>
-          <More to={`${DOCS}/guides/artifacts/`}>What Artifacts will do</More>
+          <More to={`${DOCS}/guides/artifacts/`}>How Artifacts work</More>
         </div>
       </section>
 
@@ -847,7 +844,9 @@ export function Landing() {
             <p className="mt-4 max-w-md leading-7 text-muted">
               Every action is a REST route and an MCP tool, with an OpenAPI
               document, OAuth apps, access tokens and signed webhooks for every
-              event.
+              event. The g1t CLI does the same from a terminal or a script:
+              open a pull request, wait on its checks, read a failed run&apos;s
+              logs.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <ButtonLink
@@ -856,6 +855,9 @@ export function Landing() {
               >
                 Connect an agent
                 <ArrowRight size={14} />
+              </ButtonLink>
+              <ButtonLink to={`${DOCS}/guides/cli/`} variant="outline">
+                The g1t CLI
               </ButtonLink>
               <ButtonLink to={`${DOCS}/reference/api/`} variant="outline">
                 API reference
@@ -867,12 +869,22 @@ export function Landing() {
               Add g1t as a remote MCP server, then sign in through your browser:
             </p>
             <CopyLine text="https://mcp.g1t.sh" />
+            <p className="pt-3 text-sm text-muted">
+              Install the CLI, then sign in with{" "}
+              <code className="font-mono text-fg-soft">g1t auth login</code>:
+            </p>
+            <CopyLine prompt text="curl -fsSL https://g1t.sh/install | sh" />
+            <p className="pt-3 text-sm text-muted">
+              Underneath, it is plain git and HTTP:
+            </p>
             <CopyLine
               prompt
+              breakAtSlashes
               text="git clone https://g1t.sh/flagon-io/g1t.git"
             />
             <CopyLine
               prompt
+              breakAtSlashes
               text="curl https://api.g1t.sh/repos/flagon-io/g1t/queue"
             />
           </div>
@@ -977,12 +989,12 @@ export function Landing() {
             Bring your team. Bring your agents.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-fg-soft/80 text-balance">
-            Create a workspace in a minute, push a repository and connect the
-            coding agent you already use. Chat and the forge are free.
+            Make a workspace, push a repository and connect the coding agent
+            you already use. Chat and the forge are free.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <ButtonLink to="/register" size="lg" className="rounded-full">
-              Create your workspace
+              Get started
               <ArrowRight size={15} />
             </ButtonLink>
             <ButtonLink
