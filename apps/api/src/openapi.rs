@@ -12,7 +12,6 @@ use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
-use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
@@ -189,22 +188,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::DeployKeys(DeployKeysOp::GetDeployKey),
             Op::DeployKeys(DeployKeysOp::CreateDeployKey),
             Op::DeployKeys(DeployKeysOp::DeleteDeployKey),
-        ],
-    ),
-    (
-        "Mirroring",
-        "A repository's links to copies of it on other hosts: a mirror stands by as a read-only copy of a remote that leads, until someone takes over on g1t and later hands back, or moves it to g1t for good. A repository g1t leads can be mirrored to other hosts.",
-        &[
-            Op::Mirrors(MirrorsOp::GetMirror),
-            Op::Mirrors(MirrorsOp::GetHandBackPlan),
-            Op::Mirrors(MirrorsOp::TakeOver),
-            Op::Mirrors(MirrorsOp::SetCiFailover),
-            Op::Mirrors(MirrorsOp::HandBack),
-            Op::Mirrors(MirrorsOp::MoveToG1t),
-            Op::Mirrors(MirrorsOp::SyncMirror),
-            Op::Mirrors(MirrorsOp::AddRemote),
-            Op::Mirrors(MirrorsOp::UpdateRemote),
-            Op::Mirrors(MirrorsOp::RemoveRemote),
         ],
     ),
     (
@@ -867,7 +850,6 @@ fn title(op: Op) -> &'static str {
         Op::Artifacts(op) => op.title(),
         Op::Archives(op) => op.title(),
         Op::DeployKeys(op) => op.title(),
-        Op::Mirrors(op) => op.title(),
         Op::Packages(op) => op.title(),
         Op::Folios(op) => op.title(),
         Op::Customize(op) => op.title(),

@@ -1,18 +1,10 @@
 //! Copying every branch and tag from one git server to another: importing a
-//! repository with a credential, keeping a mirror in step with the host it
-//! mirrors, pushing a repository's refs out to a host it is mirrored to,
-//! and moving chosen refs either way when a takeover is handed back (see
-//! `g1t_contracts::mirrors`).
+//! repository, from a public address or with a credential.
 //!
 //! Like landing (see `land.rs`), this speaks git's smart HTTP protocol and
 //! relays the pack it receives unchanged. Both sides are asked for their
 //! refs; the source is asked for one pack holding what the target lacks;
 //! the target is sent one push that moves every ref that differs.
-//!
-//! Nothing a mirror held is lost silently: when catching up moves a branch
-//! somewhere its old commit is not part of (a force-push or deletion on the
-//! remote), the old commit is kept under `refs/g1t/replaced/`, for at
-//! least [`REPLACED_KEPT_DAYS`] days.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -21,17 +13,9 @@ use futures_util::StreamExt;
 use worker::js_sys::Uint8Array;
 use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
 
-use g1t_contracts::repos::{
-    GitAccess, MirrorApplied, MirrorApplyArgs, MirrorArgs, MirrorDirection, MirrorRefs, MirrorRefsArgs, Mirrored, RefMoved,
-    Repo, SetMirrorArgs,
-};
-use g1t_contracts::{FailureCode, Outcome};
-use g1t_kit::now_ms;
+use g1t_contracts::FailureCode;
 
-use crate::land::{push_ref, read_pkt_lines, unpack_sideband};
-use crate::registry::store_key;
-use crate::store::{GitRepo, GitStore, Scope};
-use crate::{Repos, descends_from, import, not_found};
+use crate::land::{read_pkt_lines, unpack_sideband};
 
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 /// The most a pack may hold. A Worker holds it in memory while relaying it.
@@ -39,13 +23,7 @@ pub const MAX_PACK_BYTES: usize = 40 * 1024 * 1024;
 /// How many of the target's commits are named to the source as already
 /// had, so a sync only carries what is new.
 const MAX_HAVES: usize = 256;
-const USER_AGENT: &str = "git/2.45.0 (g1t mirror)";
-/// Where a mirror keeps a commit the remote stopped pointing at.
-pub const REPLACED_PREFIX: &str = "refs/g1t/replaced/";
-/// How long a kept commit stays, at least.
-pub const REPLACED_KEPT_DAYS: u64 = 30;
-/// How far back a moved branch is searched for its old commit.
-const REPLACED_HISTORY: u32 = 200;
+const USER_AGENT: &str = "git/2.45.0 (g1t)";
 /// A pack with no objects: for a push whose refs all name objects the
 /// target already holds. The last 20 bytes are the SHA-1 of the first 12.
 const EMPTY_PACK: [u8; 32] = [
@@ -93,11 +71,6 @@ impl Endpoint {
         }
     }
 
-    /// A remote named in a service's arguments: GitHub's user unless
-    /// another is given.
-    pub fn remote(url: &str, username: Option<&str>, token: &str) -> Self {
-        Self::basic(url, username.filter(|name| !name.trim().is_empty()).unwrap_or(GITHUB_USER), token)
-    }
 }
 
 const GITHUB_USER: &str = "x-access-token";
@@ -156,21 +129,8 @@ pub struct Copied {
     /// Refs created or moved, each with where it was and where it is now.
     pub updated: Vec<(String, Option<String>, String)>,
     pub deleted: Vec<String>,
-    /// What each deleted ref pointed at.
-    pub deleted_from: BTreeMap<String, String>,
     /// The branch the source's HEAD names, when it said.
     pub head: Option<String>,
-}
-
-/// Which refs a copy moves.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Prune {
-    /// Refs the source no longer has are deleted from the target: the
-    /// target is a mirror of the source.
-    Yes,
-    /// Refs only the target has are left alone: pushing out to a host that
-    /// may have branches of its own.
-    No,
 }
 
 fn base64(text: &str) -> String {
@@ -255,8 +215,9 @@ pub fn parse_advertisement(bytes: &[u8]) -> Advertised {
 /// delete.
 pub type Command = (String, Option<String>, String);
 
-/// What has to change on `target` so its refs match `source`'s.
-pub fn plan(source: &Advertised, target: &Advertised, prune: Prune) -> Vec<Command> {
+/// What has to change on `target` so its refs match `source`'s: refs the
+/// source does not have are deleted from the target.
+pub fn plan(source: &Advertised, target: &Advertised) -> Vec<Command> {
     let mut commands = Vec::new();
     for (name, hash) in &source.refs {
         let old = target.refs.get(name);
@@ -264,11 +225,9 @@ pub fn plan(source: &Advertised, target: &Advertised, prune: Prune) -> Vec<Comma
             commands.push((name.clone(), old.cloned(), hash.clone()));
         }
     }
-    if prune == Prune::Yes {
-        for (name, hash) in &target.refs {
-            if !source.refs.contains_key(name) {
-                commands.push((name.clone(), Some(hash.clone()), ZERO_ID.to_owned()));
-            }
+    for (name, hash) in &target.refs {
+        if !source.refs.contains_key(name) {
+            commands.push((name.clone(), Some(hash.clone()), ZERO_ID.to_owned()));
         }
     }
     commands
@@ -382,42 +341,6 @@ async fn advertise_raw(endpoint: &Endpoint, service: &str) -> Result<std::result
     }
 }
 
-/// The kept commits in an advertisement: `refs/g1t/replaced/...` names
-/// with what they point at.
-pub fn replaced_refs(bytes: &[u8]) -> Vec<(String, String)> {
-    let (lines, _) = read_pkt_lines(bytes);
-    lines
-        .into_iter()
-        .filter_map(|line| {
-            let line = std::str::from_utf8(line.split(|byte| *byte == 0).next()?).ok()?;
-            let (hash, name) = line.trim_end().split_once(' ')?;
-            (name.starts_with(REPLACED_PREFIX) && hash.len() == 40).then(|| (name.to_owned(), hash.to_owned()))
-        })
-        .collect()
-}
-
-/// The ref that keeps `old` when `name` stops pointing at it, stamped with
-/// the time in milliseconds so expired ones are found from the name alone.
-pub fn replaced_name(name: &str, now_ms: u64) -> String {
-    format!("{REPLACED_PREFIX}{}/{now_ms}", name.trim_start_matches("refs/"))
-}
-
-/// The ref a kept commit was replaced on: `refs/heads/main` for
-/// `refs/g1t/replaced/heads/main/<ms>`.
-pub fn replaced_from(kept: &str) -> Option<String> {
-    let rest = kept.strip_prefix(REPLACED_PREFIX)?;
-    let (name, _) = rest.rsplit_once('/')?;
-    Some(format!("refs/{name}"))
-}
-
-/// Whether a kept commit's ref is older than [`REPLACED_KEPT_DAYS`].
-pub fn replaced_expired(name: &str, now_ms: u64) -> bool {
-    name.rsplit('/')
-        .next()
-        .and_then(|stamp| stamp.parse::<u64>().ok())
-        .is_some_and(|stamp| now_ms.saturating_sub(stamp) > REPLACED_KEPT_DAYS * 86_400_000)
-}
-
 /// Fetches one pack holding `wants`, reading in pieces so that one too
 /// large is noticed before it is all held.
 async fn fetch_pack(source: &Endpoint, wants: &[String], haves: &[String]) -> Result<std::result::Result<Vec<u8>, Problem>> {
@@ -447,10 +370,9 @@ async fn fetch_pack(source: &Endpoint, wants: &[String], haves: &[String]) -> Re
     Ok(unpack_sideband(&received).map_err(|_| Problem::Refused("The source did not send a usable pack.".to_owned())))
 }
 
-/// Makes `target`'s branches and tags match `source`'s. With
-/// `Prune::No`, refs only the target has are kept. `Err` in the inner
+/// Makes `target`'s branches and tags match `source`'s. `Err` in the inner
 /// result is a reason to show a person.
-pub async fn copy(source: &Endpoint, target: &Endpoint, prune: Prune) -> Result<std::result::Result<Copied, Problem>> {
+pub async fn copy(source: &Endpoint, target: &Endpoint) -> Result<std::result::Result<Copied, Problem>> {
     let theirs = match advertise(source, "git-upload-pack").await? {
         Ok(refs) => refs,
         Err(problem) => return Ok(Err(problem)),
@@ -459,7 +381,7 @@ pub async fn copy(source: &Endpoint, target: &Endpoint, prune: Prune) -> Result<
         Ok(refs) => refs,
         Err(problem) => return Ok(Err(problem.map(|reason| format!("Writing the copy failed: {reason}")))),
     };
-    let commands = plan(&theirs, &ours, prune);
+    let commands = plan(&theirs, &ours);
     let mut copied = Copied {
         head: theirs.head.clone(),
         ..Copied::default()
@@ -480,9 +402,6 @@ pub async fn copy(source: &Endpoint, target: &Endpoint, prune: Prune) -> Result<
     }
     for (name, old, new) in commands {
         if new == ZERO_ID {
-            if let Some(old) = old {
-                copied.deleted_from.insert(name.clone(), old);
-            }
             copied.deleted.push(name);
         } else {
             copied.updated.push((name, old, new));
@@ -569,230 +488,6 @@ pub fn import_pushes(updated: &[(String, Option<String>, String)], default_branc
     pushes
 }
 
-impl<S: GitStore> Repos<S> {
-    /// `mirror`: a mirror catching up with the host it mirrors, or a
-    /// repository pushing its refs out to one. Each branch moved on g1t is
-    /// announced as a push copied in, so what follows a mirror's state
-    /// (workflows, deployments) can tell.
-    pub(crate) async fn mirror(&self, a: MirrorArgs) -> Result<Outcome<Mirrored>> {
-        let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
-            return Ok(not_found());
-        };
-        let Some(url) = import::clean_url(&a.url) else {
-            return Ok(Outcome::fail(FailureCode::Invalid, "That is not an https repository address."));
-        };
-        // Catching up writes: it waits for a move between namespaces (moves.rs).
-        let repo = if a.direction == MirrorDirection::Pull {
-            match self.unpaused(repo).await? {
-                Ok(repo) => repo,
-                Err((code, message)) => return Ok(Outcome::fail(code, message)),
-            }
-        } else {
-            repo
-        };
-        let scope = match a.direction {
-            MirrorDirection::Pull => Scope::Write,
-            MirrorDirection::Push => Scope::Read,
-        };
-        let access = self.store.open(&store_key(&repo)).await?.access(scope).await?;
-        let ours = Endpoint::bearer(&access.remote, &access.token);
-        let theirs = Endpoint::remote(&url, a.username.as_deref(), &a.token);
-        let copied = match a.direction {
-            MirrorDirection::Pull => {
-                let copied = copy(&theirs, &ours, Prune::Yes).await?;
-                self.refs_moved(&repo.id).await;
-                copied
-            }
-            MirrorDirection::Push => copy(&ours, &theirs, Prune::No).await?,
-        };
-        let copied = match copied {
-            Ok(copied) => copied,
-            Err(problem) => return Ok(Outcome::fail(problem.code(), problem.to_string())),
-        };
-        let mut replaced = Vec::new();
-        if a.direction == MirrorDirection::Pull {
-            let moved: Vec<(String, Option<String>, String)> = copied
-                .updated
-                .iter()
-                .cloned()
-                .chain(
-                    copied
-                        .deleted_from
-                        .iter()
-                        .map(|(name, old)| (name.clone(), Some(old.clone()), ZERO_ID.to_owned())),
-                )
-                .collect();
-            replaced = self.keep_replaced(&repo, &access, &moved).await?;
-            for (name, old, new) in &copied.updated {
-                if name.starts_with("refs/heads/") {
-                    self.publish_mirrored_push(&repo, name, old.as_deref(), new).await?;
-                }
-            }
-        }
-        Ok(Outcome::Ok(Mirrored {
-            updated: copied.updated.into_iter().map(|(name, _, _)| name).collect(),
-            deleted: copied.deleted,
-            replaced,
-        }))
-    }
-
-    /// Keeps each commit a pull stopped pointing at, when the ref's new
-    /// commit does not contain it: a force-push or deletion on the remote.
-    /// Returns the refs that keep them. Expired ones are let go at the same
-    /// time.
-    async fn keep_replaced(&self, repo: &Repo, access: &GitAccess, moved: &[(String, Option<String>, String)]) -> Result<Vec<String>> {
-        let git = self.store.open(&store_key(repo)).await?;
-        let now = now_ms();
-        let mut kept = Vec::new();
-        for (name, old, new) in moved {
-            let Some(old) = old.as_deref() else { continue };
-            let lost = if new == ZERO_ID || name.starts_with("refs/tags/") {
-                true
-            } else {
-                match git.log(name, REPLACED_HISTORY).await {
-                    Ok(history) => !descends_from(&git, &history, old).await.unwrap_or(true),
-                    Err(_) => false,
-                }
-            };
-            if !lost {
-                continue;
-            }
-            let keep = replaced_name(name, now);
-            if let Ok(Ok(())) = push_ref(access, &keep, None, old, Some(EMPTY_PACK.to_vec())).await {
-                kept.push(keep);
-            }
-        }
-        if !kept.is_empty() {
-            let ours = Endpoint::bearer(&access.remote, &access.token);
-            if let Ok(Ok(bytes)) = advertise_raw(&ours, "git-receive-pack").await {
-                for (name, hash) in replaced_refs(&bytes).into_iter().filter(|(name, _)| replaced_expired(name, now)) {
-                    let _ = push_ref(access, &name, Some(&hash), ZERO_ID, None).await;
-                }
-            }
-            self.refs_moved(&repo.id).await;
-        }
-        Ok(kept)
-    }
-
-    /// `mirror_refs`: both sides' branches and tags.
-    pub(crate) async fn mirror_refs(&self, a: MirrorRefsArgs) -> Result<Outcome<MirrorRefs>> {
-        let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
-            return Ok(not_found());
-        };
-        let access = self.store.open(&store_key(&repo)).await?.access(Scope::Read).await?;
-        let ours = match advertise(&Endpoint::bearer(&access.remote, &access.token), "git-upload-pack").await? {
-            Ok(ours) => ours,
-            Err(problem) => return Ok(Outcome::fail(FailureCode::Conflict, problem.to_string())),
-        };
-        // No address: only g1t's side was asked for.
-        if a.url.is_empty() {
-            return Ok(Outcome::Ok(MirrorRefs { ours: ours.refs, theirs: None, unreachable: None }));
-        }
-        let Some(url) = import::clean_url(&a.url) else {
-            return Ok(Outcome::fail(FailureCode::Invalid, "That is not an https repository address."));
-        };
-        let (theirs, unreachable) = match advertise(&Endpoint::remote(&url, a.username.as_deref(), &a.token), "git-upload-pack").await? {
-            Ok(theirs) => (Some(theirs.refs), None),
-            Err(Problem::Unreachable(reason)) => (None, Some(reason)),
-            Err(problem) => return Ok(Outcome::fail(problem.code(), problem.to_string())),
-        };
-        Ok(Outcome::Ok(MirrorRefs {
-            ours: ours.refs,
-            theirs,
-            unreachable,
-        }))
-    }
-
-    /// `mirror_apply`: moves chosen refs either way, each only from the
-    /// commit the caller saw. Pushes go out in one request, pulls come in
-    /// in another.
-    pub(crate) async fn mirror_apply(&self, a: MirrorApplyArgs) -> Result<Outcome<MirrorApplied>> {
-        let Some(repo) = self.registry.by_id(&a.repo_id).await? else {
-            return Ok(not_found());
-        };
-        let Some(url) = import::clean_url(&a.url) else {
-            return Ok(Outcome::fail(FailureCode::Invalid, "That is not an https repository address."));
-        };
-        let repo = match self.unpaused(repo).await? {
-            Ok(repo) => repo,
-            Err((code, message)) => return Ok(Outcome::fail(code, message)),
-        };
-        let access = self.store.open(&store_key(&repo)).await?.access(Scope::Write).await?;
-        let ours = Endpoint::bearer(&access.remote, &access.token);
-        let theirs = Endpoint::remote(&url, a.username.as_deref(), &a.token);
-        let mut moved = Vec::new();
-        for direction in [MirrorDirection::Push, MirrorDirection::Pull] {
-            let moves: Vec<_> = a.moves.iter().filter(|m| m.direction == direction).collect();
-            if moves.is_empty() {
-                continue;
-            }
-            let commands: Vec<Command> = moves
-                .iter()
-                .map(|m| {
-                    (
-                        m.to.clone().unwrap_or_else(|| m.git_ref.clone()),
-                        m.old.clone(),
-                        m.new.clone().unwrap_or_else(|| ZERO_ID.to_owned()),
-                    )
-                })
-                .collect();
-            let (source, target) = match direction {
-                MirrorDirection::Push => (&ours, &theirs),
-                MirrorDirection::Pull => (&theirs, &ours),
-            };
-            let held = match advertise(target, "git-receive-pack").await? {
-                Ok(held) => held,
-                Err(problem) => return Ok(Outcome::fail(problem.code(), problem.to_string())),
-            };
-            let results = match transfer(source, target, &held, &commands).await? {
-                Ok(results) => results,
-                Err(problem) => return Ok(Outcome::fail(problem.code(), problem.to_string())),
-            };
-            let mut landed = Vec::new();
-            for ((name, problem), command) in results.into_iter().zip(&commands) {
-                if problem.is_none() {
-                    landed.push(command.clone());
-                }
-                moved.push(RefMoved {
-                    git_ref: name,
-                    direction,
-                    problem,
-                    replaced: None,
-                });
-            }
-            if direction == MirrorDirection::Pull && !landed.is_empty() {
-                self.refs_moved(&repo.id).await;
-                for keep in self.keep_replaced(&repo, &access, &landed).await? {
-                    let from = replaced_from(&keep);
-                    if let Some(entry) = moved
-                        .iter_mut()
-                        .find(|m| m.direction == direction && Some(&m.git_ref) == from.as_ref())
-                    {
-                        entry.replaced = Some(keep);
-                    }
-                }
-                for (name, old, new) in &landed {
-                    if name.starts_with("refs/heads/") && new != ZERO_ID {
-                        self.publish_mirrored_push(&repo, name, old.as_deref(), new).await?;
-                    }
-                }
-            }
-        }
-        Ok(Outcome::Ok(MirrorApplied { moved }))
-    }
-
-    /// `set_mirror`: what the integrations service decided about a
-    /// repository's mirror, kept on its row.
-    pub(crate) async fn set_mirror(&self, a: SetMirrorArgs) -> Result<Outcome<Repo>> {
-        let Some(mut repo) = self.registry.by_id(&a.repo_id).await? else {
-            return Ok(not_found());
-        };
-        self.registry.set_mirror(&repo.id, a.mirror.as_ref()).await?;
-        repo.mirror = a.mirror;
-        Ok(Outcome::Ok(repo))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -871,7 +566,7 @@ mod tests {
         .concat();
         let source = parse_advertisement(&bytes);
         assert_eq!(source.default_branch().as_deref(), Some("master"), "HEAD stays the default branch");
-        let commands = plan(&source, &Advertised::default(), Prune::Yes);
+        let commands = plan(&source, &Advertised::default());
         let names: Vec<(&str, &str)> = commands.iter().map(|(name, _, new)| (name.as_str(), new.as_str())).collect();
         assert_eq!(
             names,
@@ -887,16 +582,15 @@ mod tests {
     }
 
     #[test]
-    fn a_mirror_prunes_and_a_push_out_does_not() {
+    fn a_copy_deletes_what_the_source_does_not_have() {
         let source = advertised(&[("refs/heads/main", A), ("refs/tags/v1", B)]);
         let target = advertised(&[("refs/heads/main", B), ("refs/heads/old", C)]);
-        assert_eq!(plan(&source, &target, Prune::Yes), vec![
+        assert_eq!(plan(&source, &target), vec![
             ("refs/heads/main".to_owned(), Some(B.to_owned()), A.to_owned()),
             ("refs/tags/v1".to_owned(), None, B.to_owned()),
             ("refs/heads/old".to_owned(), Some(C.to_owned()), ZERO_ID.to_owned()),
         ]);
-        assert_eq!(plan(&source, &target, Prune::No).len(), 2);
-        assert!(plan(&source, &source, Prune::Yes).is_empty());
+        assert!(plan(&source, &source).is_empty());
     }
 
     #[test]
@@ -920,31 +614,12 @@ mod tests {
     }
 
     #[test]
-    fn replaced_commits_are_kept_by_name_and_time() {
-        let kept = replaced_name("refs/heads/feature/x", 1_000);
-        assert_eq!(kept, "refs/g1t/replaced/heads/feature/x/1000");
-        assert_eq!(replaced_from(&kept).as_deref(), Some("refs/heads/feature/x"));
-        assert!(!replaced_expired(&kept, 1_000 + REPLACED_KEPT_DAYS * 86_400_000));
-        assert!(replaced_expired(&kept, 1_001 + REPLACED_KEPT_DAYS * 86_400_000));
-        assert!(!replaced_expired("refs/g1t/replaced/heads/main/not-a-time", u64::MAX));
-        let bytes = [
-            pkt_line(&format!("{A} refs/heads/main\0report-status\n")),
-            pkt_line(&format!("{B} {kept}\n")),
-            b"0000".to_vec(),
-        ]
-        .concat();
-        assert_eq!(replaced_refs(&bytes), vec![(kept.clone(), B.to_owned())]);
-        assert!(parse_advertisement(&bytes).refs.get(&kept).is_none(), "kept commits are not branches");
-    }
-
-    #[test]
     fn a_server_error_means_the_host_may_be_down() {
         assert_eq!(problem_for_status(503, "x").code(), FailureCode::Unavailable);
         assert_eq!(problem_for_status(429, "x").code(), FailureCode::Unavailable);
         assert_eq!(problem_for_status(403, "x").code(), FailureCode::Conflict);
-        let endpoint = Endpoint::remote("https://git.example/a.git", Some("chase"), "t");
+        let endpoint = Endpoint::basic("https://git.example/a.git", "chase", "t");
         assert_eq!(endpoint.authorization, format!("Basic {}", base64("chase:t")));
-        assert_eq!(Endpoint::remote("https://x", Some(" "), "t").authorization, Endpoint::github("https://x", "t").authorization);
     }
 
     #[test]

@@ -48,7 +48,6 @@ import { CheckboxOption } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Hint } from "../../components/ui/hint";
-import { useWorkflowReason } from "../../components/mirror";
 import { type StepLog, searchStepLog } from "../../lib/log-lines";
 import { quietWords } from "../../lib/log-poll";
 import { listArtifacts, withLegacyArtifacts } from "../../lib/run-artifacts.server";
@@ -1272,8 +1271,6 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   // Cancel run while any of the run is going, from whichever attempt's
   // page; re-running is for the latest attempt of a finished run.
   const { latest, going, cancelling, canCancel, canRerun } = runControls({ run, jobs, attempts, member });
-  // A mirror standing by runs nothing; in CI failover it runs them again.
-  const rerunBlocked = useWorkflowReason();
   const logsUrl = `${base}/actions/runs/${run.id}/logs.zip${latest ? "" : `?attempt=${run.attempt}`}`;
   // Its jobs starting and finishing, and its end, arrive live; the steps
   // inside a job are read again every 10 s with the live socket (its log
@@ -1340,12 +1337,10 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
                 busy={busy}
               >
                 {(open) => (
-                  <Hint label={rerunBlocked} disabled={rerunBlocked != null}>
-                    <Button type="button" variant="outline" disabled={busy || rerunBlocked != null} onClick={open}>
-                      <RotateCw size={13} />
-                      Re-run failed jobs
-                    </Button>
-                  </Hint>
+                  <Button type="button" variant="outline" disabled={busy} onClick={open}>
+                    <RotateCw size={13} />
+                    Re-run failed jobs
+                  </Button>
                 )}
               </RerunDialog>
             )}
@@ -1357,12 +1352,10 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
                 busy={busy}
               >
                 {(open) => (
-                  <Hint label={rerunBlocked} disabled={rerunBlocked != null}>
-                    <Button type="button" variant="outline" disabled={busy || rerunBlocked != null} onClick={open}>
-                      <RotateCw size={13} />
-                      Re-run all jobs
-                    </Button>
-                  </Hint>
+                  <Button type="button" variant="outline" disabled={busy} onClick={open}>
+                    <RotateCw size={13} />
+                    Re-run all jobs
+                  </Button>
                 )}
               </RerunDialog>
             )}
@@ -1456,11 +1449,11 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
                     busy={busy}
                   >
                     {(open) => (
-                      <Hint label={rerunBlocked ?? "Re-run this job"} disabled={rerunBlocked != null}>
+                      <Hint label="Re-run this job">
                         <Button
                           type="button"
                           aria-label={`Re-run ${selected.name}`}
-                          disabled={busy || rerunBlocked != null}
+                          disabled={busy}
                           onClick={open}
                           variant="ghost"
                           size="inline"

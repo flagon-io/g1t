@@ -40,11 +40,7 @@ export function OrDivider() {
   );
 }
 
-/**
- * Where a repository's code was imported from on GitHub, on its overview,
- * and when. A repository that stays in step with GitHub says so beside its
- * name instead, and is managed under Settings → Mirroring.
- */
+/** Where a repository's code was imported from on GitHub, on its overview, and when. */
 export function GithubLinkStrip({ link }: { link: GithubRepoLink }) {
   return (
     <Card tone="plain" radius="lg" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">

@@ -2,7 +2,6 @@ import { ArrowDownWideNarrow, ArrowRight, ArrowUpRight, Check, ChevronDown, Chev
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, useFetcher, useLocation, useRouteLoaderData, useSearchParams } from "react-router";
 
-import { trialClosed } from "../lib/trial";
 import { type ActivityGroup, type Verb, greetingFor, isAgent } from "../lib/mission";
 import {
   BLOCKING,
@@ -28,7 +27,6 @@ import {
 import { cn } from "../lib/cn";
 import { microsOf, money } from "../lib/money";
 import { AgentComposer, type ComposerResult } from "./agent-composer";
-import { AgentSetup } from "./agent-setup";
 import { InboxNeedsCard } from "./inbox";
 import type { ShellData } from "./shell";
 import { useLiveRefresh } from "./agents";
@@ -622,56 +620,6 @@ function FeedLine({ group, titles }: { group: ActivityGroup; titles: Record<stri
   );
 }
 
-// --- Get started --------------------------------------------------------------------
-
-type Step = { done: boolean; title: string; about: string; to: string | null; action: string };
-
-/** The first things to do, ticked off as they are done, until work has been handed to agents. */
-function GetStarted({ steps }: { steps: Step[] }) {
-  const left = steps.filter((step) => !step.done).length;
-  return (
-    <Card asChild className="p-5">
-      <section>
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-base font-semibold tracking-tight">Get started</h2>
-          <span className="text-xs text-muted">
-            {steps.length - left} of {steps.length} done
-          </span>
-        </div>
-        <ol className="mt-4 space-y-2">
-          {steps.map((step, index) => (
-            <li
-              key={step.title}
-              className={cn("flex items-start gap-3 rounded-lg px-3 py-2.5", step.done ? "" : "bg-bg/50 ring-1 ring-line")}
-            >
-              <span
-                className={cn(
-                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-medium",
-                  step.done ? "bg-success text-bg" : "text-muted ring-1 ring-line-strong",
-                )}
-              >
-                {step.done ? <Check size={12} /> : index + 1}
-              </span>
-              <span className="min-w-0 grow">
-                <span className={cn("block text-sm font-medium", step.done && "text-muted line-through decoration-faint")}>{step.title}</span>
-                {!step.done && <span className="mt-0.5 block text-xs leading-5 text-muted">{step.about}</span>}
-              </span>
-              {!step.done && step.to && (
-                <Link
-                  to={step.to}
-                  className="shrink-0 rounded-md bg-fg px-2.5 py-1 text-xs font-medium text-bg transition-colors hover:bg-fg-hover"
-                >
-                  {step.action}
-                </Link>
-              )}
-            </li>
-          ))}
-        </ol>
-      </section>
-    </Card>
-  );
-}
-
 // --- The page -----------------------------------------------------------------------
 
 const TAB_LABEL: Record<Tab, string> = { needs: "Needs you", waiting: "Waiting on agents", landed: "Landed today" };
@@ -709,7 +657,7 @@ export default function MissionControl({
     }
   }, []);
 
-  const { viewer, repos, waiting, landed, liveTotal, week, groups, titles, stats, canRunAgents, trial } = loaded;
+  const { viewer, repos, waiting, landed, liveTotal, week, groups, titles, stats, canRunAgents } = loaded;
   const workspace = shell?.workspace?.slug ?? loaded.workspace ?? viewer.workspaces?.[0]?.slug ?? null;
 
   // The usage limit, as the sidebar knows it, heads the list when it bites.
@@ -761,59 +709,6 @@ export default function MissionControl({
     return text ? `?${text}` : pathname;
   };
 
-  const steps: Step[] = [
-    {
-      done: Boolean(workspace),
-      title: "Create a workspace",
-      about: "Projects, people and agent credit live in one.",
-      to: "/workspaces/new",
-      action: "Create",
-    },
-    {
-      done: repos.length > 0,
-      title: "Add a project",
-      about: "Create a repository, or import one by its address. Push to it with git as usual.",
-      to: "/new",
-      action: "Add",
-    },
-    trial?.open
-      ? {
-          done: true,
-          title: "Try g1t free",
-          about: trial.granted
-            ? `This workspace has ${dollars(trial.limitMicros - trial.usedMicros)} of its ${dollars(trial.limitMicros)} trial credit left, for g1t's models and sandboxes.`
-            : `This workspace gets ${dollars(trial.limitMicros)} of trial credit, for g1t's models and sandboxes, the first time g1t works here.`,
-          to: workspace ? `/${workspace}/-/integrations/models` : null,
-          action: "Connect",
-        }
-      : canRunAgents
-        ? {
-            done: Boolean(shell?.free) || shell?.limit == null || shell.limit.comped || shell.limit.state === "ok",
-            title: "Keep work running",
-            about:
-              "Usage is charged after it runs. Add a card under Billing, so g1t charges it as you near your limit instead of stopping work.",
-            to: workspace ? `/${workspace}/-/billing` : null,
-            action: "Billing",
-          }
-        : {
-            done: false,
-            title: "Connect a model",
-            about: `${
-              trialClosed(trial, workspace ?? "This workspace") ? `${trialClosed(trial, workspace ?? "This workspace")} ` : ""
-            }Agents need a model to think with. Connect your Anthropic or OpenAI key, or any compatible endpoint.`,
-            to: workspace ? `/${workspace}/-/integrations/models` : null,
-            action: "Connect",
-          },
-    {
-      done: loaded.handedOff,
-      title: "Hand off an outcome",
-      about:
-        "Open an issue and assign it to g1t, or write an outcome on a project's Plans page and let a planner split it into issues.",
-      to: repos[0] ? `/${repos[0].namespace}/${repos[0].name}/plans` : null,
-      action: "Write one",
-    },
-  ];
-  const starting = steps.some((step) => !step.done);
   const noProjects = repos.length === 0;
 
   const rows = tab === "needs" ? sortRows(needs, sort) : tab === "waiting" ? sortRows(waiting, sort) : sortRows(landed, sort);
@@ -921,8 +816,6 @@ export default function MissionControl({
           </Link>
         )}
       </section>
-
-      {starting && <GetStarted steps={steps} />}
 
       <Card asChild tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-5">
         <section
@@ -1203,22 +1096,6 @@ export default function MissionControl({
                   ))}
                 </ol>
               )}
-            </section>
-          </Card>
-
-          <Card asChild className="p-5">
-            <section>
-              <h2 className="text-sm font-semibold">Connect your own agent</h2>
-              <p className="mt-1.5 text-xs leading-5 text-muted">
-                Add g1t to your coding agent. It signs in through your browser; there is no token to copy.
-              </p>
-              <AgentSetup className="mt-3" />
-              <Link
-                to="https://docs.g1t.sh/guides/bring-your-own-agent/"
-                className="mt-3 inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
-              >
-                How it works <ArrowRight size={12} />
-              </Link>
             </section>
           </Card>
         </aside>

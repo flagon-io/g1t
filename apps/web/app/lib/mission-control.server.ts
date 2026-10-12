@@ -623,8 +623,6 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       workspace: slug,
       repos: repoList.filter((repo) => inWorkspace(repo)).map(pathOf),
       canRunAgents: models_ == null || models_.hosted || models_.own != null,
-      trial: models_?.own == null ? (models_?.trial ?? null) : null,
-      handedOff: activeList.length > 0 || runList.length > 0 || merged.length > 0,
       needs: needRows,
       waiting,
       landed,

@@ -110,15 +110,6 @@ pub struct GitPush {
     /// [`CAUSED_BY_JOB`]). Absent otherwise.
     #[serde(rename = "causedByJob", skip_serializing_if = "Option::is_none")]
     pub caused_by_job: Option<String>,
-    /// Set when the push was copied in from the remote a mirror follows,
-    /// not made on g1t. Absent otherwise.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub mirrored: bool,
-    /// The repository's mirror state when the push landed (see
-    /// [`crate::mirrors`]): workflows and deployments follow it. Absent for
-    /// a repository that leads.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mirror: Option<crate::mirrors::RepoMirror>,
     /// How many commits the push brought to the branch, counted along its
     /// first-parent line from `after` back to `before` (a merge commit is
     /// one), at most 50; one for a new branch. Absent when it was not
@@ -1122,7 +1113,7 @@ pub struct ActivityDigest {
 /// How many times one actor did something. The actor is a member key:
 /// `user:<id>` for a person (or g1t, `user:usr_g1t_agent`), `agent:<id>`
 /// for one of the workspace's agents acting as itself, or empty when the
-/// event named nobody (a push copied in by a mirror).
+/// event named nobody.
 #[derive(Debug, Clone, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ActorCount {
     pub actor: String,
@@ -1331,8 +1322,6 @@ mod tests {
             default_branch: false,
             unscanned: false,
             caused_by_job: job_run_of(&actor).map(str::to_owned),
-            mirrored: false,
-            mirror: None,
             commits: Some(3),
         };
         let push = serde_json::to_value(push).unwrap();
@@ -1351,8 +1340,6 @@ mod tests {
             default_branch: false,
             unscanned,
             caused_by_job: None,
-            mirrored: false,
-            mirror: None,
             commits: None,
         };
         let quiet = serde_json::to_value(push(false)).unwrap();

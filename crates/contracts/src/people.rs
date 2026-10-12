@@ -1,12 +1,10 @@
 //! People: a workspace's directory of everyone in it, people and agents,
-//! and what each person's place is: a title, who they report to, and what
-//! they own. Kept by identity beside membership; agents come from the
+//! and what each person's place is: a title and what they own. Kept by
+//! identity beside membership; agents come from the
 //! agents service, which identity names only by id.
 //!
 //! **Profiles.** A member's title and what they own are theirs to write,
-//! and the workspace's owners can write anyone's. Who someone reports to
-//! (their manager) is set by owners: always another member, never
-//! themselves, and never a loop.
+//! and the workspace's owners can write anyone's.
 //!
 //! **Agents on teams.** A team can have agents as well as people: mixed,
 //! people only or agents only. An agent is on a team when it was added to
@@ -27,10 +25,8 @@ pub const MAX_TITLE_LENGTH: usize = 80;
 pub const MAX_OWNS: usize = 8;
 /// The longest of them.
 pub const MAX_OWNS_LENGTH: usize = 60;
-/// How far up a reporting line is followed, looking for a loop.
-pub const MAX_CHAIN: usize = 64;
 
-/// One member, as the directory, their profile and the org chart show them.
+/// One member, as the directory and their profile show them.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectoryPerson {
     pub user_id: String,
@@ -50,8 +46,6 @@ pub struct DirectoryPerson {
     pub role: Role,
     /// Their title in this workspace.
     pub title: Option<String>,
-    /// Who they report to, by username.
-    pub manager: Option<String>,
     /// What they own: a few short phrases.
     pub owns: Vec<String>,
     /// When they joined the workspace (RFC 3339).
@@ -65,8 +59,8 @@ pub struct TeamPersonRef {
     pub role: TeamRole,
 }
 
-/// A team as the directory and the org chart need it: who is on it, by
-/// username and agent id, and who leads it.
+/// A team as the directory needs it: who is on it, by username and agent
+/// id, and who leads it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectoryTeam {
     pub slug: String,
@@ -102,12 +96,12 @@ pub struct PeopleDirectory {
     /// What members get on every repository: `none`, `read`, `write` or `admin`.
     pub base_permission: String,
     /// Whether the viewer owns the workspace: they can set anyone's
-    /// title, manager and what they own.
+    /// title and what they own.
     pub can_manage: bool,
 }
 
-/// `set_member_profile`: what is given changes; the rest stays. `manager`
-/// set to an empty string clears it. Returns `Outcome<DirectoryPerson>`.
+/// `set_member_profile`: what is given changes; the rest stays. Returns
+/// `Outcome<DirectoryPerson>`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SetMemberProfileArgs {
     pub actor: User,
@@ -115,9 +109,6 @@ pub struct SetMemberProfileArgs {
     pub username: String,
     #[serde(default)]
     pub title: Option<String>,
-    /// A member's username, or an empty string for none. Owners only.
-    #[serde(default)]
-    pub manager: Option<String>,
     #[serde(default)]
     pub owns: Option<Vec<String>>,
     #[serde(default)]
@@ -151,45 +142,24 @@ pub fn clean_owns(owns: &[String]) -> Vec<String> {
     out
 }
 
-/// What may change on someone's profile: their title and what they own
-/// by themselves or an owner; their manager by an owner.
+/// What may change on someone's profile: their title and what they own,
+/// by themselves or an owner.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProfileField {
     Title,
     Owns,
-    Manager,
 }
 
 /// Whether `actor` may change `field` on someone's profile.
 pub fn may_edit_profile(field: ProfileField, is_self: bool, owner: bool) -> bool {
     match field {
         ProfileField::Title | ProfileField::Owns => is_self || owner,
-        ProfileField::Manager => owner,
     }
-}
-
-/// Whether making `manager` the manager of `person` would make a loop.
-/// `manager_of` gives each person's current manager.
-pub fn makes_loop(person: &str, manager: &str, manager_of: impl Fn(&str) -> Option<String>) -> bool {
-    if person == manager {
-        return true;
-    }
-    let mut at = manager.to_owned();
-    for _ in 0..MAX_CHAIN {
-        match manager_of(&at) {
-            Some(next) if next == person => return true,
-            Some(next) => at = next,
-            None => return false,
-        }
-    }
-    // A chain this long is treated as a loop rather than followed further.
-    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     #[test]
     fn titles_are_tidied() {
@@ -216,22 +186,9 @@ mod tests {
     }
 
     #[test]
-    fn people_write_their_own_and_owners_set_managers() {
+    fn people_write_their_own_and_owners_anyones() {
         assert!(may_edit_profile(ProfileField::Title, true, false));
         assert!(may_edit_profile(ProfileField::Owns, false, true));
         assert!(!may_edit_profile(ProfileField::Owns, false, false));
-        assert!(!may_edit_profile(ProfileField::Manager, true, false));
-        assert!(may_edit_profile(ProfileField::Manager, false, true));
-    }
-
-    #[test]
-    fn reporting_lines_never_loop() {
-        // ana -> priya -> chase
-        let managers: HashMap<&str, &str> = HashMap::from([("ana", "priya"), ("priya", "chase")]);
-        let of = |id: &str| managers.get(id).map(|m| (*m).to_owned());
-        assert!(makes_loop("chase", "ana", of));
-        assert!(makes_loop("priya", "priya", of));
-        assert!(!makes_loop("ana", "chase", of));
-        assert!(!makes_loop("dev", "priya", of));
     }
 }

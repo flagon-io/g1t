@@ -32,7 +32,6 @@ import {
   type PackageSummary,
   type Project,
   type Pull,
-  type RepoMirror,
   RUN_KIND_LABEL,
   isActiveRun,
   workOwner,
@@ -45,14 +44,11 @@ import { CheckBadge } from "../../components/checks";
 import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
-import { ProductionChecklist } from "../../components/checklist";
 import { PackageIcon } from "../../components/package-icon";
 import { Hint } from "../../components/ui/hint";
 import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
-import { MirrorOverviewNote, useRepoMirror } from "../../components/mirror";
-import { type MirrorBrief, leaderOf, mirroringSettings, writable } from "../../lib/mirror";
 import { distinctFacts } from "../../lib/memory-facts";
 import { githubApp } from "../../lib/github.server";
 import { ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
@@ -79,12 +75,10 @@ import {
   runHealth,
   stuckMinutes,
 } from "../../lib/mission";
-import { agentWasAssigned, checklistPlan, hasInstructions, productionChecklist, releaseChecklist, startChecklist } from "../../lib/checklist";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import {
   PUBLISH_GUIDES,
   bare,
-  hasRelease,
   kindLabel,
   linksToShow,
   latestTag,
@@ -92,6 +86,7 @@ import {
   packageName,
   packagePath,
   projectChanges,
+  projectPlan,
   publishGuide,
 } from "../../lib/project-kind";
 import { AboutEditor, KindMenu, LinkList } from "../../components/project-about";
@@ -99,7 +94,7 @@ import { DocsHead, ElsewhereHead, type ExternalDeployment, OtherHead, WhereItRun
 import { actions, agents, deployments, events as eventLog, identity, packages, projects, repos, work } from "../../lib/services.server";
 import { madeByG1t } from "../../lib/opened-by";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
-import { accessTo, countsFor, projectFor, refusal, repoFor, requireWritableRepo } from "../../lib/access.server";
+import { accessTo, countsFor, projectFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
 import { DeploymentsPanel } from "../../components/deployments-panel";
 import { reportedProduction } from "../../lib/deployments";
@@ -150,7 +145,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const soft = <T,>(promise: Promise<T> | null): Promise<T | null> =>
     promise ? promise.catch((error) => (console.warn("overview:", error), null)) : Promise.resolve(null);
   // People with a role of their own here see its running parts: deployments,
-  // memory, setup; everyone who can read it sees the rest. Not awaited: only
+  // memory; everyone who can read it sees the rest. Not awaited: only
   // those sections wait on the repository lookup, which the layout makes in
   // this request too.
   const accessP = accessTo(context, params);
@@ -159,16 +154,14 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     memberP.then((member) => (member ? soft(start()) : null));
   const repoP = soft(repoFor(context, params));
   const projectP = soft(projectFor(context, params));
-  // A library or a tool shows its packages where an app shows production,
-  // and every project g1t does not deploy counts a workflow in its checklist.
+  // A library or a tool shows its packages where an app shows production.
   // Deployments from anywhere (g1t.page, g1t Actions, the API), by environment, for anyone who can read it.
   const environmentsP = projectP.then((found) =>
     soft(deployments.environments(found?.ok && found.value.source.kind === "hosted" ? found.value.source.repo : path, viewer)),
   );
-  const planP = projectP.then((project) => (project?.ok ? checklistPlan(project.value).plan : null));
+  const planP = projectP.then((project) => (project?.ok ? projectPlan(project.value) : null));
   const libraryRepoP = Promise.all([planP, repoP]).then(([plan, repo]) => (plan === "release" && repo?.ok ? repo.value : null));
   const packagesP = libraryRepoP.then((repo) => (repo ? soft(packages.list(params.owner, viewer, { repoId: repo.id })) : null));
-  const workflowsP = planP.then((plan) => (plan && plan !== "production" ? forMembers(() => actions.workflows(path, viewer)) : null));
   // Recent workflow runs, for Health when no pull request's checks have finished lately.
   const workflowRunsP = soft(actions.runs(path, viewer, { limit: 30 }));
   // Only the kinds the feed shows: the newest events are mostly session
@@ -218,7 +211,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     branchesP.catch(() => null),
     new Promise<"slow">((resolve) => setTimeout(() => resolve("slow"), crawler ? BRANCHES_WAIT_CRAWLER_MS : BRANCHES_WAIT_MS)),
   ]);
-  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, runs, queue, issues, memories, recent, mine, domains, root, packageList, workflows, tagList] = await Promise.all([
+  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, runs, queue, issues, memories, recent, mine, packageList, tagList] = await Promise.all([
     accessP,
     projectP,
     forMembers(() => deployments.settings(ref, viewer)),
@@ -234,11 +227,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     forMembers(() => agents.listMemories(viewer, params.owner, path)),
     eventsP,
     minePullsP,
-    // For the checklist, which only members see.
-    forMembers(() => deployments.domains(ref, viewer)),
-    forMembers(() => repos.tree(path, viewer, null, "")),
     packagesP,
-    workflowsP,
     // The latest release, for About.
     soft(repos.tags(path, viewer)),
   ]);
@@ -367,9 +356,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const knows = distinctFacts([...memoryList.filter((m) => m.pinned), ...memoryList.filter((m) => !m.pinned).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))]).slice(0, 5);
   const openIssues = ok(issues);
 
-  // --- Getting to production ----------------------------------------------------
-  const wentLive = (status: string) => status === "ready" || status === "replaced" || status === "down";
-  const liveApps = ok(list)?.live ?? [];
+  // --- Where it runs ------------------------------------------------------------
   const commitNow = ok(log)?.[0] ?? null;
   // Production deployed somewhere other than g1t.page (by g1t Actions, or
   // reported through the API): the slot an app deployed elsewhere shows.
@@ -380,50 +367,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // elsewhere, runs elsewhere.
   const found = ok(project);
   const projectValue = found && deployment && found.kind === "app" && found.runs == null ? { ...found, runs: "elsewhere" as const } : found;
-  const plan = projectValue ? checklistPlan(projectValue) : { plan: "production" as const, title: "Get to production" };
-  const isLibrary = plan.plan === "release";
+  const isLibrary = projectValue != null && projectPlan(projectValue) === "release";
   const published = libraryPackages(ok(packageList) ?? []);
-  const hasWorkflow = workflows?.ok ? workflows.value.length > 0 : null;
-  const firstSteps = {
-    base,
-    hasCode: commitNow != null || projectValue?.source.kind === "mirror",
-    instructions: commitNow == null ? false : root?.ok ? hasInstructions(root.value.entries.map((entry) => entry.name)) : null,
-    agentAssigned: agentWasAssigned({
-      runAgents: runList.map((run) => run.agent),
-      pullAgents: [...openPulls, ...(ok(closed) ?? [])].map((pull) => pull.agent),
-      issues: openIssues ?? [],
-    }),
-  };
-  const links = projectValue?.links;
-  const checklist = !member
-    ? null
-    : plan.plan !== "production" && plan.plan !== "release"
-      ? startChecklist(plan.plan, {
-          ...firstSteps,
-          hasWorkflow,
-          productionUrl: projectValue?.productionUrl ?? null,
-          hasLinks: !!links && (links.homepage != null || links.docs != null || links.custom.length > 0),
-          hasDocsLink: !!links && (links.docs != null || links.homepage != null),
-        })
-    : isLibrary
-      ? releaseChecklist({
-          ...firstSteps,
-          hasWorkflow,
-          released: hasRelease(published),
-          releaseTo: published[0]
-            ? packagePath(published[0])
-            : (publishGuide(projectValue?.ecosystem ?? null)?.guide ?? "https://docs.g1t.sh/guides/packages/"),
-        })
-      : productionChecklist({
-        ...firstSteps,
-        deploysEnabled: ok(settings)?.enabled ?? false,
-        productionDeployed:
-          liveApps.some((app) => app.kind === "production") ||
-          builds.some((build) => build.kind === "production" && wentLive(build.status)),
-        domains: ok(domains)?.domains.length ?? null,
-        previewOpened:
-          liveApps.some((app) => app.kind === "preview") || builds.some((build) => build.kind === "preview" && wentLive(build.status)),
-      });
 
   // The checks on the latest commit and each active branch's head, in
   // one call once the branches are read: streamed in beside them.
@@ -442,7 +387,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     commit: ok(log)?.[0] ?? null,
     commits: (ok(log) ?? []).map((one) => ({ hash: one.hash, message: one.message.split("\n")[0] ?? "", author: one.author, coAuthors: one.coAuthors, at: one.authoredAt })),
     release: latestTag(ok(tagList) ?? []),
-    checklistTitle: plan.title,
     // Production as reported from outside g1t, for an app deployed elsewhere.
     deployment,
     // Its screenshot's address on the site (production-elsewhere.ts), when it has one to show.
@@ -472,7 +416,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     knows: knows as Memory[],
     memoryCount: memoryList.length,
     memoriesLoaded: memories?.ok ?? false,
-    checklist,
     library: isLibrary
       ? { packages: published.slice(0, PACKAGES_SHOWN), total: published.length, loaded: packageList?.ok ?? false }
       : null,
@@ -493,8 +436,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const saved = await projects.update(user, params.owner, params.repo, projectChanges(form));
     return saved.ok ? { notice: "Saved." } : { error: saved.error.message };
   }
-  // Deploying is compute. Syncing with GitHub is under Settings → Mirroring.
-  await requireWritableRepo(context, params);
+  // Deploying is compute.
   const refused = await refusal(context, params, "run");
   if (refused) return { error: refused };
   const started = await deployments.redeploy(user, { workspace: params.owner, slug: params.repo }, null);
@@ -794,17 +736,15 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, builds, live, commit, open, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library, checks } =
+  const { member, project, settings, builds, live, commit, open, agentsLive, columns, needs, landed, groups, health, knows, branches, library, checks } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;
-  // What it is to its remotes, from the repository layout.
-  const { repo: mirrorRepo, briefs: mirrorBriefs, admin: mirrorAdmin } = useRepoMirror();
   const production = live.find((app) => app.kind === "production") ?? null;
   // The project's own domain, once it is active, is where production is visited.
   const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
   const previews = live.filter((app) => app.kind === "preview");
   const latestProduction = builds.find((build) => build.kind === "production") ?? null;
-  const plan = project ? checklistPlan(project).plan : "production";
+  const plan = project ? projectPlan(project) : "production";
   const canChange = member && loaderData.can.manage_settings;
   // Its homepage and docs beside what it is, unless the card below already links there.
   const headUrl =
@@ -834,40 +774,9 @@ function Overview({
   const ages = health.ages;
   const oldest = ages ? Math.max(1, ...ages.map((a) => a.count)) : 1;
 
-  // A mirror that is not taken over is a read-only copy (lib/mirror.ts
-  // `offers`): what it is, where it comes from and what it holds, and
-  // nothing to start. Where it runs, the checklist, Right now and the
-  // agents' panels come back with a takeover.
-  const readOnlyMirror = mirrorRepo?.mirror && !writable(mirrorRepo.mirror) ? mirrorRepo.mirror : null;
-  if (readOnlyMirror) {
-    return (
-      <MirrorOverview
-        loaderData={loaderData}
-        base={base}
-        mirror={readOnlyMirror}
-        briefs={mirrorBriefs}
-        admin={mirrorAdmin}
-        source={source}
-        canChange={canChange}
-        addresses={addresses}
-      />
-    );
-  }
-
   return (
     <div className="space-y-8">
-      {loaderData.github?.mode === "import" ? (
-        <GithubLinkStrip link={loaderData.github} />
-      ) : (
-        <MirrorOverviewNote
-          base={base}
-          mirror={mirrorRepo?.mirror}
-          briefs={mirrorBriefs}
-          admin={mirrorAdmin}
-          syncedAt={loaderData.github?.syncedAt}
-          lastError={loaderData.github?.lastError}
-        />
-      )}
+      {loaderData.github && <GithubLinkStrip link={loaderData.github} />}
       {/* What the project is, running, and where its code is. */}
       <section className="overflow-hidden rounded-2xl border border-line bg-surface">
         {project && (
@@ -1078,8 +987,6 @@ function Overview({
           </p>
         )}
       </section>
-
-      {checklist && <ProductionChecklist base={base} items={checklist} title={loaderData.checklistTitle} />}
 
       <Panel
         title="Right now"
@@ -1566,155 +1473,5 @@ function CloneCard({ addresses, path }: { addresses: ReturnType<typeof useAddres
         </div>
       </section>
     </Card>
-  );
-}
-
-/**
- * The overview of a mirror g1t does not lead (standing by, in CI failover
- * or handing back): the remote it copies and when it last did, the facts
- * of the copy, its latest commits, and About. Nothing here starts
- * anything: there is no place it runs, no checklist and no Right now, since
- * work happens on the remote until someone takes over.
- */
-function MirrorOverview({
-  loaderData,
-  base,
-  mirror,
-  briefs,
-  admin,
-  source,
-  canChange,
-  addresses,
-}: {
-  loaderData: Loaded;
-  base: string;
-  mirror: RepoMirror;
-  briefs: readonly MirrorBrief[];
-  admin: boolean;
-  source: { repo: { namespace: string; name: string }; defaultBranch?: string | null } | null;
-  canChange: boolean;
-  addresses: ReturnType<typeof useAddresses>;
-}) {
-  const { project, commit, checks } = loaderData;
-  const branch = source?.defaultBranch ?? "main";
-  const synced = leaderOf(briefs)?.syncedAt ?? loaderData.github?.syncedAt ?? null;
-  const remote = (
-    <a href={mirror.url} target="_blank" rel="noreferrer" className="font-mono text-fg hover:text-accent">
-      {mirror.remote}
-    </a>
-  );
-  return (
-    <div className="space-y-8">
-      <MirrorOverviewNote
-        base={base}
-        mirror={mirror}
-        briefs={briefs}
-        admin={admin}
-        syncedAt={loaderData.github?.syncedAt}
-        lastError={loaderData.github?.lastError}
-      />
-      {/* The copy: where it comes from, and what it holds. */}
-      <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted uppercase">
-              <GitBranch size={13} className="text-accent" />
-              {mirror.state === "handing_back" ? "Handing back to" : "Mirror of"}
-            </p>
-            <DeployLink href={mirror.url} className="mt-2 flex items-center gap-1.5 truncate font-mono text-lg font-medium hover:text-accent">
-              {mirror.remote}
-              <ArrowUpRight size={16} className="shrink-0 text-faint" />
-            </DeployLink>
-            <p className="mt-1.5 max-w-xl text-sm text-muted">
-              {mirror.state === "handing_back" ? (
-                <>What was done here is going back to {remote}, branch by branch. Read-only until it is done.</>
-              ) : (
-                <>
-                  Every branch and tag of {remote} is copied here as it moves. Nothing runs or opens here on its own;
-                  {mirror.state === "ci" && " its workflows run on g1t meanwhile;"} the work happens there until someone takes over.
-                </>
-              )}
-            </p>
-          </div>
-          {admin && mirror.state !== "handing_back" && (
-            <ButtonLink to={mirroringSettings(base)} variant="outline" className="shrink-0">
-              Mirroring settings
-            </ButtonLink>
-          )}
-        </div>
-        <div className="grid grid-cols-2 divide-line border-t border-line text-sm sm:grid-cols-4 sm:divide-x">
-          <Stat
-            label="Source"
-            value={
-              <a href={mirror.url} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1.5 font-mono hover:text-accent">
-                <Code2 size={12} className="shrink-0 text-faint" />
-                <span className="truncate">{mirror.remote}</span>
-              </a>
-            }
-          />
-          <Stat
-            label="Default branch"
-            to={`${base}/commits`}
-            value={
-              <span className="inline-flex items-center gap-1.5 font-mono">
-                <GitBranch size={12} className="text-faint" />
-                {branch}
-              </span>
-            }
-          />
-          <Stat
-            label="Latest commit"
-            value={
-              commit ? (
-                <span className="flex min-w-0 items-center gap-1">
-                  <Hint label={commit.message.split("\n")[0]}>
-                    <Link to={`${base}/commit/${commit.hash}`} className="min-w-0 truncate hover:text-accent">
-                      <span className="font-mono">{commit.hash.slice(0, 7)}</span>{" "}
-                      <span className="font-normal text-muted">
-                        <TimeAgo at={commit.authoredAt} />
-                      </span>
-                    </Link>
-                  </Hint>
-                  <CommitChecksBadge checks={checks} sha={commit.hash} className="size-5" />
-                </span>
-              ) : (
-                "No commits yet"
-              )
-            }
-          />
-          <Stat
-            label="Synced"
-            value={
-              synced ? (
-                <span className="font-normal text-muted">
-                  <TimeAgo at={synced} />
-                </span>
-              ) : (
-                "Not yet"
-              )
-            }
-          />
-        </div>
-        {commit && (
-          <p className="truncate border-t border-line px-5 py-2.5 text-xs text-muted sm:px-6">
-            <GitCommitHorizontal size={12} className="mr-1.5 inline text-faint" />
-            {commit.message.split("\n")[0]}{" "}
-            <span className="text-faint">
-              · <CommitNames commit={commit} className="hover:text-fg" />
-            </span>
-          </p>
-        )}
-      </section>
-
-      <div className="grid gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="min-w-0 space-y-8">
-          <LatestCommits commits={loaderData.commits} base={base} branch={branch} />
-        </div>
-        <aside className="space-y-4 text-sm">
-          {project && <AboutCard project={project} canChange={canChange} base={base} loaderData={loaderData} />}
-          {source && <CloneCard addresses={addresses} path={`${source.repo.namespace}/${source.repo.name}`} />}
-        </aside>
-      </div>
-    </div>
   );
 }

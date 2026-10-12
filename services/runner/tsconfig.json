@@ -1,5 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Node runs the tests on these files as they are, which needs the
+    // extension on relative imports.
+    "allowImportingTsExtensions": true
+  },
   "include": [
     "src/**/*",
     "worker-configuration.d.ts"

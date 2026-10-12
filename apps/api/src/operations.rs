@@ -32,7 +32,6 @@ use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
-use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
@@ -340,9 +339,6 @@ pub enum Op {
     Archives(ArchiveOp),
     /// A repository's deploy keys: deploy_keys.rs.
     DeployKeys(DeployKeysOp),
-    /// A repository's mirroring: its remotes, takeovers and hand-backs:
-    /// mirrors.rs.
-    Mirrors(MirrorsOp),
     /// A workspace's packages, their versions, deleting and restoring
     /// them, and who may use them: packages.rs.
     Packages(PackagesOp),
@@ -721,7 +717,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 405] = [
+    pub const ALL: [Op; 395] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1059,16 +1055,6 @@ impl Op {
         Op::Customize(CustomizeOp::GrantConnector),
         Op::Customize(CustomizeOp::RevokeConnector),
         Op::Customize(CustomizeOp::Bundle),
-        Op::Mirrors(MirrorsOp::GetMirror),
-        Op::Mirrors(MirrorsOp::GetHandBackPlan),
-        Op::Mirrors(MirrorsOp::TakeOver),
-        Op::Mirrors(MirrorsOp::SetCiFailover),
-        Op::Mirrors(MirrorsOp::HandBack),
-        Op::Mirrors(MirrorsOp::MoveToG1t),
-        Op::Mirrors(MirrorsOp::SyncMirror),
-        Op::Mirrors(MirrorsOp::AddRemote),
-        Op::Mirrors(MirrorsOp::UpdateRemote),
-        Op::Mirrors(MirrorsOp::RemoveRemote),
         Op::Protection(ProtectionOp::UpdateEnvironment),
         Op::Protection(ProtectionOp::DeleteEnvironment),
         Op::Protection(ProtectionOp::GetPendingDeployments),
@@ -1343,7 +1329,6 @@ impl Op {
             Op::Artifacts(op) => op.name(),
             Op::Archives(op) => op.name(),
             Op::DeployKeys(op) => op.name(),
-            Op::Mirrors(op) => op.name(),
             Op::Packages(op) => op.name(),
             Op::Folios(op) => op.name(),
             Op::Customize(op) => op.name(),
@@ -1669,10 +1654,10 @@ impl Op {
             }
             Op::UpdateWorkflow => "Turn a workflow on or off without changing its file. Needs the Maintain role or higher.",
             Op::ListActionsSecrets => {
-                "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, and whether workflows (`secrets.NAME`), deployments, or both read it. Values are never returned. A repository's need the Admin role on it; a workspace's, a member."
+                "The secrets of a repository (with the workspace's rows that reach it) or of a workspace: each row's key, the environments it applies to, whether workflows (`secrets.NAME`), deployments, or both read it, and for a brokered secret the hosts g1t fills it in for (`brokered_hosts`). Values are never returned. A repository's need the Admin role on it; a workspace's, a member."
             }
             Op::SetActionsSecret => {
-                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
+                "Add or change a secret's row. Without `id` or `environments`, the key's row for every environment, as GitHub's API addresses a secret. `available_to` is workflows and/or deployments (both, for a new row); `environments` limits it to some, such as production or preview, so a key can hold a value per environment. A variable's row can become a secret this way; a secret never becomes a variable. `brokered_hosts` brokers the secret: workflow jobs on g1t's machines get a stand-in in place of its value, and g1t puts the real value on the job's requests to those hosts (in headers, Basic auth included, and the query string) as they leave its sandbox, so the value never enters it. A brokered secret is read by workflows only and its value is at least 8 characters; an empty list stops brokering it. A repository's need the Admin role on it; a workspace's, an owner. Workspace tokens, G1T_TOKEN included, cannot change them."
             }
             Op::DeleteActionsSecret => "Remove a secret: one row by `id`, or every row of the key.",
             Op::ListActionsVariables => {
@@ -1915,7 +1900,6 @@ impl Op {
             Op::Artifacts(op) => op.description(),
             Op::Archives(op) => op.description(),
             Op::DeployKeys(op) => op.description(),
-            Op::Mirrors(op) => op.description(),
             Op::Packages(op) => op.description(),
             Op::Folios(op) => op.description(),
             Op::Customize(op) => op.description(),
@@ -2859,6 +2843,11 @@ impl Op {
                         "description": "A workspace's row: the projects it reaches, by slug. Empty is every one."
                     },
                     "note": { "type": "string", "description": "Where to rotate it, or who to ask." },
+                    "brokered_hosts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "A secret's: the hosts g1t fills it in for, such as api.example.com or *.example.com. Jobs get a stand-in in place of its value. Empty stops brokering it; left out, unchanged."
+                    },
                 })),
                 &["setting"],
             ),
@@ -3417,7 +3406,6 @@ impl Op {
             Op::Artifacts(op) => op.input(),
             Op::Archives(op) => op.input(),
             Op::DeployKeys(op) => op.input(),
-            Op::Mirrors(op) => op.input(),
             Op::Packages(op) => op.input(),
             Op::Folios(op) => op.input(),
             Op::Customize(op) => op.input(),
@@ -4561,7 +4549,6 @@ impl Op {
                         is_private: input["private"].as_bool() == Some(true),
                         import_url: optional_text(input, "import_url"),
                         import_token: None,
-                        mirror: None,
                     },
                 )
                 .await
@@ -5115,7 +5102,13 @@ impl Op {
                 }
                 // Request bodies arrive in snake_case; the actions service
                 // takes `availableTo`.
-                for (key, to) in [("available_to", "availableTo"), ("environments", "environments"), ("repositories", "projects"), ("projects", "projects")] {
+                for (key, to) in [
+                    ("available_to", "availableTo"),
+                    ("environments", "environments"),
+                    ("repositories", "projects"),
+                    ("projects", "projects"),
+                    ("brokered_hosts", "brokeredHosts"),
+                ] {
                     if let Some(list) = strings(input, key) {
                         args[to] = json!(list);
                     }
@@ -5807,7 +5800,6 @@ impl Op {
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
             Op::Archives(op) => crate::archives::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
-            Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
             Op::Folios(op) => crate::folios::run(op, services, viewer, input).await,
             Op::Customize(op) => crate::customize::run(op, services, viewer, input).await,

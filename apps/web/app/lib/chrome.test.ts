@@ -1,18 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { RepoMirror } from "@g1t/contracts";
-
-import { frameOf, hiddenOnMirror, projectPageAt, projectPages } from "./chrome.ts";
+import { frameOf, projectPageAt, projectPages } from "./chrome.ts";
 
 const visitor = { signedIn: false, workspace: false };
-const mirror = (state: RepoMirror["state"], warm = false): RepoMirror => ({
-  state,
-  remote: "github.com/acme/web",
-  url: "https://github.com/acme/web",
-  since: "2026-10-08T10:00:00Z",
-  warm,
-});
 const member = { signedIn: true, workspace: true };
 const newcomer = { signedIn: true, workspace: false };
 
@@ -72,48 +63,6 @@ test("a project's menu hides member-only pages from everyone else", () => {
   assert.ok(visitor.includes("deployments") && projectPages(true).includes("deployments"));
 });
 
-test("a mirror's menu lists what it offers: a read-only copy until it is taken over", () => {
-  const can = { push: true };
-  const all = projectPages(true, can);
-  assert.deepEqual(projectPages(true, can, null), all);
-  assert.deepEqual(projectPages(true, can, mirror("takeover")), all);
-  // Standing by: code, security, insights and settings. Nothing that works or runs.
-  assert.deepEqual(projectPages(true, can, mirror("standby")), ["code", "security", "insights", "settings"]);
-  assert.deepEqual(projectPages(false, undefined, mirror("standby")), ["code", "insights"]);
-  // Workflows show when they run here: CI failover, or a standby kept warm.
-  assert.deepEqual(projectPages(true, can, mirror("ci")), ["code", "actions", "security", "insights", "settings"]);
-  assert.ok(projectPages(true, can, mirror("standby", true)).includes("actions"));
-  assert.ok(!projectPages(true, can, mirror("handing_back", true)).includes("actions"));
-  assert.ok(!projectPages(true, can, mirror("handing_back")).includes("issues"));
-});
-
-test("a page a mirror does not offer stands behind the read-only note, by its name", () => {
-  const standby = mirror("standby");
-  assert.deepEqual(hiddenOnMirror("issues", standby), { page: "issues", what: "issues" });
-  assert.deepEqual(hiddenOnMirror("issues/new", standby), { page: "issues", what: "issues" });
-  assert.deepEqual(hiddenOnMirror("pulls", standby), { page: "pulls", what: "pull requests" });
-  assert.deepEqual(hiddenOnMirror("queue", standby), { page: "pulls", what: "pull requests" });
-  assert.deepEqual(hiddenOnMirror("agents/runs/9", standby), { page: "agents", what: "agents" });
-  assert.deepEqual(hiddenOnMirror("sessions", standby), { page: "agents", what: "agents" });
-  assert.deepEqual(hiddenOnMirror("memory", standby), { page: "agents", what: "agents" });
-  assert.deepEqual(hiddenOnMirror("deployments/d1", standby), { page: "deployments", what: "deployments" });
-  assert.deepEqual(hiddenOnMirror("labels", standby), { page: "issues", what: "issues" });
-  assert.deepEqual(hiddenOnMirror("milestones/2", standby), { page: "issues", what: "issues" });
-  assert.deepEqual(hiddenOnMirror("plans", standby), { page: "issues", what: "issues" });
-  assert.deepEqual(hiddenOnMirror("actions", standby), { page: "actions", what: "workflows" });
-  assert.deepEqual(hiddenOnMirror("releases/new", standby), { page: "code", what: "releases" });
-  // What a read-only copy still shows.
-  for (const path of ["", "code", "tree/main/src", "commits", "branches", "releases", "compare", "security/vulnerabilities", "contributors", "settings/mirroring", "issues/12", "pull/3/files"]) {
-    assert.equal(hiddenOnMirror(path, standby), null, path);
-  }
-  // Workflows stay when they run here; everything stays once g1t leads.
-  assert.equal(hiddenOnMirror("actions", mirror("ci")), null);
-  assert.equal(hiddenOnMirror("actions", mirror("standby", true)), null);
-  assert.equal(hiddenOnMirror("issues", mirror("takeover")), null);
-  assert.equal(hiddenOnMirror("issues", null), null);
-  assert.ok(hiddenOnMirror("pulls", mirror("handing_back")));
-});
-
 test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt(""), "overview");
   assert.equal(projectPageAt("blob/main/README.md"), "code");
@@ -129,6 +78,6 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("settings/branches"), "settings");
   assert.equal(projectPageAt("soon/uptime", { uptime: "observability" }), "observability");
   assert.equal(projectPageAt("observability/logs"), "observability");
-  assert.equal(projectPageAt("soon/boards", { boards: "issues" }), "issues");
+  assert.equal(projectPageAt("soon/playbooks", { playbooks: "agents" }), "agents");
   assert.equal(projectPageAt("pulse"), null);
 });

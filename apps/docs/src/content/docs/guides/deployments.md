@@ -7,9 +7,7 @@ Deployments put your [project](/guides/projects/) on the web. They are off
 for every project until you turn them on. Once they are on, every branch
 with a pull request gets its own live preview, linked on the pull request,
 and the default branch goes to production on every push. Reviewers, and the agents reviewing for you,
-click through the change instead of reading a diff. A [mirror](/guides/mirroring/)
-deploys nothing while the remote leads it: pushes copied in from the remote
-don't build, and its **Deployments** page comes with a takeover.
+click through the change instead of reading a diff.
 
 Apps run on Cloudflare Workers, on `g1t.page`, and a project with a
 `Dockerfile` (or a server g1t can write one for) runs as a container on
@@ -333,9 +331,6 @@ When production goes live, g1t takes a screenshot of its home page, as a
 An app deployed elsewhere gets a screenshot of its production address
 too, and any project can show an uploaded image instead. See
 [production's picture](/guides/projects/#productions-picture).
-
-The [checklist on the overview](/guides/projects/#get-to-production) also
-tracks the first production deploy, a custom domain and a first preview.
 
 ## Deploying from a workflow
 

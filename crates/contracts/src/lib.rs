@@ -30,7 +30,6 @@ pub mod inbox;
 pub mod live;
 pub mod integrations;
 pub mod members;
-pub mod mirrors;
 mod ids;
 mod names;
 mod outcome;

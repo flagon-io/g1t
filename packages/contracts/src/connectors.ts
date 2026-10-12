@@ -45,7 +45,6 @@ export type ConnectorCapability =
   | "Opens issues"
   | "Writes back"
   | "Imports repositories"
-  | "Mirrors repositories"
   | "Signs you in"
   | "Sends events"
   | "Alerts into chat"
@@ -181,16 +180,16 @@ export const CONNECTORS: Connector[] = [
     id: "github",
     name: "GitHub",
     category: "code",
-    description: "Import repositories, or mirror them both ways while your team moves over.",
+    description: "Import repositories, with their branches, tags and issues, through g1t's GitHub App.",
     scopes: BOTH,
     status: "available",
     href: { workspace: "/new/github?workspace=:workspace", personal: "/settings/github" },
-    capabilities: ["Imports repositories", "Mirrors repositories"],
+    capabilities: ["Imports repositories"],
     personal: {
       description: "Sign in with your GitHub account, and reach the repositories you can see there to import them.",
       capabilities: ["Signs you in", "Imports repositories"],
     },
-    keywords: ["git", "import", "mirror", "sign in"],
+    keywords: ["git", "import", "sign in"],
   },
   mcp("github-mcp", "GitHub (MCP)", "code", "Agents read and act on repositories, issues and pull requests on GitHub, through GitHub's MCP server.", { url: "https://api.githubcopilot.com/mcp/", auth: "header", header: "Authorization", caveat: "Paste a GitHub personal access token as Bearer <token>: GitHub's server takes one in place of a sign-in." }, ["Agents can read", "Agents can act"], ["issues", "pull requests"]),
   {
@@ -204,11 +203,11 @@ export const CONNECTORS: Connector[] = [
     capabilities: ["Sends events"],
     keywords: ["http", "events", "outgoing"],
   },
-  soon("gitlab", "GitLab", "code", BOTH, "Import projects and keep them mirrored, merge requests included.", ["Imports repositories", "Mirrors repositories"], {
+  soon("gitlab", "GitLab", "code", BOTH, "Import projects, with their branches, tags and issues.", ["Imports repositories"], {
     description: "Sign in with GitLab, and reach your own projects to import them.",
     capabilities: ["Signs you in", "Imports repositories"],
   }),
-  soon("bitbucket", "Bitbucket", "code", BOTH, "Import repositories and keep them mirrored while you move.", ["Imports repositories", "Mirrors repositories"], {
+  soon("bitbucket", "Bitbucket", "code", BOTH, "Import repositories, with their branches and tags.", ["Imports repositories"], {
     description: "Reach your own Bitbucket repositories to import them.",
     capabilities: ["Imports repositories"],
   }),

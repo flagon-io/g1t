@@ -1,4 +1,4 @@
-import { Bot, Network, Search, UserPlus } from "lucide-react";
+import { Bot, Search, UserPlus } from "lucide-react";
 import { Link, data, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import type { Route } from "./+types/people";
@@ -70,10 +70,6 @@ export default function PeopleDirectoryPage({ loaderData }: Route.ComponentProps
           <span role="status" className="mr-1 text-sm text-muted tabular-nums">
             {query ? `${entries.length} of ${total}` : total} {total === 1 && !query ? "person" : "people"}
           </span>
-          <ButtonLink to={`/${slug}/-/org-chart`} variant="outline">
-            <Network size={15} />
-            Org chart
-          </ButtonLink>
           {directory.can_manage && (
             <ButtonLink to={`/${slug}/-/members`}>
               <UserPlus size={15} />

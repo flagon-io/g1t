@@ -14,12 +14,19 @@
 //! are the project's. Rows from before projects move over the first time
 //! they are touched. Names are upper-cased, as GitHub treats
 //! them without regard to case. Agents never read any.
+//!
+//! A secret may be brokered (broker.rs): its row names the hosts it is for,
+//! and workflow jobs get a stand-in in place of its value. Only workflows
+//! read a brokered secret: a deployment's app needs the value itself.
+
+use std::collections::BTreeMap;
 
 use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
     CONSUMERS, DeleteSettingArgs, ResolveSettingsArgs, ResolvedSettings, SetSettingArgs, Setting, SettingsArgs,
     SettingsOwner,
 };
+use g1t_contracts::guardrails::normalize_domain;
 use g1t_contracts::projects::{ByRepoArgs, ProjectRef};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, new_id};
@@ -29,6 +36,7 @@ use serde_json::{Map, Value};
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
+use crate::broker::{Broker, MAX_HOSTS, MIN_VALUE_CHARS};
 use crate::{Actions, check, fail};
 
 /// The largest value, as on GitHub.
@@ -49,6 +57,9 @@ struct SettingRow {
     repositories: Option<String>,
     note: Option<String>,
     updated_by: Option<String>,
+    /// A brokered secret's hosts, as a JSON array (migration 0019).
+    #[serde(default)]
+    brokered_hosts: Option<String>,
 }
 
 /// A name GitHub would accept: letters, digits and `_`, not starting with
@@ -107,6 +118,55 @@ fn consumers(list: &[String]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// A brokered secret's hosts, tidied as allowed domains are: each once, at
+/// most `MAX_HOSTS`.
+fn valid_hosts(list: &[String]) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    for host in list {
+        if host.trim().is_empty() {
+            continue;
+        }
+        let host = normalize_domain(host)?;
+        if !out.contains(&host) {
+            out.push(host);
+        }
+    }
+    if out.len() > MAX_HOSTS {
+        return Err(format!("A brokered secret is for at most {MAX_HOSTS} hosts."));
+    }
+    Ok(out)
+}
+
+/// What readers of one kind get: each key's value, and the hosts of the
+/// brokered secrets among them.
+#[derive(Default)]
+pub(crate) struct Resolved {
+    pub values: Map<String, Value>,
+    pub brokered: BTreeMap<String, Vec<String>>,
+}
+
+impl Resolved {
+    /// The brokered secrets among the values.
+    pub(crate) fn brokers(&self) -> Vec<Broker> {
+        self.brokered
+            .iter()
+            .filter_map(|(name, hosts)| {
+                let value = self.values.get(name)?.as_str()?;
+                Some(Broker { name: name.clone(), value: value.to_owned(), hosts: hosts.clone() })
+            })
+            .collect()
+    }
+
+    /// The values, less the brokered secrets: for readers that would put
+    /// them where no stand-in can work.
+    fn unbrokered(mut self) -> Map<String, Value> {
+        for name in self.brokered.keys() {
+            self.values.remove(name);
+        }
+        self.values
+    }
+}
+
 fn split(list: &str) -> Vec<String> {
     list.split(',').filter(|s| !s.is_empty()).map(str::to_owned).collect()
 }
@@ -122,6 +182,10 @@ impl SettingRow {
         self.repositories.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default()
     }
 
+    fn brokered_hosts(&self) -> Vec<String> {
+        self.brokered_hosts.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default()
+    }
+
     fn reaches(&self, project: &str) -> bool {
         let list = self.projects();
         list.is_empty() || list.iter().any(|p| p.eq_ignore_ascii_case(project))
@@ -135,6 +199,7 @@ impl SettingRow {
 
     fn describe(self) -> Setting {
         Setting {
+            brokered_hosts: if self.kind == "secret" { self.brokered_hosts() } else { Vec::new() },
             available_to: split(&self.available_to),
             environments: self.environments(),
             projects: self.projects(),
@@ -299,6 +364,13 @@ impl Actions {
             Ok(environments) => environments,
             Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
         };
+        let brokered = match a.brokered_hosts.as_deref().map(valid_hosts).transpose() {
+            Ok(hosts) => hosts,
+            Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+        };
+        if kind == "variable" && brokered.as_ref().is_some_and(|hosts| !hosts.is_empty()) {
+            return Ok(fail(FailureCode::Invalid, "Only a secret can be brokered."));
+        }
         let place = check!(self.place(&a.actor, &a.owner, true).await?);
         if a.projects.as_ref().is_some_and(|r| !r.is_empty()) && place.scope != "workspace" {
             return Ok(fail(FailureCode::Invalid, "Only a workspace's rows choose projects."));
@@ -345,10 +417,35 @@ impl Actions {
             (None, Some(row)) => row.value.clone(),
             (None, None) => return Ok(fail(FailureCode::Invalid, "A new row needs a `value`.")),
         };
+        let brokered: Vec<String> = match brokered {
+            Some(hosts) => hosts,
+            None => existing.filter(|_| kind == "secret").map(SettingRow::brokered_hosts).unwrap_or_default(),
+        };
+        // A new brokered secret is read by workflows alone, unless it says
+        // otherwise, which is refused below.
+        let default_readers = if brokered.is_empty() { CONSUMERS.join(",") } else { "workflows".to_owned() };
         let available_to = readers
             .map(|r| r.join(","))
             .or_else(|| existing.map(|row| row.available_to.clone()))
-            .unwrap_or_else(|| CONSUMERS.join(","));
+            .unwrap_or(default_readers);
+        if !brokered.is_empty() {
+            if split(&available_to).iter().any(|r| r == "deployments") {
+                return Ok(fail(
+                    FailureCode::Invalid,
+                    "A brokered secret is read by workflows only: a deployment's app needs the value itself. Leave Deployments out, or stop brokering it.",
+                ));
+            }
+            // Too short a value would be found inside other secrets.
+            let plain = match (&a.value, existing) {
+                (Some(value), _) => Some(value.clone()),
+                (None, Some(row)) if row.kind == "secret" => self.sealer.as_ref().and_then(|sealer| sealer.open(&row.value, &row.id)),
+                (None, Some(row)) => Some(row.value.clone()),
+                (None, None) => None,
+            };
+            if plain.is_some_and(|value| value.trim().chars().count() < MIN_VALUE_CHARS) {
+                return Ok(fail(FailureCode::Invalid, format!("A brokered secret's value is at least {MIN_VALUE_CHARS} characters.")));
+            }
+        }
         let repositories: Option<String> = match &a.projects {
             Some(list) if list.is_empty() => None,
             Some(list) => Some(serde_json::to_string(list).unwrap_or_default()),
@@ -363,11 +460,12 @@ impl Actions {
         let optional = |v: Option<&str>| v.map_or(JsValue::NULL, JsValue::from);
         self.db
             .prepare(
-                "INSERT INTO settings (id, scope, owner, kind, name, value, updated_at, available_to, environments, repositories, note, updated_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO settings (id, scope, owner, kind, name, value, updated_at, available_to, environments, repositories, note, updated_by, brokered_hosts)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, value = excluded.value, updated_at = excluded.updated_at,
                    available_to = excluded.available_to, environments = excluded.environments,
-                   repositories = excluded.repositories, note = excluded.note, updated_by = excluded.updated_by",
+                   repositories = excluded.repositories, note = excluded.note, updated_by = excluded.updated_by,
+                   brokered_hosts = excluded.brokered_hosts",
             )
             .bind(&[
                 id.as_str().into(),
@@ -382,6 +480,7 @@ impl Actions {
                 optional(repositories.as_deref()),
                 optional(note.as_deref()),
                 a.actor.username.as_str().into(),
+                optional((!brokered.is_empty()).then(|| serde_json::to_string(&brokered).unwrap_or_default()).as_deref()),
             ])?
             .run()
             .await?;
@@ -433,12 +532,12 @@ impl Actions {
         consumer: &str,
         environment: Option<&str>,
         trusted: bool,
-    ) -> Result<Map<String, Value>> {
+    ) -> Result<Resolved> {
         if kind == "secret" && !trusted {
-            return Ok(Map::new());
+            return Ok(Resolved::default());
         }
         let environment = environment.map(str::to_ascii_lowercase);
-        let mut out = Map::new();
+        let mut out = Resolved::default();
         for owner in [namespace.to_lowercase(), project_id.to_owned()] {
             let rows: Vec<SettingRow> = self
                 .rows(&owner)
@@ -459,7 +558,8 @@ impl Actions {
                 let Some(row) = chosen else {
                     // Rows only for other environments: this reader gets
                     // none, nor the workspace's.
-                    out.remove(name);
+                    out.values.remove(name);
+                    out.brokered.remove(name);
                     continue;
                 };
                 let value = if kind == "secret" {
@@ -470,7 +570,12 @@ impl Actions {
                 } else {
                     row.value.clone()
                 };
-                out.insert(name.to_owned(), Value::String(value));
+                out.values.insert(name.to_owned(), Value::String(value));
+                // The row that wins decides whether the key is brokered.
+                match row.brokered_hosts() {
+                    hosts if kind == "secret" && !hosts.is_empty() => out.brokered.insert(name.to_owned(), hosts),
+                    _ => out.brokered.remove(name),
+                };
             }
         }
         Ok(out)
@@ -483,14 +588,15 @@ impl Actions {
         let Some(project) = self.project_of(repo_id).await? else {
             return Ok(Map::new());
         };
-        self.resolved(&project.id, &project.slug, namespace, "variable", "workflows", environment, trusted).await
+        Ok(self.resolved(&project.id, &project.slug, namespace, "variable", "workflows", environment, trusted).await?.values)
     }
 
-    /// The `secrets` context of a repository's runs, opened.
-    pub async fn secrets_for(&self, repo_id: &str, repo: &str, environment: Option<&str>, trusted: bool) -> Result<Map<String, Value>> {
+    /// The `secrets` context of a repository's runs, opened, with which of
+    /// them are brokered: `job_spec` gives the job stand-ins for those.
+    pub(crate) async fn secrets_for(&self, repo_id: &str, repo: &str, environment: Option<&str>, trusted: bool) -> Result<Resolved> {
         let (namespace, _) = repo.split_once('/').unwrap_or((repo, ""));
         let Some(project) = self.project_of(repo_id).await? else {
-            return Ok(Map::new());
+            return Ok(Resolved::default());
         };
         self.resolved(&project.id, &project.slug, namespace, "secret", "workflows", environment, trusted).await
     }
@@ -508,19 +614,27 @@ impl Actions {
             _ => return Ok(ResolvedSettings::default()),
         };
         Ok(ResolvedSettings {
+            // A brokered secret's value goes only to workflow jobs, as a
+            // stand-in; a version update's registries go without it.
             secrets: self
                 .resolved(&project_id, &slug, &a.repo.namespace, "secret", &a.consumer, environment, a.trusted)
-                .await?,
+                .await?
+                .unbrokered(),
             variables: self
                 .resolved(&project_id, &slug, &a.repo.namespace, "variable", &a.consumer, environment, a.trusted)
-                .await?,
+                .await?
+                .values,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{SettingRow, consumers, valid_environments, valid_name};
+    use std::collections::BTreeMap;
+
+    use serde_json::json;
+
+    use super::{Resolved, SettingRow, consumers, valid_environments, valid_hosts, valid_name};
 
     fn row(environments: &str) -> SettingRow {
         SettingRow {
@@ -535,6 +649,7 @@ mod tests {
             repositories: None,
             note: None,
             updated_by: None,
+            brokered_hosts: None,
         }
     }
 
@@ -564,5 +679,28 @@ mod tests {
         // One row for every environment, and others for some, live together.
         assert!(!row("").overlaps(&["preview".into()]));
         assert!(row("").overlaps(&[]));
+    }
+
+    #[test]
+    fn brokered_hosts_are_domains_each_once() {
+        let hosts = valid_hosts(&["HTTPS://Registry.npmjs.org/".into(), "*.example.com".into(), "registry.npmjs.org".into(), " ".into()]).unwrap();
+        assert_eq!(hosts, ["registry.npmjs.org", "*.example.com"]);
+        assert!(valid_hosts(&["localhost".into()]).is_err());
+        assert!(valid_hosts(&(0..21).map(|n| format!("h{n}.example.com")).collect::<Vec<_>>()).is_err());
+        assert!(valid_hosts(&[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn readers_outside_workflows_never_get_a_brokered_value() {
+        let resolved = Resolved {
+            values: json!({ "NPM_TOKEN": "npm_realvalue123", "PLAIN": "value" }).as_object().cloned().unwrap(),
+            brokered: BTreeMap::from([("NPM_TOKEN".to_owned(), vec!["registry.npmjs.org".to_owned()])]),
+        };
+        let brokers = resolved.brokers();
+        assert_eq!(brokers.len(), 1);
+        assert_eq!(brokers[0].value, "npm_realvalue123");
+        let plain = resolved.unbrokered();
+        assert!(!plain.contains_key("NPM_TOKEN"));
+        assert_eq!(plain["PLAIN"], "value");
     }
 }

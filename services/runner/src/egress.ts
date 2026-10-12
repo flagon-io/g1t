@@ -74,13 +74,24 @@ export function sandboxHosts(policy: readonly string[], env: ModelHosts, sandbox
   return [...hosts];
 }
 
-/** What a refused request gets back, so the agent knows why. */
+/**
+ * What a refused request gets back. Many tools show only the status line
+ * of a failed request (a GraphQL client prints its reason phrase, a
+ * package manager "HTTP 403: Forbidden"), so the reason phrase names the
+ * host too, and the body and a header say the rest.
+ */
 export function refusal(host: string): Response {
-  const name = normalizeHost(host);
+  // A reason phrase is printable ASCII; a host from a URL already is.
+  const name = normalizeHost(host).replace(/[^\x21-\x7e]/g, "");
   return new Response(
-    `g1t guardrails: ${name} is not on this project's allowed domains, so this sandbox cannot reach it. ` +
-      "A member can allow it under the project's Settings, Guardrails.\n",
-    { status: 403, headers: { "content-type": "text/plain; charset=utf-8", "x-g1t-guardrails": "blocked" } },
+    `g1t guardrails refused ${name}: it is not on this project's allowed domains, so this sandbox cannot reach it. ` +
+      "A member can allow it in the project's Settings, Guardrails: under Allowed domains for every sandbox, " +
+      "or under Workflow-only domains for the jobs of one workflow and environment.\n",
+    {
+      status: 403,
+      statusText: `Forbidden by g1t guardrails: ${name} is not an allowed domain`,
+      headers: { "content-type": "text/plain; charset=utf-8", "x-g1t-guardrails": "blocked", "x-g1t-blocked-host": name },
+    },
   );
 }
 

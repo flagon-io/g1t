@@ -154,13 +154,6 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
                   Repository settings
                 </Link>
               </div>
-              <p className="mt-3 text-xs text-faint">
-                To keep it in step with a copy on another host, either way round, see{" "}
-                <Link to={`${base}/settings/mirroring`} className="text-muted hover:text-fg">
-                  Mirroring
-                </Link>
-                .
-              </p>
             </Card>
           )}
           <Field

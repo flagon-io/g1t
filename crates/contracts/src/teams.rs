@@ -648,8 +648,6 @@ pub struct RosterPerson {
     pub title: Option<String>,
     pub timezone: Option<String>,
     pub owns: Vec<String>,
-    /// Who they report to, by username.
-    pub manager: Option<String>,
     pub maintainer: bool,
 }
 

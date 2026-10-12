@@ -35,7 +35,7 @@ your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects
 
 | Page | Address | |
 | --- | --- | --- |
-| **Overview** | `g1t.sh/<workspace>/<project>` | What it is and its links; production wherever it is deployed, or for a library its packages; the steps that apply to it; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
+| **Overview** | `g1t.sh/<workspace>/<project>` | What it is and its links; production wherever it is deployed, or for a library its packages; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
 | **Code** | `…/code` | The repository's files, commits and branches. |
 | **Issues**, **Pull requests**, **Merge queue**, **Plan** | `…/issues` and so on | As they always were. |
 | **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
@@ -57,7 +57,6 @@ else sees what the project shares publicly.
 | **Production** | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [deployed on g1t](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app deployed elsewhere: production's address and **Visit**, with its latest reported production deployment or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
 | **Packages** | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
 | **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage. |
-| **Get to production**, **Ship a release** or **Get started** | The [checklist](#the-checklist) for what the project is, until every step is done or you dismiss it. |
 | **Right now** | Agents at work, and open pull requests moving from working to landed. |
 | **Needs you** | What is waiting on a person: a failed production build, a pull request to merge or review, a stuck run. |
 | **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
@@ -124,60 +123,15 @@ Anyone who can change the project's settings (the **Maintain** role on
 its repository and up, as for production's address) can upload, replace
 or remove it.
 
-### The checklist
-
-People with a role on its repository see a card that counts what the
-project has done, such as **3/5**. Its steps follow
-[what the project is](#what-a-project-is): only an app deployed on g1t is
-asked to deploy, add a domain or open a preview. Each step is worked out
-from the project itself, and each links to where you do it. The card goes
-away when every step is done. To hide it sooner, choose **×** on it. That
-hides it for this project in this browser only.
-
-| What it is | Card | Steps |
-| --- | --- | --- |
-| App or site, deployed on g1t | **Get to production** | [Below](#get-to-production). |
-| Library, tool | **Ship a release** | [Below](#ship-a-release). |
-| App, deployed elsewhere | **Get started** | Push code; add production's address; add checks on pull requests; repository instructions; a first issue for g1t. |
-| App nobody has placed yet | **Get started** | Push code; say where it runs; add checks on pull requests; repository instructions; a first issue for g1t. |
-| Documentation | **Get started** | Push code; add where its docs are read (a docs or homepage address); repository instructions; a first issue for g1t. |
-| Something else | **Get started** | Push code; add its links; repository instructions; a first issue for g1t. |
-
-### Get to production
-
-For an app or site deployed on g1t:
-
-| Step | Done when | Links to |
-| --- | --- | --- |
-| Connect a source or push code | The default branch has a commit, or the source is a mirror. | **Code**, which shows how to push, or how to have your coding agent start the project. |
-| Deploy to production | A production build has gone live. | Deployments settings, or **Deployments** once they are on. |
-| Add a custom domain | The project has a [custom domain](/guides/deployments/#custom-domains). | Domain settings. |
-| Open a preview | A branch or pull request has had a [preview](/guides/deployments/#previews-of-branches). | A new pull request. |
-| Set up repository instructions | `AGENTS.md` or `CLAUDE.md` is at the root of the default branch. | The instructions on the **Agents** page. See [repository instructions](/guides/working-with-g1t/#repository-instructions). |
-| Assign a first issue to g1t | g1t has had a run, a pull request or an issue here. | A new issue. |
-
-### Ship a release
-
-A library or a tool does not deploy, so its card counts the steps to a
-first release instead:
-
-| Step | Done when | Links to |
-| --- | --- | --- |
-| Connect a source or push code | As above. | **Code**. |
-| Add checks on pull requests | The repository has a workflow in `.g1t/workflows`. Its runs are every pull request's checks. | **Actions**, which offers to add a starter workflow. |
-| Tag a release or publish a package | A package its repository publishes has a version. For [Composer](/guides/composer/) and [Go](/guides/go/), pushing a tag such as `v1.0.0` is the release. | The package's page, or the guide for its registry. |
-| Set up repository instructions | As above. | The **Agents** page. |
-| Assign a first issue to g1t | As above. | A new issue. |
-
 ## What a project is
 
 A project is one of these, and its overview follows:
 
 | What it is | Its overview shows |
 | --- | --- |
-| **App or site, deployed on g1t** | Production on g1t.page, with previews and domains, and **Get to production**. |
+| **App or site, deployed on g1t** | Production on g1t.page, with previews and domains. |
 | **App or site, deployed elsewhere** | Production at the address you give, deployed by your own pipeline, with **Visit**. It is never asked to turn on Deployments; Deployment settings stay one link away. |
-| **Library or package** | The packages its repository publishes and how to install them, and **Ship a release**. |
+| **Library or package** | The packages its repository publishes and how to install them. |
 | **Tool or CLI** | The same as a library: its packages and releases. |
 | **Documentation** | Where its docs are read. Docs can be published on g1t.page too, by turning on Deployments. |
 | **Something else** | Its homepage and links. |
@@ -316,9 +270,9 @@ Someone without the role does not see the tab.
    - **Import code**: copy a public repository from GitHub or any git host
      into a new one on g1t, with every branch and tag (up to 40 MB of
      history).
-   - **Import from GitHub**: import, mirror or move repositories you can
-     reach on GitHub, private ones too, with every branch and tag and,
-     if you like, their issues. See [GitHub](/guides/github/).
+   - **Import from GitHub**: import repositories you can reach on GitHub,
+     private ones too, with every branch and tag and, if you like, their
+     issues. See [GitHub](/guides/github/).
 3. Give it a name and say who can see it, then choose **Create project**.
 
 Pushing a repository that does not exist yet makes one, and with it a
@@ -330,15 +284,12 @@ git push https://g1t.sh/acme/my-app.git main
 
 ## Sources
 
-A project's source is a repository hosted on g1t. A repository can be a
-**mirror of one on GitHub**: the code stays there, every push to GitHub is
-fetched into g1t, and the project gets g1t's deployments, secrets and
-agents on it. See [GitHub](/guides/github/#import-mirror-or-move-a-repository).
+A project's source is a repository hosted on g1t: one you pushed, or one
+imported from GitHub or any git host. See
+[GitHub](/guides/github/#import-a-repository).
 
 Coming next:
 
-- **Mirrored from GitLab or Bitbucket**, and previews on GitHub's own pull
-  requests.
 - **Several projects on one repository**, each from its own root
   directory, with a push building only the projects it touched.
 

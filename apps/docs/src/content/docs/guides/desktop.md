@@ -25,7 +25,10 @@ moment it is deployed. What the app adds is what a browser cannot do:
   and the runner.
 
 Get it at [g1t.sh/download](https://g1t.sh/download), or from your account
-menu, **Get the desktop app**.
+menu, **Get the desktop app**. The page opens on the system you visit it
+from, with every other platform a tab away, and lists the
+[runner](/guides/self-hosted-runners/) and the g1t CLI for each system
+under **Command line**.
 
 ## Install
 
@@ -212,6 +215,19 @@ What the sandbox needs on each computer:
 
 The sandbox also needs virtualization turned on in your computer's
 firmware (Intel VT-x or AMD-V), which most computers have on.
+
+The sandbox keeps jobs from your computer, not your computer from the
+sandbox: anything running as your account can look inside it while a job
+runs. So don't choose **Directly on this computer** under the same
+account you use for the sandbox, and don't run software you don't trust
+there. A runner registered for running jobs directly stays registered when
+you choose another way, so remove it once you no longer use it:
+`g1t-runner remove --dir <data folder>/host`, with the data folder below.
+`g1t-runner sandbox status` warns while one is there. A job's secrets go from inside the sandbox
+straight to g1t, the job's token left on your computer is spent once the
+job has started, and the runner's folders are yours alone. [What your
+computer can see](/guides/self-hosted-runners/#what-your-computer-can-see)
+has the details.
 
 For the sandbox, the app runs the same commands you would, with its own
 copy of `g1t-runner` and its state in the app's local data folder, which

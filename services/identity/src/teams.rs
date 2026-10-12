@@ -1772,8 +1772,6 @@ impl Identity {
             title: Option<String>,
             #[serde(default)]
             owns: Option<String>,
-            #[serde(default)]
-            manager: Option<String>,
         }
         #[derive(Deserialize)]
         struct AgentRow {
@@ -1787,12 +1785,11 @@ impl Identity {
                 self.db
                 .prepare(
                     "SELECT tm.team_id, u.id AS user_id, u.username, u.display_name AS name, u.timezone, tm.role,
-                       wm.title, wm.owns, mu.username AS manager
+                       wm.title, wm.owns
                      FROM team_members tm
                      JOIN teams t ON t.id = tm.team_id
                      JOIN users u ON u.id = tm.user_id AND u.deleted_at IS NULL
                      LEFT JOIN workspace_members wm ON wm.workspace_id = t.workspace_id AND wm.user_id = u.id
-                     LEFT JOIN users mu ON mu.id = wm.manager_id AND mu.deleted_at IS NULL
                      WHERE tm.team_id IN (SELECT value FROM json_each(?1))
                      ORDER BY tm.role DESC, u.username LIMIT 2000",
                 )
@@ -1830,7 +1827,6 @@ impl Identity {
                         title: person.title.clone(),
                         timezone: person.timezone.clone(),
                         owns: crate::people::owns_from(person.owns.as_deref()),
-                        manager: person.manager.clone(),
                         maintainer: person.role == TeamRole::Maintainer.as_str(),
                     })
                     .collect(),

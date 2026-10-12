@@ -1,6 +1,6 @@
 ---
 title: GitHub
-description: Sign in with GitHub, link your account, and import, mirror or move repositories from GitHub through g1t's GitHub App.
+description: Sign in with GitHub, link your account, and import repositories from GitHub through g1t's GitHub App.
 ---
 
 g1t has one GitHub App, [g1t-sh](https://github.com/apps/g1t-sh). It does two
@@ -68,7 +68,7 @@ unlinking are recorded in the [audit log](/guides/audit-log/) of each
 workspace you belong to, as `github.sign_in`, `github.linked` and
 `github.unlinked`.
 
-## Import, mirror or move a repository
+## Import a repository
 
 1. Choose **New project**, then **Import from GitHub**. You can also go to
    `g1t.sh/new/github`.
@@ -81,23 +81,13 @@ workspace you belong to, as `github.sign_in`, `github.linked` and
    [already installed the app on GitHub](#already-installed-the-app-on-github).
 4. Tick the repositories to bring across. You see only repositories that
    both you and the app can reach.
-5. Choose how they come across, and whether to copy their issues.
+5. Choose whether to copy their issues.
 6. Choose **Bring to g1t**.
 
 Each repository becomes a repository on g1t with the same name, private if
-it is private on GitHub, and a [project](/guides/projects/) of its own.
-
-| Choice | What happens | Where you push |
-| --- | --- | --- |
-| **Import** | Copied once. The g1t repository is then its own. | g1t |
-| **Standby mirror** | Copied, then every push to GitHub is copied in within seconds. On g1t it's a read-only copy that runs nothing, until you take over. | GitHub |
-| **Move to g1t** | Copied, then g1t leads: every push to g1t is pushed to GitHub, so people still working there see it. Branches that exist only on GitHub are left alone. | g1t |
-
-A standby mirror is a backup you can switch to: if GitHub is down, or
-whenever you want to work on g1t for a while, **take over** in its
-**Settings → Mirroring**, and **hand back** when you're done. You can also
-run its GitHub workflows on g1t while GitHub's don't run, or move it to g1t
-for good. See [mirroring](/guides/mirroring/).
+it is private on GitHub, and a [project](/guides/projects/) of its own. It
+is copied once: the g1t repository is then its own, and you push to g1t.
+Nothing on GitHub changes.
 
 ### Already installed the app on GitHub?
 
@@ -132,37 +122,19 @@ check: the installation must be one your GitHub account can see.
 | Issue numbers | New numbers on g1t; each issue links to the original |
 | Comments on issues | No |
 | Pull requests | No. Their branches come across; open pull requests stay on GitHub. |
-| GitHub Actions workflows | Yes, as files. A mirror runs them on g1t in CI failover and when taken over; otherwise rename `.github` to `.g1t` to run them on g1t: see [GitHub Actions](/guides/actions/). |
+| GitHub Actions workflows | Yes, as files. Rename `.github` to `.g1t` to run them on g1t: see [GitHub Actions](/guides/actions/). |
 | Releases, wikis, Git LFS objects | No |
 
 A repository is copied in one piece of at most 40 MB, after compression.
 Push a larger one with git instead: see [git](/guides/git/).
 
-### Keep a mirror in step
-
-The repository's **Settings → Mirroring** shows the link: its state,
-whether GitHub is answering, and when it last synced. **Sync now** copies
-at once. **Take over**, **Hand back**, **Move to g1t** and **Remove** are
-there too: see [mirroring](/guides/mirroring/). A standby mirror stops,
-keeping its copy, when:
-
-- the repository is deleted on GitHub,
-- the app is uninstalled from its GitHub account, or
-- a workspace owner removes that GitHub account from the workspace.
-
-If GitHub stops letting the app see a repository, its settings say so; add
-it back to the installation on GitHub to carry on. Renaming or
-transferring a repository on GitHub keeps the mirror working.
-
 ## What g1t's GitHub App can do
 
 | Permission | Access | Why |
 | --- | --- | --- |
-| Contents | Read and write | Read: clone the repositories you choose. Write: to push for **Move to g1t**, and to hand a takeover back. |
+| Contents | Read | Clone the repositories you choose. |
 | Metadata | Read | Required by GitHub for every app: names, visibility, and whether a branch is protected. |
 | Issues | Read | Copy issues when you ask. |
-| Pull requests | Read and write | When a takeover is handed back, open a pull request for a branch GitHub protects. Without it, g1t pushes the commits to `g1t/handback/<branch>` and tells you to open the pull request yourself. |
-| Commit statuses | Read and write | While g1t runs a mirror's workflows, report each run and deploy on the commit on GitHub. Without it, the mirror's settings say so and nothing is reported. See [Checks on GitHub](/guides/mirroring/#checks-on-github). |
 | Email addresses (account) | Read | Find your verified email when you sign in. |
 
 The app only ever sees the repositories you or your organization's owners
@@ -179,13 +151,13 @@ installation tokens, which g1t gets as the app when it needs one.
   GitHub afterwards, which authorizes g1t again.
 - **Stop g1t reading repositories**: uninstall the app in GitHub under
   **Settings → Applications → Installed GitHub Apps** (for an organization,
-  its settings). Mirrors stop; the copies on g1t stay.
+  its settings). Repositories already imported stay on g1t.
 - **Change which repositories it sees**: **Choose repositories on GitHub**
   beside the account on the import page.
 
 ## The webhook
 
-GitHub tells g1t about pushes, installations and repository changes at
+GitHub tells g1t about installations and repository changes at
 `POST https://api.g1t.sh/hooks/github`. g1t checks each delivery's
 `X-Hub-Signature-256` against the app's webhook secret, ignores a delivery
 id it has already seen (`X-GitHub-Delivery`), and answers `202` before

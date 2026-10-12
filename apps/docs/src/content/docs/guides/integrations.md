@@ -19,10 +19,10 @@ There are two places to connect things, and they are for different people:
 | Where | **Customize → Connectors**, at `g1t.sh/<workspace>/-/customize/connectors`, with each integration's setup page under `g1t.sh/<workspace>/-/integrations` | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
 | Who it is for | Everyone in that workspace, people and agents | Just you, in every workspace you belong to |
 | Who connects | Workspace owners. Members see what is connected. | You |
-| Examples | Model providers, Sentry, Jira, Linear, GitHub mirroring, webhooks | Signing in with GitHub, agents you connect through MCP, and soon your calendar |
+| Examples | Model providers, Sentry, Jira, Linear, GitHub imports, webhooks | Signing in with GitHub, agents you connect through MCP, and soon your calendar |
 
 Some tools have both sides. GitHub, for instance: a workspace owner
-installs g1t's GitHub App to import and mirror the team's repositories, and
+installs g1t's GitHub App to import the team's repositories, and
 you link your own GitHub account to sign in with it. Each card says when
 the other side exists.
 
@@ -55,14 +55,14 @@ Discover** shows for a workspace:
 
 The tags on a card say what an integration lets g1t do: **Agents can
 read** (agents fetch what work refers to), **Opens issues**, **Writes
-back** (the other system hears when work lands), **Mirrors repositories**,
+back** (the other system hears when work lands), **Imports repositories**,
 **Runs models**, **Sets your status**, and so on.
 
 ## Available today
 
 | Category | Workspace | Personal |
 | --- | --- | --- |
-| Code & CI | [GitHub](/guides/github/) import and mirroring, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github) |
+| Code & CI | [GitHub](/guides/github/) import, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github) |
 | Issues & projects | [Jira and Linear](#trackers) | |
 | Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) | |
 | AI models | [Model providers](/guides/models/): Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek, Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras, and any Anthropic- or OpenAI-compatible endpoint; the [AI Gateway](/guides/ai-gateway/) | [MCP clients](/guides/authentication/#signing-in-with-oauth): your own agent, connected to g1t as you |

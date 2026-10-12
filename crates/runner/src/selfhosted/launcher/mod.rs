@@ -68,7 +68,8 @@
 //!       "cause": "Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).",
 //!       "fix": "On Windows 11 Pro, Enterprise or Education, turn on Windows Sandbox under Settings, …" }
 //!   ],
-//!   "state_dir": "C:\\Users\\a\\.g1t-runner\\sandbox"
+//!   "state_dir": "C:\\Users\\a\\.g1t-runner\\sandbox",
+//!   "warnings": []
 //! }
 //! ```
 //!
@@ -77,6 +78,10 @@
 //! or `error`; `error` is a sentence for a person, set whenever something
 //! is wrong, and `cause`/`fix` say why a capability is unavailable, or for
 //! a native one in `error` why it didn't start, and what to do.
+//! `warnings` holds sentences about what on the computer weakens the
+//! sandbox: a runner of the same account registered for host mode, whose
+//! jobs could look inside it, or a state folder others can read. It is
+//! empty when nothing does, and left out by launchers before it.
 //! `turned_off` is true for a capability someone stopped (`down --only`,
 //! `--no-native`), whose state is then `stopped`: stopped by a person, not
 //! failing. `job` is what the runner is running now, or null. Fields
@@ -102,6 +107,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 
 use super::native::{Availability, MacVm, WsbFound};
+use super::private::{self, write_private};
 use super::{JobStatus, Options, RunnerStatus, VERSION, config, log};
 use guest::{GuestStatus, Settings};
 
@@ -248,6 +254,11 @@ pub struct Status {
     pub resources: Resources,
     pub capabilities: Vec<Capability>,
     pub state_dir: String,
+    /// Sentences about what on the computer weakens the sandbox (a
+    /// host-mode runner of the same account, a state folder others can
+    /// read); empty when nothing does. Older launchers leave it out.
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 /// One kind of job this computer can run sandboxed.
@@ -265,18 +276,6 @@ pub struct Capability {
     /// Someone stopped it (`down --only`, `--no-native`): `stopped` until
     /// `up --only` turns it on again. Older launchers leave it out.
     pub turned_off: bool,
-}
-
-pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
-    let temp = path.with_extension("new");
-    std::fs::write(&temp, bytes).with_context(|| format!("could not write {}", temp.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o600))?;
-    }
-    std::fs::rename(&temp, path).with_context(|| format!("could not write {}", path.display()))?;
-    Ok(())
 }
 
 // --- The computer -------------------------------------------------------------
@@ -655,7 +654,63 @@ pub fn status(dir: &Path) -> Status {
         resources: saved.resources,
         capabilities,
         state_dir: dir.display().to_string(),
+        warnings: warnings(dir),
     }
+}
+
+// --- What weakens it ---------------------------------------------------------------
+
+/// What on this computer lets someone look inside the sandbox: a runner of
+/// this account's that runs jobs as it, and a state folder others can read.
+fn warnings(dir: &Path) -> Vec<String> {
+    let mut said: Vec<String> = host_mode_runners(&host_runner_folders()).iter().map(|folder| host_mode_warning(folder)).collect();
+    if dir.exists() {
+        let readers = private::readers(dir);
+        if !readers.is_empty() {
+            said.push(format!(
+                "{} can be read by {}: the runners' credentials and the VM's disk are in it. The next `g1t-runner sandbox up` makes it private, or refuses to start.",
+                dir.display(),
+                readers.join(", ")
+            ));
+        }
+    }
+    said
+}
+
+/// Where a runner of this account's may be registered: `g1t-runner`'s own
+/// folder (`G1T_RUNNER_DIR`, `~/.g1t-runner`), and the desktop app's for
+/// running jobs directly on the computer.
+fn host_runner_folders() -> Vec<PathBuf> {
+    let mut folders = vec![config::folder(None)];
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
+    if let Some(home) = &home {
+        folders.push(home.join(".g1t-runner"));
+    }
+    // The desktop app's data folder (its `app_data_dir`): runner/host.
+    let data = match std::env::consts::OS {
+        "windows" => std::env::var_os("APPDATA").map(PathBuf::from),
+        "macos" => home.as_ref().map(|h| h.join("Library").join("Application Support")),
+        _ => std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()).map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".local").join("share"))),
+    };
+    if let Some(data) = data {
+        folders.push(data.join("sh.g1t.desktop").join("runner").join("host"));
+    }
+    folders.dedup();
+    folders
+}
+
+/// Those of `folders` that hold a runner registered for host mode: jobs as
+/// processes of this account, neither in a container nor in a VM.
+fn host_mode_runners(folders: &[PathBuf]) -> Vec<PathBuf> {
+    folders.iter().filter(|folder| config::load(folder).is_ok_and(|c| !c.docker && !c.native)).cloned().collect()
+}
+
+fn host_mode_warning(folder: &Path) -> String {
+    format!(
+        "A runner registered in {} runs jobs directly on this computer, as you (host mode). Whenever it runs, what its jobs run can read this sandbox's runner credentials and reach inside the sandbox, as you can. Remove it (`g1t-runner remove --dir {}`), or register it under another account.",
+        folder.display(),
+        folder.display()
+    )
 }
 
 /// The native capability's state: running while its runner lives;
@@ -700,6 +755,9 @@ fn print(status: &Status, json: bool) {
                 println!("           {fix}");
             }
         }
+    }
+    for warning in &status.warnings {
+        println!("Warning: {warning}");
     }
     if let Some(error) = &status.error {
         println!("Error: {error}");
@@ -771,10 +829,13 @@ pub fn main(args: &[String]) -> i32 {
     };
     let json = options.flag("json");
     let dir = options.value("state-dir").map(PathBuf::from).unwrap_or_else(|| config::folder(None).join("sandbox"));
+    // The state folder holds the runners' credentials and the VM's disk:
+    // only this account's, or nothing is made or started in it.
+    let private = || private::folder(&dir, "--state-dir");
     let outcome = match args.first().map(String::as_str) {
-        Some("up") => up(&options, &dir),
-        Some("down") => down(&options, &dir),
-        Some("update") => update_sandbox(&options, &dir),
+        Some("up") => private().and_then(|()| up(&options, &dir)),
+        Some("down") => private().and_then(|()| down(&options, &dir)),
+        Some("update") => private().and_then(|()| update_sandbox(&options, &dir)),
         Some("status") => Ok(()),
         _ => {
             println!("{HELP}");
@@ -889,12 +950,13 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
                 if local.runner_image.is_some() {
                     saved.runner_image = local.runner_image.clone();
                 }
-                // An update that stopped half-way left the registration here.
-                let carried = dir.join("carry").join("config.json");
-                if let Ok(bytes) = std::fs::read(&carried) {
-                    backend.import_state(&bytes)?;
-                    let _ = std::fs::remove_file(&carried);
-                }
+            }
+            // An update that stopped half-way, after the old system was
+            // removed, left the registration here.
+            let carried = dir.join("carry").join("config.json");
+            if let Ok(bytes) = std::fs::read(&carried) {
+                backend.import_state(&bytes)?;
+                let _ = std::fs::remove_dir_all(dir.join("carry"));
             }
             if let Some(tar) = options.value("runner-image-file") {
                 backend.load_image(Path::new(tar))?;
@@ -1063,18 +1125,26 @@ fn update_sandbox(options: &Options, dir: &Path) -> Result<()> {
             log("Draining: the runner finishes the job it is running, then stops.");
             backend.stop(StopMode::Drain)?;
         }
-        // The registration, kept on the computer until the new sandbox has it.
-        let carried = dir.join("carry").join("config.json");
+        // The registration, kept on the computer (in the private state
+        // folder) only while no sandbox has it: from just before the old
+        // system goes until the new one has it. Should the update stop in
+        // between, the next `up` puts it in the new system and removes it.
+        let carry = dir.join("carry");
+        let carried = carry.join("config.json");
         if let Some(bytes) = backend.export_state()? {
-            std::fs::create_dir_all(dir.join("carry"))?;
+            std::fs::create_dir_all(&carry)?;
             write_private(&carried, &bytes)?;
         }
-        backend.remove_system()?;
+        if let Err(error) = backend.remove_system() {
+            // The old system, and the registration in it, are still there.
+            let _ = std::fs::remove_dir_all(&carry);
+            return Err(error);
+        }
         backend.create(&local, &saved.resources)?;
         if let Ok(bytes) = std::fs::read(&carried) {
             backend.import_state(&bytes)?;
-            let _ = std::fs::remove_file(&carried);
         }
+        let _ = std::fs::remove_dir_all(&carry);
         if let Some(tar) = options.value("runner-image-file") {
             backend.load_image(Path::new(tar))?;
         }
@@ -1150,7 +1220,7 @@ mod tests {
             ..Status::default()
         };
         let value = serde_json::to_value(&status).unwrap();
-        for field in ["schema", "state", "backend", "runner_version", "launcher_version", "image_version", "isolation", "job", "error", "resources", "capabilities", "state_dir"] {
+        for field in ["schema", "state", "backend", "runner_version", "launcher_version", "image_version", "isolation", "job", "error", "resources", "capabilities", "state_dir", "warnings"] {
             assert!(value.get(field).is_some(), "{field}");
         }
         for field in ["id", "available", "state", "isolation", "runner_version", "job", "cause", "fix", "turned_off"] {
@@ -1211,6 +1281,35 @@ mod tests {
         let written = std::fs::read_to_string(dir.join("sandbox.json")).unwrap();
         assert!(!written.contains("no_native"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_host_mode_runner_of_the_same_account_is_warned_of() {
+        let root = std::env::temp_dir().join(format!("g1t-sandbox-host-{}", std::process::id()));
+        let registered = |name: &str, how: &str| {
+            let folder = root.join(name);
+            std::fs::create_dir_all(&folder).unwrap();
+            let config = format!(
+                r#"{{"url":"https://g1t.sh","api":"https://api.g1t.sh","runner":"rnr_1","name":"a","credential":"g1tr_x","workspace":"acme","labels":[],"work_dir":"/tmp/w"{how}}}"#
+            );
+            std::fs::write(folder.join("config.json"), config).unwrap();
+            folder
+        };
+        let host = registered("host", r#","docker":false"#);
+        let docker = registered("docker", "");
+        let native = registered("native", r#","docker":false,"native":true"#);
+        let none = root.join("none");
+        let found = host_mode_runners(&[host.clone(), docker, native, none]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0], host);
+        let said = host_mode_warning(&host);
+        assert!(said.contains("as you") && said.contains("g1t-runner remove --dir"), "{said}");
+        // The desktop app's folder for running jobs directly is looked at.
+        assert!(host_runner_folders().iter().any(|f| f.ends_with(Path::new("sh.g1t.desktop").join("runner").join("host"))));
+        // An older status, without warnings, still reads.
+        let old: Status = serde_json::from_str(r#"{"schema":1,"state":"absent","backend":null,"runner_version":null,"launcher_version":"0.3.0","image_version":null,"isolation":null,"job":null,"error":null,"resources":{"cpus":0,"memory_mib":0,"disk_gib":0},"capabilities":[],"state_dir":"x"}"#).unwrap();
+        assert!(old.warnings.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

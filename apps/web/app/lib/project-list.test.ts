@@ -28,7 +28,6 @@ function project(slug: string, more: Partial<Listed> = {}): Listed {
     pushedAt: null,
     activity: 0,
     deploying: false,
-    mirror: null,
     ...more,
   };
 }
@@ -84,22 +83,6 @@ test("filters narrow by visibility, kind, language and deployments", () => {
   assert.deepEqual(slugs({ language: "Rust" }), ["lib"]);
   assert.deepEqual(slugs({ language: "JavaScript" }), ["site"]);
   assert.deepEqual(slugs({ deployments: true }), ["site"]);
-});
-
-test("the kind filter also tells mirrors from projects managed on g1t", () => {
-  const list = [
-    project("own"),
-    project("copy", { mirror: { state: "standby", remote: "github.com/acme/copy" } }),
-    project("taken", { kind: "library", mirror: { state: "takeover", remote: "github.com/acme/taken" } }),
-  ];
-  const slugs = (change: object) => filterProjects(list, { ...DEFAULT_QUERY, ...change }).map((p) => p.slug).sort();
-  assert.deepEqual(slugs({ kind: "mirror" }), ["copy", "taken"], "a taken-over mirror is still a mirror");
-  assert.deepEqual(slugs({ kind: "g1t" }), ["own"]);
-  assert.deepEqual(slugs({ kind: "library" }), ["taken"]);
-  assert.equal(q("?kind=mirror").kind, "mirror");
-  assert.equal(q("?kind=g1t").kind, "g1t");
-  assert.equal(projectQueryString({ ...DEFAULT_QUERY, kind: "mirror" }), "?kind=mirror");
-  assert.equal(facetsOf(list).mirrors, 2);
 });
 
 test("search matches every word, in the name, slug or description, names that start with it first", () => {

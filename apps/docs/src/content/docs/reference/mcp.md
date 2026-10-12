@@ -561,7 +561,7 @@ workspace's own. Secret values are never returned.
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list_secrets`](/reference/api/secrets-and-variables/list-actions-secrets/) | Secrets' rows: key, environments, who reads them. Never values. | None | `secrets:read` |
-| [`set_secret`](/reference/api/secrets-and-variables/set-actions-secret/) | Add or change a secret's row: `value`, and optionally `id`, `environments`, `available_to`, `projects`, `note`. | `setting` | `secrets:admin` |
+| [`set_secret`](/reference/api/secrets-and-variables/set-actions-secret/) | Add or change a secret's row: `value`, and optionally `id`, `environments`, `available_to`, `projects`, `note`, and `brokered_hosts` to broker it (jobs get a stand-in; g1t fills in the value on requests to those hosts). | `setting` | `secrets:admin` |
 | [`delete_secret`](/reference/api/secrets-and-variables/delete-actions-secret/) | Remove one row (`id`) or every row of the key. | `setting` | `secrets:admin` |
 | [`list_variables`](/reference/api/secrets-and-variables/list-actions-variables/) | Config rows with their values. | None | `secrets:read` |
 | [`set_variable`](/reference/api/secrets-and-variables/set-actions-variable/) | Add or change a config row, as for secrets. | `setting` | `secrets:admin` |

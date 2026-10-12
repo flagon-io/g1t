@@ -115,6 +115,8 @@ import {
   timeCapMessage,
   withPlanLimits,
 } from "./guard";
+import { newlyMisdirected } from "./broker";
+import { EGRESS_ENV } from "./egress";
 
 // Outbound interception, which network guardrails use, needs this exported.
 export { ContainerProxy } from "@cloudflare/containers";
@@ -309,6 +311,11 @@ type Build = {
   job?: WorkflowJob | null;
   /** More hosts it may reach: an update's private registries. */
   hosts?: string[];
+  /**
+   * A workflow job that may be given brokered secrets: its HTTP and HTTPS
+   * pass the Worker, which fills them in, even when its network is open.
+   */
+  brokered?: boolean;
 };
 /** Deploy builds are metered by the Deployments plan, not here. */
 type RunRequest = Run & {
@@ -473,7 +480,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       throw error;
     }
     await this.ctx.storage.put("run", run);
-    await this.ctx.storage.delete(["abuse", "stopReason", "remote"]);
+    await this.ctx.storage.delete(["abuse", "stopReason", "remote", "misdirected"]);
     if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
     await this.ctx.storage.put("started", Date.now());
     const who = meter ? { workspace: meter.workspace, repo: meter.repo } : owner;
@@ -510,9 +517,19 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         return;
       }
       const restricted = (guard?.policy.restrictNetwork ?? false) && this.env.EGRESS !== "off";
+      // A workflow job's brokered secrets are filled in by `egress` from
+      // the job's stand-ins, which it asks for with the job's token.
+      const job = run.kind === "actions" ? { id: run.jobId, token: run.token } : undefined;
+      // A job whose network is open but which may be given brokered
+      // secrets still sends its HTTP and HTTPS through `egress`, which
+      // reaches every host for it; other protocols go straight out, as
+      // they would.
+      const brokering = !restricted && job !== undefined && build?.brokered === true && this.env.EGRESS !== "off";
       if (guard && restricted) {
         this.enableInternet = false;
-        await this.setOutboundHandler("egress", { hosts: egressHosts(guard, this.env, vars) });
+        await this.setOutboundHandler("egress", { hosts: egressHosts(guard, this.env, vars), job });
+      } else if (brokering) {
+        await this.setOutboundHandler("egress", { hosts: [], open: true, job });
       } else if (this.env.EGRESS !== "off") {
         // An open sandbox can still report that it stopped itself for
         // mining; a guarded one does through `egress`.
@@ -523,8 +540,11 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       const harness = guard ? harnessEnv(guard, vars, restricted) : {};
       // A build needs only the certificate variables, not an agent's rules.
       if (build) delete harness.GUARDRAILS;
+      // Its HTTPS is re-signed as it passes the Worker, so it trusts that
+      // certificate as a guarded sandbox does.
+      const trust = brokering ? EGRESS_ENV : {};
       const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
-      await this.start({ envVars: { ...vars, ...harness, ...watch }, enableInternet: !restricted });
+      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: !restricted });
       // A backup has no guardrails, but still a time cap.
       const cap = guard?.minutes ?? (run.kind === "backup" ? BACKUP_MINUTES : null);
       if (cap) {
@@ -635,6 +655,28 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (!noted) return;
     await this.ctx.storage.put("blocked", noted.seen);
     await reportRun(this.env.WORK, tracked, { steps: [noted.step] });
+  }
+
+  /**
+   * A workflow job sent a brokered secret's stand-in to a host it is not
+   * for: said once per secret and host, in the job's log.
+   */
+  async noteMisdirected(name: string, host: string): Promise<void> {
+    const run = await this.ctx.storage.get<Run>("run");
+    if (run?.kind !== "actions") return;
+    const noted = newlyMisdirected((await this.ctx.storage.get<string[]>("misdirected")) ?? [], name, host);
+    if (!noted) return;
+    await this.ctx.storage.put("misdirected", noted.seen);
+    try {
+      const response = await this.env.ACTIONS.fetch("https://actions/rpc/job_report", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ job: run.jobId, token: run.token, report: { kind: "note", text: noted.note } }),
+      });
+      await answered("job_report", response);
+    } catch (error) {
+      console.log("misdirected secret not noted", name, String(error));
+    }
   }
 
   /** The run's time cap has passed: stop it, as stopped for time. */
@@ -1187,6 +1229,8 @@ type ActionsJobArgs = {
   trusted?: boolean;
   /** The machine its `runs-on` asked for, by label; absent, the standard one. */
   instance?: string | null;
+  /** Whether it may be given brokered secrets, which its requests need filled in. */
+  brokered?: boolean;
 };
 
 export default class RunnerService
@@ -1782,6 +1826,7 @@ export default class RunnerService
           repo: args.repo,
           minutes: Math.max(1, args.timeoutMinutes),
           job: { workflow: args.workflow ?? null, environment: args.environment ?? null, trusted: args.trusted === true },
+          brokered: args.brokered === true,
         },
         meter: {
           ...meter(args.repo, `A workflow job in ${args.repo.namespace}/${args.repo.name}${on}`),

@@ -42,7 +42,7 @@ use worker::Result;
 
 use crate::registry::{Registry, store_key};
 use crate::store::{GitRepo, GitStore, Scope, locate};
-use crate::{Repos, land, mirror, refs, shards};
+use crate::{Repos, copy, land, refs, shards};
 
 /// The longest writes wait for one move.
 pub const PAUSE_MS: u64 = 20 * 60 * 1000;
@@ -120,8 +120,8 @@ pub fn ref_map(all: Vec<(String, String)>) -> BTreeMap<String, String> {
 
 /// What makes `target`'s refs `source`'s: the commands, the objects to
 /// fetch, and what the target holds already.
-pub fn plan(source: &BTreeMap<String, String>, target: &BTreeMap<String, String>) -> (Vec<mirror::Command>, Vec<String>, Vec<String>) {
-    let mut commands: Vec<mirror::Command> = Vec::new();
+pub fn plan(source: &BTreeMap<String, String>, target: &BTreeMap<String, String>) -> (Vec<copy::Command>, Vec<String>, Vec<String>) {
+    let mut commands: Vec<copy::Command> = Vec::new();
     for (name, hash) in source {
         if target.get(name) != Some(hash) {
             commands.push((name.clone(), target.get(name).cloned(), hash.clone()));

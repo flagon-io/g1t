@@ -231,10 +231,8 @@ impl Security {
             None => None,
         };
         // No security updates on an archived (read-only) or deleted
-        // repository, nor on a mirror until it is taken over or moved to
-        // g1t (`g1t_contracts::mirrors`: a standby mirror is an exact copy
-        // that opens nothing of its own); ones in flight for packages no
-        // longer vulnerable are closed either way.
+        // repository; ones in flight for packages no longer vulnerable are
+        // closed either way.
         let takes_updates = self.takes_updates(repo).await?.is_ok();
         self.security_updates(repo, repo.upkeep != 0 && takes_updates, rules.as_ref()).await?;
         Ok(None)

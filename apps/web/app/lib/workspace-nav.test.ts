@@ -38,7 +38,7 @@ test("old addresses go to where their pages are now", () => {
   assert.equal(workspaceRedirect("/acme/-/marketplace/extensions"), "/acme/-/customize/plugins");
   assert.equal(workspaceRedirect("/acme/-/marketplace/extensions/mail/more"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/insights", "?x=1"), "/acme/-/insights?x=1");
-  assert.equal(workspaceRedirect("/acme/-/soon/board"), null);
+  assert.equal(workspaceRedirect("/acme/-/soon/uptime"), null);
   assert.equal(workspaceRedirect("/acme/-/people"), null);
   assert.equal(workspaceRedirect("/acme/web"), null);
 });
@@ -106,7 +106,6 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/people/ana", "acme"), "people");
   // An agent's old People address (it redirects to Agents) is still read as People's until it does.
   assert.equal(modeOf("/acme/-/people/agents/margo", "acme"), "people");
-  assert.equal(modeOf("/acme/-/org-chart", "acme"), "people");
   // Members, invitations and permissions are the workspace's settings.
   assert.equal(modeOf("/acme/-/members", "acme"), "workspace");
   assert.equal(modeOf("/acme/-/members/invitations", "acme"), "workspace");

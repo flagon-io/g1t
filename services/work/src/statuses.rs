@@ -218,7 +218,7 @@ impl Work {
 
     /// A status from another part of g1t: a workflow run, a deploy, a scan.
     /// Published as `status.created`, as one set through the API is, so
-    /// webhooks hear it and a GitHub mirror's commit is told (integrations).
+    /// webhooks hear it.
     /// Publishing is best effort: the status is kept either way.
     pub(crate) async fn set_commit_status(&self, a: SetCommitStatusArgs) -> Result<Outcome<bool>> {
         let event = StatusEvent {

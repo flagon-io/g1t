@@ -50,6 +50,12 @@ ARG IMAGE_VERSION=dev
 RUN echo "$IMAGE_VERSION" > /etc/g1t-sandbox-version
 
 FROM base AS wsl
+# WSL's default user (wsl.conf): a locked account with no shell and no
+# home, so whatever opens the distribution without naming a user (Explorer
+# at \\wsl.localhost\g1t-sandbox, a bare `wsl -d g1t-sandbox`) is not root
+# and cannot read the runner's registration. The launcher names root itself.
+RUN useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sandbox \
+ && passwd --lock sandbox
 COPY wsl.conf /etc/wsl.conf
 
 FROM base AS vm

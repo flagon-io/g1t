@@ -26,7 +26,7 @@ a private network, not yet for an installation on the open internet.
 | Site search | Works |
 | A status page of your own | Works, at `http://localhost:8788` ([below](#the-status-page)) |
 | Webhooks, integrations | Work, retries included |
-| Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). Mirrors sync on GitHub's webhook once GitHub can reach your API, and with **Sync now** either way. |
+| Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). |
 | g1t's agent: changes, plans and reviews | Off |
 | Context hub search | Off |
 | Deployments on `g1t.page` | Off |
@@ -239,8 +239,8 @@ your own. Without one, neither button appears.
    | Enable Device Flow | Off |
    | Setup URL | `PUBLIC_URL/integrations/github/setup` |
    | Redirect on update | On |
-   | Webhook | On, with the URL `API_URL/hooks/github` and a secret you choose, once GitHub can reach your API. Otherwise off: mirrors then sync with **Sync now**. |
-   | Repository permissions | Contents: Read and write; Metadata: Read; Issues: Read; Pull requests: Read and write; Commit statuses: Read and write |
+   | Webhook | On, with the URL `API_URL/hooks/github` and a secret you choose, once GitHub can reach your API. Otherwise off: imports work without it. |
+   | Repository permissions | Contents: Read; Metadata: Read; Issues: Read |
    | Account permissions | Email addresses: Read |
 
 3. Create it, then on its page note the **App ID**, the **Client ID** and

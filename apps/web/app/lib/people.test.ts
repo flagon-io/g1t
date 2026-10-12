@@ -13,8 +13,6 @@ import {
   budgetFromText,
   codeAccessWords,
   directoryEntries,
-  managerChoices,
-  orgChart,
   ownsFromText,
   teamBlock,
   teamsOfAgent,
@@ -31,7 +29,6 @@ const person = (username: string, extra: Partial<DirectoryPerson> = {}): Directo
   timezone: null,
   role: "member",
   title: null,
-  manager: null,
   owns: [],
   joined_at: "2026-10-01T00:00:00Z",
   ...extra,
@@ -70,9 +67,9 @@ const agent = (id: string, handle: string, extra: Partial<PeopleAgent> = {}): Pe
 const directory: PeopleDirectory = {
   people: [
     person("chase", { name: "Chase Pierce", title: "Founder", role: "owner" }),
-    person("sofia", { name: "Sofia Reyes", title: "Head of Sales", manager: "chase", owns: ["the forecast"] }),
-    person("jordan", { name: "Jordan Lee", title: "Account Executive", manager: "sofia", owns: ["Halcyon", "Bluebird"] }),
-    person("kai", { name: "Kai Nakamura", title: "Product Designer", manager: "chase" }),
+    person("sofia", { name: "Sofia Reyes", title: "Head of Sales", owns: ["the forecast"] }),
+    person("jordan", { name: "Jordan Lee", title: "Account Executive", owns: ["Halcyon", "Bluebird"] }),
+    person("kai", { name: "Kai Nakamura", title: "Product Designer" }),
   ],
   teams: [
     team("sales", "Sales", {
@@ -136,30 +133,6 @@ test("the directory lists people only, in one search; agents are never in it", (
 
 test("an agent's profile is its page in Agents, where People links to it", () => {
   assert.equal(agentPath("acme", "margo"), "/acme/-/agents/margo");
-});
-
-test("the org chart follows reporting lines, with each team's agents beside its lead", () => {
-  const chart = orgChart(directory, agents);
-  assert.deepEqual(chart.roots.map((n) => n.person.username), ["chase"]);
-  const chase = chart.roots[0]!;
-  assert.deepEqual(chase.reports.map((n) => n.person.username), ["sofia", "kai"]);
-  const sofia = chase.reports[0]!;
-  assert.deepEqual(sofia.agents.map((a) => a.handle), ["david"]);
-  assert.deepEqual(sofia.reports.map((n) => n.person.username), ["jordan"]);
-  // A team an agent leads sits apart, with its agents.
-  assert.deepEqual(chart.unled.map((u) => [u.team.slug, u.agents.map((a) => a.handle)]), [["night-shift", ["atlas", "sentinel", "david"]]]);
-});
-
-test("no one goes missing from the org chart, even in a loop", () => {
-  const looped: PeopleDirectory = { ...directory, people: [person("a", { manager: "b" }), person("b", { manager: "a" })] };
-  const chart = orgChart(looped, []);
-  const all = (nodes: typeof chart.roots): string[] => nodes.flatMap((n) => [n.person.username, ...all(n.reports)]);
-  assert.deepEqual(all(chart.roots).sort(), ["a", "b"]);
-});
-
-test("someone can report to anyone but themselves and the people under them", () => {
-  assert.deepEqual(managerChoices(directory.people, "sofia").map((p) => p.username), ["chase", "kai"]);
-  assert.deepEqual(managerChoices(directory.people, "jordan").map((p) => p.username), ["chase", "sofia", "kai"]);
 });
 
 test("forms read plainly", () => {

@@ -22,32 +22,6 @@ Workflows that still say `uses: ./.github/actions/setup` find it under
 Otherwise g1t doesn't read `.github`, so a repository that lives in both
 places can keep `.github` for GitHub and `.g1t` for g1t, side by side.
 
-### On a mirror
-
-A [mirror](/guides/mirroring/) of a GitHub repository runs nothing while it
-stands by: its workflows run on GitHub. Its owners can change that:
-
-- **CI failover** runs its workflows on g1t for each push copied in from
-  GitHub, `.github/workflows` as well as `.g1t/workflows`. Use it when
-  GitHub's workflows aren't running.
-- **Taking over** runs them for everything pushed to g1t, until it's handed
-  back.
-- **Keep CI warm** runs `.g1t/workflows`, and only those, on each push
-  copied in while it stands by.
-
-When both folders have a workflow of the same `name:`, the one in `.g1t`
-runs. A workflow that deploys (any job names an `environment:`) waits for
-approval during CI failover and takeovers, so it doesn't deploy from two
-places, unless the mirror's settings say otherwise. A push copied in from
-GitHub that changes workflows or local actions waits for approval before
-it can use the repository's secrets.
-
-Whenever g1t runs a mirror's workflows, their results show on the commit on
-GitHub too, as commit statuses named `g1t / <workflow> / <event>`, such as
-`g1t / CI / push`. This needs the Commit statuses permission on g1t's GitHub
-App; turn it off with **Report checks to GitHub** in the mirror's settings.
-See [Checks on GitHub](/guides/mirroring/#checks-on-github).
-
 Then add your [secrets and variables](#secrets-and-variables): GitHub never
 gives their values out, so they cannot be copied across.
 
@@ -606,8 +580,10 @@ GitHub, where `uses:` actions and the setup actions' downloads come from,
 the toolchains' download sites (`nodejs.org`, `go.dev`,
 `static.rust-lang.org`), and the public container registries (Docker Hub,
 GitHub's, Quay, and `mirror.gcr.io`, the mirror of Docker Hub that a job's
-Engine asks first). A request anywhere else gets `403` with
-the reason. To reach another host, someone with the Maintain [role](/guides/access-and-roles/) or
+Engine asks first). A request anywhere else gets `403`, and its status
+line names the host (`403 Forbidden by g1t guardrails: example.com is not
+an allowed domain`), so even a tool that reports only the status says which
+host to allow. To reach another host, someone with the Maintain [role](/guides/access-and-roles/) or
 higher adds it to the project's
 allowed domains under **Settings → Guardrails**; a project whose guardrails
 turn the network restriction off runs its jobs with an open network.
@@ -618,6 +594,22 @@ environments that need it: `api.cloudflare.com | deploy.yml | production`
 lets only `deploy.yml`'s jobs with `environment: production` reach it.
 Agents never reach those hosts, and neither do runs of pull requests from
 forks. See [workflow-only domains](/guides/guardrails/#workflow-only-domains).
+
+### Brokered secrets
+
+A secret a job uses only to call an API can be brokered: the job gets a
+stand-in (`g1tsec_…`) in place of `${{ secrets.KEY }}`, and g1t puts the
+real value on the job's requests to the hosts the secret names as they
+leave its sandbox, in headers (Basic auth included) and the query string.
+The value never enters the job, so neither its steps nor a compromised
+dependency can read it. A stand-in sent to any other host goes as it is,
+and the log says so once. This works on g1t's machines, whether the
+project's network is restricted or open; a job on a self-hosted runner
+gets the stand-in too, never the value, and its log warns that it will
+not work there yet. A secret the job must read itself (a database
+password over raw TCP, a signing key, a key to files it decrypts) cannot
+be brokered. See
+[brokered secrets](/guides/secrets-and-variables/#brokered-secrets).
 
 g1t does not run cryptocurrency miners: a step that names one (`xmrig`,
 a `stratum+tcp://` pool, `--donate-level`) is not run, and a job that
@@ -1520,6 +1512,11 @@ A job output that holds a secret in any of those forms is left out, with
 a warning in the log, since outputs go to other jobs and to the run's page.
 A value of one character is not masked: it would hide that character
 everywhere.
+
+A [brokered secret](#brokered-secrets)'s stand-in is masked the same way.
+Its real value never reaches the job, so the job cannot mask it; g1t
+masks it in the log as the log arrives, should an answer have carried it
+in.
 
 ## Pull requests
 

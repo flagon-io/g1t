@@ -35,6 +35,10 @@ use process::{Commands, Ended};
 use report::{Api, Log};
 
 const TEMP: &str = "/home/runner/_temp";
+/// Set to `1` by the self-hosted runner: the job's token is spent on its
+/// spec, and the harness carries on with the one that replaces it
+/// (`report::Api::spec`). A `G1T_` variable, so no step sees it.
+pub(crate) const ROTATE_TOKEN: &str = "G1T_ROTATE_JOB_TOKEN";
 
 /// Who is running steps: the job itself, or a composite action inside it.
 #[derive(Clone, Default)]
@@ -1209,14 +1213,20 @@ fn run_job(job: &mut Job) {
 }
 
 pub(crate) fn main() -> i32 {
-    let api = match (crate::env("G1T_API"), crate::env("ACTIONS_JOB"), crate::env("ACTIONS_TOKEN")) {
+    let mut api = match (crate::env("G1T_API"), crate::env("ACTIONS_JOB"), crate::env("ACTIONS_TOKEN")) {
         (Ok(base), Ok(job), Ok(token)) => Api { base, job, token },
         _ => {
             eprintln!("g1t-runner: G1T_API, ACTIONS_JOB and ACTIONS_TOKEN are needed");
             return 2;
         }
     };
-    let spec = match api.spec() {
+    // A self-hosted runner asks for the token to be spent on the spec
+    // (selfhosted/exec.rs): there, the token it was given sits where the
+    // computer can see it (a Windows job's script, a container's
+    // environment). g1t's own sandboxes keep theirs to report a sandbox
+    // that stopped, and do not ask.
+    let rotate = std::env::var(ROTATE_TOKEN).is_ok_and(|v| v == "1");
+    let spec = match api.spec(rotate) {
         Ok(spec) => spec,
         Err(error) => {
             eprintln!("g1t-runner: could not fetch the job: {error:#}");

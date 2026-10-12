@@ -2,8 +2,7 @@
  * Agents know their teammates (docs.g1t.sh/guides/people-and-teams/,
  * "What agents are told"): every turn, an agent is told the visible teams
  * it is on, from the team pages: who leads each, who is on it and what
- * they own, who reports to whom, who is around now, and who to page when
- * a person is needed. It also carries the teams' budgets, which cap what
+ * they own, who is around now, and who to page when a person is needed. It also carries the teams' budgets, which cap what
  * the team's agents spend together in a month.
  *
  * `teamsSection` and `teamBudgetBlock` are pure, so they are tested on
@@ -112,7 +111,6 @@ export function teamsSection(selfId: string, here: TeamsHere | null, now: Date):
       const role = [person.title, team.lead?.kind === "user" && team.lead.username === person.username ? "the lead" : null, person.maintainer ? "a maintainer" : null].filter(Boolean);
       if (role.length) bits.push(role.join(", "));
       if (person.owns.length) bits.push(`owns ${person.owns.join(", ")}`);
-      if (person.manager) bits.push(`reports to @${person.manager}`);
       const shows = showing(presence.get(person.user_id), person.timezone, now, known);
       const time = localTime(person.timezone, now);
       const now_ = [shows, time ? `it's ${time} for them` : null].filter(Boolean).join("; ");

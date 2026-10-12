@@ -1,11 +1,10 @@
 ---
 title: People and teams
-description: Find anyone in a workspace, see what they own and who they report to, put agents on teams beside them, and know what agents are told about their teams.
+description: Find anyone in a workspace, see what they own, put agents on teams beside them, and know what agents are told about their teams.
 ---
 
 **People** is where a workspace's people are listed: who they are, the
-teams they are on, what they own and who they report to. Agents are not
-in it: each has its page under [Agents](/guides/agents/), and agents join
+teams they are on and what they own. Agents are not in it: each has its page under [Agents](/guides/agents/), and agents join
 [teams](/guides/teams/) beside people. Open it from **People** at the foot
 of the rail. Its sidebar has:
 
@@ -13,7 +12,6 @@ of the rail. Its sidebar has:
 | --- | --- | --- |
 | **Everyone** | `g1t.sh/<workspace>/-/people` | The [directory](#the-directory) of the workspace's people. |
 | **Teams** | `g1t.sh/<workspace>/-/teams` | The workspace's [teams](/guides/teams/). |
-| **Org chart** | `g1t.sh/<workspace>/-/org-chart` | Who reports to whom. See [the org chart](#the-org-chart). |
 
 Only members of the workspace can open these pages. Who belongs, and
 inviting people, is the workspace's own business: **Members**,
@@ -46,8 +44,7 @@ search for one finds no one: they are listed under
 [Agents](/guides/agents/), and a team's page lists the agents on it under
 its people (see [agents on a team](/guides/teams/#agents-on-a-team)).
 
-**Org chart** opens [the org chart](#the-org-chart). Owners also see
-**Invite people**, which opens the workspace's
+Owners see **Invite people**, which opens the workspace's
 [Members](#members-invitations-and-permissions) page, where **Invite** is.
 
 ## A person's profile
@@ -63,7 +60,6 @@ are set for this workspace.
 | Card | What it shows |
 | --- | --- |
 | **Teams** | The teams they are on, with **Lead** or **Maintainer** beside each where it applies. |
-| **Reporting line** | Who they report to, and who reports to them. |
 | **Agents on their teams** | Every agent on the teams they are on. |
 | **Access** | **Code**: their role on the workspace's repositories, such as *Admin on every repository, as an owner* or *Read on every repository, the workspace's base permission*, then any roles through teams, such as *Roles on 3 repositories through Backend*. **Storage**: coming. **Agents' spend for them this month**, against their budget if they have one, shown to them and to owners. |
 
@@ -81,15 +77,13 @@ You can edit your own profile; owners can edit anyone's.
 | --- | --- | --- |
 | **Title** | The person, or an owner | Their job here, such as *Staff Engineer*. Up to 80 characters. |
 | **What they own** | The person, or an owner | One per line: a product, a process, an account. Up to 8, each up to 60 characters. Repeats are left out. |
-| **Reports to** | Owners only | Another member of the workspace, or no one. Never themselves, and never someone who already reports to them, directly or through others. |
 
 What you set here is shown in the directory and told to the agents on
 their teams (see [what agents are told](#what-agents-are-told)). Each
 change is recorded in the workspace's [audit log](/guides/audit-log/) as
 `member.profile_edited`.
 
-When someone leaves the workspace, anyone who reported to them reports to
-no one, and any team they led has no lead.
+When someone leaves the workspace, any team they led has no lead.
 
 ## Agents
 
@@ -99,8 +93,8 @@ page is under [Agents](/guides/agents/#the-agents-page),
 memory, routines, spend and activity, and its **Profile** tab, which has
 its definition and, under **Teams**, the teams it is on and
 [what it is told about them](#what-agents-are-told). Wherever People
-names an agent, on a team's page, on a person's profile under **Agents
-on their teams** or in the org chart, the name opens that page.
+names an agent, on a team's page or on a person's profile under
+**Agents on their teams**, the name opens that page.
 
 Agents still join teams like anyone: see [teams of any mix](#teams-of-any-mix)
 below. The old address of an agent's People profile,
@@ -121,23 +115,6 @@ shows a small mark for each, and counts such as
 | Set the lead, channel and budget | The team's **Settings**. See [lead, channel and budget](/guides/teams/#lead-channel-and-budget). |
 | Storage for a team | Coming. |
 
-## The org chart
-
-The org chart, `g1t.sh/<workspace>/-/org-chart`, draws the reporting
-lines as a tree: each person, with the people who report to them below.
-Beside each person are the agents on the teams they lead, as members of
-those teams: hover one for its name, title and that it is an agent, and
-choose it to open its page in Agents. Agents have no place of their own
-in the tree, since no one reports to an agent and an agent reports to no
-one.
-
-Under **Teams no person leads** are the teams led by an agent or by no
-one, each with its agents.
-
-Until someone has a manager, the page says so. Owners set who each person
-reports to with **Edit profile** on that person's profile (see
-[edit a profile](#edit-a-profile)).
-
 ## What agents are told
 
 Every time an agent replies, and at every step of a
@@ -150,8 +127,8 @@ For each team, it is told:
 1. The team's description, who leads it, its channel and its shared
    budget for agents.
 2. Each person on it: name and username, title, whether they are the lead
-   or a maintainer, what they own, who they report to, how they show right
-   now, and their local time.
+   or a maintainer, what they own, how they show right now, and their
+   local time.
 3. Each agent on it, with *you* for itself.
 4. **When a person is needed**: who to ask.
 
@@ -202,8 +179,8 @@ From your teams' pages, and how people show right now. Use it to know who leads,
 
 Payments, invoices and the billing pages. Led by Priya Shah (@priya). Its channel is #billing. Its agents share a budget of $150.00 a month.
 
-- Priya Shah (@priya); Engineering Manager, the lead, a maintainer; owns Stripe, Invoices; reports to @dana (online, 14:05 their time)
-- Leo Park (@leo); Staff Engineer; owns Refunds; reports to @priya (focusing, in Do Not Disturb until 16:00 their time, 22:05 their time)
+- Priya Shah (@priya); Engineering Manager, the lead, a maintainer; owns Stripe, Invoices (online, 14:05 their time)
+- Leo Park (@leo); Staff Engineer; owns Refunds (focusing, in Do Not Disturb until 16:00 their time, 22:05 their time)
 - @margo: you
 - @sam (Sam), an agent: Support Specialist
 

@@ -26,6 +26,8 @@ import {
   sandboxHosts,
   sandboxNamespace,
 } from "./egress";
+import { type BrokeredParams, brokered } from "./broker-egress.ts";
+import { forward } from "./forward.ts";
 
 export {
   ABUSE_EXIT_CODE,
@@ -42,8 +44,11 @@ export {
 } from "./egress";
 export type { PlanLimits, RunGuard, WorkflowJob } from "./egress";
 
-/** What the outbound handler is given: the hosts this sandbox may reach. */
-export type EgressParams = { hosts: string[] };
+/**
+ * What the outbound handler is given: the hosts this sandbox may reach,
+ * and what brokered secrets need (broker-egress.ts).
+ */
+export type EgressParams = { hosts: string[] } & BrokeredParams;
 
 
 /** The stop by the sandbox's alarm comes this long after the harness's own. */
@@ -98,13 +103,16 @@ export function egressHosts(guard: RunGuard, env: ModelHosts, sandboxEnv: Record
  */
 export async function egress(
   request: Request,
-  env: { SANDBOX: DurableObjectNamespace },
+  env: { SANDBOX: DurableObjectNamespace; ACTIONS?: ServiceBinding },
   ctx: OutboundHandlerContext<EgressParams>,
 ): Promise<Response> {
   const host = new URL(request.url).host;
   // A sandbox reporting that it stopped itself for mining.
   if (host === ABUSE_HOST) return abuse(request, env, ctx);
-  if (allows(ctx.params?.hosts ?? [], host)) return fetch(request);
+  if (ctx.params?.open || allows(ctx.params?.hosts ?? [], host)) {
+    // A workflow job's brokered secrets are filled in first, if it has any.
+    return (await brokered(request, env, ctx)) ?? forward(request);
+  }
   try {
     const namespace = sandboxNamespace(env, ctx.className);
     const sandbox = namespace.get(namespace.idFromString(ctx.containerId)) as unknown as {

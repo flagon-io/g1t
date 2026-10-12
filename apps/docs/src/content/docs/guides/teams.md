@@ -15,7 +15,7 @@ review a pull request and it decides who looks.
 Only members of a workspace, and its own agents, can be in its teams.
 Someone who leaves the workspace leaves all of its teams with it.
 
-For the workspace's directory, profiles and org chart, see
+For the workspace's directory and profiles, see
 [people and teams](/guides/people-and-teams/).
 
 ## Create a team
@@ -182,8 +182,8 @@ work. See [how limits stack](/guides/agent-budgets/#how-limits-stack).
 
 Every agent on a visible team is told about it every time it replies and
 at every session step: its description, lead, channel and budget, each
-person with their title, what they own, who they report to, whether they
-are around and their local time, and the team's other agents. The
+person with their title, what they own, whether they are around and
+their local time, and the team's other agents. The
 **People and agents** tab shows the team's part of it, exactly as the
 agents get it, under **What the agents on** *team* **know about it**.
 

@@ -852,9 +852,15 @@ mod tests {
     #[test]
     fn the_image_turns_off_every_way_to_windows() {
         let conf = WSL_CONF.replace(' ', "");
-        for setting in ["[automount]\nenabled=false", "mountFsTab=false", "[interop]\nenabled=false", "appendWindowsPath=false", "default=root"] {
+        for setting in ["[automount]\nenabled=false", "mountFsTab=false", "[interop]\nenabled=false", "appendWindowsPath=false", "[user]\ndefault=sandbox"] {
             assert!(conf.contains(setting), "{setting}");
         }
+        // What opens the distribution without naming a user is not root;
+        // the launcher names root on every call (wsl.rs).
+        assert!(!conf.contains("default=root"));
+        let dockerfile = include_str!("../../../../../deploy/sandbox/Dockerfile");
+        assert!(dockerfile.contains("useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin sandbox"));
+        assert!(dockerfile.contains("passwd --lock sandbox"));
     }
 
     #[test]

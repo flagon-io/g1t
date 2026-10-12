@@ -244,7 +244,7 @@ impl Work {
     async fn reportable(&self, path: &RepoPath, actor: &User) -> Result<Outcome<Repo>> {
         let repo = check!(self.repo(path, &Some(actor.clone())).await?);
         check!(allowed(Some(actor), &repo, Capability::Push));
-        check!(crate::retired::not_archived(&repo));
+        check!(crate::retired::writable(&repo));
         Ok(Outcome::Ok(repo))
     }
 

@@ -67,10 +67,6 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Permissions",
     about: "Who may do what in the workspace, part by part: repositories, teams, chat, artifacts, agents, deployments and packages. Owners only.",
   },
-  "org-chart": {
-    title: "Org chart",
-    about: "Who reports to whom, with each team's agents beside the person who leads it.",
-  },
   projects: {
     title: "Projects",
     about: "Everything the workspace builds and runs. Search, filter and sort them, and pin the ones you use most to keep them in your sidebar.",

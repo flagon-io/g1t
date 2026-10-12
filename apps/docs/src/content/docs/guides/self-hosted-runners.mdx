@@ -313,6 +313,62 @@ does the same.
   run on a Mac or a Linux machine without Sysbox. Windows is where the
   sandbox has been checked end to end.
 
+### What your computer can see
+
+The sandbox keeps jobs from reaching your computer. It does not keep your
+computer from looking at the sandbox, and so at what a job has while it
+runs:
+
+- **A job's log and secrets go from inside the sandbox straight to g1t.**
+  The runner inside fetches the job, its secrets and its `G1T_TOKEN`
+  itself, and sends its log back the same way, masked. None of it passes
+  through a log or file of your computer's.
+- **Anything running as your account can look inside a running
+  sandbox**, as you can: open the WSL distribution with `wsl -u root`,
+  run a command in a Windows Sandbox, or read the VM's disk. So can an
+  administrator, root in another WSL distribution (all of WSL 2 shares one
+  VM), and on Linux with Sysbox anyone in the `docker` group. Don't run a
+  [host-mode](#host-mode-is-deprecated) runner, or software you don't
+  trust, under the account the sandbox runs as: what its jobs run could
+  read the sandbox's runner credentials and the secrets of the job
+  running in it. `g1t-runner sandbox status` warns when it finds a
+  host-mode runner registered for the same account (in `~/.g1t-runner`,
+  `G1T_RUNNER_DIR`, or the desktop app's folder for running jobs directly
+  on the computer). Remove it with `g1t-runner remove --dir <its folder>`,
+  or register it under another account.
+- **The job's token on your computer is spent after its first use.** A
+  workflow job reaches its runner with a token of its own, which sits
+  where your computer can see it: in a Windows job's script, in the job
+  folder Windows Sandbox reads, and in a container's environment. The
+  first thing the runner in the sandbox does is fetch the job with it,
+  and g1t answers with a new token that only the sandbox has; the first
+  stops working at once for everything that can be asked through g1t's
+  API (inside g1t, only the lookup of [brokered
+  secrets](/guides/secrets-and-variables/#brokered-secrets) still takes it, and that is not reachable
+  from your computer or a job). A copy left
+  behind can't fetch the job, its secrets or a `G1T_TOKEN` again. A job's
+  folder is deleted when the job ends, and a runner that was stopped
+  mid-job (a crash, or `taskkill`) deletes what it left when it next
+  starts.
+- **The registration token goes once the runner has registered.** It is
+  kept only until the runner inside has registered with it; then the
+  launcher takes it out of the VM's seed disk on macOS and Linux, and the
+  sandbox out of its own settings. On Windows, an `update` keeps the
+  runner's registration on your computer only while the VM is swapped.
+- **The state folders are yours alone.** The runner's folder
+  (`~/.g1t-runner`, `--dir` or `G1T_RUNNER_DIR`) and the sandbox's
+  (`--state-dir`) hold the runners' credentials, a Windows job's script
+  while it runs, and the VM's disk. On macOS and Linux they are made
+  `0700` and their files `0600`. On Windows a folder in your profile is
+  already yours alone; one elsewhere, such as `C:\runner`, would let every
+  user of the computer read it, so the runner makes it private (you,
+  SYSTEM and Administrators, and nothing inherited from the folder
+  above). If it can't, it refuses to start and says how to fix it.
+- **On Windows, opening the sandbox's distribution without naming a user**
+  (Explorer at `\\wsl.localhost\g1t-sandbox`, or `wsl -d g1t-sandbox`)
+  gets a locked account with no shell, which can't read the runner's
+  registration. The launcher names root itself for what it does there.
+
 ### The status as JSON
 
 `g1t-runner sandbox status --json` prints one JSON object, which [the
@@ -341,7 +397,8 @@ the same object with `--json` when they are done, and exit 1 with
       "cause": "Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).",
       "fix": "On Windows 11 Pro, Enterprise or Education, turn on Windows Sandbox under Settings, System, Optional features, More Windows features, then restart." }
   ],
-  "state_dir": "C:\\Users\\you\\.g1t-runner\\sandbox"
+  "state_dir": "C:\\Users\\you\\.g1t-runner\\sandbox",
+  "warnings": []
 }
 ```
 
@@ -354,6 +411,7 @@ the same object with `--json` when they are done, and exit 1 with
 | `error` | A sentence for a person when something is wrong, or null. |
 | `capabilities` | Each kind of job the computer can run sandboxed: `linux`, and `windows` or `macos`. `available` says whether it can be had here; when not, `cause` says why and `fix` what to do. Each has its own `state`, `job` and `runner_version`. A native one whose runner didn't start is in `error`, with why in `cause`. |
 | `turned_off` | On each capability: someone stopped it (`down --only`, `--no-native`). Its `state` is then `stopped`: stopped by a person, not failing, and nothing in `error`. |
+| `warnings` | Sentences about what on the computer weakens the sandbox ([what your computer can see](#what-your-computer-can-see)): a host-mode runner registered for the same account, or a state folder other users can read. Empty when nothing does; left out by earlier versions of `g1t-runner`. `status` without `--json` prints each as a line starting `Warning:`. |
 
 Fields are only added; `schema` changes if one changes meaning.
 
@@ -661,7 +719,10 @@ so you can see how much ran there.
   given and remove itself, and nothing else; every other endpoint refuses
   it. It is kept only as a hash on g1t's side, rotates every day, and stops
   working the moment the runner is removed. It is never given to a job:
-  each job gets only its own short-lived token.
+  each job gets only its own short-lived token, which the job spends on
+  fetching itself and replaces with one only the job has. The runner's
+  folder is its owner's alone, and the runner refuses to start in one
+  other users can read ([what your computer can see](#what-your-computer-can-see)).
 - **Isolation**: run the runner's image under Sysbox. Each job then gets
   a container of its own inside the runner's container, removed after,
   and neither reaches the machine. A job with `--no-docker` runs as the
