@@ -383,6 +383,8 @@ export function reposClient(service: ServiceBinding): ReposApi {
     setVisibility: (actor, path, isPrivate, confirm) => call("set_visibility", { actor, path, isPrivate, confirm }),
     setDefaultBranch: (actor, path, branch) => call("set_default_branch", { actor, path, branch }),
     renameBranch: (actor, path, from, to) => call("rename_branch", { actor, path, from, to }),
+    createBranch: (actor, path, name, from = "") => call("create_branch", { actor, path, name, from }),
+    removeBranch: (actor, path, branch, head) => call("remove_branch", { actor, path, branch, head }),
     resolveBranch: (repoId, branch) => call("resolve_branch", { repoId, branch }),
     statusById: (id) => call("status_by_id", { id }),
     storageOptions: () => call("storage_options", {}),

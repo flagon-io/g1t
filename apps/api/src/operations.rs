@@ -143,6 +143,8 @@ pub enum Op {
     TransferRepo,
     RenameRepo,
     RenameBranch,
+    CreateBranch,
+    DeleteBranch,
     ArchiveRepo,
     UnarchiveRepo,
     SetRepoVisibility,
@@ -711,7 +713,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 380] = [
+    pub const ALL: [Op; 382] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -743,6 +745,8 @@ impl Op {
         Op::TransferRepo,
         Op::RenameRepo,
         Op::RenameBranch,
+        Op::CreateBranch,
+        Op::DeleteBranch,
         Op::ArchiveRepo,
         Op::UnarchiveRepo,
         Op::SetRepoVisibility,
@@ -1132,6 +1136,8 @@ impl Op {
             Op::TransferRepo => "transfer_repo",
             Op::RenameRepo => "rename_repo",
             Op::RenameBranch => "rename_branch",
+            Op::CreateBranch => "create_branch",
+            Op::DeleteBranch => "delete_branch",
             Op::ArchiveRepo => "archive_repo",
             Op::UnarchiveRepo => "unarchive_repo",
             Op::SetRepoVisibility => "set_repo_visibility",
@@ -1396,6 +1402,12 @@ impl Op {
             }
             Op::RenameBranch => {
                 "Rename a branch. Needs the Write role or higher; the default branch, which stays the default, needs the Admin role. Open pull requests from the branch follow it, and web addresses that name the old branch redirect until a branch of that name is made again. Git remotes do not follow: fetch, then rename or re-track the branch in your clone. Give a branch with slashes URL-encoded in the path, e.g. feature%2Flogin."
+            }
+            Op::CreateBranch => {
+                "Make a branch at another branch, a tag or a commit (from; the default branch when left out). Needs the Write role or higher, and the repository's rules for creating the branch hold. The name may not be taken, and may not be a folder of another branch's name or hold one (feature cannot sit beside feature/login). To restore a deleted branch, make it again at the commit delete_branch answered with. Returns the new branch and the commit it points to."
+            }
+            Op::DeleteBranch => {
+                "Delete a branch. Needs the Write role or higher, and the repository's rules for deleting the branch hold; the default branch is never deleted. Give head, the commit you saw it at, to leave it alone if someone has pushed since. Returns the branch as it was: its commits stay in the repository, so create_branch with that commit as from restores it. Open pull requests from it can no longer be updated or merged until it is back. Give a branch with slashes URL-encoded in the path, e.g. feature%2Flogin."
             }
             Op::ArchiveRepo => {
                 "Archive a repository: make it read-only. Needs the Admin role. Pushes and merges are refused, issues and pull requests are locked, and agents and workflows do not run. It can still be read, cloned and searched, and its deployments keep serving. unarchive_repo makes it writable again."
@@ -2210,6 +2222,34 @@ impl Op {
                     "new_name": { "type": "string", "description": "What to call it." },
                 }),
                 &["repo", "branch", "new_name"],
+            ),
+            Op::CreateBranch => object(
+                json!({
+                    "repo": repo_schema(),
+                    "name": {
+                        "type": "string",
+                        "description": "The new branch's name, e.g. \"feature/login\".",
+                    },
+                    "from": {
+                        "type": "string",
+                        "description": "The branch, tag or commit to start it from. The default branch when left out.",
+                    },
+                }),
+                &["repo", "name"],
+            ),
+            Op::DeleteBranch => object(
+                json!({
+                    "repo": repo_schema(),
+                    "branch": {
+                        "type": "string",
+                        "description": "The branch to delete, e.g. \"feature/login\". URL-encode slashes in the path.",
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "The commit you saw it at. If it has moved since, it is left alone (409).",
+                    },
+                }),
+                &["repo", "branch"],
             ),
             Op::ArchiveRepo | Op::UnarchiveRepo | Op::RestoreRepo => repo_only(),
             Op::SetRepoVisibility => object(
@@ -4197,6 +4237,34 @@ impl Op {
                         "path": repo,
                         "from": text(input, "branch"),
                         "to": text(input, "new_name"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::CreateBranch => {
+                pass(
+                    repos,
+                    "create_branch",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "name": text(input, "name"),
+                        "from": text(input, "from"),
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::DeleteBranch => {
+                pass(
+                    repos,
+                    "remove_branch",
+                    &json!({
+                        "actor": actor(),
+                        "path": repo,
+                        "branch": text(input, "branch"),
+                        "head": optional_text(input, "head"),
                         "surface": services.audit.surface,
                     }),
                 )

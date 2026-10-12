@@ -376,7 +376,7 @@ mod tests {
             }
         }
         // The writers known today, so that the check is seen to find them.
-        for expected in ["create", "delete_branch", "land", "update_pull_branch", "mirror", "rename_branch", "forks_follow", "keep_head", "revive"] {
+        for expected in ["create", "delete_branch", "land", "update_pull_branch", "mirror", "rename_branch", "create_branch", "remove_branch", "forks_follow", "keep_head", "revive"] {
             assert!(
                 all.iter().any(|function| function.contains(&format!("fn {expected}("))),
                 "{expected} not found among {all:?}"

@@ -19,10 +19,13 @@ function drift({ ahead, behind }: Drift, main: string): string {
 
 export type ActiveBranch = {
   name: string;
+  /** The commit it points to. */
+  head: string;
   commit: { hash: string; message: string; author: CommitPerson; coAuthors: CommitPerson[]; at: string } | null;
   /** Null when the two histories were not read far enough to meet. */
   drift: Drift | null;
-  pull: { number: number; title: string; checkStatus: Pull["checkStatus"]; draft: boolean } | null;
+  /** The open pull request from it, else the newest merged or closed one. */
+  pull: { number: number; title: string; checkStatus: Pull["checkStatus"]; draft: boolean; status: Pull["status"] } | null;
   preview: string | null;
 };
 

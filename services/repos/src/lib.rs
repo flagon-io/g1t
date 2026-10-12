@@ -2610,6 +2610,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "set_visibility" => reply(&repos.set_visibility(args(body)?).await?),
         "set_default_branch" => reply(&repos.set_default_branch(args(body)?).await?),
         "rename_branch" => reply(&repos.rename_branch(args(body)?).await?),
+        "create_branch" => reply(&repos.create_branch(args(body)?).await?),
+        "remove_branch" => reply(&repos.remove_branch(args(body)?).await?),
         "resolve_branch" => reply(&repos.resolve_branch(args(body)?).await?),
         "status_by_id" => reply(&repos.status_by_id(args(body)?).await?),
         "resolve_path" => {

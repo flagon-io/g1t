@@ -160,16 +160,87 @@ git switch -c my-change
 git push origin my-change
 ```
 
+### The Branches page
+
 A repository's **Branches** tab, `g1t.sh/<workspace>/<repo>/branches`, lists
-every branch: the default one first, then those with a commit in the last 90
-days (**Active**), then the rest (**Stale**). Each shows its last commit, how
-many commits it is ahead of and behind the default branch, the pull request
-open on it with its checks, and its preview when it has one. A branch with
-no pull request links to opening one; one with nothing the default branch
-lacks (ahead `0`) says **Nothing to merge** instead. The counts are exact,
-merges included. g1t reads up to 1,000 commits of each history to find
-where the two meet; a branch that left the default branch further back
-than that shows no counts. Search narrows the list by name.
+its branches under five tabs, kept in the address as `?tab=`:
+
+| Tab | What it lists |
+| --- | --- |
+| **Overview** | The default branch, then the first five of each of the others below that has any: yours, active and stale, each with a link to the rest. |
+| **Yours** (`?tab=yours`) | Branches whose latest commit is yours. |
+| **Active** (`?tab=active`) | Branches with a commit in the last 90 days. |
+| **Stale** (`?tab=stale`) | Branches with no commit in the last 90 days. |
+| **All** (`?tab=all`) | Every branch but the default, newest commit first. |
+
+**Search branches** narrows any tab by name (`?q=`). Each branch shows:
+
+| Column | What it says |
+| --- | --- |
+| **Branch** | Its name, linked to its files, with a button that copies it; a globe when it has a preview. |
+| **Updated** | Who made its latest commit, and when, linked to the commit. |
+| **Check status** | All of its latest commit's checks at once: a check when they passed, a cross when one failed, a dot while any runs. Choose it to see each. |
+| **Behind / Ahead** | How many commits the default branch has that it lacks, and the other way round, with bars drawn against the largest count shown. The counts are exact, merges included. g1t reads up to 1,000 commits of each history to find where the two meet; a branch that left the default branch further back than that shows no counts. |
+| **Pull request** | Its open pull request, else its newest merged or closed one, with its state and number. |
+
+On a phone, the columns fold under the name. Up to 60 branches are read for
+a page, those with an open pull request first; search finds the rest.
+
+People with the Write role or higher can change branches from the page:
+
+- **New branch** makes a branch from another branch, or from a tag or a
+  commit, which you type in.
+- The trash button deletes a branch. A branch with commits the default
+  branch lacks, or whose counts could not be read, asks first; a merged
+  one (nothing ahead, or its pull request merged) goes at once. It stays in
+  the list as **Deleted**, with **Restore**, which makes it again at the
+  same commit, until you leave the page. While it is gone, a pull request
+  from it can be neither updated nor merged. A deletion is listed in the
+  repository's **Activity** with the commit it pointed to, so it can still
+  be restored later from the API.
+- The **⋯** menu opens a **New pull request** (the compare page against the
+  default branch), the branch's **Activity**, the **View rules** that hold
+  for it (Admin), and **Rename branch**. See
+  [rename a branch](/guides/managing-repositories/#rename-a-branch) for what
+  renaming does to pull requests, addresses and clones.
+
+The default branch is never deleted, and renaming it needs Admin.
+[Rules](/guides/rules/) hold for every one of these changes: a ruleset that
+restricts creating, deleting or renaming a branch refuses it here as it
+would a push, and says why. When nothing protects the default branch,
+people with the Admin role see a note saying so, with **Protect this
+branch**, which starts a [ruleset](/guides/rules/), and **Dismiss**, which
+this browser remembers for them and that repository. An archived
+repository, or a mirror that g1t has not taken over, offers none of these
+changes.
+
+From the API, a person's token with `repo:write` can do the same:
+
+| Route | MCP | What it does |
+| --- | --- | --- |
+| [`POST /repos/{owner}/{name}/branches`](/reference/api/repositories/create-branch/) | `repository` `create_branch` | Makes branch `name` at `from` (a branch, tag or commit; the default branch when left out). Answers with its `name` and `hash`. |
+| [`DELETE /repos/{owner}/{name}/branches/{branch}`](/reference/api/repositories/delete-branch/) | `repository` `delete_branch` | Deletes it and answers with the `hash` it pointed to. `?head=<sha>` leaves it alone (`409`) if it has moved since. |
+| [`POST /repos/{owner}/{name}/branches/{branch}/rename`](/reference/api/repositories/rename-branch/) | `repository` `rename_branch` | Renames it to `new_name`. |
+
+To restore a deleted branch, make it again with the `hash` deleting it
+answered with as `from`. Encode a branch name with slashes as one path
+segment: `feature/login` is `feature%2Flogin`.
+
+```sh
+curl -X DELETE https://api.g1t.sh/repos/acme/rocket/branches/feature%2Flogin \
+  -H "Authorization: Bearer $G1T_TOKEN"
+# {"name": "feature/login", "hash": "9f2c4e1b…"}
+
+curl -X POST https://api.g1t.sh/repos/acme/rocket/branches \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "feature/login", "from": "9f2c4e1b…"}'
+```
+
+Making a branch sends `git.push`, and deleting one sends `git.deleted`, to
+[webhooks](/guides/webhooks/#events), as a push would; both
+are recorded in the [audit log](/guides/audit-log/) as `branch.created` and
+`branch.deleted`. g1t's token never deletes a branch.
 
 The **Tags** tab lists tags newest first, up to 100, each with its commit
 and a ZIP of its files.

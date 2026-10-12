@@ -115,6 +115,8 @@ pub const TOOLS: &[Tool] = &[
             a("update_release", Op::About(AboutOp::UpdateRelease), "Change a release's title, notes, draft or prerelease"),
             a("delete_release", Op::About(AboutOp::DeleteRelease), "Delete a release; its tag stays"),
             a("rename_branch", Op::RenameBranch, "Rename a branch"),
+            a("create_branch", Op::CreateBranch, "Make a branch at a branch, tag or commit"),
+            a("delete_branch", Op::DeleteBranch, "Delete a branch; make it again at its commit to restore it"),
             a("rename", Op::RenameRepo, "Rename it; old addresses redirect"),
             a("transfer", Op::TransferRepo, "Move it to another workspace you own"),
             a("mirror", Op::Mirrors(MirrorsOp::GetMirror), "Its remotes: what it mirrors or is mirrored to"),

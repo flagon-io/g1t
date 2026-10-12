@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { G1tEvent } from "@g1t/contracts";
 
-import { activityLine, alignWeeks, count, languageBar, licenseLabel, peak } from "./about.ts";
+import { aboutBranch, activityLine, alignWeeks, count, languageBar, licenseLabel, peak } from "./about.ts";
 
 test("a license is named by its SPDX id, or not at all", () => {
   assert.equal(licenseLabel({ spdxId: "MIT", name: "MIT License", path: "LICENSE" }), "MIT license");
@@ -70,4 +70,20 @@ test("pushes, tags, merges and renames are activity", () => {
   assert.deepEqual(activityLine(event("branch.renamed", { from: "master", to: "main" })), { kind: "renamed", from: "master", to: "main" });
   assert.equal(activityLine(event("repo.default_branch_changed", { from: "master", to: "main", renamed: true })), null);
   assert.equal(activityLine(event("issue.opened", { number: 1 })), null);
+});
+
+test("a deleted branch is activity with the commit that restores it; a deleted tag is not", () => {
+  assert.deepEqual(activityLine(event("git.deleted", { ref: "refs/heads/feature/x", before: "abc" })), { kind: "deleted", branch: "feature/x", commit: "abc" });
+  assert.equal(activityLine(event("git.deleted", { ref: "refs/tags/v1", before: "abc" })), null);
+});
+
+test("activity is about a branch when it pushed, deleted, renamed or merged into it", () => {
+  const push = { kind: "push", branch: "feat", commit: "b", before: "a", created: false, defaultBranch: false } as const;
+  assert.equal(aboutBranch(push, "feat", "main"), true);
+  assert.equal(aboutBranch(push, "main", "main"), false);
+  assert.equal(aboutBranch({ kind: "deleted", branch: "feat", commit: "b" }, "feat", "main"), true);
+  assert.equal(aboutBranch({ kind: "renamed", from: "old", to: "feat" }, "old", "main"), true);
+  assert.equal(aboutBranch({ kind: "merge", number: 1, commit: "c" }, "main", "main"), true);
+  assert.equal(aboutBranch({ kind: "merge", number: 1, commit: "c" }, "feat", "main"), false);
+  assert.equal(aboutBranch({ kind: "tag", tag: "v1", commit: "c" }, "feat", "main"), false);
 });

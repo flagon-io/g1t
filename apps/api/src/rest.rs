@@ -300,6 +300,8 @@ pub const ROUTES: &[Route] = &[
         Op::RenameBranch,
         &[],
     ),
+    route("POST", "/repos/:owner/:name/branches", Op::CreateBranch, &[]),
+    route("DELETE", "/repos/:owner/:name/branches/:branch", Op::DeleteBranch, &[("head", "head")]),
     route(
         "GET",
         "/repos/:owner/:name/settings",

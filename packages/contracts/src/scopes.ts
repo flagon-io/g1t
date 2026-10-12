@@ -39,7 +39,7 @@ export type ScopeLevel = "read" | "write" | "run" | "delete" | "admin";
 /** Every scope, grouped by resource, least first. */
 export const SCOPES = [
   { scope: "repo:read", description: "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search" },
-  { scope: "repo:write", description: "Create repositories, rename branches, change how pull requests merge and publish releases" },
+  { scope: "repo:write", description: "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases" },
   { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts" },
   { scope: "code:read", description: "Clone and fetch private repositories with git" },
   { scope: "code:write", description: "Push commits with git" },
@@ -415,6 +415,8 @@ export const OPERATION_SCOPES = [
   ["update_repo_ruleset", "repo:admin"],
   ["delete_repo_ruleset", "repo:admin"],
   ["rename_branch", "repo:write"],
+  ["create_branch", "repo:write"],
+  ["delete_branch", "repo:write"],
   ["rename_repo", "repo:admin"],
   ["transfer_repo", "repo:admin"],
   ["archive_repo", "repo:admin"],

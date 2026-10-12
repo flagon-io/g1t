@@ -1,4 +1,4 @@
-import { GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, Tag as TagIcon } from "lucide-react";
+import { GitBranch, GitBranchMinus, GitBranchPlus, GitCommitHorizontal, GitMerge, Tag as TagIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -10,7 +10,7 @@ import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { requireRepo } from "../../lib/access.server";
-import { ACTIVITY_TYPES, type ActivityLine, activityLine } from "../../lib/about";
+import { ACTIVITY_TYPES, type ActivityLine, aboutBranch, activityLine } from "../../lib/about";
 import { page } from "../../lib/meta";
 import { events, identity } from "../../lib/services.server";
 import { UserCard } from "../../components/user-card";
@@ -23,13 +23,17 @@ const PAGE = 50;
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { repo } = await requireRepo(context, params, "read");
-  const before = new URL(request.url).searchParams.get("before") ?? undefined;
+  const url = new URL(request.url);
+  const before = url.searchParams.get("before") ?? undefined;
+  // One branch's activity (the Branches page links here): each page of
+  // events is read whole and only that branch's lines are kept.
+  const only = url.searchParams.get("branch")?.trim() || null;
   const found = await events
     .list({ repoId: repo.id, types: [...ACTIVITY_TYPES] as EventType[], before, limit: PAGE })
     .catch(() => []);
   const lines = found.flatMap((event) => {
     const line = activityLine(event);
-    return line ? [{ id: event.id, time: event.time, actor: event.actor, line }] : [];
+    return line && (!only || aboutBranch(line, only, repo.defaultBranch)) ? [{ id: event.id, time: event.time, actor: event.actor, line }] : [];
   });
   // Who: people by their name now; g1t as itself.
   const ids = [...new Set(lines.map((line) => line.actor).filter((actor): actor is string => !!actor && actor !== "g1t"))];
@@ -38,6 +42,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     lines: lines.map((line) => ({ ...line, who: line.actor === "g1t" ? "g1t" : line.actor ? (names[line.actor] ?? null) : null })),
     next: found.length === PAGE ? found[found.length - 1].id : null,
     defaultBranch: repo.defaultBranch,
+    branch: only,
   };
 }
 
@@ -71,6 +76,15 @@ function describe(line: ActivityLine, base: string): { icon: ReactNode; text: Re
               </>
             ),
           };
+    case "deleted":
+      return {
+        icon: <GitBranchMinus size={15} />,
+        text: (
+          <>
+            deleted <span className="font-mono text-[0.8125rem] text-fg">{line.branch}</span> at {commit(line.commit)}
+          </>
+        ),
+      };
     case "tag":
       return { icon: <TagIcon size={15} />, text: <>tagged {branch(line.tag)} at {commit(line.commit)}</> };
     case "merge":
@@ -94,16 +108,31 @@ function describe(line: ActivityLine, base: string): { icon: ReactNode; text: Re
 }
 
 export default function ActivityPage({ loaderData, params }: Route.ComponentProps) {
-  const { lines, next } = loaderData;
+  const { lines, next, branch } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">Activity</h2>
-        <p className="mt-1 text-sm text-muted">Pushes, merges, new branches and tags, and branch renames, newest first, by person or agent.</p>
+        <h2 className="text-lg font-semibold tracking-tight">
+          Activity{branch && <> on <span className="font-mono text-base">{branch}</span></>}
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          {branch ? (
+            <>
+              Pushes to it, and when it was made, renamed or deleted, newest first.{" "}
+              <Link to={base + "/activity"} className="text-fg hover:underline">
+                All activity
+              </Link>
+            </>
+          ) : (
+            "Pushes, merges, new and deleted branches, tags, and branch renames, newest first, by person or agent."
+          )}
+        </p>
       </div>
       {lines.length === 0 ? (
-        <EmptyState title="No activity yet">Pushes and merges show here as they happen.</EmptyState>
+        <EmptyState title={branch ? (next ? "Nothing on this branch here" : "No activity on this branch") : "No activity yet"}>
+          {branch && next ? "Nothing in this stretch of the repository's activity was about it. Look further back." : "Pushes and merges show here as they happen."}
+        </EmptyState>
       ) : (
         <Card asChild divided className="overflow-hidden">
           <ul>
@@ -138,7 +167,7 @@ export default function ActivityPage({ loaderData, params }: Route.ComponentProp
       )}
       {next && (
         <div className="flex justify-center">
-          <ButtonLink variant="outline" to={`?before=${encodeURIComponent(next)}`}>
+          <ButtonLink variant="outline" to={`?${branch ? `branch=${encodeURIComponent(branch)}&` : ""}before=${encodeURIComponent(next)}`}>
             Older
           </ButtonLink>
         </div>
