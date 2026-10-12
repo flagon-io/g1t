@@ -161,6 +161,13 @@ is recorded in the workspace's [audit log](/guides/audit-log/) as
 `update_guardrails`, saying which domains were added or removed and what
 they were limited to.
 
+A deploy that signs in to AWS, Google Cloud or Azure with the job's
+[OIDC token](/guides/actions/#oidc-tokens), rather than a key kept in a
+secret, needs its cloud's token service listed here, such as
+`sts.us-east-1.amazonaws.com | deploy.yml | production`. See
+[reaching your cloud](/guides/actions/#reaching-your-cloud) for each
+cloud's hosts.
+
 ## Commands
 
 The agent's harness checks every tool call the agent makes before it runs.

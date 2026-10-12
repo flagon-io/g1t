@@ -1068,6 +1068,37 @@ curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
 | Lifetime | 5 minutes |
 | Audience | What the job asks for; `https://g1t.sh/<owner>` when it asks for none |
 
+A job without `id-token: write` has no `ACTIONS_ID_TOKEN_REQUEST_URL`, so
+a login action says it cannot find one; a token asked for anyway is
+refused with `403` and `This job has no OIDC token`.
+
+### Reaching your cloud
+
+Asking for the token goes to `api.g1t.sh`, which every job reaches. Trading
+it for credentials goes to your cloud's token service, which a job reaches
+only when its project allows it (see [what a job can reach](#what-a-job-can-reach)).
+Add the hosts under **Settings → Guardrails → Workflow-only domains**,
+limited to the workflow and environment that deploy, so agents and other
+workflows never reach them:
+
+```text
+sts.us-east-1.amazonaws.com | deploy.yml | production
+s3.us-east-1.amazonaws.com | deploy.yml | production
+sts.googleapis.com | deploy.yml | production
+iamcredentials.googleapis.com | deploy.yml | production
+login.microsoftonline.com | deploy.yml | production
+management.azure.com | deploy.yml | production
+```
+
+| Cloud | Token exchange | Then |
+| --- | --- | --- |
+| AWS | `sts.<region>.amazonaws.com`, the region `aws-region` names | Each service the job uses, such as `s3.<region>.amazonaws.com`, or `*.amazonaws.com` for all of them |
+| Google Cloud | `sts.googleapis.com`, `iamcredentials.googleapis.com` | Each API the job uses, such as `run.googleapis.com` |
+| Azure | `login.microsoftonline.com` | `management.azure.com`, and each service the job uses |
+
+Without them, the login step fails with `403` and a line naming the host
+that is not allowed.
+
 ### Claims
 
 Each token carries the claims GitHub's do, so trust policies written for
@@ -1121,7 +1152,9 @@ those read g1t's the same way.
    }
    ```
 
-3. Use `aws-actions/configure-aws-credentials@v4` with `role-to-assume`,
+3. Allow `sts.<region>.amazonaws.com`, and what the job deploys to, as
+   [workflow-only domains](#reaching-your-cloud).
+4. Use `aws-actions/configure-aws-credentials@v4` with `role-to-assume`,
    as above.
 
 ### Google Cloud
@@ -1145,7 +1178,9 @@ those read g1t's the same way.
      --member="principalSet://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/g1t/attribute.repository/acme/web"
    ```
 
-3. Use `google-github-actions/auth@v2` with
+3. Allow `sts.googleapis.com` and `iamcredentials.googleapis.com`, and
+   the APIs the job uses, as [workflow-only domains](#reaching-your-cloud).
+4. Use `google-github-actions/auth@v2` with
    `workload_identity_provider: projects/123456789/locations/global/workloadIdentityPools/g1t/providers/g1t`
    and `service_account`. It asks for the provider's own name as the
    audience, which the provider accepts unless you change its allowed
@@ -1169,7 +1204,9 @@ those read g1t's the same way.
    ```
 
 2. Give it a role on what it deploys to, as for any identity.
-3. Use `azure/login@v2` with `client-id`, `tenant-id` and
+3. Allow `login.microsoftonline.com` and `management.azure.com` as
+   [workflow-only domains](#reaching-your-cloud).
+4. Use `azure/login@v2` with `client-id`, `tenant-id` and
    `subscription-id`, and no secret.
 
 A federated credential matches the subject exactly: add one per
@@ -1680,6 +1717,10 @@ job with an `environment:` also makes a deployment to it; see
 [deployments from g1t Actions](/guides/deployments-api/#deployments-from-g1t-actions). See
 [Secrets and variables](/guides/secrets-and-variables/) for how rows,
 environments and the workspace's rows work.
+
+To deploy to AWS, Google Cloud or Azure, or to a server of your own,
+you need no secret at all: give the job `permissions: id-token: write`
+and trade its [OIDC token](#oidc-tokens) for short-lived credentials.
 
 Every job also gets `${{ secrets.G1T_TOKEN }}`, [its own token](#the-jobs-token),
 with `GITHUB_TOKEN` as its alias. A pull request's runs get secrets only

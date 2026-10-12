@@ -1420,4 +1420,31 @@ mod tests {
         assert_eq!(step_timeout(None), Duration::from_secs(6 * 3600));
         assert_eq!(step_timeout(Some(-1.0)), Duration::ZERO);
     }
+
+    /// `core.getIDToken()` reads the OIDC variables from the step's own
+    /// environment, so they have to reach every step's process as the API
+    /// put them in the spec: the URL untouched by path relocation, and the
+    /// token not dropped with the runner's own credentials.
+    #[test]
+    fn a_steps_process_gets_the_oidc_request_variables() {
+        let dir = std::env::temp_dir().join(format!("g1t-oidc-env-{}-{}", std::process::id(), rand_id()));
+        let url = "https://api.g1t.sh/actions/oidc/token?api-version=2.0";
+        let spec = json!({
+            "variables": {
+                "ACTIONS_RUNTIME_TOKEN": "h.p.s",
+                "ACTIONS_ID_TOKEN_REQUEST_URL": url,
+                "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "h.p.s",
+            },
+            "github": {},
+            "event": {},
+            "masks": ["h.p.s"],
+        });
+        let job = setup_in(spec, Api::offline(), dir.join("work"), dir.join("temp")).unwrap();
+        let files = StepFiles::new(&job.temp, "oidc").unwrap();
+        let env = job.process_env(&BTreeMap::new(), &files);
+        assert_eq!(env.get("ACTIONS_ID_TOKEN_REQUEST_URL").map(String::as_str), Some(url));
+        assert_eq!(env.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN").map(String::as_str), Some("h.p.s"));
+        assert_eq!(env.get("ACTIONS_RUNTIME_TOKEN").map(String::as_str), Some("h.p.s"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -205,6 +205,17 @@ pub fn full_claims(mut claims: Value, issuer: &str, audience: &str, jti: &str, n
     claims
 }
 
+/// The audience a job asked for with `audience=` (as `core.getIDToken`
+/// appends it, percent-encoded), or, when it asked for none, the owner's
+/// address on the site, which is the default trust policies expect.
+pub fn audience(url: &worker::Url, site: &str, owner: &str) -> String {
+    url.query_pairs()
+        .find(|(k, _)| k == "audience")
+        .map(|(_, v)| v.into_owned())
+        .filter(|a| !a.trim().is_empty())
+        .unwrap_or_else(|| format!("{site}/{owner}"))
+}
+
 /// The header and claims, base64url-encoded and joined: what is signed.
 pub fn signing_input(kid: &str, claims: &Value) -> String {
     let header = json!({ "typ": "JWT", "alg": "RS256", "kid": kid, "x5t": kid });
@@ -264,15 +275,8 @@ pub async fn handle(request: &Request, env: &Env, services: &Services, path: &st
                     return error(status, &refused.message);
                 }
             };
-            let url = request.url()?;
-            let owner = claims["repository_owner"].as_str().unwrap_or_default().to_owned();
-            let audience = url
-                .query_pairs()
-                .find(|(k, _)| k == "audience")
-                .map(|(_, v)| v.into_owned())
-                .filter(|a| !a.trim().is_empty())
-                // GitHub's default: the owner's address.
-                .unwrap_or_else(|| format!("{}/{owner}", services.addresses.site));
+            let owner = claims["repository_owner"].as_str().unwrap_or_default();
+            let audience = audience(&request.url()?, &services.addresses.site, owner);
             let now = g1t_kit::now_ms() / 1000;
             let jti = g1t_contracts::new_id("oidc", g1t_kit::now_ms());
             let claims = full_claims(claims, &issuer(&api), &audience, &jti, now);
@@ -320,6 +324,21 @@ mod tests {
         let input = signing_input("kid1", &claims);
         let header: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(input.split('.').next().unwrap()).unwrap()).unwrap();
         assert_eq!((header["alg"].as_str(), header["kid"].as_str()), (Some("RS256"), Some("kid1")));
+    }
+
+    #[test]
+    fn the_audience_is_the_one_asked_for_or_the_owners_address() {
+        let url = |q: &str| worker::Url::parse(&format!("https://api.g1t.sh/actions/oidc/token?api-version=2.0{q}")).unwrap();
+        assert_eq!(audience(&url("&audience=sts.amazonaws.com"), "https://g1t.sh", "acme"), "sts.amazonaws.com");
+        // Percent-encoded, as the toolkit sends it.
+        assert_eq!(audience(&url("&audience=api%3A%2F%2FAzureADTokenExchange"), "https://g1t.sh", "acme"), "api://AzureADTokenExchange");
+        assert_eq!(
+            audience(&url("&audience=%2F%2Fiam.googleapis.com%2Fprojects%2F1%2Fproviders%2Fg1t"), "https://g1t.sh", "acme"),
+            "//iam.googleapis.com/projects/1/providers/g1t"
+        );
+        // None, or an empty one: the owner's address.
+        assert_eq!(audience(&url(""), "https://g1t.sh", "acme"), "https://g1t.sh/acme");
+        assert_eq!(audience(&url("&audience="), "https://g1t.sh", "acme"), "https://g1t.sh/acme");
     }
 
     #[test]

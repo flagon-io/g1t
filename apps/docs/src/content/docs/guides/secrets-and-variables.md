@@ -17,6 +17,10 @@ Seeing the list needs the same as changing it: a project's rows, config
 values included, are for Admins of its repository, and the page is not
 shown to anyone else.
 
+A workflow that deploys to AWS, Google Cloud or Azure needs no cloud key
+here: it can sign in with the job's short-lived
+[OIDC token](/guides/actions/#oidc-tokens) instead.
+
 ## A row
 
 | Field | |
