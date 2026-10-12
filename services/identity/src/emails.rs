@@ -303,6 +303,9 @@ impl Identity {
         if parse_noreply(&email).is_some() || email.ends_with("@users.g1t.sh") {
             return Ok(Outcome::fail(FailureCode::Invalid, "That is a g1t noreply address; add an address you receive mail at."));
         }
+        if self.email_blocked(&email).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::suspension::BLOCKED));
+        }
         if let Some(refusal) = self.proof(&a.user.id, &a.reauth).await?.refusal() {
             return Ok(refusal);
         }
@@ -1144,6 +1147,7 @@ impl Identity {
             deletion,
             deleted,
             joined_through: self.shared_source(user_id).await?,
+            suspended: self.user_suspension(user_id).await?,
         }))
     }
 

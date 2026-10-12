@@ -212,6 +212,8 @@ export type AdminWorkspaceDetail = {
   members: AdminMember[];
   /** It can never be deleted, by anyone (identity's `PROTECTED_WORKSPACES`). */
   protected: boolean;
+  /** Set while staff have it suspended. */
+  suspended?: Suspension | null;
 };
 
 /** The most workspaces one `workspaces` call returns. */
@@ -325,6 +327,12 @@ export type InvitePreview = {
  */
 export type SharedInviteSource = { id: string; label: string };
 
+/** Why and since when staff suspended an account or a workspace. */
+export type Suspension = { reason: string; at: string; by: string };
+
+/** An email domain no new account may sign up with; its subdomains too. */
+export type BlockedDomain = { domain: string; reason: string; blockedBy: string; createdAt: string };
+
 /** The most rows one staff listing of invites returns. */
 export const ADMIN_INVITES_LIMIT = 500;
 
@@ -343,6 +351,19 @@ export interface IdentityAdminApi {
   /** Invites, newest first; `query` is a code's start, or part of an email, inviter or redeemer. */
   invites(query?: string | null): Promise<Invite[]>;
   revokeInvite(id: string, staff: string): Promise<Result<Invite>>;
+
+  /**
+   * Suspends an account (by username): it cannot sign in, and its sessions
+   * and tokens stop at once. `suspend: false` lifts it. A reason is required
+   * to suspend.
+   */
+  suspendUser(username: string, suspend: boolean, reason: string, staff: string): Promise<Result<Suspension | null>>;
+  /** Suspends a workspace (by slug): its own tokens stop. Sudo also holds its compute in billing. */
+  suspendWorkspace(slug: string, suspend: boolean, reason: string, staff: string): Promise<Result<Suspension | null>>;
+  /** Email domains no new account may sign up with. */
+  blockedDomains(): Promise<BlockedDomain[]>;
+  /** Blocks (or with `block: false` unblocks) an email domain; returns the list now. */
+  blockDomain(domain: string, block: boolean, reason: string, staff: string): Promise<Result<BlockedDomain[]>>;
 
   /** Workspaces owners deleted that are not purged yet, newest first. */
   deletedWorkspaces(): Promise<DeletedWorkspace[]>;

@@ -54,6 +54,15 @@ roadmap.
   still opens and says so in those sections. A protected workspace (one
   nobody can ever delete: identity's `PROTECTED_WORKSPACES`, and
   flagon-io always) says so beside its name.
+- **Suspend and clean up** (`/workspaces/<slug>/abuse`, linked from a
+  workspace's page): suspend the workspace, with a reason (identity's
+  `admin_suspend_workspace`): its own tokens stop, and a billing hold
+  (`Suspended: <reason>`) stops its runs, checks, deploys, agents, new
+  self-hosted runners and telemetry. Lifting it lifts that hold, never one
+  staff set otherwise. Remove its self-hosted runners one at a time or all
+  at once, which also ends its registration tokens (actions'
+  `admin_runners`, `admin_remove_runners`), and revoke its projects'
+  telemetry ingest tokens. Every change is in sudo's audit log.
 - **Deleted workspaces** (`/workspaces/deleted`, linked from Workspaces):
   workspaces their owners deleted, newest first (`admin_deleted_workspaces`),
   each with who deleted it and when, when it is purged, what went with it
@@ -114,6 +123,14 @@ roadmap.
   first: once the account is purged its page is gone (they stay on
   Deleted workspaces). To undo it all, restore the account first, then
   each workspace, so it comes back with its owner.
+- **Suspending an account**, on a person's page: with a reason, it cannot
+  sign in (with a password or GitHub), is signed out everywhere, and its
+  tokens, SSH keys and git passwords stop until the suspension is lifted
+  (identity's `admin_suspend_user`). Nothing is deleted.
+- **Blocked domains** (`/blocked-domains`, under Platform): email domains,
+  and their subdomains, no new account may sign up with or add, each with
+  a reason (`admin_blocked_domains`, `admin_block_domain`). Accounts
+  already there are not touched.
 - **Deleted accounts** (`/users/deleted`, linked from Workspaces):
   accounts deleted by the person or by staff, newest first
   (`admin_deleted_accounts`), each with who deleted it (the person, or the

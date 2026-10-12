@@ -27,7 +27,13 @@
 		// "Check for new models" on Agents & models: the model proxy's
 		// `Discovery` entrypoint lists each provider's models now and records
 		// them with billing's catalogue. Only bindings reach it.
-		{ "binding": "MODELS", "service": "g1t-models", "entrypoint": "Discovery" }
+		{ "binding": "MODELS", "service": "g1t-models", "entrypoint": "Discovery" },
+		// Suspending a workspace and cleaning up after abuse: its self-hosted
+		// runners (actions' admin_runners and admin_remove_runners), its
+		// projects, and their telemetry ingest tokens.
+		{ "binding": "ACTIONS", "service": "g1t-actions" },
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		{ "binding": "TELEMETRY", "service": "g1t-telemetry" }
 	],
 	"vars": {
 		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.

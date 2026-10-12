@@ -517,6 +517,9 @@ pub struct AdminUser {
     /// "Joined through <label>".
     #[serde(default)]
     pub joined_through: Option<crate::identity::SharedInviteSource>,
+    /// Set while staff have it suspended.
+    #[serde(default)]
+    pub suspended: Option<crate::identity::Suspension>,
 }
 
 /// `admin_remove_email`: staff remove an address from an account, such as

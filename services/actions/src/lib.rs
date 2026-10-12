@@ -311,6 +311,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "runners" => reply(&service.runners(args(body)?).await?),
         "create_registration_token" => reply(&service.create_registration_token(args(body)?).await?),
         "remove_runner" => reply(&service.remove_runner(args(body)?).await?),
+        // Staff only, from sudo: a workspace's runners, and removing them.
+        "admin_runners" => reply(&service.admin_runners(args(body)?).await?),
+        "admin_remove_runners" => reply(&service.admin_remove_runners(args(body)?).await?),
         "runner_groups" => reply(&service.runner_groups(args(body)?).await?),
         "set_runner_group" => reply(&service.set_runner_group(args(body)?).await?),
         "delete_runner_group" => reply(&service.delete_runner_group(args(body)?).await?),

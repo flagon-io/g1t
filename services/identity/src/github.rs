@@ -579,6 +579,9 @@ impl Identity {
             return Ok(Outcome::fail(FailureCode::Invalid, crate::USERNAME_RULES));
         };
         let username = chosen.canonical.as_str();
+        if self.email_blocked(email).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, crate::suspension::BLOCKED));
+        }
         // Made where every account is made, so the invite is checked and
         // spent in one place, with registration's rules (invites.rs).
         let user = match self

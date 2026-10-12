@@ -25,9 +25,12 @@ export function dailyCap(monthly: number): number | null {
   return monthly > 0 ? Math.ceil(monthly / DAYS_PER_MONTH) : null;
 }
 
-/** Whether `adding` more bytes today would go past `cap`. */
+/**
+ * Whether `adding` more bytes today would go past `cap`. A cap of 0 takes
+ * nothing: a workspace g1t staff put a hold on (or suspended).
+ */
 export function overCap(today: number, adding: number, cap: number | null | undefined): boolean {
-  return cap != null && cap > 0 && today + adding > cap;
+  return cap != null && cap >= 0 && today + adding > cap;
 }
 
 /** The size of a row as it is kept: its JSON. */
@@ -35,8 +38,9 @@ export function sizeOf(value: unknown): number {
   return JSON.stringify(value)?.length ?? 0;
 }
 
-/** What OTLP past the day's share is told. */
+/** What OTLP past the day's share is told; with a cap of 0, that the workspace is held. */
 export function overCapMessage(cap: number): string {
+  if (cap === 0) return "g1t staff put a hold on this project's workspace, so its telemetry is not taken. Write to hey@flagon.io if you think this is a mistake.";
   const mb = Math.round(cap / (1024 * 1024));
   return `This project has sent its ${mb} MB for today, a workspace on the free plan's daily share of its monthly observability. Send less, or start the g1t plan; more is taken from 00:00 UTC.`;
 }

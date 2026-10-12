@@ -29,6 +29,7 @@ mod run_credentials;
 mod security;
 mod shared_invites;
 mod sounds;
+mod suspension;
 mod teams;
 mod throttle;
 mod token_reach;
@@ -146,6 +147,11 @@ impl Identity {
         let Some(mut user) = user else {
             return Ok(None);
         };
+        // A suspended account is nobody, however it is presented
+        // (suspension.rs): its sessions, tokens, keys and password.
+        if self.user_suspension(&user.id).await?.is_some() {
+            return Ok(None);
+        }
         let memberships = self.memberships_and_policies(&user.id).await?;
         // Roles on single repositories, under the same policy (access.rs).
         let grants = self.grants_of(&user.id).await?;
@@ -406,6 +412,9 @@ impl Identity {
         if !self.sign_up_allowed(a.client.as_deref()).await? {
             return Ok(Identity::too_many_sign_ups());
         }
+        if self.email_blocked(&email).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, suspension::BLOCKED));
+        }
         let taken = self
             .db
             // Usernames and workspaces share one namespace, so that a name
@@ -463,6 +472,9 @@ impl Identity {
             Ok(user) => user,
             Err(message) => return Ok(Outcome::fail(FailureCode::Unauthenticated, message)),
         };
+        if self.user_suspension(&user.id).await?.is_some() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, suspension::SUSPENDED));
+        }
         let user = self.with_workspaces(Some(user)).await?.unwrap_or_default();
         self.start_session(user).await
     }
@@ -488,6 +500,10 @@ impl Identity {
         // (account_deletion.rs).
         if !self.account_live(&user.id).await? {
             return Ok(Outcome::fail(FailureCode::Unauthenticated, "Incorrect username or password."));
+        }
+        // Nor a suspended one, however it was proved (suspension.rs).
+        if self.user_suspension(&user.id).await?.is_some() {
+            return Ok(Outcome::fail(FailureCode::Forbidden, suspension::SUSPENDED));
         }
         let session_token = crypto::random_hex(32);
         self.db
@@ -1092,6 +1108,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
         "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),
         "admin_revoke_invite" => reply(&identity.admin_revoke_invite(args(body)?).await?),
+        // Suspending accounts and workspaces, blocking email domains; see suspension.rs.
+        "admin_suspend_user" => reply(&identity.admin_suspend_user(args(body)?).await?),
+        "admin_suspend_workspace" => reply(&identity.admin_suspend_workspace(args(body)?).await?),
+        "admin_blocked_domains" => reply(&identity.admin_blocked_domains().await?),
+        "admin_block_domain" => reply(&identity.admin_block_domain(args(body)?).await?),
         // Deleted workspaces, restored or purged by staff; see deletion.rs.
         "admin_deleted_workspaces" => reply(&identity.admin_deleted_workspaces().await?),
         "admin_restore_workspace" => reply(&identity.admin_restore_workspace(args(body)?).await?),

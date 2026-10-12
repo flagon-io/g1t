@@ -54,22 +54,24 @@ const CAP_TTL_MS = 10 * 60_000;
 
 /**
  * The day's share a project may send, or null: only for a project whose
- * workspace (as the site last told its store) is on the free plan. A
- * project whose workspace is not known yet, or a billing that does not
- * answer, gets none, so nobody's telemetry stops on g1t's account.
+ * workspace (as the site last told its store) is on the free plan, and 0
+ * for one g1t staff put a hold on (or suspended). A project whose
+ * workspace is not known yet, or a billing that does not answer, gets
+ * none, so nobody's telemetry stops on g1t's account.
  */
 async function capFor(env: Env, projectId: string): Promise<number | null> {
   const cached = caps.get(projectId);
   if (cached && Date.now() - cached.at < CAP_TTL_MS) return cached.cap;
   let cap: number | null = null;
   const daily = dailyCap(freeMonthlyBytes(env.FREE_TELEMETRY_BYTES_PER_MONTH));
-  if (daily && env.BILLING) {
+  if (env.BILLING) {
     try {
       const workspace = await store(env, projectId).workspaceOf();
       if (workspace) {
         const { billingClient } = await import("@g1t/contracts");
-        const free = await billingClient(env.BILLING as never).freeWorkspaces([workspace]);
-        if (free.map((slug) => slug.toLowerCase()).includes(workspace)) cap = daily;
+        const standing = await billingClient(env.BILLING as never).entitlements(workspace);
+        if (standing.held) cap = 0;
+        else if (standing.plan === "free" && daily) cap = daily;
       }
     } catch (error) {
       console.error("could not tell whether the project's workspace is free", projectId, error);
@@ -189,7 +191,7 @@ async function otlp(request: Request, env: Env, signal: Signal): Promise<Respons
   }
   const cap = await capFor(env, project);
   const done = await store(env, project).ingest(read.batch, [], token, cap);
-  if (!done.accepted && done.reason === "quota" && cap) return refused(429, overCapMessage(cap));
+  if (!done.accepted && done.reason === "quota" && cap != null) return refused(429, overCapMessage(cap));
   if (!done.accepted) return refused(401, "That token is not one of the project's, or it was revoked.");
   return accepted(read.protobuf);
 }

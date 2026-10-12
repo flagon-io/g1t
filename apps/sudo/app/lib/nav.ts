@@ -231,6 +231,12 @@ export const NAV: NavGroup[] = [
         about: "Sandboxes stopped for looking like mining, and disputes and declines.",
       },
       {
+        label: "Blocked domains",
+        to: "/blocked-domains",
+        icon: "abuse",
+        about: "Email domains no new account may sign up with.",
+      },
+      {
         label: "Incidents",
         to: "/incidents",
         icon: "incidents",

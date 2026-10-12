@@ -516,6 +516,55 @@ impl Actions {
         Ok(Outcome::Ok(true))
     }
 
+    /// `admin_runners`: staff see a workspace's runners.
+    pub async fn admin_runners(&self, a: g1t_contracts::runners::AdminRunnersArgs) -> Result<Vec<g1t_contracts::runners::AdminRunner>> {
+        let workspace = a.workspace.trim().to_lowercase();
+        Ok(self
+            .runner_rows(&workspace)
+            .await?
+            .into_iter()
+            .map(|row| g1t_contracts::runners::AdminRunner {
+                busy: row.work_id.is_some(),
+                id: row.id,
+                name: row.name,
+                repo: row.repo,
+                os: row.os,
+                version: row.version,
+                last_seen_at: row.last_seen_at,
+                created_at: row.created_at,
+                created_by: row.created_by,
+            })
+            .collect())
+    }
+
+    /// `admin_remove_runners`: staff remove one runner or all of a
+    /// workspace's, and end its registration tokens.
+    pub async fn admin_remove_runners(&self, a: g1t_contracts::runners::AdminRemoveRunnersArgs) -> Result<Outcome<u32>> {
+        let staff = a.staff.trim();
+        if staff.is_empty() {
+            return Ok(fail(FailureCode::Forbidden, "Say which staff member is doing it."));
+        }
+        let workspace = a.workspace.trim().to_lowercase();
+        let rows: Vec<RunnerRow> = self
+            .runner_rows(&workspace)
+            .await?
+            .into_iter()
+            .filter(|row| a.id.as_deref().is_none_or(|id| id == row.id))
+            .collect();
+        if a.id.is_some() && rows.is_empty() {
+            return Ok(fail(FailureCode::NotFound, "There is no such runner."));
+        }
+        let why = format!("g1t staff removed the runner from {workspace}.");
+        for row in &rows {
+            self.forget_runner(row, &why).await?;
+        }
+        if a.id.is_none() {
+            self.db.prepare("DELETE FROM runner_registrations WHERE workspace = ?").bind(&[workspace.as_str().into()])?.run().await?;
+        }
+        worker::console_log!("actions: staff {staff} removed {} of {workspace}'s runners", rows.len());
+        Ok(Outcome::Ok(u32::try_from(rows.len()).unwrap_or(u32::MAX)))
+    }
+
     /// Removes a runner: what it was running fails, and its credential
     /// stops working at once.
     async fn forget_runner(&self, row: &RunnerRow, why: &str) -> Result<()> {

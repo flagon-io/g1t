@@ -8,6 +8,10 @@ import {
   billingClient,
   eventsClient,
   identityAdminClient,
+  projectsClient,
+  runnersAdminClient,
+  telemetryClient,
+  type User,
 } from "@g1t/contracts";
 
 /** Staff-only billing, on the billing service. */
@@ -33,6 +37,18 @@ export const statusAdmin = env.STATUS as unknown as StatusAdminApi;
 
 /** "Check for new models": the model proxy's `Discovery` entrypoint (services/models). */
 export const modelDiscovery = env.MODELS as unknown as ModelDiscoveryApi;
+
+/** A workspace's self-hosted runners, and removing them (actions' admin_* methods). */
+export const runnersAdmin = runnersAdminClient(env.ACTIONS);
+
+/** A workspace's projects, read as the workspace itself, which sees them all. */
+export const workspaceProjects = (slug: string) => {
+  const workspace: User = { id: `staff:${slug}`, username: slug, kind: "workspace", verified: true, workspaces: [{ slug, role: "member" }] };
+  return projectsClient(env.PROJECTS).list(slug, workspace);
+};
+
+/** Projects' telemetry: their ingest tokens, to see and revoke. */
+export const telemetry = telemetryClient(env.TELEMETRY);
 
 /** STAFF_EMAILS, for suggesting staff in the incident roles. */
 export const staffEmails = (): string => env.STAFF_EMAILS ?? "";

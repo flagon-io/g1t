@@ -969,6 +969,9 @@ pub struct AdminWorkspaceDetail {
     /// It can never be deleted ([`protected_names`]).
     #[serde(default)]
     pub protected: bool,
+    /// Set while staff have it suspended.
+    #[serde(default)]
+    pub suspended: Option<Suspension>,
 }
 
 /// A member of a workspace, as staff see them.
@@ -1505,6 +1508,63 @@ pub struct AdminInvitesArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminRevokeInviteArgs {
     pub id: String,
+    pub staff: String,
+}
+
+// --- Suspension and blocked email domains, staff only ---
+//
+// See services/identity/src/suspension.rs. A suspended account cannot sign
+// in, and its sessions and tokens stop working at once; a suspended
+// workspace's own tokens stop working, and sudo also puts a hold on its
+// compute (billing), which stops its runs, deploys, new self-hosted
+// runners and telemetry. Both are undone the same way. A blocked email
+// domain makes no new accounts and confirms no new addresses.
+
+/// Why and since when staff suspended an account or a workspace.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Suspension {
+    pub reason: String,
+    /// RFC 3339.
+    pub at: String,
+    /// The staff member, by email.
+    pub by: String,
+}
+
+/// `admin_suspend_user` (`name` a username) and `admin_suspend_workspace`
+/// (`name` a slug): `suspend` true suspends with `reason` (required),
+/// false lifts it. Returns `Outcome<Option<Suspension>>`: what stands now.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSuspendArgs {
+    pub name: String,
+    pub suspend: bool,
+    #[serde(default)]
+    pub reason: String,
+    pub staff: String,
+}
+
+/// An email domain no new account may sign up with.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockedDomain {
+    /// Lowercased, such as `spam.example`. Its subdomains are blocked too.
+    pub domain: String,
+    pub reason: String,
+    pub blocked_by: String,
+    /// RFC 3339.
+    pub created_at: String,
+}
+
+/// `admin_blocked_domains` takes `{}` and returns `Vec<BlockedDomain>`.
+///
+/// `admin_block_domain`: `block` true blocks `domain` with `reason`,
+/// false unblocks it. Returns `Outcome<Vec<BlockedDomain>>`, the list now.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminBlockDomainArgs {
+    pub domain: String,
+    pub block: bool,
+    #[serde(default)]
+    pub reason: String,
     pub staff: String,
 }
 

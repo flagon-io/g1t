@@ -18,6 +18,9 @@ test("past the day's share is over, and no cap never is", () => {
   assert.equal(overCap(90, 11, 100), true);
   assert.equal(overCap(1e12, 1e12, null), false);
   assert.match(overCapMessage(35_791_395), /its 34 MB for today/);
+  // A held workspace's projects take nothing.
+  assert.equal(overCap(0, 1, 0), true);
+  assert.match(overCapMessage(0), /put a hold on/);
 });
 
 test("a row counts as what is kept of it", () => {

@@ -11,7 +11,7 @@ import type { ReposApi } from "./repos";
 import type { PullDetail, WorkApi } from "./work";
 import type { Result } from "./result";
 import type { RunnerComputerApi } from "./runner";
-import type { RunnersApi } from "./runners";
+import type { RunnersAdminApi, RunnersApi } from "./runners";
 
 /** A service binding, as far as these clients need it. */
 export type ServiceBinding = {
@@ -332,6 +332,10 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
     workspace: (slug) => call("admin_workspace", { slug }),
     invites: (query) => call("admin_invites", { query: query ?? null }),
     revokeInvite: (id, staff) => call("admin_revoke_invite", { id, staff }),
+    suspendUser: (name, suspend, reason, staff) => call("admin_suspend_user", { name, suspend, reason, staff }),
+    suspendWorkspace: (name, suspend, reason, staff) => call("admin_suspend_workspace", { name, suspend, reason, staff }),
+    blockedDomains: () => call("admin_blocked_domains", {}),
+    blockDomain: (domain, block, reason, staff) => call("admin_block_domain", { domain, block, reason, staff }),
     deletedWorkspaces: () => call("admin_deleted_workspaces", {}),
     restoreWorkspace: (workspaceId, staff) => call("admin_restore_workspace", { workspaceId, staff }),
     purgeWorkspace: (workspaceId, staff, confirm) => call("admin_purge_workspace", { workspaceId, staff, confirm }),
@@ -830,6 +834,15 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
   };
 }
 
+
+/** Staff-only self-hosted runners, on the actions service: only sudo calls it. */
+export function runnersAdminClient(service: ServiceBinding): RunnersAdminApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    list: (workspace) => call("admin_runners", { workspace }),
+    remove: (workspace, id, staff) => call("admin_remove_runners", { workspace, id, staff }),
+  };
+}
 
 /** Self-hosted runners, kept by the actions service. */
 export function runnersClient(service: ServiceBinding): RunnersApi {
