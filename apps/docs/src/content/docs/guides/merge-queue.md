@@ -239,6 +239,13 @@ can name more than one pull request.
 A combined state that passes is recorded too: an `integration_passed`
 decision and the `integration.passed` event, with `pull` and `combination`.
 
+On the site, the pull request shows the failure above its checks until it
+passes in the queue or merges: the pull requests tested together, with the
+one that answers for it marked, the check that failed (linked to its run),
+what it fails with, and the fix once one is recorded. Its issue shows the
+same under its pull requests, and the repository's
+[Work page](/guides/sessions/#on-the-site) lists it among what happened.
+
 ### Getting back in the queue
 
 The merge stays asked for. Push a fix to the pull request, starting from

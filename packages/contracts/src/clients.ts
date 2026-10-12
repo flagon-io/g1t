@@ -512,6 +512,23 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("append_session", { actor, repo, number, entries }),
     readSession: (repo, number, viewer, afterSeq = 0) =>
       call("read_session", { repo, number, viewer, afterSeq }),
+    // Coordination: harness sessions, claims, an issue's whole context and
+    // decision records. Their arguments are snake_case, as the Rust service
+    // reads them; what comes back is camelCase.
+    getWork: (repo, number, viewer) => call("get_work", { repo, number, viewer }),
+    listClaims: (repo, viewer, filter = {}) =>
+      call("list_claims", { repo, viewer, state: filter.state ?? null, issue: filter.issue ?? null }),
+    listWorkSessions: (repo, viewer, filter = {}) =>
+      call("list_work_sessions", {
+        repo,
+        viewer,
+        state: filter.state ?? null,
+        issue: filter.issue ?? null,
+        pull: filter.pull ?? null,
+      }),
+    getWorkSession: (repo, id, viewer, afterSeq = 0) =>
+      call("get_work_session", { repo, id, viewer, after_seq: afterSeq }),
+    listDecisions: (repo, number, viewer) => call("list_decisions", { repo, number, viewer }),
   };
 }
 

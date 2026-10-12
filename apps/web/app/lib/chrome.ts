@@ -110,7 +110,7 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
 export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: string; also: string[]; soon?: boolean }> = {
   code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare", "memory"] },
   issues: { label: "Issues", path: "issues", also: ["milestones", "labels"] },
-  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "queue", "sessions"] },
+  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "work", "queue", "sessions"] },
   actions: { label: "Workflows", path: "actions", also: [] },
   deployments: { label: "Deployments", path: "deployments", also: [] },
   observability: { label: "Observability", path: "observability", also: [] },

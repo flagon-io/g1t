@@ -814,7 +814,7 @@ function RepoMenu({
           </SidebarLink>
         )}
         {shows.has("pulls") && (
-          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`, `${base}/sessions`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/work`, `${base}/queue`, `${base}/sessions`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
             Pull requests
           </SidebarLink>
         )}
@@ -1418,6 +1418,7 @@ const SECTIONS: Record<string, string> = {
   observability: "Observability",
   insights: "Insights",
   sessions: "Sessions",
+  work: "Work",
   chat: "Chat",
   artifacts: "Artifacts",
   home: "Home",

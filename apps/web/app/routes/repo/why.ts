@@ -1,6 +1,6 @@
 import { data } from "react-router";
 
-import type { SessionEntry } from "@g1t/contracts";
+import type { Decision, SessionEntry } from "@g1t/contracts";
 
 import type { Route } from "./+types/why";
 import { showOneCommit } from "../../lib/commit-people.server";
@@ -68,10 +68,14 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   ]);
   const commit = await showOneCommit(log.ok ? log.value[0] : undefined);
   if (!commit) throw data(null, { status: 404 });
-  if (!pull) return { commit, pull: null, issue: null, steps: [] as SessionEntry[] };
-  const [detail, session] = await Promise.all([
+  if (!pull) return { commit, pull: null, issue: null, steps: [] as SessionEntry[], decisions: [] as Decision[] };
+  const [detail, session, decisions] = await Promise.all([
     work.getPull(path, pull.number, viewer),
     pull.runtime === "hosted" || pull.agent ? work.readSession(path, pull.number, viewer) : null,
+    // The decisions behind it, oldest first: on its issue and every pull
+    // request for it (the other proposals, the failed combination, the fix,
+    // the approval and the merge), or on the pull request alone.
+    work.listDecisions(path, pull.issue ?? pull.number, viewer).catch(() => null),
   ]);
   const issue = detail.ok ? detail.value.issue : null;
   return {
@@ -93,5 +97,6 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       author: issue.author.username,
     },
     steps: session?.ok ? stepsFor(session.value, commit.hash, file) : [],
+    decisions: decisions?.ok ? decisions.value : [],
   };
 }

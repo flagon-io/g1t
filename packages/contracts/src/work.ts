@@ -1,5 +1,6 @@
 import type { ChecksApi } from "./checks";
 import type { CodeownersReport, PullCodeOwners } from "./codeowners";
+import type { G1tEvent } from "./events";
 import type { User, Viewer } from "./identity";
 import type { PullBranchUpdate, RepoPath } from "./repos";
 import type { Result } from "./result";
@@ -665,7 +666,7 @@ export type RepoPulls = {
 };
 
 /** Issues, pull requests, comments and sessions. */
-export interface WorkApi extends RulesApi, ChecksApi {
+export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   openIssue(actor: User, repo: RepoPath, input: OpenIssueInput): Promise<Result<Issue>>;
   /** Newest first. */
   listIssues(
@@ -1146,3 +1147,119 @@ export type OverlapDetectedData = {
   issue?: number;
   otherIssue?: number;
 };
+
+/** An issue in brief. */
+export type IssueBrief = { number: number; title: string; state: State };
+
+/** A pull request in brief. */
+export type PullBrief = { number: number; title: string; status: PullStatus };
+
+/** An issue another is blocked by, and where it stands. */
+export type Blocker = {
+  number: number;
+  title: string;
+  state: State;
+  /** Active claims on it. */
+  claims: Claim[];
+  pulls: PullBrief[];
+};
+
+/** A pull request's place in the merge queue; `position` 1 is the front. */
+export type QueuePlace = { state: QueueState; position: number };
+
+/** One of an issue's pull requests, with where it stands. */
+export type WorkPull = {
+  number: number;
+  title: string;
+  status: PullStatus;
+  branch: string | null;
+  headCommit: string | null;
+  author: { id: string; username: string };
+  /** `failed` when the merge queue took it out, until its head moves. */
+  checkStatus: CheckStatus | null;
+  requiredChecks: RequiredCheck[];
+  mergeable: Mergeable;
+  /** Other pull requests in progress changing the same files. */
+  overlaps: Overlap[];
+  /** Its place in the merge queue, while it is in it. */
+  queue: QueuePlace | null;
+};
+
+// --- Decision records (crates/contracts/src/decisions.rs) ------------------
+
+export type DecisionKind =
+  | "proposal"
+  | "claim"
+  | "integration_failure"
+  | "integration_passed"
+  | "fix"
+  | "approval"
+  | "merge"
+  | "note";
+
+/** Claimed: someone said so. Tested: a check or the merge queue proved it. Approved: a person approved it. */
+export type DecisionConfidence = "claimed" | "tested" | "approved";
+
+/** A structured reason kept on an issue or pull request, with how sure it is. */
+export type Decision = {
+  /** `dec_…`. */
+  id: string;
+  issue: number | null;
+  pull: number | null;
+  sessionId: string | null;
+  /** Username of who recorded it; null when g1t did. */
+  actor: string | null;
+  kind: DecisionKind;
+  confidence: DecisionConfidence;
+  summary: string;
+  /**
+   * What it rests on, kept as recorded, in snake_case: `commit`, `check`
+   * (`name`, `conclusion`, `url`), `combination`, `other_pulls`,
+   * `suspects`, `bisected`, `merge_queue`.
+   */
+  evidence: Record<string, unknown>;
+  /** RFC 3339. */
+  createdAt: string;
+};
+
+/** Everything about an issue an agent needs to pick it up: `get_work`. */
+export type WorkContext = {
+  issue: Issue;
+  /** The items under its "Definition of done" heading. */
+  definitionOfDone: string[];
+  /** The checks every pull request into the default branch must pass. */
+  requiredChecks: string[];
+  /** Active claims on it. */
+  claims: Claim[];
+  /** Sessions on it or its pull requests, most recently heard from first. */
+  sessions: WorkSession[];
+  pulls: WorkPull[];
+  blockedBy: Blocker[];
+  /** The issues it blocks. */
+  blocks: IssueBrief[];
+  /** On it and its pull requests, newest first. */
+  decisions: Decision[];
+  /** The latest `integration_failure` decision among them. */
+  lastIntegrationFailure: Decision | null;
+  /** Its latest coordination events, newest first. */
+  recent: G1tEvent[];
+};
+
+/** A harness session and what it recorded. */
+export type WorkSessionDetail = { session: WorkSession; entries: SessionEntry[] };
+
+/** Reading coordination: work service methods (services/work/src/coordination, decisions.rs). */
+export interface CoordinationApi {
+  getWork(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<WorkContext>>;
+  /** Newest first; active ones unless `state` says otherwise. */
+  listClaims(repo: RepoPath, viewer: Viewer, filter?: { state?: ClaimState; issue?: number }): Promise<Result<Claim[]>>;
+  /** Most recently heard from first. */
+  listWorkSessions(
+    repo: RepoPath,
+    viewer: Viewer,
+    filter?: { state?: SessionState; issue?: number; pull?: number },
+  ): Promise<Result<WorkSession[]>>;
+  getWorkSession(repo: RepoPath, id: string, viewer: Viewer, afterSeq?: number): Promise<Result<WorkSessionDetail>>;
+  /** An issue's (with its pull requests') or a pull request's, oldest first. */
+  listDecisions(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<Decision[]>>;
+}

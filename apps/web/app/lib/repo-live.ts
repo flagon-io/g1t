@@ -116,6 +116,18 @@ export const repoPages = {
   issue(number: number, linked: number[] = []): RepoMatch {
     return (change) => change.number != null && (change.number === number || linked.includes(change.number));
   },
+  /**
+   * The Work page: claims, sessions starting and ending, dependencies,
+   * overlaps, what the merge queue finds and decisions, the queue moving,
+   * and merges.
+   */
+  work(): RepoMatch {
+    return (change) =>
+      ["work", "dependency", "overlap", "integration", "decision", "queue"].includes(family(change)) ||
+      change.kind === "session.started" ||
+      change.kind === "session.ended" ||
+      change.kind === "pull.merged";
+  },
   /** The runs list: runs starting, moving and finishing, and what starts them. */
   runs(): RepoMatch {
     return (change) => ["workflow", "run", "status", "check_suite"].includes(family(change));

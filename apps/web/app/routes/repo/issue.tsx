@@ -39,6 +39,8 @@ import { useRefreshWhile } from "../../lib/refresh";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
+import { DecisionList, IntegrationFailure, IssueWorkPanel } from "../../components/coordination";
+import { parseBlockedBy, resolutionOf } from "../../lib/coordination";
 
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
@@ -62,7 +64,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   const access = accessTo(context, params);
-  const [{ can }, found, labels, milestones, members, links, subscription, teams] = await Promise.all([
+  const [{ can }, found, labels, milestones, members, links, subscription, teams, coordination, ended] = await Promise.all([
     access,
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
@@ -80,6 +82,15 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       : null,
     // The teams a member can mention, for the comment box.
     roleIn(viewer, params.owner) ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
+    // Who is on it, its sessions, what it waits on and its decisions
+    // (services/work/src/coordination): the Work panel.
+    work.getWork(path, number, viewer).catch(() => null),
+    // Its claims that ended, shown muted under the active ones.
+    Promise.all(
+      (["released", "expired", "handed_off"] as const).map((state) =>
+        work.listClaims(path, viewer, { state, issue: number }).catch(() => null),
+      ),
+    ),
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -95,6 +106,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     milestones: milestones.ok ? milestones.value : [],
     links,
     subscription,
+    coordination: coordination?.ok ? coordination.value : null,
+    endedClaims: ended
+      .flatMap((claims) => (claims?.ok ? claims.value : []))
+      .sort((a, b) => Date.parse(b.endedAt ?? b.createdAt) - Date.parse(a.endedAt ?? a.createdAt)),
     members: members?.ok ? members.value.map((member) => member.username) : [],
     handles: teams?.ok ? teams.value.map((team) => `@${team.workspace}/${team.slug}`) : [],
     // The author can close and reopen their own issue, and whoever g1t's
@@ -115,6 +130,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // What each form needs; closing your own issue is checked by work.
   // Labels: its author may use the repository's on their own issue, and
   // work says so; anyone else, and every milestone, needs Triage.
+  // What it is blocked by: its author or Triage, which work checks too.
   const needed = form.get("action") === "assign" || form.get("action") === "milestone" ? "triage" : null;
   const refused = needed ? await refusal(context, params, needed) : null;
   if (refused) return { error: refused, action: String(form.get("action")) };
@@ -147,6 +163,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     case "labels": {
       const result = await work.setLabels(user, path, number, form.getAll("label").map(String));
       return result.ok ? null : { error: result.error.message, action: "labels" };
+    }
+    case "blocked-by": {
+      const blockedBy = parseBlockedBy(String(form.get("blocked_by") ?? ""));
+      if (!blockedBy) return { error: "List issue numbers, such as #12, #14.", action: "blocked-by" };
+      const result = await work.updateIssue(user, path, number, { blocked_by: blockedBy });
+      return result.ok ? null : { error: result.error.message, action: "blocked-by" };
     }
     case "milestone": {
       const result = await work.updateIssue(user, path, number, { milestone: Number(form.get("milestone")) || 0 });
@@ -245,7 +267,7 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
 }
 
 export default function IssuePage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { issue, pulls, comments, viewer, labels, members, canManage, can } = loaderData;
+  const { issue, pulls, comments, viewer, labels, members, canManage, can, coordination } = loaderData;
   // Follow pull requests at work without a manual reload.
   const running = pulls.some(
     (pull) =>
@@ -254,6 +276,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
       pull.checkStatus === "running",
   );
   useRefreshWhile(running);
+  // Claims lapse and sessions go idle with no event to say so: looked at again now and then.
+  useRefreshWhile((coordination?.claims.length ?? 0) > 0 || (coordination?.sessions.some((session) => session.state !== "ended") ?? false), 30_000);
+  const now = Date.now();
   // Comments, changes and its pull requests, as they happen; one reading at its end follows them.
   useRepoLive({ match: repoPages.issue(issue.number, pulls.map((pull) => pull.number)), followBottom: true });
 
@@ -266,6 +291,10 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
   const ordered = [...pulls].sort(
     (a, b) => rank[a.status] - rank[b.status] || a.number - b.number,
   );
+  // Its decisions as a story, oldest first; the failure that still stands, with what answered it.
+  const decisions = coordination ? [...coordination.decisions].reverse() : [];
+  const failure = coordination?.lastIntegrationFailure ?? null;
+  const resolution = failure ? resolutionOf(coordination!.decisions, failure) : null;
 
   return (
     // On a phone: the title, then the sidebar as a Details disclosure, then
@@ -351,6 +380,22 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           )}
         </div>
 
+        {failure && (
+          <IntegrationFailure className="mt-4" failure={failure} base={base} fixed={resolution?.passed ?? resolution?.fix} />
+        )}
+
+        {decisions.length > 0 && (
+          <>
+            <div className="mt-10 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h3 className="font-semibold tracking-tight">Decisions</h3>
+              <p className="text-sm text-muted">Why the work is the way it is, and how sure that is</p>
+            </div>
+            <div className="mt-3">
+              <DecisionList decisions={decisions} base={base} />
+            </div>
+          </>
+        )}
+
         <h3 className="mt-10 font-semibold tracking-tight">Discussion</h3>
         <div className="mt-3">
           <div className="space-y-4">
@@ -384,18 +429,31 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         </div>
         <div className="mt-2">
           {/* A refused comment edit says so under the comment. */}
-          {!(actionData && "comment" in actionData) && <ErrorText>{actionData?.error}</ErrorText>}
+          {!(actionData && ("comment" in actionData || ("action" in actionData && actionData.action === "blocked-by"))) && (
+            <ErrorText>{actionData?.error}</ErrorText>
+          )}
         </div>
       </div>
 
       <DetailsDisclosure
         className="lg:col-start-2 lg:row-span-2 lg:row-start-1"
         summary={detailsSummary([
+          [coordination?.claims.length ?? 0, "claim", "claims"],
           [issue.assignees.length, "assignee", "assignees"],
           [issue.labels.length, "label", "labels"],
           [issue.milestone ? 1 : 0, "milestone", "milestones"],
         ])}
       >
+        {coordination && (
+          <IssueWorkPanel
+            work={coordination}
+            ended={loaderData.endedClaims}
+            base={base}
+            now={now}
+            canEdit={canManage}
+            error={actionData && "action" in actionData && actionData.action === "blocked-by" ? actionData.error : null}
+          />
+        )}
         {loaderData.links.length > 0 && (
           <section>
             <h3 className="text-sm font-medium">From outside g1t</h3>
@@ -436,7 +494,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               </li>
             ))}
           </ul>
-          {issue.blockedBy.length > 0 && (
+          {!coordination && issue.blockedBy.length > 0 && (
             <p className="mt-3 text-xs text-muted">
               Depends on{" "}
               {issue.blockedBy.map((number, index) => (

@@ -21,6 +21,39 @@ looks, and starting a session or recording an entry again is a no-op.
 What git and g1t record (commits, pull requests, checks, merges) is the
 truth; sessions are the account of how it got there.
 
+## On the site
+
+Everything here shows on g1t.sh as it happens, without reloading.
+
+- **The Work page**, `g1t.sh/<workspace>/<repo>/work`, a tab beside
+  **Pull requests**, **Merge queue** and **Sessions**:
+  - **Live now**: the active claims and the active and idle sessions,
+    grouped by the issue they are on, with sessions on no issue yet
+    after them. An issue with more than one claim is marked.
+  - **Merge queue**: what is waiting to land and what is being tested,
+    as on the [Merge queue](/guides/merge-queue/#the-merge-queue-page) page.
+  - **What happened**: the latest 30 coordination events, from claims to
+    what the merge queue found when it combined changes.
+  - **Just landed**: the latest merges, each with a link to the session
+    behind it.
+
+  With nothing going on, it says how to start: install the
+  [Claude Code plugin](/guides/claude-code-plugin/), or run
+  `g1t work claim <number>` from any harness.
+- **An issue's Work panel**, at the top of its sidebar: its claims (who,
+  from which harness, since when and when each lapses; ones released,
+  expired or handed off lately are shown dimmed), the sessions on it with
+  their state and when each was last heard from, what it is blocked by
+  and where each of those stands, and the issues it blocks. Its author
+  and anyone with the Triage role change what it is blocked by with
+  **Edit**. Under its pull requests, the issue shows the latest
+  combination that failed in the merge queue, and its
+  [decision records](/guides/why-blame/#decision-records), each marked
+  **Claimed**, **Tested** or **Approved**.
+- **A session's page**, opened from any of these: who ran it, in which
+  harness, the issue, pull request, branch and commit it is on, and what
+  it recorded.
+
 ## Picking up an issue
 
 Before working on an issue, load its whole context in one call: `issue`

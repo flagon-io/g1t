@@ -79,6 +79,12 @@ g1t then shows why the line is the way it is:
 - the commit that last changed it;
 - the pull request it arrived in, and who or what wrote it and merged it;
 - the issue that asked for it, with its description;
+- how it was decided: the [decision records](#decision-records) on the
+  issue and every pull request for it, oldest first, each marked
+  **Claimed**, **Tested** or **Approved**. A combination that failed in
+  the merge queue is shown first, with the pull requests tested together,
+  the check that failed and the fix that answered it; then the
+  proposals, the fix, the approval and the merge;
 - when a coding agent wrote it, the agent's own account of the change and the
   commands it ran, taken from its session. The steps shown are from the
   work that produced that commit: the agent's messages, and the tool calls
@@ -154,6 +160,10 @@ curl -X POST https://api.g1t.sh/repos/acme/web/pulls/14/decisions \
 who may comment on it, once their email address is confirmed. Each is
 attributed to whoever recorded it, carries
 the issue the pull request is for, and is published as `decision.recorded`.
+
+A pull request's **Session** tab lists its decisions above what was
+recorded, with the harness sessions working on it; an issue lists its own
+and its pull requests' under them.
 
 Read them with the `pull_request` tool's `list_decisions` action, with
 `GET /repos/{owner}/{name}/pulls/{number}/decisions`, or for an issue and

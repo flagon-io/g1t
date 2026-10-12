@@ -64,6 +64,8 @@ import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { TabStrip } from "../../components/ui/tab-strip";
+import { DecisionList, IntegrationFailure, SessionLine } from "../../components/coordination";
+import { resolutionOf, standingFailure } from "../../lib/coordination";
 import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import { AttemptsBox } from "../../components/attempts";
@@ -138,7 +140,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const milestonesFound = work.listMilestones(path, viewer);
   labelsFound.catch(() => null);
   milestonesFound.catch(() => null);
-  const [{ can }, found, repo, settings, members, session, deployed, subscription, teamList] = await Promise.all([
+  const [{ can }, found, repo, settings, members, session, deployed, subscription, teamList, decisions, harnessSessions] = await Promise.all([
     access,
     pullFound,
     repos.get(path, viewer),
@@ -156,6 +158,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       : null,
     // A member asks the workspace's teams to review, and mentions them.
     member ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
+    // Its decision records: what the merge queue found when it was combined
+    // with others, and the reasons kept on it (decisions.rs).
+    tab !== "changes" ? work.listDecisions(path, number, viewer).catch(() => null) : null,
+    // The harness sessions working on it, for the Session tab.
+    tab === "session" ? work.listWorkSessions(path, viewer, { pull: number }).catch(() => null) : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -226,6 +233,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     attempts,
     tab,
     session: session?.ok ? session.value : [],
+    decisions: decisions?.ok ? decisions.value : [],
+    harnessSessions: harnessSessions?.ok ? harnessSessions.value : [],
     // An empty comparison if it could not be made.
     comparison: comparison && (comparison.ok ? comparison.value : EMPTY_COMPARISON),
     viewer,
@@ -617,6 +626,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     rules,
     tab,
     session,
+    decisions,
+    harnessSessions,
     comparison,
     viewer,
     canMerge,
@@ -680,6 +691,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // ones for the same issue are alternatives, and expected to: those are
   // compared under their own heading.
   const { collisions } = splitOverlaps(overlaps, pull.issue);
+  // A combination with it that failed in the merge queue and has not passed since.
+  const failure = active ? standingFailure(decisions, pull.number) : null;
+  const answered = failure ? resolutionOf(decisions, failure).fix : null;
   const review = {
     changesUrl: here + "?tab=changes",
     // Nobody reviews their own pull request, nor one g1t made for them.
@@ -928,18 +942,48 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 }}
               />
             ) : tab === "session" ? (
-              session.length === 0 ? (
-                <EmptyState title="Nothing recorded yet">
-                  A coding agent's prompts, reasoning and tool calls appear here once
-                  it records them with record_session.
-                </EmptyState>
-              ) : (
-                <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-3.25 before:w-px before:bg-line">
-                  {session.map((entry) => (
-                    <Entry key={entry.seq} entry={entry} agent={pull.agent} />
-                  ))}
-                </ol>
-              )
+              <div className="space-y-8">
+                {harnessSessions.length > 0 && (
+                  <section aria-label="Harness sessions">
+                    <h3 className="text-sm font-medium">Sessions on it</h3>
+                    <Card asChild divided className="mt-3">
+                      <ul>
+                        {harnessSessions.map((one) => (
+                          <li key={one.id} className="px-4 py-3">
+                            <SessionLine session={one} base={base} showWhere={false} />
+                          </li>
+                        ))}
+                      </ul>
+                    </Card>
+                  </section>
+                )}
+                {decisions.length > 0 && (
+                  <section aria-label="Decisions">
+                    <h3 className="text-sm font-medium">Decisions</h3>
+                    <p className="mt-1 text-xs text-muted">
+                      Why it is the way it is, each with how sure it is: claimed by whoever recorded it, tested by a check or the merge queue, approved by a person.
+                    </p>
+                    <div className="mt-3">
+                      <DecisionList decisions={decisions} base={base} />
+                    </div>
+                  </section>
+                )}
+                <section aria-label="What happened">
+                  {(harnessSessions.length > 0 || decisions.length > 0) && <h3 className="mb-3 text-sm font-medium">What happened</h3>}
+                  {session.length === 0 ? (
+                    <EmptyState title="Nothing recorded yet">
+                      A coding agent's prompts, reasoning and tool calls appear here once
+                      it records them, through the g1t plugin, a harness session or record_session.
+                    </EmptyState>
+                  ) : (
+                    <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-3.25 before:w-px before:bg-line">
+                      {session.map((entry) => (
+                        <Entry key={entry.seq} entry={entry} agent={pull.agent} />
+                      ))}
+                    </ol>
+                  )}
+                </section>
+              </div>
             ) : (
               <div className="space-y-4">
                 <TimelineItem
@@ -1042,6 +1086,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       <Await resolve={workflowJobs}>{(jobs) => settledChecks(jobs)}</Await>
                     </Suspense>
                   </StatusBox>
+                )}
+
+                {failure && (
+                  <div className="flex gap-3">
+                    <span className="hidden w-8 shrink-0 sm:block" />
+                    <IntegrationFailure className="min-w-0 grow" failure={failure} base={base} branch={defaultBranch} fixed={answered} />
+                  </div>
                 )}
 
                 {pull.status === "open" && (
