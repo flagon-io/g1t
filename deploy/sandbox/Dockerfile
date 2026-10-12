@@ -56,7 +56,7 @@ FROM base AS vm
 # A kernel, an init, and the unit that runs the sandbox at boot. The VM's
 # console (hvc0) is where it says how it is (launcher/vm.rs reads it).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends systemd systemd-sysv "linux-image-cloud-$(dpkg --print-architecture)" \
+ && apt-get install -y --no-install-recommends systemd systemd-sysv systemd-resolved "linux-image-cloud-$(dpkg --print-architecture)" \
  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
  && echo g1t-sandbox > /etc/hostname \
  && systemctl mask getty@tty1.service serial-getty@hvc0.service serial-getty@ttyS0.service
