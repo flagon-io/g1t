@@ -15,7 +15,7 @@
     "merged_by": null,
     "merge_commit_sha": null,
     "labels": [
-      { "id": 1362934389, "name": "bug", "color": "d73a4a" }
+      { "id": 1362934389, "node_id": "MDU6TGFiZWwxMzYyOTM0Mzg5", "name": "bug", "color": "d73a4a", "description": "Something isn't working", "default": true }
     ],
     "milestone": {
       "id": 4317517,

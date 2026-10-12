@@ -9,7 +9,7 @@
     "state": "open",
     "state_reason": null,
     "locked": false,
-    "labels": [{ "id": 1362934389, "name": "bug", "color": "d73a4a" }],
+    "labels": [{ "id": 1362934389, "node_id": "MDU6TGFiZWwxMzYyOTM0Mzg5", "name": "bug", "color": "d73a4a", "description": "Something isn't working", "default": true }],
     "milestone": { "id": 4317517, "number": 1, "title": "v1.0", "html_url": "https://github.com/acme/web/milestone/1" },
     "user": { "login": "ada", "id": 21031068, "node_id": "MDQ6VXNlcjIxMDMxMDY4", "type": "User", "html_url": "https://github.com/ada", "url": "https://api.github.com/users/ada" },
     "assignee": { "login": "bo", "id": 21031069, "type": "User", "html_url": "https://github.com/bo", "url": "https://api.github.com/users/bo" },
@@ -22,7 +22,7 @@
     "url": "https://api.github.com/repos/acme/web/issues/1",
     "repository_url": "https://api.github.com/repos/acme/web"
   },
-  "label": { "id": 1362934389, "name": "bug", "color": "d73a4a" },
+  "label": { "id": 1362934389, "node_id": "MDU6TGFiZWwxMzYyOTM0Mzg5", "name": "bug", "color": "d73a4a", "description": "Something isn't working", "default": true },
   "repository": { "id": 186853002, "node_id": "MDEwOlJlcG9zaXRvcnkxODY4NTMwMDI=", "full_name": "acme/web", "private": false, "owner": { "login": "acme", "id": 21031067, "type": "Organization" } },
   "sender": { "login": "ada", "id": 21031068, "type": "User" }
 }

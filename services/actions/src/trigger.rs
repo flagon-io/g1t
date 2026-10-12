@@ -8,8 +8,8 @@ use g1t_contracts::access::{self, Capability};
 use g1t_contracts::actions::{DispatchArgs, RepositoryDispatchArgs, WorkflowRun};
 use g1t_contracts::events::{Event, caused_by_job};
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
-use g1t_contracts::repos::{Commit, CompareArgs, Comparison, LogArgs, PullMergeRef, PullMergeRefArgs, Repo, RepoPath};
-use g1t_contracts::work::{IssueDetail, PullDetail, ViewArgs};
+use g1t_contracts::repos::{Commit, CompareArgs, Comparison, FileStatus, LogArgs, PullMergeRef, PullMergeRefArgs, Repo, RepoPath};
+use g1t_contracts::work::{IssueDetail, Label, PullDetail, ViewArgs};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
@@ -51,6 +51,26 @@ struct Subject {
     /// merge commit (`refs/pull/<n>/merge`), as on GitHub, which becomes
     /// `github.sha` while statuses and checks stay on `sha`, its head.
     merge: Option<String>,
+}
+
+impl Subject {
+    /// What the event changes, once compared: the paths for `paths`
+    /// filters, and a push's commit's `added`, `removed` and `modified`.
+    fn changed(&mut self, changes: Vec<(String, FileStatus)>) {
+        payload::push_changes(&mut self.payload, &changes);
+        self.paths = Some(changes.into_iter().map(|(path, _)| path).collect());
+    }
+}
+
+/// The address a push's `pusher.email` gives: g1t's for its agent and
+/// itself, a person's noreply address (which needs no lookup) for them,
+/// and none for anyone else.
+fn pusher_email(actor: Option<&str>, username: &str) -> Option<String> {
+    match actor? {
+        id if id == AGENT_ID || id == g1t_contracts::system::ID => Some(g1t_contracts::system::EMAIL.to_owned()),
+        id if id.starts_with("usr_") => Some(g1t_contracts::accounts::noreply_address(id, username)),
+        _ => None,
+    }
 }
 
 /// Whether a deployment's `ref` is a commit's full hash rather than a
@@ -206,7 +226,8 @@ impl Actions {
         Ok(log.into_result().ok().and_then(|commits| commits.into_iter().next()))
     }
 
-    async fn changed_paths(&self, repo: &Repo, actor: &User, base: Option<String>, head: String) -> Result<Vec<String>> {
+    /// What `head` changes from `base`: each path and how.
+    async fn changed_paths(&self, repo: &Repo, actor: &User, base: Option<String>, head: String) -> Result<Vec<(String, FileStatus)>> {
         let compared: Outcome<Comparison> = g1t_kit::call(
             &self.repos,
             "compare",
@@ -219,7 +240,20 @@ impl Actions {
             },
         )
         .await?;
-        Ok(compared.into_result().map(|c| c.files.into_iter().map(|f| f.path).collect()).unwrap_or_default())
+        Ok(compared.into_result().map(|c| c.files.into_iter().map(|f| (f.path, f.status)).collect()).unwrap_or_default())
+    }
+
+    /// The repository's labels, for their colors, when `payload` has any.
+    async fn label_colors(&self, repo: &Repo, ws: &User, payload: &mut Value) -> Result<()> {
+        if !payload::has_labels(payload) {
+            return Ok(());
+        }
+        let args = ViewArgs { repo: Self::repo_path(repo), number: 0, viewer: Some(ws.clone()), after_seq: 0 };
+        let labels: Outcome<Vec<Label>> = g1t_kit::call(&self.work, "list_labels", &args).await?;
+        if let Outcome::Ok(labels) = labels {
+            payload::color_labels(payload, &labels);
+        }
+        Ok(())
     }
 
     async fn default_head(&self, repo: &Repo) -> Result<Option<String>> {
@@ -318,7 +352,8 @@ impl Actions {
                 let before = data["before"].as_str();
                 let (commits, forced) = self.pushed_commits(repo, ws, after, before).await?;
                 let title = commits.last().map(|c| c.message.lines().next().unwrap_or_default().to_owned()).unwrap_or_default();
-                let payload = payload::push(repo, git_ref, before, after, &commits, sender, forced);
+                let email = pusher_email(event.actor.as_deref(), sender);
+                let payload = payload::push(repo, git_ref, before, after, &commits, sender, email.as_deref(), forced);
                 Some(Subject {
                     source: path.clone(),
                     source_ref: Some(after.to_owned()),
@@ -408,6 +443,7 @@ impl Actions {
                     "sender": payload::user(sender),
                 });
                 payload::changed(repo, &mut payload, data);
+                self.label_colors(repo, ws, &mut payload).await?;
                 // `base.sha` is the base branch's tip now, as GitHub gives
                 // it, not where the two last agreed.
                 if let Some(tip) = self.branch_head(repo, &base_ref).await? {
@@ -521,7 +557,21 @@ impl Actions {
                     Some(head) => self.commit_at(&path, ws, head).await?.filter(|commit| commit.hash == head),
                     None => None,
                 };
+                // Its pull request, for `pull_requests[]`.
+                let pull = match data["pull"].as_u64() {
+                    Some(number) => match g1t_kit::call::<_, Outcome<PullDetail>>(&self.work, "get_pull", &view(number as u32)).await? {
+                        Outcome::Ok(detail) => Some(detail.pull),
+                        Outcome::Fail(_) => None,
+                    },
+                    None => None,
+                };
+                let base_sha = match &pull {
+                    Some(pull) if pull.fork.is_none() => self.branch_head(repo, pull.base_branch(&repo.default_branch)).await?,
+                    _ => None,
+                };
                 let followed = payload::FollowedRun {
+                    pull: pull.as_ref(),
+                    base_sha: base_sha.as_deref(),
                     data,
                     workflow_id: row.as_ref().map(|r| r.workflow_id.as_str()),
                     attempt: row.as_ref().map(|r| r.attempt),
@@ -574,6 +624,7 @@ impl Actions {
                     "sender": payload::user(sender),
                 });
                 payload::changed(repo, &mut payload, data);
+                self.label_colors(repo, ws, &mut payload).await?;
                 if event_name == "issue_comment" {
                     let comment_id = data["commentId"].as_str();
                     if action == Some("deleted") {
@@ -764,7 +815,7 @@ impl Actions {
             if copied_in && matches!(event_name, "push" | "create") {
                 if subject.paths.is_none() {
                     let (base, head) = subject.compare.clone().unwrap_or((None, subject.sha.clone()));
-                    subject.paths = Some(self.changed_paths(&repo, &ws, base, head).await?);
+                    subject.changed(self.changed_paths(&repo, &ws, base, head).await?);
                 }
                 if crate::mirrored::touches_workflows(subject.paths.as_deref().unwrap_or_default())
                     && let Some(mirror) = &repo.mirror
@@ -818,8 +869,17 @@ impl Actions {
         actor_id: Option<&str>,
         sender: &str,
     ) -> Result<()> {
-        for file in read.files {
-            let parsed = workflow::parse(&file.source);
+        let parsed: Vec<_> = read.files.into_iter().map(|file| (workflow::parse(&file.source), file)).collect();
+        // A push some workflow filters by path is compared before any run
+        // starts, so every run's payload lists what its commit changed.
+        let filters_paths = |(parsed, _): &(std::result::Result<Workflow, _>, _)| {
+            parsed.as_ref().ok().and_then(|w: &Workflow| w.trigger(event_name)).is_some_and(|t| t.paths.is_set())
+        };
+        if event_name == "push" && subject.paths.is_none() && parsed.iter().any(filters_paths) {
+            let (base, head) = subject.compare.clone().unwrap_or((None, subject.sha.clone()));
+            subject.changed(self.changed_paths(repo, ws, base, head).await?);
+        }
+        for (parsed, file) in parsed {
             let workflow = match parsed {
                 Ok(workflow) => workflow,
                 Err(problem) => {
@@ -904,7 +964,7 @@ impl Actions {
         if trigger.paths.is_set() {
             if subject.paths.is_none() {
                 let (base, head) = subject.compare.clone().unwrap_or((None, subject.sha.clone()));
-                subject.paths = Some(self.changed_paths(repo, ws, base, head).await?);
+                subject.changed(self.changed_paths(repo, ws, base, head).await?);
             }
             if !trigger.paths.allows_paths(subject.paths.as_deref().unwrap_or_default()) {
                 return Ok(false);
@@ -1451,6 +1511,14 @@ mod tests {
         }
     }
     use g1t_contracts::{Membership, PrincipalKind};
+
+    #[test]
+    fn a_pushers_email_is_their_noreply_address() {
+        assert_eq!(pusher_email(Some("usr_01j9zq4m8x7k2v5n3b6c1d0efg"), "Ada").as_deref(), Some("6c1d0efg+ada@users.noreply.g1t.sh"));
+        assert_eq!(pusher_email(Some(AGENT_ID), AGENT_NAME).as_deref(), Some(g1t_contracts::system::EMAIL));
+        assert_eq!(pusher_email(Some("wsp_1"), "acme"), None);
+        assert_eq!(pusher_email(None, "acme"), None);
+    }
 
     #[test]
     fn a_pull_request_builds_its_merge_commit_and_nothing_while_it_conflicts() {

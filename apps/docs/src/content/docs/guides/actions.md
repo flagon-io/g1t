@@ -1492,7 +1492,13 @@ payload GitHub would send for the event, with the same keys and types.
   is true when the commit before the push is not in the new commit's
   history. g1t reads the 20 latest commits to tell, so a forced push onto
   a longer history says `false`. `head_commit` is the commit pushed and
-  `commits` lists at most 20, oldest first.
+  `commits` lists at most 20, oldest first. `pusher.email` is the
+  pusher's noreply address (`<id>+<username>@users.noreply.g1t.sh`), or
+  `g1t@users.noreply.g1t.sh` for g1t.
+- **A commit's `added`, `removed` and `modified`** list the paths the
+  push changed when it pushed one commit and a workflow on `push` has a
+  `paths` or `paths-ignore` filter, which makes g1t compare the push.
+  Otherwise, and for a push of several commits, they are empty lists.
 - **On pull request events,** `pull_request.base.sha` is the tip of the
   branch it merges into when the event happened, and
   `pull_request.merge_commit_sha` is set only once it is merged, to the
@@ -1500,11 +1506,15 @@ payload GitHub would send for the event, with the same keys and types.
 - **On `workflow_run`,** `workflow_run` has the followed run's `name`,
   `path`, `event`, `status`, `conclusion`, `head_branch`, `head_sha`,
   `head_commit`, `run_number`, `run_attempt`, `actor`, `created_at`,
-  `updated_at`, `html_url`, `repository` and `pull_requests` (each with
-  its `number` and `url`).
+  `updated_at`, `html_url`, `repository` and `pull_requests`. Each pull
+  request there has its `id`, `number`, `url`, and `head` and `base`
+  with their `ref`, `sha` and `repo` (`id`, `url`, `name`). As on
+  GitHub, a pull request from a fork is not listed.
 
-Labels on `issue` and `pull_request` have their `id` and `name` but no
-`color`; a `labeled` event's own `label` has its color.
+Labels on `issue`, `pull_request` and a `labeled` event's `label` have
+their `id`, `name`, `color` and `description` as the repository has
+them, and `default`, which is true for the labels a repository starts
+with.
 
 ## Checks
 
