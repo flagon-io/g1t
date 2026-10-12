@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight, Circle } from "lucide-react";
 import { DropdownMenu as Primitive } from "radix-ui";
 import type { ComponentProps } from "react";
 
@@ -119,5 +119,38 @@ export function DropdownMenuSubContent({
         {...props}
       />
     </Primitive.Portal>
+  );
+}
+
+const CHOICE =
+  "relative flex cursor-default items-center gap-2 rounded-md py-1.5 pr-2 pl-8 text-fg/90 outline-none select-none pointer-coarse:min-h-10 data-highlighted:bg-line data-highlighted:text-fg data-disabled:opacity-50 [&_svg]:shrink-0";
+
+/** A row that is on or off, with a check when it is on. */
+export function DropdownMenuCheckboxItem({ className, children, ...props }: ComponentProps<typeof Primitive.CheckboxItem>) {
+  return (
+    <Primitive.CheckboxItem className={cn(CHOICE, className)} {...props}>
+      <span className="absolute left-2 flex size-4 items-center justify-center">
+        <Primitive.ItemIndicator>
+          <Check size={14} />
+        </Primitive.ItemIndicator>
+      </span>
+      {children}
+    </Primitive.CheckboxItem>
+  );
+}
+
+export const DropdownMenuRadioGroup = Primitive.RadioGroup;
+
+/** One of a group's choices, with a dot on the chosen one. */
+export function DropdownMenuRadioItem({ className, children, ...props }: ComponentProps<typeof Primitive.RadioItem>) {
+  return (
+    <Primitive.RadioItem className={cn(CHOICE, className)} {...props}>
+      <span className="absolute left-2 flex size-4 items-center justify-center">
+        <Primitive.ItemIndicator>
+          <Circle size={8} className="fill-current" />
+        </Primitive.ItemIndicator>
+      </span>
+      {children}
+    </Primitive.RadioItem>
   );
 }

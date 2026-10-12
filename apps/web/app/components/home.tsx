@@ -741,7 +741,7 @@ export function DecisionsCard({
   tz: string | null;
 }) {
   if (!decisions || decisions.length === 0) return null;
-  const missing = [...(read && !read.memories ? ["Memory"] : []), ...(read && !read.requests ? ["The Marketplace"] : [])];
+  const missing = [...(read && !read.memories ? ["Memory"] : []), ...(read && !read.requests ? ["Customize's requests"] : [])];
   return (
     <Card title="Decisions" hint="Recorded in the workspace's memory, and requests answered">
       <Folded

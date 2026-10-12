@@ -18,7 +18,7 @@ import {
   setupChoices,
   stateMatches,
 } from "./github.ts";
-import { integrationListings } from "./marketplace.ts";
+import { connectorsDirectory } from "./customize.ts";
 
 test("the state must come back exactly as it was given", () => {
   const state = newState();
@@ -96,14 +96,14 @@ test("the setup page offers only workspaces the person owns, saying which have i
   );
 });
 
-test("once an installation is recorded, the Marketplace and Integrations say GitHub is connected", () => {
+test("once an installation is recorded, Customize and Integrations say GitHub is connected", () => {
   assert.equal(githubConnected([]), null);
   const state = githubConnected([{ account: "flagon-io", suspended: false }]);
   assert.deepEqual(state, { detail: "On flagon-io", problem: null, manage: null });
-  const listings = integrationListings(connectorsFor("workspace"), { github: state! }, [], "ana", "flagon-io");
-  const github = listings.find((listing) => listing.view.id === "github");
-  assert.equal(github?.connected?.detail, "On flagon-io");
-  assert.equal(listings[0]!.view.id, "github");
+  const { integrations } = connectorsDirectory(connectorsFor("workspace"), [], { github: state! }, {}, "flagon-io");
+  const github = integrations.find((entry) => entry.view.id === "github");
+  assert.equal(github?.state?.detail, "On flagon-io");
+  assert.equal(integrations[0]!.view.id, "github", "connected ones come first");
   assert.equal(
     githubConnected([
       { account: "a", suspended: false },

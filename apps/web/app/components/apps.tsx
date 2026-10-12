@@ -1,9 +1,10 @@
-import { Bell, Building2, Code2, LayoutGrid, Lock, MessagesSquare, Pin, Search, Shapes, Sparkles, Store, House, Users } from "lucide-react";
+import { Bell, Building2, Code2, House, LayoutGrid, Lock, MessagesSquare, Pin, Search, Shapes, SlidersHorizontal, Sparkles, Users } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useFetchers } from "react-router";
 
+import { customizePath } from "@g1t/contracts/customize";
+
 import { ConnectorMark } from "./connectors";
-import { TierBadge } from "./marketplace";
 import { Card } from "./ui/card";
 import { Skeleton } from "./ui/skeleton";
 import { type BuiltinApp, type InstalledAppData, type PinnableApp, appPinFromForm, installedAppOf, withPin } from "../lib/apps";
@@ -25,7 +26,7 @@ export function appIcon(key: BuiltinApp, size = 18): ReactNode {
   return icons[key];
 }
 
-/** An installed app's mark: its connector's, until extensions bring their own. */
+/** An installed app's mark: its connector's, or its letters on a steady colour. */
 export function InstalledMark({ app, size = 22 }: { app: { connector: InstalledAppData["connector"] }; size?: number }) {
   return <ConnectorMark view={{ id: app.connector.id, name: app.connector.name, provider: app.connector.provider ?? null }} size={size} />;
 }
@@ -97,16 +98,16 @@ export function AppTile({
       </span>
       {card ? (
         <span className="min-w-0">
-          <span className="flex min-w-0 items-center gap-2">
+          <span className="flex min-w-0 items-baseline gap-2">
             <span className="truncate text-sm font-medium text-fg">{app.name}</span>
-            <TierBadge tier={app.tier} focusable={false} />
+            <span className="shrink-0 text-[0.6875rem] text-faint">{app.from}</span>
           </span>
           <span className="block truncate text-xs text-muted">{app.usable ? app.about : "Request access"}</span>
         </span>
       ) : (
         <span className="flex w-full min-w-0 flex-col items-center gap-1">
           <span className="block w-full truncate text-xs font-medium text-fg-soft">{app.name}</span>
-          {app.usable ? <TierBadge tier={app.tier} focusable={false} className="px-1 text-[0.5625rem] leading-3.5" /> : <span className="block truncate text-[0.625rem] text-accent">Request access</span>}
+          <span className={cn("block truncate text-[0.625rem]", app.usable ? "text-faint" : "text-accent")}>{app.usable ? app.from : "Request access"}</span>
         </span>
       )}
     </>
@@ -126,7 +127,7 @@ export function AppTile({
       <Link to={app.href} prefetch="intent" onClick={onOpen} className={linkClass}>
         {body}
       </Link>
-      {app.usable && (
+      {app.usable && app.pinnable && (
         <Hint label={pinned ? "Unpin from your rail" : "Pin to your rail"}>
           <button
             type="button"
@@ -147,18 +148,18 @@ export function AppTile({
   );
 }
 
-/** When nothing is installed: what Apps are, and the way to the Marketplace. */
+/** When nothing is installed: what Apps are, and the way to Customize. */
 export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen?: () => void; compact?: boolean }) {
   return (
     <div className={cn("flex flex-col items-center text-center", compact ? "px-4 py-6" : "rounded-xl border border-dashed border-line px-6 py-12")}>
       <span className="flex size-10 items-center justify-center rounded-xl bg-raised text-muted ring-1 ring-line">
-        <Store size={18} />
+        <SlidersHorizontal size={18} />
       </span>
       <p className="mt-3 text-sm font-medium">No apps installed yet</p>
-      <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps come from the Marketplace: integrations your workspace connects, and extensions later. Each one you can use shows here, to pin to your rail.</p>
-      <Link to={`/${slug}/-/marketplace`} onClick={onOpen} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover">
-        <Store size={14} />
-        Browse the Marketplace
+      <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps come from Customize: the plugins your workspace installs, and the connectors and integrations it connects. Each one you can use shows here.</p>
+      <Link to={customizePath("", slug)} onClick={onOpen} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover">
+        <SlidersHorizontal size={14} />
+        Customize
       </Link>
     </div>
   );
@@ -167,7 +168,7 @@ export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen
 /**
  * The Apps launcher's body: a search, every app the workspace installed
  * that the person can use (read from the Apps page as it opens), and the
- * way to all of them and to the Marketplace.
+ * way to all of them and to Customize.
  */
 export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; pins: PinnableApp[]; onToggle: (app: PinnableApp) => void; onClose: () => void }) {
   const [query, setQuery] = useState("");
@@ -234,12 +235,12 @@ export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; 
           All apps
         </Link>
         <Link
-          to={`/${slug}/-/marketplace`}
+          to={customizePath("", slug)}
           onClick={onClose}
           className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[0.8125rem] text-muted transition-colors hover:bg-line hover:text-fg"
         >
-          <Store size={14} />
-          Marketplace
+          <SlidersHorizontal size={14} />
+          Customize
         </Link>
       </div>
     </div>

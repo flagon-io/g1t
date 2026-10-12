@@ -16,8 +16,9 @@ import { Hint } from "../ui/hint";
 import { SelectField } from "../ui/select";
 import { useDialogFetcher } from "./dialogs";
 
-/** `/acme/-/agents/skills`, or one skill's page. */
+/** One skill's page, the editor or import under `/acme/-/agents/skills`; the library itself is Customize's Skills tab. */
 export function skillsPath(slug: string, name?: string, rest = ""): string {
+  if (!name && !rest) return `/${slug}/-/customize/skills`;
   return `/${slug}/-/agents/skills${name ? `/${encodeURIComponent(name)}` : ""}${rest}`;
 }
 

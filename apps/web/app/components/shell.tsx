@@ -55,7 +55,7 @@ import {
   Scale,
   Smile,
   Sparkles,
-  Store,
+  SlidersHorizontal,
   House,
   Ticket,
   TrendingUp,
@@ -2104,7 +2104,7 @@ const SECTIONS: Record<string, string> = {
   artifacts: "Artifacts",
   home: "Home",
   apps: "Apps",
-  marketplace: "Marketplace",
+  customize: "Customize",
   "code-access": "Code access",
   overview: "Overview",
   workspace: "Workspace",
@@ -2208,12 +2208,14 @@ function Breadcrumbs({
         label: third === "settings" ? "General" : (SECTIONS[third] ?? third),
         to: page,
       });
-      // The Marketplace names its tab (Marketplace / Extensions), Agents its templates, and Members its invitations.
+      // Customize names its tab (Customize / Plugins), Agents its templates, and Members its invitations.
       const tabs: Record<string, string> =
-        third === "marketplace"
+        third === "customize"
           ? {
-              integrations: "Integrations",
-              extensions: "Extensions",
+              skills: "Skills",
+              connectors: "Connectors",
+              plugins: "Plugins",
+              marketplaces: "Marketplaces",
               requests: "Requests",
             }
           : third === "agents"
@@ -2424,10 +2426,10 @@ function commandsFor(user: User, shell: ShellData): Command[] {
             icon: <LayoutGrid size={15} />,
           },
           {
-            label: "Marketplace",
-            hint: "Extensions and integrations to add",
-            to: `/${ws.slug}/-/marketplace`,
-            icon: <Store size={15} />,
+            label: "Customize",
+            hint: "Skills, connectors and plugins",
+            to: `/${ws.slug}/-/customize`,
+            icon: <SlidersHorizontal size={15} />,
           },
           {
             label: "Agent templates",

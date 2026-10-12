@@ -2,7 +2,7 @@
  * What a workspace has connected, by connector id (@g1t/contracts/connectors):
  * its provider connections from the integrations service, the GitHub App's
  * installations and its own webhooks, each with how it is doing. The
- * Integrations directory and the Marketplace both read it.
+ * Integrations directory and Customize both read it.
  */
 import type { User } from "@g1t/contracts";
 import { PROVIDERS } from "@g1t/contracts";

@@ -1,17 +1,27 @@
 /**
  * Agent templates: the roles g1t provides to start a new agent from, by
- * title, with the agents in the workspace that started from each. A
- * template isn't installed: an owner starts an agent from one (a member,
- * a personal agent) and configures it, and the agent is its own from then on.
+ * title, with the agents in the workspace that started from each; and the
+ * subagents the plugins the workspace installed bring, hireable the same
+ * way. A template isn't installed: an owner starts an agent from one (a
+ * member, a personal agent) and configures it, and the agent is its own
+ * from then on.
  */
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Bot, Plus, UserPlus } from "lucide-react";
 import { Link, data } from "react-router";
+
+import type { PluginAgentTemplate } from "@g1t/contracts";
+import { customizePath } from "@g1t/contracts/customize";
 
 import type { Route } from "./+types/templates";
 import { TemplateCard } from "../../../components/agent-templates";
-import { EmptyState } from "../../../components/ui";
-import { startPath, templateListings } from "../../../lib/agent-templates";
+import { readOrNull } from "../../../components/agents/actions.server";
+import { ButtonLink, EmptyState } from "../../../components/ui";
+import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
+import { templateListings } from "../../../lib/agent-templates";
 import { loadTemplates } from "../../../lib/agent-templates.server";
+import { pluginPath } from "../../../lib/customize";
+import { workspaceAgents } from "../../../lib/services.server";
 import { page } from "../../../lib/meta";
 import { requireUser, roleIn } from "../../../lib/session.server";
 
@@ -24,13 +34,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
   if (!role) throw data(null, { status: 404 });
-  const loaded = await loadTemplates(slug, viewer);
+  const [loaded, fromPlugins] = await Promise.all([loadTemplates(slug, viewer), readOrNull(workspaceAgents.pluginAgents(slug, viewer))]);
   // Owners start agents; members start personal ones, unless owners turned that off.
-  return { slug, owner: role === "owner" || loaded.members_create_agents, ...loaded };
+  return { slug, owner: role === "owner" || loaded.members_create_agents, fromPlugins, ...loaded };
 }
 
 export default function AgentTemplates({ loaderData }: Route.ComponentProps) {
-  const { slug, owner, templates, agents } = loaderData;
+  const { slug, owner, templates, agents, fromPlugins } = loaderData;
   const listings = templateListings(templates ?? [], agents);
   return (
     <div className="pb-4">
@@ -63,6 +73,31 @@ export default function AgentTemplates({ loaderData }: Route.ComponentProps) {
               <TemplateCard key={listing.template.id} listing={listing} slug={slug} owner={owner} />
             ))}
           </div>
+          <section aria-labelledby="from-plugins">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 id="from-plugins" className="text-xs font-semibold tracking-wide text-faint uppercase">
+                From plugins {fromPlugins && fromPlugins.length > 0 && <span className="font-normal">{fromPlugins.length}</span>}
+              </h2>
+              <Link to={`${customizePath("plugins", slug)}?view=discover`} className="text-xs text-muted hover:text-fg">
+                Find plugins in Customize
+              </Link>
+            </div>
+            {fromPlugins == null ? (
+              <EmptyState title="Plugin agents can't be shown right now">The agents service didn't answer. Reload in a minute.</EmptyState>
+            ) : fromPlugins.length === 0 ? (
+              <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
+                <p>Subagents the plugins you install bring show here, to hire as a starting point like any role.</p>
+              </Card>
+            ) : (
+              <Card asChild divided className="overflow-hidden">
+                <ul>
+                  {fromPlugins.map((agent) => (
+                    <PluginAgentRow key={agent.ref} agent={agent} slug={slug} owner={owner} />
+                  ))}
+                </ul>
+              </Card>
+            )}
+          </section>
           {owner && (
             <section aria-label="Your own">
               <h2 className="mb-3 text-xs font-semibold tracking-wide text-faint uppercase">Your own</h2>
@@ -83,5 +118,30 @@ export default function AgentTemplates({ loaderData }: Route.ComponentProps) {
         </div>
       )}
     </div>
+  );
+}
+
+/** A subagent an installed plugin brings: its name, what it does, the model it names, and Hire, which opens the new-agent form filled from it. */
+function PluginAgentRow({ agent, slug, owner }: { agent: PluginAgentTemplate; slug: string; owner: boolean }) {
+  return (
+    <li className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-3.5">
+      <Bot size={16} className="mt-0.5 shrink-0 text-faint" aria-hidden />
+      <div className="min-w-0 grow">
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-sm font-medium">{agent.name}</span>
+          <Link to={pluginPath(slug, `${agent.plugin}@${agent.marketplace}`)} className="inline-flex" prefetch="intent">
+            <Badge tone="accent">{agent.plugin}</Badge>
+          </Link>
+          {agent.model && <Badge>{agent.model}</Badge>}
+        </p>
+        {agent.description && <p className="mt-0.5 text-sm text-muted">{agent.description}</p>}
+      </div>
+      {owner && (
+        <ButtonLink to={`/${slug}/-/agents/new?plugin=${encodeURIComponent(`${agent.plugin}@${agent.marketplace}`)}&agent=${encodeURIComponent(agent.name)}`} variant="outline" size="sm">
+          <UserPlus size={14} />
+          Hire
+        </ButtonLink>
+      )}
+    </li>
   );
 }

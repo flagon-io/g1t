@@ -34,7 +34,9 @@ test("old addresses go to where their pages are now", () => {
   assert.equal(workspaceRedirect("/acme/-/marketplace/agents"), "/acme/-/agents/templates");
   assert.equal(workspaceRedirect("/acme/-/marketplace/agents/qa.data", "?_routes=x"), "/acme/-/agents/templates/qa");
   assert.equal(workspaceRedirect("/acme/-/marketplace/agentsx"), null);
-  assert.equal(workspaceRedirect("/acme/-/marketplace/extensions"), null);
+  // The Marketplace is Customize now (lib/customize.test.ts has the rest).
+  assert.equal(workspaceRedirect("/acme/-/marketplace/extensions"), "/acme/-/customize/plugins");
+  assert.equal(workspaceRedirect("/acme/-/marketplace/extensions/mail/more"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/insights", "?x=1"), "/acme/-/insights?x=1");
   assert.equal(workspaceRedirect("/acme/-/soon/board"), null);
   assert.equal(workspaceRedirect("/acme/-/people"), null);

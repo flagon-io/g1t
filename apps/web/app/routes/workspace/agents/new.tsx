@@ -2,7 +2,7 @@ import { ArrowLeft, Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, data, redirect, useFetcher, useSearchParams } from "react-router";
 
-import type { AgentProposal, AgentTemplate, DraftTurn } from "@g1t/contracts";
+import type { AgentProposal, AgentTemplate, DraftTurn, PluginAgentTemplate } from "@g1t/contracts";
 
 import type { Route } from "./+types/new";
 import { AgentForm, TemplateGallery } from "../../../components/agents-mode";
@@ -10,6 +10,7 @@ import { type BuilderAnswer, CreateDraft, DescribeBox, ProposalCard, TryChat } f
 import { type BuilderDefinition, readDefinition } from "../../../lib/agent-builder";
 import { type AgentDraft, BLANK_DRAFT, cleanHandle, readAgentForm, readTeams } from "../../../lib/agent-form";
 import { channelPath } from "../../../lib/chat";
+import { pluginAgentDraft } from "../../../lib/customize";
 import { page } from "../../../lib/meta";
 import { chat, docs, identity, workspaceAgents } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
@@ -26,17 +27,23 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [templates, teams, spaces, policy] = await Promise.all([
+  // `?plugin=<ref>&agent=<name>`: a plugin's subagent to start from (Customize, Templates).
+  const search = new URL(request.url).searchParams;
+  const wanted = search.get("plugin") && search.get("agent") ? { plugin: search.get("plugin")!, agent: search.get("agent")! } : null;
+  const [templates, teams, spaces, policy, fromPlugins] = await Promise.all([
     workspaceAgents.templates().catch(() => null),
     identity.listTeams(viewer, params.owner).catch(() => null),
     readingSpaces(slug, viewer),
     workspaceAgents.policy(slug, viewer).catch(() => null),
+    wanted ? workspaceAgents.pluginAgents(slug, viewer).catch(() => null) : Promise.resolve(null),
   ]);
+  const pluginAgent: PluginAgentTemplate | null = fromPlugins?.ok ? (fromPlugins.value.find((a) => `${a.plugin}@${a.marketplace}` === wanted!.plugin && a.name === wanted!.agent) ?? null) : null;
   const owner = role === "owner";
   // Members make personal agents unless an owner turned that off; owners always may.
   const membersMay = policy?.ok ? policy.value.members_create_agents : true;
   return {
     templates,
+    pluginAgent,
     owner,
     mayCreate: owner || membersMay,
     // The teams the viewer may add a new agent to: owners any, a maintainer theirs.
@@ -170,8 +177,9 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
     }
   }, [drafter.state, drafter.data]);
 
-  // A role, or every field from nothing: the form, as before.
-  const formFrom = template ? draftFrom(template) : chosen === "blank" ? BLANK_DRAFT : full && definition ? formDraft(definition) : null;
+  // A role, a plugin's subagent, or every field from nothing: the form, as before.
+  const pluginAgent = search.get("plugin") ? loaderData.pluginAgent : null;
+  const formFrom = template ? draftFrom(template) : pluginAgent ? pluginAgentDraft(pluginAgent) : chosen === "blank" ? BLANK_DRAFT : full && definition ? formDraft(definition) : null;
   const personal = full && definition ? definition.scope === "personal" : !owner;
   const back = (
     <Link to={`/${params.owner}/-/agents`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
@@ -187,7 +195,8 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
         <header className="mt-4 mb-8">
           <h1 className="text-2xl font-semibold tracking-tight">New agent</h1>
           <p className="mt-1.5 max-w-2xl text-sm text-muted">
-            {personal ? "Your personal agent: only you can talk to it, and it spends from your budget. " : ""}Every field, as you'll find it on its profile later.{" "}
+            {personal ? "Your personal agent: only you can talk to it, and it spends from your budget. " : ""}
+            {pluginAgent ? `Started from ${pluginAgent.name}, which the plugin ${pluginAgent.plugin} brings: its description and system prompt are filled in. ` : ""}Every field, as you'll find it on its profile later.{" "}
             <Button
               type="button"
               onClick={() => {
@@ -215,7 +224,7 @@ export default function NewAgent({ loaderData, actionData, params }: Route.Compo
             errors={errors}
             submit="Create agent"
             intent="create"
-            formKey={full ? `draft:${definition?.handle}` : (chosen ?? "blank")}
+            formKey={full ? `draft:${definition?.handle}` : pluginAgent ? `plugin:${pluginAgent.ref}` : (chosen ?? "blank")}
             nameIdeas={full && proposal ? [proposal.definition.display_name, ...proposal.name_ideas] : ideasOf(template)}
             joinable={loaderData.joinable}
             personal={personal}
