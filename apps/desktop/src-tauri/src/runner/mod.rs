@@ -32,10 +32,18 @@
 //!   (registration.json and the runner's own folder; the sandbox keeps its
 //!   own, and sandbox-registration.json says whose it is) and used on
 //!   every later start.
-//! - **Up to date.** Soon after it starts and every six hours, while the
-//!   runner is idle, the app looks for a newer release and puts it in
-//!   place, and has the sandbox take the newest image (`sandbox update`):
-//!   never in the middle of a job.
+//! - **Up to date.** Soon after it starts and every hour, and when the
+//!   person asks ("Check for runner updates"), the app looks for a newer
+//!   release on a thread of its own: its manifest only when g1t's release
+//!   key signed it (native.rs), its program only when its SHA-256 is the
+//!   manifest's. What it finds waits, downloaded, until each kind of job
+//!   is idle, and goes in kind by kind, never in the middle of a job: the
+//!   sandbox's Linux jobs take its image (`sandbox update`, which drains
+//!   them itself) once they have no job; its Windows jobs, whose runner is
+//!   the program itself, are drained (`down --only windows --drain`), the
+//!   program is replaced, and they start again; a runner in Docker or on
+//!   this computer is stopped between jobs and started on the new one.
+//!   "Download updates by themselves" off, it looks only when asked.
 //! - **Seen.** What it is doing, and when it is not running why and how to
 //!   fix it (diagnosis.rs), is in the tray, in settings, and on the site's
 //!   Runners page (`g1t-runner-status`), read from what its log says
@@ -58,7 +66,7 @@ use std::path::PathBuf;
 use std::process::{Child, Stdio};
 use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, EventTarget, Manager};
@@ -68,6 +76,7 @@ pub use backend::Backend;
 use backend::{Engine, Missing};
 use diagnosis::{Code, Diagnosis, Facts};
 use launcher::{Down, State, Status};
+use native::Fault;
 
 use crate::{config, frame, settings, tray};
 
@@ -82,7 +91,7 @@ const AFTER_START: Duration = Duration::from_secs(4);
 const TICK: Duration = Duration::from_secs(5);
 /// How long after starting the first look for an update is, then how often.
 const FIRST_UPDATE: Duration = Duration::from_secs(90);
-const UPDATE_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+const UPDATE_EVERY: Duration = Duration::from_secs(60 * 60);
 /// How often a backend that cannot start is looked at again.
 const LOOK_AGAIN: Duration = Duration::from_secs(30);
 /// How long the app waits for the site to hand over a token before asking again.
@@ -126,6 +135,34 @@ struct Now {
     download: Option<launcher::Download>,
 }
 
+/// How the runner's updates stand, as the thread last said.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Updates {
+    /// When the releases last answered.
+    checked_at: Option<SystemTime>,
+    checking: bool,
+    /// A newer version, downloaded and checked, waiting.
+    ready: Option<String>,
+    /// Its program is still to be put in place.
+    program: bool,
+    /// The sandbox's image is still to take it.
+    image: bool,
+    /// The kinds of job taking it now.
+    installing: Vec<String>,
+}
+
+/// What a look at the releases found.
+struct Found {
+    version: String,
+    /// Newer than the program here.
+    newer: bool,
+    /// Its program, downloaded and checked: None when it isn't newer, or is
+    /// already waiting.
+    program: Option<Vec<u8>>,
+    /// The release has the sandbox's images.
+    images: bool,
+}
+
 /// What the site last said about the person.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Site {
@@ -146,6 +183,7 @@ pub struct Shared {
     paused: Mutex<bool>,
     tail: Mutex<VecDeque<String>>,
     tx: Mutex<Option<Sender<Ask>>>,
+    updates: Mutex<Updates>,
 }
 
 /// What settings, the tray and the site are shown.
@@ -180,6 +218,11 @@ enum Ask {
     /// A kind of job was started: start what should run now, stopping nothing.
     Soon,
     Retry,
+    /// "Check for runner updates": look now, and install what is found
+    /// even with "Download updates by themselves" off.
+    Check,
+    /// What a look at the releases found.
+    Checked(Result<Found, Fault>),
     Token { workspace: String, token: String },
     Refused { workspace: String, allowed: bool, why: String },
     /// A line of the runner's output, or the launcher's; true from its standard output.
@@ -295,7 +338,59 @@ fn facts(app: &AppHandle, now: &Now) -> Facts {
         starting: now.starting.clone(),
         download: now.download.clone(),
         held: !settings.runner || *app.state::<Shared>().paused.lock().unwrap(),
+        update: update_facts(app, now, backend),
     }
+}
+
+/// How the runner's updates stand, for the words: what is still to take a
+/// waiting version. The sandbox's Windows jobs (any kind but Linux) take
+/// its program while they run; a runner with no kinds of job takes it
+/// itself.
+fn update_facts(app: &AppHandle, now: &Now, backend: Backend) -> diagnosis::Update {
+    let updates = app.state::<Shared>().updates.lock().unwrap().clone();
+    let sandbox = now.sandbox.as_ref().filter(|_| backend == Backend::Sandboxed);
+    let mut waiting = Vec::new();
+    if updates.image {
+        waiting.push("linux".to_owned());
+    }
+    if updates.program {
+        match sandbox {
+            Some(status) => waiting.extend(native_kinds(status).into_iter().map(|c| c.id.clone())),
+            None => waiting.push("runner".to_owned()),
+        }
+    }
+    diagnosis::Update {
+        installed: native::installed(&folder(app)),
+        checked_at: updates.checked_at.map(rfc3339),
+        checked_ago: updates.checked_at.and_then(|at| at.elapsed().ok()).map(|ago| ago.as_secs()),
+        checking: updates.checking,
+        ready: updates.ready,
+        waiting,
+        installing: updates.installing,
+    }
+}
+
+/// The kinds of job running on the program itself, which replacing it
+/// stops: the sandbox's Windows jobs (not Linux jobs, which run in its VM).
+fn native_kinds(status: &Status) -> Vec<&launcher::Capability> {
+    status.capabilities.iter().filter(|c| c.id != "linux" && !c.off() && matches!(c.state, State::Running | State::Starting)).collect()
+}
+
+/// A time as RFC 3339, in UTC to the second: `2026-10-12T12:04:05Z`.
+fn rfc3339(at: SystemTime) -> String {
+    let seconds = at.duration_since(SystemTime::UNIX_EPOCH).map_or(0, |since| since.as_secs());
+    let (days, rest) = (seconds / 86_400, seconds % 86_400);
+    // Days since 1970 to a date in the proleptic Gregorian calendar (Howard Hinnant's civil_from_days).
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z.rem_euclid(146_097);
+    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 { month_index + 3 } else { month_index - 9 };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z", rest / 3600, rest % 3600 / 60, rest % 60)
 }
 
 pub fn view(app: &AppHandle) -> View {
@@ -443,6 +538,7 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
         }
         "stop" => set_paused(app, true),
         "retry" | "restart" => retry(app),
+        "check_updates" => ask(app, Ask::Check),
         "sign_in" => crate::links::go(app, "/login"),
         "new_workspace" => crate::links::go(app, "/workspaces/new"),
         "view_runners" => match workspace(app) {
@@ -556,6 +652,9 @@ enum Step {
     Start(String),
     /// `down --only <kind>`: one kind of job, stopped, the rest running on.
     Stop(String),
+    /// `down --only <kind> --drain`: one kind of job, stopped after its
+    /// job, so the program its runner is can be replaced.
+    Drain(String),
 }
 
 impl Step {
@@ -563,7 +662,7 @@ impl Step {
         match self {
             Step::Up | Step::Start(_) => "up",
             Step::Update => "update",
-            Step::Stop(_) => "down",
+            Step::Stop(_) | Step::Drain(_) => "down",
         }
     }
 }
@@ -633,10 +732,18 @@ struct Keeper {
     failures: u32,
     next_update: Instant,
     log: Option<File>,
-    /// The runner was updated: the sandbox takes its image before it starts again.
-    image_pending: bool,
-    /// Why the last update failed, said until the next one works.
-    update_failed: Option<String>,
+    /// Why the last update failed (`UpdateFailed`, or `UpdateRefused` for
+    /// a release g1t didn't sign), said while the runner is idle, until
+    /// the next one works.
+    update_failed: Option<(Code, String)>,
+    /// A newer program, downloaded and checked, waiting for the kinds of
+    /// job that run on it to be idle: its version and its bytes.
+    program: Option<(String, Vec<u8>)>,
+    /// The person asked for this update: it installs with "Download
+    /// updates by themselves" off.
+    asked: bool,
+    /// When g1t last looked, as settings last said it.
+    said_checked: String,
     /// A kind of job that should run and doesn't, while another runs:
     /// when it is tried again, and how many times it has been.
     retry: Vec<(String, Instant, u32)>,
@@ -668,8 +775,10 @@ impl Keeper {
             failures: 0,
             next_update: now + FIRST_UPDATE,
             log: None,
-            image_pending: false,
             update_failed: None,
+            program: None,
+            asked: false,
+            said_checked: String::new(),
             retry: Vec::new(),
         }
     }
@@ -692,6 +801,31 @@ impl Keeper {
                 }
             }
             self.look();
+            self.said_when();
+        }
+    }
+
+    /// Settings say when g1t last looked for a newer runner, in minutes
+    /// and hours: said again as that changes.
+    fn said_when(&mut self) {
+        let (checked_at, checking) = self.with_updates(|updates| (updates.checked_at, updates.checking));
+        let checked_ago = checked_at.and_then(|at| at.elapsed().ok()).map(|ago| ago.as_secs());
+        let checked = diagnosis::checked(&diagnosis::Update { checked_ago, checking, ..diagnosis::Update::default() });
+        if checked != self.said_checked {
+            self.said_checked = checked;
+            publish(&self.app);
+        }
+    }
+
+    fn with_updates<R>(&self, change: impl FnOnce(&mut Updates) -> R) -> R {
+        change(&mut self.app.state::<Shared>().updates.lock().unwrap())
+    }
+
+    /// What an idle runner shows: why its last update failed, until one works.
+    fn idle(&self, code: Code) -> (Code, Extra) {
+        match (&self.update_failed, code) {
+            (Some((failed, why)), Code::Idle) => (*failed, detail(why.clone())),
+            _ => (code, Extra::default()),
         }
     }
 
@@ -775,15 +909,14 @@ impl Keeper {
                 }
                 match self.code() {
                     // The runner is fine: only the update is tried again.
-                    Code::UpdateFailed => {
-                        self.next_update = Instant::now();
-                        self.update_failed = None;
-                    }
+                    Code::UpdateFailed | Code::UpdateRefused if self.run.is_some() => self.check(true),
                     Code::Offline => self.halt(),
                     _ if self.run.as_ref().is_some_and(|run| !run.listening) => self.halt(),
                     _ => {}
                 }
             }
+            Ask::Check => self.check(true),
+            Ask::Checked(found) => self.checked(found),
             Ask::Token { workspace, token } => {
                 let shared = self.app.state::<Shared>();
                 let mut wanted = shared.wanted.lock().unwrap();
@@ -879,7 +1012,8 @@ impl Keeper {
         }
         self.note(job, version);
         if let Some(code) = became {
-            self.set(code, Extra::default());
+            let (code, extra) = self.idle(code);
+            self.set(code, extra);
         }
     }
 
@@ -1027,11 +1161,15 @@ impl Keeper {
             self.set(if paused { Code::Stopped } else { Code::Off }, Extra::default());
             return;
         }
+        // Looking needs a runner here to compare with; the first comes with the first start.
+        if Instant::now() >= self.next_update && native::installed(&folder(&self.app)).is_some() {
+            self.check(false);
+        }
         let workspace = workspace(&self.app);
         if let Some(run) = &self.run {
             let moved = run.backend != settings.runner_backend || Some(&run.workspace) != workspace.as_ref();
             let back = run.offline_at.is_some_and(|at| at.elapsed() >= BACK_ONLINE);
-            let (busy, listening, stepping) = (run.busy, run.listening, run.step().is_some());
+            let (busy, stepping) = (run.busy, run.step().is_some());
             if back {
                 if let Some(run) = self.run.as_mut() {
                     run.offline_at = None;
@@ -1042,9 +1180,7 @@ impl Keeper {
             if moved && !busy && !stepping {
                 self.halt_as(Down::Drain);
                 self.not_before = Instant::now();
-            } else if !busy && listening && !stepping && Instant::now() >= self.next_update {
-                self.update();
-            } else if !moved && !stepping {
+            } else if !moved && !stepping && !self.install() {
                 self.kinds(workspace.as_deref());
             }
             self.poll();
@@ -1052,6 +1188,13 @@ impl Keeper {
         }
         if Instant::now() < self.not_before {
             return;
+        }
+        // Nothing runs: a waiting program goes in before anything starts.
+        if self.program.is_some()
+            && self.allowed()
+            && let Some((version, bytes)) = self.program.take()
+        {
+            self.put(version, &bytes);
         }
         self.start(settings.runner_backend, workspace);
     }
@@ -1101,10 +1244,12 @@ impl Keeper {
         let envs = environment(&server, backend, token.as_deref());
         let generation = self.generation + 1;
         self.generation = generation;
-        let started = self.ensure_binary(&server).and_then(|binary| {
-            let child = native::spawn(&binary, &native_dir(&app, backend), &envs).map_err(|e| format!("g1t-runner could not start: {e}"))?;
+        let binary = match self.ensure_binary(&server) {
+            Ok(binary) => binary,
+            Err(fault) => return self.not_installed(workspace, token, fault),
+        };
+        let started = native::spawn(&binary, &native_dir(&app, backend), &envs).map_err(|e| format!("g1t-runner could not start: {e}")).inspect(|child| {
             let _ = std::fs::write(folder(&app).join("pid"), child.id().to_string());
-            Ok(child)
         });
         match started {
             Ok(mut child) => {
@@ -1164,8 +1309,9 @@ impl Keeper {
         }
     }
 
-    /// `g1t-runner` installed, from the newest release when it is not.
-    fn ensure_binary(&mut self, server: &Url) -> Result<PathBuf, String> {
+    /// `g1t-runner` installed, from the newest release when it is not:
+    /// one g1t signed, as every update is.
+    fn ensure_binary(&mut self, server: &Url) -> Result<PathBuf, Fault> {
         let folder = folder(&self.app);
         let binary = native::binary(&folder);
         if native::installed(&folder).is_some() {
@@ -1173,66 +1319,221 @@ impl Keeper {
         }
         self.set(Code::Updating, detail("Downloading g1t-runner."));
         let manifest = native::latest(server)?;
-        let bytes = native::download(server, &manifest)?;
-        native::put(&folder, &bytes, &manifest.version)?;
+        let bytes = native::download(server, &manifest).map_err(Fault::Failed)?;
+        native::put(&folder, &bytes, &manifest.version).map_err(Fault::Failed)?;
         self.note(None, Some(manifest.version));
+        self.with_updates(|updates| updates.checked_at = Some(SystemTime::now()));
         Ok(binary)
     }
 
-    /// A newer release or image, put in place while the runner is idle.
-    /// The new one is downloaded and checked before the runner stops, so
-    /// one that fails leaves it running as it was.
-    fn update(&mut self) {
-        self.next_update = Instant::now() + UPDATE_EVERY;
-        if !config::settings(&self.app).auto_update {
-            return;
+    /// There is no `g1t-runner` here, and none could be had: a release g1t
+    /// didn't sign is refused, and asked for again in a while.
+    fn not_installed(&mut self, workspace: String, token: Option<String>, fault: Fault) {
+        match fault {
+            Fault::Failed(why) => self.not_started(workspace, token, why),
+            Fault::Unsigned(why) => {
+                if let Some(given) = token {
+                    self.token = Some((workspace, given));
+                }
+                self.write_log(&format!("g1t: g1t-runner wasn't installed: {why}"));
+                self.not_before = Instant::now() + MOST_BACKOFF;
+                self.set(Code::UpdateRefused, detail(why));
+            }
         }
-        let Some(engine) = self.run.as_ref().map(|run| run.engine) else { return };
-        let server = config::server(&self.app);
-        let folder = folder(&self.app);
-        let release = match self.newer_release(&server) {
-            Ok(release) => release,
-            Err(why) => {
-                let why = format!("g1t-runner couldn't be updated: {why}");
-                self.write_log(&format!("g1t: {why}"));
-                self.update_failed = Some(why.clone());
-                return self.set(Code::UpdateFailed, detail(why));
-            }
-        };
-        let Some((version, bytes)) = release else {
-            // The program is the newest; the sandbox's image may not be
-            // (`update` does nothing when it is).
-            if engine == Engine::Launcher {
-                self.sandbox_step(Step::Update);
-            }
-            return;
-        };
-        self.set(Code::Updating, detail(format!("Updating g1t-runner to {version}.")));
-        // The sandbox's runner for Windows jobs is this program too: it
-        // stops, after its job, before the program is replaced.
-        self.halt_as(Down::Drain);
-        match native::put(&folder, &bytes, &version) {
-            Ok(()) => {
-                self.note(None, Some(version));
-                self.update_failed = None;
-                // The sandbox's image comes with each release.
-                self.image_pending = engine == Engine::Launcher;
-            }
-            Err(why) => self.write_log(&format!("g1t: g1t-runner {version} couldn't be put in place: {why}")),
-        }
-        self.not_before = Instant::now();
     }
 
-    /// A release newer than the `g1t-runner` here, downloaded and checked
-    /// against its SHA-256: its version and program. None when this one is
-    /// the newest, or the releases can't be asked now.
-    fn newer_release(&self, server: &Url) -> Result<Option<(String, Vec<u8>)>, String> {
-        let Ok(manifest) = native::latest(server) else { return Ok(None) };
-        if !native::installed(&folder(&self.app)).is_none_or(|have| native::newer(&manifest.version, &have)) {
-            return Ok(None);
+    // --- Updates ------------------------------------------------------------------
+
+    /// Looks for a newer release on a thread of its own, so the runner is
+    /// looked after meanwhile: its signed manifest, and its program when it
+    /// is newer than the one here. `asked` is the person asking, which
+    /// works with "Download updates by themselves" off.
+    fn check(&mut self, asked: bool) {
+        self.next_update = Instant::now() + UPDATE_EVERY;
+        if !asked && !config::settings(&self.app).auto_update {
+            return;
         }
-        let bytes = native::download(server, &manifest).map_err(|why| format!("{} didn't download: {why}", manifest.version))?;
-        Ok(Some((manifest.version, bytes)))
+        if self.with_updates(|updates| std::mem::replace(&mut updates.checking, true)) {
+            return;
+        }
+        self.asked |= asked;
+        publish(&self.app);
+        let (server, folder) = (config::server(&self.app), folder(&self.app));
+        let waiting = self.program.as_ref().map(|(version, _)| version.clone());
+        let tx = self.tx.clone();
+        let spawned = std::thread::Builder::new().name("g1t-runner-releases".into()).spawn(move || {
+            let _ = tx.send(Ask::Checked(look_for_release(&server, &folder, waiting.as_deref())));
+        });
+        if spawned.is_err() {
+            self.with_updates(|updates| updates.checking = false);
+        }
+    }
+
+    /// What the look found: a newer program waits for its kinds of job to
+    /// be idle, and so does the sandbox's image when it is older than the
+    /// release's. A release g1t didn't sign, or one that didn't download,
+    /// leaves the runner as it is, and is said while it is idle.
+    fn checked(&mut self, found: Result<Found, Fault>) {
+        self.with_updates(|updates| updates.checking = false);
+        let found = match found {
+            Ok(found) => found,
+            Err(fault) => {
+                let failed = match fault {
+                    Fault::Unsigned(why) => (Code::UpdateRefused, why),
+                    Fault::Failed(why) => (Code::UpdateFailed, format!("g1t-runner couldn't be updated: {why}")),
+                };
+                self.write_log(&format!("g1t: {}", failed.1));
+                self.update_failed = Some(failed);
+                self.asked = false;
+                if matches!(self.code(), Code::Idle | Code::UpdateFailed | Code::UpdateRefused) {
+                    let (code, extra) = self.idle(Code::Idle);
+                    self.set(code, extra);
+                }
+                return publish(&self.app);
+            }
+        };
+        if let Some(bytes) = found.program {
+            self.program = Some((found.version.clone(), bytes));
+        }
+        if !found.newer {
+            self.program = None;
+        }
+        // The sandbox's image is the release's version; one older takes the newest.
+        let sandbox = self.app.state::<Shared>().now.lock().unwrap().sandbox.clone();
+        let launcher = self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher);
+        let image = launcher
+            && found.images
+            && sandbox.is_some_and(|status| status.linux().state != State::Absent && status.image_version.as_deref().is_some_and(|have| native::newer(&found.version, have)));
+        let program = self.program.is_some();
+        self.with_updates(|updates| {
+            updates.checked_at = Some(SystemTime::now());
+            updates.program = program;
+            updates.image = image;
+            updates.ready = (program || image).then(|| found.version.clone());
+        });
+        if program || image {
+            self.write_log(&format!("g1t: g1t-runner {} is ready, and installs as each kind of job is idle.", found.version));
+        } else {
+            self.asked = false;
+        }
+        // It worked: what the last failure said goes.
+        if self.update_failed.take().is_some() && matches!(self.code(), Code::UpdateFailed | Code::UpdateRefused) {
+            self.set(Code::Idle, Extra::default());
+        }
+        publish(&self.app);
+    }
+
+    /// Whether a waiting update may go in: "Download updates by
+    /// themselves" is on, or the person asked for it. Turned off since it
+    /// downloaded, it no longer waits.
+    fn allowed(&mut self) -> bool {
+        if self.asked || config::settings(&self.app).auto_update {
+            return true;
+        }
+        self.program = None;
+        self.with_updates(|updates| {
+            updates.program = false;
+            updates.image = false;
+            updates.ready = None;
+        });
+        false
+    }
+
+    /// Puts a waiting update in, kind by kind, as each kind of job is idle:
+    /// true when it started something, which is waited for. Never in the
+    /// middle of a job.
+    fn install(&mut self) -> bool {
+        let image = self.with_updates(|updates| updates.image);
+        if (self.program.is_none() && !image) || !self.allowed() {
+            return false;
+        }
+        let Some((engine, busy, listening)) = self.run.as_ref().map(|run| (run.engine, run.busy, run.listening)) else { return false };
+        if engine != Engine::Launcher {
+            // A runner in Docker or on this computer is the program: stopped between jobs, started on the new one.
+            if busy || !listening {
+                return false;
+            }
+            let Some((version, bytes)) = self.program.take() else { return false };
+            self.set(Code::Updating, detail(format!("Updating g1t-runner to {version}.")));
+            self.halt();
+            self.put(version, &bytes);
+            self.not_before = Instant::now();
+            return true;
+        }
+        let Some(status) = self.app.state::<Shared>().now.lock().unwrap().sandbox.clone() else { return false };
+        if self.program.is_some() {
+            let running = native_kinds(&status);
+            if running.is_empty() {
+                // Nothing runs on the program: it is replaced now, and
+                // kinds() starts what was drained on the new one first,
+                // before the image, which takes minutes, is updated.
+                let (version, bytes) = self.program.take().expect("checked above");
+                self.put(version, &bytes);
+                return false;
+            } else if !status.per_kind() {
+                // A launcher from before kinds of job stopped on their own: the whole sandbox stops between jobs.
+                if busy {
+                    return false;
+                }
+                let (version, bytes) = self.program.take().expect("checked above");
+                self.set(Code::Updating, detail(format!("Updating g1t-runner to {version}.")));
+                self.halt_as(Down::Drain);
+                self.put(version, &bytes);
+                self.with_updates(|updates| updates.image = true);
+                self.not_before = Instant::now();
+                return true;
+            } else if let Some(idle) = running.iter().find(|kind| kind.job.is_none()) {
+                // Stopped after any job it takes meanwhile; replaced once it has.
+                let kind = idle.id.clone();
+                self.with_updates(|updates| updates.installing = vec![kind.clone()]);
+                self.kind_step(Step::Drain(kind), None);
+                return true;
+            }
+        }
+        // Linux jobs take the image once they have no job (`update` drains them itself too).
+        let image = self.with_updates(|updates| updates.image);
+        if image && status.linux().job.is_none() {
+            self.with_updates(|updates| updates.installing.push("linux".into()));
+            self.sandbox_step(Step::Update);
+            return true;
+        }
+        false
+    }
+
+    /// Puts a downloaded program in place, with nothing running on it.
+    fn put(&mut self, version: String, bytes: &[u8]) {
+        match native::put(&folder(&self.app), bytes, &version) {
+            Ok(()) => {
+                self.write_log(&format!("g1t: g1t-runner {version} is in place."));
+                if self.run.as_ref().is_none_or(|run| run.engine != Engine::Launcher) {
+                    self.note(None, Some(version));
+                }
+            }
+            Err(why) => {
+                let why = format!("g1t-runner {version} couldn't be put in place: {why}");
+                self.write_log(&format!("g1t: {why}"));
+                self.update_failed = Some((Code::UpdateFailed, why));
+            }
+        }
+        self.done_with(|updates| {
+            updates.program = false;
+            updates.installing.retain(|kind| kind == "linux");
+        });
+    }
+
+    /// Part of an update is done: what waits is said again.
+    fn done_with(&mut self, change: impl FnOnce(&mut Updates)) {
+        let left = self.with_updates(|updates| {
+            change(updates);
+            if !updates.program && !updates.image {
+                updates.ready = None;
+            }
+            updates.program || updates.image
+        });
+        if !left {
+            self.asked = false;
+        }
+        publish(&self.app);
     }
 
     // --- The sandbox (launcher.rs) ------------------------------------------------
@@ -1244,7 +1545,7 @@ impl Keeper {
         let server = config::server(&app);
         let binary = match self.ensure_binary(&server) {
             Ok(binary) => binary,
-            Err(why) => return self.not_started(workspace, None, why),
+            Err(fault) => return self.not_installed(workspace, None, fault),
         };
         let dir = native_dir(&app, Backend::Sandboxed);
         let mut status = match launcher::status(&binary, &dir) {
@@ -1317,8 +1618,13 @@ impl Keeper {
         self.generation = generation;
         self.run = Some(Run::new(generation, Engine::Launcher, Backend::Sandboxed, workspace.clone(), Process::Sandbox(None), token.is_some()));
         // A new release's image first, then the sandbox starts again.
-        let step = if self.image_pending && status.linux().state != State::Absent { Step::Update } else { Step::Up };
-        self.image_pending = false;
+        let image = self.with_updates(|updates| std::mem::take(&mut updates.image));
+        let step = if image && status.linux().state != State::Absent { Step::Update } else { Step::Up };
+        if step == Step::Update {
+            self.with_updates(|updates| updates.installing.push("linux".into()));
+        } else if image {
+            self.done_with(|_| {});
+        }
         let name = backend::machine_name();
         let url = server.as_str().trim_end_matches('/').to_owned();
         let up = launcher::Up { url: &url, name: &name, labels: "desktop", token: token.as_deref(), only: wanted.iter().map(String::as_str).collect() };
@@ -1362,11 +1668,13 @@ impl Keeper {
             return;
         }
         let on = config::settings(&self.app).runner_capabilities;
+        // A kind of job drained for a new program starts on the new one, once it is in.
+        let replacing = self.program.is_some();
         for capability in &status.capabilities {
             if !on.on(&capability.id) && !capability.off() {
                 return self.kind_step(Step::Stop(capability.id.clone()), None);
             }
-            if on.on(&capability.id) && capability.off() && capability.available {
+            if on.on(&capability.id) && capability.off() && capability.available && !(replacing && capability.id != "linux") {
                 return self.start_kind(capability, workspace);
             }
         }
@@ -1430,6 +1738,7 @@ impl Keeper {
                 (launcher::up_args(&dir, &up), vec![kind.clone()], format!("starting {}", diagnosis::kind_label(kind)))
             }
             Step::Stop(kind) => (launcher::down_only_args(&dir, kind), vec![], format!("stopping {}", diagnosis::kind_label(kind))),
+            Step::Drain(kind) => (launcher::drain_only_args(&dir, kind), vec![], format!("stopping {} after their job, to update g1t-runner", diagnosis::kind_label(kind))),
             Step::Up | Step::Update => return,
         };
         self.write_log(&format!("g1t: {said}."));
@@ -1445,9 +1754,9 @@ impl Keeper {
         self.write_log(&format!("g1t: the sandbox's status: {why}"));
         self.failures += 1;
         if why.contains("older than its sandbox launcher") {
-            let server = config::server(&self.app);
-            if let Ok(Some((version, bytes))) = self.newer_release(&server)
-                && native::put(&folder(&self.app), &bytes, &version).is_ok()
+            let (server, folder) = (config::server(&self.app), folder(&self.app));
+            if let Ok(Found { version, program: Some(bytes), .. }) = look_for_release(&server, &folder, None)
+                && native::put(&folder, &bytes, &version).is_ok()
             {
                 self.note(None, Some(version));
                 self.not_before = Instant::now();
@@ -1570,7 +1879,7 @@ impl Keeper {
             return self.sandbox_stopped(&status, code, extra);
         }
         match (code, update_failed) {
-            (Code::Idle, Some(why)) => self.set(Code::UpdateFailed, detail(why)),
+            (Code::Idle, Some((failed, why))) => self.set(failed, detail(why)),
             (code, _) => self.set(code, extra),
         }
     }
@@ -1645,9 +1954,20 @@ impl Keeper {
         if let Some(error) = &error {
             self.write_log(&format!("g1t: sandbox {}: {error}", step.name()));
         }
+        // Drained for a new program, which goes in on the next look; one
+        // that didn't stop leaves the update for the next one, rather than
+        // being asked again and again.
+        if let (Step::Drain(_), Some(error)) = (&step, &error) {
+            self.program = None;
+            self.update_failed = Some((Code::UpdateFailed, format!("g1t-runner couldn't be updated: {error}")));
+            self.done_with(|updates| {
+                updates.program = false;
+                updates.installing.retain(|kind| kind == "linux");
+            });
+        }
         // One kind of job started or stopped: how the sandbox is now says
         // the rest, and one that didn't start is tried again in a while.
-        if matches!(step, Step::Start(_) | Step::Stop(_)) {
+        if matches!(step, Step::Start(_) | Step::Stop(_) | Step::Drain(_)) {
             if let Some(status) = status {
                 self.sandbox_now(status);
             }
@@ -1663,12 +1983,19 @@ impl Keeper {
                 registration.save(&app);
             }
         }
+        // The image is taken, or failed to be: the next look says whether another waits.
+        if step == Step::Update {
+            self.done_with(|updates| {
+                updates.image = false;
+                updates.installing.retain(|kind| kind != "linux");
+            });
+        }
         if let Some(error) = error.clone() {
             if self.registration_trouble(&error) {
                 return;
             }
             if step == Step::Update {
-                self.update_failed = Some(format!("The sandbox's image couldn't be updated: {error}"));
+                self.update_failed = Some((Code::UpdateFailed, format!("The sandbox's image couldn't be updated: {error}")));
             } else if !running {
                 // Nothing runs: tidied away, and tried again in a while;
                 // a release without the sandbox's images every few minutes.
@@ -1706,6 +2033,20 @@ impl Keeper {
 
 /// What the tray says while the sandbox starts.
 const STARTING_SANDBOX: &str = "Starting the sandbox. The first time, it downloads and checks the sandbox's image, which takes a few minutes.";
+
+/// The newest release, signed, and its program when it is newer than the
+/// one in `folder` and isn't already `waiting`: downloaded and checked
+/// against its SHA-256. On the update thread, never the runner's.
+fn look_for_release(server: &Url, folder: &std::path::Path, waiting: Option<&str>) -> Result<Found, Fault> {
+    let manifest = native::latest(server)?;
+    let newer = native::installed(folder).is_none_or(|have| native::newer(&manifest.version, &have));
+    let program = if newer && waiting != Some(manifest.version.as_str()) {
+        Some(native::download(server, &manifest).map_err(|why| Fault::Failed(format!("{} didn't download: {why}", manifest.version)))?)
+    } else {
+        None
+    };
+    Ok(Found { images: manifest.has_images(), version: manifest.version, newer, program })
+}
 
 fn some_text(text: &str) -> Option<String> {
     Some(text.to_owned())
@@ -1843,6 +2184,29 @@ mod tests {
         assert_eq!((code, extra.detail.as_deref()), (Code::SandboxFailed, Some("the sandbox did not start within 180 seconds")));
         let stopped = status(r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped"},{"id":"windows","available":true,"state":"stopped"}]}"#);
         assert_eq!(shown(&stopped).0, Code::SandboxFailed);
+    }
+
+    #[test]
+    fn when_is_said_as_the_site_reads_it() {
+        let at = |seconds: u64| rfc3339(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds));
+        assert_eq!(at(0), "1970-01-01T00:00:00Z");
+        assert_eq!(at(1_791_806_645), "2026-10-12T12:04:05Z");
+        // The day after February 29th of a leap year.
+        assert_eq!(at(1_709_251_199 + 1), "2024-03-01T00:00:00Z");
+        assert_eq!(at(951_782_400), "2000-02-29T00:00:00Z");
+    }
+
+    /// What is running on the program itself, which an update drains first:
+    /// Windows jobs running or starting, not Linux jobs, nor ones stopped.
+    #[test]
+    fn an_update_drains_only_what_runs_on_the_program() {
+        let kinds = |json: &str| native_kinds(&status(json)).iter().map(|c| c.id.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            kinds(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running","turned_off":false},{"id":"windows","available":true,"state":"running","turned_off":false}]}"#),
+            ["windows"]
+        );
+        assert!(kinds(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running","turned_off":false},{"id":"windows","available":true,"state":"stopped","turned_off":true}]}"#).is_empty());
+        assert!(kinds(r#"{"schema":1,"state":"running","capabilities":[{"id":"linux","available":true,"state":"running"},{"id":"windows","available":false,"state":"absent"}]}"#).is_empty());
     }
 
     #[test]

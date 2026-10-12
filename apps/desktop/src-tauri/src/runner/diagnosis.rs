@@ -72,6 +72,8 @@ pub enum Code {
     SandboxTaken,
     Updating,
     UpdateFailed,
+    /// The newest release's manifest isn't signed with g1t's release key.
+    UpdateRefused,
     Offline,
     Crashed,
 }
@@ -112,10 +114,33 @@ pub struct Diagnosis {
     /// shows them shows no line of the whole runner's as well.
     #[serde(skip_serializing_if = "is_false")]
     pub in_capabilities: bool,
+    /// How the runner's updates stand: when g1t last looked, and a newer
+    /// one waiting. None for what is said once g1t is closed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update: Option<UpdateLine>,
 }
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+/// The runner's updates, as settings and the site's Desktops show them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UpdateLine {
+    /// When g1t last heard from the runner's releases, RFC 3339: the site,
+    /// which shows a report for minutes, says how long ago itself.
+    pub checked_at: Option<String>,
+    /// `Checked 12 min ago`, `Checking for updates…`.
+    pub checked: String,
+    pub checking: bool,
+    /// A newer version, downloaded and checked, waiting to be installed.
+    pub ready: Option<String>,
+    /// What becomes of it, for a runner with no kinds of job of its own
+    /// (Docker, or on this computer): `0.3.2 ready, installs after this
+    /// job`. A sandbox's cards each say it for their own kind.
+    pub note: Option<String>,
+    /// Looks now: "Check for runner updates".
+    pub check: Action,
 }
 
 /// How one kind of job is, as its card's label says it.
@@ -174,6 +199,8 @@ pub struct CapabilityLine {
     pub runner: Option<String>,
     /// Its runner's version.
     pub version: Option<String>,
+    /// A newer version waiting for it: `0.3.2 ready, installs after this job`.
+    pub update: Option<String>,
 }
 
 /// The job a kind of job is running, with where to see it on g1t.
@@ -218,12 +245,75 @@ pub struct Facts {
     pub download: Option<launcher::Download>,
     /// The person stopped the whole runner, or turned it off.
     pub held: bool,
+    pub update: Update,
+}
+
+/// How the runner's updates stand.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Update {
+    /// The g1t-runner here.
+    pub installed: Option<String>,
+    /// When g1t last heard from the releases, RFC 3339, and how long ago.
+    pub checked_at: Option<String>,
+    pub checked_ago: Option<u64>,
+    pub checking: bool,
+    /// A newer release, downloaded and checked, waiting to be put in place.
+    pub ready: Option<String>,
+    /// What is still to take it: `linux` (the sandbox's image), `windows`
+    /// (the program its runner is), or `runner` for a runner with no kinds
+    /// of job of its own.
+    pub waiting: Vec<String>,
+    /// Those taking it now.
+    pub installing: Vec<String>,
+}
+
+/// When g1t last looked for a newer runner: `Checked 12 min ago`.
+pub fn checked(update: &Update) -> String {
+    if update.checking {
+        return "Checking for updates…".into();
+    }
+    let Some(ago) = update.checked_ago else { return "Not checked yet".into() };
+    let plural = |n: u64, one: &str| if n == 1 { format!("Checked 1 {one} ago") } else { format!("Checked {n} {one}s ago") };
+    match ago {
+        0..=59 => "Checked just now".into(),
+        60..=3599 => format!("Checked {} min ago", ago / 60),
+        3600..=86_399 => plural(ago / 3600, "hour"),
+        _ => plural(ago / 86_400, "day"),
+    }
+}
+
+/// What becomes of a newer version waiting for `what` (a kind of job, or
+/// `runner`), whose job is running when `busy`. None when nothing waits.
+fn waiting(update: &Update, what: &str, busy: bool) -> Option<String> {
+    let version = update.ready.as_deref()?;
+    if update.installing.iter().any(|kind| kind == what) {
+        return some(format!("Installing {version}"));
+    }
+    if !update.waiting.iter().any(|kind| kind == what) {
+        return None;
+    }
+    some(if busy { format!("{version} ready, installs after this job") } else { format!("{version} ready, installs in a moment") })
+}
+
+fn update_line(facts: &Facts, code: Code) -> UpdateLine {
+    let update = &facts.update;
+    UpdateLine {
+        checked_at: update.checked_at.clone(),
+        checked: checked(update),
+        checking: update.checking,
+        ready: update.ready.clone(),
+        note: waiting(update, "runner", code == Code::Busy),
+        check: CHECK_UPDATES,
+    }
 }
 
 const START: Action = Action { id: "start", label: "Start" };
 const TURN_ON: Action = Action { id: "start", label: "Turn on" };
 const RETRY: Action = Action { id: "retry", label: "Retry" };
 const CHECK_NOW: Action = Action { id: "retry", label: "Check now" };
+/// Looks for a newer runner now, and installs it as soon as its kinds of job are idle.
+const CHECK_UPDATES: Action = Action { id: "check_updates", label: "Check for runner updates" };
+const CHECK_AGAIN: Action = Action { id: "check_updates", label: "Check again" };
 const RESTART: Action = Action { id: "restart", label: "Restart" };
 const SIGN_IN: Action = Action { id: "sign_in", label: "Sign in" };
 const CHOOSE_WORKSPACE: Action = Action { id: "choose_workspace", label: "Choose workspace" };
@@ -462,9 +552,32 @@ pub fn diagnose(code: Code, facts: &Facts) -> Diagnosis {
             Tone::Warning,
             "Update failed".into(),
             detail,
-            some("The runner keeps running the version it has, and g1t tries the update again in a few hours. Retry tries now; if it keeps failing, report it."),
-            vec![RETRY, REPORT],
+            some("The runner keeps running the version it has, and g1t tries the update again within the hour. Check again tries now; if it keeps failing, report it."),
+            vec![CHECK_AGAIN, REPORT],
         ),
+        Code::UpdateRefused => {
+            let why = detail.unwrap_or_else(|| "its signature didn't check out".into());
+            let tampered = format!(
+                "If this keeps happening, something between this computer and {} is changing downloads, such as a proxy or antivirus: report it.",
+                facts.server
+            );
+            match facts.update.installed.as_deref() {
+                Some(version) => (
+                    Tone::Warning,
+                    "Update refused: not signed by g1t".into(),
+                    some(format!("The newest g1t-runner release from {} isn't signed with g1t's release key ({why}), so g1t didn't install it.", facts.server)),
+                    some(format!("The runner keeps running g1t-runner {version}, and g1t checks again within the hour. {tampered}")),
+                    vec![CHECK_AGAIN, REPORT],
+                ),
+                None => (
+                    Tone::Problem,
+                    "Not running: the runner's release isn't signed by g1t".into(),
+                    some(format!("The g1t-runner release from {} isn't signed with g1t's release key ({why}), so g1t didn't install it, and has no runner to start.", facts.server)),
+                    some(format!("g1t tries again by itself in a few minutes; Retry tries now. {tampered}")),
+                    vec![RETRY, REPORT],
+                ),
+            }
+        }
         Code::Offline => (
             Tone::Warning,
             format!("Offline: {} unreachable", facts.server),
@@ -503,7 +616,8 @@ pub fn diagnose(code: Code, facts: &Facts) -> Diagnosis {
             | Code::SandboxFailed => cause.is_some() && capabilities.iter().any(|c| c.cause == cause),
             _ => false,
         };
-    Diagnosis { code, tone, title, cause, fix, actions, capabilities, in_capabilities }
+    let update = Some(update_line(facts, code));
+    Diagnosis { code, tone, title, cause, fix, actions, capabilities, in_capabilities, update }
 }
 
 /// What the app calls a sandbox's problem with Linux jobs, from the
@@ -592,6 +706,7 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
         isolation: capability.isolation.clone().filter(|_| capability.available),
         runner: capability.available.then(|| format!("{}-{id}", facts.machine)),
         version: capability.runner_version.clone(),
+        update: waiting(&facts.update, id, capability.job.is_some()),
     };
     let said = |line: &mut CapabilityLine, state: KindState, tone: Tone, cause: Option<String>, fix: Option<String>, actions: Vec<Action>| {
         line.state = state;
@@ -729,6 +844,7 @@ pub fn closed(facts: &Facts) -> Diagnosis {
         actions: vec![],
         capabilities: vec![],
         in_capabilities: false,
+        update: None,
     }
 }
 
@@ -768,6 +884,7 @@ mod tests {
             Code::SandboxFailed,
             Code::SandboxTaken,
             Code::UpdateFailed,
+            Code::UpdateRefused,
             Code::Offline,
             Code::Crashed,
         ] {
@@ -964,6 +1081,81 @@ mod tests {
         assert_eq!(failed.fix.as_deref(), Some("It starts again by itself in 60 seconds. If it keeps stopping, its log says why; Retry starts it now."));
         assert_eq!(diagnose(Code::NoVirtualization, &Facts { platform: "macos".into(), ..facts() }).actions[0].id, "retry");
         assert_eq!(diagnose(Code::NoVfkit, &facts()).actions[0].id, "copy_vfkit_install");
+    }
+
+    #[test]
+    fn when_g1t_last_looked_for_a_runner_is_said_plainly() {
+        let ago = |seconds: u64| checked(&Update { checked_ago: Some(seconds), ..Update::default() });
+        assert_eq!(checked(&Update::default()), "Not checked yet");
+        assert_eq!(checked(&Update { checking: true, checked_ago: Some(30), ..Update::default() }), "Checking for updates…");
+        assert_eq!(ago(20), "Checked just now");
+        assert_eq!(ago(12 * 60 + 5), "Checked 12 min ago");
+        assert_eq!(ago(3600), "Checked 1 hour ago");
+        assert_eq!(ago(5 * 3600), "Checked 5 hours ago");
+        assert_eq!(ago(2 * 86_400), "Checked 2 days ago");
+    }
+
+    /// 0.3.2 is downloaded: Linux jobs take its image after the job they
+    /// are running, Windows jobs, idle, take its program now.
+    #[test]
+    fn a_waiting_update_is_said_on_each_kind_of_jobs_card() {
+        let status = status(
+            r#"{"schema":1,"state":"running","backend":"wsl2","image_version":"0.3.1","capabilities":[
+              {"id":"linux","available":true,"state":"running","runner_version":"0.3.1","turned_off":false,"job":{"kind":"workflow","id":"j","name":"build","repo":"acme/web"}},
+              {"id":"windows","available":true,"state":"running","runner_version":"0.3.1","turned_off":false}]}"#,
+        );
+        let update = Update {
+            installed: Some("0.3.1".into()),
+            checked_at: Some("2026-10-12T12:00:00Z".into()),
+            checked_ago: Some(12 * 60),
+            ready: Some("0.3.2".into()),
+            waiting: vec!["linux".into(), "windows".into()],
+            ..Update::default()
+        };
+        let busy = diagnose(Code::Busy, &Facts { sandbox: Some(status.clone()), live: true, update: update.clone(), ..facts() });
+        let [linux, windows] = &busy.capabilities[..] else { panic!() };
+        assert_eq!(linux.version.as_deref(), Some("0.3.1"));
+        assert_eq!(linux.update.as_deref(), Some("0.3.2 ready, installs after this job"));
+        assert_eq!(windows.update.as_deref(), Some("0.3.2 ready, installs in a moment"));
+        let line = busy.update.unwrap();
+        assert_eq!((line.checked.as_str(), line.ready.as_deref(), line.checked_at.as_deref()), ("Checked 12 min ago", Some("0.3.2"), Some("2026-10-12T12:00:00Z")));
+        // The cards say it, each for its own kind: nothing is said for the whole runner.
+        assert_eq!(line.note, None);
+        assert_eq!((line.check.id, line.check.label), ("check_updates", "Check for runner updates"));
+        // Windows jobs stop while the program is replaced: installing, then nothing waits.
+        let installing = Update { installing: vec!["windows".into()], ..update.clone() };
+        let busy = diagnose(Code::Busy, &Facts { sandbox: Some(status.clone()), live: true, update: installing, ..facts() });
+        assert_eq!(busy.capabilities[1].update.as_deref(), Some("Installing 0.3.2"));
+        let done = Update { waiting: vec!["linux".into()], ..update.clone() };
+        let busy = diagnose(Code::Busy, &Facts { sandbox: Some(status), live: true, update: done, ..facts() });
+        assert_eq!(busy.capabilities[1].update, None);
+        // In Docker or on this computer there are no cards: the whole runner says it.
+        let docker = Update { waiting: vec!["runner".into()], ..update };
+        let busy = diagnose(Code::Busy, &Facts { backend: "in Docker", job: Some("build (acme/web)".into()), update: docker.clone(), ..facts() });
+        assert_eq!(busy.update.unwrap().note.as_deref(), Some("0.3.2 ready, installs after this job"));
+        let idle = diagnose(Code::Idle, &Facts { backend: "in Docker", update: docker, ..facts() });
+        assert_eq!(idle.update.unwrap().note.as_deref(), Some("0.3.2 ready, installs in a moment"));
+        // What is said once g1t is closed knows nothing of updates.
+        assert_eq!(closed(&facts()).update, None);
+    }
+
+    #[test]
+    fn a_release_not_signed_by_g1t_is_refused_and_said_so() {
+        let detail = Some("the release's signature isn't g1t's".to_owned());
+        let running = diagnose(Code::UpdateRefused, &Facts { detail: detail.clone(), update: Update { installed: Some("0.3.1".into()), ..Update::default() }, ..facts() });
+        assert_eq!(running.title, "Update refused: not signed by g1t");
+        assert_eq!(
+            running.cause.as_deref(),
+            Some("The newest g1t-runner release from g1t.sh isn't signed with g1t's release key (the release's signature isn't g1t's), so g1t didn't install it.")
+        );
+        assert!(running.fix.as_deref().unwrap().starts_with("The runner keeps running g1t-runner 0.3.1, and g1t checks again within the hour."));
+        assert_eq!(running.actions, [CHECK_AGAIN, REPORT]);
+        assert_eq!(running.tone, Tone::Warning);
+        // With no runner yet, nothing runs until a signed one downloads.
+        let nothing = diagnose(Code::UpdateRefused, &Facts { detail, ..facts() });
+        assert_eq!(nothing.title, "Not running: the runner's release isn't signed by g1t");
+        assert_eq!((nothing.tone, nothing.actions[0].id), (Tone::Problem, "retry"));
+        assert!(!nothing.in_capabilities);
     }
 
     #[test]

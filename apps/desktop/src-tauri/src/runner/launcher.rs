@@ -344,6 +344,15 @@ pub fn down_only_args(dir: &Path, kind: &str) -> Vec<OsString> {
     args
 }
 
+/// `down --only <kind> --drain`: as [`down_only_args`], after the job
+/// that kind is running, if any. An update stops a kind this way while
+/// its program is replaced, and starts it again after.
+pub fn drain_only_args(dir: &Path, kind: &str) -> Vec<OsString> {
+    let mut args = down_only_args(dir, kind);
+    args.push("--drain".into());
+    args
+}
+
 pub fn status_args(dir: &Path) -> Vec<OsString> {
     args("status", dir)
 }
@@ -676,6 +685,7 @@ mod tests {
         // Never the token: it goes in the environment, out of the process list.
         assert_eq!(&up[5..], ["--url", "https://g1t.sh", "--name", "build-box", "--labels", "desktop", "--only", "linux,windows"]);
         assert_eq!(text(down_only_args(&dir, "windows"))[5..], ["--only", "windows"]);
+        assert_eq!(text(drain_only_args(&dir, "windows"))[5..], ["--only", "windows", "--drain"]);
         assert!(!up.iter().any(|a| a == "--token" || a.starts_with("g1trt_")));
         let mut command = command(Path::new("g1t-runner"), up_args(&dir, &first));
         with_token(&mut command, first.token);

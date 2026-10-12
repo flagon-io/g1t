@@ -307,7 +307,8 @@
 
     // What changes the buttons and the words is drawn again only when it changes,
     // so a button keeps its focus while the status ticks.
-    var signature = JSON.stringify([kind, !!pending[kind.id], runner.link]);
+    var update = runner.diagnosis.update || null;
+    var signature = JSON.stringify([kind, !!pending[kind.id], runner.link, update && update.checked]);
     if (signature === card.signature) return;
     card.signature = signature;
 
@@ -335,6 +336,13 @@
     }
     detail(details, "On g1t", kind.runner, named);
     detail(details, "Version", kind.version ? "g1t-runner " + kind.version : null);
+    // A newer version waiting for this kind of job, and when g1t last looked.
+    if (update && (kind.update || kind.version)) {
+      var updates = element("span", "kind-update");
+      if (kind.update) updates.appendChild(element("span", "kind-update-ready", kind.update));
+      updates.appendChild(element("span", "muted", update.checked));
+      detail(details, "Updates", true, updates);
+    }
     detail(details, "Isolation", ISOLATION[kind.isolation] || kind.isolation);
     details.hidden = !details.firstChild;
 
@@ -415,7 +423,17 @@
     workspaces.disabled = known.length === 0;
 
     byId("runner-machine").textContent = "This computer: " + runner.machine;
-    byId("runner-version").textContent = runner.version ? "g1t-runner " + runner.version : " ";
+    // The runner's version, when g1t last looked for a newer one, and, with
+    // no cards to say it, what becomes of one waiting.
+    var update = diagnosis.update;
+    var about = [runner.version ? "g1t-runner " + runner.version : null, update ? update.checked : null, update && update.note].filter(Boolean);
+    byId("runner-version").textContent = about.length ? about.join(" · ") : " ";
+    var check = byId("runner-check");
+    check.hidden = !update;
+    if (update) {
+      check.textContent = update.check.label;
+      check.disabled = update.checking;
+    }
     byId("runner-view").hidden = !runner.link;
     byId("runner-log").textContent = runner.log.length ? runner.log.join("\n") : "Nothing yet.";
   }
@@ -427,6 +445,14 @@
   });
   byId("runner-open-log").addEventListener("click", function () {
     invoke("runner_control", { action: "view_log" }).catch(fail);
+  });
+  // Looks now; what it finds installs as each kind of job is idle, and the status that follows says so.
+  byId("runner-check").addEventListener("click", function () {
+    byId("runner-check").disabled = true;
+    invoke("runner_control", { action: "check_updates" }).catch(function (error) {
+      byId("runner-check").disabled = false;
+      fail(error);
+    });
   });
 
   function save() {

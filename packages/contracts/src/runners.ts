@@ -156,6 +156,22 @@ export type DesktopDiagnosis = {
   capabilities?: DesktopCapability[];
   /** The kinds of job say all of this, each for itself: a page showing them shows no line of the whole runner's as well. */
   in_capabilities?: boolean;
+  /** How its runner's updates stand. From newer apps; older ones leave it out. */
+  update?: DesktopUpdate | null;
+};
+
+/**
+ * How a desktop's runner updates stand, as its app says it. The app looks
+ * every hour, and installs a newer runner kind of job by kind of job, as
+ * each is idle.
+ */
+export type DesktopUpdate = {
+  /** When the app last heard from the runner's releases, RFC 3339. */
+  checked_at: string | null;
+  /** A newer version, downloaded and checked, waiting to be installed. */
+  ready: string | null;
+  /** What becomes of it, for a desktop with no kinds of job of its own: `0.3.2 ready, installs after this job`. */
+  note: string | null;
 };
 
 /** How one kind of job is, as its card's label says it. */
@@ -198,6 +214,8 @@ export type DesktopCapability = {
   /** `nested-container` or `vm`. */
   isolation?: string | null;
   version?: string | null;
+  /** A newer version waiting for it: `0.3.2 ready, installs after this job`. */
+  update?: string | null;
 };
 
 /** How a desktop runs jobs. */

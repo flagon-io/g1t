@@ -136,7 +136,7 @@ notify you among them, stay on g1t, in [your settings](/guides/notifications/#se
 | **Show a badge on the icon** | On | The count, or the dot on Windows. Off, the icon stays clean; the tray's hover text still counts. |
 | **Use the system's title bar** | Off | The system's title bar in place of [g1t's own](#the-title-bar), with the menu bar under it on Windows and Linux. Takes effect when g1t restarts. |
 | **Zoom** | 100% | How large g1t is drawn, from 67% to 200%. The View menu changes it too. |
-| **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. The runner's updates follow it too. |
+| **Download updates by themselves** | On | Off, the app never checks on its own; **Check for updates** still does. The runner's updates follow it too: off, only **Check for runner updates** looks for a newer runner. |
 | **Run jobs on this computer while g1t is open** | On | Starts [the runner](#the-runner) a few seconds after the window. Off, nothing runs. |
 | **How jobs run** | Sandboxed | Sandboxed, in Docker, or directly on this computer. See [how jobs run](#how-jobs-run). |
 | **Linux jobs**, **Windows jobs** (sandboxed) | Both on | Each kind of job's card has its own **Stop** and **Start**, which leave the other kind as it is. See [the runner](#the-runner). |
@@ -213,7 +213,8 @@ copy of `g1t-runner` and its state in the app's data folder
 | When you press **Start** on one kind of job's card | `g1t-runner sandbox up --only windows` (or `linux`), leaving the other as it is. A kind never registered is registered first, with a token as above. |
 | While one kind of job runs and the other should and doesn't | `g1t-runner sandbox up --only` it again, by itself: every five minutes while the newest release has no sandbox images, else after a wait that grows each time, up to ten minutes. **Retry** or **Check now** tries at once. |
 | When you choose another way of running jobs | `g1t-runner sandbox down --drain`, once the job that is running ends. The sandbox keeps its registration, so choosing Sandboxed again needs no new one. |
-| With a new release, while it has no job | `g1t-runner sandbox update`: the newest signed image, the same registration. |
+| With a new release, once Linux jobs have no job | `g1t-runner sandbox update`: the newest signed image, the same registration. Windows jobs run on meanwhile. |
+| With a new release, once Windows jobs have no job | `g1t-runner sandbox down --only windows --drain`, the new `g1t-runner` put in place, then `g1t-runner sandbox up --only windows`. Their runner is `g1t-runner` itself, so they stop while it is replaced, a few seconds; Linux jobs run on meanwhile. |
 
 The other two choices run `g1t-runner` from the same data folder, with
 each one's registration beside it.
@@ -244,21 +245,40 @@ them there.
 
 ### Keeping it up to date
 
-The app keeps the runner up to date: soon after it starts and every six
-hours, while the runner has no job, it looks for a newer `g1t-runner` in
-`g1t.sh/downloads/runner/latest.json`, downloads it, checks it against
-the release's SHA-256, and puts it in place; the sandbox then takes the
-release's image, whose signature and SHA-256 it checks itself. A job is
-never cut short for an update, and one that fails leaves the runner as it
-was. Turning off **Download updates by themselves** turns these off too.
+The app keeps the runner up to date. Soon after it starts, then every
+hour, it looks for a newer `g1t-runner` in
+`g1t.sh/downloads/runner/latest.json`, while the runner carries on:
+
+1. **It checks the release is g1t's.** The manifest's Ed25519 signature,
+   `latest.json.sig`, must check out against g1t's release key, which is
+   built into the app. A manifest without one, or whose signature
+   doesn't check out, is refused, and nothing in it is used: the app says
+   *Update refused: not signed by g1t* and keeps the runner it has.
+2. **It downloads the new `g1t-runner`** and checks it against the
+   SHA-256 the signed manifest names, throwing away one that differs.
+3. **It puts it in, one kind of job at a time, as each is idle.** A job
+   is never cut short for an update. Sandboxed, Linux jobs take the
+   release's image (`g1t-runner sandbox update`, which checks its
+   signature and SHA-256 itself) as soon as they have no job, and
+   Windows jobs, whose runner is `g1t-runner` itself, stop after their
+   job, take the new program and start again, while the other kind runs
+   on. In Docker or directly on this computer, the runner stops between
+   jobs and starts on the new one.
+
+Meanwhile each card says what is waiting: *0.3.2 ready, installs after
+this job*. **Check for runner updates**, beside your computer's name in
+the settings, looks at once, and installs what it finds the same way. An
+update that fails leaves the runner as it was, and the next hour's look
+tries again. Turning off **Download updates by themselves** stops the
+hourly look; **Check for runner updates** still looks, and installs.
 
 ### Seeing it
 
 | Where | What it shows |
 | --- | --- |
 | The tray | A row with what the runner is doing, *Runner: Waiting for jobs*, which opens the settings; **Stop running jobs** or **Start running jobs** under it. The icon's hover text says it too. |
-| The settings window | Sandboxed, a card for each kind of job this computer can have, side by side: its state (*Running a job*, *Waiting for jobs*, *Starting*, *Downloading image* with how far, *Updating*, *Waiting for image*, *Stopped*, *Not available*, *Problem*), what it is, the job it is running with a link to it, and when it isn't running why and the fix, with the fix's buttons and its own **Stop** or **Start**; below, its runner's name on g1t, version and isolation. Above the cards, only what is about the whole runner: signed out, no workspace, turned off, stopped, the sandbox down. Then how jobs run; the workspace; your computer's name and the runner's version; **View on g1t**; and the runner's recent log, with **Open the whole log**. In Docker or directly on this computer, one line says what it is doing, or why it isn't running and the fix. |
-| The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words; a sandboxed one's kinds of job as cards of their own, as in the settings, with a link to the run each is running. Inside the app, this computer comes first, live, with its buttons, each kind's **Stop** or **Start** among them. A computer whose g1t is closed says *g1t is closed on* its name. |
+| The settings window | Sandboxed, a card for each kind of job this computer can have, side by side: its state (*Running a job*, *Waiting for jobs*, *Starting*, *Downloading image* with how far, *Updating*, *Waiting for image*, *Stopped*, *Not available*, *Problem*), what it is, the job it is running with a link to it, and when it isn't running why and the fix, with the fix's buttons and its own **Stop** or **Start**; below, its runner's name on g1t, version, updates (when the app last looked, *Checked 12 min ago*, and a newer one waiting for it, *0.3.2 ready, installs after this job*) and isolation. Above the cards, only what is about the whole runner: signed out, no workspace, turned off, stopped, the sandbox down. Then how jobs run; the workspace; your computer's name, the runner's version and when the app last looked for a newer one, with **Check for runner updates** and **View on g1t**; and the runner's recent log, with **Open the whole log**. In Docker or directly on this computer, one line says what it is doing, or why it isn't running and the fix. |
+| The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words; a sandboxed one's kinds of job as cards of their own, as in the settings, with a link to the run each is running, its version, when the app last looked for updates and a newer one waiting. Inside the app, this computer comes first, live, with its buttons, each kind's **Stop** or **Start** and **Check for runner updates** among them. A computer whose g1t is closed says *g1t is closed on* its name. |
 
 ### When it isn't running
 
@@ -295,7 +315,10 @@ the settings and the Runners page.
 | *Windows jobs: Problem*: *Its runner didn't start* or *Its runner stopped* | The runner for Windows jobs didn't start, with why, or stopped by itself, while Linux jobs run. | It is started again by itself in a few minutes; **Retry** now, or **View log**. |
 | *macOS jobs: Not available*: *Not released yet* | Sandboxed macOS jobs aren't released. | Nothing: they come with a `g1t-runner` update, which the app downloads by itself. |
 | *Offline:* the server *unreachable* | Your computer can't reach g1t. | Check the connection; it carries on by itself. **Retry** tries now. |
-| *Update failed* | A new version couldn't be downloaded, or its SHA-256 wasn't the release's. | It keeps running the version it has, and tries again in a few hours. **Retry** now; **Report** it if it keeps failing. |
+| *0.3.2 ready, installs after this job*, on a card | A newer `g1t-runner` is downloaded and checked, and that kind of job is running a job. | Nothing: it goes in as soon as the job ends, and the other kind runs on meanwhile. |
+| *Update failed* | A new version couldn't be downloaded, its SHA-256 wasn't the release's, or the sandbox's image couldn't be updated. | It keeps running the version it has, and tries again within the hour. **Check again** now; **Report** it if it keeps failing. |
+| *Update refused: not signed by g1t* | The newest release's manifest has no signature, or one that isn't g1t's release key's, so nothing in it was used. | Nothing to fix on your side: it keeps running the version it has, and looks again within the hour (**Check again** looks now). If it keeps happening, something between your computer and g1t, such as a proxy or antivirus, is changing downloads: **Report** it. |
+| *Not running: the runner's release isn't signed by g1t* | As above, before any `g1t-runner` was installed, so there is none to run. | It tries again by itself in a few minutes; **Retry** now, or **Report** it if it keeps happening. |
 | *Runner stopped (exit code* N*)* | The runner ended by itself, with the reason from its log. | It starts again by itself, waiting longer each time. **Restart** now, or **View log**. |
 | *g1t is closed on* a computer | Seen on the Runners page: g1t hasn't been open on that computer for ten minutes. | Open g1t there. |
 
@@ -383,6 +406,7 @@ the files a release holds.
 
 | What | Where |
 | --- | --- |
+| The runner's release key | The app trusts a `g1t-runner` release only when its manifest is signed with g1t's runner release key, whose public half (the repository variable `RUNNER_RELEASE_PUBLIC_KEY`) is built into the app, in `src-tauri/src/runner/native.rs`. To build the app for a g1t of your own, whose runner releases you sign with your own key, set `G1T_RUNNER_RELEASE_KEY` to its public key, base64, when you build it. |
 | The updater's signing key | `node scripts/desktop-release.mjs keygen`, once. The private key is the repository secret `DESKTOP_SIGNING_KEY`; the public key is `plugins.updater.pubkey` in `tauri.conf.json`. Losing the private key means every installed app stops updating: keep it. |
 | Linux builds | g1t's own Linux machines, in every release. |
 | Windows builds | Either a Windows machine registered as a [self-hosted runner](/guides/self-hosted-runners/) with the labels `self-hosted` and `windows` (Rust, Node and the Visual Studio build tools on it) and the repository variable `DESKTOP_WINDOWS_RUNNER` set to `true`; or, with no Windows machine, `DESKTOP_WINDOWS_FROM_LINUX` set to `true`, which cross-builds on Linux with `cargo-xwin` and NSIS and needs `aka.ms` and `download.visualstudio.microsoft.com` among the project's [workflow-only domains](/guides/guardrails/#workflow-only-domains) for `desktop-release.yml` in `production`, where the MSVC runtime is fetched from. |

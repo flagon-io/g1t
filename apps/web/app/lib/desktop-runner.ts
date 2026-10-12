@@ -18,7 +18,7 @@
  */
 import { useEffect, useState } from "react";
 
-import type { DesktopBackend, DesktopCapability, DesktopCapabilityState, DesktopDiagnosis, DesktopJob, DesktopReport, Runner } from "@g1t/contracts";
+import type { DesktopBackend, DesktopCapability, DesktopCapabilityState, DesktopDiagnosis, DesktopJob, DesktopReport, DesktopUpdate, Runner } from "@g1t/contracts";
 
 import { agentRunHref, workflowRunHref } from "./runners.ts";
 
@@ -39,9 +39,22 @@ export type DesktopRunnerCapability = DesktopCapability & {
   job?: (DesktopJob & { link?: string | null }) | null;
 };
 
+/**
+ * How the runner's updates stand on this computer (`diagnosis::UpdateLine`
+ * in the app): besides what is reported, when it last looked in the app's
+ * words, and its button that looks now.
+ */
+export type DesktopRunnerUpdate = DesktopUpdate & {
+  /** `Checked 12 min ago`. */
+  checked: string;
+  checking: boolean;
+  /** "Check for runner updates". */
+  check: DesktopRunnerAction;
+};
+
 /** What the app says of its runner (`runner::View` in the app). */
 export type DesktopRunnerView = {
-  diagnosis: Omit<DesktopDiagnosis, "capabilities"> & { actions: DesktopRunnerAction[]; capabilities?: DesktopRunnerCapability[] };
+  diagnosis: Omit<DesktopDiagnosis, "capabilities" | "update"> & { actions: DesktopRunnerAction[]; capabilities?: DesktopRunnerCapability[]; update?: DesktopRunnerUpdate | null };
   closed: DesktopDiagnosis & { actions: DesktopRunnerAction[] };
   running: boolean;
   version: string | null;
@@ -103,7 +116,7 @@ export const HEARTBEAT_MS = 4 * 60 * 1000;
 
 /** A kind of job as the server keeps it: what it says, without what only works or changes on that computer. */
 function plainCapability(capability: DesktopCapability): DesktopCapability {
-  const { id, label, tone, title, cause, fix, state, headline, about, enabled, job, runner, isolation, version } = capability;
+  const { id, label, tone, title, cause, fix, state, headline, about, enabled, job, runner, isolation, version, update } = capability;
   const said: DesktopCapability = { id, label, tone, title, cause: cause ?? null, fix: fix ?? null };
   if (state) said.state = state;
   if (headline) said.headline = headline;
@@ -113,18 +126,27 @@ function plainCapability(capability: DesktopCapability): DesktopCapability {
   if (runner) said.runner = runner;
   if (isolation) said.isolation = isolation;
   if (version) said.version = version;
+  if (update) said.update = update;
   return said;
+}
+
+/** How the updates stand, as the server keeps it: without what only this computer's settings show. */
+function plainUpdate(update: DesktopUpdate | null | undefined): DesktopUpdate | null {
+  if (!update) return null;
+  return { checked_at: update.checked_at ?? null, ready: update.ready ?? null, note: update.note ?? null };
 }
 
 /** What goes to the server, without the buttons, which only work on that computer. */
 export function reportOf(view: DesktopRunnerView): DesktopReport | null {
   if (!view.workspace) return null;
-  const plain = ({ code, tone, title, cause, fix, capabilities, in_capabilities }: DesktopDiagnosis): DesktopDiagnosis => {
+  const plain = ({ code, tone, title, cause, fix, capabilities, in_capabilities, update }: DesktopDiagnosis): DesktopDiagnosis => {
     const said: DesktopDiagnosis = { code, tone, title, cause, fix };
     if (capabilities?.length) {
       said.capabilities = capabilities.map(plainCapability);
       if (in_capabilities) said.in_capabilities = true;
     }
+    const updates = plainUpdate(update);
+    if (updates) said.update = updates;
     return said;
   };
   return { workspace: view.workspace, machine: view.machine, backend: view.backend, version: view.version, diagnosis: plain(view.diagnosis), closed: plain(view.closed) };
@@ -138,8 +160,9 @@ export function reportDue(last: { key: string; at: number } | null, report: Desk
 
 export function reportKey(report: DesktopReport): string {
   const { diagnosis } = report;
-  const capabilities = (diagnosis.capabilities ?? []).map((c) => [c.id, c.tone, c.title, c.cause, c.fix, c.state, c.enabled, c.headline, c.job?.name, c.job?.repo, c.version].join("\u0001"));
-  return [report.workspace, report.machine, report.backend, report.version, diagnosis.code, diagnosis.title, diagnosis.cause, diagnosis.fix, diagnosis.in_capabilities, ...capabilities].join("\u0000");
+  const capabilities = (diagnosis.capabilities ?? []).map((c) => [c.id, c.tone, c.title, c.cause, c.fix, c.state, c.enabled, c.headline, c.job?.name, c.job?.repo, c.version, c.update].join("\u0001"));
+  const update = diagnosis.update ? [diagnosis.update.checked_at, diagnosis.update.ready, diagnosis.update.note].join("\u0001") : "";
+  return [report.workspace, report.machine, report.backend, report.version, diagnosis.code, diagnosis.title, diagnosis.cause, diagnosis.fix, diagnosis.in_capabilities, update, ...capabilities].join("\u0000");
 }
 
 /** A string with something in it, or null. */
@@ -169,7 +192,22 @@ export function diagnosisOf(value: unknown): DesktopDiagnosis | null {
     said.capabilities = capabilities;
     if (given.in_capabilities === true) said.in_capabilities = true;
   }
+  const update = updateOf(given.update);
+  if (update) said.update = update;
   return said;
+}
+
+/** How the updates stand, as the app sent it, or null when it says nothing. */
+function updateOf(value: unknown): DesktopUpdate | null {
+  if (!value || typeof value !== "object") return null;
+  const given = value as Record<string, unknown>;
+  const checkedAt = text(given.checked_at);
+  const update: DesktopUpdate = {
+    checked_at: checkedAt && !Number.isNaN(Date.parse(checkedAt)) ? checkedAt : null,
+    ready: text(given.ready),
+    note: text(given.note),
+  };
+  return update.checked_at || update.ready || update.note ? update : null;
 }
 
 /** The most kinds of job a desktop reports (the server keeps as many). */
@@ -187,7 +225,7 @@ function capabilityOf(value: unknown): DesktopCapability | null {
   const said: DesktopCapability = { id, label, tone, title, cause: text(given.cause), fix: text(given.fix) };
   const state = STATES.find((s) => s === given.state);
   if (state) said.state = state;
-  for (const key of ["headline", "about", "runner", "isolation", "version"] as const) {
+  for (const key of ["headline", "about", "runner", "isolation", "version", "update"] as const) {
     const value = text(given[key]);
     if (value) said[key] = value;
   }

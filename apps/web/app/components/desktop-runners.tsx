@@ -2,7 +2,7 @@ import { AppWindow, Laptop, SquareTerminal } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
-import type { DesktopBackend, DesktopDiagnosis, DesktopRunner, Runner } from "@g1t/contracts";
+import type { DesktopBackend, DesktopDiagnosis, DesktopRunner, DesktopUpdate, Runner } from "@g1t/contracts";
 
 import { BACKEND_LABEL, type DesktopRunnerAction, type DesktopRunnerCapability, desktopRunner, jobHref, useDesktopRunner } from "../lib/desktop-runner";
 import { EmptyState, TimeAgo } from "./ui";
@@ -57,6 +57,10 @@ type Row = {
   inCapabilities: boolean;
   here: boolean;
   reportedAt: string | null;
+  /** How its runner's updates stand, while g1t is open there. */
+  update: DesktopUpdate | null;
+  /** Here only: the app's button that looks for a newer runner now. */
+  check: DesktopRunnerAction | null;
 };
 
 /** The desktops to list: this computer, live, first; then the others, as their apps last said, or closed. */
@@ -75,6 +79,8 @@ export function desktopRows(desktops: DesktopRunner[], here: ReturnType<typeof u
       inCapabilities: !!here.diagnosis.in_capabilities && capabilities.length > 0,
       here: true,
       reportedAt: null,
+      update: here.diagnosis.update ?? null,
+      check: here.diagnosis.update?.checking ? null : (here.diagnosis.update?.check ?? null),
     });
   }
   for (const desktop of desktops) {
@@ -91,6 +97,8 @@ export function desktopRows(desktops: DesktopRunner[], here: ReturnType<typeof u
       inCapabilities: desktop.open && !!desktop.diagnosis.in_capabilities && capabilities.length > 0,
       here: false,
       reportedAt: desktop.reportedAt,
+      update: desktop.open ? (desktop.diagnosis.update ?? null) : null,
+      check: null,
     });
   }
   return rows;
@@ -143,8 +151,18 @@ function Detail({ term, children }: { term: ReactNode; children: ReactNode }) {
   );
 }
 
+/** When the app last looked for a newer runner: the app sends when, and this says how long ago, as "Heard from" does. */
+function Checked({ update }: { update: DesktopUpdate | null }) {
+  if (!update?.checked_at) return null;
+  return (
+    <span className="block">
+      Checked <TimeAgo at={update.checked_at} />
+    </span>
+  );
+}
+
 /** One kind of job, as a card of its own: its state, what it runs, why it doesn't and the fix, and here its own Start or Stop. */
-function KindCard({ capability, here, runners }: { capability: DesktopRunnerCapability; here: boolean; runners: Runner[] }) {
+function KindCard({ capability, here, runners, update }: { capability: DesktopRunnerCapability; here: boolean; runners: Runner[]; update: DesktopUpdate | null }) {
   const href = jobHref(capability, runners);
   const isolation = capability.isolation ? (ISOLATION[capability.isolation] ?? { label: capability.isolation, hint: null }) : null;
   const edge = capability.tone === "problem" ? "border-danger/40" : capability.tone === "warning" ? "border-warn/35" : "";
@@ -196,6 +214,12 @@ function KindCard({ capability, here, runners }: { capability: DesktopRunnerCapa
         <dl className="space-y-0.5 border-t border-line pt-2 text-xs">
           {capability.runner && <Detail term="On g1t">{capability.runner}</Detail>}
           {capability.version && <Detail term="Version">g1t-runner {capability.version}</Detail>}
+          {(capability.update || (capability.version && update?.checked_at)) && (
+            <Detail term="Updates">
+              {capability.update && <span className="block text-accent">{capability.update}</span>}
+              <Checked update={update} />
+            </Detail>
+          )}
           {isolation && (
             <Detail term="Isolation">
               {isolation.hint ? (
@@ -261,9 +285,21 @@ export function DesktopRunners({ desktops, slug, runners = [] }: { desktops: Des
               </div>
               <div className="shrink-0 text-right text-xs text-faint">
                 {row.version && <div>g1t-runner {row.version}</div>}
+                {/* With no cards to say it, what becomes of a newer runner, and when the app last looked. */}
+                {row.capabilities.length === 0 && row.update?.note && <div className="mt-0.5 text-accent">{row.update.note}</div>}
+                {row.capabilities.length === 0 && row.update?.checked_at && (
+                  <div className="mt-0.5">
+                    <Checked update={row.update} />
+                  </div>
+                )}
                 {row.reportedAt && (
                   <div className="mt-0.5">
                     Heard from <TimeAgo at={row.reportedAt} />
+                  </div>
+                )}
+                {row.check && (
+                  <div className="mt-2">
+                    <Actions actions={[row.check]} primary={false} />
                   </div>
                 )}
               </div>
@@ -286,7 +322,7 @@ export function DesktopRunners({ desktops, slug, runners = [] }: { desktops: Des
             {row.capabilities.length > 0 && (
               <div className={`grid gap-3 ${row.capabilities.length > 1 ? "sm:grid-cols-2" : ""}`}>
                 {row.capabilities.map((capability) => (
-                  <KindCard key={capability.id} capability={capability} here={row.here} runners={runners} />
+                  <KindCard key={capability.id} capability={capability} here={row.here} runners={runners} update={row.update} />
                 ))}
               </div>
             )}

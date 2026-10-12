@@ -1,6 +1,6 @@
 [package]
 name = "g1t-desktop"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 license = "MIT"
 repository = "https://g1t.sh/flagon-io/g1t"
@@ -39,8 +39,12 @@ url = "2"
 # Whether the server answers, before the window goes there (the same client the updater brings).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["time"] }
-# Checking a downloaded g1t-runner against its release's SHA-256 (src/runner/native.rs).
+# Checking a downloaded g1t-runner against its release's SHA-256, and the
+# release's manifest against g1t's release key (src/runner/native.rs), as
+# the runner checks its own updates.
 sha2 = "0.10"
+ed25519-dalek = "3"
+base64 = "0.22"
 
 # Keeping the menu bar hidden under g1t's own title bar (src/frame.rs); the
 # same GTK that Tauri brings.

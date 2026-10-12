@@ -1,1 +1,3 @@
 * text=auto eol=lf
+# Signed release files, kept byte for byte so their signatures check out.
+apps/desktop/src-tauri/src/runner/testdata/** -text

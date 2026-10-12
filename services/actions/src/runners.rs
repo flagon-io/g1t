@@ -15,7 +15,7 @@ use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry,
 use g1t_contracts::billing::{ComputeKind, RecordSandboxArgs};
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::runners::{
-    self as model, ACTIVITY_LIMIT, CloudJob, DesktopCapability, DesktopDiagnosis, DesktopJob, DesktopRunner, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
+    self as model, ACTIVITY_LIMIT, CloudJob, DesktopCapability, DesktopDiagnosis, DesktopJob, DesktopRunner, DesktopUpdate, DesktopRunnersArgs, ReportDesktopArgs, HandedOverTask, RunnerActivity, RunnerActivityArgs, StuckJob, StuckJobsArgs, Assignment, CancelTaskArgs, CreateRegistrationTokenArgs, DeleteRunnerGroupArgs, EnqueueTaskArgs, FinishedArgs,
     ListRunnersArgs, Poll, PollArgs, RegisterArgs, Registered, RegistrationToken, RemoveRunnerArgs, RemoveSelfArgs, RouteArgs, Runner,
     RunnerAuth, RunnerGroup, RunnerGroupsArgs, RunnerSettings, RunnerSettingsArgs, RunnerWork, RunnersOwner, SetRunnerGroupArgs,
     SetRunnerSettingsArgs, Wanted,
@@ -745,9 +745,15 @@ impl Actions {
                     runner: c.runner.as_deref().map(|t| clip(t, 80)),
                     isolation: c.isolation.as_deref().map(|t| clip(t, 40)),
                     version: c.version.as_deref().map(|t| clip(t, 40)),
+                    update: c.update.as_deref().map(|t| clip(t, 200)),
                 })
                 .collect(),
             in_capabilities: d.in_capabilities && !d.capabilities.is_empty(),
+            update: d.update.as_ref().map(|u| DesktopUpdate {
+                checked_at: u.checked_at.as_deref().map(|t| clip(t, 40)),
+                ready: u.ready.as_deref().map(|t| clip(t, 40)),
+                note: u.note.as_deref().map(|t| clip(t, 200)),
+            }),
         };
         let at = now_ms();
         let known = self

@@ -267,6 +267,26 @@ pub struct DesktopDiagnosis {
     /// them shows no line of the whole runner's as well.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub in_capabilities: bool,
+    /// How its runner's updates stand. From newer apps; older ones leave it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<DesktopUpdate>,
+}
+
+/// How a desktop's runner updates stand, as its app says it. The app
+/// looks every hour, and installs a newer runner kind of job by kind of
+/// job, as each is idle.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DesktopUpdate {
+    /// When the app last heard from the runner's releases, RFC 3339.
+    #[serde(default)]
+    pub checked_at: Option<String>,
+    /// A newer version, downloaded and checked, waiting to be installed.
+    #[serde(default)]
+    pub ready: Option<String>,
+    /// What becomes of it, for a desktop with no kinds of job of its own:
+    /// `0.3.2 ready, installs after this job`.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// One kind of job a sandboxed desktop runs, as its app says it. Each
@@ -309,6 +329,9 @@ pub struct DesktopCapability {
     pub isolation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// A newer version waiting for it: `0.3.2 ready, installs after this job`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<String>,
 }
 
 /// What a desktop's kind of job is running.

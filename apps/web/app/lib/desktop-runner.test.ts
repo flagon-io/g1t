@@ -165,3 +165,33 @@ test("only a diagnosis and a backend the app makes are kept", () => {
   assert.equal(backendOf("host"), "host");
   assert.equal(backendOf("vm"), null);
 });
+
+test("a report says how the runner's updates stand, without the app's own words and button", () => {
+  const update = {
+    checked_at: "2026-10-12T12:00:00Z",
+    checked: "Checked 12 min ago",
+    checking: false,
+    ready: "0.3.2",
+    note: null,
+    check: { id: "check_updates", label: "Check for runner updates" },
+  };
+  const linux = { id: "linux", label: "Linux jobs", tone: "working" as const, title: "Running a job", cause: null, fix: null, actions: [], version: "0.3.1", update: "0.3.2 ready, installs after this job" };
+  const sandboxed = view({ backend: "sandboxed", diagnosis: { code: "busy", tone: "working", title: "Running build (acme/web)", cause: null, fix: null, actions: [], capabilities: [linux], in_capabilities: true, update } });
+  const report = reportOf(sandboxed)!;
+  assert.deepEqual(report.diagnosis.update, { checked_at: "2026-10-12T12:00:00Z", ready: "0.3.2", note: null });
+  assert.equal(report.diagnosis.capabilities![0].update, "0.3.2 ready, installs after this job");
+  // A look that found something, or a newer one put in, is reported at once.
+  const last = { key: reportKey(report), at: 0 };
+  const looked = reportOf(view({ ...sandboxed, diagnosis: { ...sandboxed.diagnosis, update: { ...update, checked_at: "2026-10-12T13:00:00Z" } } }))!;
+  assert.equal(reportDue(last, looked, 1000), true);
+  const installed = reportOf(view({ ...sandboxed, diagnosis: { ...sandboxed.diagnosis, capabilities: [{ ...linux, version: "0.3.2", update: undefined }] } }))!;
+  assert.equal(reportDue(last, installed, 1000), true);
+  // As the server reads it back: a time that isn't one is dropped, and an update that says nothing is none.
+  const kept = diagnosisOf(JSON.parse(JSON.stringify(report.diagnosis)))!;
+  assert.deepEqual(kept.update, report.diagnosis.update);
+  assert.equal(kept.capabilities![0].update, "0.3.2 ready, installs after this job");
+  assert.deepEqual(diagnosisOf({ ...report.diagnosis, update: { checked_at: "soon", ready: "0.3.2" } })!.update, { checked_at: null, ready: "0.3.2", note: null });
+  assert.equal(diagnosisOf({ ...report.diagnosis, update: { checked_at: 5 } })!.update, undefined);
+  // An app from before updates were reported says nothing of them.
+  assert.equal(reportOf(view())!.diagnosis.update, undefined);
+});

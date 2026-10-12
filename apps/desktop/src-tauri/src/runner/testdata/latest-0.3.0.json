@@ -1,0 +1,44 @@
+{
+  "version": "0.3.0",
+  "published_at": "2026-10-12T11:12:40.264Z",
+  "agent_image": null,
+  "files": {
+    "linux-x64": {
+      "name": "g1t-runner-linux-x64",
+      "sha256": "2730bf0e71e29af6ecfe815dbcb241104012fb30cc8b38c4dc762b81bbaddc4d"
+    },
+    "linux-arm64": {
+      "name": "g1t-runner-linux-arm64",
+      "sha256": "036db83173480e93e05502d004a594ba6f61ec694742d37471b0e9c038eaecaa"
+    },
+    "windows-x64": {
+      "name": "g1t-runner-windows-x64.exe",
+      "sha256": "642982aa3d01de8828c09b4807c511d3b4802814155ddf2e10192b71d75db692"
+    }
+  },
+  "sandbox": {
+    "runner_image": "g1t.sh/flagon-io/g1t-runner@sha256:5469b31c423e0c164699e1d06e1574e6742eb4d1eec08e934ae5e0d02e118df1",
+    "files": {
+      "wsl-x64": {
+        "name": "g1t-sandbox-wsl-x64.tar.gz",
+        "sha256": "09a12394566a53660ded11ef03761e58d8c27c63daed87a875fa8cd74b7139f1",
+        "size": 130488511
+      },
+      "vm-x64-kernel": {
+        "name": "g1t-sandbox-vm-x64-kernel",
+        "sha256": "26cb804f0a0a8878e5ab560391962aee89c344f5b8faebe0329f65c507a03483",
+        "size": 14157760
+      },
+      "vm-x64-initrd": {
+        "name": "g1t-sandbox-vm-x64-initrd",
+        "sha256": "b7fd7b22e2fa045f95cc8cad004b91d6b055b24f0672164a4678b0880acb74c2",
+        "size": 15483764
+      },
+      "vm-x64-disk": {
+        "name": "g1t-sandbox-vm-x64-disk.raw.gz",
+        "sha256": "11f10907828a947cdb8ee81ae9d687b47863e935946e6897e040995a4e4ec7a2",
+        "size": 195642640
+      }
+    }
+  }
+}
