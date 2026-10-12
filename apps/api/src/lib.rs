@@ -26,6 +26,7 @@ mod oauth;
 mod oidc;
 mod packages;
 mod folios;
+mod follow;
 mod people;
 mod openapi;
 mod pins;
@@ -40,6 +41,7 @@ mod rules;
 mod runners;
 mod security;
 mod tools;
+mod why;
 mod token_policy;
 mod toolkit;
 

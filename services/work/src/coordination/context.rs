@@ -7,6 +7,7 @@
 use futures_util::future::{try_join, try_join_all, try_join3};
 use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
 use g1t_contracts::repos::Repo;
+use g1t_contracts::decisions::{Decision, DecisionKind, ListDecisionsArgs};
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -54,13 +55,12 @@ impl Work {
             self.default_branch_settings(&repo),
         );
         let dependencies = try_join(self.blockers(&repo.id, &issue.blocked_by), self.blocked_issues(&repo.id, issue.number));
-        let history = try_join3(
+        let history = try_join(
             self.coordination_events(&repo.id, &numbers, COORDINATION_EVENTS.to_vec(), EVENTS),
-            self.coordination_events(&repo.id, &numbers, vec!["integration.failed"], 1),
-            self.decisions_on(&repo.id, issue.number, &pull_numbers),
+            self.decisions_on(&a.repo, &a.viewer, issue.number),
         );
         let work_pulls = try_join_all(pulls.iter().map(|pull| self.work_pull(&repo, pull)));
-        let (((claims, sessions, settings), (blocked_by, blocks)), ((recent, failures, decisions), pulls)) =
+        let (((claims, sessions, settings), (blocked_by, blocks)), ((recent, decisions), pulls)) =
             try_join(try_join(people, dependencies), try_join(history, work_pulls)).await?;
         Ok(Outcome::Ok(WorkContext {
             definition_of_done: definition_of_done(&issue.body),
@@ -71,8 +71,8 @@ impl Work {
             pulls,
             blocked_by,
             blocks,
+            last_integration_failure: decisions.iter().find(|decision| decision.kind == DecisionKind::IntegrationFailure).cloned(),
             decisions,
-            last_integration_failure: failures.into_iter().next(),
             recent,
         }))
     }
@@ -114,34 +114,16 @@ impl Work {
     }
 
     /// Decision records on an issue and its pull requests, newest first,
-    /// as stored: none until the repository has any. Each `evidence` is
-    /// given as JSON.
-    async fn decisions_on(&self, repo_id: &str, issue: u32, pulls: &[u32]) -> Result<Vec<serde_json::Value>> {
-        let statement = self
-            .db
-            .prepare(
-                "SELECT * FROM decisions
-                 WHERE repo_id = ? AND (issue = ? OR pull IN (SELECT value FROM json_each(?)))
-                 ORDER BY created_at DESC LIMIT ?",
-            )
-            .bind(&[repo_id.into(), issue.into(), serde_json::to_string(pulls)?.into(), DECISIONS.into()])?;
-        // Decision records are kept by the merge queue's side of
-        // coordination; until they are, there are none to give.
-        let rows: Vec<serde_json::Value> = match statement.all().await {
-            Ok(result) => result.results()?,
-            Err(_) => return Ok(Vec::new()),
+    /// up to [`DECISIONS`].
+    async fn decisions_on(&self, repo: &g1t_contracts::repos::RepoPath, viewer: &g1t_contracts::Viewer, number: u32) -> Result<Vec<Decision>> {
+        let args = ListDecisionsArgs { repo: repo.clone(), viewer: viewer.clone(), number };
+        let mut decisions = match self.list_decisions(args).await? {
+            Outcome::Ok(decisions) => decisions,
+            Outcome::Fail(_) => Vec::new(),
         };
-        Ok(rows
-            .into_iter()
-            .map(|mut row| {
-                if let Some(evidence) = row.get("evidence").and_then(serde_json::Value::as_str)
-                    && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(evidence)
-                {
-                    row["evidence"] = parsed;
-                }
-                row
-            })
-            .collect())
+        decisions.reverse();
+        decisions.truncate(DECISIONS as usize);
+        Ok(decisions)
     }
 
     /// One of the issue's pull requests and where it stands: its required

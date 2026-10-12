@@ -15,7 +15,7 @@ import { pathToFileURL } from "node:url";
 
 /** The checks, in order. `body` is the page's text with tags removed. */
 export const CHECKS = [
-  { name: "Landing page", path: "/", expect: ["Sign up", "Start for free"] },
+  { name: "Landing page", path: "/", expect: ["Sign up", "Get started"] },
   { name: "Sign in", path: "/login", expect: ["Sign in"] },
   { name: "Sign up", path: "/register", expect: ["Create your account", "Create account"] },
   { name: "Pricing", path: "/pricing", expect: ["Pricing"] },

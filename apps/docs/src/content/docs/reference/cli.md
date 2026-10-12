@@ -735,13 +735,276 @@ Calls [`list_logs`](/reference/api/observability/list-logs/), [`list_errors`](/r
 
 ## g1t status
 
-What needs you: your pull requests, reviews asked of you, your issues, failing checks.
+What needs you: your pull requests, reviews asked of you, your issues, failing checks, and your sessions and claims here.
 
 ```text
 g1t status [OPTIONS]
 ```
 
-Calls [`search`](/reference/api/search/search/), [`list_notifications`](/reference/api/notifications/list-notifications/), [`get_pull_request`](/reference/api/pull-requests/get-pull-request/).
+Calls [`search`](/reference/api/search/search/), [`list_notifications`](/reference/api/notifications/list-notifications/), [`get_pull_request`](/reference/api/pull-requests/get-pull-request/), [`list_sessions`](/reference/api/sessions/list-sessions/), [`list_claims`](/reference/api/claims-and-work/list-claims/).
+
+## g1t session
+
+Sessions: one run of an agent's harness, recorded as it works.
+
+### g1t session start
+
+Start a session and remember it for this working copy. Prints its id.
+
+```text
+g1t session start [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-i, --issue <ISSUE>` | The issue it works on. |
+| `-p, --pull <PULL>` | The pull request it works on. |
+| `--harness <HARNESS>` | The harness running it. One of `claude-code`, `codex`, `cursor`, `copilot`, `other`. Default: `other`. |
+| `--harness-session-id <ID>` | The harness's own id for the run, which makes starting again return the same session. |
+| `-t, --title <TITLE>` |  |
+| `-b, --branch <BRANCH>` | The branch it works on; the current one when left out. |
+
+```text
+The id is kept in .git/g1t/session (each worktree has its own); G1T_SESSION overrides it.
+Starting again with the same --harness-session-id returns the same session.
+```
+
+Calls [`start_session`](/reference/api/sessions/start-session/).
+
+### g1t session heartbeat
+
+Say the current session is still working; renews its claims.
+
+```text
+g1t session heartbeat [OPTIONS]
+```
+
+Calls [`update_session`](/reference/api/sessions/update-session/).
+
+### g1t session log
+
+Record a note, prompt or message in the current session.
+
+```text
+g1t session log [OPTIONS] <TEXT>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<TEXT>` | What to record; - reads it from stdin. |
+| `-k, --kind <KIND>` | One of `note`, `prompt`, `message`, `tool-call`. Default: `note`. |
+| `--tool <TOOL>` | The tool, for a tool_call. |
+| `--key <KEY>` | A key that makes recording it again do nothing. |
+
+Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/).
+
+### g1t session attach
+
+Attach the current session to an issue, a pull request or a branch.
+
+```text
+g1t session attach [OPTIONS] <--issue <ISSUE>|--pull <PULL>|--branch <BRANCH>|--head-commit <SHA>>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-i, --issue <ISSUE>` |  |
+| `-p, --pull <PULL>` |  |
+| `-b, --branch <BRANCH>` |  |
+| `--head-commit <SHA>` | The commit it pushed last. |
+
+Calls [`update_session`](/reference/api/sessions/update-session/).
+
+### g1t session end
+
+End the current session.
+
+```text
+g1t session end [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-r, --reason <REASON>` | Why it ended: done, abandoned, handed_off... |
+
+Calls [`end_session`](/reference/api/sessions/end-session/).
+
+### g1t session list
+
+List the repository's sessions.
+
+```text
+g1t session list [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-s, --state <STATE>` | Only sessions in this state. One of `active`, `idle`, `ended`. |
+| `-i, --issue <ISSUE>` |  |
+| `-p, --pull <PULL>` |  |
+| `-L, --limit <LIMIT>` | Default: `20`. |
+
+Calls [`list_sessions`](/reference/api/sessions/list-sessions/).
+
+### g1t session view
+
+Show a session and what it recorded; the current one when left out.
+
+```text
+g1t session view [OPTIONS] [ID]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[ID]` | The session's id (ses_…); the current one when left out. |
+
+Calls [`get_session`](/reference/api/sessions/get-session/).
+
+## g1t work
+
+Coordinate work on issues: context, claims, hand-offs, dependencies, events.
+
+### g1t work context
+
+Everything about an issue's work: claims, sessions, pull requests, dependencies, decisions.
+
+```text
+g1t work context [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The issue's number. |
+
+Calls [`get_work`](/reference/api/claims-and-work/get-work/).
+
+### g1t work claim
+
+Claim an issue: say you are working on it. Others are told, never stopped.
+
+```text
+g1t work claim [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The issue's number. |
+| `-n, --note <NOTE>` | What you are doing about it. |
+| `--ttl <DURATION>` | How long the claim lasts unless renewed: 30m, 2h (at most 4h). |
+
+Calls [`claim_issue`](/reference/api/claims-and-work/claim-issue/).
+
+### g1t work release
+
+Release your claim on an issue.
+
+```text
+g1t work release [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` |  |
+| `-r, --reason <REASON>` | Why: done, blocked, abandoned... |
+
+Calls [`release_claim`](/reference/api/claims-and-work/release-claim/).
+
+### g1t work handoff
+
+Hand an issue over to someone else, or to anyone.
+
+```text
+g1t work handoff [OPTIONS] --note <NOTE> <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` |  |
+| `--to <LOGIN>` | Who takes it over; anyone when left out. |
+| `-n, --note <NOTE>` | Where it stands and what is left, for whoever takes it. |
+
+Calls [`hand_off_issue`](/reference/api/claims-and-work/hand-off-issue/).
+
+### g1t work list
+
+Active claims and sessions in the repository.
+
+```text
+g1t work list [OPTIONS]
+```
+
+Calls [`list_claims`](/reference/api/claims-and-work/list-claims/), [`list_sessions`](/reference/api/sessions/list-sessions/).
+
+### g1t work block
+
+Say an issue waits on others: it is blocked by them.
+
+```text
+g1t work block [OPTIONS] --by <NUMBER> <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The issue that waits. |
+| `--by <NUMBER>` | The issue it waits on; repeat for more. |
+
+Calls [`get_issue`](/reference/api/issues/get-issue/), [`update_issue`](/reference/api/issues/update-issue/).
+
+### g1t work unblock
+
+Say an issue no longer waits on others.
+
+```text
+g1t work unblock [OPTIONS] --by <NUMBER> <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The issue that waits. |
+| `--by <NUMBER>` | The issue it waits on; repeat for more. |
+
+Calls [`get_issue`](/reference/api/issues/get-issue/), [`update_issue`](/reference/api/issues/update-issue/).
+
+### g1t work events
+
+The repository's events; --follow keeps printing them as they happen.
+
+```text
+g1t work events [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-f, --follow` | Keep printing events as they happen, until stopped. |
+| `-t, --type <TYPE>` | Only events of this type; repeat for more. |
+| `-i, --issue <NUMBER>` | Only events about this issue or pull request; repeat for more. |
+| `-s, --since <SINCE>` | Only events since then: 15m, 2h, 1d, or a time like 2026-10-12T09:00:00Z. |
+| `--after <EVENT_ID>` | Start after this event id, as a follow that stopped would resume. |
+| `-L, --limit <LIMIT>` | How many past events to show first. Default: `20`. |
+
+```text
+Examples:
+  g1t work events --follow --issue 12
+  g1t work events --follow --type integration.failed --type overlap.detected --json
+With --json, each event is one JSON object on a line of its own.
+```
+
+Calls [`list_events`](/reference/api/repositories/list-events/).
+
+## g1t why
+
+Why a file or line is as it is: its commit, pull request, issue, decisions and sessions.
+
+```text
+g1t why [OPTIONS] <TARGET>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<TARGET>` | A file, or a line of it as PATH:LINE. |
+| `--ref <REF>` | The branch, tag or commit to read it at; the default branch when left out. |
+
+Calls [`why`](/reference/api/decisions-and-why/why/).
 
 ## g1t api
 

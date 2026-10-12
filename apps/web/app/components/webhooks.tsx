@@ -56,7 +56,10 @@ const GROUPS: { title: string; events: string[] }[] = [
       "release.deleted",
     ],
   },
-  { title: "Checks and the queue", events: ["checks.completed", "workflow.completed", "queue.changed"] },
+  {
+    title: "Checks and the queue",
+    events: ["checks.completed", "workflow.completed", "queue.changed", "integration.failed", "integration.passed"],
+  },
   {
     title: "Statuses and check runs",
     events: [
@@ -73,7 +76,7 @@ const GROUPS: { title: string; events: string[] }[] = [
     title: "Deployments",
     events: ["deployment.created", "deployment_status.created", "deployment.succeeded", "deployment.failed"],
   },
-  { title: "Sessions", events: ["session.started", "session.ended", "session.appended"] },
+  { title: "Sessions and decisions", events: ["session.started", "session.ended", "session.appended", "decision.recorded"] },
   {
     title: "Coordination",
     events: [

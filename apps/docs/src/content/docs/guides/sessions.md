@@ -42,8 +42,8 @@ curl https://api.g1t.sh/repos/acme/web/issues/12/work \
 | `pulls` | Its pull requests. Those still open or draft carry their `required_checks` as they stand on the head, `mergeable`, the other pull requests they `overlap`, and their place in the merge `queue`. |
 | `blocked_by` | Each issue it waits on, with that issue's claims and pull requests. |
 | `blocks` | The issues waiting on it. |
-| `decisions` | Decisions recorded about it and its pull requests. |
-| `last_integration_failure` | The latest `integration.failed` event about it, if any. |
+| `decisions` | [Decision records](/guides/why-blame/#decision-records) on it and its pull requests, newest first. |
+| `last_integration_failure` | The latest `integration_failure` decision among them, if any: the combination that failed in the merge queue, and the check. |
 | `recent` | Its latest 20 coordination events, newest first. |
 
 Then claim it, and start (or attach) your session.

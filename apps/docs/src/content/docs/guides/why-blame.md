@@ -34,15 +34,16 @@ session is as visible as the repository, so do not put secrets in one.
 
 Your coding agent records its session in one of two ways.
 
-**With the hook installer**, for Claude Code. Every session is recorded
-without the agent having to remember:
+**With g1t's Claude Code plugin.** Every session is recorded without the
+agent having to remember:
 
 ```sh
-curl -fsSL https://g1t.sh/install/claude.sh | sh
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin install g1t@g1t
 ```
 
-See [recording sessions automatically](/guides/bring-your-own-agent/#recording-sessions-automatically)
-for what it installs and how to remove it.
+See [Claude Code plugin](/guides/claude-code-plugin/) for what it records,
+what it never records and how to opt out.
 
 **With the `pull_request` tool's `record_session` action**, from any agent. It takes a list of entries, each
 with a `kind` from the table above and `text`, and `tool` for tool entries.
@@ -86,6 +87,79 @@ g1t then shows why the line is the way it is:
 Blame follows every parent of a merge, so a line that came into a pull
 request when it caught up with `main` is credited to whoever wrote it on
 `main`, not to the merge.
+
+### Why over the API
+
+The `repository` tool's `why` action, or
+`GET /repos/{owner}/{name}/why?path=&line=&ref=`, answers the same for one
+line, with the decision records too. `ref` is a branch, tag or commit; the
+default branch when left out.
+
+```sh
+curl "https://api.g1t.sh/repos/acme/web/why?path=src/config.rs&line=42" \
+  -H "Authorization: Bearer $G1T_TOKEN"
+```
+
+| Field | |
+| --- | --- |
+| `commit` | The commit that last changed the line: `hash`, `message`, `author`, `parents`, `authored_at`. |
+| `pull` | The merged pull request it arrived in: `number`, `title`, `author`, `agent`, `merged_by`, `merged_at`. Absent when it did not arrive through one. |
+| `issue` | That pull request's issue: `number`, `title`, `state` and `body` (cut at 900 characters). |
+| `decisions` | The [decision records](#decision-records) on the pull request, oldest first. |
+| `sessions` | Up to eight entries of the pull request's session behind that commit: the messages, and the tool calls that touched the file. |
+
+A pull request is found for a commit as on the site: the one whose head it
+is, or the one whose stretch of the default branch's last 300 commits holds
+it. It is public for a public repository, and needs the `code:read` scope
+otherwise.
+
+## Decision records
+
+A decision record is a reason kept on an issue or pull request, with how
+sure it is. Sessions say what happened; decisions say why the result is
+the way it is, in a sentence, with what it rests on.
+
+| Confidence | Meaning |
+| --- | --- |
+| `claimed` | Someone said so: an agent or a person recorded it. |
+| `tested` | A check or the merge queue proved it. |
+| `approved` | A person approved it. |
+
+g1t keeps these itself:
+
+| Kind | When | Confidence |
+| --- | --- | --- |
+| `integration_failure` | The [merge queue](/guides/merge-queue/#when-an-entry-fails) found a combination of pull requests fails: which ones, and the check. | `tested` |
+| `integration_passed` | A combined state passed in the merge queue. | `tested` |
+| `approval` | Someone approved the pull request. | `approved` for a person, `claimed` for an agent's token |
+| `merge` | It was merged. | `tested` through the queue or a repository's own auto-merge, `approved` when a person merged it, `claimed` for an agent's token |
+
+Agents and people record their own, of kind `proposal` (why the change is
+made this way), `claim` (something true of it), `fix` (what fixed a
+failure) or `note`, always as `claimed`, with the `pull_request` tool's
+`record_decision` action or
+`POST /repos/{owner}/{name}/pulls/{number}/decisions`:
+
+```sh
+curl -X POST https://api.g1t.sh/repos/acme/web/pulls/14/decisions \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"kind": "fix",
+       "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+       "evidence": {"commit": "7d3e9a1c"}}'
+```
+
+`summary` is at most 2,000 characters and `evidence` an object of at most
+8 KB. Whoever opened the pull request can record one, and so can anyone
+who may comment on it, once their email address is confirmed. Each is
+attributed to whoever recorded it, carries
+the issue the pull request is for, and is published as `decision.recorded`.
+
+Read them with the `pull_request` tool's `list_decisions` action, with
+`GET /repos/{owner}/{name}/pulls/{number}/decisions`, or for an issue and
+all its pull requests with
+`GET /repos/{owner}/{name}/issues/{number}/decisions`. A decision is as
+visible as the repository, so do not put secrets in one.
 
 ## Commit pages
 

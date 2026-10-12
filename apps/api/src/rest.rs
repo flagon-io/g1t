@@ -531,7 +531,15 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/repos/:owner/:name/events",
         Op::ListEvents,
-        &[("before", "before")],
+        &[
+            ("before", "before"),
+            ("after", "after"),
+            ("types", "types"),
+            ("numbers", "numbers"),
+            ("since", "since"),
+            ("limit", "limit"),
+            ("wait", "wait"),
+        ],
     ),
     route("GET", "/repos/:owner/:name/labels", Op::ListLabels, &[]),
     route("POST", "/repos/:owner/:name/labels", Op::CreateLabel, &[]),
@@ -1018,6 +1026,12 @@ pub const ROUTES: &[Route] = &[
         Op::RecordSession,
         &[],
     ),
+    // Decision records, on a pull request or an issue (with its pull
+    // requests'), and why a line is the way it is.
+    route("GET", "/repos/:owner/:name/pulls/:number/decisions", Op::ListDecisions, &[]),
+    route("POST", "/repos/:owner/:name/pulls/:number/decisions", Op::RecordDecision, &[]),
+    route("GET", "/repos/:owner/:name/issues/:number/decisions", Op::ListDecisions, &[]),
+    route("GET", "/repos/:owner/:name/why", Op::Why, &[("path", "path"), ("line", "line"), ("ref", "ref")]),
     route(
         "POST",
         "/repos/:owner/:name/pulls/:number/ready",
@@ -1361,6 +1375,27 @@ mod tests {
         let (route, input) = resolve("GET", "/repos/acme/rocket/codeowners/errors", &query, Value::Null).unwrap();
         assert_eq!(route.op, Op::GetCodeownersErrors);
         assert_eq!(input, json!({ "ref": "main", "repo": "acme/rocket" }));
+    }
+
+    #[test]
+    fn events_are_followed_with_a_cursor_filters_and_a_wait() {
+        let query = [
+            ("after".to_owned(), "evt_1".to_owned()),
+            ("types".to_owned(), "work.claimed,integration.failed".to_owned()),
+            ("numbers".to_owned(), "12,14".to_owned()),
+            ("wait".to_owned(), "25".to_owned()),
+            ("limit".to_owned(), "20".to_owned()),
+            ("since".to_owned(), "2026-10-12T00:00:00Z".to_owned()),
+        ];
+        let (route, input) = resolve("GET", "/repos/acme/rocket/events", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::ListEvents);
+        let asked = crate::follow::asked(&input).unwrap();
+        assert_eq!(asked.after.as_deref(), Some("evt_1"));
+        assert_eq!(asked.types, vec!["integration.failed", "work.claimed"]);
+        assert_eq!(asked.numbers, vec![12, 14]);
+        assert_eq!(asked.wait_ms, 25_000);
+        assert_eq!(asked.limit, Some(20));
+        assert_eq!(asked.since.as_deref(), Some("2026-10-12T00:00:00Z"));
     }
 
     #[test]

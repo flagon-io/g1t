@@ -111,7 +111,10 @@ With these headers:
 | `deployment_status.created` | A deployment got a status, from any source. `data.repo_id`, `data.deployment` without its `payload`, and `data.deployment_status`. |
 | `release.created`, `.published`, `.released`, `.prereleased`, `.edited`, `.unpublished`, `.deleted` | A [release](/guides/releases/) changed; one change can send several, as the [release activity types](/guides/actions/#releases) say. `data.release_id`, `data.tag_name`, and `data.release` (`tag_name`, `target`, `name`, `body`, `draft`, `prerelease`, `author`, `created_at`, `published_at`), as it was for `release.deleted`. On `release.edited`, `data.changes` holds the old `name` and `body`. |
 | `queue.changed` | The merge queue gained, lost or settled an entry. |
-| `session.appended` | A pull request's [session](/guides/why-blame/#sessions) grew: a coding agent recorded entries with `record_session`, or a session on it recorded some. Busy: choose it only if you need it. |
+| `integration.failed` | A pull request failed in the [merge queue](/guides/merge-queue/#when-an-entry-fails) combined with the ones ahead of it. `pull` (also `number`) is the one that answers for it, `issue` its issue, `combination` the pull requests tested together, `check` the check that failed (`name`, `conclusion`, `url`), `suspects` the pull requests ahead it fails with, `bisected` whether smaller combinations were built to find them, and `other_pulls` the rest of the combination. |
+| `integration.passed` | A pull request's combined state passed in the merge queue: `pull` and `combination`. |
+| `decision.recorded` | A [decision record](/guides/why-blame/#decision-records) was kept on an issue or pull request: `decision`, with `number` and `issue`. |
+| `session.appended` | A pull request's [session](/guides/why-blame/#sessions) grew: a coding agent recorded entries with `record_session`, a session on it recorded some, or g1t noted a merge queue failure. Busy: choose it only if you need it. |
 | `session.started`, `session.ended` | A [session](/guides/sessions/#sessions) of someone's harness started (not on a repeated start), or ended or timed out. `data.session`, and `data.number` (its pull request, else its issue) and `data.issue`. |
 | `work.claimed`, `work.released`, `work.claim_expired`, `work.handoff_requested` | A [claim](/guides/sessions/#claims) on an issue was made, released, expired or handed off. `data.number` and `data.issue` (the issue), `data.claim`; on `work.claimed`, `data.others` (the other active claims) and `data.took_over`; on `work.released`, `data.reason`; on a hand-off, `data.from`, `data.to` and `data.note`. |
 | `dependency.changed` | What an issue is [blocked by](/guides/sessions/#dependencies) changed, or a blocker closed or had its pull request merged. `data.number` (the blocked issue), `data.blocked_by`, `data.added`, `data.removed`, `data.cleared`, `data.remaining` (blockers still open) and `data.merged_pull`. |
@@ -172,6 +175,15 @@ Webhooks are sent only over HTTPS, to public addresses. Private and local
 addresses (`localhost`, `10.0.0.0/8`, `192.168.0.0/16` and the like) are
 refused. To receive webhooks on your own machine while you build, use a
 tunnel such as Cloudflare Tunnel.
+
+## Without a public address
+
+An agent on a laptop, or anything else that cannot take requests from the
+internet, can follow a repository's events instead:
+[`list_events`](/reference/api/repositories/list-events/) with `after` and
+`wait` holds each request until an event is written, so one request at a
+time hears about events within a second or so. `g1t work events --follow`
+does this for you ([The g1t CLI](/guides/cli/#following-events)).
 
 ## From the API
 

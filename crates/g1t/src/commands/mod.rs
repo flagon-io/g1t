@@ -11,7 +11,10 @@ pub mod pr;
 pub mod repo;
 pub mod run;
 pub mod secret;
+pub mod session;
 pub mod status;
+pub mod why;
+pub mod work;
 
 use clap::CommandFactory;
 
@@ -40,6 +43,9 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Deploy(command) => deploy::run(&Ctx::new(cli.global)?, command),
         Command::Logs(args) => logs::run(&Ctx::new(cli.global)?, args),
         Command::Status(_) => status::run(&Ctx::new(cli.global)?),
+        Command::Session(command) => session::run(&Ctx::new(cli.global)?, command),
+        Command::Work(command) => work::run(&Ctx::new(cli.global)?, command),
+        Command::Why(args) => why::run(&Ctx::new(cli.global)?, args),
         Command::Api(args) => api::run(&Ctx::new(cli.global)?, args),
         Command::Browse(args) => browse::run(&Ctx::new(cli.global)?, args),
     }
@@ -51,6 +57,49 @@ pub fn who(ctx: &Ctx, client: &crate::client::Client, login: &str) -> Result<Str
         ctx.me(client)
     } else {
         Ok(login.trim_start_matches('@').to_owned())
+    }
+}
+
+/// The repository and a signed-in client for the coordination commands
+/// (`g1t session`, `g1t work`, `g1t why`). Agents' hooks run them in the
+/// background, so they fail at once without a token (exit code 4), never
+/// ask anything, and give up on a call after `read` rather than hang.
+pub fn coordination_client(
+    ctx: &Ctx,
+    read: std::time::Duration,
+) -> Result<(crate::repo::Repo, crate::client::Client)> {
+    let (repo, client) = ctx.repo_client()?;
+    if !client.has_token() {
+        return Err(crate::context::not_signed_in(&client.host));
+    }
+    Ok((repo, client.with_timeouts(std::time::Duration::from_secs(5), read)))
+}
+
+/// How long a coordination command waits for an answer.
+pub const QUICK: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Who a session, claim or decision belongs to: its `actor` (a login, or
+/// an account with one), or its `user`.
+pub fn login_of(value: &serde_json::Value) -> String {
+    for key in ["actor", "user", "author"] {
+        let who = &value[key];
+        if let Some(login) = who
+            .as_str()
+            .or_else(|| who["username"].as_str())
+            .or_else(|| who["login"].as_str())
+            .filter(|login| !login.is_empty())
+        {
+            return login.to_owned();
+        }
+    }
+    String::new()
+}
+
+/// The object under `key` when the answer wraps it, or the answer itself.
+pub fn unwrap_key(value: serde_json::Value, key: &str) -> serde_json::Value {
+    match value.get(key) {
+        Some(inner) if inner.is_object() => inner.clone(),
+        _ => value,
     }
 }
 

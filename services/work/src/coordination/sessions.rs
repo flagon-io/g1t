@@ -407,6 +407,47 @@ impl Work {
         Ok(Outcome::Ok(rows.into_iter().map(|row| row.at(now)).collect()))
     }
 
+    /// Notes `text` (from g1t) in the live harness sessions on `pull` or
+    /// its issue, so an agent reading its session hears of it. Never fails
+    /// what it follows: a problem is logged.
+    pub(crate) async fn note_sessions(&self, pull: &Pull, text: &str) {
+        let noted = async {
+            let sessions: Vec<SessionRow> = self
+                .db
+                .prepare(format!(
+                    "SELECT {SESSION_COLUMNS} FROM sessions
+                     WHERE repo_id = ?1 AND state = 'active' AND (pull = ?2 OR (?3 IS NOT NULL AND issue = ?3))"
+                ))
+                .bind(&[pull.repo_id.as_str().into(), pull.number.into(), number_or_null(pull.issue)])?
+                .all()
+                .await?
+                .results()?;
+            let at = rfc3339(now_ms());
+            let mut statements = Vec::new();
+            for session in sessions {
+                // Kept by the session alone: the pull request's own session
+                // has the note already.
+                statements.push(self.db.prepare(INSERT_ENTRY).bind(&[
+                    JsValue::NULL,
+                    "note".into(),
+                    text.into(),
+                    JsValue::NULL,
+                    text_or_null(&pull.head_commit),
+                    at.as_str().into(),
+                    session.id.as_str().into(),
+                    JsValue::NULL,
+                ])?);
+            }
+            if !statements.is_empty() {
+                self.db.batch(statements).await?;
+            }
+            Ok::<(), worker::Error>(())
+        };
+        if let Err(error) = noted.await {
+            worker::console_error!("#{}: sessions were not told: {error}", pull.number);
+        }
+    }
+
     pub(crate) async fn record_session_entries(&self, a: RecordEntriesArgs) -> Result<Outcome<Recorded>> {
         if a.entries.len() > crate::MAX_ENTRY_BATCH {
             return Ok(Outcome::fail(

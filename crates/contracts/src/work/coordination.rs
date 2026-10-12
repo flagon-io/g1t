@@ -571,10 +571,11 @@ pub struct WorkContext {
     pub blocks: Vec<IssueBrief>,
     /// Decision records on it and its pull requests, newest first.
     #[serde(default)]
-    pub decisions: Vec<serde_json::Value>,
-    /// The latest `integration.failed` event about it, if any.
+    pub decisions: Vec<crate::decisions::Decision>,
+    /// The latest `integration_failure` decision on it or its pull
+    /// requests, if any: which combination failed, and the check.
     #[serde(default)]
-    pub last_integration_failure: Option<Event>,
+    pub last_integration_failure: Option<crate::decisions::Decision>,
     /// The latest coordination events about it, newest first.
     pub recent: Vec<Event>,
 }

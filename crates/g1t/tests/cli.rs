@@ -892,3 +892,186 @@ fn the_repository_comes_from_the_git_remote() {
     assert_eq!(out.code, 2);
     assert!(out.stderr.contains("--repo"), "{}", out.stderr);
 }
+
+/// Runs g1t in `dir` with a token and the environment `env` added.
+fn g1t_with(mock: &Mock, dir: &PathBuf, args: &[&str], env: &[(&str, &str)]) -> Run {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_g1t"));
+    command
+        .args(args)
+        .current_dir(dir)
+        .env("G1T_API_URL", &mock.url)
+        .env("G1T_CONFIG_DIR", dir)
+        .env("G1T_KEYRING", "off")
+        .env("G1T_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1")
+        .env("GIT_CEILING_DIRECTORIES", std::env::temp_dir())
+        .env("G1T_TOKEN", "g1t_test")
+        .env_remove("G1T_REPO")
+        .env_remove("G1T_HOST")
+        .env_remove("G1T_SESSION")
+        .stdin(Stdio::null());
+    for (k, v) in env {
+        command.env(k, v);
+    }
+    let Output { status, stdout, stderr } = command.output().unwrap();
+    Run {
+        code: status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+    }
+}
+
+/// A working copy of acme/web.
+fn working_copy(name: &str) -> PathBuf {
+    let dir = temp_dir(name);
+    for args in [
+        &["init", "--quiet"][..],
+        &["remote", "add", "origin", "https://g1t.sh/acme/web.git"][..],
+    ] {
+        assert!(Command::new("git").args(args).current_dir(&dir).status().unwrap().success());
+    }
+    dir
+}
+
+fn session(id: &str) -> Value {
+    json!({ "id": id, "state": "active", "harness": "claude_code", "issue": 12, "actor": "ana" })
+}
+
+#[test]
+fn a_session_is_remembered_per_working_copy_and_claims_carry_it() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("POST", "/repos/acme/web/sessions") => (200, session("ses_1")),
+        ("POST", "/repos/acme/web/sessions/ses_1/entries") => (200, json!({ "recorded": 1 })),
+        ("POST", "/repos/acme/web/sessions/ses_2/entries") => (200, json!({ "recorded": 1 })),
+        ("POST", "/repos/acme/web/issues/12/claim") => (
+            200,
+            json!({ "claim": { "id": "clm_1", "issue": 12, "actor": "ana" }, "others": [], "blocked_by": [] }),
+        ),
+        ("POST", "/repos/acme/web/sessions/ses_1/end") => (200, session("ses_1")),
+        _ => (404, json!({ "error": { "message": "No such endpoint." } })),
+    });
+    let dir = working_copy("session");
+    let out = g1t_with(
+        &mock,
+        &dir,
+        &["session", "start", "--harness", "claude-code", "--harness-session-id", "cc-9", "--issue", "12", "--json"],
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let started: Value = serde_json::from_str(&out.stdout).unwrap();
+    assert_eq!(started["id"], "ses_1");
+    let sent = mock.requests()[0].json();
+    assert_eq!(sent["harness"], "claude_code");
+    assert_eq!(sent["harness_session_id"], "cc-9");
+    assert_eq!(sent["issue"], 12);
+    let kept = std::fs::read_to_string(dir.join(".git/g1t/session")).unwrap();
+    assert_eq!(kept.trim(), "ses_1");
+
+    let out = g1t_with(
+        &mock,
+        &dir,
+        &["session", "log", "--kind", "tool-call", "--tool", "Edit", "--", "--edited src/a.rs"],
+        &[],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let logged = mock.requests().last().unwrap().clone();
+    assert_eq!(logged.path(), "/repos/acme/web/sessions/ses_1/entries");
+    assert_eq!(
+        logged.json(),
+        json!({ "entries": [{ "kind": "tool_call", "text": "--edited src/a.rs", "tool": "Edit" }] })
+    );
+
+    // G1T_SESSION wins over the kept one.
+    let out = g1t_with(&mock, &dir, &["session", "log", "hi"], &[("G1T_SESSION", "ses_2")]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(mock.requests().last().unwrap().path(), "/repos/acme/web/sessions/ses_2/entries");
+
+    let out = g1t_with(&mock, &dir, &["work", "claim", "12", "--note", "parser", "--ttl", "2h"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(
+        mock.requests().last().unwrap().json(),
+        json!({ "session_id": "ses_1", "note": "parser", "ttl_minutes": 120 })
+    );
+    assert!(out.stdout.contains("Claimed #12"), "{}", out.stdout);
+
+    let out = g1t_with(&mock, &dir, &["session", "end", "--reason", "done"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(!dir.join(".git/g1t/session").exists(), "an ended session is forgotten");
+}
+
+#[test]
+fn coordination_without_a_session_or_a_token_fails_at_once() {
+    let mock = Mock::start(|_| (200, json!({})));
+    let dir = working_copy("nosession");
+    let out = g1t_with(&mock, &dir, &["session", "heartbeat"], &[]);
+    assert_eq!(out.code, 2);
+    assert!(out.stderr.contains("g1t session start"), "{}", out.stderr);
+    let out = g1t_with(&mock, &dir, &["work", "claim", "12"], &[("G1T_TOKEN", "")]);
+    assert_eq!(out.code, 4, "{}", out.stderr);
+    assert!(mock.requests().is_empty());
+}
+
+#[test]
+fn an_older_server_says_it_cannot_do_this_yet() {
+    let mock = Mock::start(|_| {
+        (404, json!({ "error": { "code": "not_found", "message": "No such endpoint." } }))
+    });
+    let out = run(&mock, &["work", "context", "12", "-R", "acme/web"]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("older than this CLI"), "{}", out.stderr);
+    assert!(out.stderr.contains("/repos/acme/web/issues/12/work"), "{}", out.stderr);
+}
+
+#[test]
+fn blocking_replaces_the_set_the_issue_waits_on() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("GET", "/repos/acme/web/issues/12") => {
+            (200, json!({ "issue": { "number": 12, "blocked_by": [9] } }))
+        }
+        ("PATCH", "/repos/acme/web/issues/12") => (200, json!({ "number": 12, "blocked_by": [9, 10] })),
+        _ => (404, json!({ "error": { "message": "No such endpoint." } })),
+    });
+    let out = run(&mock, &["work", "block", "12", "--by", "10", "--by", "9", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(mock.requests()[1].json(), json!({ "blocked_by": [9, 10] }));
+}
+
+#[test]
+fn events_follow_from_the_newest_and_resume_from_the_last() {
+    let calls = Arc::new(Mutex::new(0));
+    let count = calls.clone();
+    let event = |id: &str, kind: &str, number: u64| {
+        json!({ "id": id, "type": kind, "time": "2026-10-12T09:00:00Z", "data": { "number": number, "title": "t" } })
+    };
+    let mock = Mock::start(move |r| {
+        let mut n = count.lock().unwrap();
+        *n += 1;
+        match *n {
+            // Where following starts.
+            1 => (200, json!([event("evt_5", "push", 0)])),
+            // The past, newest first.
+            2 => (200, json!([event("evt_5", "work.claimed", 12), event("evt_4", "work.claimed", 12)])),
+            3 if r.target.contains("after=evt_5") => (200, json!([event("evt_6", "work.released", 12)])),
+            4 if r.target.contains("after=evt_6") => (200, json!([event("evt_7", "work.claimed", 12)])),
+            // A refused token ends the follow.
+            _ => (401, json!({ "error": { "message": "Token expired." } })),
+        }
+    });
+    let out = run(
+        &mock,
+        &[
+            "work", "events", "--follow", "--issue", "12", "--type", "work.claimed", "-t",
+            "work.released", "--json", "id", "-R", "acme/web",
+        ],
+    );
+    assert_eq!(out.code, 4, "{}", out.stderr);
+    assert_eq!(
+        out.stdout,
+        "{\"id\":\"evt_4\"}\n{\"id\":\"evt_5\"}\n{\"id\":\"evt_6\"}\n{\"id\":\"evt_7\"}\n"
+    );
+    let seen = mock.requests();
+    assert!(!seen[0].target.contains("numbers="), "{}", seen[0].target);
+    assert!(seen[1].target.contains("numbers=12"), "{}", seen[1].target);
+    assert!(seen[1].target.contains("types=work.claimed%2Cwork.released"), "{}", seen[1].target);
+    assert!(seen[2].target.contains("wait=25"), "{}", seen[2].target);
+}

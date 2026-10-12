@@ -281,6 +281,123 @@ g1t status
 
 Your open pull requests and their checks, reviews asked of you, what is
 assigned to you, and failing checks, across every repository you can see.
+Inside a working copy it also lists your active sessions and claims in that
+repository.
+
+## Coordinating work
+
+When several people and agents work in one repository, `g1t session` and
+`g1t work` say who is on what, so nobody starts work that is already under
+way and everyone hears what changes under them. Claims are advisory: a
+claim never stops anyone, it tells them.
+
+### Sessions
+
+A session is one run of an agent's harness, such as one Claude Code
+session. Starting one remembers it for the working copy, and the commands
+after it use it:
+
+```sh
+g1t session start --harness claude-code --issue 12
+g1t session log "Split the parser before touching the lexer."
+g1t session attach --pull 14 --head-commit "$(git rev-parse HEAD)"
+g1t session heartbeat
+g1t session end --reason done
+```
+
+| Command | What it does |
+| --- | --- |
+| `g1t session start` | Starts a session and prints its id. `--harness` (`claude-code`, `codex`, `cursor`, `copilot`, `other`), `--harness-session-id`, `--issue`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. |
+| `g1t session heartbeat` | Says the session is still working, and renews its claims. A session with no heartbeat for 15 minutes reads as idle, and after 2 hours as ended. |
+| `g1t session log TEXT` | Records a note. `--kind` takes `note`, `prompt`, `message` or `tool-call`, `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash. |
+| `g1t session attach` | Points the session at an `--issue`, a `--pull`, a `--branch` or its latest `--head-commit`. |
+| `g1t session end` | Ends it, with an optional `--reason`, and forgets it. |
+| `g1t session list` | The repository's sessions; `--state active`, `--issue`, `--pull`. |
+| `g1t session view [ID]` | A session and what it recorded; the current one without an id. |
+
+The id is kept in `.git/g1t/session`, in the working copy's own git
+directory, so each worktree has its own. `G1T_SESSION` overrides it, for
+a harness that runs several sessions in one working copy.
+
+### Claims and context
+
+```sh
+g1t work context 12          # everything about #12's work
+g1t work claim 12 --note "Taking the parser" --ttl 1h
+g1t work release 12 --reason done
+g1t work handoff 12 --to ana --note "Parser done; lexer tests still fail."
+g1t work list                # active claims and sessions here
+```
+
+`g1t work context` is the one call to make before starting: the issue and
+its definition of done, who has claimed it, its sessions, its pull
+requests with their checks, overlaps and place in the merge queue, what it
+waits on and what waits on it, its decisions, its last integration failure
+and its recent events.
+
+`g1t work claim` says you are working on an issue. It lasts 30 minutes
+unless `--ttl` says otherwise (at most `4h`), and a heartbeat of the session
+it was made in renews it. It is made in the current session, if there is
+one. If others have claimed the issue too, or it waits on issues that are
+not done, the answer says so. `g1t work handoff` ends your claim and asks
+`--to` someone, or anyone without it, to take the issue over, with a
+`--note` saying where it stands.
+
+### Dependencies
+
+```sh
+g1t work block 12 --by 9 --by 10    # #12 waits on #9 and #10
+g1t work unblock 12 --by 9
+```
+
+These change the issue's `blocked_by` through `update_issue`. An issue
+cannot wait on itself, and g1t refuses a cycle.
+
+### Following events
+
+`g1t work events` prints the repository's recent events, oldest first.
+With `--follow` it keeps printing them as they happen, without a webhook or
+a public address, until you stop it with Ctrl-C:
+
+```sh
+g1t work events --follow --issue 12
+g1t work events --follow --type integration.failed --type overlap.detected --json
+```
+
+| Flag | |
+| --- | --- |
+| `--type`, `-t` | Only events of this type, such as `work.claimed`; repeat for more. |
+| `--issue`, `-i` | Only events about this issue or pull request; repeat for more. |
+| `--since`, `-s` | Only events since then: `15m`, `2h`, `1d`, or an RFC 3339 time. |
+| `--after` | Start after this event id, to resume where an earlier follow stopped. |
+| `--limit`, `-L` | How many past events to show first; 20 by default. |
+
+Each event is one line: its time, type, issue or pull request, a summary
+and its id. With `--json`, each is one compact JSON object on a line of its
+own, so a program can read them as they come. Following asks
+[`list_events`](/reference/api/repositories/list-events/) with `after` and
+`wait`, so the server holds each request until something happens; when a
+call fails, `g1t` waits (1 second, then longer, up to 30) and resumes from
+the last event it printed. A refused token stops it with exit code `4`.
+
+### Why a line is as it is
+
+```sh
+g1t why src/parser.rs:120
+g1t why src/parser.rs --ref main
+```
+
+`g1t why` follows a line to the commit that last changed it, the pull
+request that merged that commit, the issue the pull request was for, and
+the decisions and sessions recorded on them. A path is read from where you
+are in the working copy.
+
+### In an agent's hooks
+
+These commands are made to be run by a harness's hooks in the background:
+they never ask anything, they fail at once with exit code `4` when there is
+no token, and they give up on a call after 15 seconds. Against a g1t server
+older than the CLI, a command it cannot do yet fails saying so.
 
 ## Scripting with JSON
 

@@ -946,7 +946,7 @@
         }
       }
     ],
-    "notes": "Returns 50 events a page. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`."
+    "notes": "Returns 50 events a page, newest first. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`.\n\nTo follow a repository without a webhook, send `after` instead: the events written after that event come oldest first, and the last one's `id` is your next `after`. Add `wait` (seconds, at most 25) and a call that finds nothing holds on until a matching event is written or the time is up, then returns what it has, which may be an empty list; call again with the same `after`. Events come in the order g1t wrote them, so none is skipped when two arrive close together.\n\n```sh\ncurl -H \"Authorization: Bearer $G1T_TOKEN\" \\\n  \"https://api.g1t.sh/repos/acme/rocket/events?after=evt_01m43smh3ve52vkcna207vqctf&types=work.claimed,integration.failed&numbers=12&wait=25\"\n```\n\n`types` and `numbers` are comma-separated lists in a query string, arrays in a body or an MCP call. `numbers` matches events about those issues and pull requests (`data.number`) and comments, reviews and links on them (`data.issue`). `since` is an RFC 3339 time. `after` and `before` cannot be given together."
   },
   "list_issues": {
     "query": {
@@ -2744,7 +2744,22 @@
           "state": "open"
         }
       ],
-      "decisions": [],
+      "decisions": [
+        {
+          "id": "dec_01m4b3e7g9j1l3n5q7s9u1w3y5",
+          "issue": 12,
+          "pull": 14,
+          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "actor": "syntaqx",
+          "kind": "proposal",
+          "confidence": "claimed",
+          "summary": "Read the name with the argument parser #9 brings, rather than by hand.",
+          "evidence": {
+            "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+          },
+          "created_at": "2026-10-12T14:20:00.000Z"
+        }
+      ],
       "last_integration_failure": null,
       "recent": [
         {
@@ -2801,6 +2816,178 @@
       ]
     },
     "notes": "`pulls` are the issue's pull requests, oldest first; `required_checks`, `mergeable`, `overlaps` and `queue` (its `state` and `position` in the merge queue, 1 at the front) are filled in for those still open or draft. `recent` holds up to 20 coordination events about the issue or its pull requests, newest first. See [Picking up an issue](/guides/sessions/#picking-up-an-issue)."
+  },
+  "record_decision": {
+    "request": {
+      "kind": "fix",
+      "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+      "evidence": {
+        "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+      },
+      "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh"
+    },
+    "response": {
+      "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+      "issue": 9,
+      "pull": 14,
+      "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+      "actor": "ana",
+      "kind": "fix",
+      "confidence": "claimed",
+      "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+      "evidence": {
+        "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+      },
+      "created_at": "2026-10-12T15:31:40.019Z"
+    },
+    "notes": "Kept as `claimed`. g1t records `integration_failure`, `integration_passed`, `approval` and `merge` itself. Publishes `decision.recorded`. See [decision records](/guides/why-blame/#decision-records)."
+  },
+  "list_decisions": {
+    "response": [
+      {
+        "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
+        "issue": 9,
+        "pull": 14,
+        "session_id": null,
+        "actor": null,
+        "kind": "integration_failure",
+        "confidence": "tested",
+        "summary": "#14 failed in the merge queue together with #12: `CI / merge_group` failed when they were combined.",
+        "evidence": {
+          "commit": "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b",
+          "check": {
+            "name": "CI / merge_group",
+            "conclusion": "failure",
+            "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
+          },
+          "combination": [
+            11,
+            12,
+            14
+          ],
+          "other_pulls": [
+            11,
+            12
+          ],
+          "suspects": [
+            12
+          ],
+          "bisected": true
+        },
+        "created_at": "2026-10-12T15:04:11.204Z"
+      },
+      {
+        "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+        "issue": 9,
+        "pull": 14,
+        "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+        "actor": "ana",
+        "kind": "fix",
+        "confidence": "claimed",
+        "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+        "evidence": {
+          "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+        },
+        "created_at": "2026-10-12T15:31:40.019Z"
+      }
+    ],
+    "notes": "`GET /repos/{owner}/{name}/issues/{number}/decisions` lists an issue's, with those on its pull requests."
+  },
+  "why": {
+    "query": {
+      "path": "src/config.rs",
+      "line": 42
+    },
+    "response": {
+      "path": "src/config.rs",
+      "line": 42,
+      "commit": {
+        "hash": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b",
+        "tree_hash": "c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0",
+        "message": "Read retry_limit, as #12 names it",
+        "author": {
+          "name": "Ana Lima",
+          "email": "ana@example.com"
+        },
+        "parents": [
+          "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b"
+        ],
+        "authored_at": "2026-10-12T15:29:02Z"
+      },
+      "pull": {
+        "number": 14,
+        "title": "Retry failed webhook deliveries",
+        "author": "ana",
+        "agent": "claude-code",
+        "merged_by": "g1t",
+        "merged_at": "2026-10-12T15:52:18.330Z"
+      },
+      "issue": {
+        "number": 9,
+        "title": "Webhook deliveries are not retried",
+        "state": "closed",
+        "body": "A delivery that times out is never sent again."
+      },
+      "decisions": [
+        {
+          "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
+          "issue": 9,
+          "pull": 14,
+          "session_id": null,
+          "actor": null,
+          "kind": "integration_failure",
+          "confidence": "tested",
+          "summary": "#14 failed in the merge queue together with #12: `CI / merge_group` failed when they were combined.",
+          "evidence": {
+            "commit": "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b",
+            "check": {
+              "name": "CI / merge_group",
+              "conclusion": "failure",
+              "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
+            },
+            "combination": [
+              11,
+              12,
+              14
+            ],
+            "other_pulls": [
+              11,
+              12
+            ],
+            "suspects": [
+              12
+            ],
+            "bisected": true
+          },
+          "created_at": "2026-10-12T15:04:11.204Z"
+        },
+        {
+          "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+          "issue": 9,
+          "pull": 14,
+          "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+          "actor": "ana",
+          "kind": "fix",
+          "confidence": "claimed",
+          "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+          "evidence": {
+            "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+          },
+          "created_at": "2026-10-12T15:31:40.019Z"
+        }
+      ],
+      "sessions": [
+        {
+          "seq": 31,
+          "kind": "message",
+          "text": "#12 renamed retries to retry_limit; reading the new name here.",
+          "tool": null,
+          "commit": null,
+          "at": "2026-10-12T15:27:40.118Z"
+        }
+      ]
+    },
+    "notes": "`ref` reads the file at a branch, tag or commit. See [sessions and why-blame](/guides/why-blame/#why-over-the-api)."
   },
   "list_workflows": {
     "response": [

@@ -8,7 +8,11 @@
 // of a g1t repository with an open pull request. Anywhere else it does
 // nothing. It never fails the agent's turn.
 //
-// Installed by `curl -fsSL https://g1t.sh/install/claude.sh | sh`.
+// It records what each tool was called with, never what it returned.
+//
+// Installed by an earlier `curl -fsSL https://g1t.sh/install/claude.sh | sh`.
+// g1t's Claude Code plugin replaces it:
+// https://docs.g1t.sh/guides/claude-code-plugin/
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -51,14 +55,18 @@ function describeCall(name, input = {}) {
   return clip(input);
 }
 
-/** The pull request this working copy belongs to, if any. Cached per copy. */
+/**
+ * The pull request this working copy belongs to, if any. Only a pull
+ * request found is cached: a branch whose pull request is opened later in
+ * the session is looked up again, and recorded from then on.
+ */
 async function pullFor(cwd, config) {
   const remote = git(cwd, "remote", "get-url", "origin");
   const branch = git(cwd, "branch", "--show-current");
   if (!remote.includes("g1t.sh/")) return null;
   const key = `${remote}#${branch}`;
   const cache = read(CACHE, {});
-  if (key in cache) return cache[key];
+  if (cache[key]) return cache[key];
   const headers = { authorization: `Bearer ${config.token}` };
   let found = null;
   const fork = /g1t\.sh\/pulls\/([a-z0-9_]+?)(?:\.git)?$/.exec(remote);
@@ -77,10 +85,12 @@ async function pullFor(cwd, config) {
       if (pull) found = { repo: `${repo[1]}/${repo[2]}`, number: pull.number };
     }
   }
-  cache[key] = found;
-  try {
-    writeFileSync(CACHE, JSON.stringify(cache));
-  } catch {}
+  if (found) {
+    cache[key] = found;
+    try {
+      writeFileSync(CACHE, JSON.stringify(cache));
+    } catch {}
+  }
   return found;
 }
 
@@ -116,13 +126,10 @@ async function main() {
   const entries = [];
   switch (event.hook_event_name) {
     case "UserPromptSubmit":
-      if (event.prompt) entries.push({ kind: "prompt", text: clip(event.prompt) });
+      if (event.prompt && process.env.G1T_RECORD_PROMPTS !== "0") entries.push({ kind: "prompt", text: clip(event.prompt) });
       break;
     case "PostToolUse":
       entries.push({ kind: "tool_call", tool: event.tool_name, text: clip(describeCall(event.tool_name, event.tool_input)) });
-      if (event.tool_response != null) {
-        entries.push({ kind: "tool_result", tool: "result", text: clip(event.tool_response) });
-      }
       break;
     case "Stop": {
       const message = lastMessage(event.transcript_path);

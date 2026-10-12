@@ -11,7 +11,7 @@ use g1t_contracts::access::{
 };
 use g1t_contracts::codeowners::CodeOwnersErrorsArgs;
 use g1t_contracts::identity::AgentScope;
-use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
+use g1t_contracts::events::Event;
 use g1t_contracts::identity::{CreateWorkspaceArgs, UpdateWorkspaceArgs, Workspace};
 use g1t_contracts::repos::{CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath};
 use g1t_contracts::teams::{
@@ -185,6 +185,9 @@ pub enum Op {
     UpdatePullRequest,
     RecordSession,
     ReadSession,
+    RecordDecision,
+    ListDecisions,
+    Why,
     MarkPullRequestReady,
     ConvertPullRequestToDraft,
     ClosePullRequest,
@@ -690,7 +693,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 364] = [
+    pub const ALL: [Op; 367] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -765,6 +768,9 @@ impl Op {
         Op::UpdatePullRequest,
         Op::RecordSession,
         Op::ReadSession,
+        Op::RecordDecision,
+        Op::ListDecisions,
+        Op::Why,
         Op::MarkPullRequestReady,
         Op::ConvertPullRequestToDraft,
         Op::ClosePullRequest,
@@ -1138,6 +1144,9 @@ impl Op {
             Op::UpdatePullRequest => "update_pull_request",
             Op::RecordSession => "record_session",
             Op::ReadSession => "read_session",
+            Op::RecordDecision => "record_decision",
+            Op::ListDecisions => "list_decisions",
+            Op::Why => "why",
             Op::MarkPullRequestReady => "mark_pull_request_ready",
             Op::ClosePullRequest => "close_pull_request",
             Op::ReopenPullRequest => "reopen_pull_request",
@@ -1469,6 +1478,15 @@ impl Op {
                 "Append entries to a pull request's session: the prompt you were given, your reasoning, the tools you ran. This is how people later see why a change was made, so record as you work, not only at the end."
             }
             Op::ReadSession => "The recorded session of a pull request, oldest entry first.",
+            Op::RecordDecision => {
+                "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the issue the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"…\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge."
+            }
+            Op::ListDecisions => {
+                "The decision records on an issue (with those on its pull requests) or on a pull request, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed: someone said so; tested: a check or a combination of pull requests proved it; approved: a person approved it), who recorded it (absent for g1t), its summary and its evidence. Issues and pull requests share numbers, so number names either."
+            }
+            Op::Why => {
+                "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch), the merged pull request it arrived in, that pull request's issue, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, issue, decisions and sessions are empty when the commit did not arrive through a pull request."
+            }
             Op::MarkPullRequestReady => {
                 "Mark a draft pull request ready for review. Push your commits first. The summary becomes its description and should say what changed and why."
             }
@@ -1482,7 +1500,7 @@ impl Op {
                 "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
             }
             Op::ListEvents => {
-                "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
+                "The timeline of a repository: pushes, issues, pull requests, comments, sessions, claims and integration results, newest first; page back with before. To follow it, give after (an event id): the events written after that one come oldest first, and the last one's id is the next call's after. With after and wait (seconds, at most 25), a call that finds nothing holds on until a matching event is written or the wait ends, then returns what it has, perhaps nothing. Narrow it with types, numbers (issues and pull requests, matching events about them and comments on them), since and limit (50 by default, at most 200)."
             }
             Op::ListIntegrations => {
                 "A workspace's integrations: its AI providers, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only."
@@ -2430,6 +2448,32 @@ impl Op {
                 })),
                 &["repo", "number"],
             ),
+            Op::RecordDecision => object(
+                numbered(json!({
+                    "kind": {
+                        "type": "string",
+                        "enum": ["proposal", "claim", "fix", "note"],
+                        "description": "What it is: why the change is made this way (proposal), something true of it (claim), what fixed a failure (fix), or a note.",
+                    },
+                    "summary": { "type": "string", "description": "The decision, in a sentence or two. At most 2,000 characters." },
+                    "evidence": {
+                        "type": "object",
+                        "description": "What it rests on, such as a commit, a check's name or the pull requests involved. At most 8 KB of JSON.",
+                    },
+                    "session_id": { "type": "string", "description": "The session it was made in, if you have one." },
+                })),
+                &["repo", "number", "kind", "summary"],
+            ),
+            Op::ListDecisions => object(numbered(json!({})), &["repo", "number"]),
+            Op::Why => object(
+                json!({
+                    "repo": repo_schema(),
+                    "path": { "type": "string", "description": "The file, from the repository's root, such as \"src/main.rs\"." },
+                    "line": { "type": "integer", "description": "The line, counted from 1." },
+                    "ref": { "type": "string", "description": "A branch, tag or commit. The default branch if not given." },
+                }),
+                &["repo", "path", "line"],
+            ),
             Op::MarkPullRequestReady => object(
                 numbered(json!({ "summary": { "type": "string", "description": "Markdown." } })),
                 &["repo", "number", "summary"],
@@ -2454,7 +2498,26 @@ impl Op {
             Op::ListEvents => object(
                 json!({
                     "repo": repo_schema(),
-                    "before": { "type": "string", "description": "Event id to page back from." },
+                    "before": { "type": "string", "description": "Event id to page back from: older events, newest first." },
+                    "after": { "type": "string", "description": "Event id to follow from: the events written after it, oldest first. Not with before." },
+                    "types": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Only these event types (work.claimed, integration.failed, ...). In a query string, a comma-separated list.",
+                    },
+                    "numbers": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Only events about these issues or pull requests, and comments, reviews and links on them. In a query string, a comma-separated list.",
+                    },
+                    "since": { "type": "string", "description": "Only events at or after this time (RFC 3339)." },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "How many events at most; 50 by default." },
+                    "wait": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 25,
+                        "description": "With after: seconds to hold on for a matching event when there is none yet. At most 25.",
+                    },
                 }),
                 &["repo"],
             ),
@@ -3154,6 +3217,8 @@ impl Op {
                 | Op::ListPullRequests
                 | Op::GetPullRequest
                 | Op::ReadSession
+                | Op::ListDecisions
+                | Op::Why
                 | Op::GetPullRequestChanges
                 | Op::ListEvents
                 | Op::GetRepoSettings
@@ -4458,6 +4523,43 @@ impl Op {
                 .await
             }
             Op::ReadSession => pass(work, "read_session", &view()).await,
+            Op::RecordDecision => {
+                let Some(kind) = input["kind"].as_str().and_then(g1t_contracts::decisions::DecisionKind::parse) else {
+                    return failed(FailureCode::Invalid, "kind must be proposal, claim, fix or note.");
+                };
+                pass(
+                    work,
+                    "record_decision",
+                    &g1t_contracts::decisions::RecordDecisionArgs {
+                        actor: actor(),
+                        repo,
+                        number,
+                        kind,
+                        summary: text(input, "summary"),
+                        evidence: input.get("evidence").cloned(),
+                        session_id: optional_text(input, "session_id"),
+                    },
+                )
+                .await
+            }
+            Op::ListDecisions => {
+                pass(
+                    work,
+                    "list_decisions",
+                    &g1t_contracts::decisions::ListDecisionsArgs { repo, viewer: viewer.clone(), number },
+                )
+                .await
+            }
+            Op::Why => {
+                let Some(line) = integer(input, "line").filter(|line| *line > 0) else {
+                    return failed(FailureCode::Invalid, "Give line, counted from 1.");
+                };
+                let path = text(input, "path");
+                if path.trim().is_empty() {
+                    return failed(FailureCode::Invalid, "Give path: the file, from the repository's root.");
+                }
+                crate::why::why(services, viewer, repo, path, line, optional_text(input, "ref")).await
+            }
             Op::MarkPullRequestReady => pass(work, "ready_pull", &pull_action()).await,
             Op::ClosePullRequest => pass(work, "close_pull", &pull_action()).await,
             Op::ReopenPullRequest => pass(work, "reopen_pull", &pull_action()).await,
@@ -4782,6 +4884,10 @@ impl Op {
                 .await
             }
             Op::ListEvents => {
+                let asked = match crate::follow::asked(input) {
+                    Ok(asked) => asked,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
                 let found: Outcome<Repo> = call(
                     repos,
                     "get",
@@ -4795,16 +4901,7 @@ impl Op {
                     Outcome::Ok(repo) => repo,
                     Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
                 };
-                let timeline: Vec<Event> = g1t_kit::call(
-                    events,
-                    "list",
-                    &ListEventsArgs {
-                        repo_id: Some(repo.id),
-                        before: optional_text(input, "before"),
-                        ..ListEventsArgs::default()
-                    },
-                )
-                .await?;
+                let timeline: Vec<Event> = crate::follow::list_events(events, &repo.id, &asked).await?;
                 ok(&timeline)
             }
             // Who has access: identity decides, from the repository as the

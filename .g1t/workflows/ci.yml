@@ -95,6 +95,8 @@ jobs:
         run: npm run test:ops
       - name: The manifest matches every wrangler.jsonc
         run: node scripts/deploy.mjs manifest --check
+      - name: The Claude Code plugin's tests
+        run: node --test plugins/claude-code/test/hooks.test.mjs
 
   build:
     name: Build

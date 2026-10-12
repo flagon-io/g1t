@@ -1,0 +1,10 @@
+{
+  "name": "g1t",
+  "version": "0.1.0",
+  "description": "Work on g1t issues from Claude Code: records your sessions on g1t, loads an issue's work context, claims and hands off work, and connects g1t's MCP server.",
+  "author": { "name": "Flagon, Inc.", "url": "https://g1t.sh" },
+  "homepage": "https://docs.g1t.sh/guides/claude-code-plugin/",
+  "repository": "https://g1t.sh/flagon-io/g1t",
+  "license": "MIT",
+  "keywords": ["g1t", "git", "issues", "pull-requests", "sessions", "coordination"]
+}
