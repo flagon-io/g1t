@@ -18,6 +18,7 @@ import {
   sessionFor,
   SESSION_SERVICES,
 } from "./perf";
+import { READ_DEADLINE_MS, WRITE_DEADLINE_MS, withDeadline } from "./deadline";
 
 /**
  * What one request to the site did: when it started, each service call
@@ -71,7 +72,8 @@ export function instrumented(name: string, binding: ServiceBinding): ServiceBind
   return {
     async fetch(input: string, init?: RequestInit) {
       const perf = scope.getStore();
-      if (!perf) return binding.fetch(input, init);
+      const method = rpcMethodOf(input);
+      if (!perf) return answerInTime(binding, name, method, input, init);
       const session = sessionFor(name, perf.bookmarks, perf.writing, Math.floor(Date.now() / 1000));
       let sent = init;
       if (session) {
@@ -80,11 +82,16 @@ export function instrumented(name: string, binding: ServiceBinding): ServiceBind
         sent = { ...init, headers };
         perf.sessions.set(name, session.startsWith("first-") ? session.slice(6) : "bookmark");
       }
-      if (SESSION_SERVICES.has(name) && mayWrite(rpcMethodOf(input))) perf.wrote = true;
+      if (SESSION_SERVICES.has(name) && mayWrite(method)) perf.wrote = true;
       const from = Date.now();
-      const response = await binding.fetch(input, sent);
+      let response: Response;
+      try {
+        response = await answerInTime(binding, name, method, input, sent);
+      } finally {
+        // A call that failed or ran out of time still took the page's time.
+        perf.intervals.push([from, Date.now()]);
+      }
       const to = Date.now();
-      perf.intervals.push([from, to]);
       const timing = (perf.services[name] ??= { calls: 0, wallMs: 0, serviceMs: 0 });
       timing.calls += 1;
       timing.wallMs += to - from;
@@ -100,6 +107,27 @@ export function instrumented(name: string, binding: ServiceBinding): ServiceBind
       return response;
     },
   };
+}
+
+/**
+ * One call to `binding`, answered in full (body read) within its deadline
+ * (lib/deadline.ts): a service that stops answering fails the call rather
+ * than holding the page open. RPC answers are small JSON, so reading the
+ * body here costs nothing and puts it under the deadline too.
+ */
+async function answerInTime(binding: ServiceBinding, name: string, method: string, input: string, init?: RequestInit): Promise<Response> {
+  const ms = mayWrite(method) ? WRITE_DEADLINE_MS : READ_DEADLINE_MS;
+  return withDeadline(
+    `${name} ${method || input}`,
+    ms,
+    async (signal) => {
+      const response = await binding.fetch(input, { ...init, signal });
+      const body = await response.arrayBuffer();
+      // A 204 or 304 may not be rebuilt with a body, even an empty one.
+      return new Response(body.byteLength > 0 ? body : null, response);
+    },
+    init?.signal,
+  );
 }
 
 /**

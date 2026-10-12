@@ -1,0 +1,41 @@
+import { useEffect } from "react";
+import { type Location, createPath, useNavigation } from "react-router";
+
+/**
+ * How long a client navigation may load before the page gives up on it and
+ * loads the address as a whole page. Longer than a service read may take on
+ * the server (lib/deadline.ts `READ_DEADLINE_MS`), so a slow service shows
+ * its error page first; this catches what the server cannot: a request lost
+ * on the way, a connection that went quiet, a route's code that never
+ * arrived.
+ */
+export const STUCK_NAVIGATION_MS = 20_000;
+
+/**
+ * Where to send a navigation that has been loading too long, or null when
+ * there is nothing safe to retry. Only "loading" is retried: it reads, even
+ * after a form was posted (the action already answered and the page is
+ * reading what it changed). "submitting" is a write still on its way, and
+ * sending it again could do it twice.
+ */
+export function stuckTarget(navigation: { state: string; location?: Pick<Location, "pathname" | "search" | "hash"> | null }): string | null {
+  if (navigation.state !== "loading" || !navigation.location) return null;
+  return createPath(navigation.location);
+}
+
+/**
+ * Never leaves the page on its loading bar: a navigation still loading
+ * after `STUCK_NAVIGATION_MS` is finished as a document load of the same
+ * address, which either arrives or shows the server's error page.
+ */
+export function useStuckNavigationRescue(ms = STUCK_NAVIGATION_MS) {
+  const target = stuckTarget(useNavigation());
+  useEffect(() => {
+    if (!target) return;
+    const timer = window.setTimeout(() => {
+      console.warn(`g1t: navigation to ${target} still loading after ${ms}ms; loading it as a whole page`);
+      window.location.assign(target);
+    }, ms);
+    return () => window.clearTimeout(timer);
+  }, [target, ms]);
+}
