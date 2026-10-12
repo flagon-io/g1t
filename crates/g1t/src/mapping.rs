@@ -1,0 +1,369 @@
+//! Which API operations each command calls.
+//!
+//! Every operation is reachable as `g1t api <operation>`, from the table
+//! generated out of the API's OpenAPI document (`ops_table.rs`). The
+//! commands written by hand for the common paths are listed here with the
+//! operations they call, and the tests below hold the three together:
+//!
+//! - every operation named here is in the generated table, so a command
+//!   whose operation the API drops or renames fails the build's tests;
+//! - every command in the command tree is listed here, and nothing else;
+//! - the operations each command's source names are exactly the ones
+//!   listed for it, so this table cannot fall behind the code.
+
+use std::collections::BTreeMap;
+
+pub struct Mapping {
+    pub command: &'static str,
+    pub ops: &'static [&'static str],
+}
+
+pub static COMMANDS: &[Mapping] = &[
+    Mapping {
+        command: "auth login",
+        ops: &["device_code", "device_token", "whoami"],
+    },
+    Mapping {
+        command: "auth logout",
+        ops: &[],
+    },
+    Mapping {
+        command: "auth status",
+        ops: &["whoami"],
+    },
+    Mapping {
+        command: "auth token",
+        ops: &[],
+    },
+    Mapping {
+        command: "auth switch",
+        ops: &[],
+    },
+    Mapping {
+        command: "auth setup-git",
+        ops: &[],
+    },
+    Mapping {
+        command: "auth git-credential",
+        ops: &["whoami"],
+    },
+    Mapping {
+        command: "repo view",
+        ops: &["get_repo"],
+    },
+    Mapping {
+        command: "repo clone",
+        ops: &["whoami"],
+    },
+    Mapping {
+        command: "repo create",
+        ops: &["create_repo"],
+    },
+    Mapping {
+        command: "repo list",
+        ops: &["list_repos"],
+    },
+    Mapping {
+        command: "issue list",
+        ops: &["list_issues"],
+    },
+    Mapping {
+        command: "issue view",
+        ops: &["get_issue"],
+    },
+    Mapping {
+        command: "issue create",
+        ops: &["create_issue", "update_issue"],
+    },
+    Mapping {
+        command: "issue comment",
+        ops: &["add_comment"],
+    },
+    Mapping {
+        command: "issue close",
+        ops: &["close_issue", "add_comment"],
+    },
+    Mapping {
+        command: "issue reopen",
+        ops: &["reopen_issue", "add_comment"],
+    },
+    Mapping {
+        command: "issue edit",
+        ops: &["update_issue", "get_issue"],
+    },
+    Mapping {
+        command: "pr list",
+        ops: &["list_pull_requests"],
+    },
+    Mapping {
+        command: "pr view",
+        ops: &["get_pull_request", "list_pull_requests"],
+    },
+    Mapping {
+        command: "pr create",
+        ops: &[
+            "create_pull_request",
+            "get_repo",
+            "convert_pull_request_to_draft",
+        ],
+    },
+    Mapping {
+        command: "pr checkout",
+        ops: &["get_pull_request"],
+    },
+    Mapping {
+        command: "pr diff",
+        ops: &["get_pull_request_changes"],
+    },
+    Mapping {
+        command: "pr checks",
+        ops: &[
+            "get_pull_request",
+            "list_check_runs_for_ref",
+            "get_combined_status",
+        ],
+    },
+    Mapping {
+        command: "pr review",
+        ops: &["review_pull_request", "add_comment"],
+    },
+    Mapping {
+        command: "pr merge",
+        ops: &["merge_pull_request", "delete_branch"],
+    },
+    Mapping {
+        command: "pr ready",
+        ops: &["mark_pull_request_ready", "convert_pull_request_to_draft"],
+    },
+    Mapping {
+        command: "pr comment",
+        ops: &["add_comment"],
+    },
+    Mapping {
+        command: "pr close",
+        ops: &["close_pull_request"],
+    },
+    Mapping {
+        command: "pr reopen",
+        ops: &["reopen_pull_request"],
+    },
+    Mapping {
+        command: "run list",
+        ops: &["list_workflow_runs"],
+    },
+    Mapping {
+        command: "run view",
+        ops: &["get_workflow_run", "get_job_logs"],
+    },
+    Mapping {
+        command: "run watch",
+        ops: &["get_workflow_run"],
+    },
+    Mapping {
+        command: "run logs",
+        ops: &["get_workflow_run", "get_job_logs"],
+    },
+    Mapping {
+        command: "run rerun",
+        ops: &["rerun_workflow_run", "rerun_failed_jobs", "rerun_job"],
+    },
+    Mapping {
+        command: "run cancel",
+        ops: &["cancel_workflow_run"],
+    },
+    Mapping {
+        command: "secret list",
+        ops: &["list_actions_secrets", "list_actions_secrets_for_workspace"],
+    },
+    Mapping {
+        command: "secret set",
+        ops: &["set_actions_secret", "set_actions_secret_for_workspace"],
+    },
+    Mapping {
+        command: "secret delete",
+        ops: &[
+            "delete_actions_secret",
+            "delete_actions_secret_for_workspace",
+        ],
+    },
+    Mapping {
+        command: "deploy list",
+        ops: &["list_deployments"],
+    },
+    Mapping {
+        command: "deploy view",
+        ops: &["get_deployment"],
+    },
+    Mapping {
+        command: "logs",
+        ops: &["list_logs", "list_errors", "list_projects", "get_repo"],
+    },
+    Mapping {
+        command: "status",
+        ops: &["search", "list_notifications", "get_pull_request"],
+    },
+    // Every operation, by name: the table generated from the OpenAPI document.
+    Mapping {
+        command: "api",
+        ops: &[],
+    },
+    Mapping {
+        command: "browse",
+        ops: &[],
+    },
+    Mapping {
+        command: "alias set",
+        ops: &[],
+    },
+    Mapping {
+        command: "alias list",
+        ops: &[],
+    },
+    Mapping {
+        command: "alias delete",
+        ops: &[],
+    },
+    Mapping {
+        command: "completion",
+        ops: &[],
+    },
+    // The registry's own protocol, not the REST API.
+    Mapping {
+        command: "push",
+        ops: &[],
+    },
+];
+
+/// The first command that calls each operation, for `g1t api --list`.
+pub fn by_operation() -> BTreeMap<&'static str, &'static str> {
+    let mut map = BTreeMap::new();
+    for m in COMMANDS {
+        for op in m.ops {
+            map.entry(*op).or_insert(m.command);
+        }
+    }
+    map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::Cli;
+    use clap::CommandFactory;
+    use std::collections::BTreeSet;
+
+    fn leaves(command: &clap::Command, prefix: &str, out: &mut Vec<String>) {
+        let subs: Vec<&clap::Command> = command
+            .get_subcommands()
+            .filter(|c| c.get_name() != "help")
+            .collect();
+        if subs.is_empty() {
+            out.push(prefix.trim().to_owned());
+        }
+        for sub in subs {
+            leaves(sub, &format!("{prefix} {}", sub.get_name()), out);
+        }
+    }
+
+    #[test]
+    fn every_mapped_operation_exists() {
+        for m in COMMANDS {
+            for op in m.ops {
+                assert!(
+                    crate::ops::find(op).is_some(),
+                    "`g1t {}` calls {op}, which the API no longer has",
+                    m.command
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_command_is_mapped_and_nothing_else() {
+        let mut tree = Vec::new();
+        leaves(&Cli::command(), "", &mut tree);
+        let tree: BTreeSet<String> = tree.into_iter().collect();
+        let mapped: BTreeSet<String> = COMMANDS.iter().map(|m| m.command.to_owned()).collect();
+        let missing: Vec<&String> = tree.difference(&mapped).collect();
+        let extra: Vec<&String> = mapped.difference(&tree).collect();
+        assert!(
+            missing.is_empty(),
+            "commands with no entry in mapping.rs: {missing:?}"
+        );
+        assert!(
+            extra.is_empty(),
+            "mapping.rs lists commands that do not exist: {extra:?}"
+        );
+    }
+
+    /// The operations a source file names, as string literals.
+    fn named_in(source: &str) -> BTreeSet<&'static str> {
+        let source = source.split("#[cfg(test)]").next().unwrap_or(source);
+        crate::ops::OPERATIONS
+            .iter()
+            .map(|op| op.id)
+            .filter(|id| source.contains(&format!("\"{id}\"")))
+            .collect()
+    }
+
+    #[test]
+    fn the_table_matches_what_the_code_calls() {
+        let sources: &[(&str, &str)] = &[
+            ("auth", include_str!("commands/auth.rs")),
+            ("repo", include_str!("commands/repo.rs")),
+            ("issue", include_str!("commands/issue.rs")),
+            ("pr", include_str!("commands/pr.rs")),
+            ("run", include_str!("commands/run.rs")),
+            ("secret", include_str!("commands/secret.rs")),
+            ("deploy", include_str!("commands/deploy.rs")),
+            ("logs", include_str!("commands/logs.rs")),
+            ("status", include_str!("commands/status.rs")),
+        ];
+        // What context.rs calls on every command's behalf.
+        let shared: BTreeSet<&str> = named_in(include_str!("context.rs"));
+        for (top, source) in sources {
+            let named = named_in(source);
+            let listed: BTreeSet<&str> = COMMANDS
+                .iter()
+                .filter(|m| m.command == *top || m.command.starts_with(&format!("{top} ")))
+                .flat_map(|m| m.ops.iter().copied())
+                .collect();
+            let unlisted: Vec<&&str> = named.difference(&listed).collect();
+            let unused: Vec<&&str> = listed
+                .difference(&named)
+                .filter(|op| !shared.contains(**op))
+                .collect();
+            assert!(
+                unlisted.is_empty(),
+                "commands/{top}.rs calls {unlisted:?}, which mapping.rs does not list"
+            );
+            assert!(
+                unused.is_empty(),
+                "mapping.rs lists {unused:?} for `{top}`, which commands/{top}.rs does not call"
+            );
+        }
+    }
+
+    /// `g1t api <operation>` can make a request for every operation: each
+    /// path parameter can be filled from a field.
+    #[test]
+    fn every_operation_is_reachable_through_api() {
+        let repo = || {
+            Ok(crate::repo::Repo {
+                host: "g1t.sh".into(),
+                owner: "acme".into(),
+                name: "web".into(),
+            })
+        };
+        for op in crate::ops::OPERATIONS {
+            let mut given = serde_json::Map::new();
+            for p in op.path_params() {
+                given.insert(p.name.to_owned(), serde_json::Value::String("x".into()));
+            }
+            let plan = crate::commands::api::plan_op(op, None, given, &repo)
+                .unwrap_or_else(|e| panic!("{}: {}", op.id, e.message));
+            assert!(!plan.path.contains('{'), "{}: {}", op.id, plan.path);
+            assert_eq!(plan.method, op.method);
+        }
+    }
+}
