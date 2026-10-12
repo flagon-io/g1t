@@ -4,12 +4,12 @@
  * listing tools again, where it reaches, removing it), and what follows
  * adding one: the browser goes to sign in, or to the connector's page.
  */
-import { type ShouldRevalidateFunctionArgs, redirect } from "react-router";
+import { redirect } from "react-router";
 
 import type { ConnectorInput, User, WorkspaceConnector } from "@g1t/contracts";
 
 import { addresses } from "./addresses.server";
-import { connectorCallbackPath, connectorPagePath, needsReload, splitTarget } from "./customize";
+import { connectorCallbackPath, connectorPagePath, splitTarget } from "./customize";
 import { workspaceAgents } from "./services.server";
 import type { ActionResult } from "../components/agents/dialogs";
 import { answer } from "../components/agents/actions.server";
@@ -17,11 +17,6 @@ import { answer } from "../components/agents/actions.server";
 /** Where a connector's sign-in comes back to: this g1t's own page. */
 export function callbackUri(slug: string): string {
   return `${addresses().site}${connectorCallbackPath(slug)}`;
-}
-
-/** A Customize page reads its data again only for another page, the other view, or a posted form (lib/customize.ts). */
-export function shouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs): boolean {
-  return needsReload(currentUrl, nextUrl, formMethod) ? defaultShouldRevalidate : false;
 }
 
 /** The browser leaves for the connector's sign-in page, or lands on the connector's own page with what happened. */
