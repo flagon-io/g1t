@@ -49,7 +49,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Hint } from "../../components/ui/hint";
 import { useWorkflowReason } from "../../components/mirror";
-import { lastStamp, searchLog } from "../../lib/log-lines";
+import { type StepLog, searchStepLog } from "../../lib/log-lines";
 import { quietWords } from "../../lib/log-poll";
 import { listArtifacts, withLegacyArtifacts } from "../../lib/run-artifacts.server";
 import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "../../lib/run-artifacts";
@@ -140,7 +140,7 @@ const ANNOTATION_ICON: Record<Annotation["level"], ReactNode> = {
 
 function StepRow({
   step,
-  text,
+  log,
   defaultOpen,
   query = "",
   matches = 0,
@@ -148,9 +148,10 @@ function StepRow({
   lastOutput = null,
   now,
   end,
+  target = null,
 }: {
   step: StepState;
-  text: string | undefined;
+  log: StepLog | undefined;
   defaultOpen: boolean;
   /** A search of the job's log: only its matching lines are shown. */
   query?: string;
@@ -162,6 +163,8 @@ function StepRow({
   now: number;
   /** Marks the end of the running step's log, for following it. */
   end?: Ref<HTMLDivElement>;
+  /** The line of this step a link names (`#step:3:12`). */
+  target?: number | null;
 }) {
   const running = step.status === "in_progress";
   const quiet = running && !query ? quietWords(step.startedAt ? new Date(step.startedAt).getTime() : null, lastOutput, now) : null;
@@ -181,10 +184,10 @@ function StepRow({
         </span>
       </summary>
       <div className="border-t border-line bg-bg/60">
-        {text === undefined && !running ? (
+        {log === undefined && !running ? (
           <p className="px-4 py-2 text-xs text-faint">{step.status === "queued" ? "Not started." : step.conclusion === "skipped" ? "Skipped." : "No output."}</p>
         ) : (
-          text !== undefined && <LogText text={text} query={query} timestamps={timestamps} />
+          log !== undefined && <LogText log={log} query={query} timestamps={timestamps} anchor={`step:${step.number}`} target={target} />
         )}
         {quiet && (
           <p className="flex items-center gap-2 px-4 py-2 font-mono text-xs text-muted" aria-live="polite" suppressHydrationWarning>
@@ -196,6 +199,29 @@ function StepRow({
       </div>
     </details>
   );
+}
+
+/**
+ * The line of a job's log the page's address names, as GitHub's do:
+ * `#step:3:12` is line 12 of step 3 (0 is Set up job). A line's number
+ * links to it.
+ */
+function useLineTarget(): { step: number; line: number } | null {
+  const [target, setTarget] = useState<{ step: number; line: number } | null>(null);
+  useEffect(() => {
+    const read = () => {
+      const found = /^#step:(\d+):(\d+)$/.exec(window.location.hash);
+      setTarget((known) => {
+        if (!found) return null;
+        const next = { step: Number(found[1]), line: Number(found[2]) };
+        return known && known.step === next.step && known.line === next.line ? known : next;
+      });
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  return target;
 }
 
 /** Whether the viewer wants each log line's time shown, kept in this browser. */
@@ -478,19 +504,20 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
   const [query, setQuery] = useState("");
   const [timestamps, setTimestamps] = useTimestamps();
   const now = useNow(live);
-  const runningText = running ? log.get(running.number) : undefined;
+  const runningLog = running ? log.get(running.number) : undefined;
+  const target = useLineTarget();
   // The running step's log is followed while its end is in view, unless a
   // failed step is the one held open.
   const followed = !failed && running ? running.number : null;
-  const { end, behind, jump } = useFollow(followed, runningText);
+  const { end, behind, jump } = useFollow(followed, runningLog);
   // When the running step last printed: its last line's time, else when
   // its last chunk came.
   const lastOutput = useMemo(() => {
     if (!running) return null;
-    const at = runningText ? lastStamp(runningText) : undefined;
+    const at = runningLog?.lastAt;
     if (at) return new Date(at).getTime();
-    return runningText ? (grewAt.get(running.number) ?? null) : null;
-  }, [running, runningText, grewAt]);
+    return runningLog ? (grewAt.get(running.number) ?? null) : null;
+  }, [running, runningLog, grewAt]);
   const searching = query.trim().length > 0;
   const setUp: StepState = {
     number: 0,
@@ -502,7 +529,10 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
   };
   // While searching, the steps with a match, each with how many.
   const steps = [setUp, ...job.steps]
-    .map((step) => ({ step, matches: searching ? searchLog(log.get(step.number) ?? "", query).length : 0 }))
+    .map((step) => {
+      const stepLog = log.get(step.number);
+      return { step, matches: searching && stepLog ? searchStepLog(stepLog, query).length : 0 };
+    })
     .filter(({ matches }) => !searching || matches > 0);
   const total = steps.reduce((sum, { matches }) => sum + matches, 0);
   return (
@@ -605,14 +635,15 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
             // Searching opens every step with a match; clearing it puts them back.
             key={`${step.number}:${searching}`}
             step={step}
-            text={log.get(step.number)}
-            defaultOpen={searching || (step.number !== 0 && step.number === (failed ?? running)?.number)}
+            log={log.get(step.number)}
+            defaultOpen={searching || step.number === target?.step || (step.number !== 0 && step.number === (failed ?? running)?.number)}
             query={searching ? query : ""}
             matches={matches}
             timestamps={timestamps}
             now={now}
             lastOutput={step.number === running?.number ? lastOutput : null}
             end={step.number === followed ? end : undefined}
+            target={step.number === target?.step ? target.line : null}
           />
         ))}
       </Card>

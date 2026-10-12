@@ -243,8 +243,10 @@ them from g1t rather than from GitHub:
    GitHub, a tag before a branch of the same name, and looks again at
    most every 5 minutes, so a tag that moves is followed within minutes.
 3. The first job to use an action at a commit has g1t fetch that commit's
-   archive from GitHub and keep it. Every later job, in any workspace,
-   downloads the same bytes from g1t.
+   archive from GitHub and keep it, which can take up to two minutes.
+   While it waits, **Set up job** says so every 5 seconds
+   (`Waiting for g1t to fetch 'actions/setup-node@v4' (10s)`). Every
+   later job, in any workspace, downloads the same bytes from g1t.
 
 While GitHub doesn't answer, a ref reads as the commit it last named, and
 the job says so in a warning; an action g1t keeps still downloads. An
@@ -1166,6 +1168,18 @@ page asks for more every second while a step is running.
   logs** shows or hides the times; your browser remembers which.
 - A download (the job's `log.txt` and the run's zip) has the time at the
   start of every line, as GitHub's downloaded logs do.
+- Each line's number links to it, as on GitHub: `#step:3:12` is line 12
+  of step 3 (0 is **Set up job**). Opening the link opens the step and
+  any group the line is in, scrolls to the line and marks it.
+- A long step's log stays fast. Each new piece of a running step's log is
+  read once as it arrives, and a step of more than 2,000 lines draws only
+  the lines on screen and a few around them. Search, groups, line links,
+  following the newest line and **Jump to latest** work as they do on a
+  short log. Your browser's own find (Ctrl+F) only sees the lines that are
+  drawn, so use **Search logs** in a long log.
+- The runner numbers each batch of the log it sends. When it sends a
+  batch again because g1t's answer didn't reach it, g1t keeps the batch
+  once, so a line never shows twice.
 - If the page cannot reach g1t for a moment, it says **Reconnecting to the
   log** and tries again, waiting longer each time up to half a minute.
   A tab you are not looking at stops asking, and catches up when you come

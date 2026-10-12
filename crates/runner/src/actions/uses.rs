@@ -23,6 +23,9 @@ use super::process::{self, Commands, Ended};
 use super::{Frame, Job, Post, PostRun};
 
 const ACTIONS_DIR: &str = "/home/runner/_actions";
+/// How often a wait on g1t for an action says it is still waiting, as
+/// transfers say how far they have got.
+const WAITING_EVERY: Duration = Duration::from_secs(5);
 
 /// Where an action comes from.
 enum Source {
@@ -226,7 +229,18 @@ impl Job {
             self.log.line(&format!("##[error]`{owner}/{repo}@{git_ref}` is not a name g1t can fetch."));
             return None;
         }
-        match self.log.api.action(&format!("{owner}/{repo}"), git_ref) {
+        // The first job to use an action at a commit waits while g1t
+        // fetches its archive from GitHub, up to two minutes: the log says
+        // what it is waiting for, and that it still is, as GitHub's does.
+        self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}'…"));
+        let repository = format!("{owner}/{repo}");
+        let asked = (repository.clone(), git_ref.to_owned());
+        let found = self.log.waiting(
+            WAITING_EVERY,
+            move |api| api.action(&asked.0, &asked.1),
+            |seconds| format!("Waiting for g1t to fetch '{repository}@{git_ref}' ({seconds}s)"),
+        );
+        match found {
             Ok(found) if found["source"] == "g1t" => self.fetch_g1t_action(&on_g1t, owner, repo, git_ref, &found),
             Ok(found) => {
                 if let Some(note) = found["note"].as_str() {
@@ -290,7 +304,12 @@ impl Job {
         let dir = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
         self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}' (SHA:{sha}) from g1t"));
         let archive = self.temp.join(format!("action{}.tar.gz", super::rand_id()));
-        let downloaded = self.log.api.action_archive(&format!("{owner}/{repo}"), sha, &archive);
+        let asked = (format!("{owner}/{repo}"), sha.to_owned(), archive.clone());
+        let downloaded = self.log.waiting(
+            WAITING_EVERY,
+            move |api| api.action_archive(&asked.0, &asked.1, &asked.2),
+            |seconds| format!("Downloading '{owner}/{repo}@{git_ref}' from g1t ({seconds}s)"),
+        );
         let unpacked = match downloaded {
             Ok(_) => {
                 let _ = std::fs::remove_dir_all(&dir);

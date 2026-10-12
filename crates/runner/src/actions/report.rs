@@ -71,6 +71,7 @@ pub(crate) fn take_cancel() {
     CANCEL.take();
 }
 
+#[derive(Clone)]
 pub(crate) struct Api {
     pub(crate) base: String,
     pub(crate) job: String,
@@ -170,6 +171,10 @@ pub(crate) struct Log {
     sent: Instant,
     /// The problem matchers steps added, which last the whole job.
     pub(crate) matchers: super::matchers::Matchers,
+    /// The number of the last batch sent, 1 for the job's first: each
+    /// batch carries its own, and keeps it when it is sent again, so g1t
+    /// keeps a batch it already has once.
+    chunk: u64,
     /// Everything sent so far, so a test reads the whole log however its
     /// batches fell (`buffered`).
     #[cfg(test)]
@@ -188,6 +193,7 @@ impl Log {
             last: Instant::now(),
             sent: Instant::now(),
             matchers: super::matchers::Matchers::default(),
+            chunk: 0,
             #[cfg(test)]
             flushed: String::new(),
         }
@@ -263,7 +269,49 @@ impl Log {
         let text = std::mem::take(&mut self.buffer);
         #[cfg(test)]
         self.flushed.push_str(&text);
-        self.api.report(json!({ "kind": "log", "step": self.step, "text": text }));
+        let report = self.log_report(text);
+        self.api.report(report);
+    }
+
+    /// The next batch of the log, numbered.
+    fn log_report(&mut self, text: String) -> Value {
+        self.chunk += 1;
+        json!({ "kind": "log", "step": self.step, "chunk": self.chunk, "text": text })
+    }
+
+    /// Does `work` with the job's API on a thread of its own, writing
+    /// `waiting(seconds)` to the log, and sending it, every `every` it is
+    /// still going: a wait the job's page would otherwise show as a silent
+    /// log, such as g1t fetching an action's archive from GitHub.
+    pub(crate) fn waiting<T: Send + 'static>(
+        &mut self,
+        every: Duration,
+        work: impl FnOnce(Api) -> T + Send + 'static,
+        waiting: impl Fn(u64) -> String,
+    ) -> T {
+        self.flush();
+        let api = self.api.clone();
+        let (done, answer) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _ = done.send(work(api));
+        });
+        let started = Instant::now();
+        let result = loop {
+            match answer.recv_timeout(every) {
+                Ok(result) => break result,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    self.line(&waiting(started.elapsed().as_secs()));
+                    self.flush();
+                }
+                // The work panicked: so does the job, as it would have.
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => match worker.join() {
+                    Err(panic) => std::panic::resume_unwind(panic),
+                    Ok(()) => unreachable!("the work sends its result before it ends"),
+                },
+            }
+        };
+        let _ = worker.join();
+        result
     }
 
     pub(crate) fn steps(&self, names: &[String]) {
@@ -414,6 +462,78 @@ mod tests {
 
     fn log(secrets: &[&str]) -> Log {
         Log::new(Api::offline(), mask::all_variants(secrets.iter().copied()))
+    }
+
+    /// A server that answers the first `fail` requests with a 500 and the
+    /// rest with `{}`, and hands back each request's body.
+    fn flaky_server(fail: usize, requests: usize) -> (String, std::thread::JoinHandle<Vec<Value>>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let serving = std::thread::spawn(move || {
+            let mut bodies = Vec::new();
+            for answered in 0..requests {
+                let (stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut length = 0;
+                loop {
+                    let mut header = String::new();
+                    reader.read_line(&mut header).unwrap();
+                    if header.trim().is_empty() {
+                        break;
+                    }
+                    if let Some((name, value)) = header.split_once(':')
+                        && name.eq_ignore_ascii_case("content-length")
+                    {
+                        length = value.trim().parse().unwrap();
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).unwrap();
+                bodies.push(serde_json::from_slice::<Value>(&body).unwrap());
+                let status = if answered < fail { "500 Internal Server Error" } else { "200 OK" };
+                write!(reader.get_mut(), "HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").unwrap();
+            }
+            bodies
+        });
+        (base, serving)
+    }
+
+    #[test]
+    fn each_batch_of_the_log_keeps_its_number_when_sent_again() {
+        let (base, serving) = flaky_server(1, 3);
+        let mut log = Log::new(Api { base, job: "job_1".into(), token: "t".into() }, Vec::new());
+        log.line("one");
+        log.flush();
+        log.line("two");
+        log.flush();
+        log.flush(); // Nothing waits: no batch, and no number used.
+        let bodies = serving.join().unwrap();
+        let sent: Vec<(u64, String)> = bodies
+            .iter()
+            .map(|body| (body["report"]["chunk"].as_u64().unwrap(), unstamped(body["report"]["text"].as_str().unwrap())))
+            .collect();
+        // The first batch failed and was sent again with its number; the
+        // next is the job's second.
+        assert_eq!(sent, [(1, "one\n".into()), (1, "one\n".into()), (2, "two\n".into())]);
+        assert_eq!(bodies[0], bodies[1], "a batch sent again is the same batch");
+    }
+
+    #[test]
+    fn a_long_wait_says_so_in_the_log_as_it_goes() {
+        let mut log = log(&[]);
+        let answer = log.waiting(Duration::from_millis(50), |_| {
+            std::thread::sleep(Duration::from_millis(180));
+            42
+        }, |seconds| format!("still waiting ({seconds}s)"));
+        assert_eq!(answer, 42);
+        let lines = log.buffered();
+        let told = lines.lines().filter(|line| line.starts_with("still waiting (")).count();
+        assert!((2..=4).contains(&told), "a line each time the wait goes on: {lines:?}");
+        // A wait that ends at once writes nothing.
+        let mut quick = super::tests::log(&[]);
+        assert_eq!(quick.waiting(Duration::from_secs(5), |api| api.job, |_| "never".into()), "job_1");
+        assert_eq!(quick.buffered(), "");
     }
 
     #[test]
