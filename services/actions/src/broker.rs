@@ -186,9 +186,12 @@ impl Actions {
     /// `brokered_secrets`: a running job's stand-ins and what they stand
     /// for, for the runner Worker to fill in on the job's requests. Asked
     /// with the job's own token, which only the runner and the job hold;
-    /// the API never passes this method on, so the job cannot ask it.
+    /// the API never passes this method on, so the job cannot ask it. The
+    /// Worker holds the token the job started with, so that one still
+    /// answers here after the job's harness swapped it for another
+    /// (`job_spec` with `rotate`), and nowhere else.
     pub async fn brokered_secrets(&self, a: JobCallArgs) -> Result<Outcome<Vec<BrokeredSecret>>> {
-        let job = check!(self.job_for_token(&a).await?);
+        let job = check!(self.job_for_started_token(&a).await?);
         Ok(Outcome::Ok(self.stand_ins_of(&job.id).await?))
     }
 }

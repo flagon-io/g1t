@@ -203,6 +203,11 @@ fn harness_env(config: &Config, work: &Assignment) -> Result<BTreeMap<String, St
             env.insert("G1T_API".into(), config.api.clone());
             env.insert("ACTIONS_JOB".into(), work.id.clone());
             env.insert("ACTIONS_TOKEN".into(), token.clone());
+            // That token is where this computer can see it (a Windows job's
+            // script in the job's folder, a container's environment): the
+            // harness spends it on fetching the job and works on with a new
+            // one only it has.
+            env.insert(crate::actions::ROTATE_TOKEN.into(), "1".into());
         }
         "agent" => {
             for (name, value) in work.env.clone().unwrap_or_default() {
@@ -622,6 +627,9 @@ mod tests {
         assert_eq!(env["ACTIONS_TOKEN"], "jobtoken");
         assert_eq!(env["G1T_API"], "https://api.g1t.sh");
         assert!(env.values().all(|value| !value.contains("g1tr_")));
+        // That token is spent on fetching the job.
+        assert_eq!(env[crate::actions::ROTATE_TOKEN], "1");
+        assert!(!harness_env(&config(), &assignment("agent")).unwrap().contains_key(crate::actions::ROTATE_TOKEN));
     }
 
     #[test]
