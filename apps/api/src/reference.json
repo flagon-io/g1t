@@ -12422,6 +12422,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -12429,6 +12430,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -12461,6 +12463,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -12468,6 +12471,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -12529,6 +12533,7 @@
           "unreachable_since": "2026-10-08T14:04:00.000Z",
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -12536,6 +12541,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -12570,6 +12576,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -12577,6 +12584,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -12613,6 +12621,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -12620,6 +12629,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -12671,6 +12681,7 @@
           "unreachable_since": null,
           "synced_at": "2026-10-08T13:57:42.000Z",
           "last_error": null,
+          "checks_problem": null,
           "settings": {
             "notify": "banner",
             "take_over_after": null,
@@ -12678,6 +12689,7 @@
             "keep_ci_warm": false,
             "github_workflows": true,
             "hold_deploys": true,
+            "report_checks": true,
             "remote_pushes": "adopt"
           },
           "created_at": "2026-10-05T10:00:00.000Z"
@@ -12714,6 +12726,7 @@
       "unreachable_since": null,
       "synced_at": "2026-10-08T13:57:42.000Z",
       "last_error": null,
+      "checks_problem": null,
       "settings": {
         "notify": "banner",
         "take_over_after": null,
@@ -12721,6 +12734,7 @@
         "keep_ci_warm": false,
         "github_workflows": true,
         "hold_deploys": true,
+        "report_checks": true,
         "remote_pushes": "adopt"
       },
       "created_at": "2026-10-05T10:00:00.000Z"
@@ -12752,6 +12766,7 @@
       "unreachable_since": null,
       "synced_at": "2026-10-08T13:57:42.000Z",
       "last_error": null,
+      "checks_problem": null,
       "settings": {
         "notify": "inbox",
         "take_over_after": 30,
@@ -12759,6 +12774,7 @@
         "keep_ci_warm": false,
         "github_workflows": true,
         "hold_deploys": true,
+        "report_checks": true,
         "remote_pushes": "adopt"
       },
       "created_at": "2026-10-05T10:00:00.000Z"

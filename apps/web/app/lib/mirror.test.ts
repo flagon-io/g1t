@@ -153,8 +153,15 @@ test("settings come back from the form, keeping what it did not carry", () => {
     keepCiWarm: false,
     githubWorkflows: true,
     holdDeploys: false,
+    reportChecks: true,
     remotePushes: "overwrite",
   });
+  const githubForm = new FormData();
+  githubForm.set("kind", "leader");
+  githubForm.set("provider", "github");
+  assert.equal(mirrorSettingsFrom(githubForm, DEFAULT_MIRROR_SETTINGS).reportChecks, false, "a GitHub mirror's box left clear turns it off");
+  githubForm.set("reportChecks", "on");
+  assert.equal(mirrorSettingsFrom(githubForm, { ...DEFAULT_MIRROR_SETTINGS, reportChecks: false }).reportChecks, true);
   const followerForm = new FormData();
   followerForm.set("kind", "follower");
   followerForm.set("remotePushes", "overwrite");

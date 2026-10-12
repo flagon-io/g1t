@@ -65,8 +65,10 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "repo.archived",
         ],
     ),
-    // Push mirrors and write-back to linked trackers (integrations/src).
-    ("SUBSCRIBER_INTEGRATIONS", &["git.push", "issue.closed", "pull.opened"]),
+    // Push mirrors, write-back to linked trackers, and commit statuses
+    // reported to a GitHub mirror's commits (integrations/src lib.rs,
+    // remotes.rs on_status).
+    ("SUBSCRIBER_INTEGRATIONS", &["git.push", "issue.closed", "pull.opened", "status.created"]),
     // A hook may ask for any type, or for every one.
     ("SUBSCRIBER_WEBHOOKS", &["*"]),
     // Every event a workflow can run on (g1t_actions::events::github_events),
@@ -313,6 +315,8 @@ mod tests {
         assert!(!routed("SUBSCRIBER_ACTIONS", "check_run.completed"));
         assert!(routed("SUBSCRIBER_RUNNER", "comment.created"));
         assert!(!routed("SUBSCRIBER_RUNNER", "status.created"));
+        assert!(routed("SUBSCRIBER_INTEGRATIONS", "status.created"));
+        assert!(!routed("SUBSCRIBER_INTEGRATIONS", "check_run.completed"));
         assert!(routed("SUBSCRIBER_BILLING", "workspace.renamed"));
         assert!(!routed("SUBSCRIBER_BILLING", "git.push"));
         assert!(routed("SUBSCRIBER_SEARCH", "user.updated"));

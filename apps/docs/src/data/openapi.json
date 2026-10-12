@@ -5336,7 +5336,7 @@
           "Mirroring"
         ],
         "summary": "Get a repository's mirroring",
-        "description": "A repository's links to other hosts. `remotes` lists each with its `role` (`leader`: the remote leads and this repository is its mirror; `follower`: g1t leads and the remote is kept in step), `provider` (`github`, `g1t` or `git`), `name` (`github.com/acme/web`), `state` (a mirror is `standby`, `ci`, `takeover` or `handing_back`; a follower is `following` or `stuck`), `reachable` and `unreachable_since`, `synced_at`, `last_error` and its `settings`. `can_manage` says whether you may change them. A mirror standing by is read-only on g1t and runs nothing. Needs read access.\n\nA repository that leads lists its followers instead, each `role: follower` with `state` `following` or `stuck`. A mirror standing by is read-only on g1t: pushes, merges, issues, pull requests and agents are refused, and nothing runs. `reachable` is false once the remote's host has failed three checks over two minutes; by default that is only shown, and nothing happens on its own.",
+        "description": "A repository's links to other hosts. `remotes` lists each with its `role` (`leader`: the remote leads and this repository is its mirror; `follower`: g1t leads and the remote is kept in step), `provider` (`github`, `g1t` or `git`), `name` (`github.com/acme/web`), `state` (a mirror is `standby`, `ci`, `takeover` or `handing_back`; a follower is `following` or `stuck`), `reachable` and `unreachable_since`, `synced_at`, `last_error`, `checks_problem` (why g1t could not report checks to the remote, such as the GitHub App lacking the Commit statuses permission; null once a report goes through) and its `settings`. `can_manage` says whether you may change them. A mirror standing by is read-only on g1t and runs nothing. Needs read access.\n\nA repository that leads lists its followers instead, each `role: follower` with `state` `following` or `stuck`. A mirror standing by is read-only on g1t: pushes, merges, issues, pull requests and agents are refused, and nothing runs. `reachable` is false once the remote's host has failed three checks over two minutes; by default that is only shown, and nothing happens on its own.",
         "x-operation": "get_mirror",
         "x-mcp-tool": "repository",
         "x-mcp-action": "mirror",
@@ -5391,6 +5391,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5398,6 +5399,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -5518,6 +5520,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5525,6 +5528,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -5672,6 +5676,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5679,6 +5684,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -5842,6 +5848,7 @@
                       "unreachable_since": "2026-10-08T14:04:00.000Z",
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5849,6 +5856,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -5979,6 +5987,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -5986,6 +5995,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -6267,6 +6277,7 @@
                       "unreachable_since": null,
                       "synced_at": "2026-10-08T13:57:42.000Z",
                       "last_error": null,
+                      "checks_problem": null,
                       "settings": {
                         "notify": "banner",
                         "take_over_after": null,
@@ -6274,6 +6285,7 @@
                         "keep_ci_warm": false,
                         "github_workflows": true,
                         "hold_deploys": true,
+                        "report_checks": true,
                         "remote_pushes": "adopt"
                       },
                       "created_at": "2026-10-05T10:00:00.000Z"
@@ -6402,6 +6414,7 @@
                   "unreachable_since": null,
                   "synced_at": "2026-10-08T13:57:42.000Z",
                   "last_error": null,
+                  "checks_problem": null,
                   "settings": {
                     "notify": "banner",
                     "take_over_after": null,
@@ -6409,6 +6422,7 @@
                     "keep_ci_warm": false,
                     "github_workflows": true,
                     "hold_deploys": true,
+                    "report_checks": true,
                     "remote_pushes": "adopt"
                   },
                   "created_at": "2026-10-05T10:00:00.000Z"
@@ -6533,7 +6547,7 @@
           "Mirroring"
         ],
         "summary": "Update a remote's settings",
-        "description": "Change a remote's `settings`, all optional: `notify` (`banner`, or `inbox` to also tell the workspace's owners), `take_over_after` (minutes, 5 to 1440, after which g1t takes over on its own while the remote does not answer; null for never), `hand_back` (`when_clean`: an automatic takeover goes back on its own once every ref goes back without a decision; `ask`), `keep_ci_warm` (run `.g1t/workflows` on pushes copied in while standing by), `github_workflows` (run `.github/workflows` in CI failover and takeovers), `hold_deploys`, and for a follower `remote_pushes` (`adopt` fast-forwards made there, or `overwrite` them). Needs the Admin role; agents' tokens are refused.",
+        "description": "Change a remote's `settings`, all optional: `notify` (`banner`, or `inbox` to also tell the workspace's owners), `take_over_after` (minutes, 5 to 1440, after which g1t takes over on its own while the remote does not answer; null for never), `hand_back` (`when_clean`: an automatic takeover goes back on its own once every ref goes back without a decision; `ask`), `keep_ci_warm` (run `.g1t/workflows` on pushes copied in while standing by), `github_workflows` (run `.github/workflows` in CI failover and takeovers), `hold_deploys`, `report_checks` (a GitHub mirror: report the statuses g1t sets on a commit, such as workflow runs and deploys, to the commit on GitHub as `g1t / <context>` while g1t runs its workflows; on by default), and for a follower `remote_pushes` (`adopt` fast-forwards made there, or `overwrite` them). Needs the Admin role; agents' tokens are refused.",
         "x-operation": "update_mirror_remote",
         "x-mcp-tool": "repository",
         "x-mcp-action": "mirror_update_remote",
@@ -6595,6 +6609,7 @@
                   "unreachable_since": null,
                   "synced_at": "2026-10-08T13:57:42.000Z",
                   "last_error": null,
+                  "checks_problem": null,
                   "settings": {
                     "notify": "inbox",
                     "take_over_after": 30,
@@ -6602,6 +6617,7 @@
                     "keep_ci_warm": false,
                     "github_workflows": true,
                     "hold_deploys": true,
+                    "report_checks": true,
                     "remote_pushes": "adopt"
                   },
                   "created_at": "2026-10-05T10:00:00.000Z"
@@ -6696,6 +6712,9 @@
                     "type": "boolean"
                   },
                   "hold_deploys": {
+                    "type": "boolean"
+                  },
+                  "report_checks": {
                     "type": "boolean"
                   },
                   "remote_pushes": {

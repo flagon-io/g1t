@@ -250,7 +250,7 @@ workflow job's run runs again, which also needs `workflows:write`.
 
 | Event | When |
 | --- | --- |
-| `status.created` | A status was set on a commit through the API. |
+| `status.created` | A status was set on a commit, through the API or by g1t: a workflow run, a deploy. |
 | `check_run.created` | A check run was reported. |
 | `check_run.completed` | A check run completed. |
 | `check_run.rerequested` | Someone asked for a check run to run again. |
