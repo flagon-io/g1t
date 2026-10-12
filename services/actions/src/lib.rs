@@ -29,6 +29,7 @@
 mod run_artifacts;
 mod broker;
 mod cache;
+mod limits;
 mod managed;
 mod payload;
 mod plan;
@@ -36,6 +37,7 @@ mod protection;
 mod reach;
 mod registry;
 mod rename;
+mod retention;
 pub mod runtime;
 mod runners;
 mod settings;
@@ -124,6 +126,8 @@ pub struct Actions {
     sealer: Option<Sealer>,
     /// Signs the toolkit's blob links (runtime.rs), from `ACTIONS_KEY`.
     blob_key: Option<String>,
+    /// Log retention and free workspaces' caps, from wrangler vars (limits.rs).
+    limits: limits::Limits,
 }
 
 impl Actions {
@@ -142,6 +146,7 @@ impl Actions {
             cache: env.bucket("ACTIONS_CACHE").ok(),
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
             blob_key: env.secret("ACTIONS_KEY").ok().map(|key| runtime::blob_key(&key.to_string())),
+            limits: limits::Limits::from_env(env),
         })
     }
 

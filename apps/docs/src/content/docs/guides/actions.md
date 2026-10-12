@@ -1258,6 +1258,13 @@ pick one to see its steps and their logs as they are written. Groups
 fold, errors and warnings are marked, and secrets are replaced with
 `***`. The page keeps itself up to date while the run goes on.
 
+A job's log is kept for **90 days** after the job finished. After that its
+lines are deleted; the run, its jobs, their steps and conclusions,
+annotations, job summaries and artifacts (for their own retention) stay.
+Download a log you need to keep longer. On an installation of your own,
+`LOG_RETENTION_DAYS` in the actions service's settings changes the 90 days,
+and `0` keeps logs for good.
+
 ### Live logs
 
 While a job runs, its log reaches the page within about two seconds of
@@ -2006,7 +2013,7 @@ usually work once they point at `https://api.g1t.sh`.
 | `get_artifact` | `GET …/actions/artifacts/{artifact_id}` |
 | `download_artifact` | `GET …/actions/artifacts/{artifact_id}/zip`: a `302` to a link good for 10 minutes |
 | `delete_artifact` | `DELETE …/actions/artifacts/{artifact_id}` |
-| `artifact_retention`, `set_artifact_retention` | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept with their run) |
+| `artifact_retention`, `set_artifact_retention` | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept for 90 days) |
 
 Secrets and variables have a tool of their own, `secret`:
 
