@@ -582,8 +582,12 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
             Some(workspace) => crate::links::go(app, &format!("/{workspace}/-/runners")),
             None => crate::links::go(app, "/"),
         },
-        // They are chosen in the Runner window.
-        "choose_workspace" | "choose_backend" | "open_runner" => settings::open_runner(app),
+        // They are chosen in the settings' Runner section.
+        "choose_workspace" | "choose_backend" => settings::open_runner_settings(app),
+        "open_runner" => settings::runner_menu(app, false, None),
+        // The Runner window, bundled with the app: where jobs are taken out
+        // of the sandbox, which no page from the network may do (bridge.rs).
+        "runner_window" => settings::open_runner_window(app),
         "view_log" => {
             let path = log_file(app);
             if !path.exists() {

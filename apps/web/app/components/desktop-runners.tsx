@@ -4,8 +4,10 @@ import { Link } from "react-router";
 
 import type { DesktopBackend, DesktopDiagnosis, DesktopRunner, DesktopUpdate, Runner } from "@g1t/contracts";
 
-import { BACKEND_LABEL, type DesktopRunnerAction, type DesktopRunnerCapability, desktopRunner, jobHref, useDesktopRunner } from "../lib/desktop-runner";
+import { useBusy } from "../lib/busy";
+import { BACKEND_LABEL, type DesktopRunnerAction, type DesktopRunnerCapability, type DesktopRunnerView, desktopRunner, jobHref, kindStatusKey, runnerStatusKey, useDesktopRunner } from "../lib/desktop-runner";
 import { EmptyState, TimeAgo } from "./ui";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -13,7 +15,7 @@ import { Progress } from "./ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** A diagnosis's tone, as a dot. */
-const DOT: Record<DesktopDiagnosis["tone"], string> = {
+export const DOT: Record<DesktopDiagnosis["tone"], string> = {
   ok: "bg-success",
   working: "bg-info",
   off: "bg-faint",
@@ -22,7 +24,7 @@ const DOT: Record<DesktopDiagnosis["tone"], string> = {
 };
 
 /** A kind of job's tone, as its label's. */
-const BADGE: Record<DesktopDiagnosis["tone"], BadgeTone> = {
+export const BADGE: Record<DesktopDiagnosis["tone"], BadgeTone> = {
   ok: "success",
   working: "info",
   off: "neutral",
@@ -31,7 +33,7 @@ const BADGE: Record<DesktopDiagnosis["tone"], BadgeTone> = {
 };
 
 /** Each kind of job's icon: a terminal for Linux jobs, a window for Windows jobs, a laptop for macOS jobs. */
-const ICON: Record<string, ReactNode> = {
+export const ICON: Record<string, ReactNode> = {
   linux: <SquareTerminal size={15} aria-hidden />,
   windows: <AppWindow size={15} aria-hidden />,
   macos: <Laptop size={15} aria-hidden />,
@@ -61,6 +63,8 @@ type Row = {
   update: DesktopUpdate | null;
   /** Here only: the app's button that looks for a newer runner now. */
   check: DesktopRunnerAction | null;
+  /** Here only: the app is looking for a newer runner now. */
+  checking: boolean;
 };
 
 /** The desktops to list: this computer, live, first; then the others, as their apps last said, or closed. */
@@ -80,7 +84,8 @@ export function desktopRows(desktops: DesktopRunner[], here: ReturnType<typeof u
       here: true,
       reportedAt: null,
       update: here.diagnosis.update ?? null,
-      check: here.diagnosis.update?.checking ? null : (here.diagnosis.update?.check ?? null),
+      check: here.diagnosis.update?.check ?? null,
+      checking: !!here.diagnosis.update?.checking,
     });
   }
   for (const desktop of desktops) {
@@ -99,45 +104,127 @@ export function desktopRows(desktops: DesktopRunner[], here: ReturnType<typeof u
       reportedAt: desktop.reportedAt,
       update: desktop.open ? (desktop.diagnosis.update ?? null) : null,
       check: null,
+      checking: false,
     });
   }
   return rows;
 }
 
-/** A diagnosis's fixes, as buttons: they work only on this computer, in the app. */
-function Actions({ actions, primary = true }: { actions: DesktopRunnerAction[]; primary?: boolean }) {
+/**
+ * A diagnosis's fixes, as buttons: they work only on this computer, in the
+ * app. Each is busy from its click until the status it waits on changes
+ * (`status`, lib/busy.ts); one the app asks about first asks.
+ */
+export function Actions({
+  actions,
+  primary = true,
+  status,
+  working = false,
+  onError,
+}: {
+  actions: DesktopRunnerAction[];
+  primary?: boolean;
+  /** What a press waits on: the runner's status (`runnerStatusKey`, `kindStatusKey`). */
+  status: string;
+  /** Busy for a reason of the app's own, such as a check already under way. */
+  working?: boolean;
+  onError?: (error: unknown) => void;
+}) {
   if (actions.length === 0) return null;
   return (
     <>
       {actions.map((action, at) => (
-        <Button key={action.id} size="xs" variant={primary && at === 0 ? "secondary" : "outline"} onClick={() => void desktopRunner()?.act(action.id).catch(() => {})}>
-          {action.label}
-        </Button>
+        <ActionButton key={action.id} action={action} variant={primary && at === 0 ? "secondary" : "outline"} status={status} working={working} onError={onError} />
       ))}
     </>
   );
 }
 
-/** Start or Stop for one kind of job on this computer, which leaves the others as they are. */
-function Toggle({ capability }: { capability: DesktopRunnerCapability }) {
-  const [asked, setAsked] = useState<boolean | null>(null);
+function ActionButton({
+  action,
+  variant,
+  status,
+  working,
+  onError,
+}: {
+  action: DesktopRunnerAction;
+  variant: "secondary" | "outline";
+  status: string;
+  working: boolean;
+  onError?: (error: unknown) => void;
+}) {
+  const { busy, run } = useBusy(status, onError);
+  const [asking, setAsking] = useState(false);
+  const go = () => run(() => desktopRunner()?.act(action.id), !!action.waits);
+  // The app's question, as a title and what it means: "Remove this computer's sandbox?" and the rest.
+  const [title, ...rest] = (action.confirm ?? "").split(/(?<=\?)\s+/);
+  return (
+    <>
+      <Button size="xs" variant={variant} busy={busy || working} onClick={() => (action.confirm ? setAsking(true) : go())}>
+        {action.label}
+      </Button>
+      {action.confirm && (
+        <AlertDialog open={asking} onOpenChange={setAsking}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{title}</AlertDialogTitle>
+              {rest.length > 0 && <AlertDialogDescription>{rest.join(" ")}</AlertDialogDescription>}
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={go}>{action.label}</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </>
+  );
+}
+
+/**
+ * Start or Stop for one kind of job on this computer, which leaves the
+ * others as they are: busy from the click until its status says it
+ * started or stopped.
+ */
+export function Toggle({ capability, status, onError }: { capability: DesktopRunnerCapability; status: string; onError?: (error: unknown) => void }) {
+  const { busy, run } = useBusy(status, onError);
   const on = capability.enabled !== false;
-  const waiting = asked !== null && asked !== on;
   return (
     <Button
       size="xs"
       variant={on ? "outline" : "soft"}
       className="ml-auto"
-      disabled={waiting}
+      busy={busy}
       aria-label={`${on ? "Stop" : "Start"} ${capability.label}`}
-      onClick={() => {
-        setAsked(!on);
-        void desktopRunner()
-          ?.act(on ? "stop" : "start", capability.id)
-          .catch(() => setAsked(null));
-      }}
+      onClick={() => run(() => desktopRunner()?.act(on ? "stop" : "start", capability.id))}
     >
-      {waiting ? (on ? "Stopping…" : "Starting…") : on ? "Stop" : "Start"}
+      {on ? "Stop" : "Start"}
+    </Button>
+  );
+}
+
+/**
+ * A button that asks the runner for something by its id: busy until the
+ * app has it (a page, a window, the log), or with `waits` until the
+ * status that follows changes.
+ */
+export function ActButton({
+  action,
+  label,
+  status,
+  fail,
+  waits = false,
+}: {
+  action: string;
+  label: string;
+  status: string;
+  fail?: (error: unknown) => void;
+  waits?: boolean;
+}) {
+  const { busy, run } = useBusy(status, fail);
+  return (
+    <Button size="xs" variant="outline" busy={busy} onClick={() => run(() => desktopRunner()?.act(action), waits)}>
+      {label}
     </Button>
   );
 }
@@ -162,7 +249,22 @@ function Checked({ update }: { update: DesktopUpdate | null }) {
 }
 
 /** One kind of job, as a card of its own: its state, what it runs, why it doesn't and the fix, and here its own Start or Stop. */
-function KindCard({ capability, here, runners, update }: { capability: DesktopRunnerCapability; here: boolean; runners: Runner[]; update: DesktopUpdate | null }) {
+export function KindCard({
+  capability,
+  here,
+  runners,
+  update,
+  view = null,
+  onError,
+}: {
+  capability: DesktopRunnerCapability;
+  here: boolean;
+  runners: Runner[];
+  update: DesktopUpdate | null;
+  /** Here: the runner as the app says it now, which its buttons wait on. */
+  view?: DesktopRunnerView | null;
+  onError?: (error: unknown) => void;
+}) {
   const href = jobHref(capability, runners);
   const isolation = capability.isolation ? (ISOLATION[capability.isolation] ?? { label: capability.isolation, hint: null }) : null;
   const edge = capability.tone === "problem" ? "border-danger/40" : capability.tone === "warning" ? "border-warn/35" : "";
@@ -240,8 +342,13 @@ function KindCard({ capability, here, runners, update }: { capability: DesktopRu
       )}
       {(fixes.length > 0 || toggle) && (
         <div className="mt-auto flex flex-wrap items-center gap-2">
-          <Actions actions={fixes} primary={capability.tone === "problem" || (capability.tone === "warning" && capability.state !== "waiting")} />
-          {toggle && <Toggle key={String(capability.enabled)} capability={capability} />}
+          <Actions
+            actions={fixes}
+            primary={capability.tone === "problem" || (capability.tone === "warning" && capability.state !== "waiting")}
+            status={kindStatusKey(capability, view)}
+            onError={onError}
+          />
+          {toggle && <Toggle capability={capability} status={kindStatusKey(capability, view)} onError={onError} />}
         </div>
       )}
     </Card>
@@ -299,7 +406,7 @@ export function DesktopRunners({ desktops, slug, runners = [] }: { desktops: Des
                 )}
                 {row.check && (
                   <div className="mt-2">
-                    <Actions actions={[row.check]} primary={false} />
+                    <Actions actions={[row.check]} primary={false} status={here ? runnerStatusKey(here) : ""} working={row.checking} />
                   </div>
                 )}
               </div>
@@ -313,7 +420,7 @@ export function DesktopRunners({ desktops, slug, runners = [] }: { desktops: Des
                   {row.diagnosis.fix && <p className="mt-0.5 text-sm text-fg-soft">{row.diagnosis.fix}</p>}
                   {row.actions.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <Actions actions={row.actions} />
+                      <Actions actions={row.actions} status={here ? runnerStatusKey(here) : ""} />
                     </div>
                   )}
                 </div>
@@ -322,7 +429,7 @@ export function DesktopRunners({ desktops, slug, runners = [] }: { desktops: Des
             {row.capabilities.length > 0 && (
               <div className={`grid gap-3 ${row.capabilities.length > 1 ? "sm:grid-cols-2" : ""}`}>
                 {row.capabilities.map((capability) => (
-                  <KindCard key={capability.id} capability={capability} here={row.here} runners={runners} update={row.update} />
+                  <KindCard key={capability.id} capability={capability} here={row.here} runners={runners} update={row.update} view={row.here ? here : null} />
                 ))}
               </div>
             )}

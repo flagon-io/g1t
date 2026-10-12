@@ -52,6 +52,7 @@ import { useStuckNavigationRescue } from "./lib/stuck";
 import { isNeedsSignIn } from "./lib/website-token";
 import { offerTicket, setLiveViaToken } from "./lib/live-socket";
 import { socketTicketFor } from "./lib/socket-ticket.server";
+import { DesktopApp } from "./components/desktop-app";
 import { DesktopRunnerLink } from "./components/desktop-runner-link";
 import { LiveNotifications } from "./components/notifications/live-notifications";
 import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
@@ -467,6 +468,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             }}
           />
         )}
+        {/* Inside the desktop app: its settings dialog, and the runner's menu under the title bar's dot. */}
+        <DesktopApp />
         <AnalyticsConsent />
         <ScrollRestoration nonce={nonce} />
         <Scripts nonce={nonce} />

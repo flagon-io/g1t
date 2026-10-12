@@ -44,56 +44,47 @@
     return item;
   }
 
-  // A fix's button. Choosing is done here, in this window; a copy says it was copied.
-  function actionButton(action, primary) {
+  var busy = window.g1tBusy;
+
+  // The whole runner's status, as far as a button waits on it: a press is
+  // done when any of this changes (busy.js).
+  function runnerStatus(runner) {
+    var d = runner.diagnosis;
+    var update = d.update || {};
+    return JSON.stringify([d.code, d.tone, d.title, d.cause, runner.chip.label, runner.enabled, runner.paused, update.checking, update.checked_at, update.ready]);
+  }
+
+  // One kind of job's, with the whole runner's.
+  function kindStatus(kind, runner) {
+    return JSON.stringify([runnerStatus(runner), kind.state, kind.enabled, kind.tone, kind.title, kind.cause]);
+  }
+
+  // A fix's button. Choosing is done here, in this window; a copy says it
+  // was copied. One that changes the runner (the catalogue says which:
+  // `waits`) stays busy until the status that follows; one the catalogue
+  // asks about first (`confirm`) asks.
+  function actionButton(action, primary, key, status) {
     var button = document.createElement("button");
     button.type = "button";
     button.textContent = action.label;
     if (primary) button.className = "primary";
+    key = key + ":" + action.id;
+    if (busy.pressed(key, status)) busy.start(button);
     button.addEventListener("click", function () {
       if (action.id === "choose_workspace") return byId("runnerWorkspace").focus();
       if (action.id === "choose_backend") return byId("runnerBackend").focus();
-      if (action.id === "remove_sandbox" && !window.confirm(REMOVE_SANDBOX)) return;
-      var copying = action.id.indexOf("copy_") === 0;
-      // Busy until the status that follows draws the buttons again, so a
-      // press is seen to do something; given back if nothing comes.
-      if (!copying) working(button);
-      invoke("runner_control", { action: action.id }).then(
-        function () {
-          if (!copying) return;
-          button.textContent = "Copied";
-          setTimeout(function () {
-            button.textContent = action.label;
-          }, 2000);
-        },
-        function (error) {
-          done(button, action.label);
-          fail(error);
-        },
-      );
+      if (action.confirm && !window.confirm(action.confirm)) return;
+      busy.run(button, key, status, !!action.waits, function () {
+        return invoke("runner_control", { action: action.id });
+      }, fail).then(function (done) {
+        if (!done || action.id.indexOf("copy_") !== 0) return;
+        button.textContent = "Copied";
+        setTimeout(function () {
+          button.textContent = action.label;
+        }, 2000);
+      });
     });
     return button;
-  }
-
-  var REMOVE_SANDBOX =
-    "Remove this computer's sandbox? Its VM and registration go, and g1t makes its own in their place, registered with your workspace. Its old runners stay listed on g1t until you remove them there.";
-
-  // A button at work: a spinner and its label, pressed no more until it is done.
-  function working(button) {
-    button.disabled = true;
-    button.classList.add("busy");
-    button.setAttribute("aria-busy", "true");
-    var label = button.textContent;
-    setTimeout(function () {
-      if (button.isConnected) done(button, label);
-    }, 20000);
-  }
-
-  function done(button, label) {
-    button.disabled = false;
-    button.classList.remove("busy");
-    button.removeAttribute("aria-busy");
-    button.textContent = label;
   }
 
   function element(tag, className, text) {
@@ -133,7 +124,6 @@
   var ISOLATION = { "nested-container": "A fresh container in the VM", vm: "A VM of its own", container: "A container of its own", host: "None" };
   var BUSY = { busy: true, starting: true, downloading: true, updating: true };
   var cards = {};
-  var pending = {};
 
   // A small arrow: the link goes out to g1t.
   function outward() {
@@ -249,27 +239,21 @@
     list.appendChild(row);
   }
 
-  // Start or Stop for one kind of job, said for which, and what it is doing meanwhile.
-  function toggleButton(kind, onFirst) {
+  // Start or Stop for one kind of job, said for which: busy from the click
+  // until the status that follows says it started or stopped.
+  function toggleButton(kind, onFirst, runner) {
     var on = kind.enabled;
-    var waiting = pending[kind.id];
     var button = element("button", on ? "quiet" : onFirst ? "primary" : null);
     button.type = "button";
-    button.textContent = waiting ? (on ? "Stopping…" : "Starting…") : on ? "Stop" : "Start";
+    button.textContent = on ? "Stop" : "Start";
     button.setAttribute("aria-label", (on ? "Stop " : "Start ") + kind.label);
-    button.disabled = !!waiting;
+    var key = "toggle:" + kind.id;
+    var status = kindStatus(kind, runner);
+    if (busy.pressed(key, status)) busy.start(button);
     button.addEventListener("click", function () {
-      pending[kind.id] = true;
-      renderKinds(lastKinds);
-      invoke("runner_control", { action: on ? "stop" : "start", capability: kind.id })
-        .catch(fail)
-        .then(function () {
-          // The status that follows says how it is; until then it says what was asked.
-          setTimeout(function () {
-            delete pending[kind.id];
-            renderKinds(lastKinds);
-          }, 1500);
-        });
+      busy.run(button, key, status, true, function () {
+        return invoke("runner_control", { action: on ? "stop" : "start", capability: kind.id });
+      }, fail);
     });
     return button;
   }
@@ -289,7 +273,7 @@
     // What changes the buttons and the words is drawn again only when it changes,
     // so a button keeps its focus while the status ticks.
     var update = runner.diagnosis.update || null;
-    var signature = JSON.stringify([kind, !!pending[kind.id], runner.link, update && update.checked]);
+    var signature = JSON.stringify([kind, runner.link, update && update.checked]);
     if (signature === card.signature) return;
     card.signature = signature;
 
@@ -333,20 +317,17 @@
     // sees to it (waiting for the release's images), none does.
     var urgent = kind.tone === "problem" || kind.tone === "warning";
     kind.actions.forEach(function (action, at) {
-      actions.appendChild(actionButton(action, at === 0 && urgent && kind.state !== "waiting"));
+      actions.appendChild(actionButton(action, at === 0 && urgent && kind.state !== "waiting", kind.id, kindStatus(kind, runner)));
     });
     if (kind.can_toggle) {
-      var toggle = toggleButton(kind, kind.actions.length === 0);
+      var toggle = toggleButton(kind, kind.actions.length === 0, runner);
       toggle.classList.add("end");
       actions.appendChild(toggle);
     }
     actions.hidden = !actions.firstChild;
   }
 
-  var lastKinds = null;
-
   function renderKinds(runner) {
-    lastKinds = runner;
     var list = byId("runner-kinds");
     var kinds = (runner && runner.diagnosis.capabilities) || [];
     list.hidden = kinds.length === 0;
@@ -379,7 +360,7 @@
     var actions = byId("runner-actions");
     actions.textContent = "";
     diagnosis.actions.forEach(function (action, at) {
-      actions.appendChild(actionButton(action, at === 0));
+      actions.appendChild(actionButton(action, at === 0, "runner", runnerStatus(runner)));
     });
     renderKinds(runner);
     byId("runner").checked = !!runner.enabled;
@@ -414,8 +395,12 @@
     check.hidden = !update;
     if (update) {
       check.textContent = update.check.label;
-      check.disabled = update.checking;
+      // Busy while the app looks, whoever asked, and from a click until it says it is looking.
+      if (update.checking || busy.pressed("check", runnerStatus(runner))) busy.start(check);
+      else busy.stop(check);
     }
+    // A Start or Stop pressed is done once the status says so.
+    if (!busy.pressed("engine", runnerStatus(runner))) busy.stop(byId("engine-toggle"));
     byId("runner-view").hidden = !runner.link;
     // The log follows along, unless it was scrolled back to read.
     var log = byId("runner-log");
@@ -426,20 +411,21 @@
 
   byId("runnerBackend").addEventListener("change", save);
   byId("runnerWorkspace").addEventListener("change", save);
-  byId("runner-view").addEventListener("click", function () {
-    invoke("runner_control", { action: "view_runners" }).catch(fail);
-  });
-  byId("runner-open-log").addEventListener("click", function () {
-    invoke("runner_control", { action: "view_log" }).catch(fail);
-  });
-  // Looks now; what it finds installs as each kind of job is idle, and the status that follows says so.
-  byId("runner-check").addEventListener("click", function () {
-    byId("runner-check").disabled = true;
-    invoke("runner_control", { action: "check_updates" }).catch(function (error) {
-      byId("runner-check").disabled = false;
-      fail(error);
+  // A button that asks the runner for something: busy until the status
+  // that follows when it `waits`, or until the app has it.
+  function control(id, key, action, waits) {
+    var button = byId(id);
+    button.addEventListener("click", function () {
+      var status = current && current.runnerView ? runnerStatus(current.runnerView) : "";
+      busy.run(button, key, status, waits, function () {
+        return invoke("runner_control", { action: typeof action === "function" ? action() : action });
+      }, fail);
     });
-  });
+  }
+  control("runner-view", "view", "view_runners", false);
+  control("runner-open-log", "log", "view_log", false);
+  // Looks now; what it finds installs as each kind of job is idle, and the status that follows says so.
+  control("runner-check", "check", "check_updates", true);
 
   // ── The whole runner, at the top ─────────────────────────────────────
   // As the title bar's chip says it, with what it is doing in a line and
@@ -458,15 +444,9 @@
     toggle.dataset.action = on ? "stop" : "start";
   }
 
-  byId("engine-toggle").addEventListener("click", function () {
-    var toggle = byId("engine-toggle");
-    toggle.disabled = true;
-    invoke("runner_control", { action: toggle.dataset.action })
-      .catch(fail)
-      .then(function () {
-        toggle.disabled = false;
-      });
-  });
+  control("engine-toggle", "engine", function () {
+    return byId("engine-toggle").dataset.action;
+  }, true);
 
   // Every setting, as the app has it now (the settings window changes the
   // rest), with the runner's own as they are on the page.
@@ -501,7 +481,6 @@
     events
       .listen("g1t-runner-status", function (event) {
         if (current) current.runnerView = event.payload;
-        pending = {};
         renderRunner(event.payload);
       })
       .catch(function () {});

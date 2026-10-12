@@ -1,4 +1,5 @@
 import { type VariantProps, cva } from "class-variance-authority";
+import { LoaderCircle } from "lucide-react";
 import { Slot } from "radix-ui";
 import type { ComponentProps } from "react";
 
@@ -56,9 +57,35 @@ export const buttonVariants = cva(
 export type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
 export type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>;
 
-export type ButtonProps = ComponentProps<"button"> & VariantProps<typeof buttonVariants> & { asChild?: boolean };
+export type ButtonProps = ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+    /**
+     * Working on what it asked for: a spinner before its words, pressed
+     * no more, and `aria-busy` for a screen reader (lib/busy.ts keeps it
+     * until what it asked for shows). Not with `asChild`.
+     */
+    busy?: boolean;
+  };
 
-export function Button({ className, variant, size, asChild = false, ...props }: ButtonProps) {
-  const Comp = asChild ? Slot.Root : "button";
-  return <Comp data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+export function Button({ className, variant, size, asChild = false, busy = false, disabled, children, ...props }: ButtonProps) {
+  if (asChild) {
+    return (
+      <Slot.Root data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props}>
+        {children}
+      </Slot.Root>
+    );
+  }
+  return (
+    <button
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      {...props}
+    >
+      {busy && <LoaderCircle aria-hidden="true" className="size-[1.1em] animate-spin motion-reduce:animate-none" />}
+      {children}
+    </button>
+  );
 }

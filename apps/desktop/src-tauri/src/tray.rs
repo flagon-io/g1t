@@ -1,9 +1,10 @@
 //! The tray icon and its menu, and showing and hiding the window. Closing
 //! the window hides it, unless settings say closing quits; g1t keeps
 //! running for notifications, and the tray's Open, or the icon, brings it
-//! back. The runner's state is a row of its own, which opens settings,
-//! with Start or Stop under it (runner/mod.rs). Quit is here too. The menu's rows are handled with the app
-//! menu's (menu.rs).
+//! back. The runner's state is a row of its own, which opens the runner's
+//! menu under the title bar's dot, with Start or Stop under it
+//! (runner/mod.rs). Quit is here too. The menu's rows are handled with the
+//! app menu's (menu.rs).
 
 use std::sync::Mutex;
 

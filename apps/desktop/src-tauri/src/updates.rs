@@ -120,6 +120,8 @@ async fn look(app: &AppHandle, asked: bool, at_start: bool) -> Result<String, St
             *app.state::<config::State>().update.lock().unwrap() = Some(Ready { version: version.clone(), update, bytes });
             tray::update_ready(&version);
             let _ = app.emit_to(settings::SETTINGS, settings::READY_EVENT, version.clone());
+            // The settings the site draws, if they are open, say so too.
+            let _ = app.emit_to(tauri::EventTarget::webview(crate::frame::SITE), settings::READY_EVENT, version.clone());
             if !at_start {
                 tell(app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t from the tray to use it."));
             }
