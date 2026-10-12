@@ -741,7 +741,7 @@ What needs you: your pull requests, reviews asked of you, your issues, failing c
 g1t status [OPTIONS]
 ```
 
-Calls [`search`](/reference/api/search/search/), [`list_notifications`](/reference/api/notifications/list-notifications/), [`get_pull_request`](/reference/api/pull-requests/get-pull-request/), [`list_sessions`](/reference/api/sessions/list-sessions/), [`list_claims`](/reference/api/issues/list-claims/).
+Calls [`search`](/reference/api/search/search/), [`list_notifications`](/reference/api/notifications/list-notifications/), [`get_pull_request`](/reference/api/pull-requests/get-pull-request/), [`list_sessions`](/reference/api/sessions/list-sessions/), [`list_claims`](/reference/api/claims-and-work/list-claims/).
 
 ## g1t session
 
@@ -876,7 +876,7 @@ g1t work context [OPTIONS] <NUMBER>
 | --- | --- |
 | `<NUMBER>` | The issue's number. |
 
-Calls [`get_work`](/reference/api/issues/get-work/).
+Calls [`get_work`](/reference/api/claims-and-work/get-work/).
 
 ### g1t work claim
 
@@ -892,7 +892,7 @@ g1t work claim [OPTIONS] <NUMBER>
 | `-n, --note <NOTE>` | What you are doing about it. |
 | `--ttl <DURATION>` | How long the claim lasts unless renewed: 30m, 2h (at most 4h). |
 
-Calls [`claim_issue`](/reference/api/issues/claim-issue/).
+Calls [`claim_issue`](/reference/api/claims-and-work/claim-issue/).
 
 ### g1t work release
 
@@ -907,7 +907,7 @@ g1t work release [OPTIONS] <NUMBER>
 | `<NUMBER>` |  |
 | `-r, --reason <REASON>` | Why: done, blocked, abandoned... |
 
-Calls [`release_claim`](/reference/api/issues/release-claim/).
+Calls [`release_claim`](/reference/api/claims-and-work/release-claim/).
 
 ### g1t work handoff
 
@@ -923,7 +923,7 @@ g1t work handoff [OPTIONS] --note <NOTE> <NUMBER>
 | `--to <LOGIN>` | Who takes it over; anyone when left out. |
 | `-n, --note <NOTE>` | Where it stands and what is left, for whoever takes it. |
 
-Calls [`hand_off_issue`](/reference/api/issues/hand-off-issue/).
+Calls [`hand_off_issue`](/reference/api/claims-and-work/hand-off-issue/).
 
 ### g1t work list
 
@@ -933,7 +933,7 @@ Active claims and sessions in the repository.
 g1t work list [OPTIONS]
 ```
 
-Calls [`list_claims`](/reference/api/issues/list-claims/), [`list_sessions`](/reference/api/sessions/list-sessions/).
+Calls [`list_claims`](/reference/api/claims-and-work/list-claims/), [`list_sessions`](/reference/api/sessions/list-sessions/).
 
 ### g1t work block
 
@@ -1004,7 +1004,7 @@ g1t why [OPTIONS] <TARGET>
 | `<TARGET>` | A file, or a line of it as PATH:LINE. |
 | `--ref <REF>` | The branch, tag or commit to read it at; the default branch when left out. |
 
-Calls [`why`](/reference/api/repositories/why/).
+Calls [`why`](/reference/api/decisions-and-why/why/).
 
 ## g1t api
 

@@ -841,10 +841,10 @@ impl Work {
         .await
     }
 
-    /// Appends a note by g1t to a pull request's session.
-    // Sessions of their own (with a pull request linked) should hear of it
-    // too, once they exist.
+    /// Appends a note by g1t to a pull request's session, and to the
+    /// harness sessions working on it or its issue (coordination/).
     pub(crate) async fn session_note(&self, pull: &Pull, text: &str) -> Result<()> {
+        self.note_sessions(pull, text).await;
         let now = rfc3339(now_ms());
         self.db
             .prepare(

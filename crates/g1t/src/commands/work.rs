@@ -130,7 +130,14 @@ pub fn print_context(out: &Output, repo: &Repo, number: u64, work: &Value) {
         facts.push(format!("assigned to {}", assignees.join(", ")));
     }
     println!("{}", facts.join(" · "));
-    if let Some(done) = issue["definition_of_done"].as_str().filter(|d| !d.trim().is_empty()) {
+    // get_work gives the items under the issue's "Definition of done".
+    let items: Vec<&str> = list_of(work, "definition_of_done").iter().filter_map(Value::as_str).collect();
+    if !items.is_empty() {
+        heading(out, "Definition of done");
+        for item in items {
+            println!("  - {item}");
+        }
+    } else if let Some(done) = issue["definition_of_done"].as_str().filter(|d| !d.trim().is_empty()) {
         heading(out, "Definition of done");
         for line in done.trim().lines() {
             println!("  {line}");

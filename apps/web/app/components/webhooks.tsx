@@ -76,7 +76,18 @@ const GROUPS: { title: string; events: string[] }[] = [
     title: "Deployments",
     events: ["deployment.created", "deployment_status.created", "deployment.succeeded", "deployment.failed"],
   },
-  { title: "Sessions and decisions", events: ["session.appended", "decision.recorded"] },
+  { title: "Sessions and decisions", events: ["session.started", "session.ended", "session.appended", "decision.recorded"] },
+  {
+    title: "Coordination",
+    events: [
+      "work.claimed",
+      "work.released",
+      "work.claim_expired",
+      "work.handoff_requested",
+      "dependency.changed",
+      "overlap.detected",
+    ],
+  },
   { title: "Access", events: ["workspace.member_joined", "repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
   {
     title: "Teams",

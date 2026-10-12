@@ -114,7 +114,11 @@ With these headers:
 | `integration.failed` | A pull request failed in the [merge queue](/guides/merge-queue/#when-an-entry-fails) combined with the ones ahead of it. `pull` (also `number`) is the one that answers for it, `issue` its issue, `combination` the pull requests tested together, `check` the check that failed (`name`, `conclusion`, `url`), `suspects` the pull requests ahead it fails with, `bisected` whether smaller combinations were built to find them, and `other_pulls` the rest of the combination. |
 | `integration.passed` | A pull request's combined state passed in the merge queue: `pull` and `combination`. |
 | `decision.recorded` | A [decision record](/guides/why-blame/#decision-records) was kept on an issue or pull request: `decision`, with `number` and `issue`. |
-| `session.appended` | A pull request's [session](/guides/why-blame/#sessions) grew: a coding agent recorded entries with `record_session`, or g1t noted a merge queue failure. Busy: choose it only if you need it. |
+| `session.appended` | A pull request's [session](/guides/why-blame/#sessions) grew: a coding agent recorded entries with `record_session`, a session on it recorded some, or g1t noted a merge queue failure. Busy: choose it only if you need it. |
+| `session.started`, `session.ended` | A [session](/guides/sessions/#sessions) of someone's harness started (not on a repeated start), or ended or timed out. `data.session`, and `data.number` (its pull request, else its issue) and `data.issue`. |
+| `work.claimed`, `work.released`, `work.claim_expired`, `work.handoff_requested` | A [claim](/guides/sessions/#claims) on an issue was made, released, expired or handed off. `data.number` and `data.issue` (the issue), `data.claim`; on `work.claimed`, `data.others` (the other active claims) and `data.took_over`; on `work.released`, `data.reason`; on a hand-off, `data.from`, `data.to` and `data.note`. |
+| `dependency.changed` | What an issue is [blocked by](/guides/sessions/#dependencies) changed, or a blocker closed or had its pull request merged. `data.number` (the blocked issue), `data.blocked_by`, `data.added`, `data.removed`, `data.cleared`, `data.remaining` (blockers still open) and `data.merged_pull`. |
+| `overlap.detected` | A push made a pull request [change files another open one changes](/guides/sessions/#overlaps). Sent once for each of the two: `data.pull`, `data.other_pull`, `data.files`, `data.issue` and `data.other_issue`. |
 
 [Managing a repository](/guides/managing-repositories/) says what each of
 the `repo.` and `branch.` changes does.

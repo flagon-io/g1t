@@ -32,6 +32,14 @@ pub(crate) fn statements() -> Vec<String> {
         ));
     }
     sql.push("DELETE FROM team_review_requests WHERE ?1 IS NOT NULL AND username = ?2".to_owned());
+    // Its sessions and claims (coordination/) keep their place as ghost's,
+    // and a hand-off to it is to anyone now.
+    // A session's harness id is unique per person, so it goes.
+    sql.push(format!(
+        "UPDATE sessions SET actor_id = '{GHOST_ID}', actor_name = '{GHOST_USERNAME}', harness_session_id = NULL WHERE actor_id = ?1"
+    ));
+    sql.push(format!("UPDATE claims SET actor_id = '{GHOST_ID}', actor_name = '{GHOST_USERNAME}' WHERE actor_id = ?1"));
+    sql.push("UPDATE claims SET handoff_to = NULL WHERE ?1 IS NOT NULL AND handoff_to = ?2".to_owned());
     sql
 }
 

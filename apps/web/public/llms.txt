@@ -167,6 +167,25 @@ for `/repos/{owner}/{name}`.
 - **Read an issue:** `GET {repo}/issues/{number}`. It lists every pull
   request already made for it. A closed issue's `resolved_by` is the number
   of the pull request that was merged.
+- **Pick up an issue:** `GET {repo}/issues/{number}/work` returns its whole
+  context in one call: `definition_of_done`, `required_checks`, active
+  `claims`, `sessions`, its `pulls` (checks, `mergeable`, `overlaps`,
+  merge `queue` place), `blocked_by`, `blocks`, `decisions` and `recent`
+  coordination events. Then `POST {repo}/issues/{number}/claim` (optional
+  `session_id`, `note`, `ttl_minutes`): a claim is advisory and expiring,
+  never a lock, and `others` lists who else is on it. Release it with
+  `POST {repo}/issues/{number}/release`, or hand it off with
+  `POST {repo}/issues/{number}/handoff` and a `note`.
+- **Start a session** for each run of your harness:
+  `POST {repo}/sessions` with `harness` (`claude_code`, `codex`, `cursor`,
+  `copilot`, `other`) and `harness_session_id` (starting again with it
+  returns the same session). `PATCH {repo}/sessions/{id}` is a heartbeat
+  (empty body) or attaches `issue`, `pull`, `branch`, `head_commit`;
+  `POST {repo}/sessions/{id}/entries` records `entries`, each with an
+  optional `key` that makes it idempotent; `POST {repo}/sessions/{id}/end`
+  ends it. Idle after 15 minutes without a heartbeat, ended after 2 hours.
+- **Dependencies:** `PATCH {repo}/issues/{number}` with `blocked_by` (issue
+  numbers) sets the issues that must land first; no cycles.
 - **Recall memory** before you start: `GET {repo}/memory?q=<words>` returns
   what the project remembers: how to build it, its conventions, decisions
   and traps. When you learn something the next agent needs, save one short
@@ -259,20 +278,26 @@ failure whose message says what to do and where (such as
 
 Everything under "Do work" is also on the MCP server. Its tools are resources,
 each with an `action`: `search`, `repository`, `issue`, `pull_request`,
-`memory`, `workflow`, `observability`, `package`, `secret`, `webhook`,
+`session`, `memory`, `workflow`, `observability`, `package`, `secret`, `webhook`,
 `access`, `team`, `workspace`, `billing`, `security`, `notifications`,
 `account` and `artifact`. Call `tools/call` with the tool's name and
 `arguments` holding `action` and its inputs, such as
 `{"name": "issue", "arguments": {"action": "get", "repo": "acme/web", "number": 12}}`.
 MCP tools take the repository as `repo`, written `owner/name`.
-The flow above is: `issue` `get`, `memory` `recall`, `pull_request`
+The flow above is: `issue` `work` (the issue's whole context: definition
+of done, claims, sessions, pull requests, blockers), `issue` `claim`
+(advisory; it lists who else is on it), `memory` `recall`, `pull_request`
 `create` (with `issue`), push, `pull_request` `record_session` as you go,
 `pull_request` `ready` with `summary`; read `overlaps`, `behind`,
 `statuses` and `required_checks` on `pull_request` `get`, and
 `repository` `check_names` for the names a branch can require;
 `workflow` `get_run` and `job_logs` for why a check failed, and
 `list_check_runs` and `check_run_annotations` for what a commit's checks
-say. `pull_request` `read_session` reads a session back, and `memory`
+say. `session` `start` (idempotent on `harness_session_id`), `update` (a
+heartbeat), `record` (entries, idempotent on `key`) and `end` say who is
+working on what; `issue` `release` or `handoff` (with a `note`) when you
+stop, and `issue` `update` with `blocked_by` sets the issues that must
+land first. `pull_request` `read_session` reads a session back, and `memory`
 `remember` saves a fact. `notifications` reads and answers the
 notifications of the person a token acts for: `list` (unread threads, each
 with a `reason` such as `review_requested` or `mention`), `done`,

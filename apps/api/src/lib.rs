@@ -14,6 +14,7 @@ mod billing;
 mod blobs;
 mod broker;
 mod checks;
+mod coordination;
 mod deployments;
 mod telemetry;
 mod deploy_keys;

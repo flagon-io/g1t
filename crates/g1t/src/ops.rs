@@ -79,22 +79,6 @@ pub fn all() -> impl Iterator<Item = &'static Operation> {
         .chain(PENDING.iter().filter(|op| !OPERATIONS.iter().any(|known| known.id == op.id)))
 }
 
-const OWNER: Param = Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] };
-const NAME: Param = Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] };
-const NUMBER: Param = Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] };
-const ID: Param = Param { name: "id", location: In::Path, kind: "string", required: true, values: &[] };
-
-const fn pending(
-    id: &'static str,
-    method: &'static str,
-    path: &'static str,
-    tag: &'static str,
-    summary: &'static str,
-    params: &'static [Param],
-) -> Operation {
-    Operation { id, method, path, tag, summary, scope: None, params, body: &[] }
-}
-
 /// Operations the coordination commands (`g1t session`, `g1t work`,
 /// `g1t why`) call that the API's OpenAPI document does not describe yet,
 /// with the paths the API serves them at. Once the generated table has one,
@@ -102,19 +86,7 @@ const fn pending(
 /// Against a server that does not have them, a call fails saying the
 /// server is older than the CLI ([`crate::client::Client::send`]).
 #[rustfmt::skip]
-pub static PENDING: &[Operation] = &[
-    pending("start_session", "POST", "/repos/{owner}/{name}/sessions", "Sessions", "Start a session", &[OWNER, NAME]),
-    pending("list_sessions", "GET", "/repos/{owner}/{name}/sessions", "Sessions", "List sessions", &[OWNER, NAME]),
-    pending("get_session", "GET", "/repos/{owner}/{name}/sessions/{id}", "Sessions", "Get a session", &[OWNER, NAME, ID]),
-    pending("update_session", "PATCH", "/repos/{owner}/{name}/sessions/{id}", "Sessions", "Update a session", &[OWNER, NAME, ID]),
-    pending("end_session", "POST", "/repos/{owner}/{name}/sessions/{id}/end", "Sessions", "End a session", &[OWNER, NAME, ID]),
-    pending("record_session_entries", "POST", "/repos/{owner}/{name}/sessions/{id}/entries", "Sessions", "Record session entries", &[OWNER, NAME, ID]),
-    pending("claim_issue", "POST", "/repos/{owner}/{name}/issues/{number}/claim", "Issues", "Claim an issue", &[OWNER, NAME, NUMBER]),
-    pending("release_claim", "POST", "/repos/{owner}/{name}/issues/{number}/release", "Issues", "Release a claim", &[OWNER, NAME, NUMBER]),
-    pending("hand_off_issue", "POST", "/repos/{owner}/{name}/issues/{number}/handoff", "Issues", "Hand off an issue", &[OWNER, NAME, NUMBER]),
-    pending("get_work", "GET", "/repos/{owner}/{name}/issues/{number}/work", "Issues", "Get an issue's work context", &[OWNER, NAME, NUMBER]),
-    pending("list_claims", "GET", "/repos/{owner}/{name}/claims", "Issues", "List claims", &[OWNER, NAME]),
-];
+pub static PENDING: &[Operation] = &[];
 
 /// The operation, which must exist: commands name only operations the
 /// mapping test has checked.

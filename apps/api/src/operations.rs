@@ -35,6 +35,7 @@ use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
+use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
 use crate::rules::RulesOp;
@@ -320,6 +321,9 @@ pub enum Op {
     /// Artifacts mode's docs, slides, designs and dashboards, kept by the
     /// artifacts service: folios.rs.
     Folios(FoliosOp),
+    /// Coordinating work: harness sessions, claims on issues and an
+    /// issue's whole context, kept by the work service: coordination.rs.
+    Coordination(CoordinationOp),
 }
 
 fn failed(code: FailureCode, message: &str) -> Result<Outcome<Value>> {
@@ -689,7 +693,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 356] = [
+    pub const ALL: [Op; 367] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1046,6 +1050,17 @@ impl Op {
         Op::Folios(FoliosOp::RestoreVersion),
         Op::Folios(FoliosOp::SetAccess),
         Op::Folios(FoliosOp::Purge),
+        Op::Coordination(CoordinationOp::StartSession),
+        Op::Coordination(CoordinationOp::UpdateSession),
+        Op::Coordination(CoordinationOp::EndSession),
+        Op::Coordination(CoordinationOp::GetSession),
+        Op::Coordination(CoordinationOp::ListSessions),
+        Op::Coordination(CoordinationOp::RecordSessionEntries),
+        Op::Coordination(CoordinationOp::ClaimIssue),
+        Op::Coordination(CoordinationOp::ReleaseClaim),
+        Op::Coordination(CoordinationOp::HandOffIssue),
+        Op::Coordination(CoordinationOp::ListClaims),
+        Op::Coordination(CoordinationOp::GetWork),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1247,6 +1262,7 @@ impl Op {
             Op::DeployKeys(op) => op.name(),
             Op::Packages(op) => op.name(),
             Op::Folios(op) => op.name(),
+            Op::Coordination(op) => op.name(),
         }
     }
 
@@ -1388,7 +1404,7 @@ impl Op {
                 "Open an issue on a repository. Say what done means in the body if it helps, for instance under a \"Definition of done\" heading; what must pass before a pull request for it merges is the default branch's required checks, the same for every pull request. labels are the repository's labels by name; a name it does not have yet is created when you have the Triage role or higher, and refused otherwise. milestone, a milestone's number, needs the Triage role."
             }
             Op::UpdateIssue => {
-                "Change an issue's title, body, labels, milestone or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set, and milestone null or 0 takes it out of its milestone. Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher, and so does the milestone. Each label added or removed is an issue.labeled or issue.unlabeled event."
+                "Change an issue's title, body, labels, milestone, the people it is assigned to, or what it is blocked by. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, and milestone null or 0 takes it out of its milestone. blocked_by lists the numbers of the issues of the same repository that have to land first: one that is not an issue there, the issue itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event (as is a blocker closing, or its pull request merging, later). Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher, and so does the milestone. Each label added or removed is an issue.labeled or issue.unlabeled event."
             }
             Op::CloseIssue => {
                 "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
@@ -1766,6 +1782,7 @@ impl Op {
             Op::DeployKeys(op) => op.description(),
             Op::Packages(op) => op.description(),
             Op::Folios(op) => op.description(),
+            Op::Coordination(op) => op.description(),
         }
     }
 
@@ -2280,6 +2297,11 @@ impl Op {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "Usernames of the people it is assigned to. Replaces the whole set; an empty list unassigns everyone.",
+                    },
+                    "blocked_by": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "The numbers of the issues of this repository that have to land first. Replaces the whole set; an empty list clears it. No cycles, and never the issue itself.",
                     },
                 })),
                 &["repo", "number"],
@@ -3137,6 +3159,7 @@ impl Op {
             Op::DeployKeys(op) => op.input(),
             Op::Packages(op) => op.input(),
             Op::Folios(op) => op.input(),
+            Op::Coordination(op) => op.input(),
         }
     }
 
@@ -3175,6 +3198,10 @@ impl Op {
         // So are public packages.
         if let Op::Packages(op) = self {
             return !op.anonymous();
+        }
+        // And who is working on what in a public repository.
+        if let Op::Coordination(op) = self {
+            return !op.reads();
         }
         !matches!(
             self,
@@ -4215,6 +4242,10 @@ impl Op {
                 Ok(with_deprecation(opened, !checks.is_empty()))
             }
             Op::UpdateIssue => {
+                let blocked_by = match crate::coordination::blocked_by(input) {
+                    Ok(blocked_by) => blocked_by,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
                 pass(
                     work,
                     "update_issue",
@@ -4227,6 +4258,7 @@ impl Op {
                         labels: strings(input, "labels"),
                         assignees: strings(input, "assignees"),
                         milestone: milestone_input(input),
+                        blocked_by,
                     },
                 )
                 .await
@@ -5358,6 +5390,7 @@ impl Op {
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
             Op::Folios(op) => crate::folios::run(op, services, viewer, input).await,
+            Op::Coordination(op) => crate::coordination::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {
                 let changed: Outcome<AlertChange> = call(
                     &services.security,

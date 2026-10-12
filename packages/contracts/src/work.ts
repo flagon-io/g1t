@@ -628,6 +628,8 @@ export type UpdateIssueInput = {
   assignees?: string[];
   /** The number of the milestone to put it in; 0 takes it out. */
   milestone?: number;
+  /** The issues of the same repository that have to land first; replaces the whole set. */
+  blocked_by?: number[];
 };
 
 export type OpenPullInput = {
@@ -1051,4 +1053,96 @@ export type Contributions = {
   total: number;
   /** The first day counted, `YYYY-MM-DD`; the last is today (UTC). */
   from: string;
+};
+
+// --- Coordinating work: sessions, claims and dependencies -----------------
+// Mirrors `crates/contracts/src/work/coordination.rs`.
+
+/** The harness a session runs in. */
+export type Harness = "claude_code" | "codex" | "cursor" | "copilot" | "other";
+
+/** Active: heard from in 15 minutes; idle: not since; ended: ended, or quiet for 2 hours. */
+export type SessionState = "active" | "idle" | "ended";
+
+/** One run of someone's own harness on a repository. */
+export type WorkSession = {
+  /** `ses_…`. */
+  id: string;
+  repoId: string;
+  issue: number | null;
+  pull: number | null;
+  branch: string | null;
+  actor: { id: string; username: string };
+  harness: Harness;
+  harnessSessionId: string | null;
+  title: string | null;
+  state: SessionState;
+  headCommit: string | null;
+  startedAt: string;
+  lastSeenAt: string;
+  endedAt: string | null;
+  /** What the harness said, or `timed_out`. */
+  endReason: string | null;
+};
+
+export type ClaimState = "active" | "released" | "expired" | "handed_off";
+
+/** An advisory, expiring "I'm working on #N". Never a lock. */
+export type Claim = {
+  /** `clm_…`. */
+  id: string;
+  repoId: string;
+  issue: number;
+  sessionId: string | null;
+  actor: { id: string; username: string };
+  harness: Harness | null;
+  note: string | null;
+  state: ClaimState;
+  createdAt: string;
+  expiresAt: string;
+  endedAt: string | null;
+  endReason: string | null;
+  /** For a hand-off: who it was handed to; null for anyone. */
+  handoffTo: string | null;
+};
+
+/** `session.started` and `session.ended`. */
+export type SessionEventData = { repoId: string; number?: number; issue?: number; session: WorkSession };
+
+/** `work.claimed`, `work.released`, `work.claim_expired` and `work.handoff_requested`. */
+export type ClaimEventData = {
+  repoId: string;
+  number: number;
+  issue: number;
+  claim: Claim;
+  others?: Claim[];
+  tookOver?: string;
+  reason?: string;
+  from?: string;
+  to?: string;
+  note?: string;
+};
+
+/** `dependency.changed`. */
+export type DependencyChangedData = {
+  repoId: string;
+  number: number;
+  issue: number;
+  blockedBy: number[];
+  added: number[];
+  removed: number[];
+  cleared: number[];
+  remaining: number[];
+  mergedPull?: number;
+};
+
+/** `overlap.detected`, sent once for each side of a new overlap. */
+export type OverlapDetectedData = {
+  repoId: string;
+  number: number;
+  pull: number;
+  otherPull: number;
+  files: string[];
+  issue?: number;
+  otherIssue?: number;
 };

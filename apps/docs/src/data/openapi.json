@@ -366,6 +366,17 @@
       ]
     },
     {
+      "name": "Claims and work",
+      "description": "Coordinating work on issues: an advisory, expiring claim that says you are on one (never a lock), handing it off with a note, and everything an agent needs before starting on an issue in one call. What an issue is blocked by is set with update_issue.",
+      "x-tools": [
+        "get_work",
+        "claim_issue",
+        "release_claim",
+        "hand_off_issue",
+        "list_claims"
+      ]
+    },
+    {
       "name": "Labels and milestones",
       "description": "A repository's labels, which issues and pull requests carry by name, and its milestones, which gather them under a goal and a due date.",
       "x-tools": [
@@ -403,8 +414,14 @@
     },
     {
       "name": "Sessions",
-      "description": "The record of how a pull request was made: prompts, reasoning and the tools that ran.",
+      "description": "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to an issue and a pull request, and recording prompts, reasoning and the tools that ran. A pull request's session shows what was recorded on it.",
       "x-tools": [
+        "start_session",
+        "update_session",
+        "end_session",
+        "get_session",
+        "list_sessions",
+        "record_session_entries",
         "read_session",
         "record_session"
       ]
@@ -40797,7 +40814,7 @@
           "Issues"
         ],
         "summary": "Update an issue",
-        "description": "Change an issue's title, body, labels, milestone or the people it is assigned to. Only the fields given are changed; labels and assignees each replace the whole set, and milestone null or 0 takes it out of its milestone. Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher, and so does the milestone. Each label added or removed is an issue.labeled or issue.unlabeled event.",
+        "description": "Change an issue's title, body, labels, milestone, the people it is assigned to, or what it is blocked by. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, and milestone null or 0 takes it out of its milestone. blocked_by lists the numbers of the issues of the same repository that have to land first: one that is not an issue there, the issue itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event (as is a blocker closing, or its pull request merging, later). Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher, and so does the milestone. Each label added or removed is an issue.labeled or issue.unlabeled event.",
         "x-operation": "update_issue",
         "x-mcp-tool": "issue",
         "x-mcp-action": "update",
@@ -40874,7 +40891,9 @@
                   "assignees": [
                     "syntaqx"
                   ],
-                  "blocked_by": [],
+                  "blocked_by": [
+                    9
+                  ],
                   "queued": false,
                   "agent": null,
                   "milestone": {
@@ -40969,6 +40988,13 @@
                       "type": "string"
                     },
                     "description": "Usernames of the people it is assigned to. Replaces the whole set; an empty list unassigns everyone."
+                  },
+                  "blocked_by": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "description": "The numbers of the issues of this repository that have to land first. Replaces the whole set; an empty list clears it. No cycles, and never the issue itself."
                   }
                 }
               },
@@ -40980,7 +41006,10 @@
                 "assignees": [
                   "syntaqx"
                 ],
-                "milestone": 3
+                "milestone": 3,
+                "blocked_by": [
+                  9
+                ]
               }
             }
           }
@@ -41424,6 +41453,1989 @@
               },
               "example": {
                 "reference": "TECH-1234"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/issues/{number}/work": {
+      "get": {
+        "operationId": "get_work",
+        "tags": [
+          "Claims and work"
+        ],
+        "summary": "Get an issue's work context",
+        "description": "Everything about an issue an agent needs before working on it, in one call: the `issue`, its `definition_of_done` (the items under its \"Definition of done\" heading) and the `required_checks` every pull request into the default branch must pass; active `claims`; `sessions` on it or its pull requests; its `pulls`, each with its status, required checks as they stand on its head, whether it merges cleanly, the other pull requests it overlaps and its place in the merge queue; `blocked_by` (each issue it waits on, with claims and pull requests) and `blocks` (the issues waiting on it); `decisions` recorded about it; `last_integration_failure`; and `recent`, its latest coordination events, newest first.\n\n`pulls` are the issue's pull requests, oldest first; `required_checks`, `mergeable`, `overlaps` and `queue` (its `state` and `position` in the merge queue, 1 at the front) are filled in for those still open or draft. `recent` holds up to 20 coordination events about the issue or its pull requests, newest first. See [Picking up an issue](/guides/sessions/#picking-up-an-issue).",
+        "x-operation": "get_work",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "work",
+        "x-scope": "issues:read",
+        "security": [
+          {
+            "token": [
+              "issues:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The issue's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "issue": {
+                    "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "number": 12,
+                    "title": "Greeting should name the caller",
+                    "body": "Take a name from the first argument; fall back to world.\n\n## Definition of done\n\n- `cargo test` passes.\n- The README shows the new usage.",
+                    "labels": [
+                      "feature",
+                      "good first issue"
+                    ],
+                    "state": "open",
+                    "reason": null,
+                    "resolved_by": null,
+                    "author": {
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "username": "syntaqx",
+                      "display_username": "syntaqx",
+                      "kind": "user",
+                      "verified": false,
+                      "workspaces": []
+                    },
+                    "requested_by": null,
+                    "created_at": "2026-10-01T18:04:11.482Z",
+                    "updated_at": "2026-10-01T18:09:47.305Z",
+                    "closed_at": null,
+                    "pull_count": 0,
+                    "comment_count": 0,
+                    "assignees": [
+                      "syntaqx"
+                    ],
+                    "blocked_by": [
+                      9
+                    ],
+                    "queued": false,
+                    "agent": null,
+                    "milestone": {
+                      "number": 3,
+                      "title": "Launch"
+                    }
+                  },
+                  "definition_of_done": [
+                    "`cargo test` passes.",
+                    "The README shows the new usage."
+                  ],
+                  "required_checks": [
+                    "CI"
+                  ],
+                  "claims": [
+                    {
+                      "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "issue": 12,
+                      "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                      "actor": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx"
+                      },
+                      "harness": "claude_code",
+                      "note": "Taking the argument parsing first.",
+                      "state": "active",
+                      "created_at": "2026-10-12T14:03:02.771Z",
+                      "expires_at": "2026-10-12T15:01:40.518Z",
+                      "ended_at": null,
+                      "end_reason": null,
+                      "handoff_to": null
+                    }
+                  ],
+                  "sessions": [
+                    {
+                      "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "issue": 12,
+                      "pull": 14,
+                      "branch": "greet-caller",
+                      "actor": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx"
+                      },
+                      "harness": "claude_code",
+                      "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+                      "title": "Make the greeting name the caller",
+                      "state": "active",
+                      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                      "started_at": "2026-10-12T14:02:11.204Z",
+                      "last_seen_at": "2026-10-12T14:31:40.518Z",
+                      "ended_at": null,
+                      "end_reason": null
+                    }
+                  ],
+                  "pulls": [
+                    {
+                      "number": 14,
+                      "title": "Greeting should name the caller",
+                      "status": "draft",
+                      "branch": "greet-caller",
+                      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                      "author": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx"
+                      },
+                      "check_status": null,
+                      "required_checks": [
+                        {
+                          "name": "CI",
+                          "state": "success",
+                          "description": "CI passed",
+                          "target_url": "https://g1t.sh/syntaqx/hello/actions/runs/run_01m43sw8e2g6j0m4q8t2x6a0c4"
+                        }
+                      ],
+                      "mergeable": "clean",
+                      "overlaps": [
+                        {
+                          "number": 11,
+                          "title": "Parse arguments with clap",
+                          "issue": 9,
+                          "paths": [
+                            "src/main.rs"
+                          ]
+                        }
+                      ],
+                      "queue": null
+                    }
+                  ],
+                  "blocked_by": [
+                    {
+                      "number": 9,
+                      "title": "Read arguments with a parser",
+                      "state": "open",
+                      "claims": [
+                        {
+                          "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
+                          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                          "issue": 9,
+                          "session_id": null,
+                          "actor": {
+                            "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
+                            "username": "ana"
+                          },
+                          "harness": null,
+                          "note": null,
+                          "state": "active",
+                          "created_at": "2026-10-12T13:50:12.000Z",
+                          "expires_at": "2026-10-12T14:20:12.000Z",
+                          "ended_at": null,
+                          "end_reason": null,
+                          "handoff_to": null
+                        }
+                      ],
+                      "pulls": [
+                        {
+                          "number": 11,
+                          "title": "Parse arguments with clap",
+                          "status": "open"
+                        }
+                      ]
+                    }
+                  ],
+                  "blocks": [
+                    {
+                      "number": 15,
+                      "title": "Greet in the caller's language",
+                      "state": "open"
+                    }
+                  ],
+                  "decisions": [
+                    {
+                      "id": "dec_01m4b3e7g9j1l3n5q7s9u1w3y5",
+                      "issue": 12,
+                      "pull": 14,
+                      "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                      "actor": "syntaqx",
+                      "kind": "proposal",
+                      "confidence": "claimed",
+                      "summary": "Read the name with the argument parser #9 brings, rather than by hand.",
+                      "evidence": {
+                        "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+                      },
+                      "created_at": "2026-10-12T14:20:00.000Z"
+                    }
+                  ],
+                  "last_integration_failure": null,
+                  "recent": [
+                    {
+                      "id": "evt_01m4b3d5f7h9k1m3p5r7t9w1y4",
+                      "type": "work.claimed",
+                      "source": "work",
+                      "time": "2026-10-12T14:03:02.771Z",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "actor": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "data": {
+                        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                        "number": 12,
+                        "issue": 12,
+                        "claim": {
+                          "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
+                          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                          "issue": 12,
+                          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                          "actor": {
+                            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                            "username": "syntaqx"
+                          },
+                          "harness": "claude_code",
+                          "note": "Taking the argument parsing first.",
+                          "state": "active",
+                          "created_at": "2026-10-12T14:03:02.771Z",
+                          "expires_at": "2026-10-12T15:01:40.518Z",
+                          "ended_at": null,
+                          "end_reason": null,
+                          "handoff_to": null
+                        },
+                        "others": [
+                          {
+                            "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
+                            "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                            "issue": 12,
+                            "session_id": null,
+                            "actor": {
+                              "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
+                              "username": "ana"
+                            },
+                            "harness": null,
+                            "note": "Looking at the tests.",
+                            "state": "active",
+                            "created_at": "2026-10-12T13:50:12.000Z",
+                            "expires_at": "2026-10-12T14:20:12.000Z",
+                            "ended_at": null,
+                            "end_reason": null,
+                            "handoff_to": null
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/issues/{number}/claim": {
+      "post": {
+        "operationId": "claim_issue",
+        "tags": [
+          "Claims and work"
+        ],
+        "summary": "Claim an issue",
+        "description": "Claim an open issue: say you are working on it. A claim is advisory, never a lock: anyone may claim an issue someone else has, and `others` lists the claims already on it, so you can coordinate or pick something else. It lasts `ttl_minutes` (30 unless you say, up to 240) and is renewed by claiming again or, when you give the `session_id` of one of your sessions, by that session's heartbeats. Returns your `claim`, the `others`, and `blocked_by`: each issue this one waits on, with its claims and pull requests. A new claim is a work.claimed event; one taking over a hand-off says which in `took_over`.\n\nA claim is advisory: it is made even when `others` lists someone already on the issue. Claiming an issue you hold renews your claim. Refused with `409` for a closed issue. See [Claims](/guides/sessions/#claims).",
+        "x-operation": "claim_issue",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "claim",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The issue's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "claim": {
+                    "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "issue": 12,
+                    "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                    "actor": {
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "username": "syntaqx"
+                    },
+                    "harness": "claude_code",
+                    "note": "Taking the argument parsing first.",
+                    "state": "active",
+                    "created_at": "2026-10-12T14:03:02.771Z",
+                    "expires_at": "2026-10-12T15:01:40.518Z",
+                    "ended_at": null,
+                    "end_reason": null,
+                    "handoff_to": null
+                  },
+                  "others": [
+                    {
+                      "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "issue": 12,
+                      "session_id": null,
+                      "actor": {
+                        "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
+                        "username": "ana"
+                      },
+                      "harness": null,
+                      "note": "Looking at the tests.",
+                      "state": "active",
+                      "created_at": "2026-10-12T13:50:12.000Z",
+                      "expires_at": "2026-10-12T14:20:12.000Z",
+                      "ended_at": null,
+                      "end_reason": null,
+                      "handoff_to": null
+                    }
+                  ],
+                  "blocked_by": [
+                    {
+                      "number": 9,
+                      "title": "Read arguments with a parser",
+                      "state": "open",
+                      "claims": [
+                        {
+                          "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
+                          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                          "issue": 9,
+                          "session_id": null,
+                          "actor": {
+                            "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
+                            "username": "ana"
+                          },
+                          "harness": null,
+                          "note": null,
+                          "state": "active",
+                          "created_at": "2026-10-12T13:50:12.000Z",
+                          "expires_at": "2026-10-12T14:20:12.000Z",
+                          "ended_at": null,
+                          "end_reason": null,
+                          "handoff_to": null
+                        }
+                      ],
+                      "pulls": [
+                        {
+                          "number": 11,
+                          "title": "Parse arguments with clap",
+                          "status": "open"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session_id": {
+                    "type": "string",
+                    "description": "One of your sessions (ses_…) on the repository: its heartbeats renew the claim."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "What you are doing, for whoever else looks. Up to 500 characters."
+                  },
+                  "ttl_minutes": {
+                    "type": "integer",
+                    "description": "How long it lasts unless renewed: 30 unless you say, at most 240."
+                  }
+                }
+              },
+              "example": {
+                "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                "note": "Taking the argument parsing first.",
+                "ttl_minutes": 30
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/issues/{number}/release": {
+      "post": {
+        "operationId": "release_claim",
+        "tags": [
+          "Claims and work"
+        ],
+        "summary": "Release a claim",
+        "description": "Release your claim on an issue, with an optional `reason`: you stopped working on it. A work.released event. Claims also end when the issue closes, and expire when not renewed. Refused with `404` when you hold no active claim on it.",
+        "x-operation": "release_claim",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "release",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The issue's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "issue": 12,
+                  "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                  "actor": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx"
+                  },
+                  "harness": "claude_code",
+                  "note": "Taking the argument parsing first.",
+                  "state": "released",
+                  "created_at": "2026-10-12T14:03:02.771Z",
+                  "expires_at": "2026-10-12T15:01:40.518Z",
+                  "ended_at": "2026-10-12T14:12:30.000Z",
+                  "end_reason": "Ana has it covered.",
+                  "handoff_to": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "Why, in a few words. \"released\" if left out."
+                  }
+                }
+              },
+              "example": {
+                "reason": "Ana has it covered."
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/issues/{number}/handoff": {
+      "post": {
+        "operationId": "hand_off_issue",
+        "tags": [
+          "Claims and work"
+        ],
+        "summary": "Hand off an issue",
+        "description": "Hand an issue you claimed off: your claim ends as handed_off, with `note` saying where the work stands, for `to` (a username) or, without one, for anyone. A work.handoff_requested event, which whoever follows the issue hears; the next claim on it says it took the hand-off over. Refused with `404` when you hold no active claim on it.",
+        "x-operation": "hand_off_issue",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "handoff",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The issue's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "issue": 12,
+                  "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                  "actor": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx"
+                  },
+                  "harness": "claude_code",
+                  "note": "Parsing is done and tested; the README still needs the new usage.",
+                  "state": "handed_off",
+                  "created_at": "2026-10-12T14:03:02.771Z",
+                  "expires_at": "2026-10-12T15:01:40.518Z",
+                  "ended_at": "2026-10-12T14:38:00.000Z",
+                  "end_reason": "handed_off",
+                  "handoff_to": "ana"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "The username it is for. Left out, it is for anyone."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "Where the work stands: what is done, what is left, what to watch for. Up to 500 characters."
+                  }
+                },
+                "required": [
+                  "note"
+                ]
+              },
+              "example": {
+                "to": "ana",
+                "note": "Parsing is done and tested; the README still needs the new usage."
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/claims": {
+      "get": {
+        "operationId": "list_claims",
+        "tags": [
+          "Claims and work"
+        ],
+        "summary": "List claims",
+        "description": "A repository's claims, newest first, up to 100: active ones unless `state` says released, expired or handed_off, and `issue` for one issue's. Anyone who can read the repository may.",
+        "x-operation": "list_claims",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "list_claims",
+        "x-scope": "issues:read",
+        "security": [
+          {
+            "token": [
+              "issues:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "released",
+                "expired",
+                "handed_off"
+              ]
+            },
+            "description": "Claims in this state; active if left out."
+          },
+          {
+            "name": "issue",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only claims on this issue."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "issue": 12,
+                    "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                    "actor": {
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "username": "syntaqx"
+                    },
+                    "harness": "claude_code",
+                    "note": "Taking the argument parsing first.",
+                    "state": "active",
+                    "created_at": "2026-10-12T14:03:02.771Z",
+                    "expires_at": "2026-10-12T15:01:40.518Z",
+                    "ended_at": null,
+                    "end_reason": null,
+                    "handoff_to": null
+                  },
+                  {
+                    "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "issue": 12,
+                    "session_id": null,
+                    "actor": {
+                      "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
+                      "username": "ana"
+                    },
+                    "harness": null,
+                    "note": "Looking at the tests.",
+                    "state": "active",
+                    "created_at": "2026-10-12T13:50:12.000Z",
+                    "expires_at": "2026-10-12T14:20:12.000Z",
+                    "ended_at": null,
+                    "end_reason": null,
+                    "handoff_to": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "state": "active"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/sessions": {
+      "post": {
+        "operationId": "start_session",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Start a session",
+        "description": "Start a session: one run of your own harness (a Claude Code session, a Codex run) on a repository, so others can see who is working on what. `harness` is claude_code, codex, cursor, copilot or other. Give `harness_session_id`, the harness's own id for the session, and starting again with it returns the session already started (refreshing the issue, pull request, branch, title and head given) instead of a new one, so a hook that fires twice is harmless. `issue` and `pull` attach it to an issue and a pull request of the repository; a pull request for an issue attaches that issue too. Returns the session (`id` `ses_…`, `state` active, idle or ended). A new session, or one started again after it ended, is a session.started event. Needs a confirmed email address and a role that may open issues.\n\nIdempotent on `harness_session_id`: a second start with it returns this session, so call it from a hook without checking first. `state` is `active`, `idle` (no heartbeat for 15 minutes) or `ended` (ended, or no heartbeat for 2 hours: `end_reason` `timed_out`). See [Sessions](/guides/sessions/).",
+        "x-operation": "start_session",
+        "x-mcp-tool": "session",
+        "x-mcp-action": "start",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "issue": 12,
+                  "pull": null,
+                  "branch": "greet-caller",
+                  "actor": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx"
+                  },
+                  "harness": "claude_code",
+                  "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+                  "title": "Make the greeting name the caller",
+                  "state": "active",
+                  "head_commit": null,
+                  "started_at": "2026-10-12T14:02:11.204Z",
+                  "last_seen_at": "2026-10-12T14:02:11.204Z",
+                  "ended_at": null,
+                  "end_reason": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "issue": {
+                    "type": "integer",
+                    "description": "The issue it works on."
+                  },
+                  "pull": {
+                    "type": "integer",
+                    "description": "The pull request it works on."
+                  },
+                  "branch": {
+                    "type": "string",
+                    "description": "The branch it works on."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "What it is doing, in a few words. Up to 200 characters."
+                  },
+                  "head_commit": {
+                    "type": "string",
+                    "description": "The commit it is at, such as after a push."
+                  },
+                  "harness": {
+                    "type": "string",
+                    "enum": [
+                      "claude_code",
+                      "codex",
+                      "cursor",
+                      "copilot",
+                      "other"
+                    ],
+                    "description": "The harness the session runs in."
+                  },
+                  "harness_session_id": {
+                    "type": "string",
+                    "description": "The harness's own id for the session, such as Claude Code's session_id. Starting again with it returns the same session."
+                  }
+                },
+                "required": [
+                  "harness"
+                ]
+              },
+              "example": {
+                "harness": "claude_code",
+                "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+                "issue": 12,
+                "branch": "greet-caller",
+                "title": "Make the greeting name the caller"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "list_sessions",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "List sessions",
+        "description": "A repository's sessions, most recently heard from first, up to 100: `state` active (heard from in the last 15 minutes), idle or ended, and `issue` or `pull` for those attached to one. Anyone who can read the repository may.",
+        "x-operation": "list_sessions",
+        "x-mcp-tool": "session",
+        "x-mcp-action": "list",
+        "x-scope": "pull_requests:read",
+        "security": [
+          {
+            "token": [
+              "pull_requests:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "idle",
+                "ended"
+              ]
+            },
+            "description": "Only sessions in this state."
+          },
+          {
+            "name": "issue",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only sessions on this issue."
+          },
+          {
+            "name": "pull",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only sessions on this pull request."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "issue": 12,
+                    "pull": 14,
+                    "branch": "greet-caller",
+                    "actor": {
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "username": "syntaqx"
+                    },
+                    "harness": "claude_code",
+                    "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+                    "title": "Make the greeting name the caller",
+                    "state": "active",
+                    "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "started_at": "2026-10-12T14:02:11.204Z",
+                    "last_seen_at": "2026-10-12T14:31:40.518Z",
+                    "ended_at": null,
+                    "end_reason": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "state": "active",
+          "issue": 12
+        }
+      }
+    },
+    "/repos/{owner}/{name}/sessions/{id}": {
+      "get": {
+        "operationId": "get_session",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Get a session",
+        "description": "A session and its entries, oldest first, numbered within the session (`seq`); `after` gives the entries after that number, 500 at a time. Anyone who can read the repository may.\n\nEntries are numbered within the session and come 500 at a time; send the last `seq` you have as `after` for the next page.",
+        "x-operation": "get_session",
+        "x-mcp-tool": "session",
+        "x-mcp-action": "get",
+        "x-scope": "pull_requests:read",
+        "security": [
+          {
+            "token": [
+              "pull_requests:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The session's id (ses_…), from start_session or list_sessions."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only entries after this sequence number, for the next page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "session": {
+                    "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "issue": 12,
+                    "pull": 14,
+                    "branch": "greet-caller",
+                    "actor": {
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "username": "syntaqx"
+                    },
+                    "harness": "claude_code",
+                    "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+                    "title": "Make the greeting name the caller",
+                    "state": "active",
+                    "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "started_at": "2026-10-12T14:02:11.204Z",
+                    "last_seen_at": "2026-10-12T14:31:40.518Z",
+                    "ended_at": null,
+                    "end_reason": null
+                  },
+                  "entries": [
+                    {
+                      "seq": 1,
+                      "kind": "prompt",
+                      "text": "Make the greeting name the caller (issue #12).",
+                      "tool": null,
+                      "commit": null,
+                      "at": "2026-10-12T14:02:12.008Z"
+                    },
+                    {
+                      "seq": 2,
+                      "kind": "tool_call",
+                      "text": "cargo test",
+                      "tool": "Bash",
+                      "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                      "at": "2026-10-12T14:30:12.660Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "after": 0
+        }
+      },
+      "patch": {
+        "operationId": "update_session",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Update a session",
+        "description": "Update one of your sessions: attach it to an issue or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 2 hours; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. Returns the session; one ended with end_session is refused with `409`.\n\nSend `{}` as a heartbeat. Each call renews the session's claims and brings back one that timed out. Refused with `404` for a session that is not yours, and `409` for one you ended.",
+        "x-operation": "update_session",
+        "x-mcp-tool": "session",
+        "x-mcp-action": "update",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The session's id (ses_…), from start_session or list_sessions."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "issue": 12,
+                  "pull": 14,
+                  "branch": "greet-caller",
+                  "actor": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx"
+                  },
+                  "harness": "claude_code",
+                  "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+                  "title": "Make the greeting name the caller",
+                  "state": "active",
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "started_at": "2026-10-12T14:02:11.204Z",
+                  "last_seen_at": "2026-10-12T14:31:40.518Z",
+                  "ended_at": null,
+                  "end_reason": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "issue": {
+                    "type": "integer",
+                    "description": "The issue it works on."
+                  },
+                  "pull": {
+                    "type": "integer",
+                    "description": "The pull request it works on."
+                  },
+                  "branch": {
+                    "type": "string",
+                    "description": "The branch it works on."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "What it is doing, in a few words. Up to 200 characters."
+                  },
+                  "head_commit": {
+                    "type": "string",
+                    "description": "The commit it is at, such as after a push."
+                  }
+                }
+              },
+              "example": {
+                "pull": 14,
+                "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/sessions/{id}/end": {
+      "post": {
+        "operationId": "end_session",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "End a session",
+        "description": "End one of your sessions, with an optional `reason`. A session.ended event. Ending one already ended returns it as it is. Its claims are not released: release them, hand the issue off, or let them expire.",
+        "x-operation": "end_session",
+        "x-mcp-tool": "session",
+        "x-mcp-action": "end",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The session's id (ses_…), from start_session or list_sessions."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "issue": 12,
+                  "pull": 14,
+                  "branch": "greet-caller",
+                  "actor": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx"
+                  },
+                  "harness": "claude_code",
+                  "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+                  "title": "Make the greeting name the caller",
+                  "state": "ended",
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "started_at": "2026-10-12T14:02:11.204Z",
+                  "last_seen_at": "2026-10-12T14:40:03.115Z",
+                  "ended_at": "2026-10-12T14:40:03.115Z",
+                  "end_reason": "done"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "description": "Why it ended, in a few words. \"ended\" if left out."
+                  }
+                }
+              },
+              "example": {
+                "reason": "done"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/sessions/{id}/entries": {
+      "post": {
+        "operationId": "record_session_entries",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Record entries in a session",
+        "description": "Record entries in one of your sessions: up to 200 at a time, each with `kind` (prompt, message, tool_call, tool_result or note), `text` (up to 64,000 characters), and for tools `tool`. Give each a `key` and recording it again does nothing, so a retried hook records it once. Entries of a session attached to a pull request show in that pull request's session too, where reviewers read why the change is what it is. Recording is a heartbeat. Returns how many were `recorded` and how many were `duplicates`.\n\nUp to 200 entries a request. An entry whose `key` the session recorded before is counted in `duplicates` and not recorded again. Entries of a session on a pull request show in that pull request's session too (read_session).",
+        "x-operation": "record_session_entries",
+        "x-mcp-tool": "session",
+        "x-mcp-action": "record",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The session's id (ses_…), from start_session or list_sessions."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "recorded": 2,
+                  "duplicates": 0
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entries": {
+                    "type": "array",
+                    "description": "Up to 200 entries, oldest first.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "prompt",
+                            "message",
+                            "tool_call",
+                            "tool_result",
+                            "note"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "tool": {
+                          "type": "string",
+                          "description": "For tool_call and tool_result: the tool's name."
+                        },
+                        "commit": {
+                          "type": "string",
+                          "description": "The commit it was recorded at; the session's head if left out."
+                        },
+                        "key": {
+                          "type": "string",
+                          "description": "An idempotency key, unique in the session: an entry with a key recorded before is skipped."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "text"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "entries"
+                ]
+              },
+              "example": {
+                "entries": [
+                  {
+                    "kind": "prompt",
+                    "text": "Make the greeting name the caller (issue #12).",
+                    "key": "prompt-1"
+                  },
+                  {
+                    "kind": "tool_call",
+                    "text": "cargo test",
+                    "tool": "Bash",
+                    "key": "tool-7"
+                  }
+                ]
               }
             }
           }
@@ -42157,6 +44169,14 @@
                         "integration.passed",
                         "decision.recorded",
                         "session.appended",
+                        "session.started",
+                        "session.ended",
+                        "work.claimed",
+                        "work.released",
+                        "work.claim_expired",
+                        "work.handoff_requested",
+                        "dependency.changed",
+                        "overlap.detected",
                         "package.published",
                         "package.version_deleted",
                         "package.deleted",
@@ -42436,6 +44456,14 @@
                         "integration.passed",
                         "decision.recorded",
                         "session.appended",
+                        "session.started",
+                        "session.ended",
+                        "work.claimed",
+                        "work.released",
+                        "work.claim_expired",
+                        "work.handoff_requested",
+                        "dependency.changed",
+                        "overlap.detected",
                         "package.published",
                         "package.version_deleted",
                         "package.deleted",
@@ -43361,6 +45389,14 @@
                         "integration.passed",
                         "decision.recorded",
                         "session.appended",
+                        "session.started",
+                        "session.ended",
+                        "work.claimed",
+                        "work.released",
+                        "work.claim_expired",
+                        "work.handoff_requested",
+                        "dependency.changed",
+                        "overlap.detected",
                         "package.published",
                         "package.version_deleted",
                         "package.deleted",
@@ -43626,6 +45662,14 @@
                         "integration.passed",
                         "decision.recorded",
                         "session.appended",
+                        "session.started",
+                        "session.ended",
+                        "work.claimed",
+                        "work.released",
+                        "work.claim_expired",
+                        "work.handoff_requested",
+                        "dependency.changed",
+                        "overlap.detected",
                         "package.published",
                         "package.version_deleted",
                         "package.deleted",

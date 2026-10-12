@@ -18,6 +18,7 @@ use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
 use crate::deploy_keys::DeployKeysOp;
+use crate::coordination::CoordinationOp;
 
 /// A key as `#[serde(rename_all = "camelCase")]` writes it.
 fn camel_key(key: &str) -> String {
@@ -234,6 +235,16 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Checks(ChecksOp::ListCheckRunsForRef) => through::<checks::CheckRunList>(op, sent),
         Op::Checks(ChecksOp::ListCheckSuitesForRef) => through::<checks::CheckSuiteList>(op, sent),
         Op::Checks(ChecksOp::GetCheckSuite) => through::<checks::CommitCheckSuite>(op, sent),
+        Op::Coordination(CoordinationOp::StartSession | CoordinationOp::UpdateSession | CoordinationOp::EndSession) => {
+            through::<work::Session>(op, sent)
+        }
+        Op::Coordination(CoordinationOp::GetSession) => through::<work::SessionDetail>(op, sent),
+        Op::Coordination(CoordinationOp::ListSessions) => through::<Vec<work::Session>>(op, sent),
+        Op::Coordination(CoordinationOp::RecordSessionEntries) => through::<work::Recorded>(op, sent),
+        Op::Coordination(CoordinationOp::ClaimIssue) => through::<work::Claimed>(op, sent),
+        Op::Coordination(CoordinationOp::ReleaseClaim | CoordinationOp::HandOffIssue) => through::<work::Claim>(op, sent),
+        Op::Coordination(CoordinationOp::ListClaims) => through::<Vec<work::Claim>>(op, sent),
+        Op::Coordination(CoordinationOp::GetWork) => through::<work::WorkContext>(op, sent),
         _ => sent,
     }
 }

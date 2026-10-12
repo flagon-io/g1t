@@ -15,7 +15,7 @@ use crate::repos::RepoPath;
 use crate::{User, Viewer};
 
 /// Every event a webhook can be sent, in the order people are shown them.
-pub const EVENT_TYPES: [&str; 110] = [
+pub const EVENT_TYPES: [&str; 118] = [
     "git.push",
     "git.deleted",
     "branch.renamed",
@@ -102,6 +102,14 @@ pub const EVENT_TYPES: [&str; 110] = [
     "integration.passed",
     "decision.recorded",
     "session.appended",
+    "session.started",
+    "session.ended",
+    "work.claimed",
+    "work.released",
+    "work.claim_expired",
+    "work.handoff_requested",
+    "dependency.changed",
+    "overlap.detected",
     "package.published",
     "package.version_deleted",
     "package.deleted",
