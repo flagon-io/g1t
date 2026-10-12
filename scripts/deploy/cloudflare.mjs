@@ -365,3 +365,37 @@ export async function dockerAvailable() {
 export function lastLines(text, count = 12) {
   return text.trim().split(/\r?\n/).slice(-count).join("\n");
 }
+
+/**
+ * What a failed Wrangler command said went wrong: its last `✘ [ERROR]`
+ * block, which says why, rather than its last lines, which after an API
+ * error are the trace of the request that failed and cut its reason off.
+ * The last lines when there is no such block.
+ */
+export function wranglerError(out, count = 20) {
+  const lines = out.trim().split(/\r?\n/);
+  let at = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/\[ERROR\]/.test(lines[i])) {
+      at = i;
+      break;
+    }
+  }
+  return at < 0 ? lastLines(out, count) : lines.slice(at, at + count).join("\n");
+}
+
+/**
+ * Whether a failed `wrangler deploy` is worth trying again: anything but a
+ * mistake in what is deployed (a build that fails, a configuration that
+ * does not read), which fails the same way every time. Cloudflare's API
+ * answering an error, timing out or dropping the connection, which it does
+ * now and then when many Workers deploy one after another, is not.
+ */
+export function retryableDeploy(out) {
+  const error = wranglerError(out);
+  const ours = /Build failed|Could not resolve|No loader is configured|is not exported by|Unexpected token|Processing .*wrangler\.jsonc? configuration|is not a valid|Missing entry-point|The entry-point file .* was not found/i;
+  return !ours.test(error);
+}
+
+/** The waits before the second and third tries of a `wrangler deploy` that failed. */
+export const DEPLOY_RETRY_WAITS_MS = [20_000, 60_000];

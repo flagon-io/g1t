@@ -36,7 +36,9 @@ import {
   pendingFrom,
   pendingMigrations,
   readLive,
+  retryableDeploy,
   versionFrom,
+  wranglerError,
 } from "./cloudflare.mjs";
 import { changedNames, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
 import { decide, git, planJson, pool } from "./plan.mjs";
@@ -811,4 +813,35 @@ test("a deploy by hand reports to the repository on g1t, and a workflow's does n
   const settle = await reportDeployment({ head: "abc", subject: "s", units: ["web"], log: () => {}, env: { GITHUB_ACTIONS: "true", G1T_DEPLOY_TOKEN: "t" }, fetchImpl: () => { called = true; } });
   assert.equal(settle, null);
   assert.equal(called, false);
+});
+
+// What a deploy said when Cloudflare's API failed under it: the reason is
+// in the ✘ [ERROR] block, and the last lines are only the request's trace.
+const API_FAILED = [
+  "Uploaded g1t-runner (12.31 sec)",
+  "✘ [ERROR] A request to the Cloudflare API (/accounts/abc/workers/scripts/g1t-runner/versions) failed.",
+  "",
+  "  Service unavailable [code: 10013]",
+  "",
+  "  If you think this is a bug, please open an issue at: https://github.com/cloudflare/workers-sdk/issues/new/choose",
+  "",
+  '    "result": {',
+  '      "id": "g1t-runner",',
+  "  GET /accounts/abc/workers/services/g1t-runner -> 200 OK",
+  "  Cloudflare Ray ID: a49663530d5eebe3-SJC",
+].join("\n");
+
+test("a failed wrangler command is reported by its error, not its trace", () => {
+  const said = wranglerError(API_FAILED);
+  assert.match(said, /^✘ \[ERROR\] A request to the Cloudflare API/);
+  assert.match(said, /Service unavailable \[code: 10013\]/);
+  // No error block: its last lines, as before.
+  assert.equal(wranglerError("one\ntwo\nthree", 2), "two\nthree");
+});
+
+test("Cloudflare failing is tried again; a mistake in what is deployed is not", () => {
+  assert.equal(retryableDeploy(API_FAILED), true);
+  assert.equal(retryableDeploy("✘ [ERROR] Build failed with 1 error:\n  src/index.ts:3:7: ERROR: Could not resolve \"./nope\""), false);
+  assert.equal(retryableDeploy("✘ [ERROR] Processing wrangler.jsonc configuration:\n  - \"main\" is not a valid path"), false);
+  assert.equal(retryableDeploy("fetch failed: ECONNRESET"), true);
 });
