@@ -66,6 +66,14 @@ test("a stand-in sent to another host is left as it is and reported", () => {
   assert.deepEqual(fill("https://example.com/", new Headers({ "x-api-key": API.standIn }), secrets).filled, []);
 });
 
+test("a value is filled in only over HTTPS, even for its own host", () => {
+  const headers = new Headers({ authorization: `Bearer ${NPM.standIn}` });
+  const plain = fill("http://registry.npmjs.org/pkg", headers, secrets);
+  assert.equal(plain.headers.get("authorization"), `Bearer ${NPM.standIn}`);
+  assert.deepEqual(plain.filled, []);
+  assert.deepEqual(plain.misdirected, [NPM]);
+});
+
 test("a stand-in the job was not given is left alone, and not reported", () => {
   const stranger = `g1tsec_${"c".repeat(48)}`;
   const out = fill("https://registry.npmjs.org/", new Headers({ authorization: `Bearer ${stranger}` }), secrets);

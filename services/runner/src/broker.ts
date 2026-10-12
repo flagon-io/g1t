@@ -89,9 +89,14 @@ function swap(text: string, secrets: readonly BrokeredSecret[], encode: (value: 
 export function fill(url: string, headers: Headers, secrets: readonly BrokeredSecret[]): Filled {
   const present = new Set(standInsIn(url, headers));
   const carried = secrets.filter((secret) => present.has(secret.standIn));
-  const host = normalizeHost(new URL(url).host);
-  const filled = carried.filter((secret) => allows(secret.hosts, host));
-  const misdirected = carried.filter((secret) => !allows(secret.hosts, host));
+  const parsed = new URL(url);
+  const host = normalizeHost(parsed.host);
+  // Only over HTTPS: a value filled into plain HTTP would cross the
+  // internet readable by anyone on the way, its host or not. Such a
+  // request goes with the stand-in, and is reported as misdirected.
+  const secure = parsed.protocol === "https:";
+  const filled = carried.filter((secret) => secure && allows(secret.hosts, host));
+  const misdirected = carried.filter((secret) => !filled.includes(secret));
   if (filled.length === 0) return { url, headers, filled, misdirected };
 
   const out = new Headers();
@@ -106,7 +111,6 @@ export function fill(url: string, headers: Headers, secrets: readonly BrokeredSe
   });
   // Only the query string: a value in a path is rare, and is left as the
   // job wrote it.
-  const parsed = new URL(url);
   if (parsed.search) parsed.search = swap(parsed.search, filled, encodeURIComponent);
   return { url: parsed.toString(), headers: out, filled, misdirected };
 }
@@ -141,10 +145,10 @@ export function scrubHeaders(headers: Headers, filled: readonly BrokeredSecret[]
 
 /**
  * The line a job's log gets when a brokered secret's stand-in went to a
- * host it is not for.
+ * host it is not for, or over plain HTTP.
  */
 export function misdirectedNote(name: string, host: string): string {
-  return `##[warning]${name} was sent to ${normalizeHost(host)}, which it is not for, so g1t did not fill it in.`;
+  return `##[warning]${name} was sent to ${normalizeHost(host)}, which it is not for or not over HTTPS, so g1t did not fill it in.`;
 }
 
 /** The most misdirected secrets noted in one job's log. */

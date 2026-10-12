@@ -103,8 +103,9 @@ A secret a job uses only to call an API need not enter the job at all.
 Broker it, and the job gets a stand-in in its place: a token such as
 `g1tsec_3f9c…` (48 random characters after the prefix), made for that job
 and that secret alone. As the job's requests leave its sandbox, g1t puts
-the real value in place of the stand-in on requests to the hosts the
-secret is for. Code in the job, a compromised dependency included, can
+the real value in place of the stand-in on HTTPS requests to the hosts
+the secret is for; never over plain HTTP, where it would cross the
+internet readable. Code in the job, a compromised dependency included, can
 read only the stand-in, which works nowhere else and stops working when
 the job ends.
 
