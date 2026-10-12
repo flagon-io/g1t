@@ -45,7 +45,11 @@ jobs:
   release:
     name: Build and publish to g1t.sh/downloads/mobile
     runs-on: ubuntu-latest
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5

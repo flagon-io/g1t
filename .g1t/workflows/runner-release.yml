@@ -29,7 +29,11 @@ jobs:
   binaries:
     name: Build, sign and publish
     runs-on: ubuntu-latest
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -95,7 +99,11 @@ jobs:
     # Builds for arm64 as well as amd64, which needs QEMU's emulators
     # registered on the machine: a self-hosted runner's, for now.
     runs-on: [self-hosted, docker]
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 30
     # Its token pushes the image to g1t's registry.
     permissions:

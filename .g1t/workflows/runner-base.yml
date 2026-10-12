@@ -58,7 +58,11 @@ jobs:
     # repository variable RUNNER_BASE_SELF_HOSTED is "true": without one,
     # each run waited in the queue for a day and a half and then failed.
     if: ${{ vars.RUNNER_BASE_SELF_HOSTED == 'true' }}
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
