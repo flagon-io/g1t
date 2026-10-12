@@ -18,6 +18,7 @@ mod fallback;
 mod forks;
 mod git_http;
 mod git_ops;
+mod hidden_refs;
 mod import;
 mod land;
 mod languages;

@@ -197,6 +197,33 @@ Only whoever opened the pull request can push to it, or, for one g1t
 made, whoever asked for it. Pushes to a fork
 update the pull request's head commit on its page.
 
+## Pull request refs
+
+g1t keeps `refs/pull/<number>/head` and `refs/pull/<number>/merge` in a
+repository for each open pull request (see
+[What a pull request's run builds](/guides/actions/#what-a-pull-requests-run-builds)). You can
+fetch them like any branch, and a `git clone --mirror` gets them, as on
+GitHub:
+
+```sh
+git fetch origin refs/pull/12/head
+```
+
+They are hidden refs, as on GitHub: only g1t moves them. A push leaves
+them out of what it reads from the repository, and a push that names one
+is refused for that ref alone, with the rest of the push applied. So
+`git push --mirror` of a repository you cloned with `--mirror` from
+GitHub moves every branch and tag and reports only the pull request refs:
+
+```text
+ ! [remote rejected] refs/pull/1/head -> refs/pull/1/head (deny updating a hidden ref)
+```
+
+Git then says some refs failed to push; the branches and tags are there.
+To leave them out, push branches and tags alone:
+`git push origin --all && git push origin --tags`. A push with `--atomic`
+that names one is refused whole.
+
 ## Limits
 
 ### Size limits
