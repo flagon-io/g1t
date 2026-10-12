@@ -25,7 +25,10 @@ moment it is deployed. What the app adds is what a browser cannot do:
   and the runner.
 
 Get it at [g1t.sh/download](https://g1t.sh/download), or from your account
-menu, **Get the desktop app**.
+menu, **Get the desktop app**. The page opens on the system you visit it
+from, with every other platform a tab away, and lists the
+[runner](/guides/self-hosted-runners/) and the g1t CLI for each system
+under **Command line**.
 
 ## Install
 

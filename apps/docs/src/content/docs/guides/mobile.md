@@ -11,17 +11,19 @@ Customize. Everything else opens on the site, in your phone's browser.
 
 ## Install it
 
-Android comes first. Get it from [g1t.sh/download](https://g1t.sh/download),
-under **On your phone**:
+Android comes first. Get it from [g1t.sh/download](https://g1t.sh/download):
+the page opens on **Android** when you visit it on an Android phone, and
+[g1t.sh/download?platform=android](https://g1t.sh/download?platform=android)
+opens it from anywhere.
 
 1. On your Android phone, choose **Download for Android**. On a computer,
-   scan the code there with the phone's camera instead.
+   scan the code beside it with the phone's camera instead.
 2. Open the downloaded file. Android asks once to allow your browser to
    install apps: allow it.
 3. Open **g1t (beta)** and choose **Sign in with g1t**.
 
-The page shows each release's SHA-256, to check the file you have is the
-one g1t published.
+Point at the file's name on the page to see its SHA-256, to check the file
+you have is the one g1t published.
 
 **Why a download, and not Google Play?** Google Play and the App Store
 publish a company's apps only once it is verified with a D-U-N-S number,
@@ -137,7 +139,7 @@ as with g1t.sh. It talks to one g1t at a time, and opens on g1t.sh unless
 you point it elsewhere. Two ways to point it at yours:
 
 - **Scan its code.** Your g1t's download page, `<your g1t>/download`, has
-  a QR code under **On your phone**. Scan it with the phone's camera, or
+  a QR code under its platforms, **Use the phone app with** your g1t. Scan it with the phone's camera, or
   open the page on the phone and choose **Open in the g1t app**. The app
   asks **Use g1t.example.com?**, then signs you in there.
 - **Type its address.** On the sign-in screen, choose **Using your own
