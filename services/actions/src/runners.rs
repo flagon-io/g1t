@@ -1575,11 +1575,12 @@ impl Actions {
                 labels: String,
                 queued_at: Option<String>,
                 repo: String,
+                repo_id: String,
             }
             let waiting = self
                 .db
                 .prepare(
-                    "SELECT jobs.id, jobs.name, jobs.run_id, jobs.labels, jobs.queued_at, runs.repo FROM jobs JOIN runs ON runs.id = jobs.run_id
+                    "SELECT jobs.id, jobs.name, jobs.run_id, jobs.labels, jobs.queued_at, runs.repo, jobs.repo_id FROM jobs JOIN runs ON runs.id = jobs.run_id
                      WHERE jobs.status = 'queued' AND jobs.labels IS NOT NULL AND lower(jobs.namespace) = ? AND jobs.queued_at < ?
                      ORDER BY jobs.rowid LIMIT 20",
                 )
@@ -1592,11 +1593,17 @@ impl Actions {
             }
             let groups = self.group_rows(&workspace).await?;
             let online: Vec<RunnerRow> = self.runner_rows(&workspace).await?.into_iter().filter(|r| r.online(at)).collect();
+            // A repository's visibility is asked only when a host-mode runner
+            // is online, since only those pass over a public repository's jobs.
+            let any_host = online.iter().any(|runner| runner.isolation.as_deref() == Some("host"));
+            let mut looked = Looked::default();
             for job in waiting {
                 let wanted = Wanted::from_stored(&serde_json::from_str::<Vec<String>>(&job.labels).unwrap_or_default());
+                let visibility = if any_host { self.visibility_once(&mut looked, &job.repo_id).await } else { None };
                 let served = online.iter().any(|runner| {
                     let group = runner.group_id.as_ref().and_then(|id| groups.iter().find(|g| &g.id == id));
                     wanted.matches(&runner.labels(), group.map(|g| g.name.as_str()))
+                        && model::isolation_allows(runner.isolation.as_deref(), visibility.as_deref())
                 });
                 if !served {
                     out.push(StuckJob {
