@@ -369,6 +369,7 @@ impl Job {
             return true;
         }
         self.log.line("Prepare all required actions");
+        self.log.line("Getting action download info");
         let mut ready = true;
         for (owner, repo, git_ref) in &wanted {
             if self.fetch_remote_action(owner, repo, git_ref).is_none() {
@@ -420,6 +421,12 @@ impl Job {
         ok
     }
 
+    fn log_header(&mut self, uses: &str, with: &BTreeMap<String, String>, env: &BTreeMap<String, String>) {
+        for line in super::uses_header(uses, with, env) {
+            self.log.line(&line);
+        }
+    }
+
     fn deadline_left(&self) -> Duration {
         self.remaining_time()
     }
@@ -437,6 +444,15 @@ impl Job {
         _timeout: Duration,
     ) -> (bool, BTreeMap<String, String>) {
         let uses = uses.trim();
+        let (name, git_ref) = uses.split_once('@').unwrap_or((uses, ""));
+        let lower = name.to_ascii_lowercase();
+        // The step opens as GitHub's do: `Run` and the action, its inputs
+        // and variables, folded. An action fetched from a repository lists
+        // its inputs as they are read, its defaults among them.
+        let fetched = !uses.starts_with("docker://") && !native(&lower, self.docker_hosted);
+        if !fetched {
+            self.log_header(uses, with, env);
+        }
         if let Some(image) = uses.strip_prefix("docker://") {
             // `with.args` and `with.entrypoint` are the container's; every
             // input is also an `INPUT_` variable, as on GitHub.
@@ -454,8 +470,6 @@ impl Job {
             let (ok, outputs, _) = self.run_docker(&run);
             return (ok, outputs);
         }
-        let (name, git_ref) = uses.split_once('@').unwrap_or((uses, ""));
-        let lower = name.to_ascii_lowercase();
         if lower == "docker/setup-buildx-action" && native(&lower, self.docker_hosted) {
             return self.setup_buildx(with);
         }
@@ -470,6 +484,7 @@ impl Job {
             _ => {}
         }
         let Some(found) = self.resolve_action(uses) else {
+            self.log_header(uses, with, env);
             return (false, BTreeMap::new());
         };
         let Action { dir, local, manifest: action, .. } = &found;
@@ -478,6 +493,7 @@ impl Job {
         let env_context = env.clone();
         let contexts = self.contexts_for(frame, &env_context);
         let inputs = self.action_inputs(action, with, &contexts, true);
+        self.log_header(uses, &inputs, env);
 
         let runs = action.get("runs").cloned().unwrap_or(Value::Null);
         let using = runs.get("using").map(expr::to_text).unwrap_or_default().to_ascii_lowercase();

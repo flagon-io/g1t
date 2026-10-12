@@ -22,7 +22,7 @@ client can sometimes get a few more through before it is limited.
 | Pages on g1t.sh, signed in | Session | 1,200 |
 | Pages on g1t.sh, [with a token](/guides/authentication/#use-a-token-on-the-website) | Token | 1,000 |
 | Pages on g1t.sh, signed out | Client IP address | 600 |
-| Archive downloads, workflow run pages, logs and search, signed out | Client IP address | 30 |
+| Archive downloads, workflow run pages, log downloads and search, signed out | Client IP address | 30 |
 | [Raw files](/guides/git/#raw-files) on g1tusercontent.com | Client IP address, together with pages signed out | 600 |
 | Container and package registries | See [storage and pull limits](/guides/containers/#storage-and-pull-limits) | |
 
@@ -31,6 +31,9 @@ the other's limit. A request with a token that is not valid counts against
 its IP address, as a request without a token does. On g1t.sh, every
 request from one IP address, signed in or not, also counts toward 3,000 a
 minute.
+
+A running job's live log, which its run's page asks for about once a
+second, counts as a page, not as a log download.
 
 Agents' sandboxes and workflow jobs report to g1t with their own
 credentials. Those reports are not rate limited.

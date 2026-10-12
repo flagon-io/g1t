@@ -1142,7 +1142,55 @@ pick one to see its steps and their logs as they are written. Groups
 fold, errors and warnings are marked, and secrets are replaced with
 `***`. The page keeps itself up to date while the run goes on.
 
-The start of each job's log lists what its [token](#the-jobs-token) may do.
+### Live logs
+
+While a job runs, its log reaches the page within about two seconds of
+being printed: the runner sends what a step prints every second, and the
+page asks for more every second while a step is running.
+
+- The running step opens by itself, and its timer counts up. Its log
+  follows the newest line while the end of it is on screen. Scroll up and
+  it stays where you are, with **Jump to latest** to go back to the end.
+- A step that prints nothing for a while says so under its last line:
+  **Running · no output for 2m 10s**, or **no output yet** before its
+  first line. The job's header names the step it is on.
+- Colour that tools print is shown as they print it: bold, dim, italic,
+  underline, the 16 terminal colours, 256 colours and 24-bit colour, for
+  text and background, in both the light and the dark theme. Tools built
+  on chalk or supports-color colour their output because the job has
+  `GITHUB_ACTIONS=true`, as on GitHub; others need asking, such as
+  `CARGO_TERM_COLOR: always` in the step's `env` for cargo. Other escape codes (moving the cursor, clearing a
+  line) are left out, and a link keeps its text. Search reads the text
+  without the colour codes.
+- Every line is stamped with the time it was printed, as GitHub stamps
+  it (`2026-10-12T09:41:07.1234567Z`). The clock button beside **Search
+  logs** shows or hides the times; your browser remembers which.
+- A download (the job's `log.txt` and the run's zip) has the time at the
+  start of every line, as GitHub's downloaded logs do.
+- If the page cannot reach g1t for a moment, it says **Reconnecting to the
+  log** and tries again, waiting longer each time up to half a minute.
+  A tab you are not looking at stops asking, and catches up when you come
+  back to it.
+
+A cache restore, an artifact upload or download, and other transfers say
+how far they have got every few seconds
+(`Received 46137344 of 523190823 (8.8%), 43.9 MBs/sec`).
+
+A [self-hosted runner](/guides/self-hosted-runners/) stamps its lines and
+writes these headers once it has updated itself to a release that does;
+until then its logs show without times.
+
+### What a job's log says
+
+Each job's log reads as GitHub's does:
+
+| Step | What it shows |
+| --- | --- |
+| **Set up job** | The runner's version and name; the operating system; the runner image (`ImageOS` and `ImageVersion` when the machine's image sets them, and the software g1t's machines have); the machine (hosted or self-hosted, its architecture, CPUs and memory); what the job's [token](#the-jobs-token) may do, under **G1T_TOKEN Permissions**; the secret source; each action the job uses as it is downloaded, with the commit it resolved to (`Download action repository 'actions/setup-node@v4' (SHA:…)`); and the job's matrix. |
+| A `run:` step | A folded group, `Run` and the script's first line, holding the whole script, the shell it ran in (`shell: /usr/bin/bash -e {0}`) and its variables under `env:`, secrets masked. Then what it printed. |
+| A `uses:` step | A folded group, `Run owner/repo@ref`, holding its inputs under `with:` (an action's defaults among them) and its variables under `env:`. |
+| **Post** steps and **Stop containers** | An action's `post`, saving the cache, then the job's containers stopped, as on GitHub. |
+| **Complete job** | The job's outputs as they are set (`Set output 'version'`), and **Cleaning up orphan processes**: anything the steps started and left running is stopped (`Terminate orphan process: pid (1234) (node)`). The runner finds those processes by `RUNNER_TRACKING_ID`, as GitHub's does, so a process that unsets it is not found. Only on Linux. |
 
 ### The run's summary
 

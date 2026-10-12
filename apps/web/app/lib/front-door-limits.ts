@@ -41,9 +41,15 @@ export type FrontDoorLimits = {
 /** Files the Worker serves that are never limited: build output, fonts, and top-level files such as robots.txt. */
 const UNLIMITED = /^\/(?:assets\/|fonts\/|favicon|[^/]+\.(?:ico|png|svg|txt|xml|webmanifest)$)/;
 
-/** What is costly to answer for a signed-out visitor: a repository's archives, a run's page, logs and artifacts, and search. */
+/**
+ * What is costly to answer for a signed-out visitor: a repository's
+ * archives, a run's page, log downloads and artifacts, and search. A
+ * running job's live log (`actions/jobs/:job/log`, a small read the page
+ * makes about once a second) counts as a page: with the run's page
+ * refreshing beside it, it would use up this limit in half a minute.
+ */
 const HEAVY =
-  /^\/(?:search(?:\.data)?$|[^/]+\/[^/]+\/(?:archive\/|actions\/runs\/[^/]+(?:\.data|\/logs\.zip|\/artifacts\/[^/]+)?$|actions\/jobs\/[^/]+\/log))/;
+  /^\/(?:search(?:\.data)?$|[^/]+\/[^/]+\/(?:archive\/|actions\/runs\/[^/]+(?:\.data|\/logs\.zip|\/artifacts\/[^/]+)?$|actions\/jobs\/[^/]+\/log\.txt$))/;
 
 export function unlimited(pathname: string): boolean {
   return UNLIMITED.test(pathname);

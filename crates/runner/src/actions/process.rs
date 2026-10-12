@@ -223,6 +223,65 @@ fn signal(child: &std::process::Child, signal: &str) {
 #[cfg(not(unix))]
 fn signal(_child: &std::process::Child, _signal: &str) {}
 
+/// What the job's steps started and left running, as GitHub's "Complete
+/// job" finds it: every process whose environment carries the job's
+/// `RUNNER_TRACKING_ID`, which each step's processes inherit, by pid and
+/// name. Read from /proc, so only on Linux; elsewhere nothing is found.
+pub(crate) fn orphans(tracking_id: &str) -> Vec<(u32, String)> {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let marker = format!("RUNNER_TRACKING_ID={tracking_id}");
+    let own = std::process::id();
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|name| name.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pid == own {
+            continue;
+        }
+        // Another user's process cannot be read, and is not the job's.
+        let Ok(environ) = std::fs::read(entry.path().join("environ")) else {
+            continue;
+        };
+        if !environ.split(|byte| *byte == 0).any(|pair| pair == marker.as_bytes()) {
+            continue;
+        }
+        let stat = std::fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
+        if let Some(name) = live_name(&stat) {
+            found.push((pid, name));
+        }
+    }
+    found.sort();
+    found
+}
+
+/// A running process's name from `/proc/<pid>/stat` (`pid (name) state …`),
+/// whose name may hold spaces and parentheses; None for a zombie, which
+/// has already ended.
+fn live_name(stat: &str) -> Option<String> {
+    let open = stat.find('(')?;
+    let close = stat.rfind(')')?;
+    let state = stat.get(close + 1..)?.split_whitespace().next()?;
+    (state != "Z").then(|| stat.get(open + 1..close).map(str::to_owned)).flatten()
+}
+
+/// Kills the processes `orphans` found.
+pub(crate) fn kill_orphans(found: &[(u32, String)]) {
+    #[cfg(unix)]
+    for (pid, _) in found {
+        if let Ok(pid) = libc::pid_t::try_from(*pid) {
+            // SAFETY: kill(2) on one pid; it reads no memory of ours.
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = found;
+}
+
 /// Runs the command, sending its output (stdout and stderr together, a
 /// line at a time) through `commands` to the log, until it ends or
 /// `timeout` passes.
@@ -360,6 +419,33 @@ fn run_until(
 #[cfg(test)]
 mod tests {
     use super::parse_command;
+
+    /// What a step left running is found by the job's tracking id, and
+    /// only that.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn orphans_are_found_by_the_jobs_tracking_id() {
+        use super::{kill_orphans, live_name, orphans};
+        let id = format!("github_test{}", std::process::id());
+        let mut left = std::process::Command::new("sleep").arg("30").env("RUNNER_TRACKING_ID", &id).spawn().unwrap();
+        let mut other = std::process::Command::new("sleep").arg("30").env("RUNNER_TRACKING_ID", "github_someone_else").spawn().unwrap();
+        // /proc shows the new environment once exec has happened.
+        let mut found = Vec::new();
+        for _ in 0..50 {
+            found = orphans(&id);
+            if !found.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(found, [(left.id(), "sleep".to_owned())]);
+        kill_orphans(&found);
+        assert!(!left.wait().unwrap().success(), "killed");
+        let _ = other.kill();
+        let _ = other.wait();
+        assert_eq!(live_name("12 (tmux: server) S 1 12 12"), Some("tmux: server".into()));
+        assert_eq!(live_name("13 (gone) Z 1 13 13"), None);
+    }
 
     /// A cancelled step hears SIGINT, and its own trap runs.
     #[cfg(unix)]

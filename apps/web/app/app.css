@@ -1147,3 +1147,64 @@ body[data-frame="app"] {
   @apply my-0.5 border-l-2 border-line-strong pl-3 text-muted;
 }
 
+/*
+ * Colour in a job's log (lib/ansi.ts): the 16 terminal colours, for text
+ * (`ansi-fg-N`) and its background (`ansi-bg-N`), each a pair that reads
+ * on the log's background in the light theme and the dark one, as
+ * GitHub's log viewer draws them. `inverse` with no colour named swaps
+ * the text's and the background's.
+ */
+:root {
+  --ansi-0: light-dark(#24292f, #6e7681);
+  --ansi-1: light-dark(#cf222e, #ff7b72);
+  --ansi-2: light-dark(#116329, #3fb950);
+  --ansi-3: light-dark(#7d4e00, #d29922);
+  --ansi-4: light-dark(#0969da, #58a6ff);
+  --ansi-5: light-dark(#8250df, #bc8cff);
+  --ansi-6: light-dark(#1b7c83, #39c5cf);
+  --ansi-7: light-dark(#6e7781, #b1bac4);
+  --ansi-8: light-dark(#57606a, #8b949e);
+  --ansi-9: light-dark(#a40e26, #ffa198);
+  --ansi-10: light-dark(#1a7f37, #56d364);
+  --ansi-11: light-dark(#633c01, #e3b341);
+  --ansi-12: light-dark(#218bff, #79c0ff);
+  --ansi-13: light-dark(#a475f9, #d2a8ff);
+  --ansi-14: light-dark(#3192aa, #56d4dd);
+  --ansi-15: light-dark(#8c959f, #ffffff);
+}
+@layer components {
+  .ansi-fg-0 { color: var(--ansi-0); }
+  .ansi-fg-1 { color: var(--ansi-1); }
+  .ansi-fg-2 { color: var(--ansi-2); }
+  .ansi-fg-3 { color: var(--ansi-3); }
+  .ansi-fg-4 { color: var(--ansi-4); }
+  .ansi-fg-5 { color: var(--ansi-5); }
+  .ansi-fg-6 { color: var(--ansi-6); }
+  .ansi-fg-7 { color: var(--ansi-7); }
+  .ansi-fg-8 { color: var(--ansi-8); }
+  .ansi-fg-9 { color: var(--ansi-9); }
+  .ansi-fg-10 { color: var(--ansi-10); }
+  .ansi-fg-11 { color: var(--ansi-11); }
+  .ansi-fg-12 { color: var(--ansi-12); }
+  .ansi-fg-13 { color: var(--ansi-13); }
+  .ansi-fg-14 { color: var(--ansi-14); }
+  .ansi-fg-15 { color: var(--ansi-15); }
+  .ansi-bg-0 { background-color: var(--ansi-0); }
+  .ansi-bg-1 { background-color: var(--ansi-1); }
+  .ansi-bg-2 { background-color: var(--ansi-2); }
+  .ansi-bg-3 { background-color: var(--ansi-3); }
+  .ansi-bg-4 { background-color: var(--ansi-4); }
+  .ansi-bg-5 { background-color: var(--ansi-5); }
+  .ansi-bg-6 { background-color: var(--ansi-6); }
+  .ansi-bg-7 { background-color: var(--ansi-7); }
+  .ansi-bg-8 { background-color: var(--ansi-8); }
+  .ansi-bg-9 { background-color: var(--ansi-9); }
+  .ansi-bg-10 { background-color: var(--ansi-10); }
+  .ansi-bg-11 { background-color: var(--ansi-11); }
+  .ansi-bg-12 { background-color: var(--ansi-12); }
+  .ansi-bg-13 { background-color: var(--ansi-13); }
+  .ansi-bg-14 { background-color: var(--ansi-14); }
+  .ansi-bg-15 { background-color: var(--ansi-15); }
+  .ansi-fg-inverse { color: var(--color-bg); }
+  .ansi-bg-inverse { background-color: var(--color-fg); }
+}

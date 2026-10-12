@@ -147,7 +147,8 @@ test("costly pages are recognised", () => {
   ]) {
     assert.ok(heavy(path), path);
   }
-  for (const path of ["/", "/acme/rocket", "/acme/rocket/actions", "/acme/rocket/issues/1", "/acme/search"]) {
+  // A running job's live log is asked for every second; it counts as a page.
+  for (const path of ["/", "/acme/rocket", "/acme/rocket/actions", "/acme/rocket/issues/1", "/acme/search", "/acme/rocket/actions/jobs/job_1/log"]) {
     assert.ok(!heavy(path), path);
   }
 });

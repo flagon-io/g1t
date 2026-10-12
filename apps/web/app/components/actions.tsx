@@ -4,14 +4,16 @@
  * its errors and warnings marked.
  */
 import { AlertTriangle, Ban, Check, ChevronRight, CircleDashed, CircleSlash, Clock, Hourglass, Info, Loader2, ShieldAlert, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import type { CommitStatus, Conclusion, LogChunk, WorkflowNote } from "@g1t/contracts";
 
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
-import { type Line, blocks, highlight, searchLog } from "../lib/log-lines";
+import { markSpans, parseAnsi, spanLook } from "../lib/ansi";
+import { type Line, blocks, searchLog } from "../lib/log-lines";
+import { type PollAnswer, nextPoll, retryAfterMs } from "../lib/log-poll";
 
 /**
  * Where a run, job or step stands. `of` says which: a run's `pending` waits
@@ -113,35 +115,80 @@ const LINE_STYLE: Record<Line["kind"], string> = {
   command: "text-muted",
 };
 
-function LogLine({ line, number, query = "" }: { line: Line; number: number; query?: string }) {
-  const text = line.text.replace(/^(Error|Warning|Notice): /, "");
+/** A line's time as the log shows it beside the line: GitHub's, to the millisecond. */
+function shownTime(at: string): string {
+  return at.replace(/(\.\d{3})\d*Z$/, "$1Z");
+}
+
+/** A line's text, coloured as the tool that printed it coloured it, and with a search's matches marked. */
+function LineText({ text, ansi, query }: { text: string; ansi?: string; query: string }) {
+  const spans = useMemo(() => (ansi ? parseAnsi(ansi) : [{ text, style: {} }]), [text, ansi]);
+  const pieces = useMemo(() => markSpans(spans, query), [spans, query]);
+  return (
+    <>
+      {pieces.map((piece, index) => {
+        const look = spanLook(piece.style);
+        const drawn = look.className || look.style ? (
+          <span className={look.className} style={look.style}>
+            {piece.text}
+          </span>
+        ) : (
+          piece.text
+        );
+        return piece.match ? (
+          <mark key={index} className="rounded-sm bg-accent/30 text-fg">
+            {drawn}
+          </mark>
+        ) : (
+          <Fragment key={index}>{drawn}</Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+/** One line of a step's log: its number, its time when asked for, and its text. Drawn again only when it changes. */
+type LogLineProps = { line: Line; number: number; query?: string; timestamps?: boolean };
+
+const LogLine = memo(function LogLine({ line, number, query = "", timestamps = false }: LogLineProps) {
+  const label = /^(Error|Warning|Notice): /;
+  const text = line.text.replace(label, "");
+  const ansi = line.ansi?.replace(label, "");
   return (
     <div className={`flex gap-4 px-4 hover:bg-raised/40 ${line.kind === "error" ? "bg-danger/5" : ""}`}>
       <span className="w-8 shrink-0 select-none text-right text-faint/70">{number}</span>
+      {timestamps && (
+        <time dateTime={line.at} className="w-[24ch] shrink-0 select-none text-faint/70 tabular-nums">
+          {line.at ? shownTime(line.at) : ""}
+        </time>
+      )}
       <span className={`min-w-0 whitespace-pre-wrap break-all ${LINE_STYLE[line.kind]}`}>
         {line.kind === "error" && <span className="font-semibold">Error: </span>}
         {line.kind === "warning" && <span className="font-semibold">Warning: </span>}
-        {query
-          ? highlight(text, query).map((piece, index) =>
-              piece.match ? (
-                <mark key={index} className="rounded-sm bg-accent/30 text-fg">
-                  {piece.text}
-                </mark>
-              ) : (
-                piece.text
-              ),
-            )
-          : text}
+        <LineText text={text} ansi={ansi} query={query} />
       </span>
     </div>
+  );
+}, sameLine);
+
+/** Whether a line would draw the same: a log read again as it grows makes new objects of the lines it had. */
+function sameLine(a: LogLineProps, b: LogLineProps): boolean {
+  return (
+    a.number === b.number &&
+    a.query === b.query &&
+    a.timestamps === b.timestamps &&
+    a.line.kind === b.line.kind &&
+    a.line.text === b.line.text &&
+    a.line.ansi === b.line.ansi &&
+    a.line.at === b.line.at
   );
 }
 
 /**
  * A step's log. With `query`, only the lines holding it (any case), groups
- * opened, each match marked.
+ * opened, each match marked. With `timestamps`, each line's time beside it.
  */
-export function LogText({ text, query = "" }: { text: string; query?: string }) {
+export function LogText({ text, query = "", timestamps = false }: { text: string; query?: string; timestamps?: boolean }) {
   const parsed = useMemo(() => blocks(text), [text]);
   const found = useMemo(() => searchLog(text, query), [text, query]);
   if (!text.trim()) return <p className="px-4 py-2 text-xs text-faint">No output.</p>;
@@ -149,7 +196,7 @@ export function LogText({ text, query = "" }: { text: string; query?: string }) 
     return (
       <div className="py-1 font-mono text-xs leading-5">
         {found.map(({ line, number }) => (
-          <LogLine key={number} line={line} number={number} query={query} />
+          <LogLine key={number} line={line} number={number} query={query} timestamps={timestamps} />
         ))}
       </div>
     );
@@ -158,16 +205,21 @@ export function LogText({ text, query = "" }: { text: string; query?: string }) 
     <div className="py-1 font-mono text-xs leading-5">
       {parsed.map((block, index) =>
         block.kind === "line" ? (
-          <LogLine key={index} line={block.line} number={block.number} />
+          <LogLine key={index} line={block.line} number={block.number} timestamps={timestamps} />
         ) : (
           <details key={index} className="group/log">
             <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 text-fg/85 hover:bg-raised/40">
               <span className="w-8 shrink-0" />
+              {timestamps && (
+                <time dateTime={block.at} className="ml-2.5 w-[24ch] shrink-0 select-none text-faint/70 tabular-nums">
+                  {block.at ? shownTime(block.at) : ""}
+                </time>
+              )}
               <ChevronRight size={12} className="shrink-0 text-faint transition-transform group-open/log:rotate-90" />
               {block.title}
             </summary>
             {block.lines.map(({ line, number }) => (
-              <LogLine key={number} line={line} number={number} />
+              <LogLine key={number} line={line} number={number} timestamps={timestamps} />
             ))}
           </details>
         ),
@@ -176,52 +228,114 @@ export function LogText({ text, query = "" }: { text: string; query?: string }) 
   );
 }
 
+/** A job's log as the page has it: each step's text (0 is the job's setup), when each last grew, and whether asking for more is failing. */
+export type JobLog = {
+  byStep: Map<number, string>;
+  /** When a chunk of each step's last arrived, by this browser's clock. */
+  grewAt: Map<number, number>;
+  /** The last ask failed, and the page is waiting to ask again. */
+  retrying: boolean;
+};
+
 /**
- * A job's log, fetched as it grows, split by step: `render` gets each
- * step's text (0 is the job's setup).
+ * A job's log, fetched as it grows (lib/log-poll.ts says how often), split
+ * by step. A failed fetch is tried again, waiting longer each time; while
+ * the tab is hidden it waits, and asks at once when it is shown again.
+ * `running` is whether one of the job's steps is running now.
  */
-export function useJobLog(url: string, live: boolean): Map<number, string> {
+export function useJobLog(url: string, live: boolean, running: boolean): JobLog {
   const [chunks, setChunks] = useState<LogChunk[]>([]);
+  const [grewAt, setGrewAt] = useState<Map<number, number>>(new Map());
+  const [retrying, setRetrying] = useState(false);
   const after = useRef(0);
+  const runningNow = useRef(running);
+  runningNow.current = running;
   useEffect(() => {
     after.current = 0;
     setChunks([]);
+    setGrewAt(new Map());
   }, [url]);
   useEffect(() => {
     let stopped = false;
+    let busy = false;
+    let failures = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = (delayMs: number | null) => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      if (stopped || delayMs === null) return;
+      timer = setTimeout(load, delayMs);
+    };
     const load = async () => {
+      timer = undefined;
+      if (stopped || busy) return;
+      // Hidden, a live log waits; it asks again when the tab is shown.
+      if (live && typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      busy = true;
+      let answer: PollAnswer;
       try {
-        // Pages of up to 500 chunks, until there is no more for now.
-        for (;;) {
-          const response = await fetch(`${url}?after=${after.current}`);
-          if (!response.ok) break;
+        const response = await fetch(`${url}?after=${after.current}`, { cache: "no-store" });
+        if (!response.ok) {
+          answer = { ok: false, status: response.status, retryAfterMs: retryAfterMs(response.headers.get("retry-after")) };
+        } else {
           const page = (await response.json()) as { chunks: LogChunk[]; done: boolean };
           if (stopped) return;
           if (page.chunks.length > 0) {
-            after.current = page.chunks[page.chunks.length - 1].seq;
+            after.current = page.chunks[page.chunks.length - 1]!.seq;
+            const now = Date.now();
             setChunks((known) => [...known, ...page.chunks]);
+            setGrewAt((known) => {
+              const next = new Map(known);
+              for (const chunk of page.chunks) next.set(chunk.step, now);
+              return next;
+            });
           }
-          if (page.chunks.length < 500) {
-            if (!page.done && live) timer = setTimeout(load, 2000);
-            break;
-          }
+          answer = { ok: true, done: page.done, full: page.chunks.length >= LOG_PAGE };
         }
       } catch {
-        if (!stopped && live) timer = setTimeout(load, 4000);
+        answer = { ok: false };
+      } finally {
+        busy = false;
       }
+      if (stopped) return;
+      const next = nextPoll(answer, { failures, live, running: runningNow.current });
+      failures = next.failures;
+      setRetrying(!answer.ok && next.delayMs !== null);
+      schedule(next.delayMs);
+    };
+    const shown = () => {
+      if (document.visibilityState === "visible" && !timer && !busy && live) load();
+      else if (document.visibilityState === "visible" && timer && live) schedule(0);
     };
     load();
+    document.addEventListener("visibilitychange", shown);
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", shown);
     };
   }, [url, live]);
-  return useMemo(() => {
+  const byStep = useMemo(() => {
     const byStep = new Map<number, string>();
     for (const chunk of chunks) byStep.set(chunk.step, (byStep.get(chunk.step) ?? "") + chunk.text);
     return byStep;
   }, [chunks]);
+  return { byStep, grewAt, retrying };
+}
+
+/** The most chunks one answer of the log carries (services/actions, `logs`). */
+const LOG_PAGE = 500;
+
+/** Now, as a number, again every `everyMs` while `on`: for times that count up as you watch. */
+export function useNow(on: boolean, everyMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!on) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(timer);
+  }, [on, everyMs]);
+  return now;
 }
 
 const NOTE_ICON = {

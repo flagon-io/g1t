@@ -1,9 +1,11 @@
 import {
   AlertTriangle,
+  ArrowDown,
   Bug,
   Check,
   ChevronDown,
   ChevronRight,
+  Clock,
   Cloud,
   Download,
   FileCode,
@@ -27,14 +29,14 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type Ref, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 
 import { type Annotation, type EnvironmentReviewer, type Job, type JobSummary, type PendingDeployment, type RunApproval, type RunAttempt, type StepState, isManagedWorkflow } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
-import { Duration, LogText, Notes, StatusIcon, shortRef, standingWord, useJobLog } from "../../components/actions";
+import { Duration, LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog, useNow } from "../../components/actions";
 import { Markdown } from "../../components/markdown";
 import { RunGraph } from "../../components/run-graph";
 import { DetailsDisclosure } from "../../components/details-disclosure";
@@ -47,7 +49,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Hint } from "../../components/ui/hint";
 import { useWorkflowReason } from "../../components/mirror";
-import { searchLog } from "../../lib/log-lines";
+import { lastStamp, searchLog } from "../../lib/log-lines";
+import { quietWords } from "../../lib/log-poll";
 import { listArtifacts, withLegacyArtifacts } from "../../lib/run-artifacts.server";
 import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "../../lib/run-artifacts";
 import { actions } from "../../lib/services.server";
@@ -141,6 +144,10 @@ function StepRow({
   defaultOpen,
   query = "",
   matches = 0,
+  timestamps = false,
+  lastOutput = null,
+  now,
+  end,
 }: {
   step: StepState;
   text: string | undefined;
@@ -148,7 +155,16 @@ function StepRow({
   /** A search of the job's log: only its matching lines are shown. */
   query?: string;
   matches?: number;
+  timestamps?: boolean;
+  /** When the step last printed something, in ms: its last line's time, or when its last chunk arrived. */
+  lastOutput?: number | null;
+  /** Now, ticking while the job runs, for a running step's times. */
+  now: number;
+  /** Marks the end of the running step's log, for following it. */
+  end?: Ref<HTMLDivElement>;
 }) {
+  const running = step.status === "in_progress";
+  const quiet = running && !query ? quietWords(step.startedAt ? new Date(step.startedAt).getTime() : null, lastOutput, now) : null;
   return (
     <details className="group border-t border-line first:border-t-0" open={defaultOpen}>
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2.5 px-3 py-2 text-sm hover:bg-raised/40 sm:min-h-0 sm:px-4">
@@ -160,17 +176,114 @@ function StepRow({
             {matches} {matches === 1 ? "line" : "lines"}
           </span>
         )}
-        <Duration className="ml-auto shrink-0 font-mono text-xs text-faint" start={step.startedAt} end={step.finishedAt} />
+        <span className="ml-auto shrink-0 font-mono text-xs text-faint" suppressHydrationWarning>
+          {step.startedAt ? duration(step.startedAt, step.finishedAt ?? (running ? new Date(now).toISOString() : null)) : ""}
+        </span>
       </summary>
       <div className="border-t border-line bg-bg/60">
-        {text === undefined ? (
-          <p className="px-4 py-2 text-xs text-faint">{step.status === "queued" ? "Not started." : step.conclusion === "skipped" ? "Skipped." : "No output yet."}</p>
+        {text === undefined && !running ? (
+          <p className="px-4 py-2 text-xs text-faint">{step.status === "queued" ? "Not started." : step.conclusion === "skipped" ? "Skipped." : "No output."}</p>
         ) : (
-          <LogText text={text} query={query} />
+          text !== undefined && <LogText text={text} query={query} timestamps={timestamps} />
         )}
+        {quiet && (
+          <p className="flex items-center gap-2 px-4 py-2 font-mono text-xs text-muted" aria-live="polite" suppressHydrationWarning>
+            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-warn" aria-hidden />
+            {quiet}
+          </p>
+        )}
+        {running && <div ref={end} aria-hidden className="h-px" />}
       </div>
     </details>
   );
+}
+
+/** Whether the viewer wants each log line's time shown, kept in this browser. */
+function useTimestamps(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    try {
+      setOn(window.localStorage.getItem(TIMESTAMPS_KEY) === "on");
+    } catch {
+      // Storage refused (a private window): off.
+    }
+  }, []);
+  const set = (next: boolean) => {
+    setOn(next);
+    try {
+      if (next) window.localStorage.setItem(TIMESTAMPS_KEY, "on");
+      else window.localStorage.removeItem(TIMESTAMPS_KEY);
+    } catch {
+      // It lasts until the page is left.
+    }
+  };
+  return [on, set];
+}
+
+const TIMESTAMPS_KEY = "g1t:actions:log-timestamps";
+
+/**
+ * Following the running step's log as it grows, as GitHub does: while the
+ * end of it is in view, new lines keep it in view; once the viewer
+ * scrolls up, it stays put and `behind` says there is more below.
+ */
+function useFollow(running: number | null, grew: unknown): { end: RefObject<HTMLDivElement | null>; behind: boolean; jump: () => void } {
+  const end = useRef<HTMLDivElement | null>(null);
+  const following = useRef(false);
+  const [behind, setBehind] = useState(false);
+  // Where the end of the log is: folded away (a closed step draws nothing),
+  // on screen or nearly (the viewer is reading the latest), or below.
+  const where = (): "folded" | "here" | "below" => {
+    const box = end.current?.getBoundingClientRect();
+    if (!box || (box.width === 0 && box.height === 0)) return "folded";
+    return box.top <= window.innerHeight + 160 ? "here" : "below";
+  };
+  useEffect(() => {
+    if (running === null) {
+      following.current = false;
+      setBehind(false);
+      return;
+    }
+    // The viewer moving decides: at the end, follow; scrolled up, stay.
+    const moved = () => {
+      const at = where();
+      following.current = at === "here";
+      setBehind(at === "below");
+    };
+    // A step folded or opened moves nothing the viewer chose; it only
+    // changes whether there is anything below to jump to.
+    const toggled = () => {
+      const at = where();
+      if (at === "folded") following.current = false;
+      setBehind(at === "below");
+    };
+    window.addEventListener("scroll", moved, { passive: true });
+    window.addEventListener("resize", toggled);
+    document.addEventListener("toggle", toggled, true);
+    return () => {
+      window.removeEventListener("scroll", moved);
+      window.removeEventListener("resize", toggled);
+      document.removeEventListener("toggle", toggled, true);
+    };
+  }, [running]);
+  useLayoutEffect(() => {
+    if (running === null || !end.current) return;
+    if (following.current && where() !== "folded") {
+      end.current.scrollIntoView({ block: "end" });
+      return;
+    }
+    // Not following: once there is a log and its end is on screen, follow
+    // from here; a log that arrives longer than the screen is left at its
+    // top rather than the page jumping to its end.
+    const at = where();
+    if (grew && at === "here") following.current = true;
+    setBehind(at === "below");
+  }, [grew, running]);
+  const jump = () => {
+    following.current = true;
+    end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  };
+  return { end, behind, jump };
 }
 
 /**
@@ -359,10 +472,25 @@ function RanOn({ job, workspace }: { job: Job; workspace: string }) {
 
 function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNode }) {
   const live = job.status !== "completed";
-  const log = useJobLog(`${base}/actions/jobs/${job.id}/log`, live);
-  const [query, setQuery] = useState("");
   const failed = job.steps.find((s) => s.conclusion === "failure");
   const running = job.steps.find((s) => s.status === "in_progress");
+  const { byStep: log, grewAt, retrying } = useJobLog(`${base}/actions/jobs/${job.id}/log`, live, Boolean(running));
+  const [query, setQuery] = useState("");
+  const [timestamps, setTimestamps] = useTimestamps();
+  const now = useNow(live);
+  const runningText = running ? log.get(running.number) : undefined;
+  // The running step's log is followed while its end is in view, unless a
+  // failed step is the one held open.
+  const followed = !failed && running ? running.number : null;
+  const { end, behind, jump } = useFollow(followed, runningText);
+  // When the running step last printed: its last line's time, else when
+  // its last chunk came.
+  const lastOutput = useMemo(() => {
+    if (!running) return null;
+    const at = runningText ? lastStamp(runningText) : undefined;
+    if (at) return new Date(at).getTime();
+    return runningText ? (grewAt.get(running.number) ?? null) : null;
+  }, [running, runningText, grewAt]);
   const searching = query.trim().length > 0;
   const setUp: StepState = {
     number: 0,
@@ -382,14 +510,21 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
       <div className="flex flex-wrap items-center gap-3">
         <StatusIcon status={job.status} conclusion={job.conclusion} of="job" environment={job.environment} size={18} />
         <h3 className="text-base font-semibold">{job.name}</h3>
-        <span className="text-sm text-muted">
+        <span className="min-w-0 text-sm text-muted">
           {job.cancelling ? "Cancelling: running its cleanup steps" : standingWord({ ...job, of: "job" })}
+          {running && !job.cancelling && (
+            <>
+              {" · "}
+              <span className="text-fg/85">{running.name}</span>
+            </>
+          )}
           {job.startedAt && (
             <>
               {" · "}
-              <Duration start={job.startedAt} end={job.finishedAt} />
+              <span suppressHydrationWarning>{duration(job.startedAt, job.finishedAt ?? (live ? new Date(now).toISOString() : null))}</span>
             </>
           )}
+          {retrying && <span className="text-warn"> · Reconnecting to the log…</span>}
         </span>
         <span className="ml-auto flex items-center gap-2">
           {rerun}
@@ -430,24 +565,38 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
         </Card>
       )}
       {job.startedAt && (
-        <Card asChild radius="lg" className="flex items-center gap-2 px-3 py-1.5 text-sm focus-within:border-accent-dim">
-          <label>
-            <Search size={14} className="shrink-0 text-faint" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search logs"
-              aria-label={`Search the log of ${job.name}`}
-              className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
-            />
-            {searching && (
-              <span className="shrink-0 text-xs text-muted" aria-live="polite">
-                {total} {total === 1 ? "line" : "lines"}
-              </span>
-            )}
-          </label>
-        </Card>
+        <div className="flex items-center gap-2">
+          <Card asChild radius="lg" className="flex min-w-0 grow items-center gap-2 px-3 py-1.5 text-sm focus-within:border-accent-dim">
+            <label>
+              <Search size={14} className="shrink-0 text-faint" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search logs"
+                aria-label={`Search the log of ${job.name}`}
+                className="min-w-0 grow bg-transparent outline-none placeholder:text-faint"
+              />
+              {searching && (
+                <span className="shrink-0 text-xs text-muted" aria-live="polite">
+                  {total} {total === 1 ? "line" : "lines"}
+                </span>
+              )}
+            </label>
+          </Card>
+          <Hint label={timestamps ? "Hide timestamps" : "Show timestamps"}>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-pressed={timestamps}
+              aria-label="Show timestamps"
+              onClick={() => setTimestamps(!timestamps)}
+              className="aria-pressed:border-accent-dim aria-pressed:text-fg"
+            >
+              <Clock size={14} />
+            </Button>
+          </Hint>
+        </div>
       )}
       <Card className="overflow-hidden">
         {searching && steps.length === 0 && <p className="px-4 py-3 text-sm text-muted">No line of this job's log holds “{query.trim()}”.</p>}
@@ -460,9 +609,21 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
             defaultOpen={searching || (step.number !== 0 && step.number === (failed ?? running)?.number)}
             query={searching ? query : ""}
             matches={matches}
+            timestamps={timestamps}
+            now={now}
+            lastOutput={step.number === running?.number ? lastOutput : null}
+            end={step.number === followed ? end : undefined}
           />
         ))}
       </Card>
+      {behind && !searching && (
+        <div className="pointer-events-none sticky bottom-4 z-10 flex justify-center">
+          <Button variant="secondary" size="sm" onClick={jump} className="pointer-events-auto shadow-md ring-1 ring-line">
+            <ArrowDown size={14} />
+            Jump to latest
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

@@ -5,20 +5,57 @@
 
 import type { JobLogText } from "@g1t/contracts";
 
+import { stripAnsi } from "./ansi.ts";
+
 export type LineKind = "text" | "error" | "warning" | "notice" | "debug" | "command";
-export type Line = { kind: LineKind; text: string };
+/**
+ * A line: its kind and its text, plain (what search reads). `at` is when
+ * the runner wrote it, from the time GitHub's logs stamp at the start of
+ * every line; `ansi` is its text with the colour codes it came with, when
+ * it had any.
+ */
+export type Line = { kind: LineKind; text: string; at?: string; ansi?: string };
 export type Block =
   | { kind: "line"; line: Line; number: number }
-  | { kind: "group"; title: string; lines: { line: Line; number: number }[] };
+  | { kind: "group"; title: string; lines: { line: Line; number: number }[]; at?: string };
 
-export function classify(raw: string): Line | "group-end" | { group: string } {
-  if (raw.startsWith("##[group]")) return { group: raw.slice(9) };
+/** The time GitHub's logs stamp at the start of a line: `2026-10-12T09:41:07.1234567Z `. */
+const STAMP = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z) /;
+
+/** A line's stamped time and the rest of it; no time for a line without one (a log from before). */
+export function splitStamp(raw: string): { at?: string; rest: string } {
+  const found = STAMP.exec(raw);
+  return found ? { at: found[1], rest: raw.slice(found[0].length) } : { rest: raw };
+}
+
+/** The time of a log's last stamped line, if it has one. */
+export function lastStamp(text: string): string | undefined {
+  let end = text.length;
+  while (end > 0) {
+    const start = text.lastIndexOf("\n", end - 1);
+    const at = splitStamp(text.slice(start + 1, end)).at;
+    if (at) return at;
+    end = start;
+  }
+  return undefined;
+}
+
+function lineOf(kind: LineKind, rest: string, at: string | undefined): Line {
+  const out: Line = { kind, text: stripAnsi(rest) };
+  if (at) out.at = at;
+  if (out.text !== rest) out.ansi = rest;
+  return out;
+}
+
+export function classify(stamped: string): Line | "group-end" | { group: string; at?: string } {
+  const { at, rest: raw } = splitStamp(stamped);
+  if (raw.startsWith("##[group]")) return at ? { group: stripAnsi(raw.slice(9)), at } : { group: stripAnsi(raw.slice(9)) };
   if (raw.startsWith("##[endgroup]")) return "group-end";
   for (const kind of ["error", "warning", "notice", "debug"] as const) {
-    if (raw.startsWith(`##[${kind}]`)) return { kind, text: raw.slice(kind.length + 4) };
+    if (raw.startsWith(`##[${kind}]`)) return lineOf(kind, raw.slice(kind.length + 4), at);
   }
-  if (raw.startsWith("[command]")) return { kind: "command", text: raw.slice(9) };
-  return { kind: "text", text: raw };
+  if (raw.startsWith("[command]")) return lineOf("command", raw.slice(9), at);
+  return lineOf("text", raw, at);
 }
 
 /** Lines into blocks: plain lines, and groups that fold. Lines are numbered from 1, group markers aside. */
@@ -26,7 +63,8 @@ export function blocks(text: string): Block[] {
   const out: Block[] = [];
   let group: Extract<Block, { kind: "group" }> | null = null;
   let number = 0;
-  for (const raw of text.split("\n")) {
+  // A log ends with a newline; nothing follows the last one.
+  for (const raw of (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n")) {
     if (raw === "" && number === 0) continue;
     const line = classify(raw);
     if (line === "group-end") {
@@ -34,7 +72,7 @@ export function blocks(text: string): Block[] {
       continue;
     }
     if ("group" in line) {
-      group = { kind: "group", title: line.group, lines: [] };
+      group = line.at ? { kind: "group", title: line.group, lines: [], at: line.at } : { kind: "group", title: line.group, lines: [] };
       out.push(group);
       continue;
     }

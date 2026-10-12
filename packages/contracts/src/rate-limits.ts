@@ -52,7 +52,7 @@ export const RATE_LIMITS = {
   SIGNED_LIMIT: { worker: "services/packages", namespaceId: 4102, limit: 5000, per: "person, workspace or agent" },
   // apps/web (workers/app.ts): the front door.
   WEB_ANONYMOUS_LIMIT: { worker: "apps/web", namespaceId: 4201, limit: 600, per: "address, signed-out pages" },
-  WEB_HEAVY_LIMIT: { worker: "apps/web", namespaceId: 4202, limit: 30, per: "address, signed-out archives, run pages, logs and search" },
+  WEB_HEAVY_LIMIT: { worker: "apps/web", namespaceId: 4202, limit: 30, per: "address, signed-out archives, run pages, log downloads and search" },
   WEB_SESSION_LIMIT: { worker: "apps/web", namespaceId: 4203, limit: 1200, per: "session, signed-in requests" },
   WEB_ADDRESS_LIMIT: { worker: "apps/web", namespaceId: 4204, limit: 3000, per: "address, every request that reaches the Worker" },
   GIT_ANONYMOUS_LIMIT: { worker: "apps/web", namespaceId: 4205, limit: 120, per: "address, git requests without credentials" },

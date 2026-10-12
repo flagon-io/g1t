@@ -110,6 +110,8 @@ pub(crate) struct Job {
     pub(crate) job_context: Map<String, Value>,
     /// Docker actions' images built in this job.
     pub(crate) built_actions: containers::Built,
+    /// `RUNNER_TRACKING_ID`, which every process a step starts inherits.
+    tracking_id: String,
 }
 
 fn text_map(value: Option<&Value>) -> BTreeMap<String, String> {
@@ -167,7 +169,72 @@ fn default_title(step: &Map<String, Value>) -> String {
     format!("Run {first}")
 }
 
+/// What GitHub's runner sets on a step itself, which its `env:` list leaves out.
+const RUNNER_SET: [&str; 2] = ["GITHUB_ACTION", "GITHUB_ACTION_PATH"];
+
+/// The step's variables as GitHub lists them under `env:`: each name and
+/// its value (masked later, as every line is), a value of several lines
+/// with the rest indented beneath it.
+fn env_lines(env: &BTreeMap<String, String>) -> Vec<String> {
+    let listed: Vec<(&String, &String)> = env.iter().filter(|(name, _)| !RUNNER_SET.contains(&name.as_str())).collect();
+    if listed.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = vec!["env:".to_owned()];
+    for (name, value) in listed {
+        let mut parts = value.split('\n');
+        lines.push(format!("  {name}: {}", parts.next().unwrap_or_default()));
+        lines.extend(parts.map(|part| format!("    {part}")));
+    }
+    lines
+}
+
+/// How GitHub's runner opens a `run` step, in a group that starts folded:
+/// `Run` and the script's first line, the whole script (in cyan, as
+/// GitHub draws it), the shell it runs in and the step's variables.
+pub(crate) fn script_header(script: &str, shell: &str, env: &BTreeMap<String, String>) -> Vec<String> {
+    let first = script.lines().find(|line| !line.trim().is_empty()).unwrap_or_default().trim();
+    let mut lines = vec![format!("##[group]Run {first}")];
+    lines.extend(script.trim_matches(['\n', '\r']).lines().map(|line| format!("\u{1b}[36;1m{line}\u{1b}[0m")));
+    lines.push(format!("shell: {shell}"));
+    lines.extend(env_lines(env));
+    lines.push("##[endgroup]".into());
+    lines
+}
+
+/// How GitHub's runner opens a `uses:` step: `Run` and the action, its
+/// inputs under `with:` and the step's variables under `env:`.
+pub(crate) fn uses_header(uses: &str, with: &BTreeMap<String, String>, env: &BTreeMap<String, String>) -> Vec<String> {
+    let mut lines = vec![format!("##[group]Run {uses}")];
+    if !with.is_empty() {
+        lines.push("with:".into());
+        for (name, value) in with {
+            let mut parts = value.trim_end_matches('\n').split('\n');
+            lines.push(format!("  {name}: {}", parts.next().unwrap_or_default()));
+            lines.extend(parts.map(|part| format!("    {part}")));
+        }
+    }
+    lines.extend(env_lines(env));
+    lines.push("##[endgroup]".into());
+    lines
+}
+
 impl Job {
+    /// A shell's whole path, found on the step's `PATH` as GitHub's runner
+    /// shows it (`/usr/bin/bash`), or its name when it is not there.
+    fn program_path(&self, program: &str) -> String {
+        if Path::new(program).is_absolute() {
+            return program.to_owned();
+        }
+        let path = self.base_env.get("PATH").cloned().unwrap_or_default();
+        let dirs = self.path_prepend.iter().map(String::as_str).chain(path.split(paths::PATH_SEPARATOR));
+        let names: Vec<String> = if cfg!(windows) { vec![format!("{program}.exe"), program.to_owned()] } else { vec![program.to_owned()] };
+        dirs.filter(|dir| !dir.is_empty())
+            .flat_map(|dir| names.iter().map(move |name| Path::new(dir).join(name)))
+            .find(|candidate| candidate.is_file())
+            .map_or_else(|| program.to_owned(), |found| found.display().to_string())
+    }
+
     pub(crate) fn base_env_value(&self, name: &str) -> Option<String> {
         self.base_env.get(name).cloned()
     }
@@ -364,8 +431,13 @@ impl Job {
                 return (false, BTreeMap::new(), BTreeMap::new());
             }
         };
+        // GitHub's opening of a `run` step, folded: the script, the shell
+        // it runs in (the program's whole path) and the step's variables.
+        let shown_program = if self.container.is_some() { program.clone() } else { self.program_path(&program) };
+        for line in script_header(script, &format!("{shown_program} {}", args.join(" ")), env) {
+            self.log.line(&line);
+        }
         let args: Vec<String> = args.iter().map(|a| a.replace("{0}", &paths::shown(&script_path))).collect();
-        self.log.line(&format!("shell: {program} {}", args.join(" ")));
         let dir = match working_directory {
             Some(dir) if Path::new(dir).is_absolute() => PathBuf::from(dir),
             Some(dir) => self.workspace.join(dir),
@@ -487,11 +559,6 @@ impl Job {
                     String::new()
                 }
             };
-            self.log.line(&format!("##[group]{title}"));
-            for line in script.lines() {
-                self.log.line(line);
-            }
-            self.log.line("##[endgroup]");
             let shell = step
                 .get("shell")
                 .map(expr::to_text)
@@ -749,6 +816,10 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
     base_env.insert("HOME".into(), std::env::var("HOME").unwrap_or_else(|_| "/home/node".into()));
     base_env.extend(text_map(spec.get("variables")));
     base_env.insert("GITHUB_EVENT_PATH".into(), paths::shown(&temp.join("event.json")));
+    // As GitHub's runner marks what a job starts, so "Complete job" finds
+    // what its steps left running (process::orphans).
+    let tracking_id = format!("github_{:016x}{:016x}", rand_id(), rand_id());
+    base_env.insert("RUNNER_TRACKING_ID".into(), tracking_id.clone());
 
     let mut contexts: Map<String, Value> = spec["contexts"].as_object().cloned().unwrap_or_default();
     contexts.insert("github".into(), spec["github"].clone());
@@ -787,6 +858,7 @@ fn setup(mut spec: Value, api: Api) -> Result<Job> {
         container: None,
         job_context: Map::new(),
         built_actions: containers::Built::new(),
+        tracking_id,
     };
 
     // The workflow's env reads github, secrets, inputs and vars; the job's
@@ -815,6 +887,133 @@ fn default_variables(spec: &mut Value) {
             spec["github"]["repository_owner_id"] = json!(owner_id);
         }
     }
+}
+
+/// What "Set up job" says of the runner and the machine it runs on.
+#[derive(Default)]
+pub(crate) struct Machine {
+    pub(crate) version: String,
+    pub(crate) self_hosted: bool,
+    pub(crate) runner_name: String,
+    /// `RUNNER_OS` and `RUNNER_ARCH`.
+    pub(crate) os: String,
+    pub(crate) arch: String,
+    /// `/etc/os-release`, where there is one.
+    pub(crate) os_release: Option<String>,
+    /// `ImageOS` and `ImageVersion`, when the machine's image sets them.
+    pub(crate) image: Option<(String, String)>,
+    pub(crate) cpus: usize,
+    pub(crate) memory_bytes: Option<u64>,
+    /// The job token's permissions, by GitHub's names.
+    pub(crate) permissions: Vec<(String, String)>,
+}
+
+impl Machine {
+    fn here(spec: &Value, base_env: &BTreeMap<String, String>) -> Machine {
+        let variables = &spec["variables"];
+        let text = |name: &str| variables[name].as_str().unwrap_or_default().to_owned();
+        let self_hosted = variables["RUNNER_ENVIRONMENT"] == "self-hosted";
+        let image = match (base_env.get("ImageOS"), base_env.get("ImageVersion")) {
+            (None, None) => None,
+            (os, version) => Some((os.cloned().unwrap_or_default(), version.cloned().unwrap_or_default())),
+        };
+        let permissions = spec
+            .get("permissions")
+            .and_then(Value::as_object)
+            .map(|map| map.iter().map(|(name, access)| (name.clone(), expr::to_text(access))).collect())
+            .unwrap_or_default();
+        Machine {
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            self_hosted,
+            runner_name: if self_hosted { text("RUNNER_NAME") } else { "g1t".to_owned() },
+            os: text("RUNNER_OS"),
+            arch: text("RUNNER_ARCH"),
+            os_release: std::fs::read_to_string("/etc/os-release").ok(),
+            image,
+            cpus: std::thread::available_parallelism().map_or(1, usize::from),
+            memory_bytes: memory_limit(
+                std::fs::read_to_string("/sys/fs/cgroup/memory.max").ok().as_deref(),
+                std::fs::read_to_string("/proc/meminfo").ok().as_deref(),
+            ),
+            permissions,
+        }
+    }
+}
+
+/// The memory a job has: its cgroup's limit, else the machine's.
+fn memory_limit(cgroup_max: Option<&str>, meminfo: Option<&str>) -> Option<u64> {
+    let total = meminfo.and_then(|info| {
+        info.lines().find_map(|line| line.strip_prefix("MemTotal:")).and_then(|rest| rest.trim().trim_end_matches("kB").trim().parse::<u64>().ok()).map(|kb| kb * 1024)
+    });
+    let limit = cgroup_max.and_then(|max| max.trim().parse::<u64>().ok());
+    match (limit, total) {
+        (Some(limit), Some(total)) => Some(limit.min(total)),
+        (limit, total) => limit.or(total),
+    }
+}
+
+/// `pull-requests` as GitHub's log names it: `PullRequests`.
+fn permission_title(name: &str) -> String {
+    name.split(['-', '_'])
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map(|first| first.to_ascii_uppercase().to_string() + chars.as_str()).unwrap_or_default()
+        })
+        .collect()
+}
+
+/// GitHub's "Set up job", before the actions are downloaded: the runner's
+/// version and name, the operating system, the image, the machine, what
+/// the job's token may do and where its secrets come from.
+pub(crate) fn setup_header(machine: &Machine) -> Vec<String> {
+    let mut lines = vec![format!("Current runner version: '{}'", machine.version), format!("Runner name: '{}'", machine.runner_name)];
+    lines.push("##[group]Operating System".into());
+    let release = machine.os_release.as_deref().unwrap_or_default();
+    let field = |key: &str| {
+        release.lines().find_map(|line| line.strip_prefix(key).and_then(|rest| rest.strip_prefix('='))).map(|value| value.trim().trim_matches('"').to_owned()).filter(|v| !v.is_empty())
+    };
+    match field("NAME") {
+        Some(name) => {
+            lines.push(name);
+            lines.extend(field("VERSION").or_else(|| field("VERSION_ID")));
+        }
+        None => lines.push(format!("{} {}", machine.os, machine.arch).trim().to_owned()),
+    }
+    lines.push("##[endgroup]".into());
+    if machine.image.is_some() || !machine.self_hosted {
+        lines.push("##[group]Runner Image".into());
+        if let Some((os, version)) = &machine.image {
+            if !os.is_empty() {
+                lines.push(format!("Image: {os}"));
+            }
+            if !version.is_empty() {
+                lines.push(format!("Version: {version}"));
+            }
+        }
+        if !machine.self_hosted {
+            lines.push("Included Software: Node 24, Python 3, Go, Rust".into());
+        }
+        lines.push("##[endgroup]".into());
+    }
+    lines.push("##[group]Machine".into());
+    lines.push(if machine.self_hosted { "Self-hosted".into() } else { "Hosted by g1t".to_owned() });
+    lines.push(format!("Architecture: {}", machine.arch));
+    lines.push(format!("CPUs: {}", machine.cpus));
+    if let Some(bytes) = machine.memory_bytes {
+        let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+        let shown = if (gib - gib.round()).abs() < 0.05 { format!("{}", gib.round()) } else { format!("{gib:.1}") };
+        lines.push(format!("Memory: {shown} GB"));
+    }
+    lines.push("##[endgroup]".into());
+    let granted: Vec<&(String, String)> = machine.permissions.iter().filter(|(_, access)| access != "none" && !access.is_empty()).collect();
+    if !granted.is_empty() {
+        lines.push("##[group]G1T_TOKEN Permissions".into());
+        lines.extend(granted.iter().map(|(name, access)| format!("{}: {access}", permission_title(name))));
+        lines.push("##[endgroup]".into());
+    }
+    lines.push("Secret source: Actions".into());
+    lines.push("Prepare workflow directory".into());
+    lines
 }
 
 /// The job's `defaults.run`, its own over the workflow's.
@@ -848,28 +1047,15 @@ fn run_job(job: &mut Job) {
     job.report_steps();
 
     job.log.step(0);
-    job.log.line(&format!("Job: {}", job.spec["name"].as_str().unwrap_or_default()));
-    let variables = &job.spec["variables"];
-    if variables["RUNNER_ENVIRONMENT"] == "self-hosted" {
-        let text = |name: &str| variables[name].as_str().unwrap_or_default().to_owned();
-        job.log.line(&format!("Runner: {}, self-hosted, {} {}", text("RUNNER_NAME"), text("RUNNER_OS"), text("RUNNER_ARCH")));
-    } else {
-        job.log.line("Runner: g1t, Linux X64 (Debian bookworm, Node 24, Python 3, Go, Rust)");
+    // GitHub's "Set up job": the runner, the machine, the token, then the
+    // actions the job uses.
+    for line in setup_header(&Machine::here(&job.spec, &job.base_env)) {
+        job.log.line(&line);
     }
     if let Some(Value::Object(matrix)) = job.contexts.get("matrix")
         && !matrix.is_empty()
     {
         job.log.line(&format!("Matrix: {}", serde_json::to_string(matrix).unwrap_or_default()));
-    }
-    // What its G1T_TOKEN may do, as its `permissions:` gave it.
-    if let Some(Value::Object(permissions)) = job.spec.get("permissions").cloned() {
-        job.log.line("##[group]G1T_TOKEN permissions");
-        for (name, access) in &permissions {
-            if access.as_str() != Some("none") {
-                job.log.line(&format!("{name}: {}", access.as_str().unwrap_or_default()));
-            }
-        }
-        job.log.line("##[endgroup]");
     }
     if job.docker_hosted {
         let registry = job.contexts["github"]["server_url"].as_str().and_then(crate::docker::engine::registry_host);
@@ -895,6 +1081,9 @@ fn run_job(job: &mut Job) {
         names.extend(job.step_names.iter().cloned());
         job.step_names = names;
         job.report_steps();
+    }
+    if prepared {
+        job.log.line(&format!("Complete job name: {}", job.spec["name"].as_str().unwrap_or_default()));
     }
     let containers_started = prepared && job.start_containers();
     job.log.flush();
@@ -981,13 +1170,30 @@ fn run_job(job: &mut Job) {
     // The job's outputs, read now that every step has run.
     let env = job.env_context(&frame);
     let contexts = job.contexts_for(&frame, &env);
+    // GitHub's "Complete job": the job's outputs set, and whatever its
+    // steps left running stopped.
+    let number = job.step_names.len() as u32 + 1;
+    job.step_names.push("Complete job".into());
+    job.report_steps();
+    job.log.step(number);
+    job.log.step_state(number, "Complete job", "in_progress", None);
     let mut outputs = Map::new();
     if let Some(Value::Object(declared)) = job.spec["spec"].get("outputs") {
+        job.log.line("Evaluate and set job outputs");
         for (name, value) in declared {
             let value = job.with_scope(&contexts, |scope| expr::interpolate_value(value, scope)).unwrap_or(Value::Null);
+            job.log.line(&format!("Set output '{name}'"));
             outputs.insert(name.clone(), Value::String(expr::to_text(&value)));
         }
     }
+    let outputs = job.log.withhold_secrets(&outputs);
+    job.log.line("Cleaning up orphan processes");
+    let orphans = process::orphans(&job.tracking_id);
+    for (pid, name) in &orphans {
+        job.log.line(&format!("Terminate orphan process: pid ({pid}) ({name})"));
+    }
+    process::kill_orphans(&orphans);
+    job.log.step_state(number, "Complete job", "completed", Some("success"));
     // Cancelled, the job ends so however its cleanup went (and g1t holds
     // to that whatever it is told).
     let conclusion = if report::cancelled() {
@@ -1037,6 +1243,71 @@ mod tests {
     use serde_json::{Map, Value, json};
 
     use super::*;
+
+    #[test]
+    fn set_up_job_says_what_runs_the_job_as_github_does() {
+        let machine = Machine {
+            version: "0.2.0".into(),
+            runner_name: "g1t".into(),
+            os: "Linux".into(),
+            arch: "X64".into(),
+            os_release: Some("PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\nVERSION=\"12 (bookworm)\"\n".into()),
+            image: Some(("ubuntu24".into(), "20261005.1".into())),
+            cpus: 4,
+            memory_bytes: Some(12 * 1024 * 1024 * 1024),
+            permissions: vec![("contents".into(), "read".into()), ("id-token".into(), "none".into()), ("metadata".into(), "read".into()), ("pull-requests".into(), "write".into())],
+            ..Machine::default()
+        };
+        let text = setup_header(&machine).join("\n");
+        assert_eq!(
+            text,
+            "Current runner version: '0.2.0'\nRunner name: 'g1t'\n\
+             ##[group]Operating System\nDebian GNU/Linux\n12 (bookworm)\n##[endgroup]\n\
+             ##[group]Runner Image\nImage: ubuntu24\nVersion: 20261005.1\nIncluded Software: Node 24, Python 3, Go, Rust\n##[endgroup]\n\
+             ##[group]Machine\nHosted by g1t\nArchitecture: X64\nCPUs: 4\nMemory: 12 GB\n##[endgroup]\n\
+             ##[group]G1T_TOKEN Permissions\nContents: read\nMetadata: read\nPullRequests: write\n##[endgroup]\n\
+             Secret source: Actions\nPrepare workflow directory"
+        );
+        // A self-hosted machine without an image of GitHub's, or an os-release.
+        let own = Machine { version: "0.2.0".into(), self_hosted: true, runner_name: "build-box".into(), os: "macOS".into(), arch: "ARM64".into(), cpus: 8, ..Machine::default() };
+        let text = setup_header(&own).join("\n");
+        assert!(text.contains("Runner name: 'build-box'\n##[group]Operating System\nmacOS ARM64\n##[endgroup]\n##[group]Machine\nSelf-hosted"), "{text}");
+        assert!(!text.contains("Runner Image") && !text.contains("Memory") && !text.contains("Permissions"), "{text}");
+        assert_eq!(memory_limit(Some("max\n"), Some("MemTotal:       16384000 kB\n")), Some(16_384_000 * 1024));
+        assert_eq!(memory_limit(Some("4294967296\n"), Some("MemTotal:       16384000 kB\n")), Some(4_294_967_296));
+        assert_eq!(memory_limit(None, None), None);
+        assert_eq!(permission_title("security-events"), "SecurityEvents");
+    }
+
+    #[test]
+    fn a_run_step_opens_with_its_script_shell_and_variables_folded() {
+        let env: BTreeMap<String, String> = [("CARGO_TERM_COLOR", "always"), ("GITHUB_ACTION", "__run"), ("KEY", "line one\nline two")]
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect();
+        let lines = script_header("\n  node build.mjs --all\necho done\n", "/usr/bin/bash -e {0}", &env);
+        assert_eq!(
+            lines,
+            [
+                "##[group]Run node build.mjs --all",
+                "\u{1b}[36;1m  node build.mjs --all\u{1b}[0m",
+                "\u{1b}[36;1mecho done\u{1b}[0m",
+                "shell: /usr/bin/bash -e {0}",
+                "env:",
+                "  CARGO_TERM_COLOR: always",
+                "  KEY: line one",
+                "    line two",
+                "##[endgroup]",
+            ]
+        );
+        // No variables: no `env:`.
+        assert!(!script_header("make", "sh -e {0}", &BTreeMap::new()).contains(&"env:".to_owned()));
+        let with: BTreeMap<String, String> = [("path", "~/.cargo\ntarget\n"), ("key", "k")].into_iter().map(|(k, v)| (k.to_owned(), v.to_owned())).collect();
+        assert_eq!(
+            uses_header("actions/cache@v4", &with, &BTreeMap::new()),
+            ["##[group]Run actions/cache@v4", "with:", "  key: k", "  path: ~/.cargo", "    target", "##[endgroup]"]
+        );
+    }
 
     #[test]
     fn debug_logging_comes_from_a_secret_a_variable_or_a_debug_rerun() {

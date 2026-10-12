@@ -28,6 +28,19 @@ use super::{Job, Post, PostRun, glob, zip};
 /// The largest cache entry, compressed (`g1t_contracts::actions::CACHE_MAX_ENTRY_BYTES`).
 const MAX_CACHE_ENTRY: u64 = 2 * 1024 * 1024 * 1024;
 
+/// How often a long transfer says how far it has got.
+const PROGRESS_EVERY: Duration = Duration::from_secs(5);
+
+/// A transfer's progress as GitHub's cache action words it:
+/// `Received 46137344 of 523190823 (8.8%), 43.9 MBs/sec`.
+fn progress(verb: &str, done: u64, total: Option<u64>, took: Duration) -> String {
+    let rate = done as f64 / 1_048_576.0 / took.as_secs_f64().max(0.001);
+    match total.filter(|total| *total > 0) {
+        Some(total) => format!("{verb} {done} of {total} ({:.1}%), {rate:.1} MBs/sec", done as f64 * 100.0 / total as f64),
+        None => format!("{verb} {done} bytes, {rate:.1} MBs/sec"),
+    }
+}
+
 fn lines(text: &str) -> Vec<String> {
     text.lines().map(str::trim).filter(|line| !line.is_empty() && !line.starts_with('#')).map(str::to_owned).collect()
 }
@@ -62,9 +75,36 @@ impl Job {
             Err(error) => return Err(error.to_string()),
         };
         let matched = response.header("x-g1t-key").map(str::to_owned).unwrap_or_default();
-        let mut out = std::fs::File::create(file).map_err(|e| e.to_string())?;
-        std::io::copy(&mut response.into_reader().take(MAX_CACHE_ENTRY + 1024), &mut out).map_err(|e| e.to_string())?;
+        let total = response.header("content-length").and_then(|n| n.parse::<u64>().ok());
+        let mut out = std::io::BufWriter::new(std::fs::File::create(file).map_err(|e| e.to_string())?);
+        self.receive(&mut response.into_reader().take(MAX_CACHE_ENTRY + 1024), total, |bytes| out.write_all(bytes))?;
+        out.flush().map_err(|e| e.to_string())?;
         Ok(Some(matched))
+    }
+
+    /// Reads a download to its end, handing `each` every piece, and says
+    /// how it is going every few seconds as GitHub's cache and artifact
+    /// actions do (`Received 46137344 of 523190823 (8.8%), 43.9 MBs/sec`),
+    /// so a long download is never a silent step. Its total in bytes.
+    fn receive(&mut self, reader: &mut dyn Read, total: Option<u64>, mut each: impl FnMut(&[u8]) -> std::io::Result<()>) -> Result<u64, String> {
+        let started = Instant::now();
+        let mut told = Instant::now();
+        let mut received = 0u64;
+        let mut buffer = vec![0u8; 256 * 1024];
+        loop {
+            let n = reader.read(&mut buffer).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            each(&buffer[..n]).map_err(|e| e.to_string())?;
+            received += n as u64;
+            if told.elapsed() >= PROGRESS_EVERY {
+                told = Instant::now();
+                self.log.line(&progress("Received", received, total, started.elapsed()));
+            }
+            self.log.tick();
+        }
+        Ok(received)
     }
 
     /// Saves `file` as the cache entry `key`, in parts. `Ok(false)` when
@@ -110,6 +150,8 @@ impl Job {
     /// Sends `file` in parts of `part_bytes`; each part's number and etag.
     fn send_parts(&mut self, base: &str, upload: &str, file: &Path, part_bytes: u64) -> Result<Vec<serde_json::Value>, String> {
         let mut reader = std::fs::File::open(file).map_err(|e| e.to_string())?;
+        let size = reader.metadata().map(|m| m.len()).unwrap_or(0);
+        let (started, mut told, mut sent) = (Instant::now(), Instant::now(), 0u64);
         let mut parts = Vec::new();
         let mut buffer = vec![0u8; part_bytes as usize];
         for number in 1u32.. {
@@ -137,9 +179,16 @@ impl Job {
                 }
             };
             parts.push(serde_json::json!({ "part": number, "etag": answer["etag"] }));
+            sent += filled as u64;
             if filled < buffer.len() {
                 break;
             }
+            // More to send: say how far it has got, as a download does.
+            if told.elapsed() >= PROGRESS_EVERY {
+                told = Instant::now();
+                self.log.line(&progress("Sent", sent, Some(size), started.elapsed()));
+            }
+            self.log.tick();
         }
         Ok(parts)
     }
@@ -339,18 +388,14 @@ impl Job {
             Err(error) => return Err(error.to_string()),
         };
         let format = response.header("x-g1t-format").map(str::to_owned).unwrap_or_else(|| artifact.format.clone());
+        let total = response.header("content-length").and_then(|n| n.parse::<u64>().ok()).or(Some(artifact.size));
         let mut reader = response.into_reader();
         let mut out = std::io::BufWriter::new(std::fs::File::create(file).map_err(|e| e.to_string())?);
         let mut hasher = Sha256::new();
-        let mut buffer = vec![0u8; 256 * 1024];
-        loop {
-            let n = reader.read(&mut buffer).map_err(|e| e.to_string())?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buffer[..n]);
-            out.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
-        }
+        self.receive(&mut reader, total, |bytes| {
+            hasher.update(bytes);
+            out.write_all(bytes)
+        })?;
         out.flush().map_err(|e| e.to_string())?;
         let got = hex::encode(hasher.finalize());
         if let Some(expected) = artifact.digest.as_deref().map(|d| d.trim_start_matches("sha256:"))
@@ -971,6 +1016,13 @@ mod tests {
         let none = Command::new("bash").args(["-c", &pack_script(&[format!("{root}/nothing/*")], &archive)]).status().unwrap();
         assert_eq!(none.code(), Some(3));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn transfers_say_how_far_they_have_got_as_githubs_do() {
+        assert_eq!(progress("Received", 46_137_344, Some(523_190_823), Duration::from_secs(1)), "Received 46137344 of 523190823 (8.8%), 44.0 MBs/sec");
+        assert_eq!(progress("Sent", 1_048_576, None, Duration::from_secs(2)), "Sent 1048576 bytes, 0.5 MBs/sec");
+        assert_eq!(progress("Received", 10, Some(0), Duration::ZERO), "Received 10 bytes, 0.0 MBs/sec");
     }
 
     #[test]

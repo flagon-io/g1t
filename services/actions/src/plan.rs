@@ -29,6 +29,10 @@ const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 /// The most a single log report may add.
 const MAX_CHUNK_BYTES: usize = 256 * 1024;
 const MAX_ANNOTATIONS: usize = 50;
+/// A batch of a job's log, under the next `seq` of that job's, worked out
+/// in the same statement (SQLite runs one write at a time).
+const LOG_INSERT: &str =
+    "INSERT INTO logs (job_id, seq, step, text) SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3 FROM logs WHERE job_id = ?1";
 /// The most one step's job summary keeps, in bytes, and how many steps of a
 /// job may have one, as on GitHub.
 pub(crate) const MAX_SUMMARY_BYTES: usize = 1024 * 1024;
@@ -2452,23 +2456,25 @@ impl Actions {
                 #[derive(Deserialize)]
                 struct Size {
                     n: Option<f64>,
-                    seq: Option<f64>,
                 }
                 let size = self
                     .db
-                    .prepare("SELECT SUM(LENGTH(text)) AS n, MAX(seq) AS seq FROM logs WHERE job_id = ?")
+                    .prepare("SELECT SUM(LENGTH(text)) AS n FROM logs WHERE job_id = ?")
                     .bind(&[job.id.as_str().into()])?
                     .first::<Size>(None)
                     .await?;
-                let (used, seq) = size.map_or((0, 0.0), |s| (s.n.unwrap_or(0.0) as usize, s.seq.unwrap_or(0.0)));
+                let used = size.and_then(|s| s.n).unwrap_or(0.0) as usize;
                 if used < MAX_LOG_BYTES {
                     if used + text.len() >= MAX_LOG_BYTES {
                         text.push_str("\n… The log reached its limit of 4 MB; the rest is not kept.\n");
                     }
+                    // The next `seq` is taken in the insert itself, so two
+                    // batches at once (a report sent again while the first
+                    // was still being written) never reach for the same one
+                    // and lose a chunk to the primary key.
                     self.db
-                        .prepare("INSERT INTO logs (job_id, seq, step, text) VALUES (?, ?, ?, ?)")
-                        .bind(&[job.id.as_str().into(), // Numbers go to D1 as f64: a u64 would be a BigInt, which it refuses.
-                            (seq + 1.0).into(), (report["step"].as_u64().unwrap_or(0) as u32).into(), text.into()])?
+                        .prepare(LOG_INSERT)
+                        .bind(&[job.id.as_str().into(), (report["step"].as_u64().unwrap_or(0) as u32).into(), text.into()])?
                         .run()
                         .await?;
                 }
