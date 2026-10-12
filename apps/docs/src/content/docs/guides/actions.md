@@ -73,7 +73,7 @@ gives their values out, so they cannot be copied across.
 | `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias. |
 | `environment:` on a job | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression. |
 | `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
-| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | Kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. `path` takes globs and `!` exclusions. Up to 2 GiB each; see [the cache](#the-cache). |
+| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | The actions themselves, at the version the step names, saving to and restoring from the repository's cache: kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. Up to 2 GiB each; see [the cache](#the-cache). |
 | Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache` | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit). |
 | sccache with `SCCACHE_GHA_ENABLED` | The same: its entries go to the repository's cache. See [caching Rust builds](#caching-rust-builds). |
 | `permissions: id-token: write` | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens). |
@@ -783,20 +783,19 @@ role can delete one before it expires.
 
 ## Actions built on the toolkit
 
-Many actions save to the cache with GitHub's toolkit, `@actions/cache`,
-rather than through `actions/cache`: `actions/setup-node`,
-`actions/setup-python`, `actions/setup-go` and `actions/setup-java` with
-`cache:`, `Swatinem/rust-cache`, and others. They work on g1t as they
-are: every job gets `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_CACHE_URL` and
+`actions/cache` and many other actions save to the cache with GitHub's
+toolkit, `@actions/cache`: `actions/setup-node`, `actions/setup-python`,
+`actions/setup-go` and `actions/setup-java` with `cache:`,
+`Swatinem/rust-cache`, and others. They work on g1t as they are: every job gets `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_CACHE_URL` and
 `ACTIONS_RESULTS_URL`, and g1t answers the toolkit's requests from the
 repository's cache.
 
 - Their entries are the repository's, under [the cache's](#the-cache)
   limits, and are deleted the same way.
-- An entry is restored only by the same kind of save: the toolkit names a
-  version for each entry, from its paths and compression. An entry
-  `setup-node` saved is not restored by `actions/cache`, and the other way
-  round.
+- An entry is found by its key and by the version the toolkit names for
+  it, from its paths and compression, as on GitHub: an entry `setup-node`
+  saved is restored by `actions/cache` with the same key and paths, and
+  the other way round.
 - An entry the toolkit sends whole, which it does below 128 MB, is not
   saved when it is over 100 MB, the most g1t takes in one request. The
   step warns and the job goes on.

@@ -318,8 +318,8 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
   library themselves. The library refuses to run against any server but
   github.com. `actions/upload-artifact`, `actions/download-artifact` and
   `actions/upload-artifact/merge` work, as g1t runs them itself.
-- A cache entry between 100 and 128 MB saved by an action built on the
-  toolkit, such as `setup-node` with `cache: npm`. The toolkit sends an
+- A cache entry between 100 and 128 MB saved by `actions/cache` or another
+  action built on the toolkit, such as `setup-node` with `cache: npm`. The toolkit sends an
   entry under 128 MB in one request, and g1t takes at most 100 MB in one
   request, as for [pushes](#pushes-up-to-100-mb-each). The step warns and
   the job goes on; smaller and larger entries are saved.

@@ -60,7 +60,6 @@ pub(crate) struct Post {
 
 pub(crate) enum PostRun {
     Node { action_dir: PathBuf, script: String, using: String },
-    CacheSave { key: String, paths: Vec<String>, version: String },
     /// A Docker action's `post-entrypoint`.
     Docker(containers::DockerRun),
 }
@@ -1148,7 +1147,6 @@ fn run_job(job: &mut Job) {
         job.log.step_state(number, &post.name, "in_progress", None);
         let ok = match &post.run {
             PostRun::Node { action_dir, script, using } => job.run_node(action_dir, script, &post.env, using),
-            PostRun::CacheSave { key, paths, version } => job.cache_save(key, paths, version),
             PostRun::Docker(run) => job.run_docker(run).0,
         };
         job.log.step_state(number, &post.name, "completed", Some(if ok { "success" } else { "failure" }));

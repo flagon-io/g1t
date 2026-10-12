@@ -49,9 +49,6 @@ fn native(name: &str, docker_hosted: bool) -> bool {
             | "actions/upload-artifact"
             | "actions/upload-artifact/merge"
             | "actions/download-artifact"
-            | "actions/cache"
-            | "actions/cache/restore"
-            | "actions/cache/save"
     ) || (docker_hosted && name == "docker/setup-buildx-action")
 }
 
@@ -482,9 +479,6 @@ impl Job {
             "actions/upload-artifact" => return self.upload_artifact(with),
             "actions/upload-artifact/merge" => return self.merge_artifacts(with),
             "actions/download-artifact" => return self.download_artifact(with),
-            "actions/cache" => return self.cache(with, true, title),
-            "actions/cache/restore" => return self.cache(with, false, title),
-            "actions/cache/save" => return self.cache_save_now(with),
             _ => {}
         }
         let Some(found) = self.resolve_action(uses) else {
@@ -885,7 +879,8 @@ mod tests {
         assert_eq!(found(" github/codeql-action/init@v3 "), Some(("github".into(), "codeql-action".into(), "v3".into())));
         // Done by the runner itself, local, an image, or no version.
         assert_eq!(found("actions/checkout@v4"), None);
-        assert_eq!(found("Actions/Cache/Restore@v4"), None);
+        // actions/cache is the real action, fetched like any other.
+        assert_eq!(found("Actions/Cache/Restore@v4"), Some(("Actions".into(), "Cache".into(), "v4".into())));
         assert_eq!(found("docker/setup-buildx-action@v3"), None);
         assert!(remote_action("docker/setup-buildx-action@v3", false).is_some());
         assert_eq!(found("./.g1t/actions/setup"), None);
