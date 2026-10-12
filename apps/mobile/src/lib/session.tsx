@@ -74,7 +74,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
       const me = await client.api<Me>("/user");
       if ((me.kind ?? "user") !== "user") {
-        throw new ApiError("forbidden", "Sign in as yourself: a workspace's or an agent's token cannot use the app.");
+        throw new ApiError("forbidden", "Sign in as yourself: a workspace's token cannot use the app.");
       }
       const saved = await SecureStore.getItemAsync(WORKSPACE_KEY).catch(() => null);
       const workspaces = me.workspaces ?? [];

@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Tabs, router, useGlobalSearchParams, useSegments } from "expo-router";
-import { Bell, Bot, Code2, House, Menu, MessagesSquare } from "lucide-react-native";
+import { Bell, Code2, House, Menu, MessagesSquare } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { type ComponentType, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
@@ -15,9 +15,9 @@ import { useColors } from "@/theme";
 
 /**
  * The signed-in app. Its bar is the site's phone bar
- * (apps/web/app/components/mobile.tsx): Home, Chat, Notifications, Agents,
- * Code, and More. Chat and Code have their screens; the others say so and
- * open the site. Customize and your account are under More.
+ * (apps/web/app/components/mobile.tsx): Home, Chat, Notifications, Code,
+ * and More. Chat and Code have their screens; the others say so and open
+ * the site. Your account is under More.
  */
 export default function AppLayout() {
   return (
@@ -73,9 +73,7 @@ function AppTabs() {
         }}
       />
       <Tabs.Screen name="notifications" options={{ title: "Notifications", tabBarIcon: (props) => <BarIcon icon={Bell} {...props} /> }} />
-      <Tabs.Screen name="agents" options={{ title: "Agents", tabBarIcon: (props) => <BarIcon icon={Bot} {...props} /> }} />
       <Tabs.Screen name="code" options={{ title: "Code", href: code ? undefined : null, tabBarIcon: (props) => <BarIcon icon={Code2} {...props} /> }} />
-      <Tabs.Screen name="customize" options={{ href: null }} />
       <Tabs.Screen name="more" options={{ title: "More", tabBarIcon: (props) => <BarIcon icon={Menu} {...props} /> }} />
     </Tabs>
   );

@@ -1,4 +1,4 @@
-import type { CardAction, ChatMessage } from "@g1t/contracts";
+import type { ChatMessage } from "@g1t/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
@@ -89,15 +89,6 @@ export function Conversation({ channelId, thread, title }: { channelId: string; 
     if (slug && newest && focused.current && !thread) void markRead(client, queries, slug, channelId, newest);
   }, [client, queries, slug, channelId, newest, thread]);
 
-  const onCardAction = useCallback(
-    async (message: ChatMessage, action: CardAction, input?: string | null) => {
-      const answer = await actions.cardAction.mutateAsync({ message, action: action.id, input });
-      if (!answer.ok) throw new Error(answer.message ?? "That didn't work.");
-      return answer.message;
-    },
-    [actions.cardAction],
-  );
-
   const onReact = useCallback((message: ChatMessage, emoji: string, add: boolean) => actions.react.mutate({ message, emoji, add }), [actions.react]);
   const onRetry = useCallback((message: Shown) => send(message.body, message), [send]);
 
@@ -137,7 +128,6 @@ export function Conversation({ channelId, thread, title }: { channelId: string; 
                   onLongPress={setPicked}
                   onReact={onReact}
                   onRetry={onRetry}
-                  onCardAction={onCardAction}
                 />
               )
             }

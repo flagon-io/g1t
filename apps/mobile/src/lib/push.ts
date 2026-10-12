@@ -70,7 +70,7 @@ export async function registerForPush(client: Client, ask: boolean): Promise<Pus
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync(MESSAGES_CHANNEL, {
       name: "Messages",
-      description: "Messages to you, mentions, replies, and agents waiting on you.",
+      description: "Messages to you, mentions and replies.",
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 120, 80, 120],
       lightColor: "#b6a8ff",
