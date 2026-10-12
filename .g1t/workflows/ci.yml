@@ -72,8 +72,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Type checks
         run: npm run typecheck
       - name: Tests
@@ -92,8 +101,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: The site, sudo and the docs
         run: node scripts/deploy.mjs build --only web,sudo,docs
 

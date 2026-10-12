@@ -86,8 +86,17 @@ jobs:
             ~/.cargo/registry
             apps/desktop/src-tauri/target
           key: desktop-release-linux-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Build and sign
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_SIGNING_KEY }}
@@ -157,8 +166,17 @@ jobs:
             ~/.cargo/registry
             apps/desktop/src-tauri/target
           key: desktop-release-windows-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Build and sign
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_SIGNING_KEY }}
@@ -217,8 +235,17 @@ jobs:
           pattern: desktop-*
           merge-multiple: true
           path: target/desktop-release/${{ needs.version.outputs.version }}/
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install Wrangler
-        run: npm ci --workspaces=false --no-audit --no-fund
+        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: The manifest
         run: node scripts/desktop-release.mjs manifest --notes "${{ inputs.notes }}"
       - name: Publish

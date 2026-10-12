@@ -70,8 +70,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install Wrangler
-        run: npm ci --workspaces=false --no-audit --no-fund
+        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: The manifest matches every wrangler.jsonc
         run: node scripts/deploy.mjs manifest --check
       - name: The deploy tool's tests
@@ -125,8 +134,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install Wrangler
-        run: npm ci --workspaces=false --no-audit --no-fund
+        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: Apply pending migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

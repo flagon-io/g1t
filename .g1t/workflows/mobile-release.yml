@@ -55,8 +55,17 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = tag ] && [ "mobile-v$version" != "${GITHUB_REF_NAME}" ]; then
             echo "::error::The tag is ${GITHUB_REF_NAME}, but apps/mobile is $version"; exit 1
           fi
+      # npm's downloads, kept between runs: an install reads them first
+      # and asks the registry only for what changed, so a dropped
+      # connection to it rarely stops the job.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install Wrangler
-        run: npm ci --workspaces=false --no-audit --no-fund
+        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: Build on EAS
         if: ${{ !inputs.build }}
         env:
