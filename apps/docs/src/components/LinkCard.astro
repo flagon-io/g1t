@@ -1,5 +1,6 @@
 ---
-// Starlight's <LinkCard>, with Lucide's arrow.
+// Starlight's <LinkCard>, with Lucide's arrow, and optionally a Lucide icon
+// (its name on lucide.dev) in a lavender tile above the title.
 import type { HTMLAttributes } from 'astro/types';
 
 import LucideIcon from './LucideIcon.astro';
@@ -7,13 +8,15 @@ import LucideIcon from './LucideIcon.astro';
 interface Props extends Omit<HTMLAttributes<'a'>, 'title'> {
 	title: string;
 	description?: string;
+	icon?: string;
 }
 
-const { title, description, ...attributes } = Astro.props;
+const { title, description, icon, ...attributes } = Astro.props;
 ---
 
 <div class="sl-link-card">
 	<span class="sl-flex stack">
+		{icon && <span class="tile"><LucideIcon name={icon} size="1.125rem" /></span>}
 		<a {...attributes}>
 			<span class="title" set:html={title} />
 		</a>
@@ -47,6 +50,17 @@ const { title, description, ...attributes } = Astro.props;
 		.stack {
 			flex-direction: column;
 			gap: 0.5rem;
+		}
+		.tile {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 2.25rem;
+			height: 2.25rem;
+			margin-bottom: 0.25rem;
+			border-radius: 0.6rem;
+			background: var(--g1t-accent-low);
+			color: var(--g1t-accent);
 		}
 		.title {
 			color: var(--sl-color-white);

@@ -33,6 +33,10 @@ export const GET: APIRoute = ({ props }) => {
 	// MDX pages keep their markup; strip imports and leave the rest readable.
 	const body = (page.body ?? '')
 		.replace(/^import .*$/gm, '')
+		// Tabs read as each tab's content under its label in bold.
+		.replace(/^[ \t]*<\/?Tabs[^>]*>[ \t]*\n?/gm, '')
+		.replace(/^[ \t]*<\/TabItem>[ \t]*$/gm, '')
+		.replace(/^([ \t]*)<TabItem label="([^"]+)"[^>]*>[ \t]*$/gm, '$1**$2**\n')
 		.replace(/^([ \t]*)<AgentSetup( variant="token")? \/>$/gm, (_match, indent: string, token?: string) =>
 			agentsMarkdown(token ? AGENTS_WITH_TOKEN : AGENTS)
 				.split('\n')
