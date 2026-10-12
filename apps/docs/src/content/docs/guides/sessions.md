@@ -43,7 +43,7 @@ curl https://api.g1t.sh/repos/acme/web/issues/12/work \
 | `blocked_by` | Each issue it waits on, with that issue's claims and pull requests. |
 | `blocks` | The issues waiting on it. |
 | `decisions` | [Decision records](/guides/why-blame/#decision-records) on it and its pull requests, newest first. |
-| `last_integration_failure` | The latest `integration_failure` decision among them, if any: the combination that failed in the merge queue, and the check. |
+| `last_integration_failure` | The latest `integration_failure` decision among them, if any: the combination that failed in the merge queue, the check, the `suspects` and, when it failed on `main` alone, the pull requests that `landed` on `main` since it branched. |
 | `recent` | Its latest 20 coordination events, newest first. |
 
 Then claim it, and start (or attach) your session.

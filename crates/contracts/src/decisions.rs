@@ -100,7 +100,8 @@ pub struct Decision {
     pub summary: String,
     /// What it rests on, as an object: the commit, the check (`name`,
     /// `conclusion`, `url`), the `combination` of pull requests tested
-    /// together, `other_pulls`, `suspects`.
+    /// together, `other_pulls`, `suspects`, `bisected`, and for a failure
+    /// with nothing ahead, `landed`.
     pub evidence: serde_json::Value,
     /// RFC 3339.
     pub created_at: String,
@@ -173,6 +174,12 @@ pub struct IntegrationFailed {
     pub suspects: Vec<u32>,
     /// The other pull requests in `combination`.
     pub other_pulls: Vec<u32>,
+    /// With nothing ahead of it, though its own checks pass on its head:
+    /// the pull requests merged into the default branch since it branched,
+    /// newest first and at most ten, any of which may be what it now fails
+    /// with. It still answers for the failure. Empty otherwise.
+    #[serde(default)]
+    pub landed: Vec<u32>,
     /// The combined state that failed.
     pub commit: Option<String>,
 }
@@ -277,6 +284,7 @@ mod tests {
             bisected: true,
             suspects: vec![12],
             other_pulls: vec![11, 12],
+            landed: Vec::new(),
             commit: Some("abc".into()),
         };
         let sent = serde_json::to_value(&event).unwrap();
@@ -284,5 +292,11 @@ mod tests {
         assert_eq!(sent["issue"], 9);
         assert_eq!(sent["otherPulls"], serde_json::json!([11, 12]));
         assert_eq!(sent["check"]["conclusion"], "failure");
+        assert_eq!(sent["landed"], serde_json::json!([]));
+        // An event from before `landed` was sent still reads.
+        let mut older = sent.clone();
+        older.as_object_mut().unwrap().remove("landed");
+        let read: IntegrationFailed = serde_json::from_value(older).unwrap();
+        assert!(read.landed.is_empty());
     }
 }

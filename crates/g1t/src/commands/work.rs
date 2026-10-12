@@ -466,6 +466,10 @@ pub fn event_summary(data: &Value) -> String {
         if !combination.is_empty() {
             line.push_str(&format!(" with {combination}"));
         }
+        let landed = nums("landed");
+        if !landed.is_empty() {
+            line.push_str(&format!(" (since it branched: {landed} landed)"));
+        }
         return line.trim().to_owned();
     }
     if let Some(other) = data["other_pull"].as_u64() {

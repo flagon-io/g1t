@@ -47,7 +47,7 @@ pub(crate) struct EntryRow {
     combined_commit: Option<String>,
     results: Option<String>,
     error: Option<String>,
-    tested_at: Option<String>,
+    pub(crate) tested_at: Option<String>,
     created_at: String,
     finished_at: Option<String>,
     /// What failed its combined state while entries ahead were still

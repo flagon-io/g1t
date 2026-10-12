@@ -17,6 +17,15 @@
 //! are, by the `merge_group` workflows, and never landed). What is left is
 //! reported as `suspects`.
 //!
+//! **A default branch that moved.** An entry that fails with nothing ahead
+//! of it, though its own checks pass on its head, fails on the default
+//! branch as it is now: something landed there since it branched. g1t looks
+//! up the pull requests merged into the default branch whose commits the
+//! entry's history does not hold, newest first and at most [`MAX_LANDED`],
+//! and reports them as `landed`. The entry still answers for the failure
+//! (it is the one that must adapt); one landed pull request is named as the
+//! likely cause.
+//!
 //! **Telling the work.** The answer goes on the pull request's and its
 //! issue's timelines, into the pull request's session, as a decision
 //! record (`integration_failure`, tested) and as `integration.failed`. A
@@ -28,7 +37,7 @@
 
 use g1t_contracts::decisions::{DecisionConfidence, DecisionKind, FailedCheck, IntegrationFailed, IntegrationPassed};
 use g1t_contracts::events::SessionAppended;
-use g1t_contracts::repos::{GetByIdArgs, PathByIdArgs, Repo, RepoPath};
+use g1t_contracts::repos::{Commit, GetByIdArgs, LogArgs, PathByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -46,6 +55,15 @@ use crate::rows::ValueRow;
 
 /// The most extra combinations built to narrow down one failure.
 pub(crate) const PROBE_BUDGET: u32 = 3;
+
+/// The most pull requests reported as landed since an entry branched.
+pub(crate) const MAX_LANDED: usize = 10;
+
+/// How far back the entry's own history is read to tell what it holds.
+const LANDED_HISTORY: u32 = 1000;
+
+/// How many of the latest merged pull requests are looked at.
+const LANDED_CANDIDATES: u32 = 50;
 
 /// What kind of failure a combined state had.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,13 +192,21 @@ pub(crate) enum Plan {
     Blame(Vec<u32>),
     /// It fails with some of the entries ahead: narrow them down.
     Bisect,
+    /// Nothing is ahead and it passes its checks on its own, yet it fails
+    /// on the default branch as it is now: it answers for it, and what
+    /// landed there since it branched is looked up.
+    BaseMoved,
 }
 
 /// Decides who answers for a failure of the entry tested with `ahead`
 /// merged in first. `passed_alone`: its own checks pass on its head.
 pub(crate) fn plan(ahead: &[u32], failure: &Failure, passed_alone: bool) -> Plan {
     if ahead.is_empty() {
-        return Plan::Blame(Vec::new());
+        return if failure.kind == FailureKind::Checks && passed_alone {
+            Plan::BaseMoved
+        } else {
+            Plan::Blame(Vec::new())
+        };
     }
     match failure.kind {
         // The sandbox names the entry ahead that changed the same files.
@@ -191,6 +217,39 @@ pub(crate) fn plan(ahead: &[u32], failure: &Failure, passed_alone: bool) -> Plan
         FailureKind::Checks if ahead.len() == 1 => Plan::Blame(ahead.to_vec()),
         FailureKind::Checks => Plan::Bisect,
     }
+}
+
+/// A pull request merged into the default branch, as looked at for what
+/// landed since an entry branched.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct MergedRow {
+    pub(crate) number: u32,
+    /// The commit it landed as.
+    pub(crate) head_commit: Option<String>,
+    pub(crate) merged_at: Option<String>,
+}
+
+/// The pull requests among `merged` (newest first) that landed since the
+/// entry branched: those whose commit `history`, the entry's own, does not
+/// hold. When that history was cut short, `oldest` is the time of its
+/// oldest commit, and a pull request merged before it is not counted, as
+/// its commit may be further back. Newest first, at most [`MAX_LANDED`].
+pub(crate) fn landed_since(merged: &[MergedRow], history: &[Commit], oldest: Option<&str>) -> Vec<u32> {
+    merged
+        .iter()
+        .filter(|pull| {
+            pull.head_commit
+                .as_deref()
+                .is_some_and(|commit| !history.iter().any(|known| known.hash == commit))
+        })
+        .filter(|pull| match (oldest, pull.merged_at.as_deref()) {
+            (Some(oldest), Some(at)) => at >= oldest,
+            (Some(_), None) => false,
+            (None, _) => true,
+        })
+        .map(|pull| pull.number)
+        .take(MAX_LANDED)
+        .collect()
 }
 
 /// The suspects to build with the entry next, the first half of them, or
@@ -234,9 +293,15 @@ fn what_failed(check: &FailedCheck) -> String {
 
 /// The note on the pull request, as the rest of a sentence starting with
 /// `g1t`.
-pub(crate) fn pull_note(ahead: &[u32], suspects: &[u32], bisected: bool, check: &FailedCheck) -> String {
+pub(crate) fn pull_note(ahead: &[u32], suspects: &[u32], bisected: bool, landed: &[u32], check: &FailedCheck) -> String {
     let what = what_failed(check);
     let rejoin = "Push a fix: once its checks pass on the new commit, it rejoins the merge queue by itself.";
+    if suspects.is_empty() && ahead.is_empty() && !landed.is_empty() {
+        return format!(
+            "traced its merge queue failure to the default branch as it is now: {what} with this change merged into it, though this passes its checks on its own. Since this branched, {}. Bring it up to date with the default branch, fix what breaks, and push. {rejoin}",
+            landed_clause(landed),
+        );
+    }
     if suspects.is_empty() {
         let on = if ahead.is_empty() {
             "on the default branch as it is now".to_owned()
@@ -258,10 +323,24 @@ pub(crate) fn pull_note(ahead: &[u32], suspects: &[u32], bisected: bool, check: 
     )
 }
 
+/// What landed on the default branch since the entry branched, as a
+/// clause: one is named as the likely cause.
+fn landed_clause(landed: &[u32]) -> String {
+    match landed {
+        [one] => format!("#{one} landed and is the likely cause"),
+        _ => format!("{} landed and may be what it conflicts with", numbers(landed)),
+    }
+}
+
 /// The note on its issue, and the one-line summary of the decision.
-pub(crate) fn summary(number: u32, suspects: &[u32], check: &FailedCheck) -> String {
+pub(crate) fn summary(number: u32, suspects: &[u32], landed: &[u32], check: &FailedCheck) -> String {
     let what = what_failed(check);
-    if suspects.is_empty() {
+    if suspects.is_empty() && !landed.is_empty() {
+        format!(
+            "#{number} failed in the merge queue on the default branch as it is now: {what}, though #{number} passes its checks on its own; since it branched, {}.",
+            landed_clause(landed),
+        )
+    } else if suspects.is_empty() {
         format!("#{number} failed in the merge queue: {what}, and #{number} itself is the cause.")
     } else {
         format!("#{number} failed in the merge queue together with {}: {what} when they were combined.", numbers(suspects))
@@ -376,14 +455,19 @@ impl Work {
             return Ok(());
         };
         let ahead = row.ahead();
-        // Only a check failure with entries ahead asks whether it fails alone.
-        let passed_alone = failure.kind != FailureKind::Checks || ahead.is_empty() || self.passed_alone(row).await?;
+        // Only a check failure asks whether it fails alone.
+        let passed_alone = failure.kind != FailureKind::Checks || self.passed_alone(row).await?;
         match plan(&ahead, &failure, passed_alone) {
-            Plan::Blame(suspects) => self.integration_failed(row, &pull, &failure, false, &suspects).await,
+            Plan::Blame(suspects) => self.integration_failed(row, &pull, &failure, false, &suspects, &[]).await,
+            Plan::BaseMoved => {
+                // What landed is context: without it, the failure is still told.
+                let landed = self.landed_since_branched(row, &pull).await.unwrap_or_default();
+                self.integration_failed(row, &pull, &failure, false, &[], &landed).await
+            }
             Plan::Bisect => {
                 let Some(stack) = self.tested_stack(row, &pull, &ahead).await? else {
                     // What was tested can no longer be found: say what is known.
-                    return self.integration_failed(row, &pull, &failure, false, &ahead).await;
+                    return self.integration_failed(row, &pull, &failure, false, &ahead, &[]).await;
                 };
                 let diagnosis = Diagnosis {
                     base_commit: row.base_commit.clone().unwrap_or_default(),
@@ -396,6 +480,55 @@ impl Work {
                 self.go_on(row, None, diagnosis).await
             }
         }
+    }
+
+    /// The pull requests merged into the default branch since `pull`'s
+    /// entry branched from it and before it was tested, newest first: the
+    /// latest merged ones whose commits the entry's history does not hold.
+    async fn landed_since_branched(&self, row: &EntryRow, pull: &Pull) -> Result<Vec<u32>> {
+        let (Some(head), Some(tested_at)) = (row.head_commit.clone(), row.tested_at.clone()) else {
+            return Ok(Vec::new());
+        };
+        let viewer = Some(pull.owner().clone());
+        let repo: Outcome<Repo> = g1t_kit::call(
+            &self.repos,
+            "get_by_id",
+            &GetByIdArgs { id: row.repo_id.clone(), viewer: viewer.clone() },
+        )
+        .await?;
+        let Outcome::Ok(repo) = repo else { return Ok(Vec::new()) };
+        let path = pull.fork.clone().unwrap_or_else(|| RepoPath {
+            namespace: repo.namespace.clone(),
+            name: repo.name.clone(),
+        });
+        let merged = async {
+            self.db
+                .prepare(
+                    "SELECT number, head_commit, merged_at FROM pulls
+                     WHERE repo_id = ? AND status = 'merged' AND id != ? AND merged_at <= ?
+                       AND (base_branch IS NULL OR base_branch = '' OR base_branch = ?)
+                     ORDER BY merged_at DESC LIMIT ?",
+                )
+                .bind(&[
+                    row.repo_id.as_str().into(),
+                    pull.id.as_str().into(),
+                    tested_at.as_str().into(),
+                    repo.default_branch.as_str().into(),
+                    LANDED_CANDIDATES.into(),
+                ])?
+                .all()
+                .await?
+                .results::<MergedRow>()
+        };
+        let log = LogArgs { path, viewer, git_ref: Some(head), limit: LANDED_HISTORY };
+        let history = g1t_kit::call::<_, Outcome<Vec<Commit>>>(&self.repos, "log", &log);
+        let (merged, history) = futures_util::future::try_join(merged, history).await?;
+        let Outcome::Ok(history) = history else { return Ok(Vec::new()) };
+        // A history cut short holds only what is newer than its oldest commit.
+        let oldest = (history.len() >= LANDED_HISTORY as usize)
+            .then(|| history.iter().map(|commit| commit.authored_at.as_str()).min())
+            .flatten();
+        Ok(landed_since(&merged, &history, oldest))
     }
 
     /// Each entry ahead and then `row`'s, as they were tested together.
@@ -450,7 +583,7 @@ impl Work {
                 return Ok(());
             };
             return self
-                .integration_failed(row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects)
+                .integration_failed(row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects, &[])
                 .await;
         };
         let now = now_ms();
@@ -721,7 +854,7 @@ impl Work {
                 let Some(pull) = self.pull_by_id(&row.pull_id).await? else {
                     return Ok(());
                 };
-                self.integration_failed(&row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects)
+                self.integration_failed(&row, &pull, &diagnosis.failure, narrowed(&diagnosis), &diagnosis.suspects, &[])
                     .await
             }
             ProbeResult::Broke | ProbeResult::Passed => {
@@ -735,7 +868,9 @@ impl Work {
     // --- Telling the work -------------------------------------------------------
 
     /// Tells the pull request, its issue, its session and anyone following
-    /// that its combined state failed, and who it failed with.
+    /// that its combined state failed, and who it failed with. `landed`:
+    /// with nothing ahead, the pull requests merged into the default branch
+    /// since it branched.
     pub(crate) async fn integration_failed(
         &self,
         row: &EntryRow,
@@ -743,14 +878,15 @@ impl Work {
         failure: &Failure,
         bisected: bool,
         suspects: &[u32],
+        landed: &[u32],
     ) -> Result<()> {
         let ahead = row.ahead();
         let mut combination = ahead.clone();
         combination.push(pull.number);
         let g1t = ("g1t", "g1t");
-        let note = pull_note(&ahead, suspects, bisected, &failure.check);
+        let note = pull_note(&ahead, suspects, bisected, landed, &failure.check);
         self.note(&row.repo_id, pull.number, g1t, &note).await?;
-        let summary = summary(pull.number, suspects, &failure.check);
+        let summary = summary(pull.number, suspects, landed, &failure.check);
         if let Some(issue) = pull.issue {
             self.note(&row.repo_id, issue, g1t, &format!("noted: {summary}")).await?;
         }
@@ -772,6 +908,7 @@ impl Work {
                     "other_pulls": ahead,
                     "suspects": suspects,
                     "bisected": bisected,
+                    "landed": landed,
                 }),
             },
         )
@@ -791,6 +928,7 @@ impl Work {
                 bisected,
                 suspects: suspects.to_vec(),
                 other_pulls: ahead,
+                landed: landed.to_vec(),
                 commit: failure.combined_commit.clone(),
             },
         )
@@ -981,8 +1119,15 @@ mod tests {
     #[test]
     fn who_answers_for_a_failure() {
         let checks = failure(FailureKind::Checks);
-        // Tested alone on the default branch: it is the cause.
-        assert_eq!(plan(&[], &checks, true), Plan::Blame(vec![]));
+        // Tested alone on the default branch, failing there though it
+        // passes on its own: the default branch moved under it.
+        assert_eq!(plan(&[], &checks, true), Plan::BaseMoved);
+        // Alone, and failing on its own too: it is the cause.
+        assert_eq!(plan(&[], &checks, false), Plan::Blame(vec![]));
+        // Alone, but not a check failure: nothing to look up.
+        for kind in [FailureKind::Conflict, FailureKind::Missing, FailureKind::Build] {
+            assert_eq!(plan(&[], &failure(kind), true), Plan::Blame(vec![]), "{kind:?}");
+        }
         // Its own checks fail too: still the cause.
         assert_eq!(plan(&[11, 12], &checks, false), Plan::Blame(vec![]));
         // One entry ahead: that one, without building anything.
@@ -1035,17 +1180,80 @@ mod tests {
     #[test]
     fn the_notes_name_the_other_changes_and_the_check() {
         let check = failure(FailureKind::Checks).check;
-        let note = pull_note(&[11, 12, 13], &[12], true, &check);
+        let note = pull_note(&[11, 12, 13], &[12], true, &[], &check);
         assert!(note.starts_with("traced its merge queue failure to how it combines with #12 (narrowed down from #11, #12 and #13"), "{note}");
         assert!(note.contains("`CI / merge_group` failed"));
         assert!(note.contains("once #12 has landed"));
-        let own = pull_note(&[], &[], false, &check);
+        let own = pull_note(&[], &[], false, &[], &check);
         assert!(own.contains("on the default branch as it is now, and the change is the cause"), "{own}");
-        let conflict = pull_note(&[11], &[11], false, &FailedCheck { name: "merge".into(), conclusion: "conflict".into(), url: None });
+        let conflict = pull_note(&[11], &[11], false, &[], &FailedCheck { name: "merge".into(), conclusion: "conflict".into(), url: None });
         assert!(conflict.contains("it did not merge cleanly"), "{conflict}");
         assert!(!conflict.contains("narrowed"));
-        assert_eq!(summary(14, &[11, 12], &check), "#14 failed in the merge queue together with #11 and #12: `CI / merge_group` failed when they were combined.");
+        assert_eq!(summary(14, &[11, 12], &[], &check), "#14 failed in the merge queue together with #11 and #12: `CI / merge_group` failed when they were combined.");
         assert_eq!(numbers(&[]), "");
+    }
+
+    #[test]
+    fn the_notes_name_what_landed_since_it_branched() {
+        let check = failure(FailureKind::Checks).check;
+        // One landed: named as the likely cause.
+        let one = pull_note(&[], &[], false, &[1], &check);
+        assert_eq!(
+            one,
+            "traced its merge queue failure to the default branch as it is now: `CI / merge_group` failed with this change merged into it, though this passes its checks on its own. Since this branched, #1 landed and is the likely cause. Bring it up to date with the default branch, fix what breaks, and push. Push a fix: once its checks pass on the new commit, it rejoins the merge queue by itself."
+        );
+        assert_eq!(
+            summary(14, &[], &[1], &check),
+            "#14 failed in the merge queue on the default branch as it is now: `CI / merge_group` failed, though #14 passes its checks on its own; since it branched, #1 landed and is the likely cause."
+        );
+        // Several: listed, newest first, as possible causes.
+        let several = pull_note(&[], &[], false, &[7, 5, 1], &check);
+        assert!(several.contains("Since this branched, #7, #5 and #1 landed and may be what it conflicts with."), "{several}");
+        assert!(!several.contains("the change is the cause"));
+        assert!(summary(14, &[], &[7, 5], &check).ends_with("since it branched, #7 and #5 landed and may be what it conflicts with."));
+        // None found: the change is the cause, as before.
+        assert_eq!(summary(14, &[], &[], &check), "#14 failed in the merge queue: `CI / merge_group` failed, and #14 itself is the cause.");
+    }
+
+    fn commit(hash: &str, at: &str) -> Commit {
+        Commit {
+            hash: hash.into(),
+            tree_hash: format!("t{hash}"),
+            message: String::new(),
+            author: g1t_contracts::repos::Signature { name: "a".into(), email: "a@example.com".into() },
+            parents: Vec::new(),
+            authored_at: at.into(),
+        }
+    }
+
+    fn merged(number: u32, commit: &str, at: &str) -> MergedRow {
+        MergedRow { number, head_commit: Some(commit.into()), merged_at: Some(at.into()) }
+    }
+
+    #[test]
+    fn what_landed_is_what_its_history_does_not_hold() {
+        // #3 and #2 landed after it branched from #1's commit.
+        let pulls = [
+            merged(3, "c3", "2026-10-12T12:00:00.000Z"),
+            merged(2, "c2", "2026-10-12T11:00:00.000Z"),
+            merged(1, "c1", "2026-10-12T10:00:00.000Z"),
+        ];
+        let history = [commit("mine", "2026-10-12T10:30:00Z"), commit("c1", "2026-10-12T10:00:00Z"), commit("c0", "2026-10-11T00:00:00Z")];
+        assert_eq!(landed_since(&pulls, &history, None), vec![3, 2]);
+        // Brought up to date with #2 since: only #3 is new to it.
+        let updated = [commit("merge", "2026-10-12T11:30:00Z"), commit("c2", "2026-10-12T11:00:00Z"), commit("c1", "2026-10-12T10:00:00Z")];
+        assert_eq!(landed_since(&pulls, &updated, None), vec![3]);
+        // A history cut short does not count what is older than it.
+        let short = [commit("mine", "2026-10-12T11:30:00Z"), commit("x", "2026-10-12T10:30:00Z")];
+        assert_eq!(landed_since(&pulls, &short, Some("2026-10-12T10:30:00Z")), vec![3, 2]);
+        // A merged pull request with no recorded commit is not counted.
+        let unknown = [MergedRow { number: 9, head_commit: None, merged_at: None }];
+        assert!(landed_since(&unknown, &history, None).is_empty());
+        // At most MAX_LANDED, newest first.
+        let many: Vec<MergedRow> = (1..=15).rev().map(|n| merged(n, &format!("m{n}"), "2026-10-12T12:00:00.000Z")).collect();
+        let found = landed_since(&many, &history, None);
+        assert_eq!(found.len(), MAX_LANDED);
+        assert_eq!(found.first(), Some(&15));
     }
 
     #[test]
