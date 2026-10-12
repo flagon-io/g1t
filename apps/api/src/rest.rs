@@ -989,6 +989,12 @@ pub const ROUTES: &[Route] = &[
         Op::RecordSession,
         &[],
     ),
+    // Decision records, on a pull request or an issue (with its pull
+    // requests'), and why a line is the way it is.
+    route("GET", "/repos/:owner/:name/pulls/:number/decisions", Op::ListDecisions, &[]),
+    route("POST", "/repos/:owner/:name/pulls/:number/decisions", Op::RecordDecision, &[]),
+    route("GET", "/repos/:owner/:name/issues/:number/decisions", Op::ListDecisions, &[]),
+    route("GET", "/repos/:owner/:name/why", Op::Why, &[("path", "path"), ("line", "line"), ("ref", "ref")]),
     route(
         "POST",
         "/repos/:owner/:name/pulls/:number/ready",

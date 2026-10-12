@@ -45,6 +45,8 @@ pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM review_runs WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM agent_messages WHERE repo_id = ?1 OR pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM queue_entries WHERE repo_id = ?1",
+    "DELETE FROM queue_probes WHERE repo_id = ?1",
+    "DELETE FROM decisions WHERE repo_id = ?1",
     "DELETE FROM agent_mentions WHERE repo_id = ?1",
     "DELETE FROM agent_rules WHERE repo_id = ?1",
     "DELETE FROM pull_confidence WHERE repo_id = ?1",

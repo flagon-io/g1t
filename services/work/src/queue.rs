@@ -10,7 +10,8 @@
 //! there. Entries land in order, each by moving the default branch to its
 //! tested state, once everything ahead has landed. One that fails leaves
 //! the queue with a failed check run; the entries behind it are tested
-//! again without it.
+//! again without it. Which entry answers for a failure, which entries
+//! ahead it breaks with, who is told and how it rejoins: integration.rs.
 
 use futures_util::future::try_join_all;
 use g1t_contracts::events::{ChecksEvent, QueueChanged};
@@ -29,19 +30,19 @@ use crate::checks::{hash, new_token};
 /// How many entries that left the queue are shown.
 const RECENT: u32 = 20;
 /// Where tested states are pushed, in the repository itself.
-const BRANCH_PREFIX: &str = "g1t-queue/";
+pub(crate) const BRANCH_PREFIX: &str = "g1t-queue/";
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct EntryRow {
-    id: String,
-    repo_id: String,
-    pull_id: String,
-    number: u32,
+    pub(crate) id: String,
+    pub(crate) repo_id: String,
+    pub(crate) pull_id: String,
+    pub(crate) number: u32,
     state: String,
     enqueued_by: String,
-    keep_issue_open: u32,
-    head_commit: Option<String>,
-    base_commit: Option<String>,
+    pub(crate) keep_issue_open: u32,
+    pub(crate) head_commit: Option<String>,
+    pub(crate) base_commit: Option<String>,
     ahead: Option<String>,
     combined_commit: Option<String>,
     results: Option<String>,
@@ -49,10 +50,17 @@ pub(crate) struct EntryRow {
     tested_at: Option<String>,
     created_at: String,
     finished_at: Option<String>,
+    /// What failed its combined state while entries ahead were still
+    /// being tested (integration.rs), as JSON.
+    #[serde(default)]
+    pub(crate) held: Option<String>,
+    /// What the queue worked out about its failure (integration.rs).
+    #[serde(default)]
+    pub(crate) diagnosis: Option<String>,
 }
 
 impl EntryRow {
-    fn state(&self) -> QueueState {
+    pub(crate) fn state(&self) -> QueueState {
         match self.state.as_str() {
             "testing" => QueueState::Testing,
             "passed" => QueueState::Passed,
@@ -63,11 +71,11 @@ impl EntryRow {
         }
     }
 
-    fn actor(&self) -> Option<User> {
+    pub(crate) fn actor(&self) -> Option<User> {
         serde_json::from_str(&self.enqueued_by).ok()
     }
 
-    fn ahead(&self) -> Vec<u32> {
+    pub(crate) fn ahead(&self) -> Vec<u32> {
         self.ahead
             .as_deref()
             .and_then(|ahead| serde_json::from_str(ahead).ok())
@@ -84,7 +92,7 @@ fn minutes_ago(minutes: u64) -> String {
 }
 
 impl Work {
-    async fn entries(&self, repo_id: &str, active: bool) -> Result<Vec<EntryRow>> {
+    pub(crate) async fn entries(&self, repo_id: &str, active: bool) -> Result<Vec<EntryRow>> {
         let sql = if active {
             "SELECT * FROM queue_entries
              WHERE repo_id = ? AND state IN ('waiting', 'testing', 'passed')
@@ -120,7 +128,7 @@ impl Work {
         Ok(row.map(|row| (row.state(), row.ahead())))
     }
 
-    async fn changed(&self, repo_id: &str) -> Result<()> {
+    pub(crate) async fn changed(&self, repo_id: &str) -> Result<()> {
         self.publish_as(
             "queue.changed",
             repo_id,
@@ -278,20 +286,25 @@ impl Work {
     /// left the queue, as GitHub does with its queue's branches. A branch
     /// left behind is untidy, not wrong, so a failure only logs.
     async fn drop_branch(&self, row: &EntryRow) {
+        self.drop_branch_named(&row.repo_id, &row.branch()).await;
+    }
+
+    /// Removes one of the queue's branches.
+    pub(crate) async fn drop_branch_named(&self, repo_id: &str, branch: &str) {
         let deleted: Result<Outcome<bool>> = g1t_kit::call(
             &self.repos,
             "delete_branch",
             &DeleteBranchArgs {
-                repo_id: row.repo_id.clone(),
-                branch: row.branch(),
+                repo_id: repo_id.to_owned(),
+                branch: branch.to_owned(),
                 head: None,
             },
         )
         .await;
         match deleted {
             Ok(Outcome::Ok(_)) => {}
-            Ok(Outcome::Fail(failure)) => worker::console_warn!("{}: {}", row.branch(), failure.message),
-            Err(error) => worker::console_warn!("{}: {error}", row.branch()),
+            Ok(Outcome::Fail(failure)) => worker::console_warn!("{branch}: {}", failure.message),
+            Err(error) => worker::console_warn!("{branch}: {error}"),
         }
     }
 
@@ -302,7 +315,7 @@ impl Work {
                 .prepare(
                     "UPDATE queue_entries
                      SET state = 'waiting', token_hash = NULL, combined_commit = NULL,
-                         results = NULL, error = NULL, ahead = NULL
+                         results = NULL, error = NULL, ahead = NULL, held = NULL
                      WHERE id = ? AND state IN ('testing', 'passed')",
                 )
                 .bind(&[row.id.as_str().into()])?
@@ -315,7 +328,16 @@ impl Work {
     /// The next batch to test, if nothing is being tested now: one job per
     /// entry, each building the default branch with that entry and every
     /// entry ahead of it.
+    ///
+    /// Smaller combinations a failure is being narrowed down with
+    /// (integration.rs) are built alongside, whatever the queue is doing.
     pub(crate) async fn queue_build(&self, a: QueueBuildArgs) -> Result<Vec<QueueJob>> {
+        let mut jobs = self.probe_jobs(&a.repo_id).await?;
+        jobs.extend(self.queue_batch(a).await?);
+        Ok(jobs)
+    }
+
+    async fn queue_batch(&self, a: QueueBuildArgs) -> Result<Vec<QueueJob>> {
         let active = self.entries(&a.repo_id, true).await?;
         // How the default branch's merge queue rule batches (rulesets.rs).
         let rule = self.queue_rule(&a.repo_id).await?;
@@ -330,7 +352,7 @@ impl Work {
             .collect();
         if !stuck.is_empty() {
             self.retest(&stuck).await?;
-            return Box::pin(self.queue_build(a)).await;
+            return Box::pin(self.queue_batch(a)).await;
         }
         if active.iter().any(|row| row.state() != QueueState::Waiting) {
             return Ok(Vec::new());
@@ -462,6 +484,10 @@ impl Work {
 
     /// A sandbox's result for one combined state.
     pub(crate) async fn report_queue(&self, a: ReportQueueArgs) -> Result<Outcome<QueueState>> {
+        // A smaller combination built to narrow down a failure.
+        if a.entry_id.starts_with("qpr_") {
+            return self.report_probe(a).await;
+        }
         let row = self
             .db
             .prepare("SELECT * FROM queue_entries WHERE id = ? AND token_hash = ?")
@@ -482,7 +508,18 @@ impl Work {
         // workflows; it stays in testing until they finish (see `statuses`),
         // and the branch's required checks must pass on it.
         let workflows = match (&a.combined_commit, built) {
-            (Some(commit), true) => self.start_merge_group(&row, commit).await.unwrap_or(0),
+            (Some(commit), true) => self
+                .run_merge_group(
+                    &row.repo_id,
+                    &row.id,
+                    &row.branch(),
+                    row.base_commit.as_deref(),
+                    row.number,
+                    &row.ahead(),
+                    commit,
+                )
+                .await
+                .unwrap_or(0),
             _ => 0,
         };
         let required = self.settings_by_id(&row.repo_id).await?.required_checks;
@@ -495,35 +532,51 @@ impl Work {
             )
         });
         let passed = built && unchecked.is_none();
-        let error = a.error.clone().or(unchecked);
-        let state = if !passed {
-            QueueState::Failed
-        } else if workflows > 0 {
+        let error = a.error.clone().or(unchecked.clone());
+        let report = ReportQueueArgs { error: error.clone(), ..a };
+        let failure = (!passed).then(|| {
+            crate::integration::Failure::of_report(&report, unchecked.is_some().then_some(&required[..]))
+        });
+        // Failed while an entry ahead of it is still being tested: held
+        // until those ahead are settled, so that it is not blamed for
+        // theirs (integration.rs).
+        let held = match &failure {
+            Some(failure) if self.ahead_unsettled(&row).await? => Some(serde_json::to_string(failure)?),
+            _ => None,
+        };
+        let state = if passed && workflows == 0 {
+            QueueState::Passed
+        } else if passed || held.is_some() {
             QueueState::Testing
         } else {
-            QueueState::Passed
+            QueueState::Failed
         };
         self.db
             .prepare(
                 "UPDATE queue_entries
-                 SET state = ?, combined_commit = ?, results = ?, error = ?, token_hash = NULL,
+                 SET state = ?, combined_commit = ?, results = ?, error = ?, token_hash = NULL, held = ?,
                      finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END
                  WHERE id = ?",
             )
             .bind(&[
                 state.as_str().into(),
-                a.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
-                serde_json::to_string(&a.results)?.into(),
+                report.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+                serde_json::to_string(&report.results)?.into(),
                 error.as_deref().map_or(JsValue::NULL, JsValue::from),
+                held.as_deref().map_or(JsValue::NULL, JsValue::from),
                 state.as_str().into(),
                 rfc3339(now_ms()).into(),
                 row.id.as_str().into(),
             ])?
             .run()
             .await?;
-        if !passed {
-            let report = ReportQueueArgs { error, ..a };
+        if let Some(failure) = failure.filter(|_| held.is_none()) {
             self.eject(&row, &report).await?;
+            self.diagnose(&row, failure).await?;
+        }
+        if state == QueueState::Passed {
+            self.integration_passed(&row, report.combined_commit.as_deref()).await?;
+            self.resolve_held(&row.repo_id).await?;
         }
         self.settle(&row.repo_id).await?;
         self.changed(&row.repo_id).await?;
@@ -531,8 +584,19 @@ impl Work {
     }
 
     /// Asks the actions service to run the repository's `merge_group`
-    /// workflows on a combined state. Returns how many runs started.
-    async fn start_merge_group(&self, row: &EntryRow, commit: &str) -> Result<u32> {
+    /// workflows on a combined state: `entry`'s, pushed to `branch`, with
+    /// `ahead` merged in before `number`. Returns how many runs started.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn run_merge_group(
+        &self,
+        repo_id: &str,
+        entry: &str,
+        branch: &str,
+        base_commit: Option<&str>,
+        number: u32,
+        ahead: &[u32],
+        commit: &str,
+    ) -> Result<u32> {
         #[derive(serde::Deserialize)]
         struct Started {
             runs: u32,
@@ -541,13 +605,13 @@ impl Work {
             &self.actions,
             "merge_group",
             &serde_json::json!({
-                "repoId": row.repo_id,
-                "entry": row.id,
+                "repoId": repo_id,
+                "entry": entry,
                 "sha": commit,
-                "headRef": format!("refs/heads/{}", row.branch()),
-                "baseSha": row.base_commit,
-                "number": row.number,
-                "ahead": row.ahead(),
+                "headRef": format!("refs/heads/{branch}"),
+                "baseSha": base_commit,
+                "number": number,
+                "ahead": ahead,
             }),
         )
         .await?;
@@ -569,43 +633,88 @@ impl Work {
         let row = self
             .db
             .prepare(
-                "SELECT * FROM queue_entries WHERE repo_id = ? AND combined_commit = ? AND state = 'testing' AND token_hash IS NULL",
+                "SELECT * FROM queue_entries
+                 WHERE repo_id = ? AND combined_commit = ? AND state = 'testing' AND token_hash IS NULL AND held IS NULL",
             )
             .bind(&[repo_id.into(), commit.into()])?
             .first::<EntryRow>(None)
             .await?;
-        let Some(row) = row else { return Ok(()) };
         let missing = facts.expected();
         let passed = facts.failed.is_empty() && facts.required_failed().is_empty() && missing.is_empty();
-        self.db
-            .prepare("UPDATE queue_entries SET state = ?, finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END WHERE id = ?")
+        let Some(row) = row else {
+            // Or a smaller combination built to narrow down a failure.
+            if self.probe_finished(repo_id, commit, passed).await? {
+                self.changed(repo_id).await?;
+            }
+            return Ok(());
+        };
+        let failure = if passed {
+            None
+        } else {
+            let error = if facts.failed.is_empty() && facts.required_failed().is_empty() {
+                format!(
+                    "the required {} {} did not report on it. Add merge_group to the on: of the workflows the branch requires",
+                    if missing.len() == 1 { "check" } else { "checks" },
+                    crate::statuses::list(&missing)
+                )
+            } else if facts.failed.is_empty() {
+                format!("the required {} failed on it", crate::statuses::list(&facts.required_failed()))
+            } else {
+                format!("the workflow {} failed on it", crate::statuses::list(&facts.failed))
+            };
+            // Where to see the check that failed: its run's page.
+            let statuses = self.statuses(repo_id, Some(commit)).await?;
+            let url = |name: &str| {
+                statuses
+                    .iter()
+                    .find(|status| status.context == name || check_name(&status.context).0 == name)
+                    .and_then(|status| status.target_url.clone())
+            };
+            Some(crate::integration::Failure::of_workflows(
+                commit,
+                &facts.failed,
+                &facts.required_failed(),
+                &missing,
+                error,
+                url,
+            ))
+        };
+        let held = match &failure {
+            Some(failure) if self.ahead_unsettled(&row).await? => Some(serde_json::to_string(failure)?),
+            _ => None,
+        };
+        let state = if passed {
+            "passed"
+        } else if held.is_some() {
+            "testing"
+        } else {
+            "failed"
+        };
+        let moved = self
+            .db
+            .prepare(
+                "UPDATE queue_entries SET state = ?, held = ?, finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END
+                 WHERE id = ? AND state = 'testing' AND held IS NULL RETURNING id AS value",
+            )
             .bind(&[
-                (if passed { "passed" } else { "failed" }).into(),
-                (if passed { "passed" } else { "failed" }).into(),
+                state.into(),
+                held.as_deref().map_or(JsValue::NULL, JsValue::from),
+                state.into(),
                 rfc3339(now_ms()).into(),
                 row.id.as_str().into(),
             ])?
-            .run()
+            .first::<crate::rows::ValueRow>(None)
             .await?;
-        if !passed {
-            let report = ReportQueueArgs {
-                entry_id: row.id.clone(),
-                token: String::new(),
-                combined_commit: Some(commit.to_owned()),
-                results: Vec::new(),
-                error: Some(if facts.failed.is_empty() {
-                    format!(
-                        "the required {} {} did not report on it. Add merge_group to the on: of the workflows the branch requires",
-                        if missing.len() == 1 { "check" } else { "checks" },
-                        crate::statuses::list(&missing)
-                    )
-                } else {
-                    format!("the workflow {} failed on it", crate::statuses::list(&facts.failed))
-                }),
-                conflict_with: None,
-                conflicts: Vec::new(),
-            };
-            self.eject(&row, &report).await?;
+        if moved.is_none() {
+            return Ok(());
+        }
+        if let Some(failure) = failure.filter(|_| held.is_none()) {
+            self.eject(&row, &failure.report(&row.id)).await?;
+            self.diagnose(&row, failure).await?;
+        }
+        if passed {
+            self.integration_passed(&row, Some(commit)).await?;
+            self.resolve_held(repo_id).await?;
         }
         self.settle(repo_id).await?;
         self.changed(repo_id).await?;
@@ -615,7 +724,7 @@ impl Work {
     /// An entry whose combined state failed: the entries tested on top of
     /// it are tested again without it, and the failure is recorded as a
     /// failed check run of its pull request.
-    async fn eject(&self, row: &EntryRow, report: &ReportQueueArgs) -> Result<()> {
+    pub(crate) async fn eject(&self, row: &EntryRow, report: &ReportQueueArgs) -> Result<()> {
         self.drop_branch(row).await;
         let active = self.entries(&row.repo_id, true).await?;
         let behind: Vec<&EntryRow> = active
@@ -644,13 +753,13 @@ impl Work {
             .join(", ");
         let why = match (&report.error, report.conflict_with) {
             (_, Some(other)) if other != row.number && !files.is_empty() => format!(
-                "Its change conflicts with #{other}, which is ahead of it in the merge queue, in {files}. Bring it up to date with the default branch once #{other} lands, and merge it again."
+                "Its change conflicts with #{other}, which is ahead of it in the merge queue, in {files}. Bring it up to date with the default branch once #{other} lands and push: it rejoins the merge queue once its checks pass."
             ),
             (_, Some(other)) if other != row.number => format!(
-                "Its change conflicts with #{other}, which is ahead of it in the merge queue. Bring it up to date with the default branch once #{other} lands, and merge it again."
+                "Its change conflicts with #{other}, which is ahead of it in the merge queue. Bring it up to date with the default branch once #{other} lands and push: it rejoins the merge queue once its checks pass."
             ),
             (Some(_), None) if !files.is_empty() => format!(
-                "Its change conflicts with the default branch in {files}. Bring it up to date with the default branch, and merge it again."
+                "Its change conflicts with the default branch in {files}. Bring it up to date with the default branch and push: it rejoins the merge queue once its checks pass."
             ),
             (Some(error), _) if error.starts_with("the workflow ") => {
                 format!("{} when it was combined with {state}.", error.replacen("the workflow", "The workflow", 1).trim_end_matches(" on it"))
@@ -691,6 +800,11 @@ impl Work {
                 self.db
                     .prepare("UPDATE pulls SET check_status = 'failed', check_run_id = ? WHERE id = ?")
                     .bind(&[run_id.as_str().into(), pull.id.as_str().into()])?,
+                // Its merge stays asked for: it rejoins once a fix's checks
+                // pass (integration.rs `requeue_if_fixed`).
+                self.db
+                    .prepare("UPDATE queue_entries SET requeue = 1 WHERE id = ?")
+                    .bind(&[row.id.as_str().into()])?,
             ])
             .await?;
         self.note(

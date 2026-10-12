@@ -19,6 +19,7 @@ pub mod codeowners;
 pub mod coding_agents;
 pub mod credentials;
 pub mod datasets;
+pub mod decisions;
 pub mod deploy_keys;
 pub mod events;
 pub mod folios;

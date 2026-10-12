@@ -307,6 +307,11 @@ impl Work {
                     .await?;
                 }
             }
+            // A pull request the merge queue took out rejoins once a new
+            // commit's checks all pass (integration.rs).
+            if facts.failed.is_empty() && facts.required_failed().is_empty() && facts.expected().is_empty() {
+                self.requeue_if_fixed(&head.id, &a.sha).await?;
+            }
             self.publish_as(
                 "checks.completed",
                 &a.repo_id,

@@ -277,6 +277,8 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_pull_requests",
     "get_pull_request",
     "read_session",
+    "list_decisions",
+    "why",
     "get_pull_request_changes",
     "list_events",
     "get_context",
@@ -519,7 +521,7 @@ pub fn run_scopes(kind: RunCredentialKind, usage: CredentialUse) -> Vec<crate::s
 
 /// Operations that change a pull request, which a runner may do only to
 /// the pull request its run works on.
-const PULL_WRITES: &[&str] = &["record_session", "mark_pull_request_ready"];
+const PULL_WRITES: &[&str] = &["record_session", "record_decision", "mark_pull_request_ready"];
 
 /// Whether something was allowed, and the rule that decided it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

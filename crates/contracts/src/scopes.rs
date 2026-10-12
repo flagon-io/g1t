@@ -988,6 +988,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // A repository's files, as clone and fetch need.
     ("download_tarball_archive", Scope::CodeRead),
     ("download_zipball_archive", Scope::CodeRead),
+    ("why", Scope::CodeRead),
     // Projects follow their repositories.
     ("list_projects", Scope::RepoRead),
     ("get_project", Scope::RepoRead),
@@ -1109,9 +1110,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_pull_request_changes", Scope::PullRequestsRead),
     ("read_session", Scope::PullRequestsRead),
     ("get_merge_queue", Scope::PullRequestsRead),
+    ("list_decisions", Scope::PullRequestsRead),
     ("create_pull_request", Scope::PullRequestsWrite),
     ("update_pull_request", Scope::PullRequestsWrite),
     ("record_session", Scope::PullRequestsWrite),
+    ("record_decision", Scope::PullRequestsWrite),
     ("mark_pull_request_ready", Scope::PullRequestsWrite),
     ("close_pull_request", Scope::PullRequestsWrite),
     ("reopen_pull_request", Scope::PullRequestsWrite),
