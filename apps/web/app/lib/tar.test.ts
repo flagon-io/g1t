@@ -23,6 +23,16 @@ const entries = [
 ];
 
 /** Whether `tar` can be run here. */
+/**
+ * Why the archive is not read back here, if it is not: no tar, or Windows,
+ * whose tar takes `C:` for a remote host and whose files keep no Unix
+ * modes or symlinks to check. CI reads it back on Linux.
+ */
+function readBackSkip(): string | false {
+  if (process.platform === "win32") return "Windows keeps no Unix modes or symlinks to check";
+  return !hasTar() && "no tar here";
+}
+
 function hasTar(): boolean {
   try {
     execFileSync("tar", ["--version"], { stdio: "ignore" });
@@ -70,7 +80,7 @@ test("headers are ustar, with the commit in a pax global header", () => {
   assert.ok(out.subarray(out.length - 1024).every((byte) => byte === 0));
 });
 
-test("tar reads the archive back: files, folders, modes, a symlink and long paths", { skip: !hasTar() && "no tar here" }, async () => {
+test("tar reads the archive back: files, folders, modes, a symlink and long paths", { skip: readBackSkip() }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "g1t-tar-"));
   try {
     const file = join(dir, "archive.tar.gz");

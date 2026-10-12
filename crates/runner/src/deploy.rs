@@ -576,10 +576,29 @@ fn redirected_config(dir: &Path) -> Result<Option<(WranglerConfig, PathBuf)>> {
         return Ok(None);
     };
     let path = dir.join(".wrangler/deploy").join(path);
-    let path = path.canonicalize().unwrap_or(path);
+    let path = canonical(&path).unwrap_or(path);
     let text = std::fs::read_to_string(&path).with_context(|| format!("could not read {}", path.display()))?;
     let config = serde_json::from_str(&strip_jsonc(&text)).with_context(|| format!("could not read {}", path.display()))?;
     Ok(Some((config, path.parent().map_or_else(|| dir.to_path_buf(), Path::to_path_buf))))
+}
+
+/// The path, resolved, as a plain path. On Windows, `canonicalize` gives a
+/// verbatim one (`\\?\C:\…`), in which `/` and `..` are not read as
+/// separators or as the folder above: a config's `"directory": "../client"`
+/// joined to it would name no folder. A drive path loses the prefix; a
+/// network path keeps it, as it cannot do without.
+fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    let path = path.canonicalize()?;
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy();
+        if let Some(rest) = text.strip_prefix(r"\\?\") {
+            if !rest.starts_with(r"UNC\") {
+                return Ok(PathBuf::from(rest));
+            }
+        }
+    }
+    Ok(path)
 }
 
 /// The entry of the Worker a framework's adapter wrote, once it has built:
@@ -2148,7 +2167,7 @@ crons = [\"0 * * * *\"]
         );
         let (config, base) = redirected_config(&dir).unwrap().unwrap();
         assert_eq!(config.main.as_deref(), Some("index.js"));
-        assert_eq!(base, dir.join("dist/app").canonicalize().unwrap());
+        assert_eq!(base, canonical(&dir.join("dist/app")).unwrap());
         assert!(base.join(config.assets.unwrap().directory.unwrap()).ends_with("dist/app/../client"));
         assert!(redirected_config(&project("not-redirected", &[])).unwrap().is_none());
     }
