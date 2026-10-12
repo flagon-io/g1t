@@ -268,7 +268,7 @@ The `g1t` workspace on g1t.sh holds g1t's own actions, public, with a
 | Action | What it does |
 | --- | --- |
 | [`g1t/deploy@v1`](https://g1t.sh/g1t/deploy) | Builds the checkout and puts it on [g1t.page](/guides/deployments/): production from the project's production branch, a preview from a pull request or another branch. The job needs `deployments: write`. See [deploying from a workflow](/guides/deployments/#deploying-from-a-workflow). |
-| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`) without building anything. |
+| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`, `framework`) without building anything. |
 
 Both are composite actions around `g1t-runner`, which g1t's machines
 have; on a [self-hosted runner](/guides/self-hosted-runners/) they use

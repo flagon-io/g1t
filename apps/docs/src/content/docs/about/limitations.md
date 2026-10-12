@@ -367,8 +367,11 @@ up.
 
 - **Why.** Apps run on Cloudflare Workers, which run only while they answer a
   request. That is why an app nobody visits costs nothing.
-- **Instead.** Deploy the server from a workflow to wherever it runs today,
-  with its credentials in [secrets](/guides/secrets-and-variables/).
+- **Instead.** Build a framework app as a static export or with its
+  Cloudflare adapter, as [Frameworks](/guides/deployments/#frameworks)
+  lists; a build set up to need a server fails and says which. Or deploy
+  the server from a workflow to wherever it runs today, with its
+  credentials in [secrets](/guides/secrets-and-variables/).
 - **Status.** A runtime for servers is planned.
 
 ### Some Workers bindings are not provisioned

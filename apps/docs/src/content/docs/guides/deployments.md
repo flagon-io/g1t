@@ -95,21 +95,72 @@ You do not configure anything for the common cases.
 | The project has | g1t |
 | --- | --- |
 | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
+| A framework from the table below | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**. |
 | A `build` script in `package.json` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
 | An `index.html` and nothing to build | Serves it as it is. |
 
 **Settings → Deployments** shows what g1t detected at the project's last
 finished build (**Workers project**, **Static site** or **Plain HTML**),
 and what running it costs. Before the first build it says **Detected at
-the first build**.
+the first build**. The framework is named at the top of the build's log,
+as `Detected Astro: framework=astro.`
 
 Dependencies are installed by the lockfile that is there: `npm ci`,
 `pnpm install --frozen-lockfile`, `yarn install` or `bun install`, and
 `npm install` with no lockfile.
 
-A static site is served from the first of these that exists after the
-build: `dist`, `build`, `out`, `public`, `_site`, `.output/public`. Set
-**Output directory** to choose another.
+### Frameworks
+
+g1t knows a framework by the packages in `package.json`
+(`dependencies` and `devDependencies`) and by its config file. The build
+command is the package's own `build` script when it has one, else the
+command in the table. A **Build command** or **Output directory** of
+your own, under **Settings → Deployments**, always wins over the table.
+
+| Framework | Found by | Builds with | Serves |
+| --- | --- | --- | --- |
+| Vite, and React, Vue, Svelte, Solid or Preact on Vite | `vite` | `vite build` | `dist`, or `build.outDir` from `vite.config` |
+| Astro | `astro` | `astro build` | `dist`, or `outDir` |
+| Astro with `@astrojs/cloudflare` | `astro`, `@astrojs/cloudflare` | `astro build` | A Workers project: the Worker and config the adapter writes |
+| Next.js with `output: 'export'` | `next`, and `output: 'export'` in `next.config` | `next build` | `out` |
+| Next.js with OpenNext | `next`, `@opennextjs/cloudflare` and a `wrangler.jsonc` | `opennextjs-cloudflare build`, then `wrangler deploy --dry-run` | A Workers project |
+| SvelteKit with `@sveltejs/adapter-static` | `@sveltejs/kit` and the adapter | `vite build` | `build`, or the adapter's `pages` |
+| SvelteKit with `@sveltejs/adapter-cloudflare` | `@sveltejs/kit` and the adapter | `vite build` | A Workers project: `.svelte-kit/cloudflare/_worker.js` and the files beside it |
+| Nuxt | `nuxt` | `npm run generate` if there is one, else `nuxi generate` | `.output/public` |
+| React Router in SPA mode | `@react-router/dev`, and `ssr: false` in `react-router.config` | `react-router build` | `build/client` |
+| Remix in SPA mode | `@remix-run/dev`, and `ssr: false` in `vite.config` | `remix vite:build` | `build/client` |
+| Gatsby | `gatsby` | `gatsby build` | `public` |
+| Docusaurus | `@docusaurus/core` | `docusaurus build` | `build` |
+| Eleventy | `@11ty/eleventy` | `eleventy` | `_site`, or `dir.output` |
+| Angular | `@angular/core` and `angular.json` | `ng build` | `dist/<project>/browser`, from `angular.json` |
+| Create React App | `react-scripts` | `react-scripts build` | `build` |
+| Hugo | `hugo.toml`, `hugo.yaml` or `hugo.json`; or a Hugo `config.toml` and no `package.json` | `hugo --minify` | `public`, or `publishDir` |
+| Jekyll | `_config.yml` and a `Gemfile` | `bundle install`, then `bundle exec jekyll build` | `_site`, or `destination` |
+| mdBook | `book.toml` | `mdbook build` | `book`, or `build.build-dir` |
+
+- **Frameworks that need a server fail early, saying what to change.**
+  g1t.page runs static sites and Workers, not servers that stay up. A
+  Next.js app without `output: 'export'`, an Astro site with
+  `output: 'server'` and no Cloudflare adapter, a SvelteKit app with
+  `adapter-auto` or `adapter-node`, and a React Router or Remix app that
+  renders on the server each fail before anything is installed, with the
+  change that makes them deploy: a static export, or the framework's
+  Cloudflare adapter. An **Output directory** of your own skips the check.
+- **A framework's Worker.** Astro's and SvelteKit's Cloudflare adapters,
+  OpenNext, and `@cloudflare/vite-plugin` with a Wrangler config build a
+  Worker. g1t runs the build, then bundles what it wrote with
+  `wrangler deploy --dry-run`, reading the config the build wrote
+  (`.wrangler/deploy/config.json`) when there is one. A `_worker.js`,
+  `_routes.json` or `.assetsignore` at the top of the static files, and
+  the names `.assetsignore` lists, are never served.
+- **Hugo and mdBook** use the `hugo` or `mdbook` on the machine's `PATH`.
+  Without one, the build fetches Hugo 0.166.0 (the extended edition, with
+  npm) or builds mdBook 0.5.4 with cargo, which takes a minute or two.
+  Jekyll's gems are installed into `vendor/bundle` in the project.
+
+A project that is none of these is served from the first of these that
+exists after the build: `dist`, `build`, `out`, `public`, `_site`,
+`.output/public`. Set **Output directory** to choose another.
 
 ### Static sites
 
@@ -294,8 +345,10 @@ why.
 
 `g1t/detect` says what a build of the checkout would find, without
 building anything: its outputs are `kind` (`workers`, `static`, `html` or
-`none`), `install`, `build` and `output-dir`. Use them to cache, or to
-fail early:
+`none`), `install`, `build`, `output-dir` and `framework` (such as
+`astro` or `nextjs`, empty when there is none). A framework set up to
+need a server is `none`, and the step's log says what to change. Use
+them to cache, or to fail early:
 
 ```yaml
 - id: detect

@@ -1,5 +1,5 @@
 name: Detect a g1t.page project
-description: Says what a g1t.page build of this checkout would find, without building anything. Its kind, how it installs, what builds it and where its output is.
+description: Says what a g1t.page build of this checkout would find, without building anything. Its kind and framework, how it installs, what builds it and where its output is.
 author: g1t
 
 inputs:
@@ -18,7 +18,7 @@ inputs:
 
 outputs:
   kind:
-    description: workers (a Wrangler config), static (a site a build writes), html (the files as they are) or none.
+    description: workers (a Wrangler config, or a framework's Cloudflare adapter), static (a site a build writes), html (the files as they are) or none (nothing to serve, or a framework set up to need a server).
     value: ${{ steps.detect.outputs.kind }}
   install:
     description: How its dependencies are installed, such as npm ci. Empty without a package.json.
@@ -29,6 +29,9 @@ outputs:
   output-dir:
     description: The folder that is served, relative to the project (. for the project itself). Empty when a build has yet to write it.
     value: ${{ steps.detect.outputs.output-dir }}
+  framework:
+    description: The framework it is built with, such as vite, astro, nextjs, sveltekit or hugo. Empty when there is none.
+    value: ${{ steps.detect.outputs.framework }}
 
 runs:
   using: composite

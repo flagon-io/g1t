@@ -40,7 +40,7 @@ says what is built and when.
 | `project` | The repository's one project with Deployments on | The project's slug. Needed when the repository has several. |
 | `root-dir` | The project's setting | Where the project is in the checkout. |
 | `build-command` | The project's setting, else what the build finds | What builds it. |
-| `output-dir` | The project's setting, else the first of `dist`, `build`, `out`, `public`, `_site`, `.output/public` | The folder a static build writes. |
+| `output-dir` | The project's setting, else the folder the framework writes, else the first of `dist`, `build`, `out`, `public`, `_site`, `.output/public` | The folder a static build writes. |
 | `sha` | The run's commit | The commit this is a build of, for its `g1t / deploy` check. |
 | `token` | `${{ github.token }}` | The job's own token. It needs `deployments: write`; any other token is refused. |
 
