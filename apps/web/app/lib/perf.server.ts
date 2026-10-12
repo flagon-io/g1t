@@ -18,7 +18,7 @@ import {
   sessionFor,
   SESSION_SERVICES,
 } from "./perf";
-import { READ_DEADLINE_MS, WRITE_DEADLINE_MS, withDeadline } from "./deadline";
+import { deadlineFor, withDeadline } from "./deadline";
 
 /**
  * What one request to the site did: when it started, each service call
@@ -116,7 +116,7 @@ export function instrumented(name: string, binding: ServiceBinding): ServiceBind
  * body here costs nothing and puts it under the deadline too.
  */
 async function answerInTime(binding: ServiceBinding, name: string, method: string, input: string, init?: RequestInit): Promise<Response> {
-  const ms = mayWrite(method) ? WRITE_DEADLINE_MS : READ_DEADLINE_MS;
+  const ms = deadlineFor(name, method, mayWrite(method));
   return withDeadline(
     `${name} ${method || input}`,
     ms,

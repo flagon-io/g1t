@@ -3,13 +3,13 @@ import { type Location, createPath, useNavigation } from "react-router";
 
 /**
  * How long a client navigation may load before the page gives up on it and
- * loads the address as a whole page. Longer than a service read may take on
- * the server (lib/deadline.ts `READ_DEADLINE_MS`), so a slow service shows
- * its error page first; this catches what the server cannot: a request lost
- * on the way, a connection that went quiet, a route's code that never
- * arrived.
+ * loads the address as a whole page. Longer than any read may take on the
+ * server (lib/deadline.ts `SLOW_READ_DEADLINE_MS`): a slow page that would
+ * arrive is never cut off and started again, and a stuck service shows its
+ * error page first. This catches what the server cannot: a request lost on
+ * the way, a connection that went quiet, a route's code that never arrived.
  */
-export const STUCK_NAVIGATION_MS = 20_000;
+export const STUCK_NAVIGATION_MS = 75_000;
 
 /**
  * Where to send a navigation that has been loading too long, or null when
