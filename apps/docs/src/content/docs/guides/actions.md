@@ -66,7 +66,7 @@ gives their values out, so they cannot be copied across.
 | JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
 | Composite actions | The same. |
 | Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
-| `actions/checkout` | Checks out from g1t, with `ref`, `fetch-depth`, `path`, `repository`, `token` and `submodules`. |
+| `actions/checkout` | g1t's runner checks out itself, at whatever version the step names, fetching what versions 4 and 5 fetch: the run's commit on its branch (detached for a pull request or a tag); `ref` as a branch, a tag or a commit; `repository`, at its default branch when there is no `ref`; `path`, `token`, `fetch-depth` (`0` fetches every branch and tag), `fetch-tags`, `filter`, `sparse-checkout` and `sparse-checkout-cone-mode`; `submodules` (`true` or `recursive`, with the token sent only to g1t); `persist-credentials`, on unless it is `false`, so later steps' `git fetch` and `git push` are signed in; and `set-safe-directory`. The outputs `ref` and `commit` are set. `lfs`, `ssh-key` and `clean: false` are not read. See [why it is g1t's own](/about/limitations/#actionscheckout-is-g1ts-own). |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on` | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden. |
 | Problem matchers (`::add-matcher::`, `::remove-matcher::`) | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers). |
@@ -105,6 +105,10 @@ anything in it that runs differently.
   the `pull_request` types `unassigned`, `locked` and `unlocked`, `edited`
   for a new title or description, or the `issues` types `unassigned`,
   `locked`, `unlocked`, `pinned` and `unpinned`.
+- **The `actions/checkout` from GitHub.** g1t's runner checks out
+  itself, with the action's inputs and outputs but `lfs`, `ssh-key` and
+  `clean: false`, until a pull request's commits are kept in its
+  repository.
 - **Background steps.** A step with `background: true`, or a `wait`,
   `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
   them yet.
@@ -613,8 +617,8 @@ usually `root`. A few things differ from GitHub's runner:
   language images have both). In an image without them, such as Alpine,
   they run beside the container, on g1t's runner, with the same files,
   and the log says so.
-- `actions/checkout`, `actions/cache` and the artifact actions run on
-  g1t's runner, with the same files.
+- `actions/checkout` and the artifact actions run on g1t's runner, with
+  the same files.
 
 ### Building and pushing images
 
