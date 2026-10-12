@@ -53,7 +53,6 @@ import {
   fail,
   identityClient,
   isProtectedWorkspace,
-  mirrorWritable,
   newId,
   ok,
   openD1,
@@ -1820,9 +1819,6 @@ class Deployments {
         break;
       case "git.push":
         if (!event.data.defaultBranch) break;
-        // A mirror deploys only while g1t leads it: standing by, or in CI
-        // failover, the remote's own deploys stand (see contracts mirrors).
-        if (!mirrorWritable(event.data.mirror)) break;
         for (const project of await this.projects.byRepo(event.data.repoId)) {
           if (await this.buildsViaWorkflow(project.id)) continue;
           await this.deployProduction(project, event.data.after, event.actor ?? "g1t");

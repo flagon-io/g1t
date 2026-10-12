@@ -31,7 +31,6 @@ use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
 use crate::deploy_keys::DeployKeysOp;
-use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
@@ -124,9 +123,6 @@ pub enum Op {
     ConfirmEmail,
     RemoveEmail,
     UpdateEmailSettings,
-    ListInvites,
-    CreateInvite,
-    RevokeInvite,
     ListWorkspaceInvites,
     InviteMember,
     RevokeWorkspaceInvite,
@@ -313,9 +309,6 @@ pub enum Op {
     Archives(ArchiveOp),
     /// A repository's deploy keys: deploy_keys.rs.
     DeployKeys(DeployKeysOp),
-    /// A repository's mirroring: its remotes, takeovers and hand-backs:
-    /// mirrors.rs.
-    Mirrors(MirrorsOp),
     /// A workspace's packages, their versions, deleting and restoring
     /// them, and who may use them: packages.rs.
     Packages(PackagesOp),
@@ -691,7 +684,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 366] = [
+    pub const ALL: [Op; 353] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -707,9 +700,6 @@ impl Op {
         Op::ConfirmEmail,
         Op::RemoveEmail,
         Op::UpdateEmailSettings,
-        Op::ListInvites,
-        Op::CreateInvite,
-        Op::RevokeInvite,
         Op::ListWorkspaceInvites,
         Op::InviteMember,
         Op::RevokeWorkspaceInvite,
@@ -990,16 +980,6 @@ impl Op {
         Op::DeployKeys(DeployKeysOp::GetDeployKey),
         Op::DeployKeys(DeployKeysOp::CreateDeployKey),
         Op::DeployKeys(DeployKeysOp::DeleteDeployKey),
-        Op::Mirrors(MirrorsOp::GetMirror),
-        Op::Mirrors(MirrorsOp::GetHandBackPlan),
-        Op::Mirrors(MirrorsOp::TakeOver),
-        Op::Mirrors(MirrorsOp::SetCiFailover),
-        Op::Mirrors(MirrorsOp::HandBack),
-        Op::Mirrors(MirrorsOp::MoveToG1t),
-        Op::Mirrors(MirrorsOp::SyncMirror),
-        Op::Mirrors(MirrorsOp::AddRemote),
-        Op::Mirrors(MirrorsOp::UpdateRemote),
-        Op::Mirrors(MirrorsOp::RemoveRemote),
         Op::Protection(ProtectionOp::UpdateEnvironment),
         Op::Protection(ProtectionOp::DeleteEnvironment),
         Op::Protection(ProtectionOp::GetPendingDeployments),
@@ -1082,9 +1062,6 @@ impl Op {
             Op::ConfirmEmail => "confirm_email",
             Op::RemoveEmail => "remove_email",
             Op::UpdateEmailSettings => "update_email_settings",
-            Op::ListInvites => "list_invites",
-            Op::CreateInvite => "create_invite",
-            Op::RevokeInvite => "revoke_invite",
             Op::ListWorkspaceInvites => "list_workspace_invites",
             Op::InviteMember => "invite_member",
             Op::RevokeWorkspaceInvite => "revoke_workspace_invite",
@@ -1257,7 +1234,6 @@ impl Op {
             Op::Artifacts(op) => op.name(),
             Op::Archives(op) => op.name(),
             Op::DeployKeys(op) => op.name(),
-            Op::Mirrors(op) => op.name(),
             Op::Packages(op) => op.name(),
             Op::Folios(op) => op.name(),
         }
@@ -1286,20 +1262,11 @@ impl Op {
             Op::UpdateEmailSettings => {
                 "Change what your addresses do; only the fields given change. `primary` is a confirmed address to make primary: account mail and password resets go there. `backup` is a confirmed address that also gets security notices, or an empty string for the primary only. Changing either needs your account `password`, and every confirmed address is told. `private_email` keeps your address off commits g1t makes for you (merges and changes made on the web, and agents' commits for you), which use your noreply address instead; `block_private_pushes` refuses pushes whose commits carry one of your addresses while it is private. People only."
             }
-            Op::ListInvites => {
-                "Your invites, newest first, and how many you have left. While g1t is invite-only, every new account needs an invite code. You may have 5 invites out at once: pending and used ones count, and one revoked or expired before it was used comes back. `allowance.limit` is null when you have no limit. `workspaces` lists the workspaces you own that were granted invites to share. A pending invite's `code` is shown to you. `status` is `pending`; `awaiting_confirmation` (used to make an account that has not confirmed its address yet); `awaiting_answer` (used to make an account that has yet to accept or decline the workspace it was invited to); `redeemed`; `declined` (its person declined the workspace); `expired`; or `revoked`. An invite that brings someone into a workspace names it in `workspace`, with the `role` it joins with and, once known, the account it is for in `invitee`."
-            }
-            Op::CreateInvite => {
-                "Make an invite. With `email`, it is sent there and only that address can use it; without, anyone with the code can, once. It works for 30 days. With `workspace`, the new account is brought into that workspace: once it confirms its address it gets an invitation to join as a member, which it accepts or declines, and no workspace of its own is made for it. That must be a workspace you own on the g1t plan; a free workspace is refused with `payment_required` (402). Without `workspace`, the new account gets a free workspace of its own. It uses one of your invites, or with `charge_workspace`, one of the invites g1t granted that workspace (its owners only). Returns the invite with its `code`; the link is https://g1t.sh/invite/<code>. People only: an agent's token or a workspace's token cannot make invites."
-            }
-            Op::RevokeInvite => {
-                "Revoke a pending invite you made, or one made for a workspace you own. It stops working at once, and the invite comes back to whoever it was charged to."
-            }
             Op::ListWorkspaceInvites => {
                 "The invites made for a workspace, newest first, with each pending one's `code`. Owners only."
             }
             Op::InviteMember => {
-                "Invite someone into a workspace, by `username` or by `email`. Nobody joins without saying yes: they get an invitation to accept or decline, and join with `role` (`member` unless you give `owner`) when they accept. By `username`, the account gets the invitation in its inbox and by email, and it costs nothing. By `email`, it always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, the link makes the account, which is invited once it confirms its address; while g1t is invite-only that uses one of the workspace's granted invites, or else one of yours, and once anyone can sign up it costs nothing. With one, it costs nothing. Refused with `409` when the person is already a member or already has a pending invitation to the workspace. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then."
+                "Invite someone into a workspace, by `username` or by `email`. Nobody joins without saying yes: they get an invitation to accept or decline, and join with `role` (`member` unless you give `owner`) when they accept. By `username`, the account gets the invitation in its inbox and by email, and it costs nothing. By `email`, it always makes an invite bound to that address and emails it the link, so the answer never says whether the address has a g1t account. Without one, the link makes the account, which is invited once it confirms its address. Refused with `409` when the person is already a member or already has a pending invitation to the workspace. Owners only. A free workspace cannot invite anyone: this is refused with `payment_required` (402) until it starts the g1t plan, and an invite sent before cannot be accepted until then."
             }
             Op::RevokeWorkspaceInvite => "Revoke a workspace's pending invite. Owners only.",
             Op::ListInvitations => {
@@ -1777,7 +1744,6 @@ impl Op {
             Op::Artifacts(op) => op.description(),
             Op::Archives(op) => op.description(),
             Op::DeployKeys(op) => op.description(),
-            Op::Mirrors(op) => op.description(),
             Op::Packages(op) => op.description(),
             Op::Folios(op) => op.description(),
         }
@@ -1849,28 +1815,6 @@ impl Op {
                     },
                 }),
                 &[],
-            ),
-            Op::ListInvites => object(json!({}), &[]),
-            Op::CreateInvite => object(
-                json!({
-                    "email": {
-                        "type": "string",
-                        "description": "Only this address can use it, and it is emailed there. Left out, anyone with the code can.",
-                    },
-                    "workspace": {
-                        "type": "string",
-                        "description": "The workspace the new account is invited to, by slug. Once it confirms its address it gets an invitation to join as a member, and no workspace of its own. One you own, on the g1t plan.",
-                    },
-                    "charge_workspace": {
-                        "type": "string",
-                        "description": "Use one of the invites g1t granted this workspace instead of yours, by slug. Owners only.",
-                    },
-                }),
-                &[],
-            ),
-            Op::RevokeInvite => object(
-                json!({ "id": { "type": "string", "description": "The invite's id, such as inv_01k…" } }),
-                &["id"],
             ),
             Op::ListWorkspaceInvites => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::InviteMember => object(
@@ -2315,7 +2259,7 @@ impl Op {
                     "assignees": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Usernames of the people it is assigned to. Replaces the whole set; an empty list unassigns everyone. To assign it to g1t, use assign_issue.",
+                        "description": "Usernames of the people it is assigned to. Replaces the whole set; an empty list unassigns everyone.",
                     },
                 })),
                 &["repo", "number"],
@@ -3126,7 +3070,6 @@ impl Op {
             Op::Artifacts(op) => op.input(),
             Op::Archives(op) => op.input(),
             Op::DeployKeys(op) => op.input(),
-            Op::Mirrors(op) => op.input(),
             Op::Packages(op) => op.input(),
             Op::Folios(op) => op.input(),
         }
@@ -3260,9 +3203,6 @@ impl Op {
                 | Op::ConfirmEmail
                 | Op::RemoveEmail
                 | Op::UpdateEmailSettings
-                | Op::ListInvites
-                | Op::CreateInvite
-                | Op::RevokeInvite
                 | Op::ListWorkspaceInvites
                 | Op::InviteMember
                 | Op::RevokeWorkspaceInvite
@@ -3563,28 +3503,6 @@ impl Op {
                     }),
                 )
                 .await
-            }
-            Op::ListInvites => {
-                let overview: g1t_contracts::identity::InvitesOverview =
-                    g1t_kit::call(identity, "list_invites", &json!({ "user": actor() })).await?;
-                ok(&overview)
-            }
-            Op::CreateInvite => {
-                pass(
-                    identity,
-                    "create_invite",
-                    &json!({
-                        "user": actor(),
-                        "email": optional_text(input, "email"),
-                        "workspace": optional_text(input, "charge_workspace"),
-                        "join": optional_text(input, "workspace"),
-                        "surface": services.audit.surface,
-                    }),
-                )
-                .await
-            }
-            Op::RevokeInvite => {
-                pass(identity, "revoke_invite", &json!({ "user": actor(), "id": text(input, "id") })).await
             }
             Op::ListWorkspaceInvites => {
                 pass(identity, "workspace_invites", &json!({ "slug": workspace(), "viewer": viewer })).await
@@ -4192,7 +4110,6 @@ impl Op {
                         is_private: input["private"].as_bool() == Some(true),
                         import_url: optional_text(input, "import_url"),
                         import_token: None,
-                        mirror: None,
                     },
                 )
                 .await
@@ -5341,7 +5258,6 @@ impl Op {
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
             Op::Archives(op) => crate::archives::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
-            Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
             Op::Folios(op) => crate::folios::run(op, services, viewer, input).await,
             Op::ReopenSecurityAlert => {

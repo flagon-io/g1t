@@ -13,9 +13,7 @@
  *   Explore, Docs and signing in, the page at full width, and the footer.
  */
 
-import type { Abilities, Capability, RepoMirror } from "@g1t/contracts";
-
-import { type RepoArea, offers, writable } from "./mirror.ts";
+import type { Abilities, Capability } from "@g1t/contracts";
 
 export type Frame = "standalone" | "public" | "app";
 
@@ -79,33 +77,12 @@ export type ProjectPage =
 export const PAGE_NEEDS: Partial<Record<ProjectPage, Capability>> = { security: "push" };
 
 /**
- * The part of the repository each page is about (`RepoArea` in the
- * contracts): what a mirror offers decides which pages it lists.
- */
-export const PAGE_AREA: Record<ProjectPage, RepoArea> = {
-  code: "code",
-  issues: "issues",
-  pulls: "pulls",
-  actions: "workflows",
-  deployments: "deployments",
-  // Logs and traces are of something running here.
-  observability: "deployments",
-  security: "security",
-  insights: "insights",
-  settings: "settings",
-};
-
-/**
  * A project's menu, in order. Security and Settings are for people with a
  * role on its repository, and a page in `PAGE_NEEDS` only for those whose
  * role has its capability (`can`, once the repository's page has loaded);
- * everyone who can see the project sees the rest. A mirror lists only what
- * it offers now (`mirror`, the repository's, once its page has loaded): a
- * standby mirror is a read-only copy, so Code, Security, Insights and
- * Settings, no Issues, Pull requests or Deployments, and Workflows
- * only when they run here.
+ * everyone who can see the project sees the rest.
  */
-export function projectPages(member: boolean, can?: Partial<Abilities>, mirror?: RepoMirror | null): ProjectPage[] {
+export function projectPages(member: boolean, can?: Partial<Abilities>): ProjectPage[] {
   const pages: (ProjectPage | false)[] = [
     "code",
     "issues",
@@ -121,24 +98,8 @@ export function projectPages(member: boolean, can?: Partial<Abilities>, mirror?:
   ];
   return pages.filter(
     (page): page is ProjectPage =>
-      page !== false && (!can || !PAGE_NEEDS[page] || Boolean(can[PAGE_NEEDS[page]!])) && offers(mirror, PAGE_AREA[page]),
+      page !== false && (!can || !PAGE_NEEDS[page] || Boolean(can[PAGE_NEEDS[page]!])),
   );
-}
-
-/**
- * The page under a project that a mirror does not offer now and `rest`
- * (the path under the project) is on, with what to call it, or null when
- * the page is there. An issue or a pull request by number stays readable,
- * as does a release; making a release is a write.
- */
-export function hiddenOnMirror(rest: string, mirror: RepoMirror | null | undefined): { page: ProjectPage; what: string } | null {
-  if (!mirror || writable(mirror)) return null;
-  const path = rest.replace(/^\/+|\/+$/g, "");
-  if (path === "releases/new") return { page: "code", what: "releases" };
-  if (/^(issues|pull)\/\d+(\/|$)/.test(path)) return null;
-  const page = projectPageAt(path);
-  if (!page || page === "overview" || offers(mirror, PAGE_AREA[page])) return null;
-  return { page, what: PROJECT_PAGE_LINKS[page].label.toLowerCase() };
 }
 
 /**

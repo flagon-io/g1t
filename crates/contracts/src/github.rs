@@ -22,8 +22,8 @@
 //! - `github_revoked` takes `GithubRevokedArgs`, returns `u32`.
 //! - `github_usernames` takes `GithubUsernamesArgs`, returns a map.
 //!
-//! The integrations service keeps installations and linked repositories,
-//! and receives the app's webhook at `https://api.g1t.sh/hooks/github`:
+//! The integrations service keeps installations and the repositories
+//! imported through them, and receives the app's webhook at `https://api.g1t.sh/hooks/github`:
 //!
 //! - `github_status` takes `GithubStatusArgs`, returns `Outcome<GithubAppStatus>`.
 //! - `github_add_installation` takes `GithubInstallationArgs`, returns
@@ -36,8 +36,6 @@
 //!   `Outcome<GithubRepositories>`.
 //! - `github_import` takes `GithubImportArgs`, returns `Outcome<GithubRepoLink>`.
 //! - `github_link` takes `GithubLinkArgs`, returns `Option<GithubRepoLink>`.
-//! - `github_unlink_repo` takes `GithubUnlinkRepoArgs`, returns `Outcome<bool>`.
-//! - `github_sync` takes `GithubUnlinkRepoArgs`, returns `Outcome<GithubRepoLink>`.
 //! - `github_receive` takes `GithubReceiveArgs`, returns `integrations::Received`.
 
 use std::collections::HashMap;
@@ -80,7 +78,7 @@ pub struct GithubStartArgs {
     #[serde(default)]
     pub next: String,
     /// An invite code, from `/register?invite=…`, carried through GitHub
-    /// for a new account while g1t is invite-only.
+    /// so a new account made with it gets the invitation it came with.
     #[serde(default)]
     pub invite_code: Option<String>,
 }
@@ -117,15 +115,11 @@ pub enum GithubFinished {
     /// in to it, and `github_claim` then links it.
     NeedsLink { pending: String, login: String, next: String },
     /// A new account, but the GitHub login cannot be its username.
-    /// A new account, but the GitHub login cannot be its username, or g1t
-    /// is invite-only and no invite code came with the sign-in.
     NeedsUsername {
         pending: String,
         login: String,
         suggestion: String,
         next: String,
-        #[serde(rename = "inviteRequired")]
-        invite_required: bool,
     },
 }
 
@@ -142,18 +136,12 @@ pub struct GithubPending {
     pub kind: String,
     pub suggestion: Option<String>,
     pub next: String,
-    /// Whether the person must give an invite code to create the account.
-    #[serde(rename = "inviteRequired", default)]
-    pub invite_required: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GithubSignUpArgs {
     pub pending: String,
     pub username: String,
-    /// Needed while g1t is invite-only, unless one came with the sign-in.
-    #[serde(rename = "inviteCode", default)]
-    pub invite_code: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -206,36 +194,6 @@ pub struct GithubUsernamesArgs {
 }
 
 // --- The app's installations and repositories (integrations) -------------
-
-/// How a GitHub repository comes to g1t.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GithubMode {
-    /// Copied once. The g1t repository is then its own.
-    Import,
-    /// g1t follows GitHub: every push there is fetched here.
-    Mirror,
-    /// GitHub follows g1t: every push here is pushed there.
-    Push,
-}
-
-impl GithubMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            GithubMode::Import => "import",
-            GithubMode::Mirror => "mirror",
-            GithubMode::Push => "push",
-        }
-    }
-
-    pub fn parse(text: &str) -> GithubMode {
-        match text {
-            "mirror" => GithubMode::Mirror,
-            "push" => GithubMode::Push,
-            _ => GithubMode::Import,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -327,7 +285,7 @@ pub struct GithubRepository {
     pub private: bool,
     pub description: Option<String>,
     pub default_branch: String,
-    /// The g1t repository already linked to it, as `workspace/name`.
+    /// The g1t repository already imported from it, as `workspace/name`.
     pub linked_to: Option<String>,
 }
 
@@ -350,7 +308,6 @@ pub struct GithubImportArgs {
     /// The g1t repository's name; the GitHub one's when left out.
     #[serde(default)]
     pub name: Option<String>,
-    pub mode: GithubMode,
     /// Private on g1t; as on GitHub when left out.
     #[serde(default)]
     pub private: Option<bool>,
@@ -359,7 +316,8 @@ pub struct GithubImportArgs {
     pub issues: bool,
 }
 
-/// A g1t repository's tie to a GitHub repository.
+/// Where a g1t repository was imported from on GitHub. The import is
+/// copied once: the g1t repository is then its own.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GithubRepoLink {
@@ -370,8 +328,7 @@ pub struct GithubRepoLink {
     pub github_repo_id: u64,
     /// `owner/name` on GitHub.
     pub full_name: String,
-    pub mode: GithubMode,
-    /// RFC 3339; the last time refs were copied either way.
+    /// RFC 3339; when it was imported.
     pub synced_at: Option<String>,
     pub last_error: Option<String>,
     /// Issues copied so far, when they were asked for.
@@ -381,13 +338,6 @@ pub struct GithubRepoLink {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GithubLinkArgs {
-    pub repo_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GithubUnlinkRepoArgs {
-    pub actor: User,
     pub repo_id: String,
 }
 

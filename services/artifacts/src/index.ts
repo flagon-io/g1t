@@ -20,6 +20,7 @@
  * tables until Phase 7 retires them.
  */
 
+import { type QuotaEnv, uploadRefused } from "./quota.ts";
 import {
   DOCS_VIEWER_HEADER,
   DOC_MAX_FILE_BYTES,
@@ -100,7 +101,7 @@ import { Folios, purgeTrash, runReacl } from "./folios/service.ts";
 export { PageRoom } from "./room.ts";
 export { FolioRoom } from "./folios/room.ts";
 
-type Env = FileStoreEnv & {
+type Env = FileStoreEnv & QuotaEnv & {
   DB: D1Database;
   IDENTITY: ServiceBinding;
   NOTIFY?: ServiceBinding;
@@ -2104,6 +2105,8 @@ class Docs {
     if (!found.ok) return Response.json(found);
     const bytes = Number(request.headers.get("content-length") ?? "0");
     if (!bytes || bytes > DOC_MAX_FILE_BYTES) return Response.json(fail("invalid", `Files can be up to ${DOC_MAX_FILE_BYTES / 1024 / 1024} MB.`));
+    const refused = await uploadRefused(this.db, this.env, found.value.workspace, bytes);
+    if (refused) return Response.json(fail("limit", refused));
     const name = safeName(url.searchParams.get("name") ?? "file");
     const contentType = servedType(request.headers.get("content-type") ?? "");
     const random = crypto.getRandomValues(new Uint8Array(32));

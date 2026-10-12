@@ -26,7 +26,7 @@ a private network, not yet for an installation on the open internet.
 | Site search | Works |
 | A status page of your own | Works, at `http://localhost:8788` ([below](#the-status-page)) |
 | Webhooks, integrations | Work, retries included |
-| Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). Mirrors sync on GitHub's webhook once GitHub can reach your API, and with **Sync now** either way. |
+| Sign in with GitHub, import from GitHub | Off until you register a GitHub App of your own ([below](#sign-in-with-github-and-import-from-github)). |
 | Deployments on `g1t.page` | Off |
 | [Observability](/guides/observability/): logs, traces, metrics and errors sent with OpenTelemetry | Works. Send OTLP to `http://localhost:8789/otlp` with a project's ingest token. |
 | Billing | Off. Nothing is charged, and no usage limit stops work. |
@@ -160,9 +160,6 @@ Set these in the environment, or in a `.env` file next to
 | `MAILPIT_PORT` | `8025` | The port of the Mailpit inbox |
 | `MAIL_FROM` | `g1t <noreply@localhost>` | The sender of g1t's email |
 | `MAIL_URL` | `http://mailpit:8025` | The Mailpit server g1t sends mail through |
-| `REGISTRATION_MODE` | `open` | `open`: anyone can make an account. `invite`: every new account needs an [invite](/guides/authentication/#invites), as on g1t.sh. |
-| `INVITES_PER_USER` | `5` | How many invites each person can have out, while `REGISTRATION_MODE` is `invite` |
-| `WAITLIST_NOTIFY_EMAIL` | (none) | Where a summary of new access requests goes, at most every 15 minutes. Empty sends none; requests still wait for you in the database. |
 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | the bundled RustFS, bucket `g1t-packages` | Where packages' files are kept: any S3-compatible store. Change the two keys before first start; RustFS is made with them. |
 | `S3_PUBLIC_ENDPOINT` | (none) | The store's address as clients reach it. When set, large layers are downloaded from it directly with a signed URL. |
 | `PACK_S3_BUCKET` | `g1t-git-packs` | The bucket on the same store that packs for fresh clones are kept in, so the next clone of the same commit is not built again. The bundled store deletes packs after 7 days, and uploads left unfinished after a day; on another store, give the bucket a lifecycle rule that does the same. |
@@ -172,7 +169,7 @@ Set these in the environment, or in a `.env` file next to
 | `BACKUP_S3_BUCKET` | `g1t-backups` | The bucket on the same store that nightly repository backups (a `git bundle` of each repository whose branches or tags changed) are kept in. The bundles are cut by g1t's runner, which this installation does not run yet, so the bucket stays empty for now: copy the volumes, as below. |
 | `STATUS_PORT` | `8788` | The port the status page is published on |
 | `STATUS_PROBE_REPO` | (none) | A public repository, `workspace/repo`, whose branches the status page lists every minute as a clone would. Empty: git is not checked. |
-| `INVITE_STAFF_WORKSPACES` | (none) | Workspace slugs, comma separated, whose owners can make invites without a limit. Set it to your own workspace before you switch to `invite`, so someone can invite the first people. |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET` | (none) | A [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) widget's site key and secret key, to check that a person fills in the sign-up form. With either unset, sign-up has no such check. |
 | `PHONE_PUSH` | `on` | `off`: send [the phone app](#the-phone-app) no notifications, so their words never pass through Expo's push service. Browser and desktop notifications are not affected. |
 
 ## The phone app
@@ -241,8 +238,8 @@ your own. Without one, neither button appears.
    | Enable Device Flow | Off |
    | Setup URL | `PUBLIC_URL/integrations/github/setup` |
    | Redirect on update | On |
-   | Webhook | On, with the URL `API_URL/hooks/github` and a secret you choose, once GitHub can reach your API. Otherwise off: mirrors then sync with **Sync now**. |
-   | Repository permissions | Contents: Read and write; Metadata: Read; Issues: Read; Pull requests: Read and write; Commit statuses: Read and write |
+   | Webhook | On, with the URL `API_URL/hooks/github` and a secret you choose, once GitHub can reach your API. Otherwise off: imports work without it. |
+   | Repository permissions | Contents: Read; Metadata: Read; Issues: Read |
    | Account permissions | Email addresses: Read |
 
 3. Create it, then on its page note the **App ID**, the **Client ID** and

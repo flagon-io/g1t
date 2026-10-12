@@ -6,6 +6,12 @@ declare global {
       BILLING: ServiceBinding;
       IDENTITY: ServiceBinding;
       EVENTS: ServiceBinding;
+      /** Actions: a workspace's self-hosted runners (admin_runners, admin_remove_runners). */
+      ACTIONS: ServiceBinding;
+      /** Projects: a workspace's projects, read as the workspace. */
+      PROJECTS: ServiceBinding;
+      /** Telemetry: projects' ingest tokens, to see and revoke. */
+      TELEMETRY: ServiceBinding;
       /** apps/status's `StatusAdmin` entrypoint: see `StatusAdminApi`. */
       STATUS: Fetcher;
       ASSETS: Fetcher;

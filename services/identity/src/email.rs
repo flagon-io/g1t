@@ -294,7 +294,7 @@ pub struct InviteEmail<'a> {
     /// or without IDENTITY_KEY.
     pub proof: Option<&'a str>,
     pub days: u64,
-    /// A line from whoever sent it, such as staff approving a request.
+    /// A line from whoever sent it.
     pub note: Option<&'a str>,
 }
 
@@ -341,90 +341,6 @@ pub fn invite_letter(invite: &InviteEmail, site: &str) -> (String, Letter) {
 pub async fn send_invite(env: &Env, invite: &InviteEmail<'_>) -> Result<()> {
     let (subject, letter) = invite_letter(invite, &site(env));
     send(env, invite.to, &subject, &letter).await
-}
-
-/// Where staff decide on access requests.
-pub const SUDO_WAITLIST: &str = "https://sudo.g1t.sh/invites?tab=waitlist";
-
-/// The one confirmation someone gets after asking for access.
-pub fn waitlist_confirmation(site: &str) -> (String, Letter) {
-    (
-        "You're on the list for g1t".to_owned(),
-        Letter {
-            paragraphs: vec![
-                "Thanks for asking to try g1t. You're on the list, and we'll email you an invite at this address when there's a place for you.".to_owned(),
-                "g1t is invite-only while we open it up a few people at a time, so we can't say exactly when that will be. Someone already on g1t can also invite you sooner.".to_owned(),
-            ],
-            quotes: Vec::new(),
-            code: None,
-            action: None,
-            footer: format!("You're getting this because this address asked for access at {}/register. If that wasn't you, ignore this message; nothing more is sent unless you're invited.", bare(site)),
-        },
-    )
-}
-
-pub async fn send_waitlist_confirmation(env: &Env, to: &str) -> Result<()> {
-    let (subject, letter) = waitlist_confirmation(&site(env));
-    send(env, to, &subject, &letter).await
-}
-
-/// One access request, as a staff summary lists it.
-pub struct Requested {
-    pub email: String,
-    pub about: Option<String>,
-}
-
-/// The most requests one summary lists; the rest are counted.
-pub const SUMMARY_LISTS: usize = 20;
-
-/// The summary staff get of new access requests: every one since the last
-/// summary, and how many are waiting in all.
-pub fn waitlist_summary(new: &[Requested], waiting: u32) -> (String, Letter) {
-    let subject = match new {
-        [one] => format!("g1t access request from {}", one.email),
-        _ => format!("{} new g1t access requests", new.len()),
-    };
-    let asked = match new.len() {
-        1 => "Someone asked for access to g1t.".to_owned(),
-        n => format!("{n} people asked for access to g1t since the last summary."),
-    };
-    let in_all = if waiting as usize > new.len() {
-        format!(" {waiting} requests are waiting in all.")
-    } else {
-        String::new()
-    };
-    let mut quotes: Vec<(String, String)> = new
-        .iter()
-        .take(SUMMARY_LISTS)
-        .map(|request| {
-            (
-                request.email.clone(),
-                request
-                    .about
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|about| !about.is_empty())
-                    .unwrap_or("(They did not say what they will build.)")
-                    .to_owned(),
-            )
-        })
-        .collect();
-    if new.len() > SUMMARY_LISTS {
-        quotes.push(("And more".to_owned(), format!("{} more requests are on the waitlist.", new.len() - SUMMARY_LISTS)));
-    }
-    let letter = Letter {
-        paragraphs: vec![format!("{asked}{in_all}")],
-        quotes,
-        code: None,
-        action: Some(("Review the waitlist".to_owned(), SUDO_WAITLIST.to_owned())),
-        footer: "Sent to WAITLIST_NOTIFY_EMAIL at most once every 15 minutes. A request that arrives in between is in the next summary, and every request is in sudo straight away.".to_owned(),
-    };
-    (subject, letter)
-}
-
-pub async fn send_waitlist_summary(env: &Env, to: &str, new: &[Requested], waiting: u32) -> Result<()> {
-    let (subject, letter) = waitlist_summary(new, waiting);
-    send(env, to, &subject, &letter).await
 }
 
 /// An invitation to collaborate on one repository. `code` is set when the
@@ -534,7 +450,7 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
                 Some(from) => format!("{from} invited you to g1t"),
                 None => "Your invite to g1t".to_owned(),
             },
-            format!("{who} invited you to g1t, where people and agents ship software together. g1t is invite-only for now; this invite lets you make your account. It does not add you to anyone's workspace: your account starts with a workspace of its own."),
+            format!("{who} invited you to g1t, where people and agents ship software together. Make your account from this invite. It does not add you to anyone's workspace: your account starts with a workspace of its own."),
         ),
     }
 }
@@ -630,42 +546,7 @@ mod tests {
         let (text, html) = render(&letter, "http://localhost:8787");
         assert!(html.contains("http://localhost:8787/brand/g1t-logo.png"));
         assert!(!text.contains("g1t.sh/") && !html.contains("https://g1t.sh"));
-        let (_, letter) = waitlist_confirmation("http://localhost:8787");
-        assert!(letter.footer.contains("localhost:8787/register"));
         assert_eq!(bare("https://git.example.com"), "git.example.com");
-    }
-
-    #[test]
-    fn the_waitlist_confirmation_promises_no_date() {
-        let (subject, letter) = waitlist_confirmation(SITE);
-        assert_eq!(subject, "You're on the list for g1t");
-        let (text, _) = render(&letter, SITE);
-        assert!(text.contains("g1t.sh/register"));
-        assert!(text.contains("we'll email you an invite"));
-        assert!(text.contains("can't say exactly when"));
-        assert!(letter.action.is_none());
-    }
-
-    #[test]
-    fn staff_summaries_list_each_request_and_link_to_sudo() {
-        let one = [Requested { email: "ada@example.com".into(), about: Some("A compiler <for> fun".into()) }];
-        let (subject, letter) = waitlist_summary(&one, 1);
-        assert_eq!(subject, "g1t access request from ada@example.com");
-        assert_eq!(letter.paragraphs, vec!["Someone asked for access to g1t."]);
-        assert_eq!(letter.action.as_ref().unwrap().1, SUDO_WAITLIST);
-        let (_, html) = render(&letter, SITE);
-        assert!(html.contains("A compiler &lt;for&gt; fun"));
-
-        let many: Vec<Requested> = (0..25).map(|n| Requested { email: format!("p{n}@example.com"), about: None }).collect();
-        let (subject, letter) = waitlist_summary(&many, 40);
-        assert_eq!(subject, "25 new g1t access requests");
-        assert_eq!(
-            letter.paragraphs[0],
-            "25 people asked for access to g1t since the last summary. 40 requests are waiting in all."
-        );
-        assert_eq!(letter.quotes.len(), SUMMARY_LISTS + 1);
-        assert_eq!(letter.quotes[0].1, "(They did not say what they will build.)");
-        assert!(letter.quotes.last().unwrap().1.starts_with("5 more"));
     }
 
     #[test]
@@ -702,14 +583,6 @@ mod tests {
             )
             .unwrap();
         };
-        let (subject, letter) = waitlist_confirmation(SITE);
-        page("waitlist-confirmation", &subject, &letter);
-        let requests = [
-            Requested { email: "ada@example.com".into(), about: Some("A compiler for a teaching language, with agents writing the test suite.".into()) },
-            Requested { email: "linus@example.com".into(), about: None },
-        ];
-        let (subject, letter) = waitlist_summary(&requests, 7);
-        page("waitlist-summary", &subject, &letter);
         let (subject, letter) = invite_letter(&InviteEmail {
             to: "margaret@example.com",
             from: Some("Chase Pierce"),
@@ -729,9 +602,9 @@ mod tests {
             code: "g1t-k7m2-q9xd-4hpw-abcd-0123-4567-89ef-ghjk",
             proof: None,
             days: 30,
-            note: Some("Thanks for waiting. We would love to see the compiler."),
+            note: Some("We would love to see the compiler."),
         }, SITE);
-        page("waitlist-approved", &subject, &letter);
+        page("staff-invite", &subject, &letter);
         let (subject, letter) =
             confirmation_letter(Confirming::NewAccount, "ada", "482913", "https://g1t.sh/verify?token=4f9c2a7e0b13d5c8");
         page("confirm-email", &subject, &letter);

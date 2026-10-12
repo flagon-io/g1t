@@ -1,22 +1,37 @@
 #!/usr/bin/env node
 // Releases of the g1t CLI (crates/g1t): built for every platform,
-// checksummed, and published to the g1t-downloads R2 bucket that g1t.sh
-// serves at /downloads/cli/ (apps/web/app/routes/downloads-runner.ts).
+// checksummed, signed, and published to the g1t-downloads R2 bucket that
+// g1t.sh serves at /downloads/cli/ (apps/web/app/routes/downloads-runner.ts).
+// g1t.sh/install and g1t.sh/install.ps1 (apps/web/app/content/install/)
+// install the newest one.
 //
 //   node scripts/cli-release.mjs build      # every platform, in the cargo-zigbuild image (Docker)
+//   node scripts/cli-release.mjs manifest   # SHA256SUMS, manifest.json and latest.json from what was built
+//   node scripts/cli-release.mjs sign       # latest.json.sig
+//   node scripts/cli-release.mjs verify     # checks the signature
 //   node scripts/cli-release.mjs publish [--dry-run]
 //
 // At cli/<version>/ in the bucket: g1t-linux-x64, -linux-arm64,
-// -macos-x64, -macos-arm64, -windows-x64.exe, SHA256SUMS and
-// manifest.json; at cli/: latest.json, the newest release's manifest.
-// Unlike the runner, the CLI does not update itself, so nothing is signed:
-// SHA256SUMS is what to check a download against.
+// -macos-x64, -macos-arm64, -windows-x64.exe, SHA256SUMS, manifest.json and
+// latest.json.sig; at cli/: latest.json, the newest release's manifest, and
+// latest.json.sig, its Ed25519 signature in base64. SHA256SUMS is what the
+// install scripts check a download against; the signature is what a CLI
+// that updates itself will check, with the same release key as the
+// runner's (scripts/runner-release.mjs keygen):
+//
+//   RUNNER_RELEASE_KEY      the private key: a g1t Actions secret
+//   G1T_RUNNER_RELEASE_KEY  the public key, for `verify`
+//
+// The macOS builds link Apple's Security framework (the keychain), whose
+// SDK the rust-cross/cargo-zigbuild image carries, so `build` runs there.
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createPrivateKey } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { signBytes, verifyBytes } from "./runner-release.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BUCKET = "g1t-downloads";
@@ -36,11 +51,31 @@ export function version() {
 }
 
 const outDir = (v = version()) => join(ROOT, "target", "cli-release", v);
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 function run(command, args, options = {}) {
   const done = spawnSync(command, args, { stdio: "inherit", cwd: ROOT, ...options });
   if (done.status !== 0) throw new Error(`${command} ${args.join(" ")} failed`);
+}
+
+/**
+ * The release's manifest, from the binaries in `dir`: each platform's file
+ * with its SHA-256. Writes SHA256SUMS, manifest.json and latest.json there.
+ */
+export function manifest(dir, v, now = new Date()) {
+  const files = {};
+  for (const [platform, target] of Object.entries(TARGETS)) {
+    const path = join(dir, target.file);
+    if (!existsSync(path)) continue;
+    files[platform] = { name: target.file, sha256: sha256(readFileSync(path)) };
+  }
+  if (Object.keys(files).length === 0) throw new Error(`no binaries in ${dir}: node scripts/cli-release.mjs build`);
+  const body = { version: v, published_at: now.toISOString(), files };
+  const text = `${JSON.stringify(body, null, 2)}\n`;
+  writeFileSync(join(dir, "manifest.json"), text);
+  writeFileSync(join(dir, "latest.json"), text);
+  writeFileSync(join(dir, "SHA256SUMS"), Object.values(files).map((f) => `${f.sha256}  ${f.name}`).join("\n") + "\n");
+  return body;
 }
 
 function build() {
@@ -58,24 +93,44 @@ function build() {
     "-w", "/src", BUILDER, "sh", "-c",
     `set -e; for t in ${triples}; do rustup target add $t >/dev/null 2>&1; cargo zigbuild --release --locked --package g1t --target $t; done`,
   ], { env: { ...process.env, MSYS_NO_PATHCONV: "1" } });
-  const files = {};
-  for (const [platform, target] of Object.entries(TARGETS)) {
+  for (const target of Object.values(TARGETS)) {
     const built = join(ROOT, "target", "zig", target.triple, "release", target.exe ? "g1t.exe" : "g1t");
-    const bytes = readFileSync(built);
-    writeFileSync(join(dir, target.file), bytes);
-    files[platform] = { name: target.file, sha256: sha256(bytes) };
+    writeFileSync(join(dir, target.file), readFileSync(built));
   }
-  const manifest = { version: v, published_at: new Date().toISOString(), files };
-  writeFileSync(join(dir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  writeFileSync(join(dir, "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  writeFileSync(join(dir, "SHA256SUMS"), Object.values(files).map((f) => `${f.sha256}  ${f.name}`).join("\n") + "\n");
-  console.log(`built ${Object.keys(files).length} binaries of g1t ${v} into ${dir}`);
+  const m = manifest(dir, v);
+  console.log(`built ${Object.keys(m.files).length} binaries of g1t ${v} into ${dir}`);
+}
+
+function privateKey(text = process.env.RUNNER_RELEASE_KEY) {
+  if (!text) throw new Error("RUNNER_RELEASE_KEY is not set");
+  return createPrivateKey({ key: Buffer.from(text, "base64"), format: "der", type: "pkcs8" });
+}
+
+function signRelease() {
+  const dir = outDir();
+  const bytes = readFileSync(join(dir, "latest.json"));
+  writeFileSync(join(dir, "latest.json.sig"), signBytes(bytes, privateKey()));
+  console.log(`signed g1t ${version()}`);
+}
+
+function verifyRelease() {
+  const dir = outDir();
+  const publicRaw = process.env.G1T_RUNNER_RELEASE_KEY;
+  if (!publicRaw) throw new Error("G1T_RUNNER_RELEASE_KEY is not set");
+  const ok = verifyBytes(readFileSync(join(dir, "latest.json")), readFileSync(join(dir, "latest.json.sig"), "utf8"), publicRaw);
+  if (!ok) throw new Error("latest.json's signature is not the release key's");
+  const m = JSON.parse(readFileSync(join(dir, "latest.json"), "utf8"));
+  for (const file of Object.values(m.files)) {
+    if (sha256(readFileSync(join(dir, file.name))) !== file.sha256) throw new Error(`${file.name} is not the file the manifest names`);
+  }
+  console.log(`g1t ${m.version}: the signature and every file check out`);
 }
 
 function publish(dryRun) {
   const v = version();
   const dir = outDir(v);
   if (!existsSync(join(dir, "manifest.json"))) throw new Error(`nothing built for ${v}: node scripts/cli-release.mjs build`);
+  const signed = existsSync(join(dir, "latest.json.sig"));
   const put = (key, file, type) => {
     if (dryRun) return console.log(`would put ${key}`);
     run("npx", ["wrangler", "r2", "object", "put", `${BUCKET}/${key}`, "--file", file, "--remote", "--content-type", type], {
@@ -85,19 +140,25 @@ function publish(dryRun) {
       cwd: join(ROOT, "apps/web"),
     });
   };
-  for (const target of Object.values(TARGETS)) put(`cli/${v}/${target.file}`, join(dir, target.file), "application/octet-stream");
+  const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  for (const file of Object.values(m.files)) put(`cli/${v}/${file.name}`, join(dir, file.name), "application/octet-stream");
   put(`cli/${v}/manifest.json`, join(dir, "manifest.json"), "application/json");
   put(`cli/${v}/SHA256SUMS`, join(dir, "SHA256SUMS"), "text/plain");
+  if (signed) put(`cli/${v}/latest.json.sig`, join(dir, "latest.json.sig"), "text/plain");
   // Last, so `latest` never names a version whose files are not up yet.
+  if (signed) put("cli/latest.json.sig", join(dir, "latest.json.sig"), "text/plain");
   put("cli/latest.json", join(dir, "latest.json"), "application/json");
 }
 
 if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/cli-release.mjs")) {
   const [command, ...rest] = process.argv.slice(2);
   if (command === "build") build();
+  else if (command === "manifest") manifest(outDir(), version());
+  else if (command === "sign") signRelease();
+  else if (command === "verify") verifyRelease();
   else if (command === "publish") publish(rest.includes("--dry-run"));
   else {
-    console.error("usage: node scripts/cli-release.mjs build|publish [--dry-run]");
+    console.error("usage: node scripts/cli-release.mjs build|manifest|sign|verify|publish [--dry-run]");
     process.exit(2);
   }
 }

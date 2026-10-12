@@ -37,10 +37,6 @@ pub struct Repo {
     /// RFC 3339: when it was archived, made read-only. Null when it is not.
     #[serde(default)]
     pub archived_at: Option<String>,
-    /// Set when it mirrors a remote that leads (see [`crate::mirrors`]).
-    /// Unless g1t has taken over, it is read-only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mirror: Option<crate::mirrors::RepoMirror>,
 }
 
 impl Repo {
@@ -48,21 +44,10 @@ impl Repo {
         self.archived_at.is_some()
     }
 
-    /// Whether it is a mirror that does not take writes now.
-    pub fn mirror_read_only(&self) -> bool {
-        self.mirror.as_ref().is_some_and(|mirror| !mirror.writable())
-    }
-
-    /// Why it takes no pushes, merges, issues or agents now: archived, or
-    /// a mirror standing by. `None` when it takes them.
+    /// Why it takes no pushes, merges, issues or agents now: it is
+    /// archived. `None` when it takes them.
     pub fn read_only_reason(&self) -> Option<String> {
-        if self.archived() {
-            return Some(archived_message(&self.namespace, &self.name));
-        }
-        self.mirror
-            .as_ref()
-            .filter(|mirror| !mirror.writable())
-            .map(|mirror| crate::mirrors::mirror_message(&self.namespace, &self.name, mirror))
+        self.archived().then(|| archived_message(&self.namespace, &self.name))
     }
 }
 
@@ -349,145 +334,6 @@ pub struct CreateArgs {
     /// only the default branch. Set only by the integrations service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub import_token: Option<String>,
-    /// Set by the integrations service for a mirror: it is read-only from
-    /// the start. See [`crate::mirrors`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mirror: Option<crate::mirrors::RepoMirror>,
-}
-
-/// `mirror`: makes a repository's branches and tags match another git
-/// host's, or pushes its own out to one. Services only. Returns
-/// `Outcome<Mirrored>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MirrorArgs {
-    pub repo_id: String,
-    /// The other host's https address, such as
-    /// `https://github.com/owner/repo.git`.
-    pub url: String,
-    /// A token for it, such as a GitHub installation access token. Opaque:
-    /// any length.
-    pub token: String,
-    /// The user the token is sent as, by basic authentication.
-    /// `x-access-token` (GitHub's) when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub username: Option<String>,
-    pub direction: MirrorDirection,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MirrorDirection {
-    /// The repository on g1t follows the other host: its refs are moved,
-    /// and removed, to match.
-    Pull,
-    /// The other host follows g1t: refs g1t has are pushed there; refs only
-    /// the other host has are left alone.
-    Push,
-}
-
-/// What a `mirror` changed.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Mirrored {
-    /// Full ref names created or moved.
-    pub updated: Vec<String>,
-    pub deleted: Vec<String>,
-    /// Refs a pull moved somewhere their old commit is not part of (a
-    /// force-push on the remote), each as the `refs/g1t/replaced/...` ref
-    /// that keeps the old commit.
-    #[serde(default)]
-    pub replaced: Vec<String>,
-}
-
-/// `mirror_refs`: a repository's branches and tags, and another host's (only
-/// the repository's when `url` is empty).
-/// Services only. Returns `Outcome<MirrorRefs>`; when the other host does
-/// not answer, `theirs` is absent and `unreachable` says why. It fails
-/// when the other host answers and refuses.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MirrorRefsArgs {
-    pub repo_id: String,
-    pub url: String,
-    pub token: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub username: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MirrorRefs {
-    /// Full ref name to commit (or tag) id, on g1t.
-    pub ours: std::collections::BTreeMap<String, String>,
-    /// The same, on the other host; absent when it did not answer.
-    pub theirs: Option<std::collections::BTreeMap<String, String>>,
-    /// Why the other host's refs are absent.
-    #[serde(default)]
-    pub unreachable: Option<String>,
-}
-
-/// One ref moved by `mirror_apply`, from one side to the other.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RefMove {
-    pub direction: MirrorDirection,
-    /// The ref on the side it comes from.
-    #[serde(rename = "ref")]
-    pub git_ref: String,
-    /// The ref it is written to; the same name when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub to: Option<String>,
-    /// What the target must hold now for the move to happen; absent when it
-    /// must not exist.
-    #[serde(default)]
-    pub old: Option<String>,
-    /// What it is moved to; absent to delete it.
-    #[serde(default)]
-    pub new: Option<String>,
-}
-
-/// `mirror_apply`: moves the given refs, each only if its target still
-/// holds `old`. Pulled refs that lose their old commit keep it under
-/// `refs/g1t/replaced/`. Services only. Returns `Outcome<MirrorApplied>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MirrorApplyArgs {
-    pub repo_id: String,
-    pub url: String,
-    pub token: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub username: Option<String>,
-    pub moves: Vec<RefMove>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MirrorApplied {
-    pub moved: Vec<RefMoved>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RefMoved {
-    #[serde(rename = "ref")]
-    pub git_ref: String,
-    pub direction: MirrorDirection,
-    /// Why it did not move; absent when it did.
-    #[serde(default)]
-    pub problem: Option<String>,
-    /// The `refs/g1t/replaced/...` ref that keeps what it pointed at.
-    #[serde(default)]
-    pub replaced: Option<String>,
-}
-
-/// `set_mirror`: records a repository's [`crate::mirrors::RepoMirror`], or
-/// clears it. Services only (integrations). Returns `Outcome<Repo>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetMirrorArgs {
-    pub repo_id: String,
-    pub mirror: Option<crate::mirrors::RepoMirror>,
 }
 
 /// `update`: changes whichever of a repository's details are given.
@@ -1552,9 +1398,8 @@ pub struct ResolveBranchArgs {
     pub branch: String,
 }
 
-/// `status_by_id`: whether a repository is archived or deleted, and the
-/// remote it mirrors, for g1t's own services deciding whether to act on
-/// it. An unknown id answers as deleted. Returns `RepoStatus`.
+/// `status_by_id`: whether a repository is archived or deleted, for g1t's
+/// own services deciding whether to act on it. An unknown id answers as deleted. Returns `RepoStatus`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StatusByIdArgs {
     pub id: String,
@@ -1564,24 +1409,12 @@ pub struct StatusByIdArgs {
 pub struct RepoStatus {
     pub archived: bool,
     pub deleted: bool,
-    /// Set when it mirrors a remote that leads (see [`crate::mirrors`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mirror: Option<crate::mirrors::RepoMirror>,
 }
 
 impl RepoStatus {
-    /// Whether work may start on it: neither archived nor deleted. A
-    /// mirror is active too: scanning goes on, and so does everything
-    /// else that only reads.
+    /// Whether work may start on it: neither archived nor deleted.
     pub fn active(&self) -> bool {
         !self.archived && !self.deleted
-    }
-
-    /// Whether g1t may open branches and pull requests on it of its own
-    /// accord (security and dependency updates, upkeep): active, and not
-    /// a mirror short of a takeover (`RepoArea::Updates`).
-    pub fn takes_updates(&self) -> bool {
-        self.active() && crate::mirrors::offers(self.mirror.as_ref(), crate::mirrors::RepoArea::Updates)
     }
 }
 

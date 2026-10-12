@@ -130,22 +130,3 @@ export function githubConnected(
     manage: null,
   };
 }
-
-/** What each way of bringing a repository across does, for the picker. */
-export const MODES = [
-  {
-    id: "import",
-    title: "Import",
-    text: "Copy it once: every branch and tag, and its issues if you like. The copy on g1t is then its own.",
-  },
-  {
-    id: "mirror",
-    title: "Standby mirror",
-    text: "g1t keeps a read-only copy that follows GitHub. Take over whenever you need to work here.",
-  },
-  {
-    id: "push",
-    title: "Move to g1t",
-    text: "g1t leads; GitHub follows every push.",
-  },
-] as const;

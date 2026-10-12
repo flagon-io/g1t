@@ -263,6 +263,9 @@ impl Actions {
                 format!("It is {} MB; a cache entry is at most {} MB.", a.size / 1_048_576, CACHE_MAX_ENTRY_BYTES / 1_048_576),
             ));
         }
+        if let Some(why) = self.storage_refused(&job.namespace, a.size).await? {
+            return Ok(fail(FailureCode::Limit, why));
+        }
         let now = now_ms();
         let at = rfc3339(now);
         let version = a.version.clone().unwrap_or_default();

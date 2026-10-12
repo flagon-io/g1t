@@ -30,6 +30,19 @@ const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
 /// The most a single log report may add.
 const MAX_CHUNK_BYTES: usize = 256 * 1024;
 const MAX_ANNOTATIONS: usize = 50;
+/// Swaps a running job's token for a new one, only while it still has the
+/// one the caller showed (`job_spec` with `rotate`), keeping the hash of
+/// the one it started with for `brokered_secrets` (migration 0020).
+const TOKEN_ROTATE: &str = "UPDATE jobs SET first_token_hash = COALESCE(first_token_hash, token_hash), token_hash = ?1
+     WHERE id = ?2 AND status = 'in_progress' AND token_hash = ?3 RETURNING id";
+
+/// Whether `token` is a running job's: its current one, or with `started`
+/// (`brokered_secrets` only) the one it started with before its harness
+/// swapped it.
+fn token_opens(current: Option<&str>, first: Option<&str>, token: &str, started: bool) -> bool {
+    let hash = sha256_hex(token);
+    current.is_some_and(|h| same(h, &hash)) || (started && first.is_some_and(|h| same(h, &hash)))
+}
 /// A batch of a job's log, under the next `seq` of that job's, worked out
 /// in the same statement (SQLite runs one write at a time). `?4` is the
 /// runner's number for the batch (null from runners that send none): a
@@ -236,6 +249,10 @@ pub struct JobRow {
     /// 0019), so its log is masked for their values too.
     #[serde(default)]
     pub brokered: u32,
+    /// The hash of the token it started with, once its harness swapped that
+    /// for another (migration 0020): good for `brokered_secrets` only.
+    #[serde(default)]
+    pub first_token_hash: Option<String>,
 }
 
 /// How long a cancelled job has to run its `if: always()` and `cancelled()`
@@ -1608,7 +1625,7 @@ impl Actions {
             let claimed = self
                 .db
                 .prepare(
-                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, started_at = ?, seen_at = ? WHERE id = ? AND status = 'queued' RETURNING id",
+                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, first_token_hash = NULL, started_at = ?, seen_at = ? WHERE id = ? AND status = 'queued' RETURNING id",
                 )
                 .bind(&[sha256_hex(&token).into(), at.as_str().into(), at.as_str().into(), job.id.as_str().into()])?
                 .first::<Value>(None)
@@ -1675,7 +1692,7 @@ impl Actions {
             .db
             .prepare(
                 "UPDATE jobs SET status = 'completed', conclusion = ?, reason = COALESCE(?, reason), outputs = COALESCE(?, outputs),
-                   finished_at = ?, token_hash = NULL WHERE id = ? AND status != 'completed' RETURNING *",
+                   finished_at = ?, token_hash = NULL, first_token_hash = NULL WHERE id = ? AND status != 'completed' RETURNING *",
             )
             .bind(&[
                 conclusion.into(),
@@ -1783,7 +1800,7 @@ impl Actions {
         }
         let stopped = self
             .db
-            .prepare("UPDATE jobs SET status = 'completed', conclusion = 'cancelled', reason = ?, finished_at = ?, token_hash = NULL WHERE id = ? AND status != 'completed' RETURNING *")
+            .prepare("UPDATE jobs SET status = 'completed', conclusion = 'cancelled', reason = ?, finished_at = ?, token_hash = NULL, first_token_hash = NULL WHERE id = ? AND status != 'completed' RETURNING *")
             .bind(&[reason.into(), now().into(), job.id.as_str().into()])?
             .first::<JobRow>(None)
             .await?;
@@ -2216,7 +2233,7 @@ impl Actions {
                 self.db
                     .prepare(
                         "UPDATE jobs SET status = 'waiting', conclusion = NULL, steps = '[]', annotations = '[]', outputs = '{}', reason = NULL,
-                           matrix = NULL, call = NULL, token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
+                           matrix = NULL, call = NULL, token_hash = NULL, first_token_hash = NULL, seen_at = NULL, started_at = NULL, finished_at = NULL,
                            labels = NULL, queued_at = NULL, runner_id = NULL, runner_name = NULL, environment = NULL,
                            concurrency_group = NULL, cancel_in_progress = 0, cancel_requested_at = NULL WHERE run_id = ? AND key = ?",
                     )
@@ -2257,11 +2274,21 @@ impl Actions {
     // --- The sandbox's side -----------------------------------------------------
 
     pub(crate) async fn job_for_token(&self, a: &JobCallArgs) -> Result<Outcome<JobRow>> {
+        self.job_for(a, false).await
+    }
+
+    /// As [`Self::job_for_token`], and also with the token the job started
+    /// with after its harness swapped it (`job_spec` with `rotate`): for
+    /// `brokered_secrets` alone, which the runner Worker asks with the
+    /// token it was given at the start, and which no API route passes on.
+    pub(crate) async fn job_for_started_token(&self, a: &JobCallArgs) -> Result<Outcome<JobRow>> {
+        self.job_for(a, true).await
+    }
+
+    async fn job_for(&self, a: &JobCallArgs, started: bool) -> Result<Outcome<JobRow>> {
         let job = self.db.prepare("SELECT * FROM jobs WHERE id = ?").bind(&[a.job.as_str().into()])?.first::<JobRow>(None).await?;
         Ok(match job {
-            Some(job) if job.status == "in_progress" && job.token_hash.as_deref().is_some_and(|hash| same(hash, &sha256_hex(&a.token))) => {
-                Outcome::Ok(job)
-            }
+            Some(job) if job.status == "in_progress" && token_opens(job.token_hash.as_deref(), job.first_token_hash.as_deref(), &a.token, started) => Outcome::Ok(job),
             _ => fail(FailureCode::Unauthenticated, "That job is not running, or the token is not its."),
         })
     }
@@ -2276,6 +2303,18 @@ impl Actions {
     /// `job_spec`: everything the sandbox needs to run the job.
     pub async fn job_spec(&self, a: JobCallArgs) -> Result<Outcome<Value>> {
         let job = check!(self.job_for_token(&a).await?);
+        // Asked to, the token the harness asked with is spent here: it gets
+        // a new one with the spec, for everything after, so a copy of the
+        // first left on the runner's computer (a Windows job's script, a
+        // container's environment) cannot fetch the secrets again. The new
+        // token is made now, as the runtime token is signed with its hash,
+        // and swapped in last, so a spec that could not be made leaves the
+        // old one working.
+        let next = a.rotate.then(|| random_hex(24));
+        let token_hash = match &next {
+            Some(next) => sha256_hex(next),
+            None => job.token_hash.clone().unwrap_or_default(),
+        };
         let Some(run) = self.run_row(&job.run_id).await? else {
             return Ok(fail(FailureCode::NotFound, "No such run."));
         };
@@ -2398,7 +2437,7 @@ impl Actions {
         let runtime_token = crate::runtime::runtime_token(
             &job.id,
             &job.run_id,
-            job.token_hash.as_deref().unwrap_or_default(),
+            &token_hash,
             now_ms() / 1000,
             u64::from(job.timeout_minutes) * 60 + 600,
         );
@@ -2469,7 +2508,21 @@ impl Actions {
             _ => format!("{SITE}/{}.git", run.repo),
         };
 
-        Ok(Outcome::Ok(json!({
+        // Only one fetch with a token gets its spec: of two at once, the
+        // second finds the hash already changed and is refused.
+        if next.is_some() {
+            let swapped = self
+                .db
+                .prepare(TOKEN_ROTATE)
+                .bind(&[token_hash.as_str().into(), job.id.as_str().into(), job.token_hash.as_deref().unwrap_or_default().into()])?
+                .first::<Value>(None)
+                .await?;
+            if swapped.is_none() {
+                return Ok(fail(FailureCode::Unauthenticated, "That job is not running, or the token is not its."));
+            }
+        }
+
+        let mut spec = json!({
             "job": job.id,
             "run": run.id,
             "key": job.key,
@@ -2513,7 +2566,11 @@ impl Actions {
                 "token": runtime_token,
                 "idToken": self.oidc_allowed(&run, &job),
             },
-        })))
+        });
+        if let Some(next) = next {
+            spec["nextToken"] = json!(next);
+        }
+        Ok(Outcome::Ok(spec))
     }
 
     /// `job_report`: the sandbox telling how the job is going.
@@ -2787,6 +2844,12 @@ impl Actions {
                 worker::console_error!("actions: the blob parts' sweep failed: {error}");
             }
         }
+        // And logs of jobs that finished longer ago than LOG_RETENTION_DAYS.
+        if (now_ms / 60_000) % 60 == 17
+            && let Err(error) = self.sweep_logs(now_ms).await
+        {
+            worker::console_error!("actions: the logs' sweep failed: {error}");
+        }
         self.start_queued().await
     }
 }
@@ -2835,6 +2898,86 @@ mod log_chunks {
         assert_eq!(insert("job_1", 0, "again\n", Some(1)), 1);
         assert_eq!(log(&db, "job_1"), [(1, 0, "again\n".into())]);
         assert_eq!(log(&db, "job_1.1").len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod token_rotation {
+    use g1t_secrets::sha256_hex;
+    use rusqlite::{Connection, OptionalExtension, params};
+
+    use super::{TOKEN_ROTATE, token_opens};
+
+    fn database() -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        for name in ["0001_init.sql", "0020_job_token_rotation.sql"] {
+            let path = format!("{}/migrations/{name}", env!("CARGO_MANIFEST_DIR"));
+            db.execute_batch(&std::fs::read_to_string(path).unwrap()).unwrap();
+        }
+        db.execute(
+            "INSERT INTO jobs (id, run_id, repo_id, namespace, key, name, status, token_hash) VALUES ('job_1', 'run_1', 'repo_1', 'acme', 'build', 'build', 'in_progress', ?1)",
+            [sha256_hex("first")],
+        )
+        .unwrap();
+        db
+    }
+
+    fn rotate(db: &Connection, next: &str, shown: &str) -> bool {
+        db.query_row(TOKEN_ROTATE, params![sha256_hex(next), "job_1", sha256_hex(shown)], |row| row.get::<_, String>(0))
+            .optional()
+            .unwrap()
+            .is_some()
+    }
+
+    /// The job's current token's hash, and the one it started with.
+    fn hashes(db: &Connection) -> (Option<String>, Option<String>) {
+        db.query_row("SELECT token_hash, first_token_hash FROM jobs WHERE id = 'job_1'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
+    }
+
+    #[test]
+    fn a_job_token_fetches_its_spec_once() {
+        let db = database();
+        assert!(rotate(&db, "second", "first"));
+        assert_eq!(hashes(&db), (Some(sha256_hex("second")), Some(sha256_hex("first"))));
+        // The first token, shown again (a copy left on the computer, or a
+        // second fetch racing the first), swaps nothing and is refused.
+        assert!(!rotate(&db, "third", "first"));
+        assert_eq!(hashes(&db).0, Some(sha256_hex("second")));
+        // A job that ended has no token to swap.
+        db.execute("UPDATE jobs SET status = 'completed', token_hash = NULL, first_token_hash = NULL", []).unwrap();
+        assert!(!rotate(&db, "fourth", "second"));
+        assert_eq!(hashes(&db), (None, None));
+    }
+
+    #[test]
+    fn the_worker_finds_brokered_secrets_with_the_token_the_job_started_with() {
+        let db = database();
+        let opens = |db: &Connection, token: &str, started: bool| {
+            let (current, first) = hashes(db);
+            token_opens(current.as_deref(), first.as_deref(), token, started)
+        };
+        // Before any swap, the job's one token opens everything.
+        assert!(opens(&db, "first", false) && opens(&db, "first", true));
+        assert!(rotate(&db, "second", "first"));
+        // The harness's new token opens everything.
+        assert!(opens(&db, "second", false) && opens(&db, "second", true));
+        // The token it started with, which the runner Worker holds, still
+        // finds the job's brokered secrets, and opens nothing else.
+        assert!(opens(&db, "first", true));
+        assert!(!opens(&db, "first", false));
+        assert!(!opens(&db, "other", true));
+        // Another swap keeps the token it started with, not the one between.
+        assert!(rotate(&db, "third", "second"));
+        assert!(opens(&db, "first", true));
+        assert!(!opens(&db, "second", true));
+    }
+
+    #[test]
+    fn the_runtime_token_is_signed_for_the_token_that_replaces_the_first() {
+        let now = 1_800_000_000;
+        let token = crate::runtime::runtime_token("job_1", "run_1", &sha256_hex("second"), now, 600);
+        assert!(crate::runtime::runtime_valid(&token, "job_1", &sha256_hex("second"), now));
+        assert!(!crate::runtime::runtime_valid(&token, "job_1", &sha256_hex("first"), now));
     }
 }
 

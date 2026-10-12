@@ -392,7 +392,7 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
       className="mt-6"
       id="spend"
       title="g1t's own spend"
-      description="What g1t pays for itself this calendar month, today included: accounts on a 100% discount, the trial and open-source pools, free workspaces' overruns, and usage charged without real money behind it. Each is what the work cost g1t, never its price, counted as each charge settled: the price book's cost of sandboxes and builds. Two caps hold it: each 100%-discount account's monthly budget, and a daily breaker on all of it that pauses new work g1t would pay for."
+      description="What g1t pays for itself this calendar month, today included: accounts on a 100% discount, the trial and open-source pools, free workspaces' overruns, and usage charged without real money behind it. Each is what the work cost g1t, never its price, counted as each charge settled: the price book's cost of sandboxes and builds. Two caps hold it: each 100%-discount account's monthly budget, and a daily breaker on all of it that pauses new compute g1t would pay for: workflows, checks and the merge queue."
     >
       <div className="grid gap-3 lg:grid-cols-2">
         <CapMeter

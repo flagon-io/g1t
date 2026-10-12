@@ -30,6 +30,7 @@ mod engine;
 mod exec;
 mod launcher;
 mod native;
+mod private;
 mod sandbox;
 mod service;
 mod update;
@@ -453,7 +454,10 @@ fn nap(duration: Duration, mut stop: impl FnMut() -> bool) {
 }
 
 fn run(folder: &Path, once: bool) -> Result<()> {
+    // Its folder holds its credential and, while a Windows job runs, that
+    // job's script: a runner whose folder others can read does not start.
     let mut config = config::load(folder)?;
+    private::folder(folder, "--dir")?;
     let mut api = Api { base: config.api.clone(), runner: config.runner.clone(), credential: config.credential.clone() };
     std::fs::create_dir_all(&config.work_dir).with_context(|| format!("could not make {}", config.work_dir.display()))?;
     let isolation = isolation(config.docker, config.native)?;

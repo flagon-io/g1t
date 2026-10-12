@@ -6,14 +6,13 @@
 import { redirect } from "react-router";
 
 import type { Route } from "./+types/security-code-setup";
-import { refusal, requireWritableRepo } from "../../lib/access.server";
+import { refusal } from "../../lib/access.server";
 import { setupCodeScanning } from "../../lib/security-suite.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const refused = await refusal(context, params, "manage_settings");
   if (refused) return { error: refused };
   const opened = await setupCodeScanning(user, { namespace: params.owner, name: params.repo });

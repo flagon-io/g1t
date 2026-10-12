@@ -1,5 +1,6 @@
-//! Where the push's g1t token comes from: `G1T_TOKEN`, `--token-stdin`, or
-//! what `docker login` stored.
+//! Where the push's g1t token comes from: `--token-stdin`, `G1T_TOKEN`, the
+//! account `g1t auth login` signed in on the registry's host, or what
+//! `docker login` stored.
 
 use base64::Engine as _;
 use serde_json::Value;
@@ -32,12 +33,17 @@ pub fn find(host: &str, token_stdin: bool) -> Result<Credentials, String> {
     {
         return Ok(credentials);
     }
+    if let Some(credentials) =
+        crate::auth::registry_token(host).and_then(|t| token_credentials(t.trim()))
+    {
+        return Ok(credentials);
+    }
     let config = docker_config_path().and_then(|path| std::fs::read_to_string(path).ok());
     if let Some(found) = config.and_then(|config| from_docker_config(&config, host, &run_helper)) {
         return Ok(found);
     }
     Err(format!(
-        "No token for {host}. Set G1T_TOKEN, pass one with --token-stdin, or sign in with `docker login {host}`."
+        "No token for {host}. Sign in with `g1t auth login`, set G1T_TOKEN, or pass one with --token-stdin."
     ))
 }
 

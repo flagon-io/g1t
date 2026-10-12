@@ -19,12 +19,12 @@ import { identity } from "./services.server";
 export async function inviteFromForm(user: User, slug: string, form: FormData): Promise<InviteResult> {
   const member = String(form.get("member") ?? "").trim();
   const who = inviteTarget(member);
-  if (!who) return { error: "Enter a g1t username or an email address.", outOfInvites: false };
+  if (!who) return { error: "Enter a g1t username or an email address." };
   const role = form.get("role") === "owner" ? "owner" : "member";
   const message = String(form.get("message") ?? "").trim() || null;
   const result = await identity.inviteMember(user, slug, { ...who, role, message });
-  if (!result.ok) return { error: result.error.message, outOfInvites: result.error.code === "limit" };
-  return { invited: "email" in who ? who.email : `@${who.username}`, outOfInvites: false };
+  if (!result.ok) return { error: result.error.message };
+  return { invited: "email" in who ? who.email : `@${who.username}` };
 }
 
 /** `action=revoke-invite` or `action=resend-invite`, with the invitation's `id`; null for anything else. */

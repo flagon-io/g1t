@@ -23,6 +23,8 @@ const RESERVED = new Set([
   "inbox", "notifications",
   // g1t.sh/download, the desktop app; g1t.sh/downloads/, the releases it and the runner come from.
   "download", "downloads",
+  // g1t.sh/install and g1t.sh/install.ps1, the CLI's install scripts.
+  "install",
 ]);
 
 /**

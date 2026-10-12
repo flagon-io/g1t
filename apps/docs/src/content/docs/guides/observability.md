@@ -238,6 +238,21 @@ per-minute numbers are kept for 90 days whatever the retention, so its
 charts reach back further than its requests do. A project's store holds up
 to 4 GB; past that, its oldest day goes first.
 
+## On the free plan
+
+A project in a workspace on the free plan can send **1 GB a month**, held a
+day at a time: about 34 MB a day (UTC), a thirtieth of the month, so a burst
+cannot use the month up in an hour. What counts is what arrives: an OTLP
+request's body once unzipped, and the rows kept from an app's tail events.
+**Settings** shows what arrived this month and today.
+
+Past the day's share, OTLP requests are answered `429 Too Many Requests`
+with the reason, until 00:00 UTC; OpenTelemetry SDKs retry or drop the
+batch. Requests from an app on g1t.page still arrive, so its charts and
+request list keep going, but without their logs. On the g1t plan there is
+no such cap. OTLP is also limited to 600 requests a minute from one
+address; see [rate limits](/reference/rate-limits/).
+
 ## Who can do what
 
 | | Who |

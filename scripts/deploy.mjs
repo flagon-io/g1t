@@ -31,15 +31,18 @@ import {
   annotation,
   apiAuth,
   applyMigrations,
+  DEPLOY_RETRY_WAITS_MS,
   dockerAvailable,
   exec,
   jsonFrom,
   lastLines,
   pendingMigrations,
   readLive,
+  retryableDeploy,
   versionFrom,
   wrangler,
   wranglerEnv,
+  wranglerError,
 } from "./deploy/cloudflare.mjs";
 import {
   baseInputs,
@@ -334,8 +337,16 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
       if (!rebuildImage && !rebuildBase && !decision.image) args.push("--containers-rollout", "none");
       result.note = image.note;
     }
-    const deployed = await wrangler(args, { cwd, onLine: out.line });
-    if (deployed.code !== 0) throw new Error(`wrangler deploy failed:\n${lastLines(deployed.out)}`);
+    // Tried again after a wait when Cloudflare, not what is deployed, is
+    // why it failed: deploying the same version again is harmless.
+    let deployed = await wrangler(args, { cwd, onLine: out.line });
+    for (const wait of DEPLOY_RETRY_WAITS_MS) {
+      if (deployed.code === 0 || dryRun || !retryableDeploy(deployed.out)) break;
+      out.line(`wrangler deploy failed; trying again in ${wait / 1000}s:\n${wranglerError(deployed.out)}`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      deployed = await wrangler(args, { cwd, onLine: out.line });
+    }
+    if (deployed.code !== 0) throw new Error(`wrangler deploy failed:\n${wranglerError(deployed.out)}`);
     result.version = dryRun ? "(dry run)" : versionFrom(deployed.out);
     result.ok = true;
   } catch (error) {

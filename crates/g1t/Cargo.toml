@@ -1,16 +1,31 @@
 [package]
 name = "g1t"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The g1t command line: g1t push sends a local image to g1t.sh in chunks, so a layer can be any size."
+description = "The g1t command line: repositories, issues, pull requests, workflow runs, deployments, secrets and logs on g1t, from a terminal or an agent's shell."
+
+[[bin]]
+name = "g1t"
+path = "src/main.rs"
 
 [dependencies]
+anstyle-query = "1.1"
 base64 = "0.22"
+clap = { version = "4.6", features = ["derive", "env", "wrap_help"] }
+clap_complete = "4.6"
 flate2 = "1"
 hex = "0.4"
+jaq-core = "3.1"
+jaq-json = "2.0"
+jaq-std = "3.0"
+keyring = "4.2"
+rpassword = "7"
+serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
+terminal_size = "0.4"
 ureq = { version = "2", default-features = false, features = ["tls"] }
+

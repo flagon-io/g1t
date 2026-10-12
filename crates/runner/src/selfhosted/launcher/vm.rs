@@ -191,6 +191,19 @@ impl DiskVm {
         Paths::in_dir(&self.dir.join("vm"))
     }
 
+    /// Takes the registration token out of the seed disk, once the runner
+    /// has registered with it. The guest reads the seed only as it boots,
+    /// and a token it lacks then is one it no longer needs.
+    fn forget_token(&self) {
+        let seed = self.paths().seed;
+        let Some(mut settings) = std::fs::read(&seed).ok().and_then(|bytes| guest::read_seed(&bytes).ok()) else { return };
+        if settings.token.take().is_some()
+            && let Ok(bytes) = guest::write_seed(&settings, SEED_BYTES)
+        {
+            let _ = super::write_private(&seed, &bytes);
+        }
+    }
+
     fn pid(&self) -> Option<u32> {
         std::fs::read_to_string(self.paths().pid).ok().and_then(|p| p.trim().parse().ok())
     }
@@ -335,7 +348,13 @@ impl Backend for DiskVm {
         let log = std::fs::read(self.paths().console).ok()?;
         // The console's tail is enough: statuses come every few seconds.
         let tail = &log[log.len().saturating_sub(64 * 1024)..];
-        guest::status_from_console(&String::from_utf8_lossy(tail))
+        let status = guest::status_from_console(&String::from_utf8_lossy(tail))?;
+        // Registered: the token is no longer kept here either, as the
+        // guest no longer keeps its own copy (guest.rs).
+        if status.runner.is_some() {
+            self.forget_token();
+        }
+        Some(status)
     }
 
     fn stop(&self, mode: StopMode) -> Result<()> {
@@ -442,6 +461,24 @@ mod tests {
         assert!(vfkit.contains("Content-Length: 16\r\n"));
         let qmp = String::from_utf8(stop_request(Hypervisor::Qemu)).unwrap();
         assert!(qmp.contains("qmp_capabilities") && qmp.contains("system_powerdown"));
+    }
+
+    #[test]
+    fn the_seed_lets_go_of_the_token_once_the_runner_registered() {
+        let dir = std::env::temp_dir().join(format!("g1t-vm-seed-{}", std::process::id()));
+        let vm = DiskVm { hypervisor: Hypervisor::Qemu, dir: dir.clone() };
+        std::fs::create_dir_all(dir.join("vm")).unwrap();
+        let settings = Settings { url: Some("https://g1t.sh".into()), token: Some("g1trt_x".into()), runner_image: "img@sha256:ab".into(), ..Settings::default() };
+        std::fs::write(vm.paths().seed, guest::write_seed(&settings, SEED_BYTES).unwrap()).unwrap();
+        // The console says the runner is registered and running.
+        let status = GuestStatus { state: "running".into(), runner: Some(crate::selfhosted::RunnerStatus::default()), ..GuestStatus::default() };
+        std::fs::write(vm.paths().console, format!("boot\n{}{}\n", guest::STATUS_PREFIX, serde_json::to_string(&status).unwrap())).unwrap();
+        assert!(vm.guest_status().is_some_and(|s| s.runner.is_some()));
+        let kept = guest::read_seed(&std::fs::read(vm.paths().seed).unwrap()).unwrap();
+        assert_eq!(kept.token, None);
+        assert_eq!(kept.url.as_deref(), Some("https://g1t.sh"));
+        assert_eq!(kept.runner_image, "img@sha256:ab");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

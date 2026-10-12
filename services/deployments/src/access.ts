@@ -23,12 +23,9 @@ export const NEEDS = {
 
 export type Method = keyof typeof NEEDS;
 
-/** The repository a project's permission comes from. A mirrored one has none: its workspace's base permission decides. */
+/** The repository a project's permission comes from. */
 export function repoRef(project: Project): RepoRef {
-  if (project.source.kind === "hosted") {
-    return { id: project.source.repoId, namespace: project.source.repo.namespace, isPrivate: project.private };
-  }
-  return { id: "", namespace: project.workspace, isPrivate: project.private };
+  return { id: project.source.repoId, namespace: project.source.repo.namespace, isPrivate: project.private };
 }
 
 /**

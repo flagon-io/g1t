@@ -304,6 +304,36 @@ pub fn free_private_bytes(env: &worker::Env) -> i64 {
         .unwrap_or(1_000_000_000)
 }
 
+/// What a free workspace's public repositories may hold together:
+/// `FREE_PUBLIC_STORAGE_BYTES` (5 GB). Public repositories are never
+/// charged for storage, on any plan; past it, a free workspace's pushes to
+/// them stop, and on the plan they never do. `0` is no cap.
+pub fn free_public_bytes(env: &worker::Env) -> i64 {
+    env.var("FREE_PUBLIC_STORAGE_BYTES")
+        .ok()
+        .and_then(|value| value.to_string().parse().ok())
+        .unwrap_or(5_000_000_000)
+}
+
+/// Whether a free workspace's push to a public repository should be
+/// refused: its public repositories already hold `free_bytes`.
+pub fn public_storage_full(public_bytes: i64, free_bytes: i64) -> bool {
+    free_bytes > 0 && public_bytes >= free_bytes
+}
+
+/// The answer to a push to a public repository a free workspace has no
+/// room for.
+pub fn public_storage_full_response(namespace: &str, public_bytes: i64, free_bytes: i64) -> Result<Response> {
+    let gb = |bytes: i64| bytes as f64 / 1_000_000_000.0;
+    let message = format!(
+        "{namespace}'s public repositories hold {:.2} GB, and a workspace on the free plan keeps {:.0} GB of them. Public repositories are never charged for storage, so pushes to them stop here. Delete what you no longer need, or start the g1t plan, where pushes to public repositories never stop: https://g1t.sh/{namespace}/-/billing
+",
+        gb(public_bytes),
+        gb(free_bytes)
+    );
+    Response::error(message, 403)
+}
+
 /// Whether a push to a private repository should be refused: a free
 /// workspace whose private repositories already hold its free amount. Free
 /// workspaces are never charged for storage; past it, pushes stop instead.
@@ -416,6 +446,13 @@ mod tests {
         assert_eq!(standing.at("2026-11-01T00", 2_000), Some((0, 0)));
         // Read too long ago: not gone by, so nobody is slowed on old news.
         assert_eq!(standing.at("2026-10-14T10", 1_000 + STANDING_TTL_MS + 1), None);
+    }
+
+    #[test]
+    fn a_free_workspace_pushes_until_its_public_storage_is_full() {
+        assert!(!public_storage_full(4_999_999_999, 5_000_000_000));
+        assert!(public_storage_full(5_000_000_000, 5_000_000_000));
+        assert!(!public_storage_full(50_000_000_000, 0));
     }
 
     #[test]

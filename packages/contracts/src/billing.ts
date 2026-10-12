@@ -278,6 +278,8 @@ export type Entitlements = {
   exposureMicros: number;
   /** Why new compute is paused, for the owner; null when it is not. */
   paused: string | null;
+  /** g1t staff put a hold on the account: nothing new is set up for it, such as a self-hosted runner. */
+  held?: boolean;
   /** What open reservations hold now. */
   heldMicros?: number;
   /** Paid in advance and not used yet. */

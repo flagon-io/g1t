@@ -34,7 +34,7 @@ import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandbox
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { holdCredentials, revokeCredentials, runCredential } from "./credentials";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
-import { answered, describeError, tellStopped, withinTimeCap } from "./lifecycle";
+import { answered, capReached, describeError, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle";
 import {
   ABUSE_EXIT_CODE,
   ABUSE_HOST,
@@ -326,7 +326,11 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       throw error;
     }
     await this.ctx.storage.put("run", run);
-    await this.ctx.storage.delete(["abuse", "stopReason", "remote", "misdirected"]);
+    // What an earlier attempt in this object left: its reason, its cap
+    // and its cap's alarm, which would otherwise stop this attempt when
+    // the earlier one's time ran out (re-runs use the same object).
+    await this.ctx.storage.delete(["abuse", "stopReason", "remote", "misdirected", "timeCap"]);
+    this.deleteSchedules("timeUp");
     if (meter) await this.ctx.storage.put("meter", { ...meter, started: Date.now() });
     await this.ctx.storage.put("started", Date.now());
     const who = meter ? { workspace: meter.workspace, repo: meter.repo } : owner;
@@ -513,10 +517,17 @@ export class AttemptSandbox extends Container<RunnerEnv> {
 
   /** The run's time cap has passed: stop it, as stopped for time. */
   async timeUp(): Promise<void> {
-    // It already stopped: nothing to stop.
-    if (!(await this.ctx.storage.get<number>("started"))) return;
-    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
+    // It already stopped (nothing to stop), or the run in it now is a later
+    // attempt whose cap has not passed: this alarm is an earlier attempt's,
+    // left by a version of g1t that did not clear it, and the run now has
+    // its own.
+    const started = await this.ctx.storage.get<number>("started");
     const minutes = (await this.ctx.storage.get<number>("timeCap")) ?? 0;
+    if (!capReached(started, minutes, Date.now())) {
+      if (started) console.log("an earlier attempt's time cap passed; the run now keeps going", this.ctx.id.toString());
+      return;
+    }
+    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
     // A workflow job or a build has no run to halt: it fails saying why.
     await this.ctx.storage.put("stopReason", timeCapMessage(minutes));
     if (tracked) await reportRun(this.env.WORK, tracked, { halt: "time", error: timeCapMessage(minutes) });
@@ -645,13 +656,15 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     const flagged = (await this.ctx.storage.get<boolean>("abuse")) ?? false;
     // Why it stopped, when g1t stopped it: said in place of a plain failure.
     const why = flagged ? ABUSE_MESSAGE : ((await this.ctx.storage.get<string>("stopReason")) ?? null);
+    // Stopped by g1t, it failed whatever exit code the library passed on.
+    const short = stoppedShort(exitCode, why);
     await this.closeRun(
-      exitCode === 0 ? "succeeded" : "failed",
-      exitCode === 0 ? undefined : (why ?? `The sandbox exited with ${exitCode}.`),
+      short ? "failed" : "succeeded",
+      short ? (why ?? `The sandbox exited with ${exitCode}.`) : undefined,
     );
     await this.settleStopped(started);
     await this.ctx.storage.delete("started");
-    if (exitCode === 0 && !flagged) return;
+    if (!short) return;
     const run = await this.ctx.storage.get<Run>("run");
     console.log("sandbox stopped", run?.kind, "exit", exitCode, reason);
     if (!run) return;

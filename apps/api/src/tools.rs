@@ -22,7 +22,6 @@ use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
 use crate::deploy_keys::DeployKeysOp;
-use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
@@ -69,7 +68,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them, publish releases, and look after their mirroring (take a mirror over, hand it back, or move it to g1t for good). Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them and publish releases. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
@@ -120,16 +119,6 @@ pub const TOOLS: &[Tool] = &[
             a("delete_branch", Op::DeleteBranch, "Delete a branch; make it again at its commit to restore it"),
             a("rename", Op::RenameRepo, "Rename it; old addresses redirect"),
             a("transfer", Op::TransferRepo, "Move it to another workspace you own"),
-            a("mirror", Op::Mirrors(MirrorsOp::GetMirror), "Its remotes: what it mirrors or is mirrored to"),
-            a("mirror_hand_back_plan", Op::Mirrors(MirrorsOp::GetHandBackPlan), "What handing a takeover back would do, ref by ref"),
-            a("mirror_take_over", Op::Mirrors(MirrorsOp::TakeOver), "Make g1t lead a mirror for now"),
-            a("mirror_ci", Op::Mirrors(MirrorsOp::SetCiFailover), "Run a mirror's workflows on g1t (on), or stop (off)"),
-            a("mirror_hand_back", Op::Mirrors(MirrorsOp::HandBack), "Send a takeover back, deciding diverged refs"),
-            a("mirror_move_to_g1t", Op::Mirrors(MirrorsOp::MoveToG1t), "Stop tracking the remote; g1t leads for good"),
-            a("mirror_sync", Op::Mirrors(MirrorsOp::SyncMirror), "Bring its remotes in step now"),
-            a("mirror_add_remote", Op::Mirrors(MirrorsOp::AddRemote), "Link another g1t or git host"),
-            a("mirror_update_remote", Op::Mirrors(MirrorsOp::UpdateRemote), "Change a remote's settings"),
-            a("mirror_remove_remote", Op::Mirrors(MirrorsOp::RemoveRemote), "Unlink a remote"),
             a("archive", Op::ArchiveRepo, "Make it read-only"),
             a("unarchive", Op::UnarchiveRepo, "Make it writable again"),
             a("set_visibility", Op::SetRepoVisibility, "Make it public or private"),
@@ -511,7 +500,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "account",
         title: "Your account",
-        description: "Who this token acts as and its workspaces (`whoami`), your email addresses, your invites, and invitations to workspaces and repositories waiting for you.",
+        description: "Who this token acts as and its workspaces (`whoami`), your email addresses, and invitations to workspaces and repositories waiting for you.",
         default_action: Some("whoami"),
         actions: &[
             a("whoami", Op::Whoami, "Who the token acts as, and its workspaces"),
@@ -520,9 +509,6 @@ pub const TOOLS: &[Tool] = &[
             a("confirm_email", Op::ConfirmEmail, "Confirm an address with the code from its email"),
             a("remove_email", Op::RemoveEmail, "Remove an address"),
             a("update_email_settings", Op::UpdateEmailSettings, "Primary, backup and privacy"),
-            a("list_invites", Op::ListInvites, "Your invites to g1t"),
-            a("create_invite", Op::CreateInvite, "Make an invite"),
-            a("revoke_invite", Op::RevokeInvite, "Revoke one"),
             a("list_workspace_invitations", Op::ListInvitations, "Invitations to workspaces for you"),
             a("accept_workspace_invitation", Op::AcceptInvitation, "Accept one and join"),
             a("decline_workspace_invitation", Op::DeclineInvitation, "Decline one"),

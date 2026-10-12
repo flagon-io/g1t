@@ -18,10 +18,10 @@ There are two places to connect things, and they are for different people:
 | Where | **Integrations**, at `g1t.sh/<workspace>/-/integrations`, with each integration's setup page under it | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
 | Who it is for | Everyone in that workspace | Just you, in every workspace you belong to |
 | Who connects | Workspace owners. Members see what is connected. | You |
-| Examples | Sentry, Jira, Linear, GitHub mirroring, webhooks | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar |
+| Examples | Sentry, Jira, Linear, GitHub imports, webhooks | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar |
 
 Some tools have both sides. GitHub, for instance: a workspace owner
-installs g1t's GitHub App to import and mirror the team's repositories, and
+installs g1t's GitHub App to import the team's repositories, and
 you link your own GitHub account to sign in with it. Each card says when
 the other side exists.
 
@@ -46,14 +46,14 @@ Both pages are the same directory:
   tells g1t you want it (below).
 
 The tags on a card say what an integration lets g1t do: **Opens issues**,
-**Writes back** (the other system hears when work lands), **Mirrors
+**Writes back** (the other system hears when work lands), **Imports
 repositories**, **Sets your status**, and so on.
 
 ## Available today
 
 | Category | Workspace | Personal |
 | --- | --- | --- |
-| Code & CI | [GitHub](/guides/github/) import and mirroring, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github); [MCP clients](/guides/authentication/#signing-in-with-oauth): your [coding agent](/guides/bring-your-own-agent/), connected to g1t as you |
+| Code & CI | [GitHub](/guides/github/) import, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github); [MCP clients](/guides/authentication/#signing-in-with-oauth): your [coding agent](/guides/bring-your-own-agent/), connected to g1t as you |
 | Issues & projects | [Jira and Linear](#trackers) | |
 | Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) | |
 

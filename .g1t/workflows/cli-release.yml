@@ -1,0 +1,87 @@
+# Releases the g1t CLI (crates/g1t): builds it for Linux and macOS on x64
+# and arm64 and for Windows on x64, signs the release, and publishes it to
+# g1t.sh/downloads/cli/ (the g1t-downloads R2 bucket), where g1t.sh/install
+# and g1t.sh/install.ps1 find it.
+#
+# A release is a tag `cli-v<version>`, where the version is the one in
+# crates/g1t/Cargo.toml; or run it by hand. scripts/cli-release.mjs does the
+# work, and its header says what a release holds. It is signed with the
+# runner's release key (RUNNER_RELEASE_KEY, RUNNER_RELEASE_PUBLIC_KEY).
+#
+# Every platform builds in one job, in the rust-cross/cargo-zigbuild image:
+# the macOS builds link Apple's Security framework (the keychain), and that
+# image carries its SDK. It runs on g1t's own machines (g1t-4core), whose
+# jobs have a Docker Engine of their own.
+name: CLI release
+
+on:
+  push:
+    tags: ["cli-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  build:
+    name: Build every platform
+    runs-on: g1t-4core
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag names this version
+        if: startsWith(github.ref, 'refs/tags/cli-v')
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/g1t/Cargo.toml | head -1)"
+          [ "cli-v$version" = "${GITHUB_REF_NAME}" ] || { echo "::error::The tag is ${GITHUB_REF_NAME}, but crates/g1t is $version"; exit 1; }
+      - name: Build
+        run: node scripts/cli-release.mjs build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli
+          path: target/cli-release/
+          overwrite: true
+
+  publish:
+    name: Sign and publish
+    needs: build
+    runs-on: ubuntu-latest
+    # Production's secrets, without a deployment: a release is not a deploy
+    # of g1t.sh.
+    environment:
+      name: production
+      deployment: false
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli
+          path: target/cli-release
+      - name: Sign
+        env:
+          RUNNER_RELEASE_KEY: ${{ secrets.RUNNER_RELEASE_KEY }}
+          G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
+        run: |
+          node scripts/cli-release.mjs sign
+          node scripts/cli-release.mjs verify
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - name: Install Wrangler
+        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
+      - name: Publish to g1t.sh/downloads/cli
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/cli-release.mjs publish

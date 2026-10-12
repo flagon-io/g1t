@@ -271,7 +271,10 @@ pub fn noted(folder: &Path) -> PathBuf {
     folder.join("native").join("sandbox-id")
 }
 
-/// Stops the sandbox an earlier run of this runner left, if any.
+/// Stops the sandbox an earlier run of this runner left, if any, and
+/// removes the job folders it left: a runner stopped mid-job (a crash, or
+/// `taskkill /F`) never cleaned its own, and a job's script holds the
+/// job's token.
 pub fn sweep(folder: &Path) {
     let note = noted(folder);
     if let Ok(id) = std::fs::read_to_string(&note) {
@@ -281,6 +284,20 @@ pub fn sweep(folder: &Path) {
         }
         let _ = std::fs::remove_file(&note);
     }
+    for left in job_folders(&folder.join("native")) {
+        let _ = std::fs::remove_dir_all(left);
+    }
+}
+
+/// The job folders in a runner's `native` folder: `g1t-<job id>`, as
+/// exec.rs names them.
+pub fn job_folders(native: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(native) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|t| t.is_dir()) && entry.file_name().to_string_lossy().starts_with("g1t-"))
+        .map(|entry| entry.path())
+        .collect()
 }
 
 /// The ids in `wsb list --raw`.
@@ -384,6 +401,22 @@ mod tests {
         assert!(script.contains(r"$env:G1T_RUNNER_ROOT = 'C:\work'"));
         assert!(script.ends_with("& 'C:\\g1t\\g1t-runner.exe'\r\nexit $LASTEXITCODE\r\n"));
         assert!(script.contains("New-NetFirewallRule"));
+    }
+
+    #[test]
+    fn a_runner_stopped_mid_job_has_its_job_folders_swept() {
+        let folder = std::env::temp_dir().join(format!("g1t-native-sweep-{}", std::process::id()));
+        let native = folder.join("native");
+        std::fs::create_dir_all(native.join("g1t-job_1")).unwrap();
+        std::fs::write(native.join("g1t-job_1").join("job.ps1"), "${env:ACTIONS_TOKEN} = 't'").unwrap();
+        std::fs::create_dir_all(native.join("native")).unwrap();
+        std::fs::write(native.join("runner.log"), "").unwrap();
+        assert_eq!(job_folders(&native), [native.join("g1t-job_1")]);
+        // No sandbox was noted, so nothing is stopped; the job's folder goes.
+        sweep(&folder);
+        assert!(!native.join("g1t-job_1").exists());
+        assert!(native.join("native").exists() && native.join("runner.log").exists(), "only job folders");
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]

@@ -1,50 +1,12 @@
 /**
- * Invites, as the site shows them: what sign-up says while g1t is
- * invite-only, links to an invite, and how each invite reads in a list.
+ * Invites, as the site shows them: links to an invite, and how each
+ * invitation reads in a list.
  * No Workers or React imports, so it can be tested under Node.
  */
 
-/** Where people ask for more invites: support's mailbox (`CONTACT.support`). */
-export const INVITES_CONTACT = "hey@flagon.io";
-
-/** The subject that sorts a request for invites, as the support page lists them. */
-export const INVITES_SUBJECT = "[g1t Invites] ";
-
-/** A mail link asking for more invites, for a person or a workspace. */
-export function moreInvitesMailto(about?: string): string {
-  const subject = `${INVITES_SUBJECT}${about ? `More invites for ${about}` : "More invites"}`;
-  return `mailto:${INVITES_CONTACT}?subject=${encodeURIComponent(subject)}`;
-}
-
-/**
- * What the sign-up buttons say: Sign up, whether or not registration is
- * invite-only. Only the sign-up page itself says how to get in (an invite,
- * or a request for one), so nothing else reads as a waiting room.
- */
+/** What the sign-up buttons say: Sign up. Anyone may register. */
 export function signUpCopy(): { primary: string; secondary: string | null } {
   return { primary: "Sign up", secondary: null };
-}
-
-/** The /register address that opens on the invite-code field. */
-export const HAVE_AN_INVITE = "/register#invite";
-
-/** The address a shared invite link has: sign-up, with its code filled in. */
-export function sharedInviteLink(code: string, origin = "https://g1t.sh"): string {
-  return `${origin.replace(/\/+$/, "")}/register?invite=${encodeURIComponent(code)}`;
-}
-
-/** What sign-up says above the form for a shared invite link's group. Null for a one-person invite. */
-export function sharedInviteLine(label: string | null | undefined): string | null {
-  const group = (label ?? "").trim();
-  return group ? `Invited as part of ${group}` : null;
-}
-
-/** The email field's hint for a shared invite link limited to some domains. */
-export function sharedDomainsHint(domains: string[] | null | undefined): string | undefined {
-  const list = (domains ?? []).filter(Boolean);
-  if (list.length === 0) return undefined;
-  const named = list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")} or ${list.at(-1)}`;
-  return `This invite is for addresses at ${named}. Use yours there.`;
 }
 
 /** The address an invite link has. */
@@ -216,7 +178,7 @@ export function invitePageCopy(
 }
 
 /** What inviting someone came to (lib/member-invitations.server.ts): who was invited, or why not. */
-export type InviteResult = { invited: string; outOfInvites: false } | { error: string; outOfInvites: boolean };
+export type InviteResult = { invited: string } | { error: string };
 
 /** What revoking or resending an invitation came to. */
 export type InvitationResult = { done: "revoked" | "resent"; id: string } | { error: string; id: string };
@@ -306,110 +268,11 @@ export function inviteKind(invite: { workspace: string | null }): { kind: "g1t" 
     : { kind: "g1t", label: "Invite to g1t" };
 }
 
-type Membership = { slug: string; name?: string | null; role: "owner" | "member" };
-
-/** One workspace an own invite can also invite its person to. */
-export type BringInto = { slug: string; name: string };
-
-/**
- * The workspaces Settings → Invites can also invite the person to, when
- * "Also invite them to a workspace" is ticked: the ones the viewer owns
- * that are not on the free plan, which adds no one. None is chosen for
- * them: the box is off at first, and the list starts on "Choose a
- * workspace". `note` says why the viewer's current workspace is missing.
- */
-export function bringIntoChoices(
-  memberships: Membership[],
-  free: string[],
-  current: string | null | undefined,
-): { options: BringInto[]; note: string | null } {
-  const isFree = new Set(free.map((slug) => slug.toLowerCase()));
-  const options = memberships
-    .filter((m) => m.role === "owner" && !isFree.has(m.slug.toLowerCase()))
-    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug }));
-  const here = current?.trim().toLowerCase() || null;
-  let note: string | null = null;
-  const membership = here ? memberships.find((m) => m.slug.toLowerCase() === here) : undefined;
-  if (membership && !options.some((option) => option.slug === here)) {
-    note =
-      membership.role !== "owner"
-        ? `Only the owners of ${membership.slug} can invite people to it.`
-        : `${membership.slug} is on the free plan, so it cannot add people. Start the plan to invite people to it.`;
-  }
-  return { options, note };
-}
-
-/**
- * What the Settings → Invites form sends to identity. The workspace goes
- * with it only when "Also invite them to a workspace" (`also_join`) is
- * ticked: unticked, the invite is to g1t alone, whatever else the form held.
- */
-export function inviteDraft(form: { get(name: string): unknown }): {
-  email: string | null;
-  workspace: string | null;
-  join?: string;
-  joinRole?: "owner" | "member";
-} {
-  const text = (name: string) => {
-    const value = form.get(name);
-    return typeof value === "string" ? value.trim() : "";
-  };
-  const charge = text("charge");
-  const draft: ReturnType<typeof inviteDraft> = {
-    email: text("email") || null,
-    workspace: charge && charge !== "mine" ? charge : null,
-  };
-  const join = text("join");
-  if (text("also_join") === "on" && join) {
-    draft.join = join;
-    draft.joinRole = text("join_role") === "owner" ? "owner" : "member";
-  }
-  return draft;
-}
-
-/**
- * What Settings → Invites shows. Invites to g1t exist only while sign-up
- * takes one: then the page has the form. Once anyone can sign up, it
- * keeps only the list of invites already made, and the settings menu
- * lists the page only when there are some.
- */
-export function invitesPage(mode: "invite" | "open" | null | undefined, made: number): { form: boolean; listed: boolean } {
-  const inviteOnly = mode !== "open";
-  return { form: inviteOnly, listed: inviteOnly || made > 0 };
-}
-
-/** The words for Settings → Invites, the invite to g1t. */
-export const G1T_INVITES = {
-  /** The page's heading. */
-  heading: "Invite people to g1t",
-  /** Its name in the settings menu and the account menu. */
-  nav: "Invites to g1t",
-  about:
-    "An invite to g1t lets one person make an account. It does not add them to any workspace: their account starts with a workspace of its own.",
-  /** In place of the form once anyone can sign up. */
-  open: "Anyone can sign up for g1t now, so there are no invites to make here. Invitations to a workspace live on each workspace's People page.",
-  /** The off-by-default box that also invites the person to a workspace. */
-  alsoJoin: "Also invite them to a workspace",
-  alsoJoinHint:
-    "Once their account is made, they get an invitation to the workspace to accept or decline. Left off, the invite is to g1t only.",
-  /** Where the other kind of invite lives. */
-  elsewhere: "To bring someone into a workspace, invite them from that workspace's People page",
-} as const;
-
-/**
- * The words for a workspace's People page, the invitation to join it.
- * `inviteOnly` says whether sign-up takes an invite: then an invitation to
- * an address with no account also lets it make one (and costs an invite),
- * and the page points to Settings → Invites for an invite to g1t alone.
- */
-export function workspaceInviteCopy(name: string, inviteOnly: boolean): { heading: string; hint: string; elsewhere: string | null } {
-  const base = `Search people on g1t by username or name, or enter an email address. They get an invitation to join ${name}, in their notifications and by email, and join only if they accept.`;
+/** The words for a workspace's People page, the invitation to join it. */
+export function workspaceInviteCopy(name: string): { heading: string; hint: string } {
   return {
     heading: `Invite to ${name}`,
-    hint: inviteOnly
-      ? `${base} If they do not have a g1t account yet, the invitation also lets them sign up; that uses one of ${name}'s shared invites, or else one of yours.`
-      : `${base} If they do not have a g1t account yet, they sign up from the invitation first.`,
-    elsewhere: inviteOnly ? `To invite someone to g1t without adding them to ${name}, use Settings → Invites.` : null,
+    hint: `Search people on g1t by username or name, or enter an email address. They get an invitation to join ${name}, in their notifications and by email, and join only if they accept. If they do not have a g1t account yet, they sign up from the invitation first.`,
   };
 }
 
@@ -451,27 +314,6 @@ export function filterMembers<T extends Listable>(members: readonly T[], filters
     if (words && !member.username.toLowerCase().includes(words) && !(member.name ?? "").toLowerCase().includes(words)) return false;
     return true;
   });
-}
-
-/**
- * The People pages Settings → Invites points to for a workspace
- * invitation: the workspaces the viewer owns (only owners invite), the
- * current one first.
- */
-export function peoplePages(memberships: Membership[], current: string | null | undefined): { slug: string; name: string; to: string }[] {
-  const here = current?.trim().toLowerCase() || null;
-  return memberships
-    .filter((m) => m.role === "owner")
-    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug, to: `/${m.slug.toLowerCase()}/-/members` }))
-    .sort((a, b) => Number(b.slug === here) - Number(a.slug === here));
-}
-
-/** How many invites are left, in words. */
-export function remainingLine(allowance: { limit: number | null; used: number; remaining: number | null }): string {
-  if (allowance.limit == null) return "No limit on your invites";
-  const left = allowance.remaining ?? 0;
-  if (left === 0) return `You have used all ${allowance.limit} of your invites`;
-  return `${left} of ${allowance.limit} invite${allowance.limit === 1 ? "" : "s"} left`;
 }
 
 /**

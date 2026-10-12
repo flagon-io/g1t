@@ -9,6 +9,7 @@
  * a folio's content goes through its room (src/folios/room.ts); this
  * class decides who may ask.
  */
+import { type QuotaEnv, uploadRefused } from "../quota.ts";
 import {
   DOCS_VIEWER_HEADER,
   DOC_MAX_FILE_BYTES,
@@ -109,7 +110,7 @@ import type { FolioRoom } from "./room.ts";
 import { builtinFolioTemplate, builtinFolioTemplates } from "./templates.ts";
 import { deleteSpaceRows, eraseFolios, landingFor } from "./trash.ts";
 
-export type FoliosEnv = WhoEnv & {
+export type FoliosEnv = WhoEnv & QuotaEnv & {
   FOLIOS: DurableObjectNamespace<FolioRoom>;
   NOTIFY?: ServiceBinding;
   EVENTS?: ServiceBinding;
@@ -2134,6 +2135,8 @@ export class Folios {
     if (!opened.ok) return Response.json(opened);
     const bytes = Number(request.headers.get("content-length") ?? "0");
     if (!bytes || bytes > DOC_MAX_FILE_BYTES) return Response.json(fail("invalid", `Files can be up to ${DOC_MAX_FILE_BYTES / 1024 / 1024} MB.`));
+    const refused = await uploadRefused(this.db, this.env, ctx.workspace, bytes);
+    if (refused) return Response.json(fail("limit", refused));
     const name = safeName(url.searchParams.get("name") ?? "file");
     const contentType = servedType(request.headers.get("content-type") ?? "");
     const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");

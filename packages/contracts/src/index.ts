@@ -41,7 +41,6 @@ export * from "./ids";
 export * from "./integrations";
 export * from "./members";
 export * from "./mentions";
-export * from "./mirrors";
 export * from "./names";
 export * from "./notify";
 export * from "./telemetry";

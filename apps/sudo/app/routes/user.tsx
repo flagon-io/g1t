@@ -22,6 +22,7 @@ import { joinedThrough } from "~/lib/invites";
 import { accountsAdmin, identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
+import { SUSPEND_ACCOUNT_ABOUT, parseReason } from "~/lib/suspension";
 
 export const meta: Route.MetaFunction = ({ params }) => [
   { title: `${params.username} · sudo` },
@@ -51,6 +52,8 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     "deleted-with-workspaces": "Deleted the account and the workspaces it alone owned.",
     restored: "Restored the account.",
     "workspace-purged": `Purged ${slug}.`,
+    suspended: "Suspended the account. It was signed out everywhere.",
+    lifted: "Lifted the suspension. The account can sign in again.",
   };
   return {
     user,
@@ -100,6 +103,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     if (!result.ok) return data({ error: result.error.message, workspace: id }, { status: 422 });
     throw redirect(`/users/${encodeURIComponent(params.username)}?done=workspace-purged&slug=${encodeURIComponent(slug)}`);
   }
+  if (intent === "suspend" || intent === "lift") {
+    const suspend = intent === "suspend";
+    const reason = suspend ? parseReason(text(form, "reason")) : { ok: true as const, value: "" };
+    if (!reason.ok) return data({ error: reason.error, account: true }, { status: 422 });
+    const result = await identity.suspendUser(params.username, suspend, reason.value, staff.email);
+    if (!result.ok) return data({ error: result.error.message, account: true }, { status: 422 });
+    throw back(suspend ? "suspended" : "lifted");
+  }
   if (intent === "restore-account") {
     const result = await accountsAdmin.restoreAccount(text(form, "id"), staff.email);
     if (!result.ok) return data({ error: result.error.message, account: true }, { status: 422 });
@@ -143,6 +154,7 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
           <span className="flex flex-wrap items-center gap-2">
             {user.username}
             {user.deleted && <Badge tone="danger">Deleted</Badge>}
+            {user.suspended && <Badge tone="danger">Suspended</Badge>}
             {user.deletion.protected && <Badge tone="info">Protected</Badge>}
           </span>
         }
@@ -151,10 +163,7 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
             Account <span className="font-mono">{user.id}</span>, made <When at={user.createdAt} />.{" "}
             {user.joinedThrough && (
               <>
-                <Link to={`/invites?tab=shared#${user.joinedThrough.id}`} className="text-accent hover:underline">
-                  {joinedThrough(user.joinedThrough.label)}
-                </Link>
-                .{" "}
+                {joinedThrough(user.joinedThrough.label)}.{" "}
               </>
             )}
             {user.privateEmail ? "Keeps its address private on commits." : "Shows its primary address on commits."}
@@ -211,6 +220,32 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
           ))}
         </ul>
       </Section>
+
+      {!user.deleted && (
+        <Section id="suspend" title="Suspension" description={SUSPEND_ACCOUNT_ABOUT} className="mt-6">
+          {user.suspended ? (
+            <Form method="post" className="space-y-3">
+              <Notice tone="error">
+                Suspended <When at={user.suspended.at} /> by {user.suspended.by}: {user.suspended.reason}
+              </Notice>
+              {accountError && <Notice tone="error">{accountError}</Notice>}
+              <Button type="submit" name="intent" value="lift" variant="quiet">
+                Lift the suspension
+              </Button>
+            </Form>
+          ) : (
+            <Form method="post" className="space-y-3">
+              <Field label="Why" hint="Kept with the suspension and in the audit log.">
+                <Input name="reason" required maxLength={500} placeholder="e.g. Scripted sign-ups for free compute" />
+              </Field>
+              {accountError && <Notice tone="error">{accountError}</Notice>}
+              <Button type="submit" name="intent" value="suspend" variant="danger">
+                Suspend {user.username}
+              </Button>
+            </Form>
+          )}
+        </Section>
+      )}
 
       <Section id="log" title="Security log" description="What happened to the account's addresses and password, newest first." className="mt-6">
         {user.log.length === 0 ? (

@@ -320,16 +320,10 @@ prefix, assignees and reviewers.
    and the [merge queue](/guides/merge-queue/), like any other. When it
    merges, the next scan finds the vulnerability fixed.
 
-On a [mirror](/guides/mirroring/) that stands by, is in CI failover or is
-handing back, nothing opens: the scan still runs and the alerts still show,
-but each one says its security update waits until the repository is taken
-over or moved to g1t. The first scan after that opens them.
-
 Each alert shows its update's status and links the pull request:
 
 | Status | Meaning |
 | --- | --- |
-| Waiting | The repository is a mirror that g1t does not lead. The update opens once it is taken over or moved to g1t. |
 | Making the change | The sandbox is raising the version. |
 | Open | The pull request is open. |
 | Merged | The pull request merged. |

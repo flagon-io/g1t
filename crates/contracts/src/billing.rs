@@ -1673,6 +1673,10 @@ pub struct Entitlements {
     /// spend spike is waiting for an owner to confirm it, or g1t staff put
     /// a hold on it. None when it is not.
     pub paused: Option<String>,
+    /// g1t staff put a hold on the account (sudo, Allowances): besides new
+    /// compute, nothing new is set up for it, such as a self-hosted runner.
+    #[serde(default)]
+    pub held: bool,
     // What the workspace's plan gives it, for its pages.
     /// What open reservations hold now.
     #[serde(default)]
@@ -3687,7 +3691,7 @@ pub struct SpendCaps {
     pub today_micros: i64,
     /// `PLATFORM_DAILY_SPEND_CAP_MICROS`. Zero: no breaker.
     pub daily_cap_micros: i64,
-    /// The breaker is open: new hosted-model agent runs that g1t would pay
+    /// The breaker is open: new compute that g1t would pay
     /// for wait until tomorrow (UTC) or until staff lift it.
     pub tripped: bool,
     pub tripped_at: Option<String>,
@@ -3758,7 +3762,7 @@ pub struct CompedBudget {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AdminSpendCapsArgs {}
 
-/// `admin_lift_breaker`: lets hosted-model runs start again for the rest
+/// `admin_lift_breaker`: lets runs g1t pays for start again for the rest
 /// of today (UTC), with why. Recorded in the audit log. Returns
 /// `Outcome<SpendCaps>`.
 #[derive(Debug, Serialize, Deserialize)]

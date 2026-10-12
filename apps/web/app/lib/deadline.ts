@@ -36,16 +36,11 @@ const SLOW_READS = new Set([
 
 /**
  * Writes that run for minutes and still finish: copying a repository in,
- * syncing a mirror, a model writing a draft, a computer's home moved in or
- * out of storage, a scan over many repositories.
+ * a scan over many repositories.
  */
 const LONG_CALLS = new Set([
   "repos create",
   "integrations github_import",
-  "integrations mirror_add",
-  "integrations mirror_sync",
-  "integrations mirror_move_in",
-  "integrations mirror_hand_back",
   "security dry_run_pattern",
   "security rescan",
   "security check_updates",

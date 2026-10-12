@@ -59,15 +59,15 @@ A single push can carry up to 100 MB. A larger one is refused with HTTP
   `main`. Each push sends only what the last did not.
 - **Status.** Depends on Cloudflare.
 
-### Imports and mirrors up to 40 MB
+### Imports up to 40 MB
 
-Importing or mirroring a repository copies it in one piece of at most
-40 MB, after compression.
+Importing a repository copies it in one piece of at most 40 MB, after
+compression.
 
 - **Why.** The copy is held in memory while it moves, and a Worker has
   128 MB for everything it is doing at once.
 - **Instead.** Clone the repository yourself and push it to g1t, in steps if
-  it is over 100 MB. See [Import, mirror or move a repository](/guides/github/#what-comes-across).
+  it is over 100 MB. See [Import a repository](/guides/github/#what-comes-across).
 - **Status.** Streaming the copy, so size stops mattering, is planned.
 
 ### Partial clone works, but is not promised
@@ -456,11 +456,6 @@ While payments are in test mode, no real card is charged, so a card check
 proves nothing. **Status.** Live payments are planned.
 
 ## Accounts, status and self-hosting
-
-### Sign-up needs an invite
-
-g1t is invite-only for now. See [Invites](/guides/authentication/#invites).
-**Status.** Opening sign-up is planned.
 
 ### Tokens for one workspace you belong to
 

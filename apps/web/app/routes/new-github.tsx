@@ -8,8 +8,7 @@ import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
 import { CheckboxOption } from "../components/ui/checkbox";
 import { FieldLegend, FieldSet } from "../components/ui/field";
-import { RadioCard, RadioGroup } from "../components/ui/radio-group";
-import { MODES, installationSummary, notYetAdded } from "../lib/github";
+import { installationSummary, notYetAdded } from "../lib/github";
 import { githubApp } from "../lib/github.server";
 import { page } from "../lib/meta";
 import { assertSameOrigin, requireUser, roleIn } from "../lib/session.server";
@@ -82,14 +81,13 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!removed.ok) return { error: null, removeError: removed.error.message, results: [] };
     throw redirect("/new/github");
   }
-  const mode = (["import", "mirror", "push"] as const).find((option) => option === form.get("mode")) ?? "import";
   const chosen = form.getAll("repo").map(Number).filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 20);
   if (chosen.length === 0) return { error: "Choose at least one repository.", results: [] };
   const issues = form.get("issues") === "on";
   // One at a time: each is a copy of a whole repository.
   const results: { id: number; ok: boolean; repo?: string; error?: string }[] = [];
   for (const githubRepoId of chosen) {
-    const imported = await githubApp.import(user, workspace, { installationId, githubRepoId, mode, issues });
+    const imported = await githubApp.import(user, workspace, { installationId, githubRepoId, issues });
     results.push(
       imported.ok
         ? { id: githubRepoId, ok: true, repo: imported.value.repo }
@@ -312,15 +310,6 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                     )}
                   </div>
                 )}
-              </FieldSet>
-
-              <FieldSet>
-                <FieldLegend>How it comes across</FieldLegend>
-                <RadioGroup name="mode" defaultValue="import" aria-label="How it comes across" className="gap-3 sm:grid-cols-3">
-                  {MODES.map((mode) => (
-                    <RadioCard key={mode.id} value={mode.id} title={mode.title} description={mode.text} />
-                  ))}
-                </RadioGroup>
               </FieldSet>
 
               <CheckboxOption

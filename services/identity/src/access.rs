@@ -797,7 +797,7 @@ impl Identity {
                 "That address already has a pending invitation to this repository. Revoke it to send a new one.",
             ));
         }
-        let invite = match self.repo_invite_code(actor, email, workspace_id).await? {
+        let invite = match self.repo_invite_code(actor, email).await? {
             Outcome::Ok(invite) => invite,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };

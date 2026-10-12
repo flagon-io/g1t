@@ -192,8 +192,9 @@ export type CodeWork = {
 /**
  * Who an actor is. Actors are member keys, as the events and chat services
  * return them: `user:<id>` for an account, `agent:<id>` for an agent of
- * older rows, `""` for nobody (a push a mirror copied in). g1t itself and
- * older agents are not people; everyone else is.
+ * older rows, `""` for nobody (a push an import made). g1t itself and
+ * older agents are not people; everyone else is. `agents` names more keys
+ * that are agents' (accounts of kind `agent`), when known.
  */
 export type ActorKind = "person" | "agent";
 
@@ -526,10 +527,10 @@ export function landedIn(pulls: CodePull[], span: Pick<Span, "from" | "now">): L
     .sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
 }
 
-/** The names behind member keys, for a line: `ana and bo`, `@margo`, `a mirror` for nobody. */
+/** The names behind member keys, for a line: `ana and bo`, `@margo`, `an import` for nobody. */
 function namesOf(keys: string[], names: Record<string, string>, agentKeys?: ReadonlySet<string>): string {
   const shown = keys.map((key) => {
-    if (!key) return "a mirror";
+    if (!key) return "an import";
     const name = names[key] ?? (key === G1T_ACTOR ? "g1t" : "someone");
     return actorKind(key, agentKeys) === "agent" ? `@${name}` : name;
   });

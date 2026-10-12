@@ -6,7 +6,7 @@ import { page } from "../../lib/meta";
 import { AddMemory, MemoryList, memoryAction } from "../../components/memory";
 import { agents } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn, unwrap } from "../../lib/session.server";
-import { requireRepo, requireWritableRepo } from "../../lib/access.server";
+import { requireRepo } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Memory · ${params.owner}/${params.repo} · g1t` });
@@ -30,7 +30,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ params, context, request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   return memoryAction(agents, user, params.owner, { namespace: params.owner, name: params.repo }, form);
 }

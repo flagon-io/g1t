@@ -96,20 +96,12 @@ pub fn load(folder: &Path) -> Result<Config> {
     serde_json::from_str(&text).with_context(|| format!("{} does not read", file.display()))
 }
 
-/// Writes the configuration so only its owner can read it, through a
-/// temporary file, so a crash never leaves half a credential.
+/// Writes the configuration so only its owner can read it, in a folder
+/// only its owner can read (private.rs), through a temporary file, so a
+/// crash never leaves half a credential.
 pub fn save(folder: &Path, config: &Config) -> Result<()> {
-    std::fs::create_dir_all(folder).with_context(|| format!("could not make {}", folder.display()))?;
-    let file = path(folder);
-    let temp = folder.join("config.json.new");
-    std::fs::write(&temp, serde_json::to_string_pretty(config)?)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o600))?;
-    }
-    std::fs::rename(&temp, &file).with_context(|| format!("could not write {}", file.display()))?;
-    Ok(())
+    super::private::folder(folder, "--dir")?;
+    super::private::write_private(&path(folder), serde_json::to_string_pretty(config)?.as_bytes())
 }
 
 pub fn forget(folder: &Path) {

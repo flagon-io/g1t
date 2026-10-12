@@ -30,7 +30,7 @@ import { computeNoteFor } from "../../lib/compute.server";
 import { neverDeploys } from "../../lib/project-kind";
 import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
-import { refusal, requireRepo, requireWritableRepo } from "../../lib/access.server";
+import { refusal, requireRepo } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
 import {
   type ListFilter,
@@ -101,7 +101,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   const ref = { workspace: params.owner, slug: params.repo };
   const intent = form.get("intent");

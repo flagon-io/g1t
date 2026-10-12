@@ -991,6 +991,12 @@ pub struct JobCallArgs {
     pub token: String,
     #[serde(default)]
     pub report: Value,
+    /// `job_spec` only: the harness takes a new token with the spec, and
+    /// the one it asked with stops working, so a copy of it left on the
+    /// runner's computer cannot fetch the job's secrets again. Harnesses
+    /// that predate it never ask, and keep their token.
+    #[serde(default)]
+    pub rotate: bool,
 }
 
 /// What the runner needs to start a job's sandbox.

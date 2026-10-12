@@ -2,14 +2,12 @@
 //! renamed: what issues, pull requests and runs do about each.
 //!
 //! An archived repository is read-only: its issues and pull requests are
-//! locked and nothing new starts on it. So is a mirror standing by (see
-//! `g1t_contracts::mirrors`): its work happens where it is mirrored from,
-//! until someone takes over on g1t. A deleted one looks missing (repos
+//! locked and nothing new starts on it. A deleted one looks missing (repos
 //! hides it) and keeps its rows for a restore. A purged one is gone, and
 //! every row kept for it goes with it.
 
 use g1t_contracts::events::{BranchRenamed, Event, RepoArchived, RepoDeleted};
-use g1t_contracts::repos::{Repo, RepoStatus, StatusByIdArgs, archived_message};
+use g1t_contracts::repos::{Repo, RepoStatus, StatusByIdArgs};
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
@@ -19,22 +17,11 @@ use worker::Result;
 use crate::Work;
 
 /// `Ok` when `repo` may be changed; refused, saying why, when it is
-/// archived or a mirror that is not taken over.
+/// archived.
 pub(crate) fn writable(repo: &Repo) -> Outcome<()> {
     match repo.read_only_reason() {
         Some(reason) => Outcome::fail(FailureCode::Forbidden, reason),
         None => Outcome::Ok(()),
-    }
-}
-
-/// `Ok` unless `repo` is archived. For what stays g1t's own on a mirror:
-/// its settings and rules, and the statuses and checks reported on its
-/// commits (CI failover reports them).
-pub(crate) fn not_archived(repo: &Repo) -> Outcome<()> {
-    if repo.archived() {
-        Outcome::fail(FailureCode::Forbidden, archived_message(&repo.namespace, &repo.name))
-    } else {
-        Outcome::Ok(())
     }
 }
 
@@ -240,7 +227,6 @@ mod tests {
             topics: Vec::new(),
             website: None,
             archived_at: archived_at.map(str::to_owned),
-            mirror: None,
         }
     }
 

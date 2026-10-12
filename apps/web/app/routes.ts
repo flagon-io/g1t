@@ -33,7 +33,6 @@ export default [
     route("profile", "routes/settings/profile.tsx"),
     route("emails", "routes/settings/emails.tsx"),
     route("notifications", "routes/settings/notifications.tsx"),
-    route("invites", "routes/settings/invites.tsx"),
     route("keys", "routes/settings/keys.tsx"),
     // Your access tokens: the list, a new one, and each one's page.
     route("tokens", "routes/settings/tokens.tsx"),
@@ -46,7 +45,7 @@ export default [
     route("security-log", "routes/settings/security-log.tsx"),
     route("account", "routes/settings/account.tsx"),
   ]),
-  // The account menu's header: name, primary email and invites left.
+  // The account menu's header: name and primary email.
   route("settings/menu.json", "routes/settings-menu-json.ts"),
   // People, apart from workspaces: `u` is a reserved name.
   route("u/:username", "routes/user.tsx"),
@@ -95,6 +94,9 @@ export default [
   route("download", "routes/download.tsx"),
   // Releases of the desktop app, the self-hosted runner and the g1t CLI, from R2.
   route("downloads/:tool/*", "routes/downloads-runner.ts"),
+  // The g1t CLI's install scripts, for Linux and macOS and for Windows. `install` is reserved.
+  route("install", "routes/install-script.ts", { id: "routes/install-sh" }),
+  route("install.ps1", "routes/install-script.ts", { id: "routes/install-ps1" }),
   // A workspace's own pages sit under `-`, which no repository can be named.
   route(":owner", "routes/workspace/layout.tsx", [
     index("routes/workspace/overview.tsx"),
@@ -311,7 +313,6 @@ export default [
     route("security/report", "routes/repo/security-report.tsx"),
     route("settings", "routes/repo/settings.tsx"),
     route("settings/repository", "routes/repo/settings-repository.tsx"),
-    route("settings/mirroring", "routes/repo/settings-mirroring.tsx"),
     route("settings/access", "routes/repo/settings-access.tsx"),
     route("settings/keys", "routes/repo/settings-deploy-keys.tsx"),
     route("settings/branches", "routes/repo/settings-branches.tsx"),

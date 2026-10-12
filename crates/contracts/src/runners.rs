@@ -797,6 +797,46 @@ pub fn waiting_reason(wanted: &Wanted) -> String {
     format!("Waiting for a self-hosted runner with labels {}.", wanted.describe())
 }
 
+// --- Staff only (sudo.g1t.sh) ---
+
+/// `admin_runners`: a workspace's self-hosted runners, its own and its
+/// repositories', for staff. Returns `Vec<AdminRunner>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminRunnersArgs {
+    pub workspace: String,
+}
+
+/// A self-hosted runner as staff see it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminRunner {
+    pub id: String,
+    pub name: String,
+    /// `workspace/repo` for a repository's own runner.
+    pub repo: Option<String>,
+    pub os: String,
+    pub version: String,
+    /// Running something now.
+    pub busy: bool,
+    /// RFC 3339.
+    pub last_seen_at: Option<String>,
+    /// RFC 3339.
+    pub created_at: String,
+    pub created_by: Option<String>,
+}
+
+/// `admin_remove_runners`: staff remove one of a workspace's runners
+/// (`id`), or every one (`id` null), and end the registration tokens it
+/// has out. What they were running fails; their credentials stop at once.
+/// Returns `Outcome<u32>`, how many were removed.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminRemoveRunnersArgs {
+    pub workspace: String,
+    #[serde(default)]
+    pub id: Option<String>,
+    pub staff: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

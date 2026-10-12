@@ -319,10 +319,12 @@ export type TelemetryUsage = {
   spans: number;
   metric_points: number;
   stored_bytes: number;
+  /** Bytes received today (UTC): a workspace without the plan sends a thirtieth of its monthly observability a day. */
+  today_bytes?: number;
 };
 
 /** Whom a call is for: the site and the API check access before they ask. */
-type ProjectRef = { project_id: string };
+type ProjectRef = { project_id: string; /** The project's workspace, by slug: the store remembers it, for a free workspace's cap. */ workspace?: string };
 
 export interface TelemetryApi {
   overview(args: ProjectRef & TelemetryFilter & { step_s?: number | null }): Promise<TelemetryOverview>;

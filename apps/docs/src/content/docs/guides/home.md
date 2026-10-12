@@ -118,8 +118,7 @@ and how many more there were.
 | *created 1 doc, edited 7 docs* | Artifacts made (`folio.created`), and artifacts whose content changed (`folio.updated`): each artifact once, and everyone whose changes a version holds edited it. "Docs" when every one is a doc, else "artifacts". Counts only: Home never shows an artifact's title here. | Events |
 | *sent 120 messages in 5 conversations* | Text messages and thread replies that were not deleted, in the conversations you can read: every public channel, and the private channels and direct messages you are in. Conversations are those with at least one message. | Chat |
 
-A push copied in by a mirror names nobody, so it is counted without a
-face.
+A push an import made names nobody, so it is counted without a face.
 
 The card says when it has nothing to show, and names the part that didn't
 answer (Code or Chat) so an empty card never reads as a quiet day.

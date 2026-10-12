@@ -148,8 +148,6 @@ pub fn wants(event: &Event) -> Option<Wanted> {
         "comment.created" => on(Some(number("number")?), Some(text("commentId")?)),
         // Security alerts are threads of their own, not of an issue.
         kind if SECURITY_EVENTS.contains(&kind) => on(None, None),
-        // So is a repository's mirror, told to whom its settings name.
-        kind if MIRROR_EVENTS.contains(&kind) => on(None, None),
         _ => None,
     }
 }
@@ -169,11 +167,6 @@ pub const SECURITY_EVENTS: [&str; 7] = [
     "security_advisory.reported",
     "security_advisory.published",
 ];
-
-/// The integrations service's mirroring events (see
-/// `g1t_contracts::mirrors::MirrorEvent`). People are told only when the
-/// link's settings ask for the inbox, and the event names them.
-pub const MIRROR_EVENTS: [&str; 4] = ["mirror.unreachable", "mirror.reachable", "mirror.state_changed", "mirror.moved_in"];
 
 /// Where an event's items go: which thread, what it is, and where it is.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -233,14 +226,6 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
                 link: None,
             }
         }
-        // A repository's mirror: one thread, its settings page the link.
-        kind if MIRROR_EVENTS.contains(&kind) => Thread {
-            key: format!("{}/mirror", wanted.repo_id),
-            kind: None,
-            number: None,
-            run_id: None,
-            link: text("link"),
-        },
         // A repository's alerts of one type (`rep_1/security/vulnerability`),
         // its reports, one advisory, or one bypass request: the page is the link.
         kind if SECURITY_EVENTS.contains(&kind) => {
@@ -418,8 +403,7 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             | "deployment.failed"
             | "deployment.succeeded"
             | "deployment.review_requested"
-    ) || SECURITY_EVENTS.contains(&event.kind.as_str())
-        || MIRROR_EVENTS.contains(&event.kind.as_str());
+    ) || SECURITY_EVENTS.contains(&event.kind.as_str());
     let mut told = Told {
         actor: if outcome { &nobody } else { actor },
         audience,
@@ -577,19 +561,6 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             // Those the actions service names: the environment's reviewers.
             for name in names(data, "notify") {
                 told.tell(&name, Reason::ReviewRequested, Severity::Warning, &title, body, true);
-            }
-        }
-        (kind, None) if MIRROR_EVENTS.contains(&kind) => {
-            let severity = match kind {
-                "mirror.unreachable" => Severity::Warning,
-                "mirror.state_changed" if data["state"].as_str() == Some("takeover") => Severity::Warning,
-                "mirror.state_changed" if data["state"].as_str() == Some("standby") => Severity::Success,
-                _ => Severity::Info,
-            };
-            let title = data["title"].as_str().unwrap_or("A mirror changed");
-            let body = data["detail"].as_str().unwrap_or_default();
-            for name in names(data, "notify") {
-                told.tell(&name, Reason::StateChange, severity, title, body, true);
             }
         }
         (kind, None) if SECURITY_EVENTS.contains(&kind) => {
@@ -2379,34 +2350,6 @@ mod tests {
         let preview = event("deployment.failed", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7, "triggeredBy": "g1t" }));
         assert_eq!(told(&notices(&preview, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())), vec![("ana", Reason::CiActivity, Severity::Error)]);
         assert_eq!(thread_of(&preview, &wants(&preview).unwrap(), Some(&pull())).key, "rep_1/deploy/prj_1/7");
-    }
-
-    #[test]
-    fn a_mirror_tells_only_the_people_its_settings_name() {
-        let down = event(
-            "mirror.unreachable",
-            None,
-            json!({
-                "repoId": "rep_1", "repo": "acme/rocket", "remoteId": "rmt_1", "remote": "github.com/acme/rocket",
-                "state": "standby", "title": "github.com/acme/rocket is not answering. acme/rocket keeps its copy.",
-                "detail": "Take over acme/rocket to keep working on g1t until it is back.",
-                "notify": ["ana"], "link": "/acme/rocket/settings/mirroring"
-            }),
-        );
-        assert_eq!(wants(&down), Some(Wanted { repo_id: "rep_1".into(), number: None, comment_id: None }));
-        // Watchers of everything hear nothing: only those named.
-        let audience = watched(&[("eve", WatchLevel::All, &[])]);
-        let notices_ = notices(&down, "acme/rocket", &Actor::default(), None, &audience);
-        assert_eq!(told(&notices_), vec![("ana", Reason::StateChange, Severity::Warning)]);
-        assert!(notices_[0].body.contains("Take over"));
-        let thread = thread_of(&down, &wants(&down).unwrap(), None);
-        assert_eq!(thread.key, "rep_1/mirror");
-        assert_eq!(url(Some("acme/rocket"), thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/settings/mirroring");
-        // The banner-only default names nobody, so nobody is told.
-        let quiet = event("mirror.unreachable", None, json!({ "repoId": "rep_1", "title": "x", "link": "/x" }));
-        assert!(notices(&quiet, "acme/rocket", &Actor::default(), None, &audience).is_empty());
-        let back = event("mirror.state_changed", None, json!({ "repoId": "rep_1", "state": "standby", "title": "handed back", "notify": ["ana"], "link": "/x" }));
-        assert_eq!(told(&notices(&back, "acme/rocket", &Actor::default(), None, &audience)), vec![("ana", Reason::StateChange, Severity::Success)]);
     }
 
     /// A scan's summary, as the security service publishes it.

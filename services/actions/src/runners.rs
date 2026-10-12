@@ -420,6 +420,13 @@ impl Actions {
     /// `create_registration_token`.
     pub async fn create_registration_token(&self, a: CreateRegistrationTokenArgs) -> Result<Outcome<RegistrationToken>> {
         let place = check!(self.runner_place(&a.actor, &a.owner, true).await?);
+        // A workspace g1t staff put a hold on registers no new runners.
+        if self.standing(&place.workspace).await.is_some_and(|standing| standing.held) {
+            return Ok(fail(
+                FailureCode::Paused,
+                "g1t staff put a hold on this workspace, so it cannot register new runners. Write to hey@flagon.io if you think this is a mistake.",
+            ));
+        }
         let made = self
             .db
             .prepare("SELECT COUNT(*) AS n FROM runner_registrations WHERE workspace = ? AND created_at > ?")
@@ -504,6 +511,55 @@ impl Actions {
         )])
         .await;
         Ok(Outcome::Ok(true))
+    }
+
+    /// `admin_runners`: staff see a workspace's runners.
+    pub async fn admin_runners(&self, a: g1t_contracts::runners::AdminRunnersArgs) -> Result<Vec<g1t_contracts::runners::AdminRunner>> {
+        let workspace = a.workspace.trim().to_lowercase();
+        Ok(self
+            .runner_rows(&workspace)
+            .await?
+            .into_iter()
+            .map(|row| g1t_contracts::runners::AdminRunner {
+                busy: row.work_id.is_some(),
+                id: row.id,
+                name: row.name,
+                repo: row.repo,
+                os: row.os,
+                version: row.version,
+                last_seen_at: row.last_seen_at,
+                created_at: row.created_at,
+                created_by: row.created_by,
+            })
+            .collect())
+    }
+
+    /// `admin_remove_runners`: staff remove one runner or all of a
+    /// workspace's, and end its registration tokens.
+    pub async fn admin_remove_runners(&self, a: g1t_contracts::runners::AdminRemoveRunnersArgs) -> Result<Outcome<u32>> {
+        let staff = a.staff.trim();
+        if staff.is_empty() {
+            return Ok(fail(FailureCode::Forbidden, "Say which staff member is doing it."));
+        }
+        let workspace = a.workspace.trim().to_lowercase();
+        let rows: Vec<RunnerRow> = self
+            .runner_rows(&workspace)
+            .await?
+            .into_iter()
+            .filter(|row| a.id.as_deref().is_none_or(|id| id == row.id))
+            .collect();
+        if a.id.is_some() && rows.is_empty() {
+            return Ok(fail(FailureCode::NotFound, "There is no such runner."));
+        }
+        let why = format!("g1t staff removed the runner from {workspace}.");
+        for row in &rows {
+            self.forget_runner(row, &why).await?;
+        }
+        if a.id.is_none() {
+            self.db.prepare("DELETE FROM runner_registrations WHERE workspace = ?").bind(&[workspace.as_str().into()])?.run().await?;
+        }
+        worker::console_log!("actions: staff {staff} removed {} of {workspace}'s runners", rows.len());
+        Ok(Outcome::Ok(u32::try_from(rows.len()).unwrap_or(u32::MAX)))
     }
 
     /// Removes a runner: what it was running fails, and its credential
@@ -1171,7 +1227,26 @@ impl Actions {
             job: JobRow,
             run_repo: String,
         }
-        let queued = self.db.prepare(sql).bind(&binds)?.all().await?.results::<Queued>()?;
+        let mut queued = self.db.prepare(sql).bind(&binds)?.all().await?.results::<Queued>()?;
+        // A workspace without the plan runs FREE_SELF_HOSTED_JOBS of its jobs
+        // on its own runners at once (limits.rs). Billing is asked only once
+        // that many are going, so a runner's poll stays cheap.
+        if !queued.is_empty() && self.limits.free_self_hosted_jobs > 0 {
+            let running = self
+                .db
+                .prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'in_progress' AND runner_id IS NOT NULL AND lower(namespace) = ?")
+                .bind(&[runner.workspace.as_str().into()])?
+                .first::<Count>(None)
+                .await?
+                .map_or(0, |c| c.n);
+            if !crate::limits::self_hosted_room(running as u64, self.limits.free_self_hosted_jobs)
+                && self.standing(&runner.workspace).await.is_some_and(|standing| !standing.has_plan)
+            {
+                // Its workflow jobs wait for one to finish; anything else the
+                // runner takes (below) is not held back.
+                queued.clear();
+            }
+        }
         for Queued { job, run_repo } in queued {
             let stored: Vec<String> = job.labels.as_deref().and_then(|l| serde_json::from_str(l).ok()).unwrap_or_default();
             let wanted = Wanted::from_stored(&stored);
@@ -1209,7 +1284,7 @@ impl Actions {
             let claimed = self
                 .db
                 .prepare(
-                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, runner_id = ?, runner_name = ?, reason = NULL, started_at = ?, seen_at = ?
+                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, first_token_hash = NULL, runner_id = ?, runner_name = ?, reason = NULL, started_at = ?, seen_at = ?
                      WHERE id = ? AND status = 'queued' RETURNING id",
                 )
                 .bind(&[

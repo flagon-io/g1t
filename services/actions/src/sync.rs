@@ -63,25 +63,15 @@ impl Actions {
         self.read_folders(path, actor, git_ref, &[FOLDER]).await
     }
 
-    /// The workflow files a repository runs: `.g1t/workflows`, and on a
-    /// mirror in CI failover or taken over, `.github/workflows` too (see
-    /// mirrored.rs), where g1t's own stands in for one of the same name;
-    /// with the managed workflows installed in it and its workspace's that
-    /// target it, as managed.rs puts them together.
-    pub async fn read_for(&self, repo: &Repo, actor: &User, git_ref: Option<&str>, github: bool) -> Result<Read> {
+    /// The workflow files a repository runs: `.g1t/workflows`, with the
+    /// managed workflows installed in it and its workspace's that target
+    /// it, as managed.rs puts them together.
+    pub async fn read_for(&self, repo: &Repo, actor: &User, git_ref: Option<&str>) -> Result<Read> {
         let path = RepoPath {
             namespace: repo.namespace.clone(),
             name: repo.name.clone(),
         };
-        let mut read = if github {
-            let read = self.read_folders(&path, actor, git_ref, &[FOLDER, crate::mirrored::GITHUB_FOLDER]).await?;
-            Read {
-                files: crate::mirrored::prefer_g1t(read.files),
-                head: read.head,
-            }
-        } else {
-            self.read_workflows(&path, actor, git_ref).await?
-        };
+        let mut read = self.read_workflows(&path, actor, git_ref).await?;
         // And the managed workflows beside them (managed.rs).
         read.files = self.with_managed(repo, read.files).await?;
         Ok(read)
@@ -138,8 +128,7 @@ impl Actions {
 
     /// Keeps the `workflows` table in step with the default branch.
     pub async fn sync(&self, repo: &Repo, actor: &User) -> Result<()> {
-        let github = crate::mirrored::policy(repo.mirror.as_ref(), false).github;
-        let read = self.read_for(repo, actor, None, github).await?;
+        let read = self.read_for(repo, actor, None).await?;
         let full_name = format!("{}/{}", repo.namespace, repo.name);
         let now = rfc3339(now_ms());
         let mut statements = Vec::new();

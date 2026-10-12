@@ -33,9 +33,6 @@ pub(crate) struct RepoRow {
     website: Option<String>,
     #[serde(default)]
     archived_at: Option<String>,
-    /// JSON `RepoMirror`; absent on rows read before the column existed.
-    #[serde(default)]
-    mirror: Option<String>,
     #[serde(default)]
     deleted_at: Option<String>,
     /// Bumped by everything that changes the repository's refs; see
@@ -249,7 +246,6 @@ impl From<RepoRow> for Repo {
                 .unwrap_or_default(),
             website: row.website,
             archived_at: row.archived_at,
-            mirror: row.mirror.as_deref().and_then(|mirror| serde_json::from_str(mirror).ok()),
         };
         if let Some(store) = &row.store {
             remember_store(&repo, store);
@@ -640,6 +636,21 @@ impl Registry {
     }
 
     /// What one workspace's private repositories are counted as holding.
+    pub async fn public_bytes(&self, namespace: &str) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            bytes: Option<f64>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT SUM(stored_bytes) AS bytes FROM repos WHERE namespace = ? AND is_private = 0 AND fork_of IS NULL AND deleted_at IS NULL")
+            .bind(&[namespace.into()])?
+            .first::<Row>(None)
+            .await?
+            .and_then(|row| row.bytes)
+            .unwrap_or(0.0) as i64)
+    }
+
     pub async fn private_bytes(&self, namespace: &str) -> Result<i64> {
         #[derive(Deserialize)]
         struct Row {
@@ -799,8 +810,8 @@ impl Registry {
             .prepare(
                 "INSERT INTO repos
                    (id, namespace, name, description, is_private, owner_id,
-                    default_branch, fork_of, created_at, store, mirror)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    default_branch, fork_of, created_at, store)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 repo.id.as_str().into(),
@@ -813,10 +824,6 @@ impl Registry {
                 optional(&repo.fork_of),
                 repo.created_at.as_str().into(),
                 store_key(repo).into(),
-                repo.mirror
-                    .as_ref()
-                    .and_then(|mirror| serde_json::to_string(mirror).ok())
-                    .map_or(JsValue::NULL, JsValue::from),
             ])?
             .run()
             .await?;
@@ -861,7 +868,6 @@ mod tests {
             topics: None,
             website: None,
             archived_at: None,
-            mirror: None,
             deleted_at: None,
             refs_version: version,
             refs_open_until: None,
@@ -924,7 +930,6 @@ mod tests {
             topics: Vec::new(),
             website: None,
             archived_at: None,
-            mirror: None,
         }
     }
 

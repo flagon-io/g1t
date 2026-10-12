@@ -7,7 +7,6 @@ const PAGES: Record<string, { title: string; about: string }> = {
   domains: { title: "Domains", about: "Addresses of your own for the production deployment." },
   guardrails: { title: "Guardrails", about: "What this project's sandboxes may reach, and how long their runs may take." },
   repository: { title: "Repository", about: "Its name, details and default branch, who can see it, and archiving, moving or deleting it." },
-  mirroring: { title: "Mirroring", about: "Copies of this repository on other hosts: which one leads, taking over and handing back, and remotes that follow it." },
   access: { title: "Access", about: "Who can see and change the repository, with which role, and invitations to it." },
   keys: { title: "Deploy keys", about: "SSH keys that let a machine clone this repository, or push to it, and reach nothing else." },
   branches: { title: "Branches and merging", about: "How pull requests merge, and who owns which files." },

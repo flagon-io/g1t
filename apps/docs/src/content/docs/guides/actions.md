@@ -22,32 +22,6 @@ Workflows that still say `uses: ./.github/actions/setup` find it under
 Otherwise g1t doesn't read `.github`, so a repository that lives in both
 places can keep `.github` for GitHub and `.g1t` for g1t, side by side.
 
-### On a mirror
-
-A [mirror](/guides/mirroring/) of a GitHub repository runs nothing while it
-stands by: its workflows run on GitHub. Its owners can change that:
-
-- **CI failover** runs its workflows on g1t for each push copied in from
-  GitHub, `.github/workflows` as well as `.g1t/workflows`. Use it when
-  GitHub's workflows aren't running.
-- **Taking over** runs them for everything pushed to g1t, until it's handed
-  back.
-- **Keep CI warm** runs `.g1t/workflows`, and only those, on each push
-  copied in while it stands by.
-
-When both folders have a workflow of the same `name:`, the one in `.g1t`
-runs. A workflow that deploys (any job names an `environment:`) waits for
-approval during CI failover and takeovers, so it doesn't deploy from two
-places, unless the mirror's settings say otherwise. A push copied in from
-GitHub that changes workflows or local actions waits for approval before
-it can use the repository's secrets.
-
-Whenever g1t runs a mirror's workflows, their results show on the commit on
-GitHub too, as commit statuses named `g1t / <workflow> / <event>`, such as
-`g1t / CI / push`. This needs the Commit statuses permission on g1t's GitHub
-App; turn it off with **Report checks to GitHub** in the mirror's settings.
-See [Checks on GitHub](/guides/mirroring/#checks-on-github).
-
 Then add your [secrets and variables](#secrets-and-variables): GitHub never
 gives their values out, so they cannot be copied across.
 
@@ -807,6 +781,7 @@ unless the job brings a cache:
 | --- | --- |
 | One entry | Up to 2 GiB, compressed. A larger one is not saved, and the job goes on. |
 | A repository's entries | Up to 10 GiB together. Saving past it removes the entries restored longest ago. |
+| A free workspace | Its cache and [artifacts](#artifacts), in every repository, up to 2 GiB together. Past it, a save is refused (the job goes on) until old entries expire or artifacts are deleted; on the g1t plan there is no such cap. |
 | How long | Until it has not been restored for 7 days, and at most 28 days after it was saved. |
 | Which branch | An entry belongs to the branch, tag or pull request whose run saved it. A run restores from its own, then from the branch its pull request merges into, then from the default branch. |
 | Keys | Written once on each branch: saving under a key that exists there does nothing. On each branch in turn, a restore finds its `key` exactly, else the newest entry whose key starts with one of its `restore-keys`. |
@@ -846,6 +821,7 @@ jobs, other runs and people:
 | --- | --- |
 | One artifact | Up to 5 GiB, zipped. |
 | A run's artifacts | Up to 10 GiB together. |
+| A free workspace | Its artifacts and [cache](#the-cache), in every repository, up to 2 GiB together. Past it, an upload fails and says so, until some expire or are deleted; on the g1t plan there is no such cap. |
 | How long | The repository's setting: 14 days unless someone with the Maintain role changes it under **Settings → Repository → Artifacts**, from 1 to 90 days. `retention-days` asks for fewer days, never more. |
 | Names | One artifact per name in a run. Uploading a name again fails, unless the upload says `overwrite: true`, which replaces it. A name is up to 256 characters, none of `" : < > \| * ? \ /`. |
 | `path` | Files, folders and globs, `**` included; a line starting with `!` leaves matching paths out. Files and folders whose names start with `.` are left out unless `include-hidden-files: true`. |
@@ -1283,6 +1259,13 @@ pick one to see its steps and their logs as they are written. Groups
 fold, errors and warnings are marked, and secrets are replaced with
 `***`. The page keeps itself up to date while the run goes on.
 
+A job's log is kept for **90 days** after the job finished. After that its
+lines are deleted; the run, its jobs, their steps and conclusions,
+annotations, job summaries and artifacts (for their own retention) stay.
+Download a log you need to keep longer. On an installation of your own,
+`LOG_RETENTION_DAYS` in the actions service's settings changes the 90 days,
+and `0` keeps logs for good.
+
 ### Live logs
 
 While a job runs, its log reaches the page within about two seconds of
@@ -1429,6 +1412,9 @@ goes up by one, and the attempt before is kept as it ended: its jobs,
 their steps, logs and summaries. Pick one from **Attempt #** at the top of
 the page to read it. Its jobs have ids of their own, so a link to an
 earlier attempt's job keeps showing that job's log.
+
+A job that runs again has its whole time limit from when it starts: the
+time cap of the attempt before it never stops it.
 
 #### Debug logging
 
@@ -2010,7 +1996,7 @@ usually work once they point at `https://api.g1t.sh`.
 | `get_artifact` | `GET …/actions/artifacts/{artifact_id}` |
 | `download_artifact` | `GET …/actions/artifacts/{artifact_id}/zip`: a `302` to a link good for 10 minutes |
 | `delete_artifact` | `DELETE …/actions/artifacts/{artifact_id}` |
-| `artifact_retention`, `set_artifact_retention` | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept with their run) |
+| `artifact_retention`, `set_artifact_retention` | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept for 90 days) |
 
 Secrets and variables have a tool of their own, `secret`:
 

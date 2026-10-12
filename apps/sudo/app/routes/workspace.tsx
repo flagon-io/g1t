@@ -220,6 +220,10 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
             {person?.description && <p className="mt-1 text-sm text-muted">{person.description}</p>}
             <div className="mt-2 flex flex-wrap gap-1.5">
               {person?.protected && <Badge tone="info">Protected: can never be deleted</Badge>}
+              {person?.suspended && <Badge tone="danger">Suspended</Badge>}
+              <Link to={`/workspaces/${slug}/abuse`} className="self-center text-xs text-accent hover:underline">
+                Suspend and clean up
+              </Link>
               {billedTo && <Badge tone="lavender">Billed to {billedTo.name}</Badge>}
               <TermsBadge terms={terms} />
               {terms.kind !== "standard" && terms.note && <span className="self-center text-xs text-muted">({terms.note})</span>}

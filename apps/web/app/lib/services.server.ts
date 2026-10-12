@@ -10,7 +10,6 @@ import {
   deploymentsClient,
   docsClient,
   foliosClient,
-  mirrorsClient,
   packagesClient,
   projectsClient,
   eventsClient,
@@ -60,8 +59,6 @@ export const events = eventsClient(EVENTS);
 /** Each person's inbox, which the events service keeps. */
 export const inbox = inboxClient(EVENTS);
 export const integrations = integrationsClient(INTEGRATIONS);
-/** Mirroring: a repository's remotes, takeovers and hand-backs, kept by integrations. */
-export const mirrors = mirrorsClient(INTEGRATIONS);
 export const webhooks = webhooksClient(WEBHOOKS);
 export const actions = actionsClient(ACTIONS);
 export const deployments = deploymentsClient(DEPLOYMENTS);

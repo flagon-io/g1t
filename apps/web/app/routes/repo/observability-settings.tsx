@@ -39,7 +39,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { projectId, service, project } = await observed(context, params, request, "manage_integrations");
-  const ref = { project_id: projectId };
+  // The workspace goes along, so the project's store knows whose free cap applies.
+  const ref = { project_id: projectId, workspace: (params.owner ?? "").toLowerCase() };
   const [settings, tokens, exports, usage] = await Promise.all([
     soft(service.settings(ref), "settings"),
     soft(service.tokens(ref), "tokens"),
@@ -67,7 +68,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { projectId, service } = await observed(context, params, request, "manage_integrations");
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const ref = { project_id: projectId };
+  const ref = { project_id: projectId, workspace: (params.owner ?? "").toLowerCase() };
   try {
     switch (intent) {
       case "retention":
@@ -309,6 +310,7 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
             {(
               [
                 ["Received", bytes(usage.ingested_bytes)],
+                ["Received today", bytes(usage.today_bytes ?? 0)],
                 ["Requests", count(usage.requests)],
                 ["Log lines", count(usage.logs)],
                 ["Spans", count(usage.spans)],

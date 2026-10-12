@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // After a deploy: the ways in for someone new still work. The pages a
-// visitor lands on load, and the waitlist's Request access form reaches
-// identity and answers. It writes nothing: the form is sent an address
-// identity refuses before it keeps or counts anything, so a real waitlist
-// is never touched.
+// visitor lands on load, and the sign-up form reaches identity and
+// answers. It writes nothing: the form is sent an address identity
+// refuses before it keeps or counts anything, so no account is made and
+// the sign-up rate limit is not used up.
 //
 //   node scripts/ops/smoke.mjs                      # https://g1t.sh
 //   node scripts/ops/smoke.mjs --site http://localhost:5173
@@ -17,18 +17,14 @@ import { pathToFileURL } from "node:url";
 export const CHECKS = [
   { name: "Landing page", path: "/", expect: ["Sign up", "Start for free"] },
   { name: "Sign in", path: "/login", expect: ["Sign in"] },
-  {
-    name: "Sign up: invite and waitlist",
-    path: "/register",
-    expect: ["Have an invite?", "Request access"],
-  },
+  { name: "Sign up", path: "/register", expect: ["Create your account", "Create account"] },
   { name: "Pricing", path: "/pricing", expect: ["Pricing"] },
   {
-    name: "Waitlist reaches identity",
+    name: "Sign up reaches identity",
     path: "/register",
     // Not an address, so identity answers "Enter a valid email address."
-    // before its rate limit and before any write.
-    form: { intent: "request-access", email: "smoke-test-not-an-address", about: "" },
+    // before its sign-up rate limit and before any write.
+    form: { username: "smoke-test", email: "smoke-test-not-an-address", password: "not-a-real-password" },
     status: 422,
     expect: ["Enter a valid email address."],
   },

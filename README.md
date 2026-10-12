@@ -77,7 +77,7 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 | Packages: npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules, container images | Live |
 | Secret push protection, history scanning, dependency upgrade pull requests | Live |
 | A preview of every pull request on `g1t.page`, production on merge, custom domains | Live |
-| GitHub import, mirroring and pushing back | Live |
+| GitHub import: every branch and tag, and issues | Live |
 | A copy of the data for every preview, instant rollback, container apps kept warm | Coming |
 | Git over SSH (waits on inbound TCP on Workers; use HTTPS) | Coming |
 

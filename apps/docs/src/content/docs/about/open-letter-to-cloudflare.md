@@ -110,7 +110,7 @@ are waiting.
 
 A per-workspace operation counter that is our best guess at your invoice. A
 smart HTTP
-client inside a Worker for landing, catch-up, mirrors and imports. Our own
+client inside a Worker for landing, catch-up and imports. Our own
 push policy in front of Artifacts. A versioned ref cache with a test that
 guards it. Two layers of credential caching. A bookmark protocol for D1.
 A probe that deploys throwaway Workers to measure placement, and a

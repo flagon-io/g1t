@@ -53,15 +53,47 @@
     button.addEventListener("click", function () {
       if (action.id === "choose_workspace") return byId("runnerWorkspace").focus();
       if (action.id === "choose_backend") return byId("runnerBackend").focus();
-      invoke("runner_control", { action: action.id }).then(function () {
-        if (action.id.indexOf("copy_") !== 0) return;
-        button.textContent = "Copied";
-        setTimeout(function () {
-          button.textContent = action.label;
-        }, 2000);
-      }, fail);
+      if (action.id === "remove_sandbox" && !window.confirm(REMOVE_SANDBOX)) return;
+      var copying = action.id.indexOf("copy_") === 0;
+      // Busy until the status that follows draws the buttons again, so a
+      // press is seen to do something; given back if nothing comes.
+      if (!copying) working(button);
+      invoke("runner_control", { action: action.id }).then(
+        function () {
+          if (!copying) return;
+          button.textContent = "Copied";
+          setTimeout(function () {
+            button.textContent = action.label;
+          }, 2000);
+        },
+        function (error) {
+          done(button, action.label);
+          fail(error);
+        },
+      );
     });
     return button;
+  }
+
+  var REMOVE_SANDBOX =
+    "Remove this computer's sandbox? Its VM and registration go, and g1t makes its own in their place, registered with your workspace. Its old runners stay listed on g1t until you remove them there.";
+
+  // A button at work: a spinner and its label, pressed no more until it is done.
+  function working(button) {
+    button.disabled = true;
+    button.classList.add("busy");
+    button.setAttribute("aria-busy", "true");
+    var label = button.textContent;
+    setTimeout(function () {
+      if (button.isConnected) done(button, label);
+    }, 20000);
+  }
+
+  function done(button, label) {
+    button.disabled = false;
+    button.classList.remove("busy");
+    button.removeAttribute("aria-busy");
+    button.textContent = label;
   }
 
   function element(tag, className, text) {

@@ -23,7 +23,13 @@
 		{ "binding": "EVENTS", "service": "g1t-events" },
 		// The status page's staff-only entrypoint: posting incidents to
 		// status.g1t.sh (apps/status). Only bindings reach it.
-		{ "binding": "STATUS", "service": "g1t-status", "entrypoint": "StatusAdmin" }
+		{ "binding": "STATUS", "service": "g1t-status", "entrypoint": "StatusAdmin" },
+		// Suspending a workspace and cleaning up after abuse: its self-hosted
+		// runners (actions' admin_runners and admin_remove_runners), its
+		// projects, and their telemetry ingest tokens.
+		{ "binding": "ACTIONS", "service": "g1t-actions" },
+		{ "binding": "PROJECTS", "service": "g1t-projects" },
+		{ "binding": "TELEMETRY", "service": "g1t-telemetry" }
 	],
 	"vars": {
 		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.

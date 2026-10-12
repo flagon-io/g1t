@@ -13,6 +13,7 @@ mod catch_up;
 mod coalesce;
 mod commit_file;
 mod contributors;
+mod copy;
 mod diff;
 mod drift;
 mod fallback;
@@ -29,7 +30,6 @@ mod lifecycle;
 mod limits;
 mod listing;
 mod meters;
-mod mirror;
 mod moves;
 mod namespaces;
 mod pack_cache;
@@ -589,14 +589,14 @@ impl<S: GitStore> Repos<S> {
             None => {}
         }
         // With a credential (a GitHub App installation's token), everything
-        // is copied: every branch and tag. See mirror.rs.
+        // is copied: every branch and tag. See copy.rs.
         let mut credentialed = None;
         if let (Some(url), Some(token)) = (a.import_url.as_deref(), a.import_token.as_deref()) {
             let Some(url) = import::clean_url(url) else {
                 return Ok(Outcome::fail(FailureCode::Invalid, "That is not an https repository address."));
             };
-            let source = mirror::Endpoint::github(&url, token);
-            match mirror::probe(&source).await? {
+            let source = copy::Endpoint::github(&url, token);
+            match copy::probe(&source).await? {
                 Ok(advertised) => credentialed = Some((source, advertised)),
                 Err(reason) => return Ok(Outcome::fail(FailureCode::Invalid, reason)),
             }
@@ -644,7 +644,6 @@ impl<S: GitStore> Repos<S> {
             topics: Vec::new(),
             website: None,
             archived_at: None,
-            mirror: a.mirror.clone(),
         };
         let namespace = match self.place(&repo).await? {
             Ok(namespace) => namespace,
@@ -680,11 +679,11 @@ impl<S: GitStore> Repos<S> {
                 .await?
                 .access(Scope::Write)
                 .await?;
-            let target = mirror::Endpoint::bearer(&access.remote, &access.token);
-            let copied = mirror::copy(&mirror::Endpoint::anonymous(&url), &target, mirror::Prune::Yes).await?;
+            let target = copy::Endpoint::bearer(&access.remote, &access.token);
+            let copied = copy::copy(&copy::Endpoint::anonymous(&url), &target).await?;
             self.refs_moved(&repo.id).await;
             match copied {
-                Ok(copied) => pushed = mirror::import_pushes(&copied.updated, &repo.default_branch),
+                Ok(copied) => pushed = copy::import_pushes(&copied.updated, &repo.default_branch),
                 Err(reason) => {
                     self.registry.remove(&repo.id).await?;
                     return Ok(Outcome::fail(
@@ -701,11 +700,11 @@ impl<S: GitStore> Repos<S> {
                 .await?
                 .access(Scope::Write)
                 .await?;
-            let target = mirror::Endpoint::bearer(&access.remote, &access.token);
-            let copied = mirror::copy(&source, &target, mirror::Prune::Yes).await?;
+            let target = copy::Endpoint::bearer(&access.remote, &access.token);
+            let copied = copy::copy(&source, &target).await?;
             self.refs_moved(&repo.id).await;
             match copied {
-                Ok(copied) => pushed = mirror::import_pushes(&copied.updated, &repo.default_branch),
+                Ok(copied) => pushed = copy::import_pushes(&copied.updated, &repo.default_branch),
                 Err(reason) => {
                     self.registry.remove(&repo.id).await?;
                     return Ok(Outcome::fail(
@@ -749,11 +748,7 @@ impl<S: GitStore> Repos<S> {
         })
         .await?;
         for (git_ref, head) in &pushed {
-            if repo.mirror.is_some() {
-                self.publish_mirrored_push(&repo, git_ref, None, head).await?;
-            } else {
-                self.publish_push(&repo, git_ref, None, head, None, None).await?;
-            }
+            self.publish_push(&repo, git_ref, None, head, None, None).await?;
         }
         Ok(Outcome::Ok(repo))
     }
@@ -1350,7 +1345,6 @@ impl<S: GitStore> Repos<S> {
             topics: Vec::new(),
             website: None,
             archived_at: None,
-            mirror: None,
         };
         // Artifacts forks within a namespace: the copy goes where its
         // repository is.
@@ -1476,8 +1470,8 @@ impl<S: GitStore> Repos<S> {
                 if !allowed {
                     return Ok(denied());
                 }
-                // An archived repository, a mirror standing by, or a pull
-                // request's copy of either, is read-only.
+                // An archived repository, or a pull request's copy of one,
+                // is read-only.
                 if write {
                     let archived = match &repo.fork_of {
                         Some(source) => self.registry.by_id(source).await?,
@@ -1727,14 +1721,8 @@ impl<S: GitStore> Repos<S> {
         commits: Option<u32>,
     ) -> Result<()> {
         let caused_by_job = actor.and_then(g1t_contracts::events::job_run_of).map(str::to_owned);
-        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, false, commits)
+        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, commits)
             .await
-    }
-
-    /// A push copied in from the remote a mirror follows (mirror.rs), or
-    /// made by filling a new mirror from it.
-    async fn publish_mirrored_push(&self, repo: &Repo, git_ref: &str, before: Option<&str>, after: &str) -> Result<()> {
-        self.publish_git_push(repo, git_ref, before, after, None, false, None, true, None).await
     }
 
     /// `publish_push`, saying whether the push reached the store without
@@ -1749,7 +1737,6 @@ impl<S: GitStore> Repos<S> {
         actor: Option<String>,
         unscanned: bool,
         caused_by_job: Option<String>,
-        mirrored: bool,
         commits: Option<u32>,
     ) -> Result<()> {
         self.publish(NewEvent {
@@ -1766,8 +1753,6 @@ impl<S: GitStore> Repos<S> {
                     == Some(repo.default_branch.as_str()),
                 unscanned,
                 caused_by_job,
-                mirrored,
-                mirror: repo.mirror.clone(),
                 commits,
             },
         })
@@ -2231,6 +2216,21 @@ impl<S: GitStore> Repos<S> {
                 )));
             }
         }
+        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && !repo.is_private {
+            let free = git_ops::free_public_bytes(env);
+            if free > 0 {
+                let held = self.registry.public_bytes(&namespace).await.unwrap_or(0);
+                if git_ops::public_storage_full(held, free)
+                    && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
+                {
+                    return Ok(Some((
+                        git_ops::public_storage_full_response(&namespace, held, free)?,
+                        403,
+                        "Free public storage is full.",
+                    )));
+                }
+            }
+        }
         Ok(None)
     }
 
@@ -2377,7 +2377,6 @@ impl<S: GitStore> Repos<S> {
                     actor.clone(),
                     unscanned,
                     caused_by_job.clone(),
-                    false,
                     commits,
                 )
                 .await?;
@@ -2389,7 +2388,7 @@ impl<S: GitStore> Repos<S> {
 
 /// The most tags one push announces: a push of more (`git push --tags`
 /// into a new repository, say) announces none of them, so it starts no
-/// workflows, mirror syncs or package reads, one per tag.
+/// workflows or package reads, one per tag.
 const MAX_PUSH_TAG_EVENTS: usize = 3;
 /// The most branches one push announces. A push of more announces only
 /// the default branch, if it moved, which the rest of g1t reads from.
@@ -2625,13 +2624,6 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             )
         }
         "create" => reply(&repos.create(args(body)?).await?),
-        // Services only: a mirror catching up, or pushing out; refs moved
-        // either way when a takeover is handed back; and the mirror state
-        // integrations decided (mirror.rs).
-        "mirror" => reply(&repos.mirror(args(body)?).await?),
-        "mirror_refs" => reply(&repos.mirror_refs(args(body)?).await?),
-        "mirror_apply" => reply(&repos.mirror_apply(args(body)?).await?),
-        "set_mirror" => reply(&repos.set_mirror(args(body)?).await?),
         "transfer" => reply(&repos.transfer(args(body)?).await?),
         // A repository's lifecycle: see lifecycle.rs.
         "delete" => reply(&repos.delete(args(body)?).await?),
@@ -3043,7 +3035,6 @@ fn push_to_create(owner: &User, path: &RepoPath) -> CreateArgs {
         is_private: true,
         import_url: None,
         import_token: None,
-        mirror: None,
     }
 }
 

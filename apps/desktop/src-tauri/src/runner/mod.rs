@@ -221,6 +221,9 @@ enum Ask {
     /// A kind of job was started: start what should run now, stopping nothing.
     Soon,
     Retry,
+    /// "Remove it and start again": the sandbox this computer has, removed
+    /// with its registration, and the app's own made in its place.
+    RemoveSandbox,
     /// "Check for runner updates": look now, and install what is found
     /// even with "Download updates by themselves" off.
     Check,
@@ -568,6 +571,10 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
         }
         "stop" => set_paused(app, true),
         "retry" | "restart" => retry(app),
+        "remove_sandbox" => {
+            *app.state::<Shared>().paused.lock().unwrap() = false;
+            ask(app, Ask::RemoveSandbox);
+        }
         "check_updates" => ask(app, Ask::Check),
         "sign_in" => crate::links::go(app, "/login"),
         "new_workspace" => crate::links::go(app, "/workspaces/new"),
@@ -930,6 +937,14 @@ impl Keeper {
                 for (_, at, _) in &mut self.retry {
                     *at = Instant::now();
                 }
+            }
+            Ask::RemoveSandbox => {
+                self.set(Code::Starting, detail("Removing this computer's sandbox."));
+                self.halt();
+                self.forget_sandbox();
+                self.failures = 0;
+                self.not_before = Instant::now();
+                self.set(Code::Starting, detail("Starting a sandbox of g1t's own."));
             }
             Ask::Retry => {
                 self.not_before = Instant::now();

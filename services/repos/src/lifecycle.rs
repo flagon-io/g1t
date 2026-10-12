@@ -274,10 +274,8 @@ pub fn archived_refusal(repo: &Repo) -> Option<Refusal> {
         .then(|| (FailureCode::Forbidden, archived_message(&repo.namespace, &repo.name)))
 }
 
-/// Why a repository takes no pushes, merges or new work now: archived, or
-/// a mirror that is not taken over (see `g1t_contracts::mirrors`).
-/// Settings stay changeable on a mirror; only an archived repository
-/// refuses those (`archived_refusal`).
+/// Why a repository takes no pushes, merges or new work now: it is
+/// archived.
 pub fn read_only_refusal(repo: &Repo) -> Option<Refusal> {
     repo.read_only_reason().map(|message| (FailureCode::Forbidden, message))
 }
@@ -647,17 +645,6 @@ impl Registry {
         Ok(())
     }
 
-    /// A repository's mirror (see `g1t_contracts::mirrors`), or none.
-    pub async fn set_mirror(&self, id: &str, mirror: Option<&g1t_contracts::mirrors::RepoMirror>) -> Result<()> {
-        let mirror = mirror.and_then(|mirror| serde_json::to_string(mirror).ok());
-        self.db
-            .prepare("UPDATE repos SET mirror = ? WHERE id = ?")
-            .bind(&[mirror.map_or(JsValue::NULL, JsValue::from), id.into()])?
-            .run()
-            .await?;
-        Ok(())
-    }
-
     /// Makes a repository and its working copies public or private.
     pub async fn set_private(&self, id: &str, private: bool) -> Result<()> {
         self.db
@@ -729,8 +716,7 @@ impl Registry {
             .map(|row| row.now))
     }
 
-    /// Whether a repository is archived or deleted, and the remote it
-    /// mirrors; unknown is deleted.
+    /// Whether a repository is archived or deleted; unknown is deleted.
     pub async fn status(&self, id: &str) -> Result<RepoStatus> {
         #[derive(Deserialize)]
         struct Row {
@@ -738,12 +724,10 @@ impl Registry {
             archived_at: Option<String>,
             #[serde(default)]
             deleted_at: Option<String>,
-            #[serde(default)]
-            mirror: Option<String>,
         }
         Ok(self
             .db
-            .prepare("SELECT archived_at, deleted_at, mirror FROM repos WHERE id = ?")
+            .prepare("SELECT archived_at, deleted_at FROM repos WHERE id = ?")
             .bind(&[id.into()])?
             .first::<Row>(None)
             .await?
@@ -751,12 +735,10 @@ impl Registry {
                 RepoStatus {
                     archived: false,
                     deleted: true,
-                    mirror: None,
                 },
                 |row| RepoStatus {
                     archived: row.archived_at.is_some(),
                     deleted: row.deleted_at.is_some(),
-                    mirror: row.mirror.as_deref().and_then(|mirror| serde_json::from_str(mirror).ok()),
                 },
             ))
     }
@@ -1875,26 +1857,14 @@ mod tests {
             topics: Vec::new(),
             website: None,
             archived_at: archived.then(|| "2026-10-05T00:00:00.000Z".to_owned()),
-            mirror: None,
         }
     }
 
     #[test]
-    fn a_mirror_refuses_writes_until_g1t_takes_over() {
-        use g1t_contracts::mirrors::{MirrorState, RepoMirror};
-        let mirror = |state| Repo {
-            mirror: Some(RepoMirror { state, remote: "github.com/acme/rocket".into(), ..RepoMirror::default() }),
-            ..repo(false)
-        };
-        let (code, message) = read_only_refusal(&mirror(MirrorState::Standby)).unwrap();
+    fn an_archived_repository_refuses_writes() {
+        let (code, message) = read_only_refusal(&repo(true)).unwrap();
         assert_eq!(code, FailureCode::Forbidden);
-        assert!(message.contains("acme/rocket is a mirror of github.com/acme/rocket"));
-        assert!(message.contains("take over"));
-        assert!(read_only_refusal(&mirror(MirrorState::Ci)).is_some(), "CI failover runs workflows, not pushes");
-        assert!(read_only_refusal(&mirror(MirrorState::Takeover)).is_none());
-        assert!(read_only_refusal(&mirror(MirrorState::HandingBack)).unwrap().1.contains("handing back"));
-        assert!(archived_refusal(&mirror(MirrorState::Standby)).is_none(), "a mirror's settings stay changeable");
-        assert!(read_only_refusal(&repo(true)).unwrap().1.contains("archived"));
+        assert!(message.contains("archived"));
         assert!(read_only_refusal(&repo(false)).is_none());
     }
 

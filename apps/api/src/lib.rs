@@ -18,7 +18,6 @@ mod telemetry;
 mod deploy_keys;
 mod limits;
 mod logs;
-mod mirrors;
 mod mcp;
 mod notifications;
 mod oauth;
@@ -665,10 +664,13 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
                 _ => (rest.to_owned(), "job_report"),
             };
             let body = json_body(&mut request).await;
+            // `rotate`: a harness that takes a new token with the spec and
+            // lets go of the one it asked with (plan.rs `job_spec`).
+            let rotate = method == "job_spec" && body["rotate"].as_bool() == Some(true);
             let answered: Outcome<Value> = g1t_kit::call(
                 &services.actions,
                 method,
-                &json!({ "job": job, "token": body["token"], "report": body["report"] }),
+                &json!({ "job": job, "token": body["token"], "report": body["report"], "rotate": rotate }),
             )
             .await?;
             return match answered {
@@ -774,10 +776,12 @@ mod tests {
     #[test]
     fn a_job_spec_gets_the_toolkits_variables() {
         // As the actions service sends it, converted as the API does.
-        let sent = json!({ "variables": { "GITHUB_SHA": "abc" }, "runtime": { "token": "h.p.s", "idToken": true } });
+        let sent = json!({ "variables": { "GITHUB_SHA": "abc" }, "runtime": { "token": "h.p.s", "idToken": true }, "nextToken": "n" });
         let mut spec = g1t_kit::wire::snake_case_keeping(sent.clone(), super::JOB_SPEC_AS_GIVEN);
         super::with_runtime(&mut spec, "https://api.g1t.sh", true);
         assert!(spec.get("runtime").is_none(), "the runner never sees it");
+        // The token that replaces the one the harness asked with.
+        assert_eq!(spec["next_token"], "n");
         let vars = &spec["variables"];
         assert_eq!(vars["GITHUB_SHA"], "abc");
         assert_eq!(vars["ACTIONS_RUNTIME_TOKEN"], "h.p.s");

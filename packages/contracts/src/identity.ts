@@ -212,25 +212,19 @@ export type AdminWorkspaceDetail = {
   members: AdminMember[];
   /** It can never be deleted, by anyone (identity's `PROTECTED_WORKSPACES`). */
   protected: boolean;
+  /** Set while staff have it suspended. */
+  suspended?: Suspension | null;
 };
 
 /** The most workspaces one `workspaces` call returns. */
 export const ADMIN_WORKSPACES_LIMIT = 500;
 
-/**
- * Whether anyone may make an account, or only someone with an invite.
- * Identity's `REGISTRATION_MODE`; unset means `invite`.
- */
-export type RegistrationMode = "invite" | "open";
-
-/** How many invites a person may have out at once, unless identity's `INVITES_PER_USER` says otherwise. */
-export const INVITES_PER_USER = 5;
 /** How long an invite works, unless identity's `INVITE_TTL_DAYS` says otherwise. */
 export const INVITE_TTL_DAYS = 30;
 /** The most characters an invitation's note keeps (`invite_member`'s `message`). */
 export const MAX_INVITE_MESSAGE = 500;
 
-/** Only a pending invite can be used or revoked. Revoked and expired ones never used give the invite back. */
+/** Only a pending invite can be used or revoked. */
 /**
  * `awaiting_confirmation`: used to make an account that has not confirmed its
  * email address yet; what it gives is joined when the address is confirmed,
@@ -263,8 +257,6 @@ export type Invite = {
   /** The workspace using it joins. */
   workspace: string | null;
   status: InviteStatus;
-  /** Whose allowance it used. */
-  chargedTo: "user" | "workspace" | "none";
   /** Its maker's username; null when g1t staff made it. */
   invitedBy: string | null;
   /** The account that used it. */
@@ -301,17 +293,6 @@ export type WorkspaceInvitation = {
 /** Someone to invite, as `findPeople` finds them: never an email address. */
 export type PersonMatch = { username: string; name: string | null; avatar: string | null };
 
-/** How many invites someone may have out. `limit` and `remaining` are null for no limit. */
-export type Allowance = { limit: number | null; used: number; remaining: number | null };
-
-export type InvitesOverview = {
-  mode: RegistrationMode;
-  allowance: Allowance;
-  /** Workspaces the person owns that were granted invites to share. */
-  workspaces: { slug: string; allowance: Allowance }[];
-  invites: Invite[];
-};
-
 /** What a valid code is for, before it is used. */
 export type InvitePreview = {
   kind: "account" | "workspace";
@@ -331,10 +312,6 @@ export type InvitePreview = {
   /** With a viewer: whether it is theirs (for one of their confirmed addresses, or used by them). */
   forViewer: boolean | null;
   expiresAt: string;
-  /** A shared invite link's group, such as `Cloudflare judges`; null for a one-person invite. Not secret. */
-  sharedLabel: string | null;
-  /** The email domains a shared invite link is limited to; empty for any address. */
-  sharedDomains: string[];
   /**
    * Whether the page was opened from this pending invite's own email (its
    * `proof` checked out): the account made with it starts with `address`
@@ -344,109 +321,19 @@ export type InvitePreview = {
   emailProven: boolean;
 };
 
-export type WaitlistStatus = "waiting" | "invited" | "dismissed";
-
-export type WaitlistEntry = {
-  id: string;
-  email: string;
-  about: string | null;
-  status: WaitlistStatus;
-  inviteId: string | null;
-  decidedBy: string | null;
-  decidedAt: string | null;
-  /** What staff wrote when approving; it went in the invite email. */
-  note: string | null;
-  /** The account made with the invite, once it was used. */
-  joinedAs: string | null;
-  /** When they first asked. */
-  createdAt: string;
-  /** When they last asked. */
-  updatedAt: string;
-};
-
-export type InviteGrant = { amount: number; note: string | null; grantedBy: string; createdAt: string };
-export type InviteTreeNode = { username: string; joinedAt: string; invited: InviteTreeNode[] };
-
-/** Where a person came from and whom they brought. For a workspace, `username` is its slug. */
-export type InviteTree = {
-  username: string;
-  /** Who invited them, then who invited that person, and so on. */
-  invitedBy: string[];
-  /** The staff member who minted their invite, when staff did. */
-  staff: string | null;
-  allowance: Allowance;
-  grants: InviteGrant[];
-  invites: Invite[];
-  /** Whom they invited, three levels down. */
-  invited: InviteTreeNode[];
-  /** The shared invite link the account was made with, if it was. */
-  shared: SharedInviteSource | null;
-};
-
-// --- Shared invite links, staff only ---------------------------------------------------
-//
-// One link for a group (a conference's judges, a post, a community): up to
-// `maxUses` new accounts, until it expires or staff revoke it, optionally only
-// for addresses at some domains. Each use makes a new account, which makes its
-// own workspace; it never joins an existing one and uses nobody's allowance.
-// The link is `https://g1t.sh/register?invite=<code>`. Mirrors the shared
-// invite types in `crates/contracts/src/identity.rs`.
-
-/** How long a shared invite link works when staff give no date. */
-export const SHARED_INVITE_TTL_DAYS = 14;
-/** The furthest ahead a shared invite link's last day may be set. */
-export const SHARED_INVITE_MAX_DAYS = 365;
-/** The most accounts one shared invite link makes. */
-export const MAX_SHARED_INVITE_USES = 1000;
-/** The most characters a shared invite link's label keeps. */
-export const MAX_SHARED_INVITE_LABEL = 80;
-/** The most email domains one shared invite link may be limited to. */
-export const MAX_SHARED_INVITE_DOMAINS = 10;
-
-/** Only a live link makes accounts; `used_up`: every use is taken. */
-export type SharedInviteStatus = "live" | "used_up" | "expired" | "revoked";
-
-/** The shared invite link an account was made with. */
+/**
+ * The shared invite link an account was made with. Before registration
+ * opened, staff handed groups shared links; none are made or used any more.
+ */
 export type SharedInviteSource = { id: string; label: string };
 
-/** One shared invite link, as staff see it. */
-export type SharedInvite = {
-  /** `sinv_…`. */
-  id: string;
-  /** Whom it is for, such as `Cloudflare judges`. */
-  label: string;
-  /** The code, while it is live. */
-  code: string | null;
-  /** The code's first group, such as `g1t-k7m2`. */
-  hint: string;
-  maxUses: number;
-  /** Accounts made with it so far. */
-  uses: number;
-  /** Only addresses at these domains may use it; empty for any. */
-  domains: string[];
-  status: SharedInviteStatus;
-  /** The staff member who made it, by email. */
-  staff: string;
-  createdAt: string;
-  expiresAt: string;
-  revokedAt: string | null;
-  revokedBy: string | null;
-  /** The accounts made with it, oldest first; `username` is null once one is purged. */
-  accounts: { username: string | null; joinedAt: string }[];
-};
+/** Why and since when staff suspended an account or a workspace. */
+export type Suspension = { reason: string; at: string; by: string };
 
-/** What staff make a shared invite link from. */
-export type NewSharedInvite = {
-  label: string;
-  /** 1 to 1000. */
-  maxUses: number;
-  /** The last day it works, `YYYY-MM-DD` (UTC); null for 14 days from now. */
-  expiresOn: string | null;
-  /** Email domains it is limited to, such as `cloudflare.com`; empty for any address. */
-  domains: string[];
-};
+/** An email domain no new account may sign up with; its subdomains too. */
+export type BlockedDomain = { domain: string; reason: string; blockedBy: string; createdAt: string };
 
-/** The most rows one staff listing of invites or the waitlist returns. */
+/** The most rows one staff listing of invites returns. */
 export const ADMIN_INVITES_LIMIT = 500;
 
 /**
@@ -461,38 +348,22 @@ export interface IdentityAdminApi {
   /** One workspace with all its members, or null. */
   workspace(slug: string): Promise<AdminWorkspaceDetail | null>;
 
-  /** The waitlist, newest first; `query` matches the address or what they said. */
-  waitlist(query?: string | null, status?: WaitlistStatus | null): Promise<WaitlistEntry[]>;
-  /** How many requests are waiting, for the navigation's badge. */
-  waitlistPending(): Promise<number>;
-  /**
-   * Approving mints an invite bound to the address and emails it, with
-   * `note` (up to 500 characters) if given; dismissing only marks it.
-   */
-  decideWaitlist(id: string, approve: boolean, staff: string, note?: string | null): Promise<Result<WaitlistEntry>>;
   /** Invites, newest first; `query` is a code's start, or part of an email, inviter or redeemer. */
   invites(query?: string | null): Promise<Invite[]>;
   revokeInvite(id: string, staff: string): Promise<Result<Invite>>;
-  /** An invite that uses nobody's allowance, optionally bound to (and emailed to) `email`. */
-  mintInvite(email: string | null, staff: string): Promise<Result<Invite>>;
-  /** More invites (or fewer, with a negative amount) for a person or a workspace. */
-  grantInvites(
-    target: "user" | "workspace",
-    name: string,
-    amount: number,
-    note: string,
-    staff: string,
-  ): Promise<Result<Allowance>>;
-  /** Where a person came from and whom they brought, or null. */
-  inviteTree(username: string): Promise<InviteTree | null>;
-  /** A workspace's granted invites and the invites made for it, or null. */
-  workspaceInvites(slug: string): Promise<InviteTree | null>;
-  /** Shared invite links, newest first, each with the accounts it made. */
-  sharedInvites(): Promise<SharedInvite[]>;
-  /** Makes a shared invite link; the result carries its code. Recorded in the audit log. */
-  createSharedInvite(link: NewSharedInvite, staff: string): Promise<Result<SharedInvite>>;
-  /** Stops a shared invite link making more accounts; those it made stay. Recorded in the audit log. */
-  revokeSharedInvite(id: string, staff: string): Promise<Result<SharedInvite>>;
+
+  /**
+   * Suspends an account (by username): it cannot sign in, and its sessions
+   * and tokens stop at once. `suspend: false` lifts it. A reason is required
+   * to suspend.
+   */
+  suspendUser(username: string, suspend: boolean, reason: string, staff: string): Promise<Result<Suspension | null>>;
+  /** Suspends a workspace (by slug): its own tokens stop. Sudo also holds its compute in billing. */
+  suspendWorkspace(slug: string, suspend: boolean, reason: string, staff: string): Promise<Result<Suspension | null>>;
+  /** Email domains no new account may sign up with. */
+  blockedDomains(): Promise<BlockedDomain[]>;
+  /** Blocks (or with `block: false` unblocks) an email domain; returns the list now. */
+  blockDomain(domain: string, block: boolean, reason: string, staff: string): Promise<Result<BlockedDomain[]>>;
 
   /** Workspaces owners deleted that are not purged yet, newest first. */
   deletedWorkspaces(): Promise<DeletedWorkspace[]>;
@@ -770,9 +641,10 @@ export type DeletedWorkspace = {
 
 export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, DeployKeysClient {
   /**
-   * Creates an account and signs it in. While registration is invite-only,
-   * `inviteCode` must be an unused, unexpired invite (and, when it names an
-   * email, that address); it is ignored while registration is open.
+   * Creates an account and signs it in. Anyone may register; at most
+   * five accounts an hour per `client`. `inviteCode` is optional: one from an
+   * invitation sent to `email` applies that invitation once the address is
+   * confirmed, and any other code is ignored.
    */
   register(
     username: string,
@@ -961,21 +833,6 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
 
   userForSession(sessionToken: string): Promise<Viewer>;
 
-  /** Whether registration is invite-only. */
-  registration(): Promise<RegistrationMode>;
-  /** A person's invites and what they have left. */
-  listInvites(user: User): Promise<InvitesOverview>;
-  /**
-   * A person makes an invite, optionally for one address (emailed to it),
-   * using one of theirs or, with `workspace`, one the workspace was granted.
-   * People only: never an agent or a workspace's token.
-   */
-  createInvite(
-    user: User,
-    options?: { email?: string | null; workspace?: string | null; join?: string | null; joinRole?: "owner" | "member" | null },
-  ): Promise<Result<Invite>>;
-  /** Its maker, or an owner of its workspace, revokes a pending invite; the invite comes back. */
-  revokeInvite(user: User, id: string): Promise<Result<Invite>>;
   /**
    * What a code is for. Unknown, used, revoked and expired codes all get the
    * same answer, unless `anyStatus`: then a real code that is spent is
@@ -1017,8 +874,6 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   revokeWorkspaceInvite(actor: User, slug: string, id: string): Promise<Result<Invite>>;
   /** Owners only: sends a pending invitation again, by email and in the invited account's inbox. Unchanged otherwise. */
   resendWorkspaceInvite(actor: User, slug: string, id: string): Promise<Result<Invite>>;
-  /** Someone without an invite asks for one. Always the same answer for a valid address. */
-  requestAccess(email: string, about: string, client?: string | null): Promise<Result<boolean>>;
 
   /** Verifies git credentials: the account password or an access token. */
   userForGitCredentials(username: string, secret: string): Promise<Viewer>;

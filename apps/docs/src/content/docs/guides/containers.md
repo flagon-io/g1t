@@ -178,7 +178,9 @@ It signs in with the first of:
 1. a token on stdin, with `--token-stdin`
    (`echo "$G1T_TOKEN" | g1t push … --token-stdin`);
 2. the `G1T_TOKEN` environment variable, as in [workflows](#in-workflows);
-3. what `docker login g1t.sh` stored, in `~/.docker/config.json` or the
+3. the account [`g1t auth login`](/guides/cli/#sign-in) signed in to on the
+   registry's host;
+4. what `docker login g1t.sh` stored, in `~/.docker/config.json` or the
    credential store it names.
 
 | Option | |
@@ -192,29 +194,18 @@ It signs in with the first of:
 
 ### Getting g1t
 
-One file for each platform, from `https://g1t.sh/downloads/cli/latest/`:
+`g1t push` is part of the [g1t CLI](/guides/cli/). Install it with one line:
 
 ```sh
-# Linux (x64; use g1t-linux-arm64 on ARM)
-curl -fsSLo g1t https://g1t.sh/downloads/cli/latest/g1t-linux-x64 && chmod +x g1t
-# macOS (Apple silicon; use g1t-macos-x64 on Intel)
-curl -fsSLo g1t https://g1t.sh/downloads/cli/latest/g1t-macos-arm64 && chmod +x g1t
+curl -fsSL https://g1t.sh/install | sh
 ```
 
 ```powershell
-# Windows
-Invoke-WebRequest https://g1t.sh/downloads/cli/latest/g1t-windows-x64.exe -OutFile g1t.exe
+irm https://g1t.sh/install.ps1 | iex
 ```
 
-Check a download against `https://g1t.sh/downloads/cli/latest/SHA256SUMS`.
-To build it from source instead, with
-[Rust](https://www.rust-lang.org/tools/install):
-
-```sh
-git clone https://g1t.sh/flagon-io/g1t
-cd g1t
-cargo install --path crates/g1t
-```
+[Installing the CLI](/guides/cli/#install) covers the single-file downloads,
+checking them, and building it from source.
 
 ## Storage and pull limits
 

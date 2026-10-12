@@ -1,8 +1,8 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, House, Ticket, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X, ArrowLeftRight } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, House, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Membership, type RepoMirror, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
+import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
@@ -58,7 +58,6 @@ import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accoun
 import { type PinnableApp, sidebarCookie } from "../lib/apps";
 import { REASON_FILTERS, inboxReason, inboxView } from "../lib/inbox";
 import { GithubMark } from "./github";
-import { useInviteOnly } from "../lib/registration";
 import { STATUS_URL, statusTitle } from "../lib/status";
 import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
@@ -373,8 +372,6 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
   const me = details.data ?? null;
   // Still on its way: shapes where the words will be, the same size.
   const loading = details.data === undefined && details.state !== "idle";
-  // While anyone can sign up, listed once the data says there are invites to look back on.
-  const invitesListed = useInviteOnly() || me?.invites_page === true;
   const profile = `/u/${user.username}`;
   return (
     <>
@@ -441,20 +438,6 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
               <MonitorCog />
               Desktop app settings
             </DropdownMenuItem>
-          )}
-          {invitesListed && (
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to="/settings/invites">
-              <Ticket />
-              {ACCOUNT_SETTINGS.invites.title}
-              {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
-              {me?.invites_left != null && (
-                <span className="ml-auto rounded-full bg-line px-1.5 text-[0.6875rem] tabular-nums text-muted">
-                  {me.invites_left} left
-                </span>
-              )}
-            </Link>
-          </DropdownMenuItem>
           )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator className="my-1.5" />
@@ -764,8 +747,6 @@ type MenuRepo = {
   settings?: boolean;
   /** What they may do there, once the repository's page loads. */
   can?: Abilities;
-  /** The remote it mirrors, once the repository's page loads: a mirror lists only what it offers. */
-  mirror?: RepoMirror | null;
   issues?: number;
   pulls?: number;
 };
@@ -795,9 +776,9 @@ function RepoMenu({
   back: { to: string; label: string };
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
-  // What a member sees, what everyone who can see the project does, and
-  // what a mirror offers now (lib/chrome.ts).
-  const shows = new Set(projectPages(repo.member, repo.can, repo.mirror));
+  // What a member sees, and what everyone who can see the project does
+  // (lib/chrome.ts).
+  const shows = new Set(projectPages(repo.member, repo.can));
   const { current: atOverview, pending: toOverview } = useRowState(base, { end: true });
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
@@ -826,7 +807,6 @@ function RepoMenu({
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
-        {/* A mirror that is not taken over lists none of these: its work happens on the remote. */}
         {shows.has("issues") && (
           <SidebarLink to={`${base}/issues`} also={[`${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
             Issues
@@ -940,11 +920,6 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
             Repository
           </SidebarLink>
         )}
-        {shows("mirroring") && (
-          <SidebarLink to={`${base}/settings/mirroring`} icon={<ArrowLeftRight size={15} />}>
-            Mirroring
-          </SidebarLink>
-        )}
         {shows("access") && (
           <SidebarLink to={`${base}/settings/access`} icon={<Users size={15} />}>
             Access
@@ -995,24 +970,8 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   );
 }
 
-/**
- * Whether the menus list Settings → Invites (invites to g1t): always while
- * sign-up takes an invite; once anyone can sign up, only for someone with
- * invites already made to look back on, which the account menu's data says.
- */
-function useInvitesListed(): boolean {
-  const inviteOnly = useInviteOnly();
-  const details = useFetcher<AccountMenuData | null>({ key: "account-menu" });
-  useEffect(() => {
-    if (!inviteOnly && details.state === "idle" && details.data === undefined) details.load("/settings/menu.json");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inviteOnly]);
-  return inviteOnly || details.data?.invites_page === true;
-}
-
 /** Your own settings, drilled into from Your settings: one page each. */
 function AccountSettingsMenu({ username }: { username: string }) {
-  const invites = useInvitesListed();
   const link = (page: AccountSettingsPage, icon: ReactNode) => (
     <SidebarLink to={`/settings/${page}`} icon={icon}>
       {ACCOUNT_SETTINGS[page].title}
@@ -1024,7 +983,6 @@ function AccountSettingsMenu({ username }: { username: string }) {
       <NavRows className="mt-2">
         {link("profile", <CircleUserRound size={15} />)}
         {link("emails", <Mail size={15} />)}
-        {invites && link("invites", <Ticket size={15} />)}
       </NavRows>
       <Rule />
       <NavRows>
@@ -1098,11 +1056,11 @@ function CodeSidebar({
     : null;
   // The viewer's role there, from the repository's page once it has loaded.
   const page = useRouteLoaderData("routes/repo/layout") as
-    | { repo?: { namespace: string; name: string; mirror?: RepoMirror | null }; access?: ViewerAccess }
+    | { repo?: { namespace: string; name: string }; access?: ViewerAccess }
     | undefined;
   const menuRepo: MenuRepo | null =
     guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
-      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can, mirror: page.repo.mirror }
+      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
       : guessed;
 
   // The way from Code's list to the one shown.

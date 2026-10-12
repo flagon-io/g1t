@@ -1,4 +1,4 @@
-import { Box, Download, GitBranch, Globe, Lock, Sparkles } from "lucide-react";
+import { Box, Download, Globe, Lock, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Form, redirect, useNavigate } from "react-router";
 
@@ -49,7 +49,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 type Source = "empty" | "import";
 
-const SOURCES: { id: Source | "mirror"; title: string; text: string; icon: React.ReactNode; soon?: boolean }[] = [
+const SOURCES: { id: Source | "github"; title: string; text: string; icon: React.ReactNode }[] = [
   {
     id: "empty",
     title: "Start empty",
@@ -62,29 +62,20 @@ const SOURCES: { id: Source | "mirror"; title: string; text: string; icon: React
     text: "Copy a public repository from GitHub or any git host into a new one on g1t.",
     icon: <Download />,
   },
-  {
-    id: "mirror",
-    title: "Mirror GitHub, GitLab or Bitbucket",
-    text: "Keep the code where it is and work on it with g1t. Deployments are yours to turn on.",
-    icon: <GitBranch />,
-    soon: true,
-  },
 ];
 
-
-/** Replaces the mirror card when g1t's GitHub App is configured. */
+/** Shown when g1t's GitHub App is configured. */
 const GITHUB_SOURCE = {
   id: "github" as const,
   title: "Import from GitHub",
-  text: "Import, mirror or move repositories you can reach on GitHub, private ones too.",
+  text: "Import repositories you can reach on GitHub, private ones too, with their issues.",
   icon: <GithubMark />,
-  soon: false,
 };
 
 export default function NewProject({ loaderData, actionData }: Route.ComponentProps) {
   const [source, setSource] = useState<Source>("empty");
   const navigate = useNavigate();
-  const sources = loaderData.github ? SOURCES.map((option) => (option.id === "mirror" ? GITHUB_SOURCE : option)) : SOURCES;
+  const sources = loaderData.github ? [...SOURCES, GITHUB_SOURCE] : SOURCES;
   const workspace = loaderData.selected;
   const [name, setName] = useState("");
   return (
@@ -117,8 +108,6 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
                 title={option.title}
                 description={option.text}
                 icon={option.icon}
-                disabled={option.soon}
-                badge={option.soon ? "Soon" : undefined}
               />
             ))}
           </RadioGroup>

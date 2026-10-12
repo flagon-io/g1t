@@ -44,7 +44,6 @@ import { countsFor, readableRepos } from "./lib/access.server";
 import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
-import { registrationMode } from "./lib/registration.server";
 import { addresses } from "./lib/addresses.server";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
@@ -81,9 +80,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   const cookies = request.headers.get("cookie");
   const chosen = readCookie(cookies, WORKSPACE_COOKIE);
   const dock = readCookie(cookies, DOCK_COOKIE);
-  // Whether sign-up takes an invite: the sign-up page says so, and
-  // Settings → Invites offers invites to g1t only then. Cached per isolate.
-  const [shell, mode, sounds] = await Promise.all([
+  const [shell, sounds] = await Promise.all([
     // An account still confirming its address sees only the pages that
     // allows (lib/confirm-gate.ts), in the visitor's frame.
     user && !awaitsConfirmation(user)
@@ -94,7 +91,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
           return bareShell(user, params, chosen);
         })
       : visitorShell(params, context),
-    registrationMode(),
     // Their chat sounds, with the page, so the first live event already
     // respects them (lib/sounds.ts); the defaults when identity is slow.
     user && !awaitsConfirmation(user) ? identity.soundSettings(user).catch(() => null) : Promise.resolve(null),
@@ -116,7 +112,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     theme: readTheme(readCookie(cookies, THEME_COOKIE)),
     // What they hear when chat moves (components/notifications/sounds.tsx).
     sounds,
-    inviteOnly: mode !== "open",
     addresses: addresses(),
     // Visitors from where the law asks first are asked before analytics runs.
     analyticsConsent: visitorAsksFirst(request),

@@ -12,6 +12,7 @@ export default defineConfig({
 	// Pages that moved, so links already shared still arrive.
 	redirects: {
 		'/guides/inbox/': '/guides/notifications/',
+		'/guides/mirroring/': '/guides/github/',
 		'/guides/today/': '/guides/home/',
 		// g1t no longer runs agents of its own: coding agents connect to it.
 		'/guides/g1t-agents/': '/guides/bring-your-own-agent/',
@@ -99,6 +100,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Quickstart', slug: 'quickstart' },
 						{ label: 'How g1t works', slug: 'concepts/overview' },
+						{ label: 'The g1t CLI', slug: 'guides/cli' },
 						{ label: 'Home', slug: 'guides/home' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'The desktop app', slug: 'guides/desktop' },
@@ -183,7 +185,6 @@ export default defineConfig({
 					items: [
 						{ label: 'Accounts and sign-in', slug: 'guides/authentication' },
 						{ label: 'GitHub', slug: 'guides/github' },
-						{ label: 'Mirroring', slug: 'guides/mirroring' },
 						{ label: 'Workspaces and tokens', slug: 'guides/workspaces' },
 						{ label: 'Access and roles', slug: 'guides/access-and-roles' },
 						{ label: 'Permissions', slug: 'guides/permissions' },
@@ -210,6 +211,7 @@ export default defineConfig({
 					items: [
 						{ label: 'API overview', slug: 'reference/api' },
 						{ label: 'MCP tools', slug: 'reference/mcp' },
+						{ label: 'CLI commands', slug: 'reference/cli' },
 						{ label: 'Rate limits', slug: 'reference/rate-limits' },
 						{ label: 'Try it in the explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'OpenAPI document', link: 'https://api.g1t.sh/openapi.json' },

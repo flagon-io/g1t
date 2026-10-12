@@ -41,6 +41,15 @@
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
+	// What g1t keeps and allows (src/limits.rs): days a finished job's log is
+	// kept (0: for good); what a workspace without the plan may keep in
+	// artifacts and the cache together, in bytes; and jobs it may have
+	// running on its self-hosted runners at once. 0 is no cap.
+	"vars": {
+		"LOG_RETENTION_DAYS": "90",
+		"FREE_ACTIONS_STORAGE_BYTES": "2147483648",
+		"FREE_SELF_HOSTED_JOBS": "4"
+	},
 	// Schedules, jobs waiting for room, and jobs whose runner went quiet.
 	"triggers": { "crons": ["* * * * *"] },
 	// Every log kept: few requests, and a failed job must be traceable.

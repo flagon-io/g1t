@@ -45,8 +45,6 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const emailProof = cleanProof(search.get("proof"));
   const checked = await identity.checkInvite(code, clientKey(request), { viewer, anyStatus: true, emailProof });
   const invite = checked.ok ? checked.value : null;
-  // A shared link for a group signs up on /register, which names the group.
-  if (invite?.sharedLabel) throw redirect(`/register?invite=${encodeURIComponent(code)}`);
   const lands = invite ? landingFor(invite) : null;
 
   if (viewer && invite) {
@@ -428,7 +426,7 @@ function Dead({ loaded }: { loaded: Loaded }) {
         </Card>
       )}
       <div className="mt-8 flex flex-wrap gap-3">
-        <ButtonLink to="/register#request">Sign up</ButtonLink>
+        <ButtonLink to="/register">Sign up</ButtonLink>
         <ButtonLink to={loaded.viewer ? "/" : "/login"} variant="outline">
           {loaded.viewer ? "Go to g1t" : "Sign in"}
         </ButtonLink>

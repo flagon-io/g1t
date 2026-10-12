@@ -7,8 +7,8 @@ import type { Result } from "./result";
  * across through g1t's GitHub App. Mirrors `crates/contracts/src/github.rs`.
  *
  * The identity service keeps linked accounts and their user tokens; the
- * integrations service keeps installations, linked repositories and the
- * app's webhook. With no app configured, `enabled`/`configured` are false
+ * integrations service keeps installations, the repositories imported
+ * through them and the app's webhook. With no app configured, `enabled`/`configured` are false
  * and the site shows no GitHub buttons.
  */
 
@@ -26,15 +26,14 @@ export type GithubFinished =
   | { kind: "linked"; login: string; next: string }
   /** An account has one of its verified emails: sign in to it, then claim. */
   | { kind: "needs_link"; pending: string; login: string; next: string }
-  /** A new account waiting on a username, or on an invite code. */
-  | { kind: "needs_username"; pending: string; login: string; suggestion: string; next: string; inviteRequired: boolean };
+  /** A new account waiting on a username. */
+  | { kind: "needs_username"; pending: string; login: string; suggestion: string; next: string };
 
 export type GithubPending = {
   login: string;
   kind: "link" | "username";
   suggestion: string | null;
   next: string;
-  inviteRequired: boolean;
 };
 
 export type GithubAccount = {
@@ -50,9 +49,6 @@ export type GithubAccountView = {
   account: GithubAccount | null;
   hasPassword: boolean;
 };
-
-/** How a GitHub repository comes to g1t. */
-export type GithubMode = "import" | "mirror" | "push";
 
 export type GithubInstallation = {
   id: number;
@@ -95,7 +91,7 @@ export type GithubRepository = {
   private: boolean;
   description: string | null;
   defaultBranch: string;
-  /** The g1t repository already linked to it, as `workspace/name`. */
+  /** The g1t repository already imported from it, as `workspace/name`. */
   linkedTo: string | null;
 };
 
@@ -106,13 +102,14 @@ export type GithubRepositories = {
   perPage: number;
 };
 
+/** Where a g1t repository was imported from on GitHub. The import is copied once: the g1t repository is then its own. */
 export type GithubRepoLink = {
   repoId: string;
   repo: string;
   installationId: number;
   githubRepoId: number;
   fullName: string;
-  mode: GithubMode;
+  /** RFC 3339: when it was imported. */
   syncedAt: string | null;
   lastError: string | null;
   issuesImported: number;
@@ -122,7 +119,6 @@ export type GithubImportInput = {
   installationId: number;
   githubRepoId: number;
   name?: string;
-  mode: GithubMode;
   private?: boolean;
   issues: boolean;
 };
@@ -146,8 +142,8 @@ export function githubSignInClient(identity: ServiceBinding) {
       call<Result<{ authorizeUrl: string; state: string }>>("github_start", input),
     finish: (state: string, code: string) => call<Result<GithubFinished>>("github_finish", { state, code }),
     pending: (pending: string) => call<Result<GithubPending>>("github_pending", { pending }),
-    signUp: (pending: string, username: string, inviteCode?: string | null) =>
-      call<Result<{ user: User; sessionToken: string }>>("github_sign_up", { pending, username, inviteCode: inviteCode ?? null }),
+    signUp: (pending: string, username: string) =>
+      call<Result<{ user: User; sessionToken: string }>>("github_sign_up", { pending, username }),
     claim: (pending: string, user: User) => call<Result<GithubAccount>>("github_claim", { pending, user }),
     account: (user: User) => call<GithubAccountView>("github_account", { user }),
     unlink: (user: User) => call<Result<boolean>>("github_unlink", { user }),
@@ -169,7 +165,5 @@ export function githubAppClient(integrations: ServiceBinding) {
     import: (actor: User, workspace: string, input: GithubImportInput) =>
       call<Result<GithubRepoLink>>("github_import", { actor, workspace, ...input }),
     link: (repoId: string) => call<GithubRepoLink | null>("github_link", { repoId }),
-    unlinkRepo: (actor: User, repoId: string) => call<Result<boolean>>("github_unlink_repo", { actor, repoId }),
-    sync: (actor: User, repoId: string) => call<Result<GithubRepoLink>>("github_sync", { actor, repoId }),
   };
 }

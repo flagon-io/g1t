@@ -312,3 +312,28 @@ test("search text, FTS queries and chart steps", () => {
   assert.equal(stepFor(86_400_000_000), 900);
   assert.equal(aggregate([]).length, 0);
 });
+
+test("a free workspace's project is refused past its day's share, and tail events keep only their requests", async () => {
+  const store = new Store(state());
+  const { secret } = await store.createToken("prj_1", "ci", "u1");
+  const batch = (bytes: number) => ({ ...emptyBatch(), bytes });
+  assert.equal((await store.ingest(batch(60), [], secret, 100)).accepted, true);
+  assert.equal(store.todayBytes(), 60);
+  const refused = await store.ingest(batch(50), [], secret, 100);
+  assert.deepEqual(refused, { accepted: false, reason: "quota" });
+  assert.equal(store.todayBytes(), 60, "nothing refused is counted");
+  // Without a cap (the plan, or a workspace not known yet) nothing is refused.
+  assert.equal((await store.ingest(batch(5000), [], secret, null)).accepted, true);
+  // Tail events past the share keep their requests, not their logs.
+  const tail = { ...emptyBatch(), bytes: 10_000 };
+  tail.logs.push({ id: "l1", time_us: 1, severity: "info", severity_number: 9, body: "x".repeat(9000), trace_id: null, span_id: null, request_id: null, attributes: {}, service: "web", environment: null, deployment_id: null, commit_sha: null, source: "cloudflare" });
+  assert.equal((await store.ingest(tail, [], undefined, 100)).accepted, true);
+  assert.equal(store.logs({}).items.length, 0);
+  assert.equal(store.usage().today_bytes, store.todayBytes());
+  // The workspace is remembered as the site says it.
+  assert.equal(store.workspaceOf(), null);
+  store.setWorkspace(" Acme ");
+  assert.equal(store.workspaceOf(), "acme");
+  store.setWorkspace("not a slug!");
+  assert.equal(store.workspaceOf(), "acme");
+});

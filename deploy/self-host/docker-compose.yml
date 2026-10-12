@@ -42,19 +42,14 @@ services:
       # Your own GitHub App, for "Continue with GitHub" and importing from
       # GitHub. Leave these unset to have neither. See the self-hosting guide.
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      # Cloudflare Turnstile on sign-up: both keys, or neither.
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
       GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
       GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
-      # open: anyone may register. invite: a new account needs an invite
-      # code, as on g1t.sh; the owners of INVITE_STAFF_WORKSPACES (slugs,
-      # comma separated) invite without limit, everyone else INVITES_PER_USER.
-      REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
-      INVITE_STAFF_WORKSPACES: ${INVITE_STAFF_WORKSPACES:-}
-      INVITES_PER_USER: ${INVITES_PER_USER:-}
-      # Where summaries of new access requests go; empty sends none.
-      WAITLIST_NOTIFY_EMAIL: ${WAITLIST_NOTIFY_EMAIL:-}
       # Packages' files (container images and the rest), in RustFS below or
       # any S3-compatible store. S3_PUBLIC_ENDPOINT, when clients can reach
       # the store, sends large downloads there directly.

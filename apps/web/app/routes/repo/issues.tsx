@@ -4,10 +4,8 @@ import { Link, useLocation, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/issues";
 import { page } from "../../lib/meta";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
-import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
-import { mirrorReason, type MirroredRepo } from "../../lib/mirror";
 import {
   Assignee,
   AssigneeStack,
@@ -60,10 +58,8 @@ export default function Issues({ loaderData, params }: Route.ComponentProps) {
   kept.delete("q");
 
   // An archived repository's issues are locked: no new ones.
-  const layout = useRouteLoaderData("routes/repo/layout") as { repo?: MirroredRepo & { archivedAt?: string | null } } | undefined;
+  const layout = useRouteLoaderData("routes/repo/layout") as { repo?: { archivedAt?: string | null } } | undefined;
   const archived = Boolean(layout?.repo?.archivedAt);
-  // A mirror takes no new issues until someone takes over: the button says why.
-  const mirrorBlocked = mirrorReason(layout?.repo);
   return (
     <div>
       <StateTabs
@@ -71,14 +67,7 @@ export default function Issues({ loaderData, params }: Route.ComponentProps) {
         state={state}
         query={kept.toString()}
         action={
-          archived ? undefined : mirrorBlocked ? (
-            <Hint label={mirrorBlocked} disabled>
-              <Button type="button" disabled>
-                <Plus size={15} />
-                New issue
-              </Button>
-            </Hint>
-          ) : (
+          archived ? undefined : (
             <ButtonLink to={`${base}/new`}>
               <Plus size={15} />
               New issue

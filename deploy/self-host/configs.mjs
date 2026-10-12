@@ -91,7 +91,7 @@ const SECRETS = {
  */
 const GITHUB_VARS = ["GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID"];
 const GITHUB_SECRETS = {
-  "g1t-identity": ["GITHUB_APP_CLIENT_SECRET", "IDENTITY_KEY", "REGISTRATION_MODE"],
+  "g1t-identity": ["GITHUB_APP_CLIENT_SECRET", "IDENTITY_KEY"],
   "g1t-integrations": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"],
 };
 
@@ -210,16 +210,6 @@ function selfHosted(service) {
   // Self-hosted g1t charges nothing: billing records usage at cost and never
   // stops work for it.
   if (hosted.name === "g1t-billing") config.vars.FREE_WHILE_BUILDING = "true";
-  // Anyone may register on an installation of your own unless you set
-  // REGISTRATION_MODE=invite; invites then work as on g1t.sh, and the owners
-  // of INVITE_STAFF_WORKSPACES (yours, not g1t.sh's) invite without limit.
-  if (hosted.name === "g1t-identity") {
-    config.vars.REGISTRATION_MODE = process.env.REGISTRATION_MODE || "open";
-    config.vars.INVITE_STAFF_WORKSPACES = process.env.INVITE_STAFF_WORKSPACES ?? "";
-    if (process.env.INVITES_PER_USER) config.vars.INVITES_PER_USER = process.env.INVITES_PER_USER;
-    // Access requests are summarised to your own address, not g1t.sh's.
-    config.vars.WAITLIST_NOTIFY_EMAIL = process.env.WAITLIST_NOTIFY_EMAIL ?? "";
-  }
   // Packages' files go to the compose file's RustFS (or any S3-compatible
   // store) instead of R2, with no request size limit, and package
   // addresses start with this installation's host.
@@ -256,6 +246,11 @@ function selfHosted(service) {
   // /.well-known/g1t.json tells the app so.
   if (service.web || hosted.name === "g1t-notify") config.vars.PHONE_PUSH = process.env.PHONE_PUSH === "off" ? "off" : "on";
   if (hosted.name === "g1t-identity") config.vars.SITE_URL = PUBLIC_URL;
+  // Cloudflare Turnstile on sign-up, only with both of your widget's keys.
+  if (service.web) {
+    config.vars.TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY ?? "";
+    if (process.env.TURNSTILE_SECRET) config.vars.TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
+  }
   // Nightly backups' bundles go to a bucket of their own on the same
   // S3-compatible store, instead of the BACKUPS R2 bucket, and so do the
   // packs kept for fresh clones (src/pack_cache.rs), instead of GIT_PACKS.

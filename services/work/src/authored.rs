@@ -418,7 +418,6 @@ mod tests {
             topics: Vec::new(),
             website: None,
             archived_at: None,
-            mirror: None,
         };
         assert!(is_named(&repo, "acme/rocket"));
         assert!(is_named(&repo, "ACME/Rocket"));

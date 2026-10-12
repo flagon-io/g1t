@@ -67,6 +67,28 @@ export function withinTimeCap(
   return now < started + (capMinutes * 60 + graceSeconds) * 1000;
 }
 
+/**
+ * Whether the run a sandbox holds now has used its whole time cap, so a
+ * `timeUp` alarm may stop it. A sandbox's Durable Object is named for its
+ * work (`actions:{job}` and the like), and a re-run of that work starts in
+ * the same object; an alarm an earlier attempt left must not stop the
+ * attempt running now, which started later and has its own alarm.
+ */
+export function capReached(started: number | null | undefined, capMinutes: number | null | undefined, now: number): boolean {
+  if (typeof started !== "number" || typeof capMinutes !== "number" || capMinutes <= 0) return false;
+  return now >= started + capMinutes * 60 * 1000;
+}
+
+/**
+ * Whether a sandbox's stop ends its work as a failure. A sandbox g1t
+ * stopped (at its time cap, say) can come back with exit code 0, since the
+ * container library reports a destroyed container as a clean exit; the
+ * reason g1t stopped it, not the exit code, says how it ended.
+ */
+export function stoppedShort(exitCode: number, why: string | null): boolean {
+  return exitCode !== 0 || why !== null;
+}
+
 /** An error as one line, for a log: its message, or what was thrown. */
 export function describeError(error: unknown): string {
   if (error instanceof Error) return error.message || error.name;

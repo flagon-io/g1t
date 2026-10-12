@@ -7,14 +7,12 @@ import type { Route } from "./+types/issue-new";
 import { page } from "../../lib/meta";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
 import { Card } from "../../components/ui/card";
-import { Hint } from "../../components/ui/hint";
-import { useMirrorReason } from "../../components/mirror";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { SelectField } from "../../components/ui/select";
 import { LabelChip } from "../../components/labels";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
-import { accessTo, requireWritableRepo } from "../../lib/access.server";
+import { accessTo } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New issue · ${params.owner}/${params.repo} · g1t` });
@@ -47,7 +45,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   if (form.get("intent") === "import") {
     const imported = await integrations.import(
@@ -79,8 +76,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function NewIssue({ loaderData, actionData }: Route.ComponentProps) {
   const names = loaderData.sources.map((source) => PROVIDERS[source].label);
-  // A mirror takes no new issues until someone takes over.
-  const mirrorBlocked = useMirrorReason();
   return (
     <div className="max-w-2xl">
       {names.length > 0 && (
@@ -99,11 +94,9 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
               <div className="min-w-56 grow">
                 <Input name="reference" required placeholder="TECH-1234" aria-label="Ticket key or address" />
               </div>
-              <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-                <SubmitButton variant="outline" match={{ intent: "import" }} pending="Importing…" disabled={mirrorBlocked != null}>
-                  Import
-                </SubmitButton>
-              </Hint>
+              <SubmitButton variant="outline" match={{ intent: "import" }} pending="Importing…">
+                Import
+              </SubmitButton>
             </div>
             {actionData && "importError" in actionData && (
               <div className="mt-2">
@@ -168,11 +161,9 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
           </Field>
         )}
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
-        <Hint label={mirrorBlocked} disabled={mirrorBlocked != null}>
-          <SubmitButton name="intent" value="open" pending="Opening…" disabled={mirrorBlocked != null}>
-            Open issue
-          </SubmitButton>
-        </Hint>
+        <SubmitButton name="intent" value="open" pending="Opening…">
+          Open issue
+        </SubmitButton>
       </Form>
     </div>
   );

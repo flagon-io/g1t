@@ -4,9 +4,8 @@
  * across its top, the way GitHub and Vercel do. Soon tabs come from the
  * roadmap and open its page for them, under the same tabs.
  */
-import type { Abilities, Capability, RepoMirror } from "@g1t/contracts";
+import type { Abilities, Capability } from "@g1t/contracts";
 
-import { type RepoArea, offers } from "./mirror.ts";
 import { type RoadmapItem, roadmapIn } from "./roadmap.ts";
 
 export type Tab = {
@@ -27,8 +26,6 @@ export type Tab = {
 
 export type Section = {
   key: RoadmapItem["section"] | "Workflows" | "Settings";
-  /** The part of the repository it is about: a mirror shows the tabs of what it offers (lib/mirror.ts `offers`). */
-  area: RepoArea;
   tabs: Tab[];
 };
 
@@ -39,7 +36,6 @@ function soon(section: RoadmapItem["section"]): Tab[] {
 export const SECTIONS: Section[] = [
   {
     key: "Code",
-    area: "code",
     tabs: [
       { label: "Files", path: "code", also: ["tree", "blob"] },
       { label: "Commits", path: "commits", also: ["commit"] },
@@ -52,7 +48,6 @@ export const SECTIONS: Section[] = [
   },
   {
     key: "Issues",
-    area: "issues",
     tabs: [
       { label: "Issues", path: "issues" },
       { label: "Milestones", path: "milestones" },
@@ -61,12 +56,10 @@ export const SECTIONS: Section[] = [
   },
   {
     key: "Deployments",
-    area: "deployments",
     tabs: [{ label: "Deployments", path: "deployments" }, ...soon("Deployments")],
   },
   {
     key: "Observability",
-    area: "deployments",
     tabs: [
       { label: "Overview", path: "observability", exact: true, members: true },
       { label: "Requests", path: "observability/requests", members: true },
@@ -80,7 +73,6 @@ export const SECTIONS: Section[] = [
   },
   {
     key: "Security",
-    area: "security",
     tabs: [
       { label: "Overview", path: "security", members: true, needs: "security_alerts", exact: true },
       { label: "Secret scanning", path: "security/secret-scanning", members: true, needs: "security_alerts" },
@@ -95,7 +87,6 @@ export const SECTIONS: Section[] = [
   },
   {
     key: "Insights",
-    area: "insights",
     tabs: [
       { label: "Contributors", path: "contributors" },
       { label: "Activity", path: "activity" },
@@ -108,7 +99,6 @@ export const SECTIONS: Section[] = [
 /** Pull requests and the merge queue share a page's tabs too. */
 export const PULLS: Section = {
   key: "Code",
-  area: "pulls",
   tabs: [
     { label: "Pull requests", path: "pulls", also: ["pull"] },
     { label: "Merge queue", path: "queue" },
@@ -122,12 +112,10 @@ function matches(rest: string, tab: Tab): boolean {
 
 /**
  * The tabs for the page at `rest` (the path under the project), if it
- * belongs to a page with more than one view. On a mirror, only the pages
- * it offers now have tabs (`mirror`, the repository's).
+ * belongs to a page with more than one view.
  */
-export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>, mirror?: RepoMirror | null): Tab[] | null {
+export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>): Tab[] | null {
   for (const section of [...SECTIONS, PULLS]) {
-    if (!offers(mirror, section.area)) continue;
     const visible = section.tabs.filter(
       (tab) => (member || !tab.members) && (!tab.needs || !can || Boolean(can[tab.needs])),
     );
