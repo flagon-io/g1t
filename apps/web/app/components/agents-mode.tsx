@@ -169,7 +169,7 @@ export function AgentsSidebar({
           <SideLink to={`/${slug}/-/agents/templates`} icon={<LayoutTemplate size={15} className="text-faint" />}>
             Templates
           </SideLink>
-          <SideLink to={`/${slug}/-/agents/skills`} icon={<BookMarked size={15} className="text-faint" />}>
+          <SideLink to={`/${slug}/-/customize/skills`} icon={<BookMarked size={15} className="text-faint" />}>
             Skills
           </SideLink>
           {code && (

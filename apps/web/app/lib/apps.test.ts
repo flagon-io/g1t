@@ -21,7 +21,7 @@ import {
   writeDock,
 } from "./apps.ts";
 
-test("only apps installed from the Marketplace are pinned; built-in apps and their pages are not", () => {
+test("only integrations are pinned; built-in apps, their pages, plugins and connectors are not", () => {
   for (const app of BUILTINS) assert.equal(isPinnable(app.key), false, app.key);
   for (const page of ["projects", "packages", "security", "context", "memory", "teams", "usage", "gateway", "integrations", "audit"]) {
     assert.equal(isPinnable(page), false, page);
@@ -29,7 +29,9 @@ test("only apps installed from the Marketplace are pinned; built-in apps and the
   assert.equal(isPinnable("int-sentry"), true);
   assert.equal(isPinnable("int-slack"), false, "Slack can't be connected yet");
   assert.equal(isPinnable("int-mcp"), false, "MCP clients are each person's, not the workspace's");
-  assert.equal(isPinnable("ext-support"), false, "no extensions yet");
+  assert.equal(isPinnable("ext-support"), false, "extensions became plugins, which aren't pinned");
+  assert.equal(isPinnable("plg-pli_01"), false);
+  assert.equal(isPinnable("con-con_01"), false);
   assert.equal(isPinnable("int-Sentry"), false);
 });
 
@@ -43,12 +45,27 @@ test("an integration's app opens its page", () => {
   assert.ok(integrationAppKey("anthropic-endpoint").length <= 32);
 });
 
-test("installed apps are what the workspace connected, opening where each is managed", () => {
+test("installed apps are the plugins that are on, the connectors, and what the workspace connected, opening where each is managed", () => {
   const apps = installedApps({ sentry: { manage: "/acme/-/integrations/alerts" }, github: { manage: null }, nonsense: { manage: null } });
   assert.deepEqual(apps.map((app) => app.key), ["int-github", "int-sentry"]);
   assert.equal(apps[0]!.path("acme"), "/new/github?workspace=acme");
   assert.deepEqual(appData(apps[1]!, "acme").href, "/acme/-/integrations/alerts");
   assert.deepEqual(installedApps({}), []);
+  const pdf = { id: "pli_1", ref: "pdf@anthropic-agent-skills", name: "pdf", display_name: null, description: "PDFs", marketplace: "anthropic-agent-skills", enabled: true };
+  const off = { ...pdf, id: "pli_2", ref: "xlsx@anthropic-agent-skills", name: "xlsx", enabled: false };
+  const notion = { id: "con_1", title: "Notion", about: null, url: "https://mcp.notion.com/mcp" };
+  const all = installedApps({ sentry: { manage: null } }, [pdf, off], [notion]);
+  assert.deepEqual(
+    all.map((app) => [app.key, app.from, app.pinnable]),
+    [
+      ["plg-pli_1", "anthropic-agent-skills", false],
+      ["con-con_1", "Connector", false],
+      ["int-sentry", "g1t", true],
+    ],
+  );
+  assert.equal(all[0]!.path("acme"), "/acme/-/customize/plugins/pdf%40anthropic-agent-skills");
+  assert.equal(all[1]!.path("acme"), "/acme/-/customize/connectors/con_1");
+  assert.equal(all[1]!.about, "https://mcp.notion.com/mcp");
 });
 
 test("pins are kept per workspace, in the order they were pinned", () => {
@@ -68,7 +85,7 @@ test("a cookie someone wrote by hand reads as far as it makes sense", () => {
   assert.ok(pinsIn(`acme:${many}`, "acme").length <= MAX_APP_PINS);
 });
 
-test("pins of built-in pages from before Apps were the Marketplace's are dropped", () => {
+test("pins of built-in pages from before Apps were Customize's are dropped", () => {
   assert.deepEqual(pinsFrom(["usage", "int-sentry", "projects", "today", "int-sentry", "teams", "int-linear"]), ["int-sentry", "int-linear"]);
   assert.deepEqual(pinsIn("acme:projects.usage.teams", "acme"), []);
   assert.deepEqual(pinsFrom([]), []);

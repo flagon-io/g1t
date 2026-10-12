@@ -1,17 +1,22 @@
 /**
- * The rail's built-in apps, the apps a workspace installed from the
- * Marketplace, and the ones each person pins to their rail.
+ * The rail's built-in apps, the apps a workspace added in Customize, and
+ * the ones each person pins to their rail.
  *
  * Built-in apps (Home, Chat, Notifications, Agents, Code, Artifacts,
  * People and Workspace) are always in the rail; their own pages (Projects,
  * Usage, Teams and the rest) are in their sidebars. Apps are what the
- * workspace added from the Marketplace: today, the integrations it
- * connected, each opening its page. Each person pins the ones they want.
+ * workspace added in Customize: the plugins it installed (each opening its
+ * page), the connectors it connected, and the integrations it connected,
+ * each opening where it is looked after. Each person pins the ones they
+ * want.
  *
  * An installed app's key says what it is: `int-<connector>` for an
- * integration (@g1t/contracts/connectors), and later `ext-<extension>`.
- * A key that names nothing installable (a built-in page pinned before
- * Apps were the Marketplace's) is dropped wherever pins are read.
+ * integration (@g1t/contracts/connectors), `plg-<install>` for a plugin,
+ * `con-<connector>` for a connector. Only integrations are pinned: they
+ * are known from the catalog alone, so a pin can be read without asking a
+ * service. A key that names nothing pinnable (a built-in page pinned
+ * before Apps were Customize's, an extension from before plugins) is
+ * dropped wherever pins are read.
  *
  * Pins are each person's own, per workspace, in the order they set, and
  * kept with their account by the identity service (`dock_pins`), so the
@@ -21,9 +26,10 @@
  * with the account carry over from it until the first change.
  * No Workers or React imports, so it can be tested under Node.
  */
-import type { ExtensionInstall, ListingTier } from "@g1t/contracts";
+import type { PluginInstall, WorkspaceConnector } from "@g1t/contracts";
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
-import { CONNECTOR_PUBLISHER, extensionById } from "@g1t/contracts/marketplace";
+
+import { connectorPagePath, pluginPath } from "./customize.ts";
 
 /** The apps that are always in the rail. */
 export type BuiltinApp = "home" | "chat" | "notifications" | "agents" | "code" | "artifacts" | "people" | "workspace";
@@ -59,18 +65,17 @@ export function appOf(key: BuiltinApp): BuiltinInfo {
 /** An installed app's key, as pins and forms carry it: `int-sentry`. */
 export type PinnableApp = string;
 
-/** An app installed from the Marketplace. */
+/** An app the workspace added in Customize. */
 export type InstalledApp = {
   key: PinnableApp;
   name: string;
   /** What it is, in a few words. */
   about: string;
-  /** The Marketplace listing it was installed from: `integration:sentry`. */
+  /** The listing it was added from: `integration:sentry`, `plugin:pdf@anthropic-agent-skills`, `connector:con_…`. */
   listing: string;
-  /** Who stands behind it, as its Marketplace listing says: its publisher and tier. */
-  publisher: string;
-  tier: ListingTier;
-  /** The connector behind it, for its mark. */
+  /** Where it is from, in a word or two: g1t, its marketplace, or Connector. */
+  from: string;
+  /** What draws its mark: a connector's id and name, and its provider when it has one. */
   connector: Pick<Connector, "id" | "name" | "provider">;
   /** Its page in the workspace `slug`. */
   path: (slug: string) => string;
@@ -79,6 +84,8 @@ export type InstalledApp = {
    * page; an app limited to some people shows Request access to the rest.
    */
   usable: boolean;
+  /** Whether it can be pinned to the rail: only what the catalog alone knows. */
+  pinnable: boolean;
 };
 
 /** Where an integration is looked after: its setup page, by kind, or its own page. */
@@ -105,24 +112,7 @@ export function integrationAppKey(connectorId: string): PinnableApp {
  * built-in page, or a connector that is not available for a workspace.
  */
 export function installedAppOf(key: string): InstalledApp | null {
-  if (key.length > MAX_KEY) return null;
-  if (/^ext-[a-z][a-z0-9-]*$/.test(key)) {
-    const extension = extensionById(key.slice(4));
-    if (!extension || extension.status !== "available") return null;
-    return {
-      key,
-      name: extension.name,
-      about: extension.tagline,
-      listing: `extension:${extension.id}`,
-      publisher: extension.publisher.name,
-      tier: extension.publisher.tier,
-      connector: { id: extension.id, name: extension.name, provider: undefined },
-      // Its own page, in a sandboxed frame, is the extension host's to serve; until then, its listing.
-      path: (slug) => `/${slug}/-/marketplace/extensions/${extension.id}`,
-      usable: true,
-    };
-  }
-  if (!/^int-[a-z0-9][a-z0-9-]*$/.test(key)) return null;
+  if (key.length > MAX_KEY || !/^int-[a-z0-9][a-z0-9-]*$/.test(key)) return null;
   const connector = CONNECTORS.find((c) => c.id === key.slice(4));
   if (!connector || connector.status !== "available" || !connector.scopes.includes("workspace")) return null;
   return {
@@ -130,11 +120,43 @@ export function installedAppOf(key: string): InstalledApp | null {
     name: connector.name,
     about: connector.description,
     listing: `integration:${connector.id}`,
-    publisher: CONNECTOR_PUBLISHER.name,
-    tier: CONNECTOR_PUBLISHER.tier,
+    from: "g1t",
     connector: { id: connector.id, name: connector.name, provider: connector.provider },
     path: integrationPath(connector),
     usable: true,
+    pinnable: true,
+  };
+}
+
+/** An installed plugin as an app: its page in Customize. Switched off (the kill switch), it isn't an app until it is on again. */
+export function pluginApp(install: Pick<PluginInstall, "id" | "ref" | "name" | "display_name" | "description" | "marketplace" | "enabled">): InstalledApp | null {
+  if (!install.enabled) return null;
+  const name = install.display_name ?? install.name;
+  return {
+    key: `plg-${install.id}`,
+    name,
+    about: install.description,
+    listing: `plugin:${install.ref}`,
+    from: install.marketplace,
+    connector: { id: install.ref, name, provider: undefined },
+    path: (slug) => pluginPath(slug, install.ref),
+    usable: true,
+    pinnable: false,
+  };
+}
+
+/** A workspace connector as an app: its page in Customize. */
+export function connectorApp(connector: Pick<WorkspaceConnector, "id" | "title" | "about" | "url">): InstalledApp {
+  return {
+    key: `con-${connector.id}`,
+    name: connector.title,
+    about: connector.about ?? connector.url,
+    listing: `connector:${connector.id}`,
+    from: "Connector",
+    connector: { id: connector.id, name: connector.title, provider: undefined },
+    path: (slug) => connectorPagePath(slug, connector.id),
+    usable: true,
+    pinnable: false,
   };
 }
 
@@ -144,22 +166,22 @@ export function isPinnable(key: string): key is PinnableApp {
 }
 
 /**
- * The apps the workspace installed, from what it has connected (by
- * connector id, lib/connected.server.ts), in catalog order. `manage`, when
- * a connection has one, is where its app opens.
+ * The apps the workspace added: its plugins that are on, its connectors,
+ * and the integrations it has connected (by connector id,
+ * lib/connected.server.ts) in catalog order. `manage`, when a connection
+ * has one, is where its app opens.
  */
 export function installedApps(
   connected: Record<string, { manage: string | null }>,
-  installs: readonly Pick<ExtensionInstall, "listing" | "enabled">[] = [],
+  installs: readonly Parameters<typeof pluginApp>[0][] = [],
+  connectors: readonly Parameters<typeof connectorApp>[0][] = [],
 ): InstalledApp[] {
   const integrations = CONNECTORS.filter((connector) => connected[connector.id]).map((connector) => {
     const app = installedAppOf(integrationAppKey(connector.id));
     const manage = connected[connector.id]?.manage;
     return app && manage ? { ...app, path: () => manage } : app;
   });
-  // Extensions switched off (the kill switch) aren't apps until they're on again.
-  const extensions = installs.filter((install) => install.enabled).map((install) => installedAppOf(`ext-${install.listing.replace(/^extension:/, "")}`));
-  return [...extensions, ...integrations].filter((app): app is InstalledApp => app != null);
+  return [...installs.map(pluginApp), ...connectors.map(connectorApp), ...integrations].filter((app): app is InstalledApp => app != null);
 }
 
 /** An app as a loader sends it: everything but its path, which is worked out for the workspace. */

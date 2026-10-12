@@ -36,7 +36,7 @@ test("an integration it needs: owners connect it, anyone else asks, and soon is 
   assert.equal(owner?.action, "connect");
   assert.equal(owner?.href, "/acme/-/integrations/trackers?add=linear#add");
   const member = integrationHint("acme", { id: "linear", why: "Reads issues." }, false);
-  assert.deepEqual(member && { action: member.action, href: member.href }, { action: "ask", href: "/acme/-/marketplace/integrations/linear" });
+  assert.deepEqual(member && { action: member.action, href: member.href }, { action: "ask", href: "/acme/-/customize/connectors?view=discover&directory=linear" });
   assert.equal(integrationHint("acme", { id: "box", why: "" }, true)?.action, "soon");
   assert.equal(integrationHint("acme", { id: "nope", why: "" }, true), null);
 });
