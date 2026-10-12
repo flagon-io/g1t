@@ -11,7 +11,7 @@ use g1t_contracts::access::{
 };
 use g1t_contracts::codeowners::CodeOwnersErrorsArgs;
 use g1t_contracts::identity::AgentScope;
-use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
+use g1t_contracts::events::Event;
 use g1t_contracts::identity::{CreateWorkspaceArgs, UpdateWorkspaceArgs, Workspace};
 use g1t_contracts::repos::{CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath};
 use g1t_contracts::teams::{
@@ -1466,7 +1466,7 @@ impl Op {
                 "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
             }
             Op::ListEvents => {
-                "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first."
+                "The timeline of a repository: pushes, issues, pull requests, comments, sessions, claims and integration results, newest first; page back with before. To follow it, give after (an event id): the events written after that one come oldest first, and the last one's id is the next call's after. With after and wait (seconds, at most 25), a call that finds nothing holds on until a matching event is written or the wait ends, then returns what it has, perhaps nothing. Narrow it with types, numbers (issues and pull requests, matching events about them and comments on them), since and limit (50 by default, at most 200)."
             }
             Op::ListIntegrations => {
                 "A workspace's integrations: its AI providers, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only."
@@ -2432,7 +2432,26 @@ impl Op {
             Op::ListEvents => object(
                 json!({
                     "repo": repo_schema(),
-                    "before": { "type": "string", "description": "Event id to page back from." },
+                    "before": { "type": "string", "description": "Event id to page back from: older events, newest first." },
+                    "after": { "type": "string", "description": "Event id to follow from: the events written after it, oldest first. Not with before." },
+                    "types": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Only these event types (work.claimed, integration.failed, ...). In a query string, a comma-separated list.",
+                    },
+                    "numbers": {
+                        "type": "array",
+                        "items": { "type": "integer" },
+                        "description": "Only events about these issues or pull requests, and comments, reviews and links on them. In a query string, a comma-separated list.",
+                    },
+                    "since": { "type": "string", "description": "Only events at or after this time (RFC 3339)." },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "How many events at most; 50 by default." },
+                    "wait": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 25,
+                        "description": "With after: seconds to hold on for a matching event when there is none yet. At most 25.",
+                    },
                 }),
                 &["repo"],
             ),
@@ -4750,6 +4769,10 @@ impl Op {
                 .await
             }
             Op::ListEvents => {
+                let asked = match crate::follow::asked(input) {
+                    Ok(asked) => asked,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
                 let found: Outcome<Repo> = call(
                     repos,
                     "get",
@@ -4763,16 +4786,7 @@ impl Op {
                     Outcome::Ok(repo) => repo,
                     Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
                 };
-                let timeline: Vec<Event> = g1t_kit::call(
-                    events,
-                    "list",
-                    &ListEventsArgs {
-                        repo_id: Some(repo.id),
-                        before: optional_text(input, "before"),
-                        ..ListEventsArgs::default()
-                    },
-                )
-                .await?;
+                let timeline: Vec<Event> = crate::follow::list_events(events, &repo.id, &asked).await?;
                 ok(&timeline)
             }
             // Who has access: identity decides, from the repository as the

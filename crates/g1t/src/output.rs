@@ -77,6 +77,16 @@ impl Output {
         Ok(())
     }
 
+    /// Prints one record of a stream as `--json`/`--jq` ask: compact, on
+    /// one line, terminal or not, so each line can be read as it comes.
+    pub fn emit_line(&self, value: &Value) -> Result<()> {
+        if self.jq.is_some() {
+            return self.emit(value);
+        }
+        writeln!(std::io::stdout().lock(), "{}", json_line(self, value)?)?;
+        Ok(())
+    }
+
     pub fn paint(&self, code: &str, text: &str) -> String {
         if self.color && !text.is_empty() {
             format!("\x1b[{code}m{text}\x1b[0m")
@@ -217,6 +227,15 @@ pub fn sorted(value: &Value) -> Value {
         Value::Array(list) => Value::Array(list.iter().map(sorted).collect()),
         other => other.clone(),
     }
+}
+
+/// `value` as one compact line of JSON, with only the `--json` fields asked for.
+pub fn json_line(out: &Output, value: &Value) -> Result<String> {
+    let value = match &out.json {
+        Some(fields) if !fields.is_empty() => select(value, fields)?,
+        _ => value.clone(),
+    };
+    Ok(serde_json::to_string(&sorted(&value)).expect("json"))
 }
 
 /// Keeps only `fields` of each object in `value`.

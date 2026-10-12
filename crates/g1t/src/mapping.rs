@@ -200,8 +200,30 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "status",
-        ops: &["search", "list_notifications", "get_pull_request"],
+        ops: &[
+            "search",
+            "list_notifications",
+            "get_pull_request",
+            "list_sessions",
+            "list_claims",
+        ],
     },
+    Mapping { command: "session start", ops: &["start_session"] },
+    Mapping { command: "session heartbeat", ops: &["update_session"] },
+    Mapping { command: "session log", ops: &["record_session_entries"] },
+    Mapping { command: "session attach", ops: &["update_session"] },
+    Mapping { command: "session end", ops: &["end_session"] },
+    Mapping { command: "session list", ops: &["list_sessions"] },
+    Mapping { command: "session view", ops: &["get_session"] },
+    Mapping { command: "work context", ops: &["get_work"] },
+    Mapping { command: "work claim", ops: &["claim_issue"] },
+    Mapping { command: "work release", ops: &["release_claim"] },
+    Mapping { command: "work handoff", ops: &["hand_off_issue"] },
+    Mapping { command: "work list", ops: &["list_claims", "list_sessions"] },
+    Mapping { command: "work block", ops: &["get_issue", "update_issue"] },
+    Mapping { command: "work unblock", ops: &["get_issue", "update_issue"] },
+    Mapping { command: "work events", ops: &["list_events"] },
+    Mapping { command: "why", ops: &["why"] },
     // Every operation, by name: the table generated from the OpenAPI document.
     Mapping {
         command: "api",
@@ -299,8 +321,7 @@ mod tests {
     /// The operations a source file names, as string literals.
     fn named_in(source: &str) -> BTreeSet<&'static str> {
         let source = source.split("#[cfg(test)]").next().unwrap_or(source);
-        crate::ops::OPERATIONS
-            .iter()
+        crate::ops::all()
             .map(|op| op.id)
             .filter(|id| source.contains(&format!("\"{id}\"")))
             .collect()
@@ -318,6 +339,9 @@ mod tests {
             ("deploy", include_str!("commands/deploy.rs")),
             ("logs", include_str!("commands/logs.rs")),
             ("status", include_str!("commands/status.rs")),
+            ("session", include_str!("commands/session.rs")),
+            ("work", include_str!("commands/work.rs")),
+            ("why", include_str!("commands/why.rs")),
         ];
         // What context.rs calls on every command's behalf.
         let shared: BTreeSet<&str> = named_in(include_str!("context.rs"));

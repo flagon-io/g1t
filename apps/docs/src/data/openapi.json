@@ -37959,7 +37959,7 @@
           "Repositories"
         ],
         "summary": "List repository events",
-        "description": "The timeline of a repository: pushes, issues, pull requests, comments and session activity, newest first.\n\nReturns 50 events a page. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`.",
+        "description": "The timeline of a repository: pushes, issues, pull requests, comments, sessions, claims and integration results, newest first; page back with before. To follow it, give after (an event id): the events written after that one come oldest first, and the last one's id is the next call's after. With after and wait (seconds, at most 25), a call that finds nothing holds on until a matching event is written or the wait ends, then returns what it has, perhaps nothing. Narrow it with types, numbers (issues and pull requests, matching events about them and comments on them), since and limit (50 by default, at most 200).\n\nReturns 50 events a page, newest first. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`.\n\nTo follow a repository without a webhook, send `after` instead: the events written after that event come oldest first, and the last one's `id` is your next `after`. Add `wait` (seconds, at most 25) and a call that finds nothing holds on until a matching event is written or the time is up, then returns what it has, which may be an empty list; call again with the same `after`. Events come in the order g1t wrote them, so none is skipped when two arrive close together.\n\n```sh\ncurl -H \"Authorization: Bearer $G1T_TOKEN\" \\\n  \"https://api.g1t.sh/repos/acme/rocket/events?after=evt_01m43smh3ve52vkcna207vqctf&types=work.claimed,integration.failed&numbers=12&wait=25\"\n```\n\n`types` and `numbers` are comma-separated lists in a query string, arrays in a body or an MCP call. `numbers` matches events about those issues and pull requests (`data.number`) and comments, reviews and links on them (`data.issue`). `since` is an RFC 3339 time. `after` and `before` cannot be given together.",
         "x-operation": "list_events",
         "x-mcp-tool": "repository",
         "x-mcp-action": "list_events",
@@ -37998,7 +37998,71 @@
             "schema": {
               "type": "string"
             },
-            "description": "Event id to page back from."
+            "description": "Event id to page back from: older events, newest first."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Event id to follow from: the events written after it, oldest first. Not with before."
+          },
+          {
+            "name": "types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Only these event types (work.claimed, integration.failed, ...). In a query string, a comma-separated list."
+          },
+          {
+            "name": "numbers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "description": "Only events about these issues or pull requests, and comments, reviews and links on them. In a query string, a comma-separated list."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only events at or after this time (RFC 3339)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "How many events at most; 50 by default."
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 25
+            },
+            "description": "With after: seconds to hold on for a matching event when there is none yet. At most 25."
           }
         ],
         "responses": {

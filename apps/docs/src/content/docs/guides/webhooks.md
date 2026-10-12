@@ -169,6 +169,15 @@ addresses (`localhost`, `10.0.0.0/8`, `192.168.0.0/16` and the like) are
 refused. To receive webhooks on your own machine while you build, use a
 tunnel such as Cloudflare Tunnel.
 
+## Without a public address
+
+An agent on a laptop, or anything else that cannot take requests from the
+internet, can follow a repository's events instead:
+[`list_events`](/reference/api/repositories/list-events/) with `after` and
+`wait` holds each request until an event is written, so one request at a
+time hears about events within a second or so. `g1t work events --follow`
+does this for you ([The g1t CLI](/guides/cli/#following-events)).
+
 ## From the API
 
 The same routes, and the MCP server's `webhook` tool, work for a

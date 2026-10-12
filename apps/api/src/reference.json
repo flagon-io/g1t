@@ -946,7 +946,7 @@
         }
       }
     ],
-    "notes": "Returns 50 events a page. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`."
+    "notes": "Returns 50 events a page, newest first. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`.\n\nTo follow a repository without a webhook, send `after` instead: the events written after that event come oldest first, and the last one's `id` is your next `after`. Add `wait` (seconds, at most 25) and a call that finds nothing holds on until a matching event is written or the time is up, then returns what it has, which may be an empty list; call again with the same `after`. Events come in the order g1t wrote them, so none is skipped when two arrive close together.\n\n```sh\ncurl -H \"Authorization: Bearer $G1T_TOKEN\" \\\n  \"https://api.g1t.sh/repos/acme/rocket/events?after=evt_01m43smh3ve52vkcna207vqctf&types=work.claimed,integration.failed&numbers=12&wait=25\"\n```\n\n`types` and `numbers` are comma-separated lists in a query string, arrays in a body or an MCP call. `numbers` matches events about those issues and pull requests (`data.number`) and comments, reviews and links on them (`data.issue`). `since` is an RFC 3339 time. `after` and `before` cannot be given together."
   },
   "list_issues": {
     "query": {
