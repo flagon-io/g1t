@@ -102,6 +102,7 @@ export default defineConfig({
 						{ label: 'How g1t works', slug: 'concepts/overview' },
 						{ label: 'The g1t CLI', slug: 'guides/cli' },
 						{ label: 'Home', slug: 'guides/home' },
+						{ label: 'Ask g1t', slug: 'guides/ask' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'The desktop app', slug: 'guides/desktop' },
 						{ label: 'The phone app', slug: 'guides/mobile' },

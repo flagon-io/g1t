@@ -116,9 +116,9 @@ change and remove them; members see which are connected.
 Keys are sealed when they are saved and never shown again, to anyone; the
 page shows only their last four characters.
 
-The **Ask AI** button in the top bar is where you will start work on one
-of these providers. It is not on yet: it shows the composer, marked
-coming soon.
+**Ask**, in the top bar, answers with one of these providers: an owner
+chooses which, and its model, under **Ask g1t** on this page. See
+[Ask g1t](/guides/ask/).
 
 ## Alerts
 
