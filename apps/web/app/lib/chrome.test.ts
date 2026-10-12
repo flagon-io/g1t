@@ -129,6 +129,6 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("settings/branches"), "settings");
   assert.equal(projectPageAt("soon/uptime", { uptime: "observability" }), "observability");
   assert.equal(projectPageAt("observability/logs"), "observability");
-  assert.equal(projectPageAt("soon/boards", { boards: "issues" }), "issues");
+  assert.equal(projectPageAt("soon/playbooks", { playbooks: "agents" }), "agents");
   assert.equal(projectPageAt("pulse"), null);
 });

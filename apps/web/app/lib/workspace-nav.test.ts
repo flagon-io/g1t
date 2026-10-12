@@ -38,7 +38,7 @@ test("old addresses go to where their pages are now", () => {
   assert.equal(workspaceRedirect("/acme/-/marketplace/extensions"), "/acme/-/customize/plugins");
   assert.equal(workspaceRedirect("/acme/-/marketplace/extensions/mail/more"), null);
   assert.equal(workspaceRedirect("/acme/-/soon/insights", "?x=1"), "/acme/-/insights?x=1");
-  assert.equal(workspaceRedirect("/acme/-/soon/board"), null);
+  assert.equal(workspaceRedirect("/acme/-/soon/uptime"), null);
   assert.equal(workspaceRedirect("/acme/-/people"), null);
   assert.equal(workspaceRedirect("/acme/web"), null);
 });

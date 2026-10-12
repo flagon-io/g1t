@@ -13,7 +13,7 @@ export type RoadmapItem = {
   title: string;
   /**
    * Where it lives: a project page whose tabs it joins, or the workspace,
-   * for what spans projects (boards, the roadmap, packages, the fleet).
+   * for what spans projects (Insights).
    */
   section: "Code" | "Issues" | "Agents" | "Deployments" | "Observability" | "Security" | "Insights" | "Workspace";
   /** One line, for the menu's tooltip and the page's lead. */
@@ -27,35 +27,7 @@ export type RoadmapItem = {
 };
 
 export const ROADMAP: RoadmapItem[] = [
-  // --- Work ---------------------------------------------------------------
-  {
-    key: "board",
-    title: "Board",
-    section: "Workspace",
-    summary: "Issues and pull requests as a board, a table or a roadmap, with fields of your own.",
-    why: "One view of everything in flight, arranged the way your team thinks about it. Agents move the cards as they work, so the board is never out of date.",
-    plans: [
-      "Board, table and roadmap views of the same items, saved and shared",
-      "Custom fields: status, priority, size, iteration, dates, anything",
-      "Group and filter by owner, outcome, label, agent or state",
-      "Cards move by themselves as agents open, revise and land changes",
-      "Across projects: one board can hold work from any of the workspace's projects",
-      "Attach a board to a project, so it shows on that project too",
-    ],
-  },
-  {
-    key: "roadmap",
-    title: "Roadmap",
-    section: "Workspace",
-    summary: "Outcomes on a timeline, with how much of each has landed.",
-    why: "An outcome is what should be true when the work is done. On a roadmap you see when each is expected and how much has landed.",
-    plans: [
-      "Outcomes as bars on a timeline, from start to target",
-      "Progress from merged work, not from guesses",
-      "Slip warnings when the work left outgrows the time left",
-    ],
-    today: { label: "Outcomes", path: "plans" },
-  },
+  // --- Workspace ----------------------------------------------------------
   {
     key: "insights",
     title: "Insights",
