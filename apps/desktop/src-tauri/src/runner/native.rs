@@ -158,6 +158,29 @@ pub fn stop(child: &mut Child) {
     let _ = child.wait();
 }
 
+/// Removes the containers, networks and volumes of the jobs of the runner
+/// registered in `dir`, as `g1t-runner` does itself when it starts: each
+/// carries the label `sh.g1t.runner=<its id>`.
+pub fn sweep(dir: &Path) {
+    #[derive(Deserialize)]
+    struct Registered {
+        runner: String,
+    }
+    let Some(registered) = std::fs::read(dir.join("config.json")).ok().and_then(|bytes| serde_json::from_slice::<Registered>(&bytes).ok()) else { return };
+    let label = format!("label=sh.g1t.runner={}", registered.runner);
+    for (list, remove) in [
+        (vec!["ps", "-aq", "--filter", &label], vec!["rm", "-f", "-v"]),
+        (vec!["network", "ls", "-q", "--filter", &label], vec!["network", "rm"]),
+        (vec!["volume", "ls", "-q", "--filter", &label], vec!["volume", "rm", "-f"]),
+    ] {
+        let Ok(out) = quiet("docker").args(&list).stderr(Stdio::null()).output() else { return };
+        let ids: Vec<String> = String::from_utf8_lossy(&out.stdout).split_whitespace().map(str::to_owned).collect();
+        if !ids.is_empty() {
+            let _ = quiet("docker").args(&remove).args(&ids).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        }
+    }
+}
+
 /// A runner the app started before and did not stop (it was ended
 /// without quitting): stopped, if that process is still `g1t-runner`.
 pub fn reap(pid: u32) {

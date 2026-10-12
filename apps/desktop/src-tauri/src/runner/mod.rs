@@ -549,11 +549,12 @@ impl Keeper {
             Ask::Retry => {
                 self.not_before = Instant::now();
                 self.failures = 0;
-                if self.run.as_ref().is_some_and(|run| !run.listening || matches!(self.code(), Code::UpdateFailed | Code::Offline)) {
-                    self.halt();
-                }
-                if self.code() == Code::UpdateFailed {
-                    self.next_update = Instant::now();
+                match self.code() {
+                    // The runner is fine: only the update is tried again.
+                    Code::UpdateFailed => self.next_update = Instant::now(),
+                    Code::Offline => self.halt(),
+                    _ if self.run.as_ref().is_some_and(|run| !run.listening) => self.halt(),
+                    _ => {}
                 }
             }
             Ask::Token { workspace, token } => {
@@ -677,7 +678,15 @@ impl Keeper {
                 launcher::down(&native::binary(&folder(&self.app)), &native_dir(&self.app, run.backend));
                 native::stop(child);
             }
-            (Process::Child(child), _) => native::stop(child),
+            // The image's runner is always a container; a child here is only ever g1t-runner's.
+            (Process::Child(child), Engine::Sysbox) => native::stop(child),
+            (Process::Child(child), Engine::Native { docker }) => {
+                native::stop(child);
+                // A job's container outlives the runner killed under it: removed now, not at its next start.
+                if docker {
+                    native::sweep(&native_dir(&self.app, run.backend));
+                }
+            }
         }
         let _ = std::fs::remove_file(folder(&self.app).join("pid"));
     }
