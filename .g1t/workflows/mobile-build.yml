@@ -47,11 +47,23 @@ jobs:
       PROFILE: ${{ inputs.profile || 'preview' }}
     steps:
       - uses: actions/checkout@v5
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      # EAS reads app.config.ts through the app's own `expo`.
+      - name: Install the app's dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund -w @g1t/mobile
       - name: Build on EAS
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
+          # A token pasted with a newline breaks the request's header.
+          export EXPO_TOKEN="$(printf %s "$EXPO_TOKEN" | tr -d '[:space:]')"
+          npx --yes eas-cli@24.12.1 whoami
           npx --yes eas-cli@24.12.1 build --platform android --profile "$PROFILE" \
             --non-interactive --wait --json > build.json
           node -e '
