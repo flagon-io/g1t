@@ -157,6 +157,22 @@ mod tests {
     }
 
     #[test]
+    fn the_called_workflow_takes_every_input_the_deploy_workflow_gives() {
+        let called = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../workflows/.g1t/workflows/deploy.yml")).unwrap();
+        let parsed = workflow::parse(&called).unwrap();
+        assert!(!parsed.notes.iter().any(|note| note.severity != Severity::Info), "{:?}", parsed.notes);
+        let raw: serde_json::Value = serde_yaml::from_str(&called).unwrap();
+        let inputs = &raw["on"]["workflow_call"]["inputs"];
+        let caller = workflow::parse(&deploy_workflow(&settings()).unwrap()).unwrap();
+        for (key, _) in caller.jobs[0].raw["with"].as_object().unwrap() {
+            assert!(inputs.get(key).is_some(), "the called workflow takes no `{key}`");
+        }
+        // Its job is `deploy`, so the caller's `g1t` reports `g1t / deploy`.
+        assert_eq!(parsed.jobs[0].raw["name"], "deploy");
+        assert!(DEPLOY_CALLS.starts_with("g1t/workflows/.g1t/workflows/deploy.yml@"));
+    }
+
+    #[test]
     fn what_a_project_turns_off_starts_nothing() {
         let previews_only = deploy_workflow(&DeploySettings { production: false, ..settings() }).unwrap();
         let parsed = workflow::parse(&previews_only).unwrap();

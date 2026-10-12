@@ -782,6 +782,27 @@ pub struct SetManagedWorkflowArgs {
     pub origin: String,
 }
 
+/// `set_managed_deploy`: installs, replaces or removes the deploy workflow
+/// a project's deployments run through (`g1t_actions::managed`), named
+/// `deploy-<project>`, from the project's settings. Nothing deploys (both
+/// `previews` and `production` off) removes it. For the deployments
+/// service only. Returns `bool`, whether one is installed now.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetManagedDeployArgs {
+    pub repo_id: String,
+    pub project: String,
+    pub production_branch: String,
+    #[serde(default)]
+    pub root_dir: String,
+    #[serde(default)]
+    pub build_command: String,
+    #[serde(default)]
+    pub output_dir: String,
+    pub previews: bool,
+    pub production: bool,
+}
+
 /// `remove_managed_workflow`: takes a managed workflow out of a repository.
 /// Its runs stay. Returns `bool`, whether there was one.
 #[derive(Debug, Serialize, Deserialize)]

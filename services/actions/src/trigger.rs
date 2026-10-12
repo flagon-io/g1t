@@ -656,7 +656,12 @@ impl Actions {
             let read = if subject.source == Self::repo_path(&repo) {
                 self.read_for(&repo, &ws, subject.source_ref.as_deref(), policy.github).await?
             } else {
-                self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?
+                // And this repository's managed workflows: they are its own,
+                // whatever the fork's files say (managed.rs).
+                let mut read = self.read_workflows(&subject.source, &ws, subject.source_ref.as_deref()).await?;
+                let managed = self.managed_beside(&repo.id, &read.files).await?;
+                read.files.extend(managed);
+                read
             };
             // A pull request's head runs each workflow once, however many
             // events say it is there (marked ready, and pushed).

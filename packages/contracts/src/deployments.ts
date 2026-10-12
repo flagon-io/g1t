@@ -31,6 +31,12 @@ export type DeploySettings = {
   outputDir: string | null;
   /** A preview no one has visited in this many days is taken down. */
   idleDays: number;
+  /**
+   * Whether it builds through the deploy workflow g1t manages for it, a
+   * workflow run on each push and pull request like any other, rather
+   * than through Deployments' own build.
+   */
+  viaWorkflow?: boolean;
   /** Where production is served. */
   productionUrl: string;
   /**

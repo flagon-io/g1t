@@ -5,7 +5,11 @@
 # `uses: g1t/deploy@v1`. A change to an action that breaks how it is
 # used gets a new major tag here (MAJOR below), and the old one stays.
 #
-# Runs on a push to main that changes actions/, and by hand.
+# g1t's reusable workflows, in workflows/, go to g1t/workflows the same
+# way (workflows/.g1t/workflows/deploy.yml is
+# `g1t/workflows/.g1t/workflows/deploy.yml@v1`).
+#
+# Runs on a push to main that changes actions/ or workflows/, and by hand.
 #
 # Needs the repository secret G1T_ACTIONS_PUBLISH_TOKEN: an access token of
 # the g1t workspace with contents: write on its action repositories
@@ -19,6 +23,7 @@ on:
     branches: [main]
     paths:
       - actions/**
+      - workflows/**
   workflow_dispatch:
 
 permissions:
@@ -65,3 +70,12 @@ jobs:
             git -c http.extraHeader="${auth}" push --force "${remote}" "${commit}:refs/tags/${MAJOR}"
             echo "- \`${NAMESPACE}/${name}@${MAJOR}\` is ${commit}" >> "${GITHUB_STEP_SUMMARY}"
           done
+          # g1t's reusable workflows, from workflows/, as g1t/workflows.
+          if [ -d workflows/.g1t/workflows ]; then
+            commit="$(git subtree split --prefix workflows HEAD)"
+            remote="${SERVER}/${NAMESPACE}/workflows.git"
+            echo "Publishing workflows (${commit}) to ${NAMESPACE}/workflows"
+            git -c http.extraHeader="${auth}" push "${remote}" "${commit}:refs/heads/main"
+            git -c http.extraHeader="${auth}" push --force "${remote}" "${commit}:refs/tags/${MAJOR}"
+            echo "- \`${NAMESPACE}/workflows@${MAJOR}\` is ${commit}" >> "${GITHUB_STEP_SUMMARY}"
+          fi

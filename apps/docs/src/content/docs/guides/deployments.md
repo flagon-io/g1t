@@ -306,6 +306,57 @@ fail early:
     exit 1
 ```
 
+### Build with a workflow
+
+Turn on **Build with a workflow** under **Settings → Deployments** and the
+project's builds run as a workflow g1t manages for it, instead of as
+builds Deployments starts by itself. Nothing else changes: the same
+previews and production, at the same addresses, with the same
+**g1t / deploy** check, which is now the check of the workflow's job.
+
+- The workflow is listed on the repository's **Actions** page, named
+  `g1t`, with its runs, logs and re-runs like any other. It is not a file
+  in the repository: it is made from the project's settings, and follows
+  them when they change.
+- It calls g1t's reusable deploy workflow,
+  `g1t/workflows/.g1t/workflows/deploy.yml@v1`, which checks out the
+  commit and runs [`g1t/deploy`](#deploying-from-a-workflow). As g1t
+  improves how projects are built, that workflow improves for every
+  project that uses it.
+- A pull request from a fork runs it with a read-only token, as on
+  GitHub, and still gets its preview, without the project's build
+  secrets.
+- To change it, commit a workflow named `g1t` to `.g1t/workflows/`: that
+  file runs in its place. Start from the one the **Actions** page shows,
+  or call the reusable workflow yourself:
+
+```yaml
+# .g1t/workflows/g1t.yml
+name: g1t
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  g1t:
+    name: g1t
+    uses: g1t/workflows/.g1t/workflows/deploy.yml@v1
+    with:
+      project: web
+    secrets: inherit
+```
+
+Its jobs are [workflow jobs](/guides/actions/#machine-sizes): on g1t's
+machines they are charged as Actions time, at cost plus 20% like every
+build, and on a [self-hosted runner](/guides/self-hosted-runners/) they
+cost nothing.
+
 ## Custom domains
 
 Production can be served at a domain of your own, such as `example.com` or
@@ -427,6 +478,7 @@ Under the project's **Settings → Deployments**,
 | Build command | The project's own | Runs instead of `npm run build`, or before bundling a Workers project. |
 | Output directory | Found by itself | What a static site serves. |
 | Idle days | 7 | 1 to 90. A preview no one visits this long comes down. |
+| Build with a workflow | Off | Build through the deploy workflow g1t manages for the project; see [build with a workflow](#build-with-a-workflow). |
 
 ## Secrets and variables
 

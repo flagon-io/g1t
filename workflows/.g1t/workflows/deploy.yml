@@ -1,0 +1,56 @@
+# g1t's reusable deploy workflow: what the deploy workflow g1t manages for
+# a project calls (crates/actions/src/managed.rs), as
+# `g1t/workflows/.g1t/workflows/deploy.yml@v1`. Any workflow can call it
+# the same way. It checks out the commit and builds it onto g1t.page with
+# g1t/deploy: production from the project's production branch, a preview
+# from a pull request or another branch.
+#
+# Its job is named `deploy`, so a caller job named `g1t` reports the
+# check `g1t / deploy`.
+name: g1t deploy
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: The project's slug; the repository's one project with Deployments on when empty.
+        type: string
+        default: ""
+      root-dir:
+        description: Where the project is in the repository; the project's own setting when empty.
+        type: string
+        default: ""
+      build-command:
+        description: What builds it; the project's own setting, else what the build finds.
+        type: string
+        default: ""
+      output-dir:
+        description: The folder a static build writes; found by itself when empty.
+        type: string
+        default: ""
+    outputs:
+      url:
+        description: Where the app is served, on g1t.page.
+        value: ${{ jobs.deploy.outputs.url }}
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # A pull request from a fork gets a read-only token, as on GitHub; g1t
+    # still builds its preview, without the project's build secrets.
+    permissions:
+      contents: read
+      deployments: write
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: deploy
+        uses: g1t/deploy@v1
+        with:
+          project: ${{ inputs.project }}
+          root-dir: ${{ inputs.root-dir }}
+          build-command: ${{ inputs.build-command }}
+          output-dir: ${{ inputs.output-dir }}

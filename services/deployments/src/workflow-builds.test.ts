@@ -20,7 +20,7 @@ registerHooks({
     }
   },
 });
-const { commitOf, jobOf, projectNamed, runTrusted, targetOf } = await import("./workflow-builds.ts");
+const { commitOf, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf } = await import("./workflow-builds.ts");
 
 const repo = { namespace: "acme", name: "web" };
 const jobToken = (token: Partial<NonNullable<User["token"]>>): User =>
@@ -34,15 +34,16 @@ const jobToken = (token: Partial<NonNullable<User["token"]>>): User =>
   }) as User;
 
 test("only a workflow job's token for the repository, with deployments: write, opens a build", () => {
-  assert.deepEqual(jobOf(jobToken({}), repo), { runId: "run_1", jobId: "job_1" });
+  assert.deepEqual(jobOf(jobToken({}), repo), { runId: "run_1", jobId: "job_1", writes: true });
   // write-all, and contents with deployments.
   assert.ok(!("error" in jobOf(jobToken({ scopes: ["contents:read", "deployments:write"] }), repo)));
   // A person's token, however wide, is not a job's.
   const person = { id: "usr_1", username: "ada", kind: "user", verified: true, token: { token_id: "tok_2", scopes: null } } as User;
   assert.match((jobOf(person, repo) as { error: string }).error, /g1t Actions job's token/);
   assert.match((jobOf(null, repo) as { error: string }).error, /g1t Actions job's token/);
-  // Read only: what a pull request from outside gets.
-  assert.match((jobOf(jobToken({ scopes: ["deployments:read", "contents:read"] }), repo) as { error: string }).error, /deployments: write/);
+  // Read only: what a pull request from outside gets. Its job is named,
+  // and only a managed workflow's preview lets it through.
+  assert.deepEqual(jobOf(jobToken({ scopes: ["deployments:read", "contents:read"] }), repo), { runId: "run_1", jobId: "job_1", writes: false });
   // Another repository's job.
   assert.match((jobOf(jobToken({ repo: "acme/api" }), repo) as { error: string }).error, /acme\/api, not acme\/web/);
   // Case does not matter in names.
@@ -91,4 +92,14 @@ test("the project is the one named, or the only one with Deployments on", () => 
   assert.deepEqual(projectNamed([web, docs], on, "nope"), { error: "This repository has no project nope.", code: "not_found" });
   assert.deepEqual(projectNamed([docs], on, undefined), { error: "No project of this repository has Deployments on.", code: "conflict" });
   assert.deepEqual(projectNamed([web, api], on, ""), { error: "Name the project to build: web, api.", code: "invalid" });
+});
+
+test("a read-only token opens only a preview, and only from the deploy workflow g1t manages", () => {
+  const managed = { path: "managed/deploy-web.yml" };
+  const own = { path: ".g1t/workflows/deploy.yml" };
+  assert.ok(readOnlyAllowed(managed, { kind: "pull", number: 4 }));
+  assert.ok(readOnlyAllowed(managed, { kind: "branch", branch: "fix" }));
+  assert.ok(!readOnlyAllowed(managed, { kind: "production" }));
+  assert.ok(!readOnlyAllowed(own, { kind: "pull", number: 4 }));
+  assert.ok(!readOnlyAllowed(managed, { error: "a tag" }));
 });

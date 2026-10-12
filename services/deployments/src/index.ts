@@ -91,7 +91,7 @@ import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarge
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 import { RepoDeployments, sourceOf } from "./repo-deployments";
-import { commitOf, jobOf, projectNamed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
+import { NEEDS_WRITE, commitOf, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
 
 type Env = {
   DB: D1Database;
@@ -198,6 +198,8 @@ type SettingsRow = {
   build_command: string | null;
   output_dir: string | null;
   idle_days: number;
+  /** Whether it builds through its managed deploy workflow; see `syncManagedDeploy`. */
+  via_workflow?: number;
   /** Set while its repository is deleted (restorable); see `repoDeleted`. */
   repo_deleted_at: string | null;
   /** Set while its workspace is deleted (restorable); see `workspaceDeleting`. */
@@ -435,6 +437,7 @@ class Deployments {
       buildCommand: row?.build_command ?? null,
       outputDir: row?.output_dir ?? null,
       idleDays: row?.idle_days ?? 7,
+      viaWorkflow: !!row?.via_workflow,
       productionUrl: appUrl(await this.scriptFor(project, null)),
       primaryDomain: await this.domains.primary(project.id).catch(() => null),
       detected: await this.lastDetected(project.id),
@@ -500,10 +503,11 @@ class Deployments {
     await this.db
       .prepare(
         `INSERT INTO settings (project_id, workspace, slug, repo_id, enabled, previews, production, build_command,
-           output_dir, idle_days, updated_by, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+           output_dir, idle_days, updated_by, updated_at, via_workflow)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT (project_id) DO UPDATE SET workspace = ?2, slug = ?3, repo_id = ?4, enabled = ?5, previews = ?6,
-           production = ?7, build_command = ?8, output_dir = ?9, idle_days = ?10, updated_by = ?11, updated_at = ?12`,
+           production = ?7, build_command = ?8, output_dir = ?9, idle_days = ?10, updated_by = ?11, updated_at = ?12,
+           via_workflow = ?13`,
       )
       .bind(
         project.id,
@@ -518,8 +522,15 @@ class Deployments {
         idleDays,
         a.actor.username,
         now(),
+        next.viaWorkflow ? 1 : 0,
       )
       .run();
+    // The managed deploy workflow follows the settings: installed while the
+    // project builds through it, removed when it stops.
+    if (next.viaWorkflow || before.viaWorkflow) {
+      const installed = await this.syncManagedDeploy(project, next);
+      if (!installed.ok) return installed;
+    }
     // Projects keeps whether it deploys, so a project with Deployments on is an app.
     if (next.enabled !== before.enabled) {
       await this.projects.deploymentsChanged(project.id, next.enabled).catch((error) => console.warn("projects:", error));
@@ -535,6 +546,40 @@ class Deployments {
       await this.deployProduction(project, null, a.actor.username);
     }
     return ok(await this.toSettings(project, await this.settingsRow(project.id)));
+  }
+
+  /**
+   * Installs, replaces or removes the project's managed deploy workflow
+   * (the actions service's `set_managed_deploy`) to match `settings`: it
+   * runs while Deployments are on and the project builds through it.
+   */
+  private async syncManagedDeploy(project: Project, settings: DeploySettings): Promise<Result<boolean>> {
+    const on = settings.enabled && settings.viaWorkflow;
+    const repo = repoOf(project);
+    const response = await this.env.ACTIONS.fetch("https://actions/rpc/set_managed_deploy", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        repoId: repo.id,
+        project: project.slug,
+        productionBranch: repo.defaultBranch,
+        rootDir: project.source.kind === "hosted" ? (project.source.rootDir ?? "") : "",
+        buildCommand: settings.buildCommand ?? "",
+        outputDir: settings.outputDir ?? "",
+        previews: on && settings.previews,
+        production: on && settings.production,
+      }),
+    });
+    const answer = (await response.json().catch(() => null)) as { ok?: boolean; value?: boolean; error?: { message?: string } } | null;
+    if (!response.ok || !answer || answer.ok === false) {
+      return fail("unavailable", answer?.error?.message ?? "The deploy workflow could not be installed. Try again in a moment.");
+    }
+    return ok(!!answer.value);
+  }
+
+  /** Whether `projectId` builds through its managed deploy workflow, so pushes and pull requests start no build here. */
+  private async buildsViaWorkflow(projectId: string): Promise<boolean> {
+    return !!(await this.settingsRow(projectId))?.via_workflow;
   }
 
   /** For projects: whether Deployments are on for a project. Reads only this service's own table. */
@@ -912,7 +957,9 @@ class Deployments {
     if ("error" in chosen) return fail(chosen.code, chosen.error);
     const project = chosen;
     if (project.source.kind !== "hosted") return fail("conflict", "Only projects hosted on g1t deploy so far.");
-    if (!can(a.actor, repoRef(project), NEEDS.redeploy)) return fail("forbidden", needs(NEEDS.redeploy));
+    // A token that writes deployments needs the role a redeploy does; one
+    // that does not is let through below only for a managed preview.
+    if (job.writes && !can(a.actor, repoRef(project), NEEDS.redeploy)) return fail("forbidden", needs(NEEDS.redeploy));
     const settings = rows.get(project.id);
     if (!live(settings)) return fail("conflict", `Deployments are off for ${project.slug}.`);
     const repo = repoOf(project);
@@ -930,6 +977,7 @@ class Deployments {
 
     const target = targetOf(run, repo.defaultBranch);
     if ("error" in target) return fail("invalid", target.error);
+    if (!job.writes && !readOnlyAllowed(run, target)) return fail("forbidden", NEEDS_WRITE);
     let kind: DeployKind = "production";
     let branch: string | null = null;
     let number: number | null = null;
@@ -954,6 +1002,8 @@ class Deployments {
       kind = "preview";
       branch = target.branch;
     }
+    // A read-only token's build never gets the project's build secrets.
+    if (!job.writes) trusted = false;
     if (kind === "production" && !settings.production) return fail("conflict", `Production deploys are off for ${project.slug}.`);
     if (kind === "preview" && !settings.previews) return fail("conflict", `Previews are off for ${project.slug}.`);
 
@@ -1451,6 +1501,8 @@ class Deployments {
       case "pull.updated":
       case "pull.reopened":
         for (const project of await this.projects.byRepo(event.data.repoId)) {
+          // Its managed deploy workflow builds it instead (`syncManagedDeploy`).
+          if (await this.buildsViaWorkflow(project.id)) continue;
           await this.deployPreview(project, event.data.number, "g1t");
         }
         break;
@@ -1470,6 +1522,7 @@ class Deployments {
         // failover, the remote's own deploys stand (see contracts mirrors).
         if (!mirrorWritable(event.data.mirror)) break;
         for (const project of await this.projects.byRepo(event.data.repoId)) {
+          if (await this.buildsViaWorkflow(project.id)) continue;
           await this.deployProduction(project, event.data.after, event.actor ?? "g1t");
         }
         break;

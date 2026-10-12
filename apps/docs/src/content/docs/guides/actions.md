@@ -167,6 +167,19 @@ GitHub refuses a workflow with `g1t:` in it, so use it only in
 g1t keeps any other key under `g1t:` as written, and does nothing with it
 yet.
 
+## Managed workflows
+
+Some workflows run in a repository without a file in it: g1t installs
+them for a feature you turn on, such as a project's
+[build with a workflow](/guides/deployments/#build-with-a-workflow). A
+managed workflow runs like any other: on the **Actions** page, with its
+runs, logs, re-runs and checks, on g1t's machines or your
+[self-hosted runners](/guides/self-hosted-runners/). Its page says it is
+managed by g1t.
+
+A workflow of the same `name:` in `.g1t/workflows/` runs in its place, so
+to change one, commit your own version of it.
+
 ## Schedules
 
 A workflow with `on: schedule` runs on the default branch's latest commit,

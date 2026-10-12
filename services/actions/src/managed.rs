@@ -6,7 +6,7 @@
 
 use g1t_actions::managed;
 use g1t_actions::workflow;
-use g1t_contracts::actions::{RemoveManagedWorkflowArgs, SetManagedWorkflowArgs};
+use g1t_contracts::actions::{RemoveManagedWorkflowArgs, SetManagedDeployArgs, SetManagedWorkflowArgs};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -65,6 +65,27 @@ impl Actions {
             self.sync(&repo, &ws).await?;
         }
         Ok(Outcome::Ok(removed))
+    }
+
+    /// `set_managed_deploy`.
+    pub async fn set_managed_deploy(&self, a: SetManagedDeployArgs) -> Result<Outcome<bool>> {
+        let name = format!("deploy-{}", a.project);
+        let settings = managed::DeploySettings {
+            project: a.project,
+            production_branch: a.production_branch,
+            root_dir: a.root_dir,
+            build_command: a.build_command,
+            output_dir: a.output_dir,
+            previews: a.previews,
+            production: a.production,
+        };
+        match managed::deploy_workflow(&settings) {
+            Some(source) => self.set_managed_workflow(SetManagedWorkflowArgs { repo_id: a.repo_id, name, source, origin: "deployments".to_owned() }).await,
+            None => {
+                self.remove_managed_workflow(RemoveManagedWorkflowArgs { repo_id: a.repo_id, name }).await?;
+                Ok(Outcome::Ok(false))
+            }
+        }
     }
 
     /// The managed workflows that run beside `files`, a repository's own:

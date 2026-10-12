@@ -8,7 +8,7 @@
  * and what the project's settings give it) and puts what the job sends.
  */
 
-import { tokenAllows, type RepoPath, type User } from "@g1t/contracts";
+import { isManagedWorkflow, tokenAllows, type RepoPath, type User } from "@g1t/contracts";
 
 /** The run a job token was made for, as far as these rules read it. */
 export type RunFacts = {
@@ -26,11 +26,18 @@ export type RunTarget =
   | { kind: "pull"; number: number }
   | { error: string };
 
+/** Why a token that cannot write deployments is refused, where nothing lets it through. */
+export const NEEDS_WRITE = "The job's token needs `deployments: write` in the workflow's or job's `permissions:`.";
+
 /**
  * The run and job a caller's token was made for, if it is a workflow job's
- * token for `repo` that may write deployments; otherwise why not.
+ * token for `repo`; otherwise why not. `writes` says whether it may write
+ * deployments: one that may not is let through only by `readOnlyAllowed`.
  */
-export function jobOf(actor: User | null | undefined, repo: RepoPath): { runId: string; jobId: string } | { error: string } {
+export function jobOf(
+  actor: User | null | undefined,
+  repo: RepoPath,
+): { runId: string; jobId: string; writes: boolean } | { error: string } {
   const token = actor?.token;
   if (!token?.job?.run_id || !token.job.job_id) {
     return { error: "Only a g1t Actions job's token (G1T_TOKEN) can open a g1t.page build." };
@@ -39,10 +46,18 @@ export function jobOf(actor: User | null | undefined, repo: RepoPath): { runId: 
   if (!token.repo || token.repo.toLowerCase() !== own) {
     return { error: `This job's token is for ${token.repo ?? "another repository"}, not ${repo.namespace}/${repo.name}.` };
   }
-  if (!tokenAllows(token.scopes, "deployments:write")) {
-    return { error: "The job's token needs `deployments: write` in the workflow's or job's `permissions:`." };
-  }
-  return { runId: token.job.run_id, jobId: token.job.job_id };
+  return { runId: token.job.run_id, jobId: token.job.job_id, writes: tokenAllows(token.scopes, "deployments:write") };
+}
+
+/**
+ * Whether a job whose token may not write deployments may still open a
+ * build: only a preview, from the deploy workflow g1t manages for the
+ * project (a run of `managed/…`). A pull request from a fork runs with a
+ * read-only token, as on GitHub, and still gets the preview g1t.page has
+ * always built for it, without the project's build secrets.
+ */
+export function readOnlyAllowed(run: { path?: string | null }, target: RunTarget): boolean {
+  return isManagedWorkflow(run.path ?? "") && "kind" in target && target.kind !== "production";
 }
 
 /**
