@@ -70,8 +70,14 @@ interception:
   and HTTPS (443) has any route out: SSH, raw TCP and UDP connections fail.
 - Every HTTP and HTTPS request it makes is handed to g1t's runner Worker
   before it leaves. The Worker forwards requests to allowed hosts and
-  answers every other with `403` and a line saying the host is not allowed
-  and where to allow it.
+  answers every other with `403`. The refusal names the host three times
+  over, since tools differ in what they show of a failed request: in its
+  status line (`403 Forbidden by g1t guardrails: example.com is not an
+  allowed domain`, which is what a tool that prints only the status shows),
+  in an `x-g1t-blocked-host` header beside `x-g1t-guardrails: blocked`, and
+  in a plain-text body saying where to allow it: **Allowed domains** for
+  every sandbox, or **Workflow-only domains** for the jobs of one workflow
+  and environment.
 - To see the host of an HTTPS request, the connection is re-encrypted with
   a certificate the sandbox is given when it starts, which g1t adds to the
   sandbox's trusted certificates (and points Node.js, Python, curl, Cargo
