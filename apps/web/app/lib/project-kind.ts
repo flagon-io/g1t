@@ -89,6 +89,20 @@ export function kindLabel(project: Pick<Project, "kind" | "runs">): string {
   }
 }
 
+/** What a project's overview leads with: production, a release, or what it says of itself. */
+export type ProjectPlan = "production" | "release" | "elsewhere" | "unknown" | "docs" | "other";
+
+/**
+ * Which head a project's overview shows, from what it is and where it
+ * runs. Only what g1t deploys gets production's.
+ */
+export function projectPlan(project: Pick<Project, "kind" | "runs">): ProjectPlan {
+  if (project.runs === "g1t") return "production";
+  if (project.kind === "library" || project.kind === "tool") return "release";
+  if (project.kind === "app") return project.runs === "elsewhere" ? "elsewhere" : "unknown";
+  return project.kind;
+}
+
 /** A link as pages list it: what it is, its label and address. */
 export type ShownLink = { key: string; type: "homepage" | "docs" | "production" | "custom"; label: string; url: string };
 

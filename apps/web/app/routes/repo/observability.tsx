@@ -47,7 +47,7 @@ export default function Observability({ loaderData, params }: Route.ComponentPro
         {!overview ? (
           <Card className="p-6 text-sm text-muted">Observability could not be loaded just now. Reload the page to try again.</Card>
         ) : nothing ? (
-          <GetStarted base={base} canManage={canManage} />
+          <NothingYet base={base} canManage={canManage} />
         ) : (
           <Loaded overview={overview} errors={errors} base={base} path={path} view={view} />
         )}
@@ -314,7 +314,7 @@ function Loaded({
 }
 
 /** Nothing has arrived yet: the two ways it does. */
-function GetStarted({ base, canManage }: { base: string; canManage: boolean }) {
+function NothingYet({ base, canManage }: { base: string; canManage: boolean }) {
   return (
     <Card asChild>
       <section>
