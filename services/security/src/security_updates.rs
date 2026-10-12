@@ -22,12 +22,12 @@ use std::collections::BTreeMap;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::security::{BumpArgs, UpdateState, update_branch};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{OpenIssueArgs, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs};
+use g1t_contracts::work::{OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs};
 use g1t_contracts::{Outcome, User};
 use g1t_kit::now_ms;
 use g1t_scan::osv::{self, Severity};
 use g1t_scan::version;
-use serde_json::{Value, json};
+use serde_json::Value;
 use worker::Result;
 
 use g1t_contracts::security::UPDATE_BRANCH_PREFIX;
@@ -36,7 +36,7 @@ use g1t_contracts::work::UpdatePullArgs;
 
 use crate::Security;
 use crate::config::{CommitMessage, Config, Entry, glob, matches};
-use crate::deps::{advisory_table, issue_text};
+use crate::deps::advisory_table;
 use crate::pull_text;
 use crate::ranges;
 use crate::store::{Activity, RepoRow, UpdateRow, VulnRow};
@@ -580,9 +580,10 @@ impl Security {
         self.note(&row, "update_opened", Some(g1t_contracts::system::USERNAME), Some(pull.number), None).await
     }
 
-    /// A pull request merged, closed or checked: if it is a security
-    /// update's, where the update stands now.
-    pub async fn update_pull_event(&self, kind: &str, repo_id: &str, number: u32, status: Option<&str>, actor: Option<&str>) -> Result<()> {
+    /// A pull request merged or closed: if it is a security update's, where
+    /// the update stands now. One whose checks fail stays open for a person
+    /// to decide on.
+    pub async fn update_pull_event(&self, kind: &str, repo_id: &str, number: u32, actor: Option<&str>) -> Result<()> {
         let Some(row) = self.store.update_by_pull(repo_id, number).await? else {
             return Ok(());
         };
@@ -598,40 +599,16 @@ impl Security {
                 self.store.set_update(&row, UpdateState::Closed, Some(number), None, None).await?;
                 self.note(&row, "update_closed", actor, Some(number), None).await
             }
-            "checks.completed" if status == Some("failed") => {
-                let Some(repo) = self.store.repo(repo_id).await? else {
-                    return Ok(());
-                };
-                self.needs_code(&repo, &row, "Raising the version alone fails this branch's required checks").await
-            }
             _ => Ok(()),
         }
     }
 
-    /// Closes an update that is no longer needed: its pull request, if it
-    /// has one still open (one that merged meanwhile is recorded merged).
-    async fn supersede(&self, repo: &RepoRow, row: &UpdateRow, why: String) -> Result<()> {
-        if let Some(number) = row.pull() {
-            match self.get_pull(repo, number).await? {
-                Some(pull) if pull.status == PullStatus::Merged => {
-                    return self.store.set_update(row, UpdateState::Merged, Some(number), row.issue(), None).await;
-                }
-                Some(pull) if matches!(pull.status, PullStatus::Open | PullStatus::Draft) => {
-                    self.store.set_update(row, UpdateState::Superseded, Some(number), row.issue(), None).await?;
-                    self.close_with(repo, number, why).await?;
-                    return self.note(row, "update_superseded", Some(g1t_contracts::system::USERNAME), Some(number), None).await;
-                }
-                _ => {}
-            }
-        }
-        self.store.set_update(row, UpdateState::Superseded, row.pull(), row.issue(), None).await
-    }
-
     /// Updates whose sandbox never pushed: raising the version did not
-    /// work, so g1t gets an issue for it. On a repository that takes no
-    /// updates now (security updates off, archived, deleted, or a mirror
-    /// that is not taken over, whose pushes are refused) the update fails
-    /// with the reason instead: nothing is opened there.
+    /// work on its own, so the update fails with why, shown on the alert,
+    /// and is tried again later. Nothing is opened for it: a person can ask
+    /// g1t to fix the alert. On a repository that takes no updates now
+    /// (security updates off, archived, deleted, or a mirror that is not
+    /// taken over, whose pushes are refused) the reason is that instead.
     pub async fn stalled_updates(&self) -> Result<()> {
         let before = rfc3339(now_ms().saturating_sub(STALLED_MS));
         for row in self.store.stalled_updates(&before, 10).await? {
@@ -641,63 +618,14 @@ impl Security {
                 self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
                 continue;
             }
-            self.needs_code(&repo, &row, "The version could not be raised in a sandbox on its own").await?;
+            let why = format!(
+                "`{}` could not be raised to {} on its own: a package that depends on it may hold it back, or the upgrade needs code changes.",
+                row.package, row.target
+            );
+            self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
+            self.note(&row, "update_failed", Some(g1t_contracts::system::USERNAME), None, Some(&why)).await?;
         }
         Ok(())
-    }
-
-    /// Raising the version is not enough: closes g1t's pull request, opens
-    /// an issue for the change, and puts g1t to work on it.
-    async fn needs_code(&self, repo: &RepoRow, row: &UpdateRow, why: &str) -> Result<()> {
-        let path = Self::path_of(repo);
-        let system = User::system(&repo.namespace);
-        let open = self.store.open_vulnerabilities(&repo.repo_id).await?;
-        let vulns: Vec<&VulnRow> = open
-            .iter()
-            .filter(|vuln| vuln.ecosystem == row.ecosystem && vuln.package == row.package)
-            .collect();
-        if vulns.is_empty() {
-            return self.supersede(repo, row, format!("`{}` is no longer vulnerable here.", row.package)).await;
-        }
-        let issue: Outcome<g1t_contracts::work::Issue> = g1t_kit::call(
-            &self.work,
-            "open_issue",
-            &OpenIssueArgs {
-                actor: system.clone(),
-                repo: path.clone(),
-                title: format!("Upgrade {} to {}: needs code changes", row.package, row.target).chars().take(200).collect(),
-                body: issue_text(&row.ecosystem, &row.package, &row.target, &vulns, &[]),
-                labels: vec!["dependencies".to_owned(), "security".to_owned()],
-                checks: Vec::new(),
-                milestone: None,
-            },
-        )
-        .await?;
-        let issue = match issue {
-            Outcome::Ok(issue) => issue,
-            Outcome::Fail(refused) => {
-                let error = format!("{why}, and the issue for it could not be opened: {}", refused.message);
-                self.store.set_update(row, UpdateState::Failed, row.pull(), None, Some(&error)).await?;
-                return self.note(row, "update_failed", Some(g1t_contracts::system::USERNAME), None, Some(&error)).await;
-            }
-        };
-        self.store
-            .set_update(row, UpdateState::NeedsCode, row.pull(), Some(issue.number), Some(why))
-            .await?;
-        if let Some(number) = row.pull() {
-            self.close_with(repo, number, format!("{why}, so code has to change too. g1t is making the change in #{}.", issue.number))
-                .await?;
-        }
-        let started: Outcome<Value> =
-            g1t_kit::call(&self.runner, "run", &json!({ "actor": system, "repo": path, "issue": issue.number })).await?;
-        if let Outcome::Fail(refused) = started {
-            self.comment(&system, &path, issue.number, format!(
-                "g1t could not put an agent on this upgrade: {}\n\nAssign it to g1t once agents can run here, or upgrade it by hand.",
-                refused.message
-            ))
-            .await?;
-        }
-        self.note(row, "update_needs_code", Some(g1t_contracts::system::USERNAME), Some(issue.number), Some(why)).await
     }
 }
 

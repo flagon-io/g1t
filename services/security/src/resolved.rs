@@ -483,7 +483,7 @@ mod tests {
 
     fn located(name: &str, version: &str, path: &str) -> Located {
         let lockfile = Lockfile::for_path(path).unwrap();
-        Located { package: Package { name: name.into(), version: version.into(), ecosystem: lockfile.ecosystem() }, lockfile, path: path.into() }
+        Located { package: Package { name: name.into(), version: version.into(), ecosystem: lockfile.ecosystem() }, path: path.into() }
     }
 
     #[test]

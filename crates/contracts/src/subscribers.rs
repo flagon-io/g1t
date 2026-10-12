@@ -160,7 +160,6 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "pull.ready",
             "pull.merged",
             "pull.closed",
-            "checks.completed",
             "comment.created",
             "repo.created",
             "repo.visibility_changed",

@@ -249,9 +249,7 @@ Each update pull request is made on a branch g1t creates (see
 or closes, whether g1t or a person closes it, g1t deletes that branch. If
 someone pushed to the branch after its last commit in the pull request,
 g1t leaves it alone. A branch left from an update pull request that is
-already closed is removed on a later push to the default branch. The
-branch of a pull request closed because code has to change is kept while
-g1t works on the issue for it.
+already closed is removed on a later push to the default branch.
 
 Deleting the branch means a closed update pull request cannot be reopened
 from the page. To make a version update again, comment `@g1t reopen` on
@@ -263,13 +261,11 @@ Version update pull requests land through the branch's
 [required checks](/guides/pull-requests/#required-status-checks) and the
 [merge queue](/guides/merge-queue/) like any other change.
 
-When a required check fails on g1t's own commit (or, on a branch with no
-required checks, a workflow's status fails), raising the version was not
-enough. g1t closes the pull request and opens an issue titled
-`<pull request title>: needs code changes`, assigned to
-[g1t](/guides/working-with-g1t/), to make the changes the update needs.
-Security updates are handled
-[the same way](/guides/security/#when-code-has-to-change).
+When a required check fails (or, on a branch with no required checks, a
+workflow's status fails), the pull request stays open with its failing
+checks for you to decide on: push the code changes the update needs to its
+branch, or close it. g1t opens no issue for it. Security updates are
+handled [the same way](/guides/security/#when-an-update-cannot-be-made).
 
 If the sandbox has not pushed a branch 45 minutes after an update started,
 the update is marked failed, and the entry's next run tries again.

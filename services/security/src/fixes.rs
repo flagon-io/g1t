@@ -160,7 +160,7 @@ impl Security {
         let open = self.store.open_vulnerabilities(repo_id).await?;
         let rows: Vec<&VulnRow> = open.iter().filter(|row| row.ecosystem == vuln.ecosystem && row.package == vuln.package).collect();
         let target = vuln.fixed_version.clone().unwrap_or_else(|| "a version without these advisories".to_owned());
-        let body = crate::deps::issue_text(&vuln.ecosystem, &vuln.package, &target, &rows, &[]);
+        let body = crate::deps::issue_text(&vuln.ecosystem, &vuln.package, &target, &rows);
         Ok((format!("Upgrade {} to {target}", vuln.package), body))
     }
 }

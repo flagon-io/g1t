@@ -118,15 +118,12 @@ struct Pushed {
     unscanned: bool,
 }
 
-/// `pull.merged`, `pull.closed` and `checks.completed`, as far as this
-/// service reads them.
+/// `pull.merged` and `pull.closed`, as far as this service reads them.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PullHappened {
     repo_id: String,
     number: u32,
-    #[serde(default)]
-    status: Option<String>,
 }
 
 /// The longest comment a dismissal keeps.
@@ -569,24 +566,13 @@ impl Security {
                     }
                 }
             }
-            "pull.merged" | "pull.closed" | "checks.completed" => {
-                if let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone())
-                    && !(event.kind != "checks.completed" && self.update_pull_closed(&event.kind, &happened.repo_id, happened.number).await?)
-                {
-                    self.update_pull_event(
-                        &event.kind,
-                        &happened.repo_id,
-                        happened.number,
-                        happened.status.as_deref(),
-                        event.actor.as_deref(),
-                    )
-                    .await?;
-                }
-                // One of g1t's update pull requests closed or merged, by g1t
-                // or by a person: its branch goes.
-                if event.kind != "checks.completed"
-                    && let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone())
-                {
+            "pull.merged" | "pull.closed" => {
+                if let Ok(happened) = serde_json::from_value::<PullHappened>(event.data.clone()) {
+                    if !self.update_pull_closed(&event.kind, &happened.repo_id, happened.number).await? {
+                        self.update_pull_event(&event.kind, &happened.repo_id, happened.number, event.actor.as_deref()).await?;
+                    }
+                    // One of g1t's update pull requests closed or merged, by
+                    // g1t or by a person: its branch goes.
                     self.pull_finished(&happened.repo_id, happened.number).await?;
                 }
             }

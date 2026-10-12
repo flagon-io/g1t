@@ -147,8 +147,8 @@ export type Vulnerability = {
  * Where a security update stands. `requested`: a sandbox is making the
  * change. `open`: its pull request is going through the required checks.
  * `superseded`: a newer update replaced it, or the package is no longer
- * vulnerable. `needs_code`: the version could not be raised without code
- * changes, so g1t has an issue for it. `failed`: see `error`.
+ * vulnerable. `needs_code`: an earlier update g1t opened an issue for; new
+ * updates no longer reach it. `failed`: see `error`.
  */
 export type UpdateState = "requested" | "open" | "merged" | "closed" | "superseded" | "needs_code" | "failed";
 

@@ -336,7 +336,7 @@ Each alert shows its update's status and links the pull request:
 | Merged | The pull request merged. |
 | Closed | The pull request was closed without merging. |
 | Superseded | A newer security update for the same package replaced it, or the alerts it fixes were fixed another way or dismissed. |
-| Needs code changes | Raising the version was not enough; an agent is working on it. |
+| Needs code changes | An earlier update that g1t opened an issue for. New updates no longer reach this status. |
 | Failed | The update could not be made. |
 
 ### When an update is no longer needed
@@ -393,16 +393,25 @@ How each lockfile is changed:
 
 Install scripts never run. A lockfile the sandbox cannot change this way,
 such as a `requirements.txt` that pins with `--hash`, is handled as
-[when code has to change](#when-code-has-to-change): if no branch has been
-pushed 45 minutes after the update started, g1t gets an issue for it.
+[when an update cannot be made](#when-an-update-cannot-be-made): if no
+branch has been pushed 45 minutes after the update started, the update
+fails.
 
-### When code has to change
+### When an update cannot be made
 
-Sometimes raising the version is not enough: the bump fails, or the pull
-request's required checks fail because code must change. Then g1t opens an
-issue and assigns it to [g1t](/guides/working-with-g1t/). That session
-shows as **started by g1t**. This is the only time an agent is involved in
-a security update.
+Sometimes raising the version is not enough, and g1t does not open an issue
+for it:
+
+- **The version cannot be raised.** A package that depends on it may hold
+  it back, or the lockfile cannot be changed in the sandbox. The update is
+  marked **Failed**, the alert says why, and g1t tries again a day later.
+- **The pull request's required checks fail.** It stays open with the
+  failing checks for you to decide on: push the code changes it needs to
+  its branch, or close it.
+
+To have an agent make the change, use **Fix with g1t** on the alert: it
+opens an issue and assigns it to [g1t](/guides/working-with-g1t/), as you.
+If the vulnerable code is never reached, dismiss the alert with a reason.
 
 Turn **Security updates** off under **Vulnerabilities** to stop g1t opening
 these pull requests for a project. Alerts are still listed.

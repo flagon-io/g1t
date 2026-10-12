@@ -396,8 +396,9 @@ pub enum UpdateState {
     /// A newer security update replaced it, or the package is no longer
     /// vulnerable; g1t closed it.
     Superseded,
-    /// The version could not be raised without changing code: an issue
-    /// was opened for g1t instead.
+    /// An earlier update g1t opened an issue for, when the version could
+    /// not be raised without changing code. New updates no longer reach it:
+    /// they fail with why, or their pull request stays open.
     NeedsCode,
     /// It could not be made; why is in `error`.
     Failed,

@@ -81,7 +81,6 @@ fn names_a_fix(record: &Value) -> bool {
 /// One package in one lockfile.
 pub(crate) struct Located {
     pub(crate) package: Package,
-    pub(crate) lockfile: Lockfile,
     pub(crate) path: String,
 }
 
@@ -101,7 +100,7 @@ fn packages(files: &Lockfiles) -> Vec<Located> {
             continue;
         }
         for package in lockfile.parse(&file.text) {
-            located.push(Located { package, lockfile, path: file.path.clone() });
+            located.push(Located { package, path: file.path.clone() });
         }
     }
     located
@@ -382,32 +381,27 @@ fn vulnerability(repo_id: &str, item: &Located, advisory: &Advisory) -> Vulnerab
     }
 }
 
-/// The issue's body, for when raising the version is not enough, written
-/// for the agent that takes it as much as for a person, ending with what
-/// done means: commands that show no lockfile still resolves a vulnerable
-/// version, and the project's tests. The pull request merges on the
-/// repository's required checks, like any other.
-pub(crate) fn issue_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow], located: &[Located]) -> String {
+/// The issue's body, for when a person asks g1t to fix a vulnerability
+/// alert, written for the agent that takes it as much as for a person,
+/// ending with what done means: commands that show no lockfile still
+/// resolves a vulnerable version, and the project's tests. The pull request
+/// merges on the repository's required checks, like any other.
+pub(crate) fn issue_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow]) -> String {
     let mut body = format!(
-        "`{package}` ({ecosystem}) has known vulnerabilities with a fix in **{target}**, and raising its version alone \
-         does not pass this project's checks. Upgrade it to {target} or later everywhere it is locked, and change the \
-         code that depends on it, keeping other changes to what the upgrade needs.\n\n"
+        "`{package}` ({ecosystem}) has known vulnerabilities with a fix in **{target}**. Upgrade it to {target} or later \
+         everywhere it is locked, and change the code that depends on it where the upgrade needs that, keeping other \
+         changes to what the upgrade needs.\n\n"
     );
     body.push_str(&advisory_table(vulns));
     let mut checks = Vec::new();
     let mut manifests = BTreeSet::new();
     let mut tests = BTreeSet::new();
     for vuln in vulns {
-        let Some(item) = located
-            .iter()
-            .find(|item| item.path == vuln.manifest && item.package.name == vuln.package && item.package.version == vuln.version)
-        else {
-            continue;
-        };
-        if manifests.insert((item.path.clone(), item.package.version.clone())) {
-            checks.push(still_locked_check(item.lockfile, &item.path, &item.package.name, &item.package.version));
+        let Some(lockfile) = Lockfile::for_path(&vuln.manifest) else { continue };
+        if manifests.insert((vuln.manifest.clone(), vuln.version.clone())) {
+            checks.push(still_locked_check(lockfile, &vuln.manifest, &vuln.package, &vuln.version));
         }
-        if let Some(test) = test_command(item.lockfile, directory(&item.path)) {
+        if let Some(test) = test_command(lockfile, directory(&vuln.manifest)) {
             tests.insert(test);
         }
     }
@@ -498,12 +492,7 @@ mod tests {
             dismissed_by: None,
             dismissed_at: None,
         };
-        let located = vec![Located {
-            package: Package { ecosystem: g1t_scan::lockfiles::Ecosystem::Npm, name: "lodash".into(), version: "4.17.20".into() },
-            lockfile: Lockfile::PackageLock,
-            path: "web/package-lock.json".into(),
-        }];
-        let body = issue_text("npm", "lodash", "4.17.21", &[&row], &located);
+        let body = issue_text("npm", "lodash", "4.17.21", &[&row]);
         assert!(body.contains("[GHSA-35jh-r3h4-6jhm](https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm) | high | 4.17.20 | 4.17.21"));
         assert!(body.contains("`web/package-lock.json` (4.17.20)"));
         let (_, done) = body.split_once("## Definition of done\n\n").unwrap();

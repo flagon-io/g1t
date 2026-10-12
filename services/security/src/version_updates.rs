@@ -35,7 +35,7 @@ use g1t_contracts::updates::{
     VersionUpdatesState, update_command,
 };
 use g1t_contracts::work::{
-    Mergeable, OpenIssueArgs, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, RequiredState, Runtime, SetCommitStatusArgs,
+    Mergeable, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, RequiredState, Runtime, SetCommitStatusArgs,
     UpdatePullArgs, ViewArgs,
 };
 use g1t_contracts::{FailureCode, Outcome, User};
@@ -43,7 +43,7 @@ use g1t_kit::now_ms;
 use g1t_scan::lockfiles::Lockfile;
 use g1t_scan::version;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
 
 use crate::Security;
@@ -1051,7 +1051,6 @@ impl Security {
         }
         let ours = row.head.is_some() && row.head == detail.pull.head_commit;
         match checks_verdict(&detail) {
-            Some(false) if ours => return self.update_needs_code(&repo, row, &detail).await,
             Some(true) if row.merge_by.is_some() => {
                 let merged: Outcome<Pull> = g1t_kit::call(
                     &self.work,
@@ -1095,51 +1094,6 @@ impl Security {
             .find(|found| found.id == entry)
             .and_then(|found| found.options.get("rebase-strategy").and_then(Value::as_str).map(str::to_owned))
             .unwrap_or_else(|| "auto".to_owned())
-    }
-
-    /// An update that breaks the branch's required checks: closed, and an
-    /// issue opened for g1t to make the code changes it needs.
-    async fn update_needs_code(&self, repo: &RepoRow, row: &PullRow, detail: &PullDetail) -> Result<()> {
-        let system = User::system(&repo.namespace);
-        let path = Self::repo_path(repo);
-        let failing: Vec<String> = if detail.required_checks.is_empty() {
-            detail.statuses.iter().filter(|status| matches!(status.state.as_str(), "failure" | "error")).map(|status| status.context.clone()).collect()
-        } else {
-            detail.required_checks.iter().filter(|check| check.state == RequiredState::Failure).map(|check| check.name.clone()).collect()
-        };
-        let issue: Outcome<g1t_contracts::work::Issue> = g1t_kit::call(
-            &self.work,
-            "open_issue",
-            &OpenIssueArgs {
-                actor: system.clone(),
-                repo: path.clone(),
-                title: format!("{}: needs code changes", row.title).chars().take(200).collect(),
-                body: needs_code_text(row, &failing, detail.pull.number),
-                labels: vec!["dependencies".to_owned()],
-                checks: Vec::new(),
-                milestone: None,
-            },
-        )
-        .await?;
-        let issue = match issue {
-            Outcome::Ok(issue) => issue,
-            Outcome::Fail(refused) => {
-                let error = format!("Its checks fail, and the issue for it could not be opened: {}", refused.message);
-                return self.store.set_update_pull(&row.id, UpdateState::Failed, row.pull(), None, Some(&error)).await;
-            }
-        };
-        self.store.set_update_pull(&row.id, UpdateState::NeedsCode, row.pull(), Some(issue.number), Some("Raising the versions fails this branch's required checks.")).await?;
-        self.close_with(repo, detail.pull.number, format!("Raising the versions alone fails this branch's required checks, so code has to change too. g1t is making the change in #{}.", issue.number))
-            .await?;
-        let started: Outcome<Value> = g1t_kit::call(&self.runner, "run", &json!({ "actor": system, "repo": path, "issue": issue.number })).await?;
-        if let Outcome::Fail(refused) = started {
-            self.comment(&system, &path, issue.number, format!(
-                "g1t could not put an agent on this update: {}\n\nAssign it to g1t once agents can run here, or make the change by hand.",
-                refused.message
-            ))
-            .await?;
-        }
-        Ok(())
     }
 
     /// A comment on an update pull request: a command, if it is one.
@@ -1521,30 +1475,12 @@ fn updated(update: &Planned) -> UpdatedDependency {
     }
 }
 
-/// The issue for an update that breaks the build, for the agent that takes
-/// it as much as for a person.
-pub fn needs_code_text(row: &PullRow, failing: &[String], pull: u32) -> String {
-    let mut body = format!(
-        "#{pull} raises these dependencies, and this branch's required checks fail with only the versions changed{}:\n\n| Package | Directory | From | To |\n| --- | --- | --- | --- |\n",
-        if failing.is_empty() { String::new() } else { format!(" ({})", failing.join(", ")) }
-    );
-    for dependency in row.dependencies() {
-        body.push_str(&format!("| `{}` | `{}` | {} | {} |\n", dependency.name, dependency.directory, dependency.from, dependency.to));
-    }
-    body.push_str(
-        "\nUpgrade them as #{pull} does and change the code that depends on them until the checks pass, keeping other changes to what the upgrade needs. Read each package's release notes for what changed.",
-    );
-    let body = body.replace("#{pull}", &format!("#{pull}"));
-    let mut body = g1t_contracts::work::with_definition_of_done(&body, &["Every dependency above is at its new version, and the required checks pass.".to_owned()]);
-    body.push_str("\n\n---\n_Opened by g1t's version updates._");
-    body
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::read;
     use g1t_contracts::work::{CommitStatus, RequiredCheck};
+    use serde_json::json;
 
     fn entry(extra: &str) -> Entry {
         let found = read(&format!("version: 2\nupdates:\n  - package-ecosystem: npm\n{extra}    schedule: {{interval: daily}}\n"));
@@ -1710,24 +1646,5 @@ mod tests {
         assert_eq!(target_of(&entry("    directory: /\n"), "main"), None);
         assert_eq!(osv_ecosystem("gomod"), Some("Go"));
         assert_eq!(package_ecosystem("crates.io"), Some("cargo"));
-    }
-
-    #[test]
-    fn the_issue_names_what_broke() {
-        let mut found = row("group:lint", "", "open");
-        found.dependencies = serde_json::to_string(&[UpdatedDependency {
-            name: "eslint".into(),
-            from: "8.0.0".into(),
-            to: "9.0.0".into(),
-            directory: "/".into(),
-            dependency_type: "direct:development".into(),
-            update_type: "version-update:semver-major".into(),
-        }])
-        .unwrap();
-        let text = needs_code_text(&found, &["CI".into()], 12);
-        assert!(text.starts_with("#12 raises these dependencies, and this branch's required checks fail with only the versions changed (CI):"));
-        assert!(text.contains("| `eslint` | `/` | 8.0.0 | 9.0.0 |"));
-        assert!(text.contains("Upgrade them as #12 does"));
-        assert!(text.contains("## Definition of done"));
     }
 }
