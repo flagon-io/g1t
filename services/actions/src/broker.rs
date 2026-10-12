@@ -9,13 +9,20 @@
 //! as they leave. Anywhere else the stand-in goes as it is, which is
 //! useless to whoever receives it.
 //!
-//! A self-hosted runner's traffic never passes the Worker, so a job there
-//! gets the stand-in too, and a line in its log saying why it will not
-//! work: the real value is never sent to a machine g1t does not run.
+//! A self-hosted runner's traffic never passes the Worker, and the real
+//! value is never sent to a machine g1t does not run. A harness that can
+//! broker (on Linux or macOS, `JobCallArgs::broker`) is given each
+//! stand-in's hosts in its spec (`brokered`), never a value: its job's
+//! HTTPS to those hosts goes through a proxy of the harness's, which
+//! passes each request carrying a stand-in to g1t
+//! (`POST /actions/jobs/{job}/broker`), where the runner Worker fills it
+//! in (`relayed_secrets`), sends it and scrubs the answer. Any other
+//! harness's job keeps the stand-in, and its log says why it will not
+//! work.
 
 use g1t_contracts::actions::{BrokeredSecret, JobCallArgs, STAND_IN_PREFIX};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::Outcome;
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use g1t_secrets::random_hex;
 use serde::Deserialize;
@@ -24,7 +31,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::plan::LOG_INSERT;
-use crate::{Actions, Count, check};
+use crate::{Actions, Count, check, fail};
 
 /// The most hosts one brokered secret names.
 pub(crate) const MAX_HOSTS: usize = 20;
@@ -90,11 +97,32 @@ pub(crate) fn substitute(secrets: &mut Map<String, Value>, brokers: &[Broker], m
     made
 }
 
-/// What a job on a self-hosted runner is told for each brokered secret it
-/// was given.
+/// What a job on a self-hosted runner whose harness cannot broker (a
+/// Windows one, or one from before brokering) is told for each brokered
+/// secret it was given.
 pub(crate) fn self_hosted_note(name: &str) -> String {
     format!(
-        "##[warning]{name} is a brokered secret: this job has a stand-in for it, which g1t fills in only on its own machines for now. On a self-hosted runner, requests that use it will not be signed in."
+        "##[warning]{name} is a brokered secret: this job has a stand-in for it, which this runner cannot have filled in (that takes an up-to-date runner whose jobs run on Linux or macOS). Requests that use it will not be signed in."
+    )
+}
+
+/// What a job on a self-hosted runner that brokers is told for each
+/// brokered secret it was given.
+pub(crate) fn brokered_note(name: &str, hosts: &[String]) -> String {
+    format!(
+        "{name} is a brokered secret: this job's requests to {} go through g1t, which fills it in, so its value never reaches this computer.",
+        hosts.join(", ")
+    )
+}
+
+/// What a brokering harness is given for its job's stand-ins: each one,
+/// its secret's key (for the log) and its hosts. Never a value.
+pub(crate) fn spec_entries(stand_ins: &[StandIn]) -> Value {
+    Value::Array(
+        stand_ins
+            .iter()
+            .map(|made| serde_json::json!({ "standIn": made.stand_in, "name": made.broker.name, "hosts": made.broker.hosts }))
+            .collect(),
     )
 }
 
@@ -194,6 +222,21 @@ impl Actions {
         let job = check!(self.job_for_started_token(&a).await?);
         Ok(Outcome::Ok(self.stand_ins_of(&job.id).await?))
     }
+
+    /// `relayed_secrets`: a running self-hosted job's stand-ins and what
+    /// they stand for, for the runner Worker to fill in on a request the
+    /// job's harness passed to g1t (`POST /actions/jobs/{job}/broker`).
+    /// Only with the job's current token, which its harness holds: the one
+    /// it started with may have been left on the runner's computer. A job
+    /// on g1t's machines has its requests filled in as they leave its
+    /// sandbox, and is refused here.
+    pub async fn relayed_secrets(&self, a: JobCallArgs) -> Result<Outcome<Vec<BrokeredSecret>>> {
+        let job = check!(self.job_for_token(&a).await?);
+        if job.runner_id.is_none() {
+            return Ok(fail(FailureCode::Forbidden, "Only a self-hosted runner's job relays its requests."));
+        }
+        Ok(Outcome::Ok(self.stand_ins_of(&job.id).await?))
+    }
 }
 
 #[cfg(test)]
@@ -201,7 +244,7 @@ mod tests {
     use rusqlite::{Connection, params};
     use serde_json::{Map, Value, json};
 
-    use super::{Broker, STAND_IN_INSERT, STAND_INS_EXPIRED, STAND_INS_OF_JOB, self_hosted_note, stand_in, substitute};
+    use super::{Broker, STAND_IN_INSERT, STAND_INS_EXPIRED, STAND_INS_OF_JOB, StandIn, brokered_note, self_hosted_note, spec_entries, stand_in, substitute};
 
     fn broker(name: &str, value: &str, hosts: &[&str]) -> Broker {
         Broker { name: name.into(), value: value.into(), hosts: hosts.iter().map(|h| (*h).to_owned()).collect() }
@@ -273,7 +316,21 @@ mod tests {
     fn the_self_hosted_note_is_a_warning_naming_the_secret() {
         let note = self_hosted_note("NPM_TOKEN");
         assert!(note.starts_with("##[warning]NPM_TOKEN"));
-        assert!(note.contains("only on its own machines"));
+        assert!(note.contains("cannot have filled in"));
+    }
+
+    #[test]
+    fn a_brokering_harness_gets_hosts_and_stand_ins_but_never_a_value() {
+        let made = vec![StandIn {
+            stand_in: "g1tsec_1".into(),
+            broker: broker("NPM_TOKEN", "npm_realvalue123", &["registry.npmjs.org", "*.npm.example.com"]),
+        }];
+        let entries = spec_entries(&made);
+        assert_eq!(entries, json!([{ "standIn": "g1tsec_1", "name": "NPM_TOKEN", "hosts": ["registry.npmjs.org", "*.npm.example.com"] }]));
+        assert!(!entries.to_string().contains("npm_realvalue123"));
+        let note = brokered_note("NPM_TOKEN", &made[0].broker.hosts);
+        assert!(!note.starts_with("##["), "not a warning: {note}");
+        assert!(note.contains("registry.npmjs.org, *.npm.example.com") && note.contains("never reaches this computer"));
     }
 
     fn database() -> Connection {

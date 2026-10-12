@@ -116,6 +116,8 @@ import {
   withPlanLimits,
 } from "./guard";
 import { newlyMisdirected } from "./broker";
+import { relay, relayDeps } from "./broker-relay";
+import { forward } from "./forward";
 import { EGRESS_ENV } from "./egress";
 
 // Outbound interception, which network guardrails use, needs this exported.
@@ -1283,6 +1285,16 @@ export default class RunnerService
       const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromString(args.sandbox));
       await sandbox.remoteEnded(args.exitCode, args.reason ?? null);
       return Response.json(ok(true));
+    }
+    // A self-hosted job's request to a brokered secret's host, which the
+    // API passes on as it came (broker-relay.ts).
+    if (request.method === "POST" && pathname === "/rpc/broker") {
+      try {
+        return await relay(request, relayDeps(this.env.ACTIONS, (upstream) => forward(upstream)));
+      } catch (error) {
+        console.log("broker relay failed", String(error));
+        return Response.json({ error: { code: "unavailable", message: "g1t could not relay the request." } }, { status: 503 });
+      }
     }
     if (request.method === "POST" && pathname === "/rpc/bump") {
       return Response.json(await this.startBump(await request.json()));

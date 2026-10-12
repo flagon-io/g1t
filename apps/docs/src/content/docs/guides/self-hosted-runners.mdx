@@ -323,6 +323,15 @@ runs:
   The runner inside fetches the job, its secrets and its `G1T_TOKEN`
   itself, and sends its log back the same way, masked. None of it passes
   through a log or file of your computer's.
+- **A [brokered secret](/guides/secrets-and-variables/#brokered-secrets)'s
+  value never reaches your computer at all.** The job has a stand-in, and
+  the runner passes the job's requests to the secret's hosts to g1t, which
+  fills the value in there and swaps it back out of the answer. This
+  works for jobs that run on Linux or macOS: in the sandbox's VM, in
+  Docker, or directly on the computer. A job on Windows keeps the
+  stand-in, and its log
+  warns that requests using it will not be signed in. See
+  [on a self-hosted runner](/guides/secrets-and-variables/#on-a-self-hosted-runner).
 - **Anything running as your account can look inside a running
   sandbox**, as you can: open the WSL distribution with `wsl -u root`,
   run a command in a Windows Sandbox, or read the VM's disk. So can an

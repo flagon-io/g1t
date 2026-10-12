@@ -192,8 +192,12 @@ the job may reach. A job whose project's network is open, but which may be
 given a brokered secret, still sends its HTTP and HTTPS through the
 Worker, which reaches every host for it, and trusts the certificate as a
 restricted sandbox does; its other protocols go straight out, as before.
-Self-hosted runners' traffic does not pass through g1t, so brokered
-secrets stay stand-ins there.
+Self-hosted runners' traffic does not pass through g1t, so a runner whose
+jobs run on Linux or macOS sends the requests that carry a stand-in to g1t
+itself, through a proxy it runs for the job, and g1t fills them in the same
+way; see
+[on a self-hosted runner](/guides/secrets-and-variables/#on-a-self-hosted-runner).
+On Windows, brokered secrets stay stand-ins.
 
 ## Commands
 

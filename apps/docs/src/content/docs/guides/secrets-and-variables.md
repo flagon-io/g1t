@@ -157,9 +157,15 @@ follows them itself, and each is filled in only for the secret's hosts.
   brokered secret sends its HTTP and HTTPS through g1t either way, and
   trusts the certificate HTTPS is re-signed with, as a restricted one does.
   Other protocols are not affected.
-- **Self-hosted runners: not yet.** Their traffic never passes through
-  g1t, so a job there gets the stand-in too, never the value, and its log
-  warns that requests using it will not be signed in. Keep a separate,
+- **Self-hosted runners on Linux and macOS**, in Docker, in the desktop
+  app's sandbox, or directly on the computer: the job's requests to the
+  secret's hosts go through g1t, which fills the value in, so it never
+  reaches your computer. See
+  [on a self-hosted runner](#on-a-self-hosted-runner).
+- **Self-hosted runners whose jobs run on Windows** (Windows Sandbox, or
+  directly on Windows): not yet. A job there gets the stand-in, never the
+  value, and its log warns that requests using it will not be signed in.
+  So does a job on a runner from before brokering. Keep a separate,
   unbrokered secret for jobs that must run there.
 - **Deployments** never read a brokered secret: a running app needs the
   value itself. A brokered secret is available to workflows only.
@@ -167,6 +173,63 @@ follows them itself, and each is filled in only for the secret's hosts.
 
 The value is masked in the job's log as any secret is, should it ever
 appear there, and so is the stand-in.
+
+### On a self-hosted runner
+
+A self-hosted runner's traffic does not leave through g1t, and g1t never
+sends a brokered value to a computer it does not run. So the runner
+brings the requests that need the value to g1t instead:
+
+1. The job gets the stand-in, as on g1t's machines, and the runner is
+   told which hosts each stand-in is for. It is never told a value.
+2. The job's steps get `HTTPS_PROXY` pointing at a proxy the runner runs
+   for that job on `127.0.0.1`. HTTPS to any host the job's brokered
+   secrets are not for passes through it as a plain tunnel, which the
+   runner never sees inside.
+3. HTTPS to one of those hosts is opened with a certificate the runner
+   makes for that host. It comes from a certificate authority made for
+   that job alone, which can sign for the brokered hosts and no others,
+   and whose key is never written to disk. The steps trust it through the
+   same variables as on g1t's machines (`SSL_CERT_FILE`,
+   `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`,
+   `PIP_CERT`, `GIT_SSL_CAINFO`, `CARGO_HTTP_CAINFO`), each pointing at
+   what it pointed at before with the job's certificate added.
+4. A request on that connection that carries one of the job's stand-ins
+   goes to g1t with the job's token. g1t fills the value in as described
+   above, sends the request without following redirects, and sends back
+   the answer, with the value swapped back for its stand-in in its headers
+   and in any text body, whatever its size. A request without a stand-in
+   goes straight to the host.
+
+g1t relays only a request that carries one of the job's own stand-ins,
+over HTTPS, to one of that secret's hosts, and only while the job runs,
+with the token the job holds now. Anything else is refused, and the job's
+log says so once. The log's first lines name each brokered secret and the
+hosts its requests go to g1t for.
+
+Requests to brokered hosts take the longer way, through g1t, so they are
+a little slower, and have limits:
+
+| Limit | |
+| --- | --- |
+| A request's body | 32 MB |
+| An answer's body | 1 GB |
+| One request, its answer included | 10 minutes |
+| HTTP versions | HTTP/1.1 between the job and the runner; plain HTTP is never filled in, and `HTTP_PROXY` is left as your computer has it |
+
+What a self-hosted runner does not cover:
+
+- **Jobs that run on Windows**, as above.
+- **Containers a step starts**: a Docker action, `services:`, or
+  `docker run` in a step. They do not get the job's proxy, so their
+  requests carry the stand-in as it is.
+- **A computer that sets its own `HTTPS_PROXY`.** The runner does not
+  chain proxies: its jobs get the stand-in and the warning.
+- **Tools that ignore `HTTPS_PROXY`** or bring their own trusted
+  certificates send the stand-in as it is. npm and most other package
+  managers, `curl`, `git`, Cargo, Python's `requests` and Go use it.
+  Node.js's own `fetch` and `https` use it in the releases that read
+  `NODE_USE_ENV_PROXY`, which the runner sets.
 
 ### What brokering cannot cover
 
