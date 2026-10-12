@@ -44,7 +44,8 @@ test("all shows everything once", () => {
 
 test("search finds by name, description, tag and keyword, across every category", () => {
   const found = arrange(workspace, { category: "design", query: "sentry", connected: none });
-  assert.deepEqual(found.available.map((view) => view.id), ["sentry", "sentry-mcp"], "a search is not held to the category");
+  assert.deepEqual(found.available.map((view) => view.id), ["sentry"], "a search is not held to the category");
+  assert.deepEqual(found.soon.map((view) => view.id), ["sentry-mcp"], "what is coming sorts after what works");
   assert.ok(matchesQuery(personal.find((view) => view.id === "google-calendar")!, "in a meeting"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "anthropic")!, "claude"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "incident-io")!, "incidentio"));
@@ -74,6 +75,9 @@ test("a tile has the connector's letters and a steady colour", () => {
   assert.equal(monogram("Sentry"), "S");
   assert.equal(monogram("incident.io"), "II");
   assert.equal(monogram("1Password"), "1P");
+  assert.equal(monogram("GitHub (MCP)"), "GM", "punctuation is not a letter");
+  assert.equal(monogram("Linear (MCP)"), "LM");
+  assert.equal(monogram("Atlassian (Jira and Confluence)"), "AJ");
   assert.equal(tileColor("figma"), tileColor("figma"));
 });
 
