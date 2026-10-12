@@ -2,7 +2,7 @@
 //!
 //! This finds a public repository over smart HTTP and its default branch, so
 //! an address that does not work is refused before anything is made; the
-//! copy itself, every branch and tag, is mirror.rs's (`Endpoint::anonymous`).
+//! copy itself, every branch and tag, is copy.rs's (`Endpoint::anonymous`).
 //! Only public repositories reachable over https are imported this way.
 
 use worker::js_sys::Uint8Array;

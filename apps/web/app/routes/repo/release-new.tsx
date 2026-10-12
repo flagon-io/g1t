@@ -7,7 +7,7 @@ import { encodeTag } from "../../components/releases";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
-import { requireRepo, requireWritableRepo } from "../../lib/access.server";
+import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
 import { repos } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
@@ -29,7 +29,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   const text = (key: string) => String(form.get(key) ?? "").trim();
   const tagName = text("tag");

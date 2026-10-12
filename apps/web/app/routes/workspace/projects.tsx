@@ -2,11 +2,8 @@ import { ArrowUpRight, Box, ChevronLeft, ChevronRight, LayoutGrid, List, Lock, R
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Form, Link, useLocation, useNavigation, useSubmit } from "react-router";
 
-import type { MirrorState } from "@g1t/contracts";
-
 import type { Route } from "./+types/projects";
 import { host } from "../../components/deploy";
-import { MirrorBadge } from "../../components/mirror";
 import { PinButton } from "../../components/pin-button";
 import { EmptyState, TimeAgo, notACredential } from "../../components/ui";
 import { Button } from "../../components/ui/button";
@@ -31,7 +28,7 @@ import {
   readProjectQuery,
 } from "../../lib/project-list";
 import { kindLabel, primaryLink } from "../../lib/project-kind";
-import { deployments, mirrors, projects } from "../../lib/services.server";
+import { deployments, projects } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
 
@@ -56,12 +53,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   ]);
   const live = new Map((deploys?.ok ? deploys.value : []).map((entry) => [entry.slug, entry]));
   const full = new Map((listed.ok ? listed.value : []).map((project) => [project.id, project]));
-  // Which repositories mirror a remote, and where each mirror stands, so a
-  // row says it is a mirror and the list can be narrowed to them: one call
-  // for every repository listed. Without an answer, nothing is marked.
-  const repoIds = [...new Set((listed.ok ? listed.value : []).flatMap((project) => (project.source.kind === "hosted" ? [project.source.repoId] : [])))];
-  const briefs = repoIds.length > 0 ? await mirrors.briefs(repoIds).catch(() => []) : [];
-  const leaders = new Map(briefs.filter((brief) => brief.role === "leader").map((brief) => [brief.repoId, brief]));
   const all: Listed[] = (listed.ok ? listed.value : []).map((project) => ({
     id: project.id,
     slug: project.slug,
@@ -75,10 +66,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     pushedAt: project.pushedAt ?? null,
     activity: project.activity ?? 0,
     deploying: live.get(project.slug)?.enabled ?? false,
-    mirror: (() => {
-      const leader = project.source.kind === "hosted" ? leaders.get(project.source.repoId) : undefined;
-      return leader ? { state: leader.state as MirrorState, remote: leader.name } : null;
-    })(),
   }));
   const matched = filterProjects(all, query);
   const shown = pageOf(matched, query.page);
@@ -107,17 +94,11 @@ const CONTROL =
 /** A filter's select, on the same surface as the other controls. */
 const FILTER = "w-auto bg-surface";
 
-/**
- * Its language, its kind when it is not an app, whether it mirrors a
- * remote (and where the mirror stands), and its state, as small words.
- */
+/** Its language, its kind when it is not an app, and its state, as small words. */
 function Facts({ project }: { project: Item }) {
   const language = project.ecosystem ? LANGUAGE_OF[project.ecosystem] : null;
   return (
     <>
-      {project.mirror && (
-        <MirrorBadge mirror={{ state: project.mirror.state, remote: project.mirror.remote, url: "", since: "" }} briefs={[]} />
-      )}
       {language && <span>{language}</span>}
       {project.kind !== "app" && <span>{kindLabel(project)}</span>}
       {project.kind === "app" && project.runs === "elsewhere" && <span>Deployed elsewhere</span>}
@@ -386,13 +367,6 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
             ...(facets.kind.tool > 0 || query.kind === "tool" ? [{ value: "tool", label: option("Tools", facets.kind.tool) }] : []),
             ...(facets.kind.docs > 0 || query.kind === "docs" ? [{ value: "docs", label: option("Docs", facets.kind.docs) }] : []),
             ...(facets.kind.other > 0 || query.kind === "other" ? [{ value: "other", label: option("Other", facets.kind.other) }] : []),
-            // Where they are managed, once a mirror is among them.
-            ...(facets.mirrors > 0 || query.kind === "mirror" || query.kind === "g1t"
-              ? [
-                  { value: "mirror", label: option("Mirrors", facets.mirrors) },
-                  { value: "g1t", label: option("On g1t", total - facets.mirrors) },
-                ]
-              : []),
           ]}
         />
         {(facets.languages.length > 0 || query.language) && (

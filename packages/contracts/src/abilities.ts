@@ -345,8 +345,8 @@ export const COMPUTER_TOOLS: Record<string, string[]> = Object.fromEntries(COMPU
  * service does it: look an item up by its key or address, open an issue in
  * g1t from it, comment on it there, and (Sentry) mark it resolved. A
  * connector not named here has nothing an agent calls: Datadog and the
- * alerts webhook open issues by themselves; GitHub imports and mirrors
- * repositories; model providers run models.
+ * alerts webhook open issues by themselves; GitHub imports repositories;
+ * model providers run models.
  */
 const INTEGRATION_ACTIONS: Record<string, { action: string; label: string; about: string; kind: AbilityKind; tool: string }[]> = {
   linear: [
@@ -375,7 +375,7 @@ function nothingToCall(connector: Connector): string {
     case "ai":
       return "Runs models. Which ones an agent uses is set under Models on its profile.";
     case "code":
-      return "Imports and mirrors repositories. Agents read the repositories themselves.";
+      return "Imports repositories. Agents read the repositories themselves.";
     default:
       return "Nothing for an agent to call yet.";
   }

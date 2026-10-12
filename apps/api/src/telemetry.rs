@@ -625,8 +625,8 @@ async fn ask(services: &Services, method: &str, args: &Value) -> Result<Outcome<
 }
 
 /// The repository a project's permission comes from, as the deployments
-/// service reads it: a mirrored project has none, and its workspace's base
-/// permission decides.
+/// service reads it: a project without a hosted source has none, and its
+/// workspace's base permission decides.
 fn repo_of(project: &Value) -> (String, String, bool) {
     let source = &project["source"];
     let private = project["private"].as_bool().unwrap_or(true);

@@ -611,10 +611,9 @@ impl Security {
     /// One run of one entry: what it found, as a sentence, or why it could
     /// not run.
     async fn run_entry(&self, repo: &RepoRow, loaded: &Loaded, entry: &Entry) -> Result<std::result::Result<String, String>> {
-        // Archived, deleted, or a mirror that is not taken over: nothing
-        // opens here on its own (`g1t_contracts::mirrors`).
+        // Archived or deleted: nothing opens here on its own.
         if let Err(why) = self.takes_updates(repo).await? {
-            return Ok(Err(why.replace("Security updates wait", "Version updates wait")));
+            return Ok(Err(why));
         }
         if entry.open_pull_requests_limit == 0 {
             return Ok(Ok("open-pull-requests-limit is 0, so no version updates open.".to_owned()));

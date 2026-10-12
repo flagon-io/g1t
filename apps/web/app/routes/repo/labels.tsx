@@ -20,7 +20,7 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
-import { refusal, requireRepo, requireWritableRepo } from "../../lib/access.server";
+import { refusal, requireRepo } from "../../lib/access.server";
 import { matchLabels, tidyColor } from "../../lib/labels";
 import { page } from "../../lib/meta";
 import { work } from "../../lib/services.server";
@@ -41,7 +41,6 @@ type ActionData = { intent: string; name?: string; error?: string; done?: string
 export async function action({ request, params, context }: Route.ActionArgs): Promise<ActionData> {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const name = String(form.get("name") ?? "");

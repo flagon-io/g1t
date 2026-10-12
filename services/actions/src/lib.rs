@@ -30,7 +30,6 @@ mod run_artifacts;
 mod broker;
 mod cache;
 mod managed;
-mod mirrored;
 mod payload;
 mod plan;
 mod protection;

@@ -118,10 +118,6 @@ export const EVENT_TYPES = [
   "security_advisory.published",
   "security_advisory.withdrawn",
   "security_advisory.reported",
-  "mirror.unreachable",
-  "mirror.reachable",
-  "mirror.state_changed",
-  "mirror.moved_in",
 ] as const;
 
 export type Hook = {

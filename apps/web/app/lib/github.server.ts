@@ -6,7 +6,7 @@ import { instrumented } from "./perf.server";
 
 /** Signing in with GitHub, kept by the identity service. */
 export const githubSignIn = githubSignInClient(instrumented("identity", env.IDENTITY));
-/** g1t's GitHub App: installations, imports and mirrors, kept by integrations. */
+/** g1t's GitHub App: installations and imports, kept by integrations. */
 export const githubApp = githubAppClient(instrumented("integrations", env.INTEGRATIONS));
 
 /**

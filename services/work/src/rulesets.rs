@@ -424,7 +424,7 @@ impl Work {
                     let Some(actor) = viewer else {
                         return Ok(Outcome::fail(FailureCode::Unauthenticated, "Sign in first."));
                     };
-                    check!(crate::retired::not_archived(&repo));
+                    check!(crate::retired::writable(&repo));
                     if !actor.verified {
                         return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
                     }

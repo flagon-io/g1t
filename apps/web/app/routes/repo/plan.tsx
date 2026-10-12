@@ -4,7 +4,7 @@ import { ArrowRight, CircleCheck, FileCode2, Sparkles } from "lucide-react";
 import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/plan";
-import { refusal, requireRepo, requireWritableRepo } from "../../lib/access.server";
+import { refusal, requireRepo } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
 import { page } from "../../lib/meta";
 import { Markdown } from "../../components/markdown";
@@ -86,7 +86,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   const path = { namespace: params.owner, name: params.repo };
   // Opening the issues and putting agents on them: Write and up.

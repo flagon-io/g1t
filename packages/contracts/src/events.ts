@@ -10,7 +10,6 @@
 import type { Release } from "./about";
 import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
-import type { RepoMirror } from "./mirrors";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
 import type { AgentRef, Confidence, Verdict } from "./work";
@@ -210,10 +209,6 @@ export type EventPayloads = {
     after: string;
     defaultBranch: boolean;
     causedByJob?: string;
-    /** Set when it was copied in from the remote a mirror follows, not made on g1t. */
-    mirrored?: boolean;
-    /** The repository's mirror state when it landed; absent for one that leads. */
-    mirror?: RepoMirror;
     /**
      * How many commits the push brought to the branch, along its
      * first-parent line from `after` back to `before` (a merge commit is
@@ -651,7 +646,7 @@ export const MAX_DIGEST_REPOS = 50;
  * How many times one actor did something. The actor is a member key:
  * `user:<id>` for a person (or g1t, `user:usr_g1t_agent`), `agent:<id>` for
  * one of the workspace's agents acting as itself, or `""` when the event
- * named nobody (a push copied in by a mirror).
+ * named nobody.
  */
 export type ActorCount = { actor: string; count: number };
 

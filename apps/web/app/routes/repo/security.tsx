@@ -21,8 +21,6 @@ import { security, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { whyNot } from "../../lib/access";
-import { useRepoMirror } from "../../components/mirror";
-import { updatesWaitReason } from "../../lib/mirror";
 import { alertCapability, countByState, parseAlertState } from "../../lib/security-alerts";
 import { severityCounts } from "../../lib/security-suite";
 import { repoPages } from "../../lib/repo-live";
@@ -129,9 +127,6 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
   const rescan = useFetcher<{ ok: boolean; error?: string }>();
   const upkeep = useFetcher<{ ok: boolean; error?: string }>();
   const upkeepOn = upkeep.formData ? upkeep.formData.get("enabled") === "true" : overview.upkeep;
-  // A mirror g1t does not lead opens nothing on its own: the scan runs and
-  // the alerts show, but each update waits (lib/mirror.ts `offers`).
-  const updatesWait = updatesWaitReason(useRepoMirror().repo);
   const vulnCounts = countByState(overview.vulnerabilities);
   // A link to one alert shows it wherever it stands.
   const focus = search.get("finding");
@@ -156,7 +151,7 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
           <p className="mt-1.5 max-w-2xl text-sm text-muted">
             Every package the lockfiles resolve is checked for known vulnerabilities, on every push to the default branch and
             daily.{" "}
-            {updatesWait ?? "With security updates on, g1t opens a pull request to upgrade each one that has a fix."}
+            With security updates on, g1t opens a pull request to upgrade each one that has a fix.
           </p>
         </div>
         {can.run && (
@@ -197,7 +192,6 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
               fixes={fixes}
               pulls={pulls}
               upkeep={overview.upkeep}
-              updatesWait={updatesWait}
               base={base}
               action={action}
               focus={focus}
@@ -219,7 +213,6 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
                 <span className="mt-1 block text-sm text-muted">
                   Open a pull request to upgrade each vulnerable dependency that has a fix. It lands through your branch's
                   required checks.
-                  {updatesWait && " On this mirror, it takes effect once the repository is taken over or moved to g1t."}
                 </span>
                 {upkeep.data?.error && <span className="mt-1 block text-xs text-danger">{upkeep.data.error}</span>}
               </span>

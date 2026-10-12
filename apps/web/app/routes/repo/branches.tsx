@@ -2,8 +2,6 @@ import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Form, Link, useNavigate } from "react-router";
 
-import { mirrorWritable } from "@g1t/contracts";
-
 import type { Route } from "./+types/branches";
 import type { ActiveBranch } from "../../components/branches";
 import {
@@ -19,7 +17,7 @@ import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { refusal, requireRepo, requireWritableRepo } from "../../lib/access.server";
+import { refusal, requireRepo } from "../../lib/access.server";
 import { type BranchTab, branchSections, branchTab, driftScale } from "../../lib/branches";
 import { readBranches } from "../../lib/branches.server";
 import { repoPages } from "../../lib/repo-live";
@@ -75,7 +73,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Each branch head's checks, in one call, streamed in beside it.
   const checks = commitChecksFor(path, viewer, [mainHead, ...read.shown.map((branch) => branch.head)]);
   const main: ActiveBranch = { name: repo.defaultBranch, head: mainHead, commit: read.head, drift: null, pull: null, preview: null };
-  const canChange = access.can.push && !repo.archivedAt && mirrorWritable(repo.mirror);
+  const canChange = access.can.push && !repo.archivedAt;
   return {
     tab,
     query,
@@ -102,7 +100,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs): Promise<BranchActionData> {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireWritableRepo(context, params);
   const form = await request.formData();
   const text = (key: string) => String(form.get(key) ?? "").trim();
   const intent = text("intent");

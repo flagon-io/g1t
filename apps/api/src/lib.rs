@@ -19,7 +19,6 @@ mod telemetry;
 mod deploy_keys;
 mod limits;
 mod logs;
-mod mirrors;
 mod mcp;
 mod notifications;
 mod oauth;

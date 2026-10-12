@@ -32,7 +32,6 @@ use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
-use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
 use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
@@ -343,9 +342,6 @@ pub enum Op {
     Archives(ArchiveOp),
     /// A repository's deploy keys: deploy_keys.rs.
     DeployKeys(DeployKeysOp),
-    /// A repository's mirroring: its remotes, takeovers and hand-backs:
-    /// mirrors.rs.
-    Mirrors(MirrorsOp),
     /// A workspace's packages, their versions, deleting and restoring
     /// them, and who may use them: packages.rs.
     Packages(PackagesOp),
@@ -724,7 +720,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 408] = [
+    pub const ALL: [Op; 398] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1065,16 +1061,6 @@ impl Op {
         Op::Customize(CustomizeOp::GrantConnector),
         Op::Customize(CustomizeOp::RevokeConnector),
         Op::Customize(CustomizeOp::Bundle),
-        Op::Mirrors(MirrorsOp::GetMirror),
-        Op::Mirrors(MirrorsOp::GetHandBackPlan),
-        Op::Mirrors(MirrorsOp::TakeOver),
-        Op::Mirrors(MirrorsOp::SetCiFailover),
-        Op::Mirrors(MirrorsOp::HandBack),
-        Op::Mirrors(MirrorsOp::MoveToG1t),
-        Op::Mirrors(MirrorsOp::SyncMirror),
-        Op::Mirrors(MirrorsOp::AddRemote),
-        Op::Mirrors(MirrorsOp::UpdateRemote),
-        Op::Mirrors(MirrorsOp::RemoveRemote),
         Op::Protection(ProtectionOp::UpdateEnvironment),
         Op::Protection(ProtectionOp::DeleteEnvironment),
         Op::Protection(ProtectionOp::GetPendingDeployments),
@@ -1352,7 +1338,6 @@ impl Op {
             Op::Artifacts(op) => op.name(),
             Op::Archives(op) => op.name(),
             Op::DeployKeys(op) => op.name(),
-            Op::Mirrors(op) => op.name(),
             Op::Packages(op) => op.name(),
             Op::Folios(op) => op.name(),
             Op::Customize(op) => op.name(),
@@ -1933,7 +1918,6 @@ impl Op {
             Op::Artifacts(op) => op.description(),
             Op::Archives(op) => op.description(),
             Op::DeployKeys(op) => op.description(),
-            Op::Mirrors(op) => op.description(),
             Op::Packages(op) => op.description(),
             Op::Folios(op) => op.description(),
             Op::Customize(op) => op.description(),
@@ -3462,7 +3446,6 @@ impl Op {
             Op::Artifacts(op) => op.input(),
             Op::Archives(op) => op.input(),
             Op::DeployKeys(op) => op.input(),
-            Op::Mirrors(op) => op.input(),
             Op::Packages(op) => op.input(),
             Op::Folios(op) => op.input(),
             Op::Customize(op) => op.input(),
@@ -4631,7 +4614,6 @@ impl Op {
                         is_private: input["private"].as_bool() == Some(true),
                         import_url: optional_text(input, "import_url"),
                         import_token: None,
-                        mirror: None,
                     },
                 )
                 .await
@@ -5883,7 +5865,6 @@ impl Op {
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
             Op::Archives(op) => crate::archives::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
-            Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,
             Op::Folios(op) => crate::folios::run(op, services, viewer, input).await,
             Op::Customize(op) => crate::customize::run(op, services, viewer, input).await,

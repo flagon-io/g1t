@@ -599,8 +599,8 @@ test("the digest says which part didn't answer, and counts what could be read", 
   // A digest cut short says so.
   const cut = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), complete: false }, chat: busyChat, names: NAMES, work: busyWork(), code: true });
   assert.equal(cut.partial, true);
-  // Nobody named: a mirror's pushes are still commits.
-  const mirror = digestOf({
+  // Nobody named: an import's pushes are still commits.
+  const imported = digestOf({
     slug: "acme",
     repos: REPOS,
     activity: { ...busyDay(), folios: null, repos: [{ ...quietRepo("rep_web"), pushes: { count: 2, commits: 7, branches: ["main"], by: [{ actor: "", count: 2, commits: 7 }], default_branch: { count: 2, commits: 7, by: [{ actor: "", count: 2, commits: 7 }], last_at: iso(NOW - HOUR) } } }] },
@@ -610,10 +610,10 @@ test("the digest says which part didn't answer, and counts what could be read", 
     code: true,
   });
   assert.deepEqual(
-    mirror.people.lines.map((line) => [line.text, line.to]),
+    imported.people.lines.map((line) => [line.text, line.to]),
     [["7 commits pushed to 1 project", "/acme/web/activity"]],
   );
-  assert.equal(mirror.summary.people, 0);
+  assert.equal(imported.summary.people, 0);
 });
 
 test("the sentence: people first, then the agents' tasks, then what landed; honest when quiet or unread", () => {
