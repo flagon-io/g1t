@@ -13,6 +13,8 @@
 		"allow-restart-to-update",
 		"allow-restart",
 		"allow-open-url",
-		"allow-window-control"
+		"allow-window-control",
+		"allow-runner-status",
+		"allow-runner-control"
 	]
 }

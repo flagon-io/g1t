@@ -39,6 +39,8 @@ url = "2"
 # Whether the server answers, before the window goes there (the same client the updater brings).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", features = ["time"] }
+# Checking a downloaded g1t-runner against its release's SHA-256 (src/runner/native.rs).
+sha2 = "0.10"
 
 # Keeping the menu bar hidden under g1t's own title bar (src/frame.rs); the
 # same GTK that Tauri brings.

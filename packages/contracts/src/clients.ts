@@ -867,6 +867,8 @@ export function runnersClient(service: ServiceBinding): RunnersApi {
     deleteGroup: (actor, workspace, id) => call("delete_runner_group", { actor, workspace, id }),
     settings: (actor, owner) => call("runner_settings", { actor, ...owner }),
     setSettings: (actor, owner, change) => call("set_runner_settings", { actor, ...owner, ...change }),
+    reportDesktop: (actor, report) => call("report_desktop", { actor, ...report }),
+    desktops: (actor, workspace) => call("desktop_runners", { actor, workspace }),
   };
 }
 

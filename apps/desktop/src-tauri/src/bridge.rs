@@ -13,7 +13,7 @@ use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 use crate::settings::{self, Settings};
-use crate::{badge, config, frame, updates};
+use crate::{badge, config, frame, runner, updates};
 
 const SCRIPT: &str = include_str!("bridge.js");
 
@@ -206,6 +206,7 @@ pub fn restart(app: AppHandle, webview: Webview) -> Result<(), String> {
     if updates::ready(&app).is_some() {
         updates::restart(&app);
     }
+    runner::shutdown(&app);
     app.restart()
 }
 
@@ -257,6 +258,42 @@ pub fn change_server(app: AppHandle, webview: Webview) -> Result<(), String> {
     }
     crate::tray::launcher(&app, "change");
     Ok(())
+}
+
+/// The runner's state, diagnosis and recent log: for the site's card for
+/// this computer and the settings window.
+#[tauri::command]
+pub fn runner_status(app: AppHandle, webview: Webview) -> Result<runner::View, String> {
+    from_site(&app, &webview).or_else(|_| from_settings(&webview))?;
+    Ok(runner::view(&app))
+}
+
+/// The site, on every page: whether someone is signed in, the workspaces
+/// they own (the only ones they can add runners to), and the one they are
+/// in. Answers the workspace a registration token is wanted for, if one is.
+#[tauri::command]
+pub fn runner_offer(app: AppHandle, webview: Webview, signed_in: bool, workspaces: Vec<runner::Offered>, current: Option<String>) -> Result<Option<String>, String> {
+    from_site(&app, &webview)?;
+    runner::offer(&app, signed_in, workspaces, current);
+    Ok(runner::wanted(&app))
+}
+
+/// The site made a registration token for the workspace the app asked
+/// for, or says why not: `allowed` is false when the person may not add
+/// runners there. The token goes to the runner and nowhere else.
+#[tauri::command]
+pub fn runner_register(app: AppHandle, webview: Webview, workspace: String, token: Option<String>, allowed: bool, error: Option<String>) -> Result<(), String> {
+    from_site(&app, &webview)?;
+    runner::register(&app, workspace, token, allowed, error);
+    Ok(())
+}
+
+/// A button for the runner: Start, Stop, or a diagnosis's fix
+/// (runner/diagnosis.rs), from settings or the site's card.
+#[tauri::command]
+pub fn runner_control(app: AppHandle, webview: Webview, action: String) -> Result<(), String> {
+    from_site(&app, &webview).or_else(|_| from_settings(&webview))?;
+    runner::act(&app, &action)
 }
 
 #[cfg(test)]

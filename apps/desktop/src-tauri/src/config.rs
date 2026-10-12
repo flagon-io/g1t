@@ -166,6 +166,10 @@ const SITE: &[&str] = &[
     "allow-check-for-updates",
     "allow-open-settings",
     "allow-title-bar-page",
+    "allow-runner-status",
+    "allow-runner-offer",
+    "allow-runner-register",
+    "allow-runner-control",
 ];
 
 /// What GitHub's pages may call while someone signs in: telling the title bar their title.

@@ -2,7 +2,7 @@ import { Bot, Boxes, Cpu, Plus, ServerCog, ShieldAlert, Trash2 } from "lucide-re
 import { useEffect, useState } from "react";
 import { Form, Link } from "react-router";
 
-import { type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup } from "@g1t/contracts";
+import { DESKTOP_LABEL, type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup } from "@g1t/contracts";
 
 import { agentRunHref, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
@@ -55,7 +55,10 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
       <div className="min-w-0 grow basis-60">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-medium">{runner.name}</span>
-          <span className={`text-xs font-medium ${status.text}`}>{status.label}</span>
+          <span className={`text-xs font-medium ${status.text}`}>
+            {/* A desktop app's runner runs while g1t is open there: offline is g1t closed. */}
+            {runner.status === "offline" && runner.labels.includes(DESKTOP_LABEL) ? `g1t is closed on ${runner.name}` : status.label}
+          </span>
           {runner.ephemeral && <Badge size="md">ephemeral</Badge>}
           {runner.group && <span className="text-xs text-faint">in {runner.group}</span>}
         </div>

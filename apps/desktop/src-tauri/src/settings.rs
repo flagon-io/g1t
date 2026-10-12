@@ -1,6 +1,6 @@
 //! The app's own settings: how it starts, what closing the window does,
-//! how it tells the person something arrived, its title bar, zoom and
-//! updates. They live in their own window (`launcher/settings.html`),
+//! how it tells the person something arrived, its title bar, zoom,
+//! updates, and the runner. They live in their own window (`launcher/settings.html`),
 //! opened from the menu, the tray, or the site's account menu, and are
 //! kept with the server in `desktop.json` (config.rs). Whether g1t opens
 //! when someone signs in to their computer is kept by the system itself,
@@ -42,12 +42,32 @@ pub struct Settings {
     /// The site's zoom, 1 for as it is.
     pub zoom: f64,
     /// Updates download by themselves; a person can still check from the menu.
+    /// The runner's own updates follow it too (runner/mod.rs).
     pub auto_update: bool,
+    /// Runs the workspace's self-hosted jobs on this computer while g1t is
+    /// open (runner/mod.rs). On unless someone turns it off.
+    pub runner: bool,
+    /// How the runner runs: sandboxed unless someone chooses otherwise.
+    pub runner_backend: crate::runner::Backend,
+    /// The workspace it runs for; the one the person is in when it first registers.
+    pub runner_workspace: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { start_hidden: true, close_to_tray: true, notifications: true, flash: true, badge: true, system_title_bar: false, zoom: 1.0, auto_update: true }
+        Self {
+            start_hidden: true,
+            close_to_tray: true,
+            notifications: true,
+            flash: true,
+            badge: true,
+            system_title_bar: false,
+            zoom: 1.0,
+            auto_update: true,
+            runner: true,
+            runner_backend: crate::runner::Backend::Sandboxed,
+            runner_workspace: None,
+        }
     }
 }
 
@@ -76,6 +96,8 @@ pub struct View {
     pub title_bar_changed: bool,
     /// Whether this window draws g1t's own title bar, which the page then draws (settings.html).
     pub custom_frame: bool,
+    /// The runner's state, diagnosis and recent log.
+    pub runner_view: crate::runner::View,
 }
 
 pub fn view(app: &AppHandle) -> View {
@@ -89,6 +111,7 @@ pub fn view(app: &AppHandle) -> View {
         checked_at: crate::updates::checked_at(app),
         title_bar_changed: crate::frame::started(app) != crate::frame::custom(app),
         custom_frame: crate::frame::started(app),
+        runner_view: crate::runner::view(app),
     }
 }
 
@@ -102,6 +125,9 @@ pub fn apply(app: &AppHandle, mut settings: Settings) -> Result<(), String> {
     }
     if before.badge != settings.badge {
         crate::badge::refresh(app);
+    }
+    if (before.runner, before.runner_backend, &before.runner_workspace) != (settings.runner, settings.runner_backend, &settings.runner_workspace) {
+        crate::runner::settings_changed(app);
     }
     Ok(())
 }
@@ -188,6 +214,13 @@ mod tests {
         assert!(!settings.close_to_tray);
         assert!(settings.notifications);
         assert_eq!(settings.zoom, 1.0);
+        // The runner is on, and sandboxed, for someone who never chose.
+        assert!(settings.runner);
+        assert_eq!(settings.runner_backend, crate::runner::Backend::Sandboxed);
+        let chosen: Settings = serde_json::from_str(r#"{"runner":false,"runnerBackend":"host","runnerWorkspace":"acme"}"#).unwrap();
+        assert!(!chosen.runner);
+        assert_eq!(chosen.runner_backend, crate::runner::Backend::Host);
+        assert_eq!(chosen.runner_workspace.as_deref(), Some("acme"));
     }
 
     #[test]

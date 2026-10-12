@@ -307,6 +307,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "delete_runner_group" => reply(&service.delete_runner_group(args(body)?).await?),
         "runner_settings" => reply(&service.runner_settings(args(body)?).await?),
         "set_runner_settings" => reply(&service.set_runner_settings(args(body)?).await?),
+        // The desktop app's runners, as each app says they are.
+        "report_desktop" => reply(&service.report_desktop(args(body)?).await?),
+        "desktop_runners" => reply(&service.desktop_runners(args(body)?).await?),
         // The runner's own side, through the API with its credential.
         "runner_register" => reply(&service.runner_register(args(body)?).await?),
         "runner_poll" => reply(&service.runner_poll(args(body)?).await?),

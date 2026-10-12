@@ -120,14 +120,20 @@ fn install(app: &AppHandle) -> bool {
 }
 
 /// The tray's restart: installs the update and starts the new version.
+/// The runner stops first, since on Windows the installer ends g1t.
 pub fn restart(app: &AppHandle) {
+    if ready(app).is_none() {
+        return;
+    }
+    crate::runner::shutdown(app);
     if install(app) {
         app.restart();
     }
 }
 
-/// Quit, installing a downloaded update on the way out.
+/// Quit, stopping the runner and installing a downloaded update on the way out.
 pub fn quit(app: &AppHandle) {
+    crate::runner::shutdown(app);
     install(app);
     app.exit(0);
 }

@@ -2,7 +2,19 @@
 // the moment it is made. Everything it asks is a command in
 // src/bridge.rs, answered only to this window.
 (function () {
-  var SWITCHES = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate"];
+  var SWITCHES = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate", "runner"];
+  // What each way of running jobs can reach, said plainly (src/runner/backend.rs).
+  var BACKENDS = {
+    sandboxed: { text: "The runner and every job run in a sandbox of their own. Nothing a job does reaches this computer.", warn: false },
+    docker: {
+      text: "Each job runs in a container of its own, but the runner controls this computer's Docker, which can reach your files. Not a sandbox.",
+      warn: true,
+    },
+    host: {
+      text: "Jobs run directly on this computer, as you: they can read, change and delete anything your account can. For jobs that need this system itself, such as building a Windows installer.",
+      warn: true,
+    },
+  };
   var current = null;
 
   function byId(id) {
@@ -57,6 +69,7 @@
     byId("version").textContent = "g1t " + view.version;
     if (!checking) updateStatus(view);
     byId("server").textContent = hostOf(view.server);
+    renderRunner(view.runnerView);
   }
 
   function settingsOf() {
@@ -65,8 +78,85 @@
       settings[key] = byId(key).checked;
     });
     settings.zoom = Number(byId("zoom").value) || 1;
+    settings.runnerBackend = byId("runnerBackend").value || "sandboxed";
+    settings.runnerWorkspace = byId("runnerWorkspace").value || null;
     return settings;
   }
+
+  // ── The runner ──────────────────────────────────────────────────────
+  // Its diagnosis, from src/runner/diagnosis.rs, as the tray and the
+  // site's Runners page show it; its buttons are the fixes.
+  function option(value, text) {
+    var item = document.createElement("option");
+    item.value = value;
+    item.textContent = text;
+    return item;
+  }
+
+  function renderRunner(runner) {
+    if (!runner) return;
+    var diagnosis = runner.diagnosis;
+    byId("runner-dot").className = "dot " + diagnosis.tone;
+    byId("runner-title").textContent = diagnosis.title;
+    byId("runner-cause").textContent = diagnosis.cause || "";
+    byId("runner-fix").textContent = diagnosis.fix || "";
+    var actions = byId("runner-actions");
+    actions.textContent = "";
+    diagnosis.actions.forEach(function (action, at) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = action.label;
+      if (at === 0) button.className = "primary";
+      button.addEventListener("click", function () {
+        // Choosing is done here, in this window.
+        if (action.id === "choose_workspace") return byId("runnerWorkspace").focus();
+        if (action.id === "choose_backend") return byId("runnerBackend").focus();
+        invoke("runner_control", { action: action.id }).catch(fail);
+      });
+      actions.appendChild(button);
+    });
+    byId("runner").checked = !!runner.enabled;
+    var on = runner.enabled && !runner.paused;
+    byId("runner-toggle").textContent = on ? "Stop" : "Start";
+    byId("runner-toggle").dataset.action = on ? "stop" : "start";
+
+    var backend = byId("runnerBackend");
+    backend.value = runner.backend;
+    var about = BACKENDS[runner.backend] || BACKENDS.sandboxed;
+    byId("runner-backend-note").textContent = about.text;
+    byId("runner-backend-note").className = about.warn ? "warning-note" : "muted";
+
+    var workspaces = byId("runnerWorkspace");
+    workspaces.textContent = "";
+    var known = runner.workspaces.slice();
+    var listed = known.some(function (w) {
+      return w.slug === runner.workspace;
+    });
+    if (runner.workspace && !listed) known.unshift({ slug: runner.workspace, name: null });
+    known.forEach(function (w) {
+      workspaces.appendChild(option(w.slug, w.name ? w.name + " (" + w.slug + ")" : w.slug));
+    });
+    if (known.length === 0) workspaces.appendChild(option("", "Open g1t, signed in, to choose"));
+    workspaces.value = runner.workspace || "";
+    workspaces.disabled = known.length === 0;
+
+    byId("runner-machine").textContent = "This computer: " + runner.machine;
+    byId("runner-version").textContent = runner.version ? "g1t-runner " + runner.version : " ";
+    byId("runner-view").hidden = !runner.link;
+    byId("runner-log").textContent = runner.log.length ? runner.log.join("\n") : "Nothing yet.";
+  }
+
+  byId("runnerBackend").addEventListener("change", save);
+  byId("runnerWorkspace").addEventListener("change", save);
+  byId("runner-toggle").addEventListener("click", function (event) {
+    invoke("runner_control", { action: event.target.dataset.action || "start" }).catch(fail);
+  });
+  byId("runner-view").addEventListener("click", function () {
+    invoke("runner_control", { action: "view_runners" }).catch(fail);
+  });
+  byId("runner-open-log").addEventListener("click", function () {
+    invoke("runner_control", { action: "view_log" }).catch(fail);
+  });
 
   function save() {
     invoke("save_settings", { settings: settingsOf() }).then(render, function (error) {
@@ -151,6 +241,12 @@
   var events = window.__TAURI__ && window.__TAURI__.event;
   if (events && typeof events.listen === "function") {
     events.listen("g1t-check-updates", check).catch(function () {});
+    events
+      .listen("g1t-runner-status", function (event) {
+        if (current) current.runnerView = event.payload;
+        renderRunner(event.payload);
+      })
+      .catch(function () {});
     events
       .listen("g1t-update-ready", function (event) {
         if (!checking && typeof event.payload === "string") ready(event.payload);

@@ -24,6 +24,10 @@ fn main() {
         "title_bar_page",
         "title_bar_current",
         "title_bar_act",
+        "runner_status",
+        "runner_offer",
+        "runner_register",
+        "runner_control",
     ])))
     .expect("the app's build could not be prepared");
 }

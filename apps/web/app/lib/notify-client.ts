@@ -25,6 +25,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry, RepoChange } from "@g1t/contracts";
 
+import type { DesktopRunnerBridge } from "./desktop-runner";
 import { openLive } from "./live-socket";
 import { dndOn, isIdle, mergePeople } from "./presence";
 import { notificationArrived } from "./sound-events";
@@ -81,6 +82,10 @@ import {
  *   // How tall the app's own title bar is, 0 under the system's. The bar
  *   // is a web view of its own, above the page, never over it.
  *   titleBarHeight: 36,
+ *   // The runner the app keeps on this computer: its status and
+ *   // diagnosis, who to register for, its token, and its fixes
+ *   // (lib/desktop-runner.ts has the details).
+ *   runner: { status, offer, register, act, onWanted, onStatus },
  * };
  *
  * The app also opens the site's pages for reading about g1t (pricing,
@@ -100,6 +105,7 @@ export type DesktopBridge = {
   openSettings?(): void;
   setSearch?(label: string, open: () => void): () => void;
   titleBarHeight?: number;
+  runner?: DesktopRunnerBridge;
 };
 
 declare global {
