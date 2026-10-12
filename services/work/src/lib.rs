@@ -10,8 +10,10 @@ mod ghost;
 mod codeowners;
 mod commit_checks;
 mod contributions;
+mod decisions;
 mod guardrails;
 mod inbox;
+mod integration;
 mod labels;
 mod lifecycle;
 mod memory;
@@ -938,6 +940,7 @@ impl Work {
         check!(writable(&repo));
         // The number names an issue or a pull request, never both.
         let mut pull_id = None;
+        let mut pull_issue = None;
         let table = if self.issue(&repo.id, a.number).await?.is_some() {
             if path.is_some() || a.verdict.is_some() {
                 return Ok(Outcome::fail(
@@ -954,6 +957,7 @@ impl Work {
                 ));
             }
             pull_id = Some(pull.id.clone());
+            pull_issue = pull.issue;
             "pulls"
         } else {
             return Ok(Outcome::fail(
@@ -1024,6 +1028,24 @@ impl Work {
             },
         )
         .await?;
+        // An approval is a decision: a person's is approved.
+        if table == "pulls" && a.verdict == Some(Verdict::Approve) {
+            let said = if body.is_empty() { String::new() } else { format!(": {}", body.chars().take(300).collect::<String>()) };
+            self.keep_decision_quietly(
+                &repo.id,
+                decisions::NewDecision {
+                    issue: pull_issue,
+                    pull: Some(a.number),
+                    session_id: None,
+                    actor: Some(&a.actor),
+                    kind: g1t_contracts::decisions::DecisionKind::Approval,
+                    confidence: decisions::approval_confidence(&a.actor),
+                    summary: format!("{} approved #{}{said}", a.actor.username, a.number),
+                    evidence: serde_json::json!({ "comment": comment.id }),
+                },
+            )
+            .await;
+        }
         Ok(Outcome::Ok(comment))
     }
 
@@ -2300,6 +2322,29 @@ impl Work {
             )
             .await?;
         }
+        let through_queue = self.landed_through_queue(&pull.id).await?;
+        self.keep_decision_quietly(
+            &repo.id,
+            decisions::NewDecision {
+                issue: pull.issue,
+                pull: Some(pull.number),
+                session_id: None,
+                actor: (!decisions::is_g1t(actor)).then_some(actor),
+                kind: g1t_contracts::decisions::DecisionKind::Merge,
+                confidence: decisions::merge_confidence(through_queue, actor),
+                summary: if through_queue {
+                    format!("#{} landed through the merge queue.", pull.number)
+                } else {
+                    format!("{} merged #{}.", actor.username, pull.number)
+                },
+                evidence: serde_json::json!({
+                    "commit": landed.commit,
+                    "previous": landed.previous,
+                    "merge_queue": through_queue,
+                }),
+            },
+        )
+        .await;
         pull.status = PullStatus::Merged;
         pull.head_commit = Some(landed.commit.clone());
         pull.merge_base = landed.previous;
@@ -2704,6 +2749,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_assigned_issues" => reply(&work.list_assigned_issues(args(body)?).await?),
         "append_session" => reply(&work.append_session(args(body)?).await?),
         "read_session" => reply(&work.read_session(args(body)?).await?),
+        // Decision records (decisions.rs).
+        "record_decision" => reply(&work.record_decision(args(body)?).await?),
+        "list_decisions" => reply(&work.list_decisions(args(body)?).await?),
         // Runs of sandboxes, and memory (runs.rs, memory.rs).
         "open_run" => reply(&work.open_run(args(body)?).await?),
         "report_run" => reply(&work.report_run(args(body)?).await?),

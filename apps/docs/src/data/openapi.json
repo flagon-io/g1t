@@ -410,6 +410,15 @@
       ]
     },
     {
+      "name": "Decisions and why",
+      "description": "Decision records: why the work is the way it is, and how sure that is (claimed, tested by a check or the merge queue, or approved by a person). And why a line of code is the way it is: its commit, pull request, issue, decisions and session.",
+      "x-tools": [
+        "list_decisions",
+        "record_decision",
+        "why"
+      ]
+    },
+    {
       "name": "Memory",
       "description": "What agents and people learned that the next agent should know, for one project or across a workspace. Members only; never a secret.",
       "x-tools": [
@@ -42144,6 +42153,9 @@
                         "deployment.created",
                         "deployment_status.created",
                         "queue.changed",
+                        "integration.failed",
+                        "integration.passed",
+                        "decision.recorded",
                         "session.appended",
                         "package.published",
                         "package.version_deleted",
@@ -42420,6 +42432,9 @@
                         "deployment.created",
                         "deployment_status.created",
                         "queue.changed",
+                        "integration.failed",
+                        "integration.passed",
+                        "decision.recorded",
                         "session.appended",
                         "package.published",
                         "package.version_deleted",
@@ -43342,6 +43357,9 @@
                         "deployment.created",
                         "deployment_status.created",
                         "queue.changed",
+                        "integration.failed",
+                        "integration.passed",
+                        "decision.recorded",
                         "session.appended",
                         "package.published",
                         "package.version_deleted",
@@ -43604,6 +43622,9 @@
                         "deployment.created",
                         "deployment_status.created",
                         "queue.changed",
+                        "integration.failed",
+                        "integration.passed",
+                        "decision.recorded",
                         "session.appended",
                         "package.published",
                         "package.version_deleted",
@@ -56498,6 +56519,684 @@
               }
             }
           }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/decisions": {
+      "get": {
+        "operationId": "list_decisions",
+        "tags": [
+          "Decisions and why"
+        ],
+        "summary": "List a pull request's decisions",
+        "description": "The decision records on an issue (with those on its pull requests) or on a pull request, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed: someone said so; tested: a check or a combination of pull requests proved it; approved: a person approved it), who recorded it (absent for g1t), its summary and its evidence. Issues and pull requests share numbers, so number names either.\n\n`GET /repos/{owner}/{name}/issues/{number}/decisions` lists an issue's, with those on its pull requests.",
+        "x-operation": "list_decisions",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "list_decisions",
+        "x-scope": "pull_requests:read",
+        "security": [
+          {
+            "token": [
+              "pull_requests:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
+                    "issue": 9,
+                    "pull": 14,
+                    "session_id": null,
+                    "actor": null,
+                    "kind": "integration_failure",
+                    "confidence": "tested",
+                    "summary": "#14 failed in the merge queue together with #12: `CI / merge_group` failed when they were combined.",
+                    "evidence": {
+                      "commit": "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b",
+                      "check": {
+                        "name": "CI / merge_group",
+                        "conclusion": "failure",
+                        "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
+                      },
+                      "combination": [
+                        11,
+                        12,
+                        14
+                      ],
+                      "other_pulls": [
+                        11,
+                        12
+                      ],
+                      "suspects": [
+                        12
+                      ],
+                      "bisected": true
+                    },
+                    "created_at": "2026-10-12T15:04:11.204Z"
+                  },
+                  {
+                    "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+                    "issue": 9,
+                    "pull": 14,
+                    "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+                    "actor": "ana",
+                    "kind": "fix",
+                    "confidence": "claimed",
+                    "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+                    "evidence": {
+                      "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+                    },
+                    "created_at": "2026-10-12T15:31:40.019Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "record_decision",
+        "tags": [
+          "Decisions and why"
+        ],
+        "summary": "Record a decision",
+        "description": "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the issue the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"…\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge.\n\nKept as `claimed`. g1t records `integration_failure`, `integration_passed`, `approval` and `merge` itself. Publishes `decision.recorded`. See [decision records](/guides/why-blame/#decision-records).",
+        "x-operation": "record_decision",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "record_decision",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+                  "issue": 9,
+                  "pull": 14,
+                  "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+                  "actor": "ana",
+                  "kind": "fix",
+                  "confidence": "claimed",
+                  "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+                  "evidence": {
+                    "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+                  },
+                  "created_at": "2026-10-12T15:31:40.019Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "claim",
+                      "fix",
+                      "note"
+                    ],
+                    "description": "What it is: why the change is made this way (proposal), something true of it (claim), what fixed a failure (fix), or a note."
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "The decision, in a sentence or two. At most 2,000 characters."
+                  },
+                  "evidence": {
+                    "type": "object",
+                    "description": "What it rests on, such as a commit, a check's name or the pull requests involved. At most 8 KB of JSON."
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "description": "The session it was made in, if you have one."
+                  }
+                },
+                "required": [
+                  "kind",
+                  "summary"
+                ]
+              },
+              "example": {
+                "kind": "fix",
+                "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+                "evidence": {
+                  "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+                },
+                "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/issues/{number}/decisions": {
+      "get": {
+        "operationId": "list_issue_decisions",
+        "tags": [
+          "Decisions and why"
+        ],
+        "summary": "List an issue's decisions",
+        "description": "The decision records on an issue (with those on its pull requests) or on a pull request, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed: someone said so; tested: a check or a combination of pull requests proved it; approved: a person approved it), who recorded it (absent for g1t), its summary and its evidence. Issues and pull requests share numbers, so number names either.\n\n`GET /repos/{owner}/{name}/issues/{number}/decisions` lists an issue's, with those on its pull requests.",
+        "x-operation": "list_decisions",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "list_decisions",
+        "x-scope": "pull_requests:read",
+        "security": [
+          {
+            "token": [
+              "pull_requests:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
+                    "issue": 9,
+                    "pull": 14,
+                    "session_id": null,
+                    "actor": null,
+                    "kind": "integration_failure",
+                    "confidence": "tested",
+                    "summary": "#14 failed in the merge queue together with #12: `CI / merge_group` failed when they were combined.",
+                    "evidence": {
+                      "commit": "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b",
+                      "check": {
+                        "name": "CI / merge_group",
+                        "conclusion": "failure",
+                        "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
+                      },
+                      "combination": [
+                        11,
+                        12,
+                        14
+                      ],
+                      "other_pulls": [
+                        11,
+                        12
+                      ],
+                      "suspects": [
+                        12
+                      ],
+                      "bisected": true
+                    },
+                    "created_at": "2026-10-12T15:04:11.204Z"
+                  },
+                  {
+                    "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+                    "issue": 9,
+                    "pull": 14,
+                    "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+                    "actor": "ana",
+                    "kind": "fix",
+                    "confidence": "claimed",
+                    "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+                    "evidence": {
+                      "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+                    },
+                    "created_at": "2026-10-12T15:31:40.019Z"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/why": {
+      "get": {
+        "operationId": "why",
+        "tags": [
+          "Decisions and why"
+        ],
+        "summary": "Explain a line",
+        "description": "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch), the merged pull request it arrived in, that pull request's issue, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, issue, decisions and sessions are empty when the commit did not arrive through a pull request.\n\n`ref` reads the file at a branch, tag or commit. See [sessions and why-blame](/guides/why-blame/#why-over-the-api).",
+        "x-operation": "why",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "why",
+        "x-scope": "code:read",
+        "security": [
+          {
+            "token": [
+              "code:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The file, from the repository's root, such as \"src/main.rs\"."
+          },
+          {
+            "name": "line",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The line, counted from 1."
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A branch, tag or commit. The default branch if not given."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "path": "src/config.rs",
+                  "line": 42,
+                  "commit": {
+                    "hash": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b",
+                    "tree_hash": "c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0",
+                    "message": "Read retry_limit, as #12 names it",
+                    "author": {
+                      "name": "Ana Lima",
+                      "email": "ana@example.com"
+                    },
+                    "parents": [
+                      "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b"
+                    ],
+                    "authored_at": "2026-10-12T15:29:02Z"
+                  },
+                  "pull": {
+                    "number": 14,
+                    "title": "Retry failed webhook deliveries",
+                    "author": "ana",
+                    "agent": "claude-code",
+                    "merged_by": "g1t",
+                    "merged_at": "2026-10-12T15:52:18.330Z"
+                  },
+                  "issue": {
+                    "number": 9,
+                    "title": "Webhook deliveries are not retried",
+                    "state": "closed",
+                    "body": "A delivery that times out is never sent again."
+                  },
+                  "decisions": [
+                    {
+                      "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
+                      "issue": 9,
+                      "pull": 14,
+                      "session_id": null,
+                      "actor": null,
+                      "kind": "integration_failure",
+                      "confidence": "tested",
+                      "summary": "#14 failed in the merge queue together with #12: `CI / merge_group` failed when they were combined.",
+                      "evidence": {
+                        "commit": "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b",
+                        "check": {
+                          "name": "CI / merge_group",
+                          "conclusion": "failure",
+                          "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
+                        },
+                        "combination": [
+                          11,
+                          12,
+                          14
+                        ],
+                        "other_pulls": [
+                          11,
+                          12
+                        ],
+                        "suspects": [
+                          12
+                        ],
+                        "bisected": true
+                      },
+                      "created_at": "2026-10-12T15:04:11.204Z"
+                    },
+                    {
+                      "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+                      "issue": 9,
+                      "pull": 14,
+                      "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+                      "actor": "ana",
+                      "kind": "fix",
+                      "confidence": "claimed",
+                      "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+                      "evidence": {
+                        "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+                      },
+                      "created_at": "2026-10-12T15:31:40.019Z"
+                    }
+                  ],
+                  "sessions": [
+                    {
+                      "seq": 31,
+                      "kind": "message",
+                      "text": "#12 renamed retries to retry_limit; reading the new name here.",
+                      "tool": null,
+                      "commit": null,
+                      "at": "2026-10-12T15:27:40.118Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "path": "src/config.rs",
+          "line": 42
         }
       }
     },

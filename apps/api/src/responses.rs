@@ -167,6 +167,9 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::GetRepoSettings | Op::UpdateRepoSettings => through::<work::RepoSettings>(op, sent),
         Op::ListCheckNames => through::<Vec<work::SeenCheck>>(op, sent),
         Op::GetMergeQueue => through::<work::QueueView>(op, sent),
+        Op::ListDecisions => through::<Vec<g1t_contracts::decisions::Decision>>(op, sent),
+        Op::RecordDecision => through::<g1t_contracts::decisions::Decision>(op, sent),
+        Op::Why => through::<g1t_contracts::decisions::Why>(op, sent),
         Op::ListIssues => through::<Vec<work::Issue>>(op, sent),
         Op::CreateIssue | Op::UpdateIssue | Op::CloseIssue | Op::ReopenIssue => {
             through::<work::Issue>(op, sent)

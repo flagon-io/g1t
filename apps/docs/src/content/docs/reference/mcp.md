@@ -300,6 +300,7 @@ out.
 | [`security_alerts`](/reference/api/security/list-security-alerts/) | Its security alerts: secrets found in pushes and history (`kind` `secret`) and dependencies with known vulnerabilities (`dependency`), each `open`, `dismissed` or `fixed`. `state` and `kind` filter them. Write role. | `repo` | `repo:read` |
 | [`dismiss_alert`](/reference/api/security/dismiss-security-alert/) | Dismiss one by `id` with a `reason` and an optional `comment`. A secret takes `false_positive`, `used_in_tests`, `revoked` or `wont_fix`, and needs the Admin role, since a dismissed secret is let through push protection; a dependency takes `fix_started`, `no_bandwidth`, `tolerable_risk`, `inaccurate` or `not_used`, and needs Write. | `repo`, `id`, `reason` | `repo:admin` |
 | [`reopen_alert`](/reference/api/security/reopen-security-alert/) | Open a dismissed alert again. The same roles as dismissing. | `repo`, `id` | `repo:admin` |
+| [`why`](/reference/api/decisions-and-why/why/) | Why a line is the way it is: the `commit` that last changed `line` of `path` (at `ref`, or the default branch), the merged `pull` request it arrived in, its `issue`, the `decisions` recorded on the pull request, and the `sessions` entries behind the commit. | `repo`, `path`, `line` | `code:read` |
 
 `update_settings` takes `required_checks` (at most 20 names),
 `required_approvals`, `allow_ignoring_checks`, `require_up_to_date`,
@@ -351,6 +352,8 @@ far.
 | [`update`](/reference/api/pull-requests/update-pull-request/) | Change its `base` (the branch it merges into; Write role), `labels`, `milestone`, `assignees` or `reviewers`. `state` `open` reopens it and `closed` closes it. | `repo`, `number` | `pull_requests:write` |
 | [`record_session`](/reference/api/sessions/record-session/) | Append entries to a pull request's session. Each has `kind` and `text`, and `tool` for tool entries. | `repo`, `number`, `entries` | `pull_requests:write` |
 | [`read_session`](/reference/api/sessions/read-session/) | The recorded session, oldest first. `after` skips to entries after a sequence number. | `repo`, `number` | `pull_requests:read` |
+| [`record_decision`](/reference/api/decisions-and-why/record-decision/) | Record a decision on a pull request, kept as `claimed`: a `kind` (`proposal`, `claim`, `fix` or `note`), a `summary`, and optional `evidence` (an object) and `session_id`. | `repo`, `number`, `kind`, `summary` | `pull_requests:write` |
+| [`list_decisions`](/reference/api/decisions-and-why/list-decisions/) | The decision records on a pull request, or on an issue and its pull requests, oldest first, each with its `kind`, `confidence` (`claimed`, `tested` or `approved`), `summary` and `evidence`. | `repo`, `number` | `pull_requests:read` |
 | [`ready`](/reference/api/pull-requests/mark-pull-request-ready/) | Mark a draft ready for review. The summary becomes its description. | `repo`, `number`, `summary` | `pull_requests:write` |
 | [`draft`](/reference/api/pull-requests/convert-pull-request-to-draft/) | Turn a pull request that is ready for review back into a draft. It leaves the merge queue. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
 | [`request_reviewers`](/reference/api/pull-requests/request-reviewers/) | Ask more people (`reviewers`, by username) or teams (`team_reviewers`, as `workspace/team` or a slug of the repository's workspace) to review it, added to whoever is asked already. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
@@ -364,7 +367,9 @@ far.
 `record_session` takes a list of `entries`, each with a `kind` (`prompt`,
 `message`, `tool_call`, `tool_result` or `note`) and `text`, and `tool` for
 tool entries. See [sessions and why-blame](/guides/why-blame/) and the
-[merge queue](/guides/merge-queue/).
+[merge queue](/guides/merge-queue/). g1t records `integration_failure`,
+`integration_passed`, `approval` and `merge` decisions itself; see
+[decision records](/guides/why-blame/#decision-records).
 
 ## `memory`
 

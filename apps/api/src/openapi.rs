@@ -377,6 +377,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[Op::ReadSession, Op::RecordSession],
     ),
     (
+        "Decisions and why",
+        "Decision records: why the work is the way it is, and how sure that is (claimed, tested by a check or the merge queue, or approved by a person). And why a line of code is the way it is: its commit, pull request, issue, decisions and session.",
+        &[Op::ListDecisions, Op::RecordDecision, Op::Why],
+    ),
+    (
         "Memory",
         "What agents and people learned that the next agent should know, for one project or across a workspace. Members only; never a secret.",
         &[Op::Remember, Op::Recall],
@@ -657,6 +662,9 @@ fn title(op: Op) -> &'static str {
         Op::CreatePullRequest => "Create a pull request",
         Op::RecordSession => "Record session entries",
         Op::ReadSession => "Read a session",
+        Op::RecordDecision => "Record a decision",
+        Op::ListDecisions => "List a pull request's decisions",
+        Op::Why => "Explain a line",
         Op::MarkPullRequestReady => "Mark a pull request ready",
         Op::ClosePullRequest => "Close a pull request",
         Op::ReopenPullRequest => "Reopen a pull request",
@@ -871,6 +879,8 @@ fn operation_id(route: &Route) -> String {
         ("DELETE", ":label") if route.path.contains("/issues/:number/") => "remove_issue_label".to_owned(),
         ("DELETE", "saved") => "unsave_thread".to_owned(),
         ("DELETE", "snooze") => "unsnooze_thread".to_owned(),
+        // An issue's decisions, by its number.
+        ("GET", "decisions") if route.path.contains("/issues/:number/") => "list_issue_decisions".to_owned(),
         _ => op.name().to_owned(),
     };
     if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
@@ -899,6 +909,7 @@ fn summary(route: &Route, id: &str) -> String {
         "delete_issue_subscription" => "Unsubscribe from an issue",
         "unsave_thread" => "Unsave a thread",
         "unsnooze_thread" => "Bring a snoozed thread back",
+        "list_issue_decisions" => "List an issue's decisions",
         _ => title(route.op),
     };
     if id.ends_with("_for_workspace") {

@@ -348,6 +348,52 @@ export type EventPayloads = {
   "team.repo_removed": TeamChangedData;
   /** A repository's merge queue gained, lost or settled an entry. */
   "queue.changed": { repoId: string };
+  /**
+   * A combined state in the merge queue failed. `pull` (also `number`)
+   * answers for it; `suspects` are the pull requests ahead it fails with,
+   * narrowed by building smaller combinations when `bisected`.
+   */
+  "integration.failed": {
+    repoId: string;
+    pullId: string;
+    number: number;
+    pull: number;
+    issue: number | null;
+    combination: number[];
+    check: { name: string; conclusion: string; url: string | null };
+    bisected: boolean;
+    suspects: number[];
+    otherPulls: number[];
+    commit: string | null;
+  };
+  /** A combined state in the merge queue passed. */
+  "integration.passed": {
+    repoId: string;
+    pullId: string;
+    number: number;
+    pull: number;
+    issue: number | null;
+    combination: number[];
+    commit: string | null;
+  };
+  /** A decision record was kept on an issue or pull request (`number`). */
+  "decision.recorded": {
+    repoId: string;
+    number: number;
+    issue: number | null;
+    decision: {
+      id: string;
+      issue: number | null;
+      pull: number | null;
+      sessionId: string | null;
+      actor: string | null;
+      kind: string;
+      confidence: "claimed" | "tested" | "approved";
+      summary: string;
+      evidence: Record<string, unknown>;
+      createdAt: string;
+    };
+  };
   /** `number` is the issue or pull request commented on. */
   "comment.created": {
     commentId: string;
