@@ -677,16 +677,18 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
     <SidebarLink
       to={`/${project.namespace}/${project.name}`}
       icon={project.isPrivate ? <Lock /> : <Box />}
-      drill="hover"
       bare={isPinned}
       action={
+        // At the row's end, where the row's other actions sit, and only on
+        // hover or keyboard focus: a pin clicked keeps the mouse's focus,
+        // and showing it on any focus left it lit on a row no one was over.
         <PinButton
           workspace={slug}
           slug={project.name}
           name={project.title ?? project.name}
           pinned={isPinned}
           small
-          className="absolute top-1/2 right-6 -translate-y-1/2 opacity-0 transition-opacity group-hover/menu-item:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+          className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover/menu-item:opacity-100 has-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
         />
       }
     >
