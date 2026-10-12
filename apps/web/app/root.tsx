@@ -21,7 +21,6 @@ import appCss from "./app.css?url";
 import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { ButtonLink } from "./components/ui";
-import { Card } from "./components/ui/card";
 import { AppShell, Progress, type ShellData, useLeaving } from "./components/shell";
 import { SiteFooter } from "./components/footer";
 import { PublicHeader } from "./components/public-header";
@@ -55,6 +54,8 @@ import { DesktopApp } from "./components/desktop-app";
 import { DesktopRunnerLink } from "./components/desktop-runner-link";
 import { LiveNotifications } from "./components/notifications/live-notifications";
 import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
+import { DEVELOPER_COOKIE, readDeveloperMode, useDeveloperMode } from "./lib/developer-mode";
+import { DebugDetails } from "./components/debug-details";
 
 
 export const links: Route.LinksFunction = () => [
@@ -111,6 +112,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     sidebarClosed: sidebarClosed(readCookie(cookies, SIDEBAR_COOKIE)),
     // Their Appearance, so the page is drawn in it from the first byte (lib/theme.ts).
     theme: readTheme(readCookie(cookies, THEME_COOKIE)),
+    // Whether a page that fails says why, in full (lib/developer-mode.ts).
+    developer: readDeveloperMode(readCookie(cookies, DEVELOPER_COOKIE)),
     // What they hear when chat moves (components/notifications/sounds.tsx).
     sounds,
     addresses: addresses(),
@@ -472,6 +475,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   });
   // Already loaded again once, or the reload never started: show the page.
   const tried = useMemo(() => reloadable && reloadedBefore(href), [reloadable, href]);
+  // The error in full, for reporting it (lib/developer-mode.ts).
+  const developer = useDeveloperMode(useRouteLoaderData<typeof loader>("root")?.developer) || import.meta.env.DEV;
   const [gaveUp, setGaveUp] = useState<string | null>(null);
   const reload = reloadable && !tried && gaveUp !== href;
   useEffect(() => {
@@ -496,7 +501,6 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   let title = "Something went wrong";
   let details = "An unexpected error occurred. Try again in a moment.";
-  let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
     // The same page for something private and something missing.
@@ -516,13 +520,10 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       title = "This needs you to sign in";
       details = error.data.message;
     }
-  } else if (import.meta.env.DEV && error instanceof Error) {
-    details = error.message;
-    stack = error.stack;
   }
 
   return (
-    <PageMain className="mx-auto max-w-xl px-4 py-32 text-center">
+    <PageMain className={`mx-auto px-4 text-center ${developer ? "max-w-3xl py-16" : "max-w-xl py-32"}`}>
       <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mt-3 text-muted">{details}</p>
       <div className="mt-8">
@@ -530,12 +531,16 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
           Back to home
         </ButtonLink>
       </div>
-      {stack && (
-        <Card asChild tone="plain" radius="lg" className="mt-8 overflow-x-auto p-4 text-left text-xs">
-          <pre>
-            <code>{stack}</code>
-          </pre>
-        </Card>
+      {developer ? (
+        <DebugDetails error={error} />
+      ) : (
+        <p className="mt-6 text-xs text-faint">
+          Turn on developer mode in{" "}
+          <Link to="/settings/account#developer" className="underline underline-offset-4 hover:text-fg">
+            Settings
+          </Link>{" "}
+          to see what went wrong.
+        </p>
       )}
     </PageMain>
   );

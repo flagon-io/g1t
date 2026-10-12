@@ -3,6 +3,7 @@ import { Link, redirect } from "react-router";
 import type { Route } from "./+types/account";
 import { DeleteAccountAction } from "../../components/delete-account";
 import { DangerZone } from "../../components/danger-zone";
+import { DeveloperModeSwitch } from "../../components/developer-mode-switch";
 import { ThemeSwitch } from "../../components/theme-switch";
 import { githubSignIn } from "../../lib/github.server";
 import { page } from "../../lib/meta";
@@ -72,6 +73,15 @@ export default function AccountSettings({ loaderData, actionData }: Route.Compon
           Light, dark, or Auto to follow your system. This browser remembers it.
         </p>
         <ThemeSwitch className="mt-3 w-full max-w-xs" />
+      </section>
+      <section id="developer" aria-labelledby="developer-heading" className="scroll-mt-20">
+        <h2 id="developer-heading" className="font-medium">
+          Developer
+        </h2>
+        <p className="mt-1 text-sm text-muted">For reporting what went wrong when something breaks.</p>
+        <div className="mt-3">
+          <DeveloperModeSwitch />
+        </div>
       </section>
       <DangerZone>
         <DeleteAccountAction

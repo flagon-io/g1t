@@ -656,6 +656,22 @@ system's setting, each with its own switch for this browser: here, the
 **Auto**, **Light** and **Dark** menu at the end of the header (at the foot
 of the menu on a phone); on the status page, the three icons at the top.
 
+### Developer mode
+
+When a page fails, g1t says only that something went wrong. To see why,
+turn on **Developer mode** under
+[Settings → Account](https://g1t.sh/settings/account#developer). From then
+on, a page that fails shows the error itself: its message and stack, the
+address, the time, the routes the page was drawn from, the site's build
+and your browser (and the desktop app's version, inside it). **Copy
+details** copies all of it as one report, ready to paste into a support
+request or an issue.
+
+Signed in, errors from g1t's side come through in full too, where
+otherwise they read *Unexpected Server Error*. They are only ever about
+your own requests. Like Appearance, the setting is kept in this browser, in
+a `g1t_dev` cookie; turn it off the same way.
+
 ### The sidebar
 
 The sidebar's top row names the workspace you are in. Select it to switch

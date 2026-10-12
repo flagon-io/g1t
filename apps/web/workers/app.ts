@@ -8,6 +8,7 @@ import { hardenRegistryHeaders } from "../app/lib/content-safety";
 import { withSiteHeaders } from "../app/lib/page-headers";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
 import { READ_DEADLINE_MS, withDeadline } from "../app/lib/deadline";
+import { wantsServerErrors } from "../app/lib/developer-mode";
 import { gitLimited, pageLimited, usercontentLimited } from "../app/lib/front-door-limits";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
@@ -29,8 +30,19 @@ const loadBuild = () => import("virtual:react-router/server-build");
  * waits on another's (a build that fails to load is loaded again next time).
  */
 let handler: ReturnType<typeof createRequestHandler> | undefined;
+/**
+ * The same, in React Router's development mode: for a signed-in request
+ * with developer mode on (app/lib/developer-mode.ts), so a page that fails
+ * shows the server's own error rather than "Unexpected Server Error". Made
+ * the first time someone asks for it.
+ */
+let developerHandler: ReturnType<typeof createRequestHandler> | undefined;
 async function requestHandler(request: Request): Promise<Response> {
   if (import.meta.env.DEV) return createRequestHandler(loadBuild, import.meta.env.MODE)(request);
+  if (wantsServerErrors(request)) {
+    developerHandler ??= createRequestHandler(await loadBuild(), "development");
+    return developerHandler(request);
+  }
   handler ??= createRequestHandler(await loadBuild(), import.meta.env.MODE);
   return handler(request);
 }
