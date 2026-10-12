@@ -7,7 +7,7 @@ Dear Cloudflare,
 
 We're the small team at Flagon, Inc. building g1t, a git platform where
 people and coding agents work in the same issues, pull requests and merge
-queue. Every part of it runs on you: about twenty Workers, a D1 database for
+queue. Every part of it runs on you: more than twenty-five Workers, a D1 database for
 each service that keeps data, Artifacts for every repository and every pull
 request's fork, Containers for agents and CI, R2, KV, Queues, and Cloudflare
 for SaaS for our customers' domains. We have no servers.
@@ -32,8 +32,9 @@ us hand a sandbox a credential that dies with it. The read binding powers
 every page we render, blame, mergeability and search, without a git client
 anywhere.
 
-The rest of the platform held up too. Rust compiled to WebAssembly runs most of
-our services, and TypeScript the rest. D1's read replication is free and good. Containers gave us
+The rest of the platform held up too. Rust compiled to WebAssembly runs our
+core (repositories, issues and pull requests, the API, security and
+billing), and TypeScript the rest. D1's read replication is free and good. Containers gave us
 sandboxes in three sizes. With a cached credential and ref listing, a
 `git fetch` with nothing new answers in under half a second, and most of
 our pages answer in under 250 ms. We went from an empty repository to a
@@ -58,8 +59,9 @@ and agents open pull requests by the thousand. We can't find whether a fork
 shares objects with its source or copies them. If it copies, an agent-heavy
 account reaches the 1 TB account limit in days (it can be raised on
 request, but only by asking), and at that point every push
-in the account fails, for every customer at once. We keep forks for now,
-and are measuring it ourselves.
+in the account fails, for every customer at once. So we remove a pull
+request's fork a day after it closes, keeping its head in the repository it
+came from, and measure the rest ourselves.
 
 **A write path and a pre-receive hook.** The binding reads, but it can't
 list refs, move them, or write objects. So to land a pull request we speak
@@ -84,15 +86,21 @@ page took 0.85 s instead of 0.17 s. We turned placement off everywhere and
 measure each Worker by hand.
 
 **D1 sessions across service bindings.** Read replicas need a bookmark to
-give read-your-writes. Our site reads from seven services, each with its
-own database, so we built a header protocol to carry bookmarks through service
+give read-your-writes. Our site reads from about twenty services, most with
+their own database, so we built a header protocol to carry bookmarks through service
 bindings into a cookie and back.
 
-**Containers that build images and keep disks.** We found no supported way
-to run Docker or BuildKit in a Container, so our own CI can't rebuild our
-sandbox image; that waits for a machine outside. Container disk is
-ephemeral, so the self-hostable git store we'd like as a warm fallback has
-to live off Cloudflare.
+**Container networks and disks.** Docker runs inside a Container, and our
+CI jobs use it, but a container can't route a network of its own or change
+its packet filter, so every container in a job shares the job's network and
+two of them can't listen on the same port. Container disk is ephemeral, so
+the self-hostable git store we keep as a fallback has to live off
+Cloudflare.
+
+**Sharding is ours to do.** One Artifacts namespace takes 2,000 requests
+every 10 seconds, and a binding addresses one namespace. To grow past that,
+and to keep EU workspaces' repositories in the EU, we route each repository
+to a namespace and move repositories between them ourselves.
 
 **Inbound TCP for SSH.** Git users expect `git@host:owner/repo`. Workers
 take no inbound TCP, so g1t is HTTPS only. We've applied for the beta and
@@ -106,11 +114,12 @@ client inside a Worker for landing, catch-up, mirrors and imports. Our own
 push policy in front of Artifacts. A versioned ref cache with a test that
 guards it. Two layers of credential caching. A bookmark protocol for D1.
 A probe that deploys throwaway Workers to measure placement, and a
-`Server-Timing` header on every response so we see the next regression.
-Image builds on a laptop.
+`Server-Timing` header on every response so we see the next regression. A
+sweep that removes each pull request's fork a day after it closes.
+Repository sharding across namespaces, with a read-only fallback rebuilt
+from nightly backups.
 
-All of it works. Most of it is code we'd happily delete. Next is a fork
-sweep, to switch on once we know what forks cost.
+All of it works. Most of it is code we'd happily delete.
 
 ## What we're asking for
 
@@ -128,9 +137,12 @@ sweep, to switch on once we know what forks cost.
 6. Placement that accounts for D1 primaries and service bindings, and D1 as
    a placement target.
 7. D1 sessions that travel across service bindings.
-8. Image builds and persistent volumes for Containers.
-9. Inbound TCP, so git can run over SSH.
-10. A support path during the beta, snapshot restore and export for
+8. Persistent volumes for Containers, and container networks a job can
+   route.
+9. One binding that addresses many namespaces, and a namespace rate limit
+   that can be raised on request.
+10. Inbound TCP, so git can run over SSH.
+11. A support path during the beta, snapshot restore and export for
     repositories, and a date for general availability with an SLA.
 
 ## Let's work on it together
