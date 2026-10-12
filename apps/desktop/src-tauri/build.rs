@@ -28,6 +28,7 @@ fn main() {
         "runner_offer",
         "runner_register",
         "runner_control",
+        "site_ready",
     ])))
     .expect("the app's build could not be prepared");
 }

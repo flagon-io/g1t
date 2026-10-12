@@ -94,6 +94,30 @@ pub enum Tone {
 pub struct Action {
     pub id: &'static str,
     pub label: &'static str,
+    /// Its button stays busy, after a click, until the runner's status
+    /// that follows changes (or an error, or a while with no change): the
+    /// runner starting, stopping, retrying or looking for updates. One
+    /// that opens a page, a window or copies is done once the app has it.
+    pub waits: bool,
+    /// What the person is asked before it goes ahead, for a fix that can't be undone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confirm: Option<&'static str>,
+}
+
+impl Action {
+    /// A fix that is done the moment the app has it.
+    const fn now(id: &'static str, label: &'static str) -> Self {
+        Self { id, label, waits: false, confirm: None }
+    }
+
+    /// A fix whose effect the runner's status shows when it comes.
+    const fn waits(id: &'static str, label: &'static str) -> Self {
+        Self { id, label, waits: true, confirm: None }
+    }
+
+    const fn confirming(self, question: &'static str) -> Self {
+        Self { confirm: Some(question), ..self }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -307,32 +331,35 @@ fn update_line(facts: &Facts, code: Code) -> UpdateLine {
     }
 }
 
-const START: Action = Action { id: "start", label: "Start" };
-const TURN_ON: Action = Action { id: "start", label: "Turn on" };
-const RETRY: Action = Action { id: "retry", label: "Retry" };
-const CHECK_NOW: Action = Action { id: "retry", label: "Check now" };
+const START: Action = Action::waits("start", "Start");
+const TURN_ON: Action = Action::waits("start", "Turn on");
+const RETRY: Action = Action::waits("retry", "Retry");
+const CHECK_NOW: Action = Action::waits("retry", "Check now");
 /// Looks for a newer runner now, and installs it as soon as its kinds of job are idle.
-const CHECK_UPDATES: Action = Action { id: "check_updates", label: "Check for runner updates" };
-const CHECK_AGAIN: Action = Action { id: "check_updates", label: "Check again" };
+const CHECK_UPDATES: Action = Action::waits("check_updates", "Check for runner updates");
+const CHECK_AGAIN: Action = Action::waits("check_updates", "Check again");
 /// Removes the sandbox this computer has (`sandbox down --delete`, in the
 /// app's own folder for it) and starts the app's own: what the command a
 /// person would type does, without needing to know where that folder is.
-const REMOVE_SANDBOX: Action = Action { id: "remove_sandbox", label: "Remove it and start again" };
-const RESTART: Action = Action { id: "restart", label: "Restart" };
-const SIGN_IN: Action = Action { id: "sign_in", label: "Sign in" };
-const CHOOSE_WORKSPACE: Action = Action { id: "choose_workspace", label: "Choose workspace" };
-const NEW_WORKSPACE: Action = Action { id: "new_workspace", label: "Create a workspace" };
-const CHOOSE_BACKEND: Action = Action { id: "choose_backend", label: "Choose how jobs run" };
-const OPEN_DOCKER: Action = Action { id: "open_docker", label: "Open Docker" };
-const GET_DOCKER: Action = Action { id: "get_docker", label: "Get Docker" };
-const INSTALL_SYSBOX: Action = Action { id: "install_sysbox", label: "Install Sysbox" };
-const COPY_WSL_INSTALL: Action = Action { id: "copy_wsl_install", label: "Copy command" };
-const COPY_VFKIT_INSTALL: Action = Action { id: "copy_vfkit_install", label: "Copy command" };
-const WINDOWS_FEATURES: Action = Action { id: "windows_features", label: "Open Windows features" };
-const LEARN_MORE: Action = Action { id: "learn_more", label: "Learn more" };
-const VIEW_LOG: Action = Action { id: "view_log", label: "View log" };
-const REPORT: Action = Action { id: "report", label: "Report" };
-const VIEW_RUNNERS: Action = Action { id: "view_runners", label: "View on g1t" };
+const REMOVE_SANDBOX: Action = Action::waits("remove_sandbox", "Remove it and start again").confirming(
+    "Remove this computer's sandbox? Its VM and registration go, and g1t makes its own in their place, registered with your workspace. Its old runners stay listed on g1t until you remove them there.",
+);
+const RESTART: Action = Action::waits("restart", "Restart");
+const SIGN_IN: Action = Action::now("sign_in", "Sign in");
+const CHOOSE_WORKSPACE: Action = Action::now("choose_workspace", "Choose workspace");
+const NEW_WORKSPACE: Action = Action::now("new_workspace", "Create a workspace");
+const CHOOSE_BACKEND: Action = Action::now("choose_backend", "Choose how jobs run");
+/// Docker takes a while to start; the runner's status says when it has.
+const OPEN_DOCKER: Action = Action::waits("open_docker", "Open Docker");
+const GET_DOCKER: Action = Action::now("get_docker", "Get Docker");
+const INSTALL_SYSBOX: Action = Action::now("install_sysbox", "Install Sysbox");
+const COPY_WSL_INSTALL: Action = Action::now("copy_wsl_install", "Copy command");
+const COPY_VFKIT_INSTALL: Action = Action::now("copy_vfkit_install", "Copy command");
+const WINDOWS_FEATURES: Action = Action::now("windows_features", "Open Windows features");
+const LEARN_MORE: Action = Action::now("learn_more", "Learn more");
+const VIEW_LOG: Action = Action::now("view_log", "View log");
+const REPORT: Action = Action::now("report", "Report");
+const VIEW_RUNNERS: Action = Action::now("view_runners", "View on g1t");
 
 fn some(text: impl Into<String>) -> Option<String> {
     Some(text.into())
@@ -894,6 +921,21 @@ mod tests {
             platform: "windows".into(),
             ..Facts::default()
         }
+    }
+
+    #[test]
+    fn a_fix_that_changes_the_runner_waits_for_its_status() {
+        for action in [START, TURN_ON, RETRY, CHECK_NOW, CHECK_UPDATES, CHECK_AGAIN, REMOVE_SANDBOX, RESTART, OPEN_DOCKER] {
+            assert!(action.waits, "{} waits for the status that follows", action.id);
+        }
+        for action in [SIGN_IN, CHOOSE_WORKSPACE, CHOOSE_BACKEND, GET_DOCKER, COPY_WSL_INSTALL, LEARN_MORE, VIEW_LOG, VIEW_RUNNERS] {
+            assert!(!action.waits, "{} is done once the app has it", action.id);
+        }
+        // Only what can't be undone asks first.
+        assert!(REMOVE_SANDBOX.confirm.is_some_and(|question| question.ends_with('.') && question.contains('?')));
+        assert!(RETRY.confirm.is_none());
+        let said = serde_json::to_value(RETRY).unwrap();
+        assert_eq!(said, serde_json::json!({ "id": "retry", "label": "Retry", "waits": true }));
     }
 
     #[test]

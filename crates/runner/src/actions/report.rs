@@ -84,10 +84,17 @@ impl Api {
     /// everything after (`next_token`): a copy of the first left on the
     /// runner's computer cannot fetch the job, its secrets or a G1T_TOKEN
     /// again. A g1t that predates it sends none, and the token stays.
-    pub(crate) fn spec(&mut self, rotate: bool) -> Result<Value> {
+    ///
+    /// With `broker`, this harness passes its job's requests to brokered
+    /// secrets' hosts through g1t (broker.rs), and the spec lists each
+    /// stand-in's hosts (`brokered`).
+    pub(crate) fn spec(&mut self, rotate: bool, broker: bool) -> Result<Value> {
         let mut body = json!({ "token": self.token });
         if rotate {
             body["rotate"] = json!(true);
+        }
+        if broker {
+            body["broker"] = json!(true);
         }
         let response = ureq::post(&format!("{}/actions/jobs/{}/spec", self.base, self.job)).timeout(Duration::from_secs(60)).send_json(body)?;
         let mut spec: Value = response.into_json()?;

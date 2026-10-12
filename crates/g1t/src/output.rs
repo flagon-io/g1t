@@ -66,6 +66,7 @@ impl Output {
             }
             return Ok(());
         }
+        let value = sorted(&value);
         let text = if self.tty {
             serde_json::to_string_pretty(&value)
         } else {
@@ -200,6 +201,21 @@ impl Cell {
         } else {
             self.shown.clone()
         }
+    }
+}
+
+/// `value` with every object's keys in sorted order. Printed JSON must not
+/// depend on serde_json's `preserve_order`, which other crates in the
+/// workspace turn on for a shared build.
+pub fn sorted(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            Value::Object(keys.into_iter().map(|k| (k.clone(), sorted(&map[k]))).collect())
+        }
+        Value::Array(list) => Value::Array(list.iter().map(sorted).collect()),
+        other => other.clone(),
     }
 }
 
@@ -365,7 +381,7 @@ mod tests {
     fn json_is_compact_and_ordered() {
         let value: Value = serde_json::from_str(r#"{"title":"a","number":1}"#).unwrap();
         assert_eq!(
-            serde_json::to_string(&value).unwrap(),
+            serde_json::to_string(&sorted(&value)).unwrap(),
             r#"{"number":1,"title":"a"}"#
         );
     }

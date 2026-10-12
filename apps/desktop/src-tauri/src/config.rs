@@ -38,6 +38,10 @@ pub struct State {
     pub waiting: Mutex<i64>,
     /// The app's own settings, as the settings window last left them.
     pub settings: Mutex<Settings>,
+    /// The site's page in the window draws the settings and the runner
+    /// menu itself: it said so once it could, and each page that starts
+    /// loading forgets it until it says so again (`site_ready`).
+    pub site_ready: Mutex<bool>,
 }
 
 use crate::settings::Settings;
@@ -170,6 +174,14 @@ const SITE: &[&str] = &[
     "allow-runner-offer",
     "allow-runner-register",
     "allow-runner-control",
+    // The settings dialog and the runner menu, which the site draws over itself.
+    "allow-site-ready",
+    "allow-get-settings",
+    "allow-save-settings",
+    "allow-set-open-at-login",
+    "allow-restart",
+    "allow-restart-to-update",
+    "allow-change-server",
 ];
 
 /// What GitHub's pages may call while someone signs in: telling the title bar their title.
@@ -202,9 +214,23 @@ pub fn allow_site(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The window started loading a page.
-pub fn at(app: &AppHandle, url: Url) {
-    *app.state::<State>().at.lock().unwrap() = Some(url);
+/// The window started loading a page (`started`), or finished. A page
+/// that starts loading hasn't said it can draw the settings yet.
+pub fn at(app: &AppHandle, url: Url, started: bool) {
+    let state = app.state::<State>();
+    *state.at.lock().unwrap() = Some(url);
+    if started {
+        *state.site_ready.lock().unwrap() = false;
+    }
+}
+
+/// The site's page says whether it draws the settings and the runner menu.
+pub fn set_site_ready(app: &AppHandle, ready: bool) {
+    *app.state::<State>().site_ready.lock().unwrap() = ready;
+}
+
+pub fn site_ready(app: &AppHandle) -> bool {
+    *app.state::<State>().site_ready.lock().unwrap()
 }
 
 /// Whether the window is on one of the server's pages now.

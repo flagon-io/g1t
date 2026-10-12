@@ -997,6 +997,13 @@ pub struct JobCallArgs {
     /// that predate it never ask, and keep their token.
     #[serde(default)]
     pub rotate: bool,
+    /// `job_spec` only: the harness on a self-hosted runner can pass the
+    /// job's requests to a brokered secret's hosts through g1t
+    /// (`POST /actions/jobs/{job}/broker`), so its spec lists each
+    /// stand-in's hosts, never a value. Harnesses that predate it never
+    /// ask, and their job's log says the stand-ins will not be filled in.
+    #[serde(default)]
+    pub broker: bool,
 }
 
 /// What the runner needs to start a job's sandbox.

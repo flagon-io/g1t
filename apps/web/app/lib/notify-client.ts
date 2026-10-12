@@ -26,6 +26,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry, RepoChange } from "@g1t/contracts";
 
 import type { DesktopRunnerBridge } from "./desktop-runner";
+import type { DesktopSettingsBridge } from "./desktop-settings";
 import { openLive } from "./live-socket";
 import { dndOn, isIdle, mergePeople } from "./presence";
 import { notificationArrived } from "./sound-events";
@@ -74,8 +75,15 @@ import {
  *   // Looks for an update now: "current", "ready:<version>", or rejects with why.
  *   checkForUpdates() { return Promise.resolve("current") },
  *   // Opens the app's own settings (starting with the computer, closing to
- *   // the tray, notifications, the badge, zoom, updates) in their window.
+ *   // the tray, notifications, the badge, zoom, updates, the runner): the
+ *   // dialog this page draws, or their own window when it can't.
  *   openSettings() {},
+ *   // The settings themselves, for the dialog the site draws over itself,
+ *   // and the runner menu under the title bar's dot
+ *   // (lib/desktop-settings.ts has the details).
+ *   settings: { ready, get, save, setOpenAtLogin, checkForUpdates, restart,
+ *     restartToUpdate, changeServer, onOpen, onRunnerMenu, onUpdateReady,
+ *     setRunnerMenuOpen },
  *   // The search in the middle of the app's own title bar: its label, and
  *   // what it opens. Returns what takes it away.
  *   setSearch(label, open) { return () => {} },
@@ -106,6 +114,7 @@ export type DesktopBridge = {
   setSearch?(label: string, open: () => void): () => void;
   titleBarHeight?: number;
   runner?: DesktopRunnerBridge;
+  settings?: DesktopSettingsBridge;
 };
 
 declare global {

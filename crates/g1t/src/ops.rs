@@ -184,6 +184,10 @@ pub mod generate {
                 match schema["properties"].as_object() {
                     Some(props) if !props.is_empty() => {
                         writeln!(text, "        body: &[").unwrap();
+                        // Sorted, so the table is the same with or without
+                        // serde_json's preserve_order in the build.
+                        let mut props: Vec<(&String, &Value)> = props.iter().collect();
+                        props.sort_by_key(|(name, _)| *name);
                         for (name, field) in props {
                             writeln!(
                                 text,

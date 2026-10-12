@@ -603,9 +603,11 @@ leave its sandbox, in headers (Basic auth included) and the query string.
 The value never enters the job, so neither its steps nor a compromised
 dependency can read it. A stand-in sent to any other host goes as it is,
 and the log says so once. This works on g1t's machines, whether the
-project's network is restricted or open; a job on a self-hosted runner
-gets the stand-in too, never the value, and its log warns that it will
-not work there yet. A secret the job must read itself (a database
+project's network is restricted or open, and on self-hosted runners whose
+jobs run on Linux or macOS, which pass the job's requests to those hosts
+through g1t so the value never reaches the runner's computer. A job on
+Windows gets the stand-in too, never the value, and its log warns that it
+will not work there yet. A secret the job must read itself (a database
 password over raw TCP, a signing key, a key to files it decrypts) cannot
 be brokered. See
 [brokered secrets](/guides/secrets-and-variables/#brokered-secrets).

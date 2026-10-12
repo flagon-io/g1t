@@ -1,6 +1,6 @@
 [package]
 name = "g1t-runner"
-version = "0.3.2"
+version = "0.3.3"
 edition.workspace = true
 license.workspace = true
 description = "The program inside a g1t sandbox: runs a GitHub Actions job, a merge queue state, a merge check, a build, a dependency update or a backup, and reports back. Also the self-hosted runner, g1t-runner register/run, on your own machines."
@@ -27,6 +27,15 @@ serde_json = { workspace = true }
 # native-certs: a guarded sandbox re-signs HTTPS with a certificate the
 # runner adds to the system store (guard.rs), which webpki-roots never sees.
 ureq = { version = "2", features = ["json", "native-certs"] }
+# Brokered secrets on a self-hosted runner (actions/broker.rs): the job's
+# HTTPS to a brokered host is opened with a certificate made for the job,
+# and its requests are passed to g1t, which fills in the value. With ring,
+# which ureq's rustls already builds.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+webpki-roots = "0.26"
+# The certificates' validity, as rcgen takes it.
+time = { version = "0.3", default-features = false, features = ["std"] }
 
 [target.'cfg(unix)'.dependencies]
 # A step's signals back to their defaults before it runs (actions/process.rs).

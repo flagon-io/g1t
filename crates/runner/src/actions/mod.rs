@@ -9,6 +9,7 @@
 //! job's definition, its contexts and its secrets, is fetched with them.
 
 mod blobs;
+mod broker;
 mod containers;
 mod files;
 mod glob;
@@ -116,6 +117,9 @@ pub(crate) struct Job {
     pub(crate) built_actions: containers::Built,
     /// `RUNNER_TRACKING_ID`, which every process a step starts inherits.
     tracking_id: String,
+    /// Why the job's brokered secrets will not be filled in, when its
+    /// proxy could not start (broker.rs), for "Set up job".
+    broker_problem: Option<String>,
 }
 
 fn text_map(value: Option<&Value>) -> BTreeMap<String, String> {
@@ -796,6 +800,8 @@ fn setup(spec: Value, api: Api) -> Result<Job> {
 /// [`setup`] with the workspace and temporary folder given: a test's own.
 fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Result<Job> {
     let masks: Vec<String> = spec["masks"].as_array().map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+    // With the token the spec came with: the one the job started with is spent.
+    let relay = broker::Relay::new(&api);
     let mut log = Log::new(api, masks);
     // Variables GitHub sets that a g1t from before them does not send.
     default_variables(&mut spec);
@@ -810,7 +816,7 @@ fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Res
     std::fs::create_dir_all(&temp).context("could not make the temporary folder")?;
     std::fs::write(temp.join("event.json"), serde_json::to_string_pretty(&spec["event"])?)?;
 
-    let host_env: BTreeSet<String> = std::env::vars().map(|(name, _)| name).collect();
+    let mut host_env: BTreeSet<String> = std::env::vars().map(|(name, _)| name).collect();
     // Docker of the job's own, on g1t's machines (crate::docker).
     let docker_hosted = cfg!(target_os = "linux")
         && std::env::var("G1T_DOCKER").as_deref() == Ok("on")
@@ -838,6 +844,22 @@ fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Res
         .as_u64()
         .or_else(|| spec["timeoutMinutes"].as_u64())
         .unwrap_or(60);
+
+    // Brokered secrets on a self-hosted runner (broker.rs): the steps'
+    // HTTPS goes through the job's proxy, which passes requests carrying a
+    // stand-in to g1t. A container a step starts does not get these, as it
+    // gets none of this process's own variables.
+    let stand_ins = broker::stand_ins(&spec);
+    let mut broker_problem = None;
+    if !stand_ins.is_empty() {
+        match broker::start(stand_ins, relay, &temp.join("g1t-broker"), &base_env, Duration::from_secs(timeout * 60)) {
+            Ok((_proxy, vars)) => {
+                host_env.extend(broker::names(&vars));
+                base_env.extend(vars);
+            }
+            Err(problem) => broker_problem = Some(format!("{problem:#}")),
+        }
+    }
     let mut job = Job {
         log,
         spec,
@@ -866,6 +888,7 @@ fn setup_in(mut spec: Value, api: Api, workspace: PathBuf, temp: PathBuf) -> Res
         job_context: Map::new(),
         built_actions: containers::Built::new(),
         tracking_id,
+        broker_problem,
     };
 
     // The workflow's env reads github, secrets, inputs and vars; the job's
@@ -1077,6 +1100,9 @@ fn run_job(job: &mut Job) {
     if let Ok(notice) = std::env::var("G1T_JOB_NOTICE") {
         job.log.line(&format!("##[warning]{notice}"));
     }
+    if let Some(problem) = job.broker_problem.take() {
+        job.log.line(&format!("##[warning]This job's brokered secrets will not be filled in: {problem}"));
+    }
     // Actions first, then containers, as GitHub's "Set up job" and
     // "Initialize containers". Each action's `pre` (read from the actions
     // just downloaded) is a step of its own, "Pre <step>", before the
@@ -1226,7 +1252,10 @@ pub(crate) fn main() -> i32 {
     // environment). g1t's own sandboxes keep theirs to report a sandbox
     // that stopped, and do not ask.
     let rotate = std::env::var(ROTATE_TOKEN).is_ok_and(|v| v == "1");
-    let spec = match api.spec(rotate) {
+    // Only a self-hosted runner's harness brokers: g1t's own sandboxes
+    // have their requests filled in as they leave.
+    let brokers = rotate && broker::possible(|name| std::env::var(name).ok());
+    let spec = match api.spec(rotate, brokers) {
         Ok(spec) => spec,
         Err(error) => {
             eprintln!("g1t-runner: could not fetch the job: {error:#}");

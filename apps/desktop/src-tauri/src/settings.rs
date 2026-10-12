@@ -1,22 +1,25 @@
 //! The app's own settings: how it starts, what closing the window does,
 //! how it tells the person something arrived, its title bar, zoom,
-//! updates, and the runner. They live in their own window (`launcher/settings.html`),
-//! opened from the menu, the tray, or the site's account menu, and are
-//! kept with the server in `desktop.json` (config.rs). Whether g1t opens
-//! when someone signs in to their computer is kept by the system itself,
-//! through the autostart plugin, and read back from it.
+//! updates, and the runner. They open as a dialog over the site, which the
+//! site's page draws (apps/web components/desktop-settings.tsx), from the
+//! title bar, the menu, the tray, or the site's account menu. While the
+//! window shows no page of the site's (the launcher, the offline page,
+//! signing in), they open in a window of their own instead
+//! (`launcher/settings.html`). They are kept with the server in
+//! `desktop.json` (config.rs). Whether g1t opens when someone signs in to
+//! their computer is kept by the system itself, through the autostart
+//! plugin, and read back from it.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::config;
 
-/// The settings window's label.
+/// The settings window's label: the settings when the site can't draw them.
 pub const SETTINGS: &str = "settings";
-/// The Runner window's label: the runner on its own, apart from the
-/// settings, opened from the title bar's chip, the tray or the menu
-/// (launcher/runner.html).
+/// The Runner window's label: the runner on its own (launcher/runner.html),
+/// when the site can't draw its menu under the title bar's dot.
 pub const RUNNER: &str = "runner";
 
 /// The argument the system starts g1t with at sign-in, so it can tell a
@@ -209,20 +212,85 @@ pub fn starts_hidden(app: &AppHandle) -> bool {
 pub const CHECK_EVENT: &str = "g1t-check-updates";
 /// What it listens for: an update is downloaded, with its version.
 pub const READY_EVENT: &str = "g1t-update-ready";
+/// What the site's page listens for: open the settings dialog (`Opening`).
+pub const OPEN_EVENT: &str = "g1t-open-settings";
+/// What the site's page listens for: the runner menu under the title
+/// bar's dot (`RunnerMenu`).
+pub const RUNNER_MENU_EVENT: &str = "g1t-runner-menu";
 
-/// Opens the settings window, or brings it forward.
-pub fn open(app: &AppHandle) {
-    show(app, false);
+/// The settings dialog, opened at a section (`runner`, `updates`), and
+/// looking for updates as it opens when `check` is set.
+#[derive(Clone, Debug, Serialize)]
+pub struct Opening {
+    pub section: Option<&'static str>,
+    pub check: bool,
 }
 
-/// "Check for updates…" in a menu: the settings window opens and checks,
-/// and says what it found, the download included, in its Updates section.
+/// The runner menu: `toggle`, from the dot, or `open`. `at` is where the
+/// dot is across the bar, as a share of its width, so the menu hangs under
+/// it whatever the site's zoom.
+#[derive(Clone, Debug, Serialize)]
+pub struct RunnerMenu {
+    pub action: &'static str,
+    pub at: Option<f64>,
+}
+
+/// Whether the site's page can draw the settings and the runner menu
+/// itself: the window is on one of the server's pages, and that page said
+/// it can (`site_ready` in bridge.rs). A page of an older site never says
+/// so, and they open in windows of their own, as they did.
+fn in_site(app: &AppHandle) -> bool {
+    config::on_site(app) && config::site_ready(app)
+}
+
+/// Opens the settings, or brings them forward.
+pub fn open(app: &AppHandle) {
+    open_at(app, None, false);
+}
+
+/// "Check for updates…" in a menu: the settings open at Updates and check,
+/// and say what they found, the download included.
 pub fn open_and_check(app: &AppHandle) {
-    show(app, true);
+    open_at(app, Some("updates"), true);
+}
+
+/// The settings at their Runner section: how jobs run, the workspace, each
+/// kind of job. A fix that asks the person to choose one opens them there.
+pub fn open_runner_settings(app: &AppHandle) {
+    if in_site(app) {
+        open_at(app, Some("runner"), false);
+    } else {
+        open_runner_window(app);
+    }
+}
+
+/// The settings over the site, the main window shown if it was hidden; in
+/// a window of their own while the site isn't there to draw them.
+fn open_at(app: &AppHandle, section: Option<&'static str>, check: bool) {
+    if in_site(app) {
+        crate::tray::show(app);
+        let _ = app.emit_to(EventTarget::webview(crate::frame::SITE), OPEN_EVENT, Opening { section, check });
+        return;
+    }
+    show(app, check);
+}
+
+/// The runner menu, opened (the tray's runner row) or, from the title
+/// bar's dot, opened or closed. While the site can't draw it, the Runner
+/// window.
+pub fn runner_menu(app: &AppHandle, toggle: bool, at: Option<f64>) {
+    if in_site(app) {
+        crate::tray::show(app);
+        let at = at.filter(|at| at.is_finite()).map(|at| at.clamp(0.0, 1.0));
+        let menu = RunnerMenu { action: if toggle { "toggle" } else { "open" }, at };
+        let _ = app.emit_to(EventTarget::webview(crate::frame::SITE), RUNNER_MENU_EVENT, menu);
+        return;
+    }
+    open_runner_window(app);
 }
 
 /// Opens the Runner window, or brings it forward.
-pub fn open_runner(app: &AppHandle) {
+pub fn open_runner_window(app: &AppHandle) {
     if !forward(app, RUNNER) {
         made_aside(app, Window { label: RUNNER, page: "runner.html", title: "g1t runner", size: (720.0, 760.0) });
     }

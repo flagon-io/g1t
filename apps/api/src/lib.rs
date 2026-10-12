@@ -12,6 +12,7 @@ mod alerts;
 mod audit;
 mod billing;
 mod blobs;
+mod broker;
 mod checks;
 mod deployments;
 mod telemetry;
@@ -527,6 +528,15 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         let rest = rest.to_owned();
         return blobs::for_job(request, env, &services, method, &rest).await;
     }
+    // A self-hosted job's request to a brokered secret's host, passed to
+    // g1t to be filled in (broker.rs). The job's token is the credential.
+    if !on_mcp
+        && method == "POST"
+        && let Some(job) = broker::job_of(&path)
+    {
+        let job = job.to_owned();
+        return broker::relay(request, &services, &job).await;
+    }
 
     // A self-hosted runner, with a registration token or its own
     // credential, neither of which is a g1t access token.
@@ -667,10 +677,13 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
             // `rotate`: a harness that takes a new token with the spec and
             // lets go of the one it asked with (plan.rs `job_spec`).
             let rotate = method == "job_spec" && body["rotate"].as_bool() == Some(true);
+            // `broker`: a self-hosted harness that passes its job's
+            // requests to brokered hosts through g1t (broker.rs).
+            let broker = method == "job_spec" && body["broker"].as_bool() == Some(true);
             let answered: Outcome<Value> = g1t_kit::call(
                 &services.actions,
                 method,
-                &json!({ "job": job, "token": body["token"], "report": body["report"], "rotate": rotate }),
+                &json!({ "job": job, "token": body["token"], "report": body["report"], "rotate": rotate, "broker": broker }),
             )
             .await?;
             return match answered {

@@ -47,6 +47,13 @@ fn from_site(app: &AppHandle, webview: &Webview) -> Result<(), String> {
     if config::is_server(app, &url) { Ok(()) } else { Err("only g1t's own pages may ask that".into()) }
 }
 
+/// The page asking is the server's, in the main window under the title
+/// bar: the one that draws the settings dialog and the runner menu.
+fn from_site_page(app: &AppHandle, webview: &Webview) -> Result<(), String> {
+    from_site(app, webview)?;
+    if webview.label() == frame::SITE { Ok(()) } else { Err("only g1t's page in the window may ask that".into()) }
+}
+
 /// The page asking is the launcher.
 fn from_launcher(webview: &Webview) -> Result<(), String> {
     let url = caller(webview)?;
@@ -163,12 +170,14 @@ pub fn set_server(app: AppHandle, webview: Webview, url: String) -> Result<Strin
 }
 
 /// Looks for an update now: `current`, `ready:<version>`, or an error.
-/// The settings window shows the answer itself; anyone else asking is also
-/// told with a notification.
+/// The settings, in their window or the dialog over the site (`shown`),
+/// show the answer themselves; anyone else asking is also told with a
+/// notification.
 #[tauri::command]
-pub async fn check_for_updates(app: AppHandle, webview: Webview) -> Result<String, String> {
+pub async fn check_for_updates(app: AppHandle, webview: Webview, shown: Option<bool>) -> Result<String, String> {
     from_either(&app, &webview)?;
-    updates::check(&app, webview.label() != settings::SETTINGS).await
+    let shown = webview.label() == settings::SETTINGS || shown == Some(true);
+    updates::check(&app, !shown).await
 }
 
 /// A title bar button: `minimize`, `maximize` (which toggles), `close`,
@@ -202,18 +211,20 @@ pub fn title_bar_current(app: AppHandle, webview: Webview) -> Result<frame::Page
     Ok(frame::current(&app))
 }
 
-/// A title bar button that acts on the page: `back`, `forward`, `search`, `focus`.
+/// A title bar button that acts on the page: `back`, `forward`, `search`,
+/// `focus`, `settings`, or `runner`, with `at` where its dot is across the
+/// bar, as a share of the bar's width.
 #[tauri::command]
-pub fn title_bar_act(app: AppHandle, webview: Webview, action: String) -> Result<(), String> {
+pub fn title_bar_act(app: AppHandle, webview: Webview, action: String, at: Option<f64>) -> Result<(), String> {
     from_bar(&webview)?;
-    frame::act(&app, &action)
+    frame::act(&app, &action, at)
 }
 
 /// Restarts g1t, installing a downloaded update on the way: the settings
 /// window offers it after a change that needs one.
 #[tauri::command]
 pub fn restart(app: AppHandle, webview: Webview) -> Result<(), String> {
-    from_settings(&webview)?;
+    from_settings(&webview).or_else(|_| from_site_page(&app, &webview))?;
     if updates::ready(&app).is_some() {
         updates::restart(&app);
     }
@@ -224,12 +235,13 @@ pub fn restart(app: AppHandle, webview: Webview) -> Result<(), String> {
 /// The settings window's "Restart now": installs the downloaded update and starts it.
 #[tauri::command]
 pub fn restart_to_update(app: AppHandle, webview: Webview) -> Result<(), String> {
-    from_settings(&webview)?;
+    from_settings(&webview).or_else(|_| from_site_page(&app, &webview))?;
     updates::restart(&app);
     Ok(())
 }
 
-/// Opens the app's settings window: the site's account menu asks for it.
+/// Opens the app's settings: the site's account menu asks for it. They
+/// open over the site, or in their own window when it can't draw them.
 #[tauri::command]
 pub fn open_settings(app: AppHandle, webview: Webview) -> Result<(), String> {
     from_either(&app, &webview)?;
@@ -237,25 +249,52 @@ pub fn open_settings(app: AppHandle, webview: Webview) -> Result<(), String> {
     Ok(())
 }
 
-/// What the settings window shows.
+/// The site's page says it draws the settings dialog and the runner menu
+/// itself, once it can (true), or no longer (false). Until it says so, each
+/// page loaded in the window has them open in windows of their own.
+#[tauri::command]
+pub fn site_ready(app: AppHandle, webview: Webview, ready: bool) -> Result<(), String> {
+    from_site_page(&app, &webview)?;
+    config::set_site_ready(&app, ready);
+    Ok(())
+}
+
+/// What the settings show.
 #[tauri::command]
 pub fn get_settings(app: AppHandle, webview: Webview) -> Result<settings::View, String> {
-    from_settings_or_runner(&webview)?;
+    from_settings_or_runner(&webview).or_else(|_| from_site_page(&app, &webview))?;
     Ok(settings::view(&app))
 }
 
-/// The settings window changed something: everything but opening at sign-in.
+/// The settings changed something: everything but opening at sign-in.
+///
+/// The site's page may change all of it but one thing: it can't take the
+/// runner out of its sandbox. Jobs that run in Docker or directly on the
+/// computer can reach the person's files, so that choice is made only in
+/// the Runner window, a page bundled with the app, and never by a page
+/// from the network, whatever it loads.
 #[tauri::command]
 pub fn save_settings(app: AppHandle, webview: Webview, settings: Settings) -> Result<settings::View, String> {
-    from_settings_or_runner(&webview)?;
+    if from_settings_or_runner(&webview).is_err() {
+        from_site_page(&app, &webview)?;
+        if !site_may_choose(config::settings(&app).runner_backend, settings.runner_backend) {
+            return Err("How jobs run outside the sandbox is chosen in the Runner window.".into());
+        }
+    }
     settings::apply(&app, settings)?;
     Ok(settings::view(&app))
+}
+
+/// Whether the site's page may change how jobs run from `before` to
+/// `after`: keeping it, or putting it back in the sandbox.
+fn site_may_choose(before: runner::Backend, after: runner::Backend) -> bool {
+    after == before || after == runner::Backend::Sandboxed
 }
 
 /// Opening at sign-in, which the system keeps.
 #[tauri::command]
 pub fn set_open_at_login(app: AppHandle, webview: Webview, on: bool) -> Result<settings::View, String> {
-    from_settings(&webview)?;
+    from_settings(&webview).or_else(|_| from_site_page(&app, &webview))?;
     settings::open_at_login(&app, on)?;
     Ok(settings::view(&app))
 }
@@ -263,7 +302,7 @@ pub fn set_open_at_login(app: AppHandle, webview: Webview, on: bool) -> Result<s
 /// The settings window's "Change…": the main window goes to the launcher's choice of server.
 #[tauri::command]
 pub fn change_server(app: AppHandle, webview: Webview) -> Result<(), String> {
-    from_settings(&webview)?;
+    from_settings(&webview).or_else(|_| from_site_page(&app, &webview))?;
     if let Some(window) = app.get_webview_window(settings::SETTINGS) {
         let _ = window.close();
     }
@@ -319,5 +358,17 @@ mod tests {
         assert!(script.contains(r#"var FRAME = "custom";"#));
         assert!(super::script(false).contains(r#"var FRAME = "system";"#));
         assert!(script.contains(r#"var OUTSIDE = ["/pricing""#));
+    }
+
+    #[test]
+    fn the_site_cannot_take_the_runner_out_of_its_sandbox() {
+        use crate::runner::Backend::{Docker, Host, Sandboxed};
+        assert!(super::site_may_choose(Sandboxed, Sandboxed));
+        assert!(super::site_may_choose(Host, Host));
+        assert!(super::site_may_choose(Docker, Sandboxed));
+        assert!(super::site_may_choose(Host, Sandboxed));
+        assert!(!super::site_may_choose(Sandboxed, Host));
+        assert!(!super::site_may_choose(Sandboxed, Docker));
+        assert!(!super::site_may_choose(Docker, Host));
     }
 }
