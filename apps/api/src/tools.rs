@@ -21,7 +21,6 @@ use serde_json::{Map, Value, json};
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
-use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -60,12 +59,10 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "search",
         title: "Search",
-        description: "Find things. `code` (the default) searches all of g1t you can see: repositories, code, issues, pull requests and people, with qualifiers like repo:owner/name, language:rust, is:issue. `context` searches one workspace's catalog, docs, issues and memory by meaning.",
+        description: "Find things. `code` (the default) searches all of g1t you can see: repositories, code, issues, pull requests and people, with qualifiers like repo:owner/name, language:rust, is:issue. `ticket` reads a Jira, Linear or Sentry item the work refers to.",
         default_action: Some("code"),
         actions: &[
             a("code", Op::Search, "Search all of g1t: repositories, code, issues, pull requests, people"),
-            a("context", Op::SearchContext, "Search a workspace's context hub by meaning"),
-            a("entity", Op::GetEntity, "One catalog entry and its relations"),
             a("ticket", Op::GetContext, "A Jira, Linear or Sentry item the work refers to, as it is now"),
         ],
     },
@@ -192,35 +189,6 @@ pub const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
-        name: "agent",
-        title: "g1t agents",
-        description: "Put g1t's agent to work and talk to it. One agent per issue; to do more at once, use more issues. Starting an agent uses the workspace's money.",
-        default_action: None,
-        actions: &[
-            a("delegate", Op::Delegate, "Open an issue and put an agent on it in one step"),
-            a("assign", Op::AssignIssue, "Put an agent on an existing issue"),
-            a("message", Op::MessageAgent, "Tell the agent on a pull request something, or ask another agent"),
-            a("answer", Op::AnswerMessage, "Answer a question or handoff sent to you"),
-            a("take_messages", Op::TakeMessages, "For a g1t agent: messages not seen yet"),
-            a("computer", Op::GetAgentComputer, "A workspace agent's own computer: state, disk, recent commands"),
-            a("wake_computer", Op::WakeAgentComputer, "Wake a workspace agent's computer (metered until it sleeps)"),
-            a("sleep_computer", Op::SleepAgentComputer, "Save its home and put it to sleep"),
-            a("reset_computer", Op::ResetAgentComputer, "Wipe its home; memory and artifacts are kept"),
-            a("computer_commands", Op::ListAgentComputerCommands, "The commands it ran most recently, with output"),
-        ],
-    },
-    Tool {
-        name: "plan",
-        title: "Plans",
-        description: "Turn an outcome into issues: an agent proposes them with what done means and their dependencies; nothing opens until you apply the plan.",
-        default_action: None,
-        actions: &[
-            a("create", Op::PlanWork, "Ask an agent for a plan; read it with get until ready"),
-            a("get", Op::GetPlan, "A plan and the issues it proposes"),
-            a("apply", Op::ApplyPlan, "Open its issues; with assign, agents start in dependency order"),
-        ],
-    },
-    Tool {
         name: "memory",
         title: "Memory",
         description: "What the project and its workspace remember for the next agent: how to build, conventions, decisions, traps. Recall before you start; remember one short fact at a time, never a secret.",
@@ -233,7 +201,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workflow",
         title: "Workflows",
-        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions, repository dispatch, and the workflows a workspace runs in its repositories without a file in them. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
+        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions, repository dispatch, and the workflows a workspace runs in its repositories without a file in them. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), and their groups.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
@@ -296,7 +264,7 @@ pub const TOOLS: &[Tool] = &[
             a("create_runner_group", Op::CreateRunnerGroup, "Make a group, for some repositories"),
             a("update_runner_group", Op::UpdateRunnerGroup, "Rename a group or change its repositories"),
             a("delete_runner_group", Op::DeleteRunnerGroup, "Delete a group; its runners join the default"),
-            a("get_runner_settings", Op::GetRunnerSettings, "Where agent work runs; whether forks may use runners"),
+            a("get_runner_settings", Op::GetRunnerSettings, "Where checks and the merge queue run; whether forks may use runners"),
             a("update_runner_settings", Op::UpdateRunnerSettings, "Change them"),
         ],
     },
@@ -418,7 +386,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations and model providers, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
         default_action: None,
         actions: &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
@@ -433,13 +401,11 @@ pub const TOOLS: &[Tool] = &[
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite someone by username or email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
-            a("list_integrations", Op::ListIntegrations, "Model providers, alert sources, trackers"),
+            a("list_integrations", Op::ListIntegrations, "Alert sources and issue trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
-            a("update_integration", Op::UpdateIntegration, "Change one: rotate its key, choose its AI Gateway models"),
+            a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),
             a("disconnect_integration", Op::DisconnectIntegration, "Remove one"),
             a("test_integration", Op::TestIntegration, "Check its credentials"),
-            a("get_model_routes", Op::GetModelRoutes, "Where each kind of work's model requests go"),
-            a("set_model_routes", Op::SetModelRoutes, "Replace them"),
             a("list_projects", Op::ListProjects, "Its projects you can see: what each is, where it runs, its links"),
             a("get_project", Op::GetProject, "One project"),
             a("update_project", Op::UpdateProject, "Change a project's name, description, kind, where it runs or its links"),
@@ -462,38 +428,9 @@ pub const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
-        name: "customize",
-        title: "Customize",
-        description: "What shapes how a workspace's agents work, in the formats Claude Code reads: the marketplaces it reads plugins from (`.claude-plugin/marketplace.json`), what Discover lists, the plugins it installed as `name@marketplace` (their skills join the library as `plugin:skill`, their subagents become templates, their remote MCP servers become connectors), and its connectors: MCP servers connected once with a key or a sign-in, then given to every agent, a team or one agent. Members read; owners change. `bundle` is what a job's Claude Code loads on a runner, for the job's own token.",
-        default_action: None,
-        actions: &[
-            a("list_marketplaces", Op::Customize(CustomizeOp::ListMarketplaces), "The marketplaces it reads plugins from"),
-            a("add_marketplace", Op::Customize(CustomizeOp::AddMarketplace), "Add one by owner/repo, workspace/name, a git address or a marketplace.json link"),
-            a("remove_marketplace", Op::Customize(CustomizeOp::RemoveMarketplace), "Remove one; its installed plugins stay"),
-            a("refresh_marketplace", Op::Customize(CustomizeOp::RefreshMarketplace), "Read its manifest again now"),
-            a("discover", Op::Customize(CustomizeOp::Discover), "Every plugin and skill it can add, with availability"),
-            a("list_plugins", Op::Customize(CustomizeOp::ListPlugins), "Installed plugins: pinned commit, components, updates"),
-            a("get_plugin", Op::Customize(CustomizeOp::GetPlugin), "One plugin's listing, install, components, README and agents"),
-            a("install_plugin", Op::Customize(CustomizeOp::InstallPlugin), "Install one at its listed commit"),
-            a("set_plugin_enabled", Op::Customize(CustomizeOp::SetPluginEnabled), "Switch an installed one on or off"),
-            a("uninstall_plugin", Op::Customize(CustomizeOp::UninstallPlugin), "Uninstall one, with its skills, templates and connectors"),
-            a("update_plugin", Op::Customize(CustomizeOp::UpdatePlugin), "Read one again at its marketplace's current commit"),
-            a("list_plugin_agents", Op::Customize(CustomizeOp::ListPluginAgents), "Subagents plugins brought, as templates to hire from"),
-            a("list_connectors", Op::Customize(CustomizeOp::ListConnectors), "MCP servers connected to the workspace, with state, tools and grants"),
-            a("get_connector", Op::Customize(CustomizeOp::GetConnector), "One connector"),
-            a("add_connector", Op::Customize(CustomizeOp::AddConnector), "Add one from the directory, a plugin's server or an address"),
-            a("set_connector_key", Op::Customize(CustomizeOp::SetConnectorKey), "Put a key on one; never returned"),
-            a("remove_connector", Op::Customize(CustomizeOp::RemoveConnector), "Remove one with its secrets and grants"),
-            a("refresh_connector", Op::Customize(CustomizeOp::RefreshConnector), "List its tools again now"),
-            a("grant_connector", Op::Customize(CustomizeOp::GrantConnector), "Give it to every agent, a team or one agent"),
-            a("revoke_connector", Op::Customize(CustomizeOp::RevokeConnector), "Take one grant back"),
-            a("bundle", Op::Customize(CustomizeOp::Bundle), "What a job's Claude Code loads: plugins, library skills, connectors with headers"),
-        ],
-    },
-    Tool {
         name: "billing",
         title: "Billing",
-        description: "A workspace's billing: its usage by product, project and day, its budget (the monthly spend limit, alerts and whether usage pauses at it), its AI credit, its invoices, and its AI Gateway requests. Amounts are whole millionths of a dollar (`_micros`), or cents (`_cents`) where named. Members read it; changing the budget and buying credit are for owners, as people, and never for g1t's agents.",
+        description: "A workspace's billing: its usage by product, project and day, its budget (the monthly spend limit, alerts and whether usage pauses at it), its AI credit and its invoices. Amounts are whole millionths of a dollar (`_micros`), or cents (`_cents`) where named. Members read it; changing the budget and buying credit are for owners, as people, and never for a run's token.",
         default_action: Some("usage"),
         actions: &[
             a("usage", Op::GetUsage, "Usage over a range of days, by product, meter, project and day, and what paid for it"),
@@ -503,13 +440,12 @@ pub const TOOLS: &[Tool] = &[
             a("buy_ai_credit", Op::BuyAiCredit, "A payment page to buy AI credit, for a person to open"),
             a("invoices", Op::ListInvoices, "Every invoice, the itemised usage invoices, and the next one so far"),
             a("billing_details", Op::GetBillingDetails, "Who invoices are made out to and the payment method on file"),
-            a("gateway_requests", Op::ListGatewayRequests, "Recent AI Gateway requests: model, tokens, cost, status and token"),
         ],
     },
     Tool {
         name: "security",
         title: "Security",
-        description: "A repository's security: secret scanning alerts and push protection bypasses, custom secret patterns, code scanning alerts and SARIF uploads, vulnerability alerts, the dependency graph and its SBOM, dependency review, settings, a workspace's overview, security advisories and private vulnerability reports. Fix an alert with g1t. Findings are shown to those who can change the code only; published advisories to anyone who can see the repository. Give `repo` (owner/name), or `workspace` for lists across one.",
+        description: "A repository's security: secret scanning alerts and push protection bypasses, custom secret patterns, code scanning alerts and SARIF uploads, vulnerability alerts, the dependency graph and its SBOM, dependency review, settings, a workspace's overview, security advisories and private vulnerability reports. Findings are shown to those who can change the code only; published advisories to anyone who can see the repository. Give `repo` (owner/name), or `workspace` for lists across one.",
         default_action: Some("secret_alerts"),
         actions: &[
             a("secret_alerts", Op::Security(SecurityOp::ListSecretAlerts), "Secret scanning alerts; by state, secret_type, validity, bypassed"),
@@ -534,7 +470,6 @@ pub const TOOLS: &[Tool] = &[
             a("vulnerability_alerts", Op::Security(SecurityOp::ListVulnerabilityAlerts), "Vulnerable dependencies; by state, severity, ecosystem, package"),
             a("vulnerability_alert", Op::Security(SecurityOp::GetVulnerabilityAlert), "One vulnerability alert"),
             a("update_vulnerability_alert", Op::Security(SecurityOp::UpdateVulnerabilityAlert), "Dismiss a vulnerability alert with a reason, or reopen it"),
-            a("fix", Op::Security(SecurityOp::FixAlert), "Put g1t on an issue to fix an alert"),
             a("dependency_graph", Op::Security(SecurityOp::GetDependencyGraph), "Every package the lockfiles resolve, direct or transitive"),
             a("sbom", Op::Security(SecurityOp::GetSbom), "The dependency graph as an SPDX 2.3 document"),
             a("compare_dependencies", Op::Security(SecurityOp::CompareDependencies), "What changes in dependencies between base...head"),
@@ -556,7 +491,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "notifications",
         title: "Notifications",
-        description: "Your inbox: what needs you, and what you follow. One thread per issue, pull request, workflow or deployment, with why you were told (`reason`): an agent waiting on you, a review asked of you, an assignment, a mention, your work's checks, or what you subscribe to and watch. Mark threads read or done once handled, and choose what you hear of with subscribe, unsubscribe and watch. Your own: a personal token.",
+        description: "Your inbox: what needs you, and what you follow. One thread per issue, pull request, workflow or deployment, with why you were told (`reason`): a review asked of you, an assignment, a mention, your work's checks, or what you subscribe to and watch. Mark threads read or done once handled, and choose what you hear of with subscribe, unsubscribe and watch. Your own: a personal token.",
         default_action: Some("list"),
         actions: &[
             a("list", Op::ListNotifications, "Unread threads, latest first; all, a view, a reason, a repository"),
@@ -667,7 +602,6 @@ fn destructive(op: Op) -> bool {
             | Op::DeleteActionsVariable
             | Op::SetActionsSecret
             | Op::SetActionsVariable
-            | Op::SetModelRoutes
             | Op::SetBasePermission
             | Op::DeleteTeam
             | Op::RemoveTeamRepo
@@ -676,7 +610,6 @@ fn destructive(op: Op) -> bool {
             | Op::DeleteRunnerGroup
             | Op::UpdateRunnerSettings
             | Op::Folios(FoliosOp::SetAccess | FoliosOp::Purge)
-            | Op::Customize(CustomizeOp::RemoveMarketplace | CustomizeOp::UninstallPlugin | CustomizeOp::RemoveConnector)
     )
 }
 
@@ -690,7 +623,8 @@ pub fn reads_only(op: Op) -> bool {
 pub enum Gate<'a> {
     /// No limit beyond the person's own role.
     Everything,
-    /// A g1t agent's token: the operations its run lists.
+    /// A run's token (a checks, merge queue or deploy job): the
+    /// operations its run lists.
     Agent(&'a AgentScope),
     /// An access token with scopes.
     Token(&'a TokenAccess),
@@ -894,6 +828,51 @@ mod tests {
     use super::*;
     use g1t_contracts::scopes::{Preset, Scope};
 
+    /// Operations g1t no longer has, which the scopes table in
+    /// g1t-contracts still names until it is trimmed.
+    const RETIRED: &[&str] = &[
+        "message_agent",
+        "answer_message",
+        "take_messages",
+        "search_context",
+        "get_entity",
+        "assign_issue",
+        "delegate",
+        "plan_work",
+        "get_plan",
+        "apply_plan",
+        "get_model_routes",
+        "set_model_routes",
+        "get_agent_computer",
+        "wake_agent_computer",
+        "sleep_agent_computer",
+        "reset_agent_computer",
+        "list_agent_computer_commands",
+        "list_gateway_requests",
+        "fix_security_alert",
+        "list_marketplaces",
+        "add_marketplace",
+        "remove_marketplace",
+        "refresh_marketplace",
+        "discover",
+        "list_plugins",
+        "get_plugin",
+        "install_plugin",
+        "set_plugin_enabled",
+        "uninstall_plugin",
+        "update_plugin",
+        "list_plugin_agents",
+        "list_connectors",
+        "get_connector",
+        "add_connector",
+        "set_connector_key",
+        "remove_connector",
+        "refresh_connector",
+        "grant_connector",
+        "revoke_connector",
+        "customize_bundle",
+    ];
+
     fn listed(gate: &Gate) -> Vec<Value> {
         TOOLS.iter().filter_map(|tool| tool.listed(gate)).collect()
     }
@@ -928,7 +907,7 @@ mod tests {
                 assert!(tool.action(default).is_some(), "{}", tool.name);
             }
         }
-        assert!(TOOLS.len() <= 21, "{} tools", TOOLS.len());
+        assert!(TOOLS.len() <= 18, "{} tools", TOOLS.len());
     }
 
     #[test]
@@ -940,7 +919,7 @@ mod tests {
             assert_eq!(mapped + usize::from(free), 1, "{}", op.name());
         }
         for (name, _) in OPERATIONS {
-            assert!(Op::by_name(name).is_some(), "{name} is not an operation");
+            assert!(Op::by_name(name).is_some() || RETIRED.contains(name), "{name} is not an operation");
         }
     }
 
@@ -994,8 +973,6 @@ mod tests {
         }
         let issue = tools.iter().find(|tool| tool["name"] == "issue").unwrap();
         assert_eq!(issue["inputSchema"]["properties"]["action"]["enum"], json!(["list", "get", "labels"]));
-        // Nothing of the agent tool is a read.
-        assert!(!tools.iter().any(|tool| tool["name"] == "agent"));
     }
 
     #[test]
@@ -1003,7 +980,7 @@ mod tests {
         let access = token(Some(vec![Scope::IssuesWrite]));
         let names: Vec<Value> = listed(&Gate::Token(&access)).into_iter().map(|tool| tool["name"].clone()).collect();
         // Labels and milestones are the repository's, managed with issues:write.
-        assert_eq!(names, vec![json!("repository"), json!("issue"), json!("plan"), json!("account")]);
+        assert_eq!(names, vec![json!("repository"), json!("issue"), json!("account")]);
         // Notifications are a resource of their own: reading them lists
         // only what reads.
         let reader = token(Some(vec![Scope::NotificationsRead]));

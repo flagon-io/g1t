@@ -18,7 +18,6 @@
 		{ "binding": "REPOS", "service": "g1t-repos" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		{ "binding": "EVENTS", "service": "g1t-events" },
-		{ "binding": "RUNNER", "service": "g1t-runner" },
 		{ "binding": "BILLING", "service": "g1t-billing" },
 		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
 		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
@@ -28,8 +27,6 @@
 		// Observability: a project's requests, logs, traces, errors and
 		// metrics, and OTLP sent to /otlp/v1/{traces,logs,metrics}.
 		{ "binding": "TELEMETRY", "service": "g1t-telemetry" },
-		// The context hub: search_context and get_entity.
-		{ "binding": "CONTEXT", "service": "g1t-context" },
 		{ "binding": "SEARCH", "service": "g1t-search" },
 		// Secret and dependency alerts: list_security_alerts and dismissing them.
 		{ "binding": "SECURITY", "service": "g1t-security" },
@@ -38,9 +35,7 @@
 		// Packages: list_packages, their settings, deleting and restoring them.
 		{ "binding": "PACKAGES", "service": "g1t-packages" },
 		// Artifacts (folios): the artifact tool and /workspaces/{ws}/artifacts.
-		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
-		// Workspace agents' own computers: /workspaces/{ws}/agents/{agent}/computer.
-		{ "binding": "AGENTS", "service": "g1t-agents" }
+		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" }
 	],
 	// GitHub Actions artifacts older runners kept, in chunks, with KV's own
 	// expiry, read until it passes (and cache

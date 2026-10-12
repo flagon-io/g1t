@@ -10,13 +10,14 @@ use crate::tools::{Gate, TOOLS, Tool};
 
 const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS: &str = "g1t is a git forge where people and agents work through issues and pull requests. Repositories are named \"owner/name\"; issues and pull requests in one share a sequence of numbers.
-Tools are resources, each with an `action`: search, repository, issue, pull_request, agent, plan, memory, workflow, secret, security, webhook, access, workspace, customize, account, notifications. The `action` field lists each action and the fields it needs. You see only what your token's scopes allow; a refusal names the scope it needs.
+const INSTRUCTIONS: &str = "g1t is where your code, its history and the work around it live: repositories, issues, pull requests, workflows, deployments and packages. You bring your own agent; these tools are how it reads and changes what is on g1t, as the person or token it acts for. Repositories are named \"owner/name\"; issues and pull requests in one share a sequence of numbers.
+Tools are resources, each with an `action`: search, repository, issue, pull_request, memory, workflow, observability, package, secret, webhook, access, team, workspace, billing, security, notifications, account, artifact. The `action` field lists each action and the fields it needs. You see only what your token's scopes allow; a refusal names the scope it needs.
 Find a repository: account whoami lists your workspaces; repository list or search finds one.
-Work on an issue: issue get (read it and the pull requests already made for it), memory recall, then pull_request create with the issue's number: you get a draft with its own fork to clone and push to. Record your reasoning with pull_request record_session as you go, push, then pull_request ready with a summary. Watch `overlaps` and `behind` on pull_request get, and its checks there: `statuses` from the repository's workflows and `required_checks`, which must pass before it merges. If one fails, read why with workflow get_run and job_logs, push a fix, and the checks run again.
-Hand work to g1t's agent: agent delegate opens an issue and starts it in one step; agent assign starts it on an existing issue. Each costs the workspace money.
+Work on an issue: issue get (read it and the pull requests already made for it), memory recall, then pull_request create with the issue's number: you get a draft with its own fork to clone and push to. Push your commits, then pull_request ready with a summary. Watch `overlaps` and `behind` on pull_request get, and its checks there: `statuses` from the repository's workflows and `required_checks`, which must pass before it merges. If one fails, read why with workflow get_run and job_logs, push a fix, and the checks run again.
+Record your session: as you work, pull_request record_session appends your prompts, reasoning and the tools you ran to the pull request's session, so reviewers see why the change is what it is; pull_request read_session reads it back.
+Memory: memory recall before you start to learn how the project builds and what it has decided; when you learn something the next agent needs, memory remember it, one short fact at a time (scope project or workspace). Never a secret.
 Security: security code_alerts, vulnerability_alerts and secret_alerts show what to fix; fix it in your pull request, which the Code scanning and Dependency review checks judge.
-When you learn something the next agent needs, memory remember it (scope project or workspace). Never a secret.";
+Production: observability overview and errors show what a project's running software did; follow a request or trace to its logs.";
 
 fn result(id: &Value, value: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": value })
@@ -26,7 +27,7 @@ fn error(id: &Value, code: i32, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-/// What decides the actions a caller sees: an agent's run scope, an
+/// What decides the actions a caller sees: a run's scope, an
 /// access token's scopes, or nothing beyond the person's role.
 fn gate<'a>(services: &'a Services, viewer: &'a Viewer) -> Gate<'a> {
     if let Some(scope) = &services.scope {
@@ -207,5 +208,19 @@ pub async fn handle(
             Some(answer) => Response::from_json(&answer),
             None => accepted(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The instructions name every tool, in the order `tools/list` gives
+    /// them, so that no tool goes unmentioned.
+    #[test]
+    fn the_instructions_list_every_tool() {
+        let names: Vec<&str> = TOOLS.iter().map(|tool| tool.name).collect();
+        let listed = format!("each with an `action`: {}.", names.join(", "));
+        assert!(INSTRUCTIONS.contains(&listed), "{listed}");
     }
 }

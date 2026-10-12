@@ -10,7 +10,6 @@ use serde_json::{Map, Value, json};
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
-use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -102,7 +101,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Billing",
-        "A workspace's usage, its budget, its AI credit, its invoices and its AI Gateway requests. Members read them; owners change the budget and buy credit, as people. g1t's agents never change billing.",
+        "A workspace's usage, its budget, its AI credit and its invoices. Members read them; owners change the budget and buy credit, as people. A run's token never changes billing.",
         &[
             Op::GetUsage,
             Op::GetBudget,
@@ -111,7 +110,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::BuyAiCredit,
             Op::ListInvoices,
             Op::GetBillingDetails,
-            Op::ListGatewayRequests,
         ],
     ),
     (
@@ -264,7 +262,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Security(SecurityOp::ListAnalyses),
             Op::Security(SecurityOp::UploadSarif),
             Op::Security(SecurityOp::GetSarifUpload),
-            Op::Security(SecurityOp::FixAlert),
         ],
     ),
     (
@@ -351,8 +348,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::UpdateIssue,
             Op::CloseIssue,
             Op::ReopenIssue,
-            Op::AssignIssue,
-            Op::Delegate,
             Op::AddComment,
             Op::EditComment,
             Op::DeleteComment,
@@ -379,11 +374,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
-        "Plans",
-        "An outcome turned into the issues that would get there, with the order they must merge in.",
-        &[Op::PlanWork, Op::GetPlan, Op::ApplyPlan],
-    ),
-    (
         "Pull requests",
         "A proposed change in its own fork or on a branch. Several can be made for one issue; the one merged resolves it.",
         &[
@@ -401,9 +391,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ClosePullRequest,
             Op::ReopenPullRequest,
             Op::GetMergeQueue,
-            Op::MessageAgent,
-            Op::AnswerMessage,
-            Op::TakeMessages,
         ],
     ),
     (
@@ -413,18 +400,13 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Memory",
-        "What agents and people learned that the next agent should know, for one project or across a workspace. Members and g1t's agents only; never a secret.",
+        "What agents and people learned that the next agent should know, for one project or across a workspace. Members only; never a secret.",
         &[Op::Remember, Op::Recall],
     ),
     (
         "Search",
         "One search across all of g1t: repositories, code, issues, pull requests, people and workspaces. Public content for everyone, and private content in workspaces you belong to.",
         &[Op::Search],
-    ),
-    (
-        "Context",
-        "A workspace's context hub: a catalog of what it builds and runs, built from its repositories, deployments and integrations, and one search across the catalog, docs, issues, pull requests and memory.",
-        &[Op::SearchContext, Op::GetEntity],
     ),
     (
         "Actions",
@@ -548,7 +530,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Runners",
-        "Self-hosted runners: your own machines, which run your workflow jobs (and, if you choose, your agents' work) for $0 of g1t compute. They register with a short-lived token and only ever connect out.",
+        "Self-hosted runners: your own machines, which run your workflow jobs for $0 of g1t compute. They register with a short-lived token and only ever connect out.",
         &[
             Op::ListRunners,
             Op::CreateRunnerRegistrationToken,
@@ -559,17 +541,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::DeleteRunnerGroup,
             Op::GetRunnerSettings,
             Op::UpdateRunnerSettings,
-        ],
-    ),
-    (
-        "Agents' computers",
-        "Each workspace agent has a computer of its own on g1t cloud: a persistent home its sessions run commands on, which sleeps when idle and is saved as it was. Its state and recent commands, and waking, sleeping and resetting it.",
-        &[
-            Op::GetAgentComputer,
-            Op::WakeAgentComputer,
-            Op::SleepAgentComputer,
-            Op::ResetAgentComputer,
-            Op::ListAgentComputerCommands,
         ],
     ),
     (
@@ -587,44 +558,15 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Integrations",
-        "A workspace's connections to outside systems: model providers, alert sources and issue trackers.",
+        "A workspace's connections to outside systems: alert sources and issue trackers.",
         &[
             Op::ListIntegrations,
             Op::ConnectIntegration,
             Op::UpdateIntegration,
             Op::DisconnectIntegration,
             Op::TestIntegration,
-            Op::GetModelRoutes,
-            Op::SetModelRoutes,
             Op::GetContext,
             Op::ImportIssue,
-        ],
-    ),
-    (
-        "Customize",
-        "What shapes how a workspace's agents work, in the formats Claude Code reads: the marketplaces it reads plugins from, what Discover lists, the plugins it installed (their skills, subagents and remote MCP servers reach g1t's agents; the rest reaches Claude Code on a runner), and its connectors: MCP servers connected once, then given to every agent, a team or one agent. The bundle is what a job's Claude Code loads on a runner.",
-        &[
-            Op::Customize(CustomizeOp::ListMarketplaces),
-            Op::Customize(CustomizeOp::AddMarketplace),
-            Op::Customize(CustomizeOp::RemoveMarketplace),
-            Op::Customize(CustomizeOp::RefreshMarketplace),
-            Op::Customize(CustomizeOp::Discover),
-            Op::Customize(CustomizeOp::ListPlugins),
-            Op::Customize(CustomizeOp::GetPlugin),
-            Op::Customize(CustomizeOp::InstallPlugin),
-            Op::Customize(CustomizeOp::SetPluginEnabled),
-            Op::Customize(CustomizeOp::UninstallPlugin),
-            Op::Customize(CustomizeOp::UpdatePlugin),
-            Op::Customize(CustomizeOp::ListPluginAgents),
-            Op::Customize(CustomizeOp::ListConnectors),
-            Op::Customize(CustomizeOp::GetConnector),
-            Op::Customize(CustomizeOp::AddConnector),
-            Op::Customize(CustomizeOp::SetConnectorKey),
-            Op::Customize(CustomizeOp::RemoveConnector),
-            Op::Customize(CustomizeOp::RefreshConnector),
-            Op::Customize(CustomizeOp::GrantConnector),
-            Op::Customize(CustomizeOp::RevokeConnector),
-            Op::Customize(CustomizeOp::Bundle),
         ],
     ),
     (
@@ -707,13 +649,8 @@ fn title(op: Op) -> &'static str {
         Op::UpdateRepoSettings => "Update repository settings",
         Op::ListCheckNames => "List check names",
         Op::GetMergeQueue => "Get the merge queue",
-        Op::MessageAgent => "Message an agent",
-        Op::AnswerMessage => "Answer a message",
-        Op::TakeMessages => "Take new messages",
         Op::Remember => "Remember something",
         Op::Recall => "Recall memory",
-        Op::SearchContext => "Search the context hub",
-        Op::GetEntity => "Get a catalog entry",
         Op::Search => "Search g1t",
         Op::ListIssues => "List issues",
         Op::GetIssue => "Get an issue",
@@ -721,11 +658,6 @@ fn title(op: Op) -> &'static str {
         Op::UpdateIssue => "Update an issue",
         Op::CloseIssue => "Close an issue",
         Op::ReopenIssue => "Reopen an issue",
-        Op::AssignIssue => "Assign an issue to g1t",
-        Op::Delegate => "Put an agent on it",
-        Op::PlanWork => "Plan work",
-        Op::GetPlan => "Get a plan",
-        Op::ApplyPlan => "Apply a plan",
         Op::ListLabels => "List labels",
         Op::CreateLabel => "Create a label",
         Op::UpdateLabel => "Update a label",
@@ -764,8 +696,6 @@ fn title(op: Op) -> &'static str {
         Op::TestIntegration => "Test an integration",
         Op::GetContext => "Look up a ticket",
         Op::ImportIssue => "Import an issue",
-        Op::GetModelRoutes => "Get model routes",
-        Op::SetModelRoutes => "Set model routes",
         Op::ListWebhooks => "List webhooks",
         Op::CreateWebhook => "Create a webhook",
         Op::UpdateWebhook => "Update a webhook",
@@ -789,11 +719,6 @@ fn title(op: Op) -> &'static str {
         Op::DeleteActionsVariable => "Delete a variable",
         Op::ListRunners => "List self-hosted runners",
         Op::ListRunnerGroups => "List runner groups",
-        Op::GetAgentComputer => "Get an agent's computer",
-        Op::WakeAgentComputer => "Wake an agent's computer",
-        Op::SleepAgentComputer => "Put an agent's computer to sleep",
-        Op::ResetAgentComputer => "Reset an agent's computer",
-        Op::ListAgentComputerCommands => "List an agent's computer's commands",
         Op::GetRunnerSettings => "Get runner settings",
         Op::CreateRunnerRegistrationToken => "Create a runner registration token",
         Op::RemoveRunner => "Remove a self-hosted runner",
@@ -838,7 +763,6 @@ fn title(op: Op) -> &'static str {
         Op::BuyAiCredit => "Buy AI credit",
         Op::ListInvoices => "List a workspace's invoices",
         Op::GetBillingDetails => "Get a workspace's billing details",
-        Op::ListGatewayRequests => "List a workspace's AI Gateway requests",
         Op::PinProject => "Pin a project",
         Op::UnpinProject => "Unpin a project",
         Op::ReorderPinnedProjects => "Reorder your pinned projects",
@@ -876,18 +800,14 @@ fn title(op: Op) -> &'static str {
         Op::Mirrors(op) => op.title(),
         Op::Packages(op) => op.title(),
         Op::Folios(op) => op.title(),
-        Op::Customize(op) => op.title(),
     }
 }
 
 /// Why an operation can be refused with `402 payment_required`, if it
-/// can: the ones that start an agent, when the workspace has no credit,
-/// and the ones that make a repository private in a workspace, when a free
-/// workspace's private storage has no room for it.
+/// can: the ones that make a repository private in a workspace, when a
+/// free workspace's private storage has no room for it.
 fn may_need_payment(op: Op) -> Option<&'static str> {
     match op {
-        Op::AssignIssue | Op::PlanWork | Op::ApplyPlan => Some("The workspace has no agent credit."),
-        Op::WakeAgentComputer => Some("The workspace's plan refuses compute: it is paused, or over its limit."),
         Op::UpdateRepo | Op::SetRepoVisibility | Op::TransferRepo => Some(
             "A free workspace's private storage has no room for this private repository.",
         ),

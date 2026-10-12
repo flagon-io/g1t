@@ -52,7 +52,6 @@ pub enum SecurityOp {
     ListVulnerabilityAlerts,
     GetVulnerabilityAlert,
     UpdateVulnerabilityAlert,
-    FixAlert,
     GetDependencyGraph,
     GetSbom,
     CompareDependencies,
@@ -75,7 +74,7 @@ impl SecurityOp {
     /// Every one: `Op::ALL` lists each as `Op::Security(…)`, which a test
     /// checks against this.
     #[cfg(test)]
-    pub const ALL: [SecurityOp; 39] = [
+    pub const ALL: [SecurityOp; 38] = [
         SecurityOp::ListSecretAlerts,
         SecurityOp::GetSecretAlert,
         SecurityOp::UpdateSecretAlert,
@@ -98,7 +97,6 @@ impl SecurityOp {
         SecurityOp::ListVulnerabilityAlerts,
         SecurityOp::GetVulnerabilityAlert,
         SecurityOp::UpdateVulnerabilityAlert,
-        SecurityOp::FixAlert,
         SecurityOp::GetDependencyGraph,
         SecurityOp::GetSbom,
         SecurityOp::CompareDependencies,
@@ -141,7 +139,6 @@ impl SecurityOp {
             SecurityOp::ListVulnerabilityAlerts => "list_vulnerability_alerts",
             SecurityOp::GetVulnerabilityAlert => "get_vulnerability_alert",
             SecurityOp::UpdateVulnerabilityAlert => "update_vulnerability_alert",
-            SecurityOp::FixAlert => "fix_security_alert",
             SecurityOp::GetDependencyGraph => "get_dependency_graph",
             SecurityOp::GetSbom => "get_sbom",
             SecurityOp::CompareDependencies => "compare_dependencies",
@@ -186,7 +183,6 @@ impl SecurityOp {
             SecurityOp::ListVulnerabilityAlerts => "List vulnerability alerts",
             SecurityOp::GetVulnerabilityAlert => "Get a vulnerability alert",
             SecurityOp::UpdateVulnerabilityAlert => "Dismiss or reopen a vulnerability alert",
-            SecurityOp::FixAlert => "Fix an alert with g1t",
             SecurityOp::GetDependencyGraph => "Get the dependency graph",
             SecurityOp::GetSbom => "Export an SBOM",
             SecurityOp::CompareDependencies => "Compare dependencies",
@@ -230,7 +226,6 @@ impl SecurityOp {
             SecurityOp::ListVulnerabilityAlerts => "List vulnerability alerts: a package a lockfile resolves with a known advisory, open first and worst first, with the security update g1t opened for it. In a repository, or (with workspace) across a workspace. Filter by state, severity, ecosystem and package.",
             SecurityOp::GetVulnerabilityAlert => "Get one vulnerability alert by id (vul_…).",
             SecurityOp::UpdateVulnerabilityAlert => "Dismiss a vulnerability alert (state dismissed, with a reason: fix_started, no_bandwidth, tolerable_risk, inaccurate or not_used, and an optional comment) or reopen it (state open).",
-            SecurityOp::FixAlert => "Put g1t on an issue to fix an alert: a code scanning alert (cod_…), a vulnerable dependency (vul_…) or a secret in the code (sec_…; rotating it stays with you). Its pull request lands through the repository's required checks. The agent's run is charged as agent usage. Returns the issue, and whether the agent started.",
             SecurityOp::GetDependencyGraph => "Get the dependency graph: every package the lockfiles on the default branch resolve, per lockfile, with whether it is direct or transitive (where the lockfile says), for development, its license when recorded, its package URL and its open vulnerability alerts.",
             SecurityOp::GetSbom => "Export the dependency graph as an SPDX 2.3 JSON document, in sbom. Every package is named by its package URL.",
             SecurityOp::CompareDependencies => "Compare the dependencies at two commits, branches or tags (basehead, as base...head): what was added and removed per lockfile, with the known vulnerabilities of what was added and whether it passes the repository's dependency review policy. Needs the g1t plan on a private repository.",
@@ -432,10 +427,6 @@ impl SecurityOp {
                     "comment": comment(),
                 }),
                 &["repo", "id", "state"],
-            ),
-            SecurityOp::FixAlert => (
-                json!({ "repo": repo(), "id": { "type": "string", "description": "The alert's id: cod_…, vul_… or sec_…" } }),
-                &["repo", "id"],
             ),
             SecurityOp::GetDependencyGraph | SecurityOp::GetSbom | SecurityOp::GetSettings => (json!({ "repo": repo() }), &["repo"]),
             SecurityOp::CompareDependencies => (
@@ -1026,10 +1017,6 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
                 },
                 Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
             }
-        }
-        SecurityOp::FixAlert => {
-            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
-            pass(services, "fix_alert", &FixAlertArgs { actor: actor(), repo, id: text(input, "id").unwrap_or_default() }).await
         }
         SecurityOp::GetDependencyGraph => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };

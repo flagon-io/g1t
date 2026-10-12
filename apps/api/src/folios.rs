@@ -618,7 +618,7 @@ pub(crate) fn person(viewer: &Viewer) -> std::result::Result<User, Outcome<Value
         None => Err(Outcome::fail(FailureCode::Unauthenticated, "This needs a g1t access token.")),
         Some(user) if user.kind == PrincipalKind::Workspace => Err(Outcome::fail(
             FailureCode::Forbidden,
-            "Artifacts belong to people: use a personal access token, or a g1t agent's.",
+            "Artifacts belong to people: use a personal access token.",
         )),
         Some(user) => Ok(user.clone()),
     }

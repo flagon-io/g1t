@@ -5,7 +5,6 @@ use serde_json::{Map, Value};
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
 use crate::archives::ArchiveOp;
-use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
@@ -291,7 +290,6 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/invoices", Op::ListInvoices, &[]),
     route("GET", "/workspaces/:workspace/billing_details", Op::GetBillingDetails, &[]),
     // The AI Gateway's log of a workspace's requests.
-    route("GET", "/workspaces/:workspace/gateway/requests", Op::ListGatewayRequests, &[("limit", "limit"), ("before", "before")]),
     // Code owners: the CODEOWNERS file, checked.
     route("GET", "/repos/:owner/:name/codeowners/errors", Op::GetCodeownersErrors, &[("ref", "ref")]),
     // Security alerts: secrets and vulnerable dependencies.
@@ -335,7 +333,6 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/vulnerability-alerts", Op::Security(SecurityOp::ListVulnerabilityAlerts), &[("state", "state"), ("severity", "severity"), ("ecosystem", "ecosystem"), ("package", "package")]),
     route("GET", "/repos/:owner/:name/vulnerability-alerts/:id", Op::Security(SecurityOp::GetVulnerabilityAlert), &[]),
     route("PATCH", "/repos/:owner/:name/vulnerability-alerts/:id", Op::Security(SecurityOp::UpdateVulnerabilityAlert), &[]),
-    route("POST", "/repos/:owner/:name/security/alerts/:id/fix", Op::Security(SecurityOp::FixAlert), &[]),
     route("GET", "/repos/:owner/:name/dependency-graph", Op::Security(SecurityOp::GetDependencyGraph), &[]),
     route("GET", "/repos/:owner/:name/dependency-graph/sbom", Op::Security(SecurityOp::GetSbom), &[]),
     route("GET", "/repos/:owner/:name/dependency-graph/compare/:basehead", Op::Security(SecurityOp::CompareDependencies), &[]),
@@ -540,24 +537,6 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/messages",
-        Op::MessageAgent,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/pulls/:number/messages/take",
-        Op::TakeMessages,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/messages/:id/answer",
-        Op::AnswerMessage,
-        &[],
-    ),
     route("POST", "/repos/:owner/:name/memory", Op::Remember, &[]),
     route(
         "GET",
@@ -619,20 +598,8 @@ pub const ROUTES: &[Route] = &[
     ),
     route(
         "POST",
-        "/repos/:owner/:name/issues/:number/assign",
-        Op::AssignIssue,
-        &[],
-    ),
-    route(
-        "POST",
         "/repos/:owner/:name/issues/import",
         Op::ImportIssue,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/issues/delegate",
-        Op::Delegate,
         &[],
     ),
     route(
@@ -640,18 +607,6 @@ pub const ROUTES: &[Route] = &[
         "/repos/:owner/:name/context",
         Op::GetContext,
         &[("reference", "reference")],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/context/search",
-        Op::SearchContext,
-        &[("q", "query"), ("project", "project"), ("kinds", "kinds"), ("limit", "limit")],
-    ),
-    route(
-        "GET",
-        "/workspaces/:workspace/context/:kind/:id",
-        Op::GetEntity,
-        &[],
     ),
     route(
         "GET",
@@ -750,18 +705,6 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route(
-        "GET",
-        "/workspaces/:workspace/model-routes",
-        Op::GetModelRoutes,
-        &[],
-    ),
-    route(
-        "PUT",
-        "/workspaces/:workspace/model-routes",
-        Op::SetModelRoutes,
-        &[],
-    ),
-    route(
         "PATCH",
         "/workspaces/:workspace/integrations/:id",
         Op::UpdateIntegration,
@@ -779,29 +722,6 @@ pub const ROUTES: &[Route] = &[
         Op::TestIntegration,
         &[],
     ),
-    // Customize: marketplaces, Discover, plugins and connectors. A plugin's
-    // ref is `name@marketplace`, URL-encoded (`@` as `%40`).
-    route("GET", "/workspaces/:workspace/customize/marketplaces", Op::Customize(CustomizeOp::ListMarketplaces), &[]),
-    route("POST", "/workspaces/:workspace/customize/marketplaces", Op::Customize(CustomizeOp::AddMarketplace), &[]),
-    route("DELETE", "/workspaces/:workspace/customize/marketplaces/:marketplace", Op::Customize(CustomizeOp::RemoveMarketplace), &[]),
-    route("POST", "/workspaces/:workspace/customize/marketplaces/:marketplace/refresh", Op::Customize(CustomizeOp::RefreshMarketplace), &[]),
-    route("GET", "/workspaces/:workspace/customize/discover", Op::Customize(CustomizeOp::Discover), &[]),
-    route("GET", "/workspaces/:workspace/customize/plugins", Op::Customize(CustomizeOp::ListPlugins), &[]),
-    route("POST", "/workspaces/:workspace/customize/plugins", Op::Customize(CustomizeOp::InstallPlugin), &[]),
-    route("GET", "/workspaces/:workspace/customize/plugins/:ref", Op::Customize(CustomizeOp::GetPlugin), &[]),
-    route("PATCH", "/workspaces/:workspace/customize/plugins/:ref", Op::Customize(CustomizeOp::SetPluginEnabled), &[]),
-    route("DELETE", "/workspaces/:workspace/customize/plugins/:ref", Op::Customize(CustomizeOp::UninstallPlugin), &[]),
-    route("POST", "/workspaces/:workspace/customize/plugins/:ref/update", Op::Customize(CustomizeOp::UpdatePlugin), &[]),
-    route("GET", "/workspaces/:workspace/customize/agents", Op::Customize(CustomizeOp::ListPluginAgents), &[]),
-    route("GET", "/workspaces/:workspace/customize/connectors", Op::Customize(CustomizeOp::ListConnectors), &[]),
-    route("POST", "/workspaces/:workspace/customize/connectors", Op::Customize(CustomizeOp::AddConnector), &[]),
-    route("GET", "/workspaces/:workspace/customize/connectors/:id", Op::Customize(CustomizeOp::GetConnector), &[]),
-    route("PATCH", "/workspaces/:workspace/customize/connectors/:id", Op::Customize(CustomizeOp::SetConnectorKey), &[]),
-    route("DELETE", "/workspaces/:workspace/customize/connectors/:id", Op::Customize(CustomizeOp::RemoveConnector), &[]),
-    route("POST", "/workspaces/:workspace/customize/connectors/:id/refresh", Op::Customize(CustomizeOp::RefreshConnector), &[]),
-    route("POST", "/workspaces/:workspace/customize/connectors/:id/grants", Op::Customize(CustomizeOp::GrantConnector), &[]),
-    route("DELETE", "/workspaces/:workspace/customize/connectors/:id/grants/:grant", Op::Customize(CustomizeOp::RevokeConnector), &[]),
-    route("GET", "/workspaces/:workspace/customize/bundle", Op::Customize(CustomizeOp::Bundle), &[]),
     route(
         "GET",
         "/repos/:owner/:name/actions/workflows",
@@ -1019,20 +939,6 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/workspaces/:workspace/actions/runner-groups", Op::CreateRunnerGroup, &[]),
     route("PATCH", "/workspaces/:workspace/actions/runner-groups/:id", Op::UpdateRunnerGroup, &[]),
     route("DELETE", "/workspaces/:workspace/actions/runner-groups/:id", Op::DeleteRunnerGroup, &[]),
-    // A workspace agent's own computer.
-    route("GET", "/workspaces/:workspace/agents/:agent/computer", Op::GetAgentComputer, &[]),
-    route("POST", "/workspaces/:workspace/agents/:agent/computer/wake", Op::WakeAgentComputer, &[]),
-    route("POST", "/workspaces/:workspace/agents/:agent/computer/sleep", Op::SleepAgentComputer, &[]),
-    route("POST", "/workspaces/:workspace/agents/:agent/computer/reset", Op::ResetAgentComputer, &[]),
-    route("GET", "/workspaces/:workspace/agents/:agent/computer/commands", Op::ListAgentComputerCommands, &[]),
-    route("POST", "/repos/:owner/:name/plans", Op::PlanWork, &[]),
-    route("GET", "/repos/:owner/:name/plans/:plan", Op::GetPlan, &[]),
-    route(
-        "POST",
-        "/repos/:owner/:name/plans/:plan/apply",
-        Op::ApplyPlan,
-        &[],
-    ),
     route(
         "POST",
         "/repos/:owner/:name/issues/:number/comments",
@@ -1149,7 +1055,6 @@ impl Route {
         matches!(
             self.op,
             Op::DeleteComment
-                | Op::Customize(CustomizeOp::RemoveMarketplace | CustomizeOp::UninstallPlugin | CustomizeOp::RemoveConnector)
         )
     }
 
@@ -1543,7 +1448,6 @@ mod tests {
         assert_eq!(op("POST", "/workspaces/acme/ai_credit/checkout"), Op::BuyAiCredit);
         assert_eq!(op("GET", "/workspaces/acme/invoices"), Op::ListInvoices);
         assert_eq!(op("GET", "/workspaces/acme/billing_details"), Op::GetBillingDetails);
-        assert_eq!(op("GET", "/workspaces/acme/gateway/requests"), Op::ListGatewayRequests);
     }
 
     #[test]

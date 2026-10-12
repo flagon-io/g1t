@@ -133,8 +133,6 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Packages(_) => return as_is,
         // Artifacts are shaped by the API itself, in `snake_case`.
         Op::Folios(_) => return as_is,
-        // Agents' computers travel in `snake_case` from the agents service.
-        Op::GetAgentComputer | Op::WakeAgentComputer | Op::SleepAgentComputer | Op::ResetAgentComputer | Op::ListAgentComputerCommands => return as_is,
         // Built by the API itself, in `snake_case`.
         Op::ListSecurityAlerts => return through::<Vec<crate::alerts::SecurityAlert>>(op, as_is),
         Op::DismissSecurityAlert | Op::ReopenSecurityAlert => {
@@ -174,7 +172,6 @@ fn sample(op: Op, example: &Value) -> Value {
             through::<work::Issue>(op, sent)
         }
         Op::GetIssue => through::<work::IssueDetail>(op, sent),
-        Op::Delegate => through::<work::Delegated>(op, sent),
         Op::ListPullRequests => through::<Vec<work::Pull>>(op, sent),
         Op::UpdatePullRequest => through::<work::Pull>(op, sent),
         Op::ListLabels | Op::AddDefaultLabels | Op::ListIssueLabels => through::<Vec<work::Label>>(op, sent),
@@ -188,7 +185,6 @@ fn sample(op: Op, example: &Value) -> Value {
         | Op::ReopenPullRequest
         | Op::ConvertPullRequestToDraft
         | Op::MergePullRequest
-        | Op::AssignIssue
         | Op::RequestReviewers
         | Op::RemoveRequestedReviewers => {
             through::<work::Pull>(op, sent)
@@ -208,7 +204,6 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::CreateRunnerRegistrationToken => through::<g1t_contracts::runners::RegistrationToken>(op, sent),
         Op::ListWebhooks => through::<Vec<webhooks::Hook>>(op, sent),
         Op::ListIntegrations => through::<Vec<integrations::Connection>>(op, sent),
-        Op::GetModelRoutes | Op::SetModelRoutes => through::<Vec<integrations::ModelRoute>>(op, sent),
         Op::ListEvents => through::<Vec<g1t_contracts::events::Event>>(op, sent),
         Op::ListEmails | Op::AddEmail | Op::RemoveEmail | Op::UpdateEmailSettings => {
             through::<g1t_contracts::accounts::AccountEmails>(op, sent)

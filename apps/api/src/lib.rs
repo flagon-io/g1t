@@ -13,7 +13,6 @@ mod audit;
 mod billing;
 mod blobs;
 mod checks;
-mod customize;
 mod deployments;
 mod telemetry;
 mod deploy_keys;
@@ -43,15 +42,13 @@ mod tools;
 mod token_policy;
 mod toolkit;
 
-use g1t_contracts::billing::{FinishRunArgs, RunTokens};
 use g1t_contracts::identity::{
     DeviceClaim, DeviceClaimArgs, DeviceStart, DeviceStartArgs, TokenArgs,
 };
 use g1t_contracts::work::{
-    CheckRun, Mergeable, QueueState, ReportChecksArgs, ReportMergecheckArgs, ReportPlanArgs,
-    ReportQueueArgs, ReportReviewArgs,
+    CheckRun, Mergeable, QueueState, ReportChecksArgs, ReportMergecheckArgs,
+    ReportQueueArgs,
 };
-use g1t_contracts::identity::AgentScope;
 use g1t_contracts::{Failure, FailureCode, Outcome, PrincipalKind, User, Viewer};
 use g1t_kit::wire;
 use serde_json::{Value, json};
@@ -429,94 +426,6 @@ fn outcome_as_given(answered: Value) -> Result<Response> {
     }
 }
 
-/// A sandbox reporting the review its agent wrote. As with checks, the
-/// run's own token is the credential.
-async fn report_review(
-    request: &mut Request,
-    services: &Services,
-    run_id: &str,
-) -> Result<Response> {
-    let body = json_body(request).await;
-    let reported: Outcome<bool> = g1t_kit::call(
-        &services.work,
-        "report_review",
-        &ReportReviewArgs {
-            run_id: run_id.to_owned(),
-            token: body["token"].as_str().unwrap_or_default().to_owned(),
-            verdict: serde_json::from_value(body["verdict"].clone()).unwrap_or(None),
-            body: body["body"].as_str().unwrap_or_default().to_owned(),
-            comments: serde_json::from_value(body["comments"].clone()).unwrap_or_default(),
-            model: body["model"].as_str().map(str::to_owned),
-            error: body["error"].as_str().map(str::to_owned),
-        },
-    )
-    .await?;
-    match reported {
-        Outcome::Ok(_) => reply(&json!({ "recorded": true })),
-        Outcome::Fail(refused) => failure(&refused),
-    }
-}
-
-/// A sandbox reporting the plan its agent wrote. As with checks, the
-/// plan's own token is the credential.
-async fn report_plan(
-    request: &mut Request,
-    services: &Services,
-    plan_id: &str,
-) -> Result<Response> {
-    let body = json_body(request).await;
-    let reported: Outcome<bool> = g1t_kit::call(
-        &services.work,
-        "report_plan",
-        &ReportPlanArgs {
-            plan_id: plan_id.to_owned(),
-            token: body["token"].as_str().unwrap_or_default().to_owned(),
-            summary: body["summary"].as_str().unwrap_or_default().to_owned(),
-            issues: serde_json::from_value(body["issues"].clone()).unwrap_or_default(),
-            error: body["error"].as_str().map(str::to_owned),
-        },
-    )
-    .await?;
-    match reported {
-        Outcome::Ok(_) => reply(&json!({ "recorded": true })),
-        Outcome::Fail(refused) => failure(&refused),
-    }
-}
-
-/// A sandbox reporting what its agent's run cost, so that the workspace
-/// it worked for is charged. As with checks, the run's own token is the
-/// credential.
-async fn report_usage(
-    request: &mut Request,
-    services: &Services,
-    run_id: &str,
-) -> Result<Response> {
-    let body = json_body(request).await;
-    let charged: Outcome<bool> = g1t_kit::call(
-        &services.billing,
-        "finish_run",
-        &FinishRunArgs {
-            run_id: run_id.to_owned(),
-            token: body["token"].as_str().unwrap_or_default().to_owned(),
-            cost_usd: body["cost_usd"].as_f64().unwrap_or_default(),
-            turns: body["turns"].as_u64().unwrap_or_default() as u32,
-            // What the harness counted; the agent rate is charged on no
-            // fewer, on a workspace's own model key too.
-            tokens: body.get("tokens").filter(|t| t.is_object()).map(|t| RunTokens {
-                input: t["input"].as_u64().unwrap_or_default(),
-                output: t["output"].as_u64().unwrap_or_default(),
-                cache_read: t["cache_read"].as_u64().unwrap_or_default(),
-                cache_write: t["cache_write"].as_u64().unwrap_or_default(),
-            }),
-        },
-    )
-    .await?;
-    match charged {
-        Outcome::Ok(_) => reply(&json!({ "recorded": true })),
-        Outcome::Fail(refused) => failure(&refused),
-    }
-}
-
 async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     let method = method_name(request.method());
     if method == "OPTIONS" {
@@ -647,26 +556,13 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         );
     }
     services.audit = audit::AuditContext::of(&request, on_mcp);
-    // An agent's token: what it may do comes with it, on the composite
-    // identity identity resolved it to.
+    // A run's token: what it may do comes with it, on the composite
+    // identity identity resolved it to. Any other token of g1t's own
+    // principal (the agent tokens g1t no longer issues) does nothing.
     if let Some(acting) = viewer.as_ref().and_then(|viewer| viewer.acting.as_ref()) {
         services.scope = Some(acting.scope.clone());
     } else if viewer.as_ref().is_some_and(|viewer| viewer.kind == PrincipalKind::Agent) {
-        let header = request.headers().get("authorization")?.unwrap_or_default();
-        let token = header.split_once(' ').map(|(_, token)| token.trim()).unwrap_or_default();
-        let scope: Option<AgentScope> = g1t_kit::call(
-            &services.identity,
-            "agent_scope",
-            &TokenArgs {
-                token: token.to_owned(),
-            },
-        )
-        .await?;
-        // A scope is what lets an agent's token do anything at all.
-        let Some(scope) = scope else {
-            return fail(FailureCode::Unauthenticated, "Invalid access token.");
-        };
-        services.scope = Some(scope);
+        return fail(FailureCode::Unauthenticated, "Invalid access token.");
     }
     if let Some(response) = oauth::handle(&mut request, &services, method, &path).await? {
         return Ok(response);
@@ -786,73 +682,9 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
                 Outcome::Fail(refused) => failure(&refused),
             };
         }
-        // A sandbox reporting its agent run's steps, cost and end. As with
-        // checks, the run's own token, in the body, is the credential.
-        ("POST", path) if path.starts_with("/agent-runs/") && path.ends_with("/report") => {
-            let run_id = path.trim_start_matches("/agent-runs/").trim_end_matches("/report");
-            let mut body = json_body(&mut request).await;
-            if !body.is_object() {
-                body = json!({});
-            }
-            body["runId"] = json!(run_id);
-            let reported: Outcome<Value> = g1t_kit::call(&services.work, "report_run", &body).await?;
-            return match reported {
-                Outcome::Ok(status) => reply(&json!({ "status": status })),
-                Outcome::Fail(refused) => failure(&refused),
-            };
-        }
-        // What a run's agent learned, as memory candidates; the same token.
-        ("POST", path) if path.starts_with("/agent-runs/") && path.ends_with("/learned") => {
-            let run_id = path.trim_start_matches("/agent-runs/").trim_end_matches("/learned");
-            let body = json_body(&mut request).await;
-            let learned = json!({
-                "runId": run_id,
-                "token": body["token"].as_str().unwrap_or_default(),
-                "items": body["items"].as_array().cloned().unwrap_or_default(),
-            });
-            let captured: Outcome<Value> = g1t_kit::call(&services.work, "report_learned", &learned).await?;
-            return match captured {
-                Outcome::Ok(captured) => reply(&captured),
-                Outcome::Fail(refused) => failure(&refused),
-            };
-        }
-        // How sure a run's agent is of its change; the same token.
-        ("POST", path) if path.starts_with("/agent-runs/") && path.ends_with("/confidence") => {
-            let run_id = path.trim_start_matches("/agent-runs/").trim_end_matches("/confidence");
-            let body = json_body(&mut request).await;
-            let said = json!({
-                "runId": run_id,
-                "token": body["token"].as_str().unwrap_or_default(),
-                "confidence": body["confidence"].as_str().unwrap_or_default(),
-                "uncertainAbout": body["uncertain_about"]
-                    .as_array()
-                    .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
-                    .unwrap_or_default(),
-            });
-            let recorded: Outcome<Value> = g1t_kit::call(&services.work, "report_confidence", &said).await?;
-            return match recorded {
-                Outcome::Ok(recorded) => reply(&json!({ "recorded": recorded })),
-                Outcome::Fail(refused) => failure(&refused),
-            };
-        }
         ("POST", path) if path.starts_with("/checks/") => {
             let run_id = path.trim_start_matches("/checks/").to_owned();
             return report_checks(&mut request, &services, &run_id).await;
-        }
-        ("POST", path) if path.starts_with("/runs/") && path.ends_with("/usage") => {
-            let run_id = path
-                .trim_start_matches("/runs/")
-                .trim_end_matches("/usage")
-                .to_owned();
-            return report_usage(&mut request, &services, &run_id).await;
-        }
-        ("POST", path) if path.starts_with("/plans/") => {
-            let plan_id = path.trim_start_matches("/plans/").to_owned();
-            return report_plan(&mut request, &services, &plan_id).await;
-        }
-        ("POST", path) if path.starts_with("/reviews/") => {
-            let run_id = path.trim_start_matches("/reviews/").to_owned();
-            return report_review(&mut request, &services, &run_id).await;
         }
         _ => {}
     }
