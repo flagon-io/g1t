@@ -416,6 +416,13 @@ pub fn view(app: &AppHandle) -> View {
     }
 }
 
+/// Whether the runner is running a job: what restarts g1t waits for it,
+/// since restarting stops the runner and would cut the job short.
+pub fn busy(app: &AppHandle) -> bool {
+    let now = app.state::<Shared>().now.lock().unwrap().clone();
+    now.code == Code::Busy || now.sandbox.as_ref().is_some_and(|status| status.job().is_some())
+}
+
 /// The tray's line: `Runner: Waiting for jobs`, at most 60 characters.
 pub fn headline(view: &View) -> String {
     let line = format!("Runner: {}", view.diagnosis.title);

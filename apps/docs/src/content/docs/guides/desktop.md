@@ -340,10 +340,17 @@ with GitHub is the one trip outside g1t that stays in the window.
 ## Updates
 
 The app asks `g1t.sh/downloads/desktop/latest.json` for a newer version
-shortly after it starts and every six hours, and downloads one in the
-background. It never installs under you: a notification and the tray's
-**Restart to update** say it is ready, and the restart, or quitting,
-installs it.
+as it starts and every hour, and downloads one in the background.
+
+- **As it starts**, a newer version is installed straight away, and g1t
+  opens again on it a moment later, before you have begun working in it.
+  If something in the app misbehaves, quitting and opening g1t again is
+  enough to be on the newest version. The one exception is your runner
+  in the middle of a job, which is never cut short: then the update waits
+  like any other.
+- **Later on**, it never installs under you: a notification and the
+  tray's **Restart to update** say it is ready, and the restart, or
+  quitting, installs it.
 
 To see where your copy stands, choose **Check for updates…** in the Help
 menu or the tray, or **Check for updates** in [the settings](#settings).

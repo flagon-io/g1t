@@ -1,8 +1,13 @@
-//! Updates. The app asks g1t.sh/downloads/desktop/latest.json soon after
-//! it starts and every six hours after, downloads a newer version in the
-//! background, and then says so: a notification, and the tray's "Restart
-//! to update". Nothing is installed under someone mid-sentence; the
-//! restart, or quitting, installs it. The manifest is signed with g1t's
+//! Updates. The app asks g1t.sh/downloads/desktop/latest.json as it
+//! starts and every hour after, and downloads a newer version in the
+//! background. One found as it starts is installed straight away, and g1t
+//! opens again on it, before anyone has begun working in it: so a person
+//! whose copy misbehaves only has to open g1t again to be on the newest,
+//! fixed one (unless the runner is in the middle of a job, which is never
+//! cut short; then it waits like any other). One found later says so, with
+//! a notification and the tray's "Restart to update", since nothing is
+//! installed under someone mid-sentence; the restart, or quitting,
+//! installs it. The manifest is signed with g1t's
 //! release key, built into the app, and a download whose signature does
 //! not check out is thrown away (scripts/desktop-release.mjs).
 
@@ -21,18 +26,35 @@ pub struct Ready {
     bytes: Vec<u8>,
 }
 
-const FIRST_CHECK: Duration = Duration::from_secs(15);
-const EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+/// The first look waits only for the window to be up.
+const FIRST_CHECK: Duration = Duration::from_secs(3);
+const EVERY: Duration = Duration::from_secs(60 * 60);
+/// An update downloaded this soon after g1t started is installed at once:
+/// nobody has begun working in it yet.
+const AT_START: Duration = Duration::from_secs(2 * 60);
 
-/// Checks soon after the start, then every six hours, unless settings
-/// turned that off; a person can still check from the menu.
+/// Checks as g1t starts, installing what it finds then, and every hour
+/// after, unless settings turned that off; a person can still check from
+/// the menu.
 pub fn schedule(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
+        let started = std::time::Instant::now();
         tokio::time::sleep(FIRST_CHECK).await;
+        let mut first = true;
         loop {
             if config::settings(&app).auto_update {
-                let _ = check(&app, false).await;
+                let at_start = first && started.elapsed() < AT_START;
+                let found = look(&app, false, at_start).await;
+                if at_start && let Some(version) = found.ok().as_deref().and_then(|answer| answer.strip_prefix("ready:")).map(str::to_owned) {
+                    if crate::runner::busy(&app) {
+                        tell(&app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t from the tray to use it."));
+                    } else {
+                        tell(&app, "Updating g1t", &format!("g1t opens again on version {version} in a moment."));
+                        restart(&app);
+                    }
+                }
             }
+            first = false;
             tokio::time::sleep(EVERY).await;
         }
     });
@@ -61,6 +83,11 @@ fn tell(app: &AppHandle, title: &str, body: &str) {
 /// the tray or the site, who is told the answer either way; the timer
 /// says nothing unless there is something to install.
 pub async fn check(app: &AppHandle, asked: bool) -> Result<String, String> {
+    look(app, asked, false).await
+}
+
+/// [`check`]; `at_start` says nothing of a download, which is installed at once.
+async fn look(app: &AppHandle, asked: bool, at_start: bool) -> Result<String, String> {
     if let Some(version) = ready(app) {
         if asked {
             tell(app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t to use it."));
@@ -93,7 +120,9 @@ pub async fn check(app: &AppHandle, asked: bool) -> Result<String, String> {
             *app.state::<config::State>().update.lock().unwrap() = Some(Ready { version: version.clone(), update, bytes });
             tray::update_ready(&version);
             let _ = app.emit_to(settings::SETTINGS, settings::READY_EVENT, version.clone());
-            tell(app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t from the tray to use it."));
+            if !at_start {
+                tell(app, "g1t is ready to update", &format!("Version {version} is downloaded. Restart g1t from the tray to use it."));
+            }
             Ok(format!("ready:{version}"))
         }
         Err(error) => {

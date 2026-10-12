@@ -227,6 +227,19 @@ fn show(app: &AppHandle, check: bool) {
         }
         return;
     }
+    // Made on a thread of its own, whoever asks. Settings opens from
+    // synchronous commands too (the title bar's button, the site's account
+    // menu), which run on the main thread, and on Windows a window made
+    // there deadlocks: it appears, white, and its page never loads. From
+    // another thread, Tauri hands the making to the event loop and waits.
+    let app = app.clone();
+    let spawned = std::thread::Builder::new().name("g1t-settings-window".into()).spawn(move || build(&app, check));
+    if let Err(error) = spawned {
+        eprintln!("g1t: the settings window could not open: {error}");
+    }
+}
+
+fn build(app: &AppHandle, check: bool) {
     // A window still loading has no listener yet: the address asks instead.
     let page = if check { "settings.html?check" } else { "settings.html" };
     let custom = crate::frame::started(app);
