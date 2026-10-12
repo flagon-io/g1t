@@ -85,6 +85,11 @@ jobs:
       # builds as before.
       - name: sccache
         run: bash scripts/sccache.sh install
+      # The cache above brings back the last release's target/runner-release
+      # too: left there, it would go out with this one's, and the jobs after
+      # would find two of each file.
+      - name: Only this release's files
+        run: rm -rf target/runner-release
       - name: Build Linux and Windows
         # The macOS targets need Apple's SDK to link (the Security and
         # CoreFoundation frameworks), which zig does not carry, so they are
@@ -152,7 +157,7 @@ jobs:
             mkdir -p "context-$arch"
             cp deploy/runner/Dockerfile "context-$arch/"
             name="g1t-runner-linux-$([ "$arch" = amd64 ] && echo x64 || echo arm64)"
-            cp release/*/"$name" "context-$arch/g1t-runner"
+            cp "release/$version/$name" "context-$arch/g1t-runner"
             docker buildx build --platform "linux/$arch" -t "$IMAGE:$version-$arch" --load "context-$arch"
             docker push "$IMAGE:$version-$arch"
             tags+=("$IMAGE:$version-$arch")
@@ -187,14 +192,17 @@ jobs:
         env:
           ARCHES: ${{ steps.qemu.outputs.arches }}
         run: |
-          dir="$(echo target/runner-release/*/)"
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
+          dir="target/runner-release/$version/"
           for arch in $ARCHES; do
             node scripts/sandbox-image.mjs build --arch "$arch" --runner "${dir}g1t-runner-linux-$arch" --out "$dir"
           done
       - name: The manifest's sandbox section
         env:
           RUNNER_SANDBOX_IMAGE: ${{ needs.image.outputs.runner_image }}
-        run: node scripts/sandbox-image.mjs section --dir "$(echo target/runner-release/*/)"
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/runner/Cargo.toml | head -1)"
+          node scripts/sandbox-image.mjs section --dir "target/runner-release/$version/"
       - uses: actions/upload-artifact@v4
         with:
           name: sandbox
