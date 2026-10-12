@@ -1,7 +1,6 @@
 //! A workspace's people: the directory of its members and teams, and each
 //! member's place in it (a title and what they own). See
-//! `g1t_contracts::people`. Agents live in the agents service; teams name
-//! them by id.
+//! `g1t_contracts::people`.
 
 use g1t_contracts::audit::Surface;
 use g1t_contracts::people::*;
@@ -94,12 +93,6 @@ struct TeamPersonRow {
 }
 
 #[derive(Deserialize)]
-struct TeamAgentRow {
-    team_id: String,
-    agent_id: String,
-}
-
-#[derive(Deserialize)]
 struct BaseRow {
     #[serde(default)]
     base_permission: Option<String>,
@@ -130,14 +123,6 @@ impl Identity {
                     )
                     .bind(std::slice::from_ref(&slug))?,
                 self.db
-                    .prepare(
-                        "SELECT ta.team_id, ta.agent_id FROM team_agents ta
-                         JOIN teams t ON t.id = ta.team_id
-                         JOIN workspaces w ON w.id = t.workspace_id
-                         WHERE w.slug = ?1 ORDER BY ta.created_at LIMIT 20000",
-                    )
-                    .bind(std::slice::from_ref(&slug))?,
-                self.db
                     .prepare("SELECT base_permission FROM workspaces WHERE slug = ?1 AND deleted_at IS NULL")
                     .bind(std::slice::from_ref(&slug))?,
             ])
@@ -146,7 +131,6 @@ impl Identity {
         let mut next = || found.next().ok_or_else(|| worker::Error::RustError("a statement of the batch did not answer".into()));
         let people = next()?.results::<PersonRow>()?;
         let team_people = next()?.results::<TeamPersonRow>()?;
-        let team_agents = next()?.results::<TeamAgentRow>()?;
         let base = next()?.results::<BaseRow>()?;
         let rows = self.workspace_team_rows(&workspace, &viewer.id).await?;
         let teams = rows
@@ -175,7 +159,7 @@ impl Identity {
                         role: TeamRole::parse(&person.role).unwrap_or(TeamRole::Member),
                     })
                     .collect(),
-                agent_ids: team_agents.iter().filter(|agent| agent.team_id == row.id).map(|agent| agent.agent_id.clone()).collect(),
+                agent_ids: Vec::new(),
                 repos_count: row.repos_count,
             })
             .collect();

@@ -629,10 +629,8 @@ impl Identity {
     /// `users_for_audience`: the people behind these ids (at most 50), each
     /// with their workspaces, roles, base permissions and repository
     /// grants, under each workspace's policy, as a signed-in viewer would
-    /// have them. For the agents service, which answers only with what
-    /// every person who will read the answer may see
-    /// (docs.g1t.sh/guides/agent-access/, "What an agent can and can't
-    /// know"). Ids of no live account are left out, so the caller can tell
+    /// have them. For services that answer only with what every person
+    /// who will read the answer may see. Ids of no live account are left out, so the caller can tell
     /// someone it could not resolve. Reached only by service binding.
     async fn users_for_audience(&self, a: UsernamesArgs) -> Result<Vec<User>> {
         let mut found = Vec::new();
@@ -1024,8 +1022,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_member_tokens" => reply(&identity.list_member_tokens(args(body)?).await?),
         "review_token_request" => reply(&identity.review_token_request(args(body)?).await?),
         "revoke_member_token" => reply(&identity.revoke_member_token(args(body)?).await?),
-        "create_agent_token" => reply(&identity.create_agent_token(args(body)?).await?),
-        "agent_scope" => reply(&identity.agent_scope(args(body)?).await?),
         "create_run_credential" => reply(&identity.create_run_credential(args(body)?).await?),
         "bind_run_credentials" => reply(&identity.bind_run_credentials(args(body)?).await?),
         "revoke_run_credentials" => reply(&identity.revoke_run_credentials(args(body)?).await?),
@@ -1085,13 +1081,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_teams" => reply(&identity.user_teams(args(body)?).await?),
         "team_memberships" => reply(&identity.team_memberships(args(body)?).await?),
         "resolve_teams" => reply(&identity.resolve_teams(args(body)?).await?),
-        // Agents on teams (teams.rs), and the people directory (people.rs).
-        "team_agents" => reply(&identity.team_agents(args(body)?).await?),
-        "set_team_agent" => reply(&identity.set_team_agent(args(body)?).await?),
-        "remove_team_agent" => reply(&identity.remove_team_agent(args(body)?).await?),
-        "agent_teams" => reply(&identity.agent_teams(args(body)?).await?),
-        "team_agent_index" => reply(&identity.team_agent_index(args(body)?).await?),
-        "adopt_agent_teams" => reply(&identity.adopt_agent_teams(args(body)?).await?),
+        // The people directory (people.rs).
         "people_directory" => reply(&identity.people_directory(args(body)?).await?),
         "set_member_profile" => reply(&identity.set_member_profile(args(body)?).await?),
         "resolve_owners" => reply(&identity.resolve_owners(args(body)?).await?),

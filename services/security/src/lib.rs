@@ -14,15 +14,15 @@
 //!   vulnerable package with a fix gets a security update: g1t itself
 //!   (`User::system`) opens a pull request raising its version, made in a
 //!   sandbox (the runner's `bump`), which lands through the branch's
-//!   required checks. Only when code has to change is g1t put on an
-//!   issue for it.
+//!   required checks. When code has to change, the alert says why and
+//!   the update is tried again later.
 //!
 //! - The security suite (`g1t_contracts::security_suite`): custom secret
 //!   patterns (`patterns`), push protection bypasses, their review and
 //!   validity checks (`secret_alerts`), code scanning from SARIF uploads
 //!   and its pull request check (`code_scanning`), the dependency graph,
-//!   its SBOM and dependency review (`supply_chain`), "Fix with g1t"
-//!   (`fixes`), and settings with the workspace's overview (`overview`).
+//!   its SBOM and dependency review (`supply_chain`), and settings with
+//!   the workspace's overview (`overview`).
 //!   On private repositories its paid parts need the workspace's Security
 //!   and quality activation (`suite`); it tells people through events.
 //!
@@ -33,7 +33,6 @@ mod advisories;
 mod code_scanning;
 mod config;
 mod deps;
-mod fixes;
 mod history;
 mod manifests;
 mod overview;
@@ -738,7 +737,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "code_alert" => reply(&security.code_alert(args(body)?).await?),
         "set_code_alert_state" => reply(&security.set_code_alert_state(args(body)?).await?),
         "pull_code_scanning" => reply(&security.pull_code_scanning(args(body)?).await?),
-        "fix_alert" => reply(&security.fix_alert(args(body)?).await?),
         "dependency_graph" => reply(&security.dependency_graph(args(body)?).await?),
         "sbom" => reply(&security.sbom(args(body)?).await?),
         "dependency_review" => reply(&security.dependency_review(args(body)?).await?),

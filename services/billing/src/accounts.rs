@@ -758,7 +758,7 @@ mod tests {
     #[test]
     fn a_discount_below_cost_plus_the_margin_is_counted_as_given() {
         // $1 of model cost at 20%: $1.20 is the floor of what a sale is worth.
-        let base = crate::charge_micros(1.0, 20);
+        let base = crate::margin_on(1_000_000, 20);
         assert_eq!(base, 1_200_000);
         // Standard: all of it sold, nothing given.
         assert_eq!(terms(TermsKind::Standard, 0).discounted(base), (1_200_000, 0));

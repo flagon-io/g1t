@@ -638,25 +638,6 @@ impl Billing {
         Ok(drawn)
     }
 
-    /// Writes down on a usage entry what paid for it.
-    pub(crate) async fn record_drawn(&self, reference: &str, drawn: &Drawn) -> Result<()> {
-        if drawn.total() == 0 {
-            return Ok(());
-        }
-        self.db
-            .prepare("UPDATE ledger SET credit_micros = ?, trial_micros = ?, oss_micros = ?, given_micros = ? WHERE reference = ?")
-            .bind(&[
-                (drawn.credit as f64).into(),
-                (drawn.trial as f64).into(),
-                (drawn.oss as f64).into(),
-                (drawn.given as f64).into(),
-                reference.into(),
-            ])?
-            .run()
-            .await?;
-        Ok(())
-    }
-
     /// g1t's pools this month, for sudo.
     pub(crate) async fn pools(&self) -> Result<Pools> {
         let month = month_of(&rfc3339(now_ms()));

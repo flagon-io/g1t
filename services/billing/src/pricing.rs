@@ -39,6 +39,26 @@ pub(crate) const MIN_CHANGE: f64 = 0.02;
 /// is proposed for a person to look at, never applied on its own.
 pub(crate) const MAX_FACTOR: f64 = 4.0;
 
+/// Meters from when g1t ran agents and sold model access: the agent rate,
+/// its weights, models at the provider's price, and the AI Gateway. They
+/// stay in the tables for the statements that name them, but are never
+/// shown as prices, proposed or charged again.
+pub(crate) const RETIRED_METERS: [&str; 8] = [
+    "agent_models",
+    "agent_tokens",
+    "agent_tokens_own",
+    "agent_token_weight_input",
+    "agent_token_weight_output",
+    "agent_token_weight_cache_read",
+    "agent_token_weight_cache_write",
+    "gateway_models",
+];
+
+/// Whether `meter` is one of the [`RETIRED_METERS`].
+pub(crate) fn retired(meter: &str) -> bool {
+    RETIRED_METERS.contains(&meter)
+}
+
 /// Meters charged once a month from the month's total (`storage`). A rise
 /// in one takes effect at the start of a month.
 pub(crate) const MONTHLY: [&str; 7] = ["git_operations", "private_storage", "actions_cache", "custom_domain_month", "embedding_tokens", "scan_cpu", "scan_rows"];

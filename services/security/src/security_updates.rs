@@ -658,7 +658,7 @@ impl Security {
                 let alerts = format!("/{}/{}/security/vulnerabilities", path.namespace, path.name);
                 self.close_issue_with(&repo, number, format!(
                     "g1t no longer opens issues for upgrades it cannot make on its own. This one is on [its alert]({alerts}), \
-                     which says why and is tried again later. To have an agent make the change, use **Fix with g1t** there."
+                     which says why and is tried again later."
                 ))
                 .await?;
             }

@@ -20,8 +20,10 @@ const PAGE: u32 = 50;
 
 /// The kind of charge a ledger row is, as the statement names it. One SQL
 /// expression, so grouping and filtering agree.
-/// `Runs on your own model provider` is only on older months: those runs
-/// carried a flat fee then, and pay only their sandbox time now.
+/// The agent kinds (`Agent runs`, `Agent rate`, `AI Gateway`, `Runs on
+/// your own model provider`, `AI credit`) are only on older months, from
+/// when g1t ran agents and sold model access. A line on a task this does
+/// not know is `Other usage`, never left out.
 pub(crate) const KIND_SQL: &str = "CASE
     WHEN kind = 'top_up' AND credit_kind = 'purchased' THEN 'AI credit'
     WHEN kind = 'top_up' AND reference LIKE 'crd%' THEN 'Credits from g1t'
@@ -41,7 +43,8 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN task = 'gateway' THEN 'AI Gateway'
     WHEN task = 'domains' THEN 'Custom domains'
     WHEN task = 'package_storage' THEN 'Package storage'
-    ELSE 'Agent runs' END";
+    WHEN reference LIKE 'run%' THEN 'Agent runs'
+    ELSE 'Other usage' END";
 
 /// A usage line at its price, in SQL: what was charged, what paid for it
 /// first (the plan's included usage, the trial, a pool, g1t), and what a
@@ -50,8 +53,8 @@ pub(crate) const KIND_SQL: &str = "CASE
 pub(crate) const PRICE_SQL: &str = "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
       + COALESCE(given_micros, 0) + COALESCE(discount_micros, 0))";
 
-/// Whether a usage line is an agent run's own line (`run_…`), not its
-/// agent rate, a correction or anything else: what counts as one run.
+/// Whether a usage line is an agent run's own line (`run_…`, from when g1t
+/// ran agents), not its agent rate, a correction or anything else.
 pub(crate) const RUN_SQL: &str = "(reference LIKE 'run%' AND instr(reference, '/') = 0)";
 
 /// The order lines appear in within a group.
@@ -95,7 +98,7 @@ pub(crate) fn line_price(charged: i64, covered: i64, discount: i64) -> i64 {
 
 /// The Billing page's meters, in order: key and label.
 pub(crate) const METERS: [(&str, &str); 6] = [
-    ("agents", "Agents & sandboxes"),
+    ("agents", "Sandboxes & other usage"),
     ("builds", "Builds"),
     ("requests", "Requests & CPU"),
     ("domains", "Custom domains"),

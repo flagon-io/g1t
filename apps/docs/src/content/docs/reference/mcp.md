@@ -686,22 +686,19 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 
 ## `billing`
 
-A workspace's billing: its usage, its budget, its AI credit and its
-invoices. `usage` is the default action. Amounts are whole millionths of a
-dollar (`_micros`), or cents where a field says `_cents`. Members of the
-workspace read it, a workspace's own token included. Changing the budget
-and buying AI credit are for its owners, as people: signed in or with a
-personal access token. A workspace's token never changes
-billing, whatever their scopes, and no preset but full access includes
-`billing:write`. See [usage and billing](/guides/usage-and-billing/).
+A workspace's billing: its usage, its budget and its invoices. `usage` is
+the default action. Amounts are whole millionths of a dollar (`_micros`),
+or cents where a field says `_cents`. Members of the workspace read it, a
+workspace's own token included. Changing the budget is for its owners, as
+people: signed in or with a personal access token. A workspace's token
+never changes billing, whatever its scopes, and no preset but full access
+includes `billing:write`. See [usage and billing](/guides/usage-and-billing/).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`usage`](/reference/api/billing/get-usage/) | Usage over `from` to `until` (UTC days, `until` included; the month so far when left out), narrowed by `products` and `projects`: `totals` and what paid for it, each day, and each product's meters with their daily amounts and split by project. `group_by` (`product`, `project` or `day`) adds `groups`. | `workspace` | `billing:read` |
 | [`budget`](/reference/api/billing/get-budget/) | The monthly spend limit (`amount_micros`, or `automatic`), `spent_micros` this month, `max_amount_micros`, `alerts`, `pause_at_limit`, `webhook` and `state`. | `workspace` | `billing:read` |
 | [`set_budget`](/reference/api/billing/set-budget/) | Change the limit (`amount_micros`, null for the automatic one), `alerts` (some of 50, 75, 90 and 100), `pause_at_limit` or `webhook`. Fields left out keep their value. Owners, as people. | `workspace` | `billing:write` |
-| [`ai_credit`](/reference/api/billing/get-ai-credit/) | AI credit left, its grants, whether runs are `blocked` for want of it, auto-reload, and what can be bought. | `workspace` | `billing:read` |
-| [`buy_ai_credit`](/reference/api/billing/buy-ai-credit/) | A payment page (`url`) to buy `amount_cents` of credit, in whole dollars from $10 to $1,000, for a person to open and pay; it returns to the workspace's billing page. Owners, as people. | `workspace`, `amount_cents` | `billing:write` |
 | [`invoices`](/reference/api/billing/list-invoices/) | Every invoice (`invoices`, in cents), g1t's itemised usage invoices (`usage_invoices`), and what the next one comes to so far (`upcoming`). | `workspace` | `billing:read` |
 | [`billing_details`](/reference/api/billing/get-billing-details/) | Who invoices are made out to, and the payment method on file as far as it is safe to show. | `workspace` | `billing:read` |
 

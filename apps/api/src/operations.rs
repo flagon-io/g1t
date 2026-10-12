@@ -283,8 +283,6 @@ pub enum Op {
     GetUsage,
     GetBudget,
     SetBudget,
-    GetAiCredit,
-    BuyAiCredit,
     ListInvoices,
     GetBillingDetails,
     RequestReviewers,
@@ -693,7 +691,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 368] = [
+    pub const ALL: [Op; 366] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -868,8 +866,6 @@ impl Op {
         Op::GetUsage,
         Op::GetBudget,
         Op::SetBudget,
-        Op::GetAiCredit,
-        Op::BuyAiCredit,
         Op::ListInvoices,
         Op::GetBillingDetails,
         Op::RequestReviewers,
@@ -1245,8 +1241,6 @@ impl Op {
             Op::GetUsage => "get_usage",
             Op::GetBudget => "get_budget",
             Op::SetBudget => "set_budget",
-            Op::GetAiCredit => "get_ai_credit",
-            Op::BuyAiCredit => "buy_ai_credit",
             Op::ListInvoices => "list_invoices",
             Op::GetBillingDetails => "get_billing_details",
             Op::RequestReviewers => "request_reviewers",
@@ -1746,7 +1740,7 @@ impl Op {
                 "Choose what happens when a team is asked to review a pull request. Off, everyone in it is asked. On (`enabled`), g1t picks `count` people from it (1 to 10, never the pull request's author) and asks them, and the team stays shown as asked beside them: `round_robin` picks whoever this team asked least recently, `load_balance` whoever has the fewest pull requests waiting on their review. `skip_busy` leaves out anyone with `busy_at` or more waiting; `include_child_teams` also picks from its child teams' people; `excluded` lists usernames never picked; `notify_team` also tells the rest of the team. Fields left out keep their current value. Owners of the workspace and the team's maintainers. People only. Returns the team."
             }
             Op::GetUsage => {
-                "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes, counted in any range that reaches into the current month, and `pending_charged_micros` is what of it will be charged then, after the discount and what g1t covers; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, the split `by_project`, and a `note` where the quantity needs one: the agent rate's meters, `agent_rate` and `agent_rate_own` (on the workspace's own model key), count weighted tokens and name the weights), `projects` (every repository with usage in the range), `models` (the agent's input, output, cache-read and cache-write tokens by model, most first), `by_agent` and `by_person` (the agent product at price by the agent that did the work, by handle, and by who asked, by username; `g1t` is g1t's own runs on repositories, an empty key is work attributed to no one; each sums to the agent product), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only."
+                "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (sandboxes, deployments, git_storage, packages, security, search, other) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes, counted in any range that reaches into the current month, and `pending_charged_micros` is what of it will be charged then, after the discount and what g1t covers; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, and the split `by_project`), `projects` (every repository with usage in the range), and the credit left now: `credit_micros`, and `ai_credit_micros` for AI credit bought earlier, which still pays toward what is owed. Usage on a meter g1t no longer has, such as agent runs and model requests from before they were retired, is kept on one meter in a last product, `other`, shown only when it has something, so nothing charged is left out. `models`, `by_agent` and `by_person` are always empty, and each product's `features` too. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only."
             }
             Op::GetBudget => {
                 "A workspace's budget: its monthly spend limit (`amount_micros`; `automatic` is true while the owners have not set one, and it is then $200 or twice last month's spend), what was charged this month (`spent_micros`), the most the owners may set it to themselves (`max_amount_micros`), its `alerts` (percent of the limit, each emailed to the owners once a month), whether usage pauses at the limit (`pause_at_limit`), the `webhook` told of each alert, and `state`: `ok`, `warning` or `stopped`, with a `message` when work is stopped or close to it. Members of the workspace only."
@@ -1754,14 +1748,8 @@ impl Op {
             Op::SetBudget => {
                 "Change a workspace's budget. Give only what you change; the rest stays as it is. `amount_micros` is the monthly spend limit, up to `max_amount_micros`, or null for the automatic one. `alerts` is some of 50, 75, 90 and 100, in percent of the limit. `pause_at_limit` false makes the limit alert only, without pausing usage; g1t's own ceiling still applies. `webhook` is an https:// address sent a JSON POST for each alert, or null for none. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents can read the budget but never change it. Returns the budget."
             }
-            Op::GetAiCredit => {
-                "A workspace's AI credit, which pays for agent and AI gateway usage: what is left (`balance_micros`), how much of it was bought and given, its `grants` newest first, whether new runs on g1t's models are refused for want of it (`blocked`), whether it can be bought (`can_buy`) and for how much (`min_cents`, `max_cents`, `presets_cents`, and the `card_fee` added on top), auto-reload, the agent rate and the markups on models. `free_via_discount` or `postpaid` mean no credit is needed. Members of the workspace only."
-            }
-            Op::BuyAiCredit => {
-                "Start buying AI credit. Returns `url`, a payment page to open in a browser and pay by card; it comes back to the workspace's billing page. `amount_cents` is the credit, in whole dollars from $10 (1000) to $1,000 (100000); any card fee is added on top. The credit is added once the payment goes through. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents never buy credit."
-            }
             Op::ListInvoices => {
-                "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only."
+                "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, usage and any AI credit bought earlier), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only."
             }
             Op::GetBillingDetails => {
                 "Who a workspace's invoices are made out to: the billing `email`, `name`, `address`, tax ID (`tax_id_type`, `tax_id`), `po_number` and the invoices' `language`, with the default `payment_method` as far as it is safe to show (its kind, brand, last four digits and expiry). `customer` is false until the workspace has been set up to pay. Tax is worked out from the address: `tax_location` says whether it is enough for that (a country, and in the US a ZIP code), `tax_address_needed_at` is set while g1t is holding a charge for want of one, `tax_id_status` is Stripe's check of the tax ID (`pending`, `verified`, `unverified` or `unavailable`), and `tax_exempt` is `none`, `exempt` or `reverse`. Members of the workspace only."
@@ -3086,7 +3074,7 @@ impl Op {
                 }),
                 &["workspace"],
             ),
-            Op::GetBudget | Op::GetAiCredit | Op::ListInvoices | Op::GetBillingDetails => {
+            Op::GetBudget | Op::ListInvoices | Op::GetBillingDetails => {
                 object(json!({ "workspace": workspace_schema() }), &["workspace"])
             }
             Op::SetBudget => object(
@@ -3109,19 +3097,6 @@ impl Op {
                     },
                 }),
                 &["workspace"],
-            ),
-            Op::BuyAiCredit => object(
-                json!({
-                    "workspace": workspace_schema(),
-                    "amount_cents": {
-                        "type": "integer",
-                        "minimum": 1000,
-                        "maximum": 100000,
-                        "multipleOf": 100,
-                        "description": "The credit to buy, in cents, in whole dollars: 5000 is $50.",
-                    },
-                }),
-                &["workspace", "amount_cents"],
             ),
             Op::ListUserTeams => object(
                 json!({ "workspace": workspace_schema(), "username": username_schema() }),
@@ -3365,8 +3340,6 @@ impl Op {
                 | Op::GetUsage
                 | Op::GetBudget
                 | Op::SetBudget
-                | Op::GetAiCredit
-                | Op::BuyAiCredit
                 | Op::ListInvoices
                 | Op::GetBillingDetails
         )
@@ -5278,8 +5251,6 @@ impl Op {
             Op::GetUsage
             | Op::GetBudget
             | Op::SetBudget
-            | Op::GetAiCredit
-            | Op::BuyAiCredit
             | Op::ListInvoices
             | Op::GetBillingDetails => crate::billing::run(self, services, viewer, input).await,
             Op::ListUserTeams => {

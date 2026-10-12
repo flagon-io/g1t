@@ -84,12 +84,6 @@ pub(crate) fn friendly(error: &Error) -> String {
     }
 }
 
-/// Whether Stripe declined a card (as opposed to refusing the request).
-pub(crate) fn is_card_error(error: &Error) -> bool {
-    let text = error.to_string();
-    text.contains("\"card_error\"") || text.contains("authentication_required")
-}
-
 pub struct Stripe {
     key: String,
 }
@@ -515,19 +509,6 @@ impl Stripe {
         self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
     }
 
-    /// Starts a page on which AI credit is bought: one payment by card, the
-    /// card fee as its own line, the card kept for auto-reload.
-    pub async fn start_credit_checkout(&self, purchase: &CreditPurchase<'_>) -> Result<Session> {
-        let fields = credit_fields(purchase);
-        let key = page_key(
-            "ai_credit",
-            purchase.workspace,
-            &format!("{}/{}/{}", purchase.credit_cents, purchase.fee_cents, purchase.customer.unwrap_or("new")),
-            g1t_kit::now_ms(),
-        );
-        self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
-    }
-
     /// The customer's default payment method: the one its invoices are
     /// charged to, else its newest card. None when it has none.
     pub async fn default_payment_method(&self, customer: &str) -> Result<Option<SavedMethod>> {
@@ -556,41 +537,6 @@ impl Stripe {
     pub async fn invoices(&self, customer: &str) -> Result<Vec<serde_json::Value>> {
         let list: serde_json::Value = self.call(Method::Get, &format!("/invoices?customer={}&limit=24", encode(customer)), None).await?;
         Ok(list["data"].as_array().cloned().unwrap_or_default())
-    }
-
-    /// Charges a saved payment method now, with nobody there: auto-reload.
-    /// Done at most once for `key`, however often it is sent.
-    pub async fn charge_saved(&self, charge: &SavedCharge<'_>) -> Result<serde_json::Value> {
-        self.send(Method::Post, "/payment_intents", Some(form(&saved_charge_fields(charge))), Some(charge.key)).await
-    }
-
-    /// Stripe Tax's figure for an off-session charge, which no Checkout
-    /// page or invoice works out: the credit and the card fee, each at
-    /// g1t's tax code and excluding tax, for the customer's saved address.
-    /// A customer Stripe cannot place fails with
-    /// `customer_tax_location_invalid` (`is_tax_location_error`).
-    pub async fn tax_calculation(&self, charge: &SavedCharge<'_>) -> Result<TaxCalculation> {
-        if !self.tax_active().await {
-            // No Stripe Tax for this key's mode: no tax, and nothing to record.
-            return Ok(TaxCalculation { id: String::new(), tax_amount_exclusive: 0 });
-        }
-        let key = format!("{}/tax", charge.key);
-        self.send(Method::Post, "/tax/calculations", Some(form(&tax_calculation_fields(charge))), Some(&key)).await
-    }
-
-    /// Records a calculation as a tax transaction once its payment went
-    /// through, so Stripe Tax reports and files it; `reference` is the
-    /// PaymentIntent. Its id, for reversing it on a refund.
-    pub async fn record_tax(&self, calculation: &str, reference: &str) -> Result<String> {
-        #[derive(Deserialize)]
-        struct Transaction {
-            id: String,
-        }
-        let fields = [("calculation", calculation.to_owned()), ("reference", reference.to_owned())];
-        let made: Transaction = self
-            .send(Method::Post, "/tax/transactions/create_from_calculation", Some(form(&fields)), Some(&format!("tax/{reference}")))
-            .await?;
-        Ok(made.id)
     }
 
     /// Reverses a tax transaction in part for a refund: `refunded_cents` of
@@ -629,15 +575,6 @@ impl Stripe {
     }
 }
 
-/// Stripe Tax's answer for an off-session charge.
-#[derive(Debug, Deserialize)]
-pub struct TaxCalculation {
-    pub id: String,
-    /// The tax on top, in cents.
-    #[serde(default)]
-    pub tax_amount_exclusive: i64,
-}
-
 /// A customer's address from an address Stripe gave.
 pub(crate) fn address_fields(address: &serde_json::Value) -> Vec<(&'static str, String)> {
     let text = |key: &str| address[key].as_str().unwrap_or_default().to_owned();
@@ -651,28 +588,6 @@ pub(crate) fn address_fields(address: &serde_json::Value) -> Vec<(&'static str, 
     ]
 }
 
-/// A tax calculation's fields: the credit and the card fee as lines at
-/// g1t's tax code, prices excluding tax.
-pub(crate) fn tax_calculation_fields(c: &SavedCharge<'_>) -> Vec<(&'static str, String)> {
-    let mut fields = vec![
-        ("currency", "usd".to_owned()),
-        ("customer", c.customer.to_owned()),
-        ("line_items[0][amount]", c.credit_cents.to_string()),
-        ("line_items[0][reference]", "ai_credit".to_owned()),
-        ("line_items[0][tax_code]", TAX_CODE.to_owned()),
-        ("line_items[0][tax_behavior]", "exclusive".to_owned()),
-    ];
-    if c.fee_cents > 0 {
-        fields.extend([
-            ("line_items[1][amount]", c.fee_cents.to_string()),
-            ("line_items[1][reference]", "card_fee".to_owned()),
-            ("line_items[1][tax_code]", TAX_CODE.to_owned()),
-            ("line_items[1][tax_behavior]", "exclusive".to_owned()),
-        ]);
-    }
-    fields
-}
-
 /// A refund's tax reversal: a part of the payment, as a negative amount.
 pub(crate) fn reversal_fields(transaction: &str, reference: &str, refunded_cents: i64) -> Vec<(&'static str, String)> {
     vec![
@@ -681,29 +596,6 @@ pub(crate) fn reversal_fields(transaction: &str, reference: &str, refunded_cents
         ("reference", reference.to_owned()),
         ("flat_amount", (-refunded_cents.abs()).to_string()),
     ]
-}
-
-/// An AI credit purchase, as its payment page needs it.
-pub struct CreditPurchase<'a> {
-    pub workspace: &'a str,
-    pub credit_cents: u32,
-    pub fee_cents: u32,
-    pub customer: Option<&'a str>,
-    pub return_url: &'a str,
-}
-
-/// A charge to a saved card with nobody there.
-pub struct SavedCharge<'a> {
-    pub workspace: &'a str,
-    pub customer: &'a str,
-    pub payment_method: &'a str,
-    pub credit_cents: u32,
-    pub fee_cents: u32,
-    /// Tax on top, from `tax_calculation`.
-    pub tax_cents: u32,
-    /// The calculation the tax came from, kept on the payment.
-    pub tax_calculation: Option<&'a str>,
-    pub key: &'a str,
 }
 
 /// A saved way to pay, as far as it is safe to show.
@@ -900,63 +792,6 @@ pub(crate) fn card_check_fields(workspace: &str, customer: &str, return_url: &st
         ("setup_intent_data[metadata][workspace]", workspace.to_owned()),
         ("setup_intent_data[description]", format!("Card check for g1t workspace {workspace}; never charged")),
     ]
-}
-
-/// An AI credit page's fields: the credit, and the card fee as its own
-/// line when there is one.
-pub(crate) fn credit_fields(p: &CreditPurchase<'_>) -> Vec<(&'static str, String)> {
-    let mut fields = vec![
-        ("mode", "payment".to_owned()),
-        ("payment_method_types[0]", "card".to_owned()),
-        ("payment_method_options[card][request_three_d_secure]", "any".to_owned()),
-        // Kept for auto-reload, which charges it with nobody there.
-        ("payment_intent_data[setup_future_usage]", "off_session".to_owned()),
-        ("payment_intent_data[description]", format!("g1t AI credit for {}", p.workspace)),
-        ("payment_intent_data[metadata][workspace]", p.workspace.to_owned()),
-        ("payment_intent_data[metadata][purpose]", "ai_credit".to_owned()),
-        ("success_url", back_to(p.return_url, "ai_credit")),
-        ("cancel_url", p.return_url.to_owned()),
-        ("client_reference_id", p.workspace.to_owned()),
-        ("metadata[workspace]", p.workspace.to_owned()),
-        ("metadata[purpose]", "ai_credit".to_owned()),
-    ];
-    fields.extend(page_line(
-        0,
-        p.credit_cents,
-        "g1t AI credit".to_owned(),
-        Some(format!("Prepaid credit for Agent and AI Gateway usage in {}; expires a year after purchase", p.workspace)),
-        false,
-    ));
-    fields.extend(fee_line(p.fee_cents, false));
-    fields.extend(checkout_tax_fields(p.customer));
-    match p.customer {
-        Some(customer) => fields.push(("customer", customer.to_owned())),
-        None => fields.push(("customer_creation", "always".to_owned())),
-    }
-    fields
-}
-
-/// An off-session charge's fields: the credit, the card fee and the tax
-/// Stripe Tax worked out for them, in one payment.
-pub(crate) fn saved_charge_fields(c: &SavedCharge<'_>) -> Vec<(&'static str, String)> {
-    let mut fields = vec![
-        ("amount", (c.credit_cents + c.fee_cents + c.tax_cents).to_string()),
-        ("currency", "usd".to_owned()),
-        ("customer", c.customer.to_owned()),
-        ("payment_method", c.payment_method.to_owned()),
-        ("off_session", "true".to_owned()),
-        ("confirm", "true".to_owned()),
-        ("description", format!("g1t AI credit auto-reload for {}", c.workspace)),
-        ("metadata[workspace]", c.workspace.to_owned()),
-        ("metadata[purpose]", "ai_reload".to_owned()),
-        ("metadata[credit_cents]", c.credit_cents.to_string()),
-        ("metadata[fee_cents]", c.fee_cents.to_string()),
-        ("metadata[tax_cents]", c.tax_cents.to_string()),
-    ];
-    if let Some(calculation) = c.tax_calculation {
-        fields.push(("metadata[tax_calculation]", calculation.to_owned()));
-    }
-    fields
 }
 
 /// A Stripe invoice's tax settings, for every invoice g1t makes: worked out
@@ -1335,9 +1170,6 @@ mod tests {
             // Prepaying by card, with its fee, and by bank transfer, without.
             assert_taxed_page(&prepay_fields("acme", 5_000, 185, customer, url, false), customer, 2);
             assert_taxed_page(&prepay_fields("acme", 100_000, 0, customer, url, true), customer, 1);
-            // AI credit.
-            let purchase = CreditPurchase { workspace: "acme", credit_cents: 2_500, fee_cents: 106, customer, return_url: url };
-            assert_taxed_page(&credit_fields(&purchase), customer, 2);
         }
         // tax_id_collection and customer_update are for payment and
         // subscription mode; a card check charges nothing, so it is not
@@ -1378,27 +1210,7 @@ mod tests {
     }
 
     #[test]
-    fn an_off_session_charge_is_its_credit_fee_and_tax() {
-        let charge = SavedCharge {
-            workspace: "acme",
-            customer: "cus_1",
-            payment_method: "pm_1",
-            credit_cents: 1_600,
-            fee_cents: 78,
-            tax_cents: 134,
-            tax_calculation: Some("taxcalc_1"),
-            key: "reload/acme/2026-10/1",
-        };
-        let calculation = tax_calculation_fields(&charge);
-        assert_eq!(has(&calculation, "customer").as_deref(), Some("cus_1"));
-        assert_eq!(has(&calculation, "line_items[0][amount]").as_deref(), Some("1600"));
-        assert_eq!(has(&calculation, "line_items[0][tax_behavior]").as_deref(), Some("exclusive"));
-        assert_eq!(has(&calculation, "line_items[0][tax_code]").as_deref(), Some(TAX_CODE));
-        assert_eq!(has(&calculation, "line_items[1][amount]").as_deref(), Some("78"));
-        assert_eq!(has(&calculation, "line_items[1][tax_code]").as_deref(), Some(TAX_CODE));
-        let fields = saved_charge_fields(&charge);
-        assert_eq!(has(&fields, "amount").as_deref(), Some("1812"));
-        assert_eq!(has(&fields, "metadata[tax_calculation]").as_deref(), Some("taxcalc_1"));
+    fn a_refund_reverses_part_of_its_tax() {
         let reversal = reversal_fields("tax_1", "pi_1/re_1", 500);
         assert_eq!(has(&reversal, "flat_amount").as_deref(), Some("-500"));
         assert_eq!(has(&reversal, "mode").as_deref(), Some("partial"));
@@ -1448,45 +1260,10 @@ mod tests {
     }
 
     #[test]
-    fn an_ai_credit_page_has_the_card_fee_as_its_own_line() {
-        let purchase = CreditPurchase { workspace: "acme", credit_cents: 2_500, fee_cents: 106, customer: None, return_url: "https://g1t.sh/acme/-/billing" };
-        let fields = credit_fields(&purchase);
-        assert_eq!(has(&fields, "mode").as_deref(), Some("payment"));
-        assert_eq!(has(&fields, "line_items[0][price_data][unit_amount]").as_deref(), Some("2500"));
-        assert_eq!(has(&fields, "line_items[1][price_data][unit_amount]").as_deref(), Some("106"));
-        assert_eq!(has(&fields, "line_items[1][price_data][product_data][name]").as_deref(), Some("Card processing fee"));
-        assert_eq!(has(&fields, "customer_creation").as_deref(), Some("always"));
-        assert_eq!(has(&fields, "payment_intent_data[setup_future_usage]").as_deref(), Some("off_session"));
-        assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/billing?ai_credit={CHECKOUT_SESSION_ID}");
-        // No fee: no second line.
-        let fields = credit_fields(&CreditPurchase { fee_cents: 0, customer: Some("cus_1"), ..purchase });
-        assert!(has(&fields, "line_items[1][quantity]").is_none());
-        assert!(has(&fields, "customer_creation").is_none());
-    }
-
-    #[test]
-    fn an_auto_reload_is_one_off_session_charge() {
-        let charge = SavedCharge {
-            workspace: "acme",
-            customer: "cus_1",
-            payment_method: "pm_1",
-            credit_cents: 1_600,
-            fee_cents: 78,
-            tax_cents: 0,
-            tax_calculation: None,
-            key: "reload/acme/2026-10/1",
-        };
-        let fields = saved_charge_fields(&charge);
-        assert_eq!(has(&fields, "amount").as_deref(), Some("1678"));
-        assert_eq!(has(&fields, "off_session").as_deref(), Some("true"));
-        assert_eq!(has(&fields, "confirm").as_deref(), Some("true"));
-    }
-
-    #[test]
     fn a_page_asked_for_twice_is_one_page() {
         let at = 1_791_000_000_000;
         assert_eq!(page_key("plan", "acme", "plan/2000", at), page_key("plan", "acme", "plan/2000", at + 60_000));
-        assert_ne!(page_key("plan", "acme", "plan/2000", at), page_key("ai_credit", "acme", "plan/2000", at));
+        assert_ne!(page_key("plan", "acme", "plan/2000", at), page_key("prepay", "acme", "plan/2000", at));
     }
 
     #[test]
@@ -1500,7 +1277,5 @@ mod tests {
         assert!(friendly(&odd).starts_with("Stripe refused it. Try again"));
         let down = Error::RustError("network connection lost".into());
         assert_eq!(friendly(&down), "Stripe could not be reached. Try again in a minute.");
-        let declined = Error::RustError(r#"the card processor answered 402: {"error":{"type":"card_error","code":"card_declined","message":"Your card was declined."}}"#.into());
-        assert!(is_card_error(&declined) && !is_card_error(&refused));
     }
 }

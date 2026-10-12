@@ -709,21 +709,6 @@ impl Billing {
         Ok(established_ceiling(&charged))
     }
 
-    /// A refusal, with the reason, when the workspace's work is stopped.
-    /// None while billing is off: a g1t without payments has no limits.
-    pub(crate) async fn stopped<T>(&self, workspace: &str) -> Result<Option<Outcome<T>>> {
-        if self.stripe.is_none() {
-            return Ok(None);
-        }
-        let limit = self.limit_of(workspace).await?;
-        Ok((limit.state == LimitState::Stopped).then(|| {
-            Outcome::fail(
-                FailureCode::PaymentRequired,
-                limit.message.unwrap_or_else(|| "This workspace is over its limit.".to_owned()),
-            )
-        }))
-    }
-
     pub(crate) async fn limit(&self, a: LimitArgs) -> Result<Outcome<Limit>> {
         let workspace = a.workspace.to_lowercase();
         if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {

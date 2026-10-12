@@ -383,7 +383,7 @@ impl Billing {
         }
         let note = a.note.trim();
         let description = if note.is_empty() { "Paid by bank transfer".to_owned() } else { format!("Paid by bank transfer: {note}") };
-        self.enter(&workspace, EntryKind::TopUp, a.amount_micros, &description, &key, None, None, Some(a.by.trim()), None)
+        self.enter(&workspace, EntryKind::TopUp, a.amount_micros, &description, &key, None, Some(a.by.trim()), None)
             .await?;
         let account = self.account_of(&workspace).await?;
         self.audit(

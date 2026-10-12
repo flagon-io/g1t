@@ -101,13 +101,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Billing",
-        "A workspace's usage, its budget, its AI credit and its invoices. Members read them; owners change the budget and buy credit, as people. A run's token never changes billing.",
+        "A workspace's usage, its budget and its invoices. Members read them; owners change the budget, as people. A run's token never changes billing.",
         &[
             Op::GetUsage,
             Op::GetBudget,
             Op::SetBudget,
-            Op::GetAiCredit,
-            Op::BuyAiCredit,
             Op::ListInvoices,
             Op::GetBillingDetails,
         ],
@@ -759,8 +757,6 @@ fn title(op: Op) -> &'static str {
         Op::GetUsage => "Get a workspace's usage",
         Op::GetBudget => "Get a workspace's budget",
         Op::SetBudget => "Change a workspace's budget",
-        Op::GetAiCredit => "Get a workspace's AI credit",
-        Op::BuyAiCredit => "Buy AI credit",
         Op::ListInvoices => "List a workspace's invoices",
         Op::GetBillingDetails => "Get a workspace's billing details",
         Op::PinProject => "Pin a project",

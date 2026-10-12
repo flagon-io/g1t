@@ -12,7 +12,6 @@ mod alerts;
 mod github;
 mod github_jwt;
 mod http;
-mod models;
 mod refs;
 mod remotes;
 mod rename;
@@ -28,7 +27,7 @@ use g1t_contracts::work::{AddCommentArgs, Issue, IssueActionArgs, IssueDetail, O
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
@@ -36,10 +35,8 @@ use alerts::{Action, Signal};
 use g1t_secrets::{self as crypto, Sealer};
 use refs::Reference;
 
-/// How long a run's model token works.
-const MODEL_SESSION_SECONDS: u64 = 3 * 60 * 60;
 const DELIVERIES_SHOWN: u32 = 30;
-/// Most references pulled into an agent's starting context.
+/// Most references looked up in one piece of text.
 const MAX_REFERENCES: u32 = 5;
 /// An alert that keeps firing is mentioned on its issue at these counts.
 const MILESTONES: [u32; 5] = [10, 100, 1_000, 10_000, 100_000];
@@ -108,86 +105,6 @@ struct DeliveryRow {
     issue: Option<String>,
 }
 
-/// The token hashes a run may close: SHA-256 in lowercase hex, each once,
-/// a run's handful at most.
-fn closable_hashes(hashes: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for hash in hashes {
-        let hash = hash.trim().to_ascii_lowercase();
-        if hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) && !out.contains(&hash) {
-            out.push(hash);
-        }
-        if out.len() == 20 {
-            break;
-        }
-    }
-    out
-}
-
-/// Who a run is for, as kept on its session: a username, lowercased. The
-/// agent's own name is not a person, so it is kept as nobody.
-fn requester(username: Option<&str>) -> Option<String> {
-    let name = username?.trim().to_lowercase();
-    (!name.is_empty() && name != g1t_contracts::identity::AGENT_NAME).then_some(name)
-}
-
-/// The tier a workspace chose on g1t's models for `task`: its own route's,
-/// else the `default` route's, when that route is to g1t's models and names
-/// one. `None` is Auto.
-fn hosted_choice(routes: &[RouteRow], task: &str) -> Option<String> {
-    let chosen = routes.iter().find(|route| route.task == task).or_else(|| routes.iter().find(|route| route.task == "default"))?;
-    if chosen.connection_id.is_some() {
-        return None;
-    }
-    chosen.model.as_deref().map(str::trim).filter(|model| MODEL_TIERS.contains(model)).map(str::to_owned)
-}
-
-/// A model session's public id: the start of its token's hash.
-fn session_id(token_hash: &str) -> String {
-    format!("ms_{}", &token_hash[..token_hash.len().min(24)])
-}
-
-#[derive(Deserialize)]
-struct SessionRow {
-    token_hash: String,
-    workspace: String,
-    connection_id: Option<String>,
-    repo: String,
-    number: u32,
-    task: String,
-    model: Option<String>,
-    #[serde(default)]
-    tier: Option<String>,
-    #[serde(default)]
-    requested_by: Option<String>,
-    #[serde(default)]
-    cap_micros: Option<i64>,
-}
-
-/// A run's model spend cap as a session keeps it: null for none (zero or
-/// less), and never more than $1,000, which no run is allowed. D1 takes
-/// numbers as doubles, which hold any such cap exactly.
-fn session_cap(cap_micros: i64) -> JsValue {
-    if cap_micros > 0 { JsValue::from_f64(cap_micros.min(1_000_000_000) as f64) } else { JsValue::NULL }
-}
-
-#[derive(Deserialize)]
-struct RouteRow {
-    task: String,
-    connection_id: Option<String>,
-    model: Option<String>,
-}
-
-impl From<RouteRow> for ModelRoute {
-    fn from(row: RouteRow) -> Self {
-        ModelRoute {
-            task: row.task,
-            connection_id: row.connection_id,
-            model: row.model,
-        }
-    }
-}
-
 /// Something outside g1t that a reference named, and the connection that
 /// found it.
 struct Found {
@@ -239,29 +156,11 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
             return Err(format!("The repository has to be in the {workspace} workspace."));
         }
     }
-    if let Some(models) = &config.gateway_models {
-        if provider.kind() != ProviderKind::Models {
-            return Err("Only a model provider takes AI Gateway models.".to_owned());
-        }
-        config.gateway_models = Some(tidy_gateway_models(models)?);
-    }
+    // Model providers are no longer connected; settings for them are dropped.
+    config.gateway_models = None;
+    config.assign = false;
     let needs = |present: bool, what: &str| if present { Ok(()) } else { Err(what.to_owned()) };
     match provider {
-        Provider::AzureOpenai => {
-            needs(config.base_url.is_some(), "Give your Azure OpenAI resource's endpoint, such as https://acme.openai.azure.com.")?;
-            needs(config.model.is_some(), "Give the name of the deployment to use.")?;
-            needs(secrets.secret.is_some(), "Paste the resource's key.")
-        }
-        Provider::AnthropicEndpoint | Provider::OpenaiEndpoint => {
-            needs(config.base_url.is_some(), "Give the endpoint's address.")?;
-            if let Some(header) = &config.auth_header
-                && header != "x-api-key"
-                && header != "authorization"
-            {
-                return Err("Send the key as x-api-key or authorization.".to_owned());
-            }
-            Ok(())
-        }
         Provider::Sentry => {
             needs(config.repo.is_some(), "Choose the repository issues are opened in.")?;
             // The client secret comes once Sentry knows the webhook's
@@ -276,8 +175,7 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
             needs(secrets.secret.is_some(), "Paste a Jira API token.")
         }
         Provider::Linear => needs(secrets.secret.is_some(), "Paste a Linear API key."),
-        // Every other model provider is at a known address and needs only a key.
-        _ => needs(secrets.secret.is_some(), &format!("Paste a {} API key.", provider.label())),
+        _ => Err(format!("{} can no longer be connected.", provider.label())),
     }
 }
 
@@ -286,7 +184,6 @@ struct Integrations {
     sealer: Option<Sealer>,
     identity: Fetcher,
     work: Fetcher,
-    runner: Fetcher,
     /// Where the API is, for connections' webhook addresses.
     api_url: String,
     /// Where the site is, for links back to issues and pull requests.
@@ -301,7 +198,6 @@ impl Integrations {
             sealer: env.secret("INTEGRATIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
             identity: env.service("IDENTITY")?,
             work: env.service("WORK")?,
-            runner: env.service("RUNNER")?,
             api_url: var("API_URL", "https://api.g1t.sh"),
             site_url: var("SITE_URL", "https://g1t.sh"),
         })
@@ -429,6 +325,9 @@ impl Integrations {
             return Ok(fail(FailureCode::Conflict, "Integrations are not set up on this g1t: it has no key to keep secrets with."));
         }
         let provider = a.provider;
+        if provider.kind() == ProviderKind::Models {
+            return Ok(fail(FailureCode::Invalid, "Model providers can no longer be connected."));
+        }
         let tidy = |value: Option<String>| value.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
         let mut secrets = Secrets {
             secret: tidy(a.secret),
@@ -470,11 +369,6 @@ impl Integrations {
             ])?
             .run()
             .await?;
-        // A model provider is checked at once, which also learns its models.
-        if provider.kind() == ProviderKind::Models {
-            let checked = models::test(provider, &config, secrets.secret.as_deref(), secrets.signing_secret.as_deref()).await?;
-            self.after_check(&id, &checked).await?;
-        }
         let Some(row) = self.row(&id).await? else {
             return Ok(fail(FailureCode::NotFound, "The connection was not saved."));
         };
@@ -537,11 +431,9 @@ impl Integrations {
         let Some(row) = self.row_in(&workspace, &a.id).await? else {
             return Ok(fail(FailureCode::NotFound, "No such integration."));
         };
-        // Runs already under way stop reaching the model with it.
         self.db
             .batch(vec![
                 self.db.prepare("DELETE FROM connections WHERE id = ?").bind(&[row.id.as_str().into()])?,
-                self.db.prepare("DELETE FROM model_sessions WHERE connection_id = ?").bind(&[row.id.as_str().into()])?,
                 self.db.prepare("DELETE FROM deliveries WHERE connection_id = ?").bind(&[row.id.as_str().into()])?,
             ])
             .await?;
@@ -561,11 +453,9 @@ impl Integrations {
         let secrets = self.secrets(&row);
         let key = secrets.secret.as_deref();
         if provider.kind() == ProviderKind::Models {
-            let checked = models::test(provider, &config, key, secrets.signing_secret.as_deref()).await?;
-            self.after_check(&row.id, &checked).await?;
-            return Ok(Outcome::Ok(match checked {
-                Ok((message, _)) => Tested { ok: true, message },
-                Err(message) => Tested { ok: false, message },
+            return Ok(Outcome::Ok(Tested {
+                ok: false,
+                message: "Model providers are no longer used by g1t. Disconnect this one.".to_owned(),
             }));
         }
         let tested = match provider {
@@ -647,16 +537,6 @@ impl Integrations {
             },
         )
         .await?;
-        Ok(())
-    }
-
-    /// Puts a g1t agent on an issue. Says on the issue why, if it cannot.
-    async fn assign(&self, actor: &User, repo: &RepoPath, number: u32) -> Result<()> {
-        let started: Outcome<Value> = g1t_kit::call(&self.runner, "run", &json!({ "actor": actor, "repo": repo, "issue": number })).await?;
-        if let Outcome::Fail(refused) = started {
-            self.comment(actor, repo, number, format!("g1t could not put an agent on this: {}", refused.message))
-                .await?;
-        }
         Ok(())
     }
 
@@ -868,9 +748,6 @@ impl Integrations {
                     format!("{system} saw this again after it was closed, so it is open again: [{}]({}).", signal.key, signal.url),
                 )
                 .await?;
-                if config.assign {
-                    self.assign(&actor, &path, link.number).await?;
-                }
                 return Ok(("reopened".into(), format!("It came back after being closed: {}.", signal.title), Some(at(link.number))));
             }
             if let Some(milestone) = milestone {
@@ -917,14 +794,7 @@ impl Integrations {
         };
         self.insert_link(row, &signal.external_id, &signal.key, &signal.title, &signal.url, &issue, &repo, signal.count.unwrap_or(1))
             .await?;
-        if config.assign {
-            self.assign(&actor, &repo, issue.number).await?;
-        }
-        Ok((
-            "opened".into(),
-            format!("Opened #{}{}", issue.number, if config.assign { " and put an agent on it." } else { "." }),
-            Some(at(issue.number)),
-        ))
+        Ok(("opened".into(), format!("Opened #{}.", issue.number), Some(at(issue.number))))
     }
 
     // --- References -----------------------------------------------------------
@@ -1029,7 +899,7 @@ impl Integrations {
         Ok(items)
     }
 
-    /// The item `reference` names, for an agent acting for `actor` in
+    /// The item `reference` names, for `actor` acting in
     /// `workspace`: a member, and a connection that knows it.
     async fn found_for(&self, actor: &User, workspace: &str, reference: &str) -> Result<std::result::Result<Found, Outcome<ContextItem>>> {
         if !actor.is_member(workspace) {
@@ -1046,7 +916,7 @@ impl Integrations {
         })
     }
 
-    /// A comment from an agent on an item outside g1t, with the g1t link
+    /// A comment on an item outside g1t, with the g1t link
     /// that explains it, through the connection that knows the item.
     async fn comment_outside(&self, a: CommentArgs) -> Result<Outcome<ContextItem>> {
         let workspace = a.workspace.to_lowercase();
@@ -1076,7 +946,7 @@ impl Integrations {
         })
     }
 
-    /// An agent marks a Sentry issue resolved, with a note and the g1t link.
+    /// Marks a Sentry issue resolved, with a note and the g1t link.
     async fn close_outside(&self, a: CloseArgs) -> Result<Outcome<ContextItem>> {
         let workspace = a.workspace.to_lowercase();
         let found = match self.found_for(&a.actor, &workspace, &a.reference).await? {
@@ -1157,9 +1027,6 @@ impl Integrations {
         };
         self.insert_link(&found.connection, &found.external_id, &item.key, &item.title, &item.url, &issue, &a.repo, 1)
             .await?;
-        if a.assign {
-            self.assign(&a.actor, &a.repo, issue.number).await?;
-        }
         Ok(Outcome::Ok(Imported {
             number: issue.number,
             item: found.item,
@@ -1191,333 +1058,6 @@ impl Integrations {
                 last_seen: row.last_seen,
             })
             .collect())
-    }
-
-    // --- Models ---------------------------------------------------------------
-
-    async fn model_connection(&self, workspace: &str) -> Result<Option<Row>> {
-        Ok(self
-            .rows(&workspace.to_lowercase())
-            .await?
-            .into_iter()
-            .find(|row| row.provider().kind() == ProviderKind::Models))
-    }
-
-    async fn model_provider(&self, a: ModelProviderArgs) -> Result<Option<Connection>> {
-        Ok(self.model_connection(&a.workspace).await?.map(|row| self.to_connection(&row)))
-    }
-
-    /// Keeps what a model provider's check found: its models, or what went wrong.
-    async fn after_check(&self, id: &str, checked: &std::result::Result<(String, Vec<String>), String>) -> Result<()> {
-        if let Ok((_, models)) = checked
-            && !models.is_empty()
-        {
-            self.db
-                .prepare("UPDATE connections SET models = ? WHERE id = ?")
-                .bind(&[serde_json::to_string(models)?.into(), id.into()])?
-                .run()
-                .await?;
-        }
-        self.note(id, checked.as_ref().err().map(String::as_str)).await
-    }
-
-    async fn route_rows(&self, workspace: &str) -> Result<Vec<RouteRow>> {
-        self.db
-            .prepare("SELECT task, connection_id, model FROM model_routes WHERE workspace = ? ORDER BY task")
-            .bind(&[workspace.into()])?
-            .all()
-            .await?
-            .results::<RouteRow>()
-    }
-
-    async fn routes(&self, a: RoutesArgs) -> Result<Outcome<Vec<ModelRoute>>> {
-        let workspace = a.workspace.to_lowercase();
-        if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
-            return Ok(fail(FailureCode::Forbidden, "Only members can see a workspace's integrations."));
-        }
-        Ok(Outcome::Ok(self.route_rows(&workspace).await?.into_iter().map(ModelRoute::from).collect()))
-    }
-
-    async fn set_routes(&self, a: SetRoutesArgs) -> Result<Outcome<Vec<ModelRoute>>> {
-        let workspace = a.workspace.to_lowercase();
-        if let Some(refused) = Self::owner_only(&a.actor, &workspace) {
-            return Ok(refused);
-        }
-        let rows = self.rows(&workspace).await?;
-        let mut statements = vec![
-            self.db
-                .prepare("DELETE FROM model_routes WHERE workspace = ?")
-                .bind(&[workspace.as_str().into()])?,
-        ];
-        let mut seen = Vec::new();
-        for route in &a.routes {
-            if !MODEL_TASKS.contains(&route.task.as_str()) || seen.contains(&route.task) {
-                return Ok(fail(FailureCode::Invalid, format!("Routes are for {}, each once.", MODEL_TASKS.join(", "))));
-            }
-            seen.push(route.task.clone());
-            let model = route.model.as_deref().map(str::trim).filter(|model| !model.is_empty());
-            // On g1t's models a route names a tier, or nothing for Auto.
-            if route.connection_id.is_none()
-                && let Some(model) = model
-                && !MODEL_TIERS.contains(&model)
-            {
-                return Ok(fail(FailureCode::Invalid, "On g1t's models, choose Auto, fast, standard or most capable."));
-            }
-            if let Some(id) = &route.connection_id {
-                let Some(row) = rows.iter().find(|row| &row.id == id && row.provider().kind() == ProviderKind::Models) else {
-                    return Ok(fail(FailureCode::NotFound, "A route names a model provider this workspace does not have."));
-                };
-                if row.provider().api() == "openai" && model.is_none() && row.config().model.is_none() {
-                    return Ok(fail(
-                        FailureCode::Invalid,
-                        format!("Choose which of {}'s models to use.", row.name),
-                    ));
-                }
-            }
-            statements.push(
-                self.db
-                    .prepare("INSERT INTO model_routes (workspace, task, connection_id, model) VALUES (?, ?, ?, ?)")
-                    .bind(&[
-                        workspace.as_str().into(),
-                        route.task.as_str().into(),
-                        optional(route.connection_id.as_deref()),
-                        optional(model),
-                    ])?,
-            );
-        }
-        self.db.batch(statements).await?;
-        Ok(Outcome::Ok(self.route_rows(&workspace).await?.into_iter().map(ModelRoute::from).collect()))
-    }
-
-    /// Where a kind of work's requests go: its own route, else `default`,
-    /// else g1t's hosted models where they are open, else the workspace's
-    /// first model provider. `None` for g1t's hosted models.
-    async fn resolve_route(&self, workspace: &str, task: &str, hosted_open: bool) -> Result<std::result::Result<Option<(Row, Option<String>)>, String>> {
-        let routes = self.route_rows(workspace).await?;
-        let rows = self.rows(workspace).await?;
-        let own: Vec<&Row> = rows.iter().filter(|row| row.provider().kind() == ProviderKind::Models).collect();
-        let chosen = routes
-            .iter()
-            .find(|route| route.task == task)
-            .or_else(|| routes.iter().find(|route| route.task == "default"));
-        let pick = |row: &Row, model: Option<String>| Some((clone_row(row), model.or_else(|| row.config().model)));
-        let target = match chosen {
-            Some(route) => match &route.connection_id {
-                Some(id) => match own.iter().find(|row| &row.id == id) {
-                    Some(row) => pick(row, route.model.clone()),
-                    None => return Ok(Err("A model route names a provider that was disconnected. An owner can choose another under Integrations.".to_owned())),
-                },
-                None => None,
-            },
-            None if hosted_open || own.is_empty() => None,
-            None => pick(own[0], None),
-        };
-        if target.is_none() && !hosted_open {
-            return Ok(Err(format!(
-                "g1t's hosted models are not open to the {workspace} workspace yet. An owner can connect the workspace's own model provider under Integrations, and route its work there."
-            )));
-        }
-        if let Some((row, None)) = &target
-            && row.provider().api() == "openai"
-        {
-            return Ok(Err(format!("Choose which of {}'s models to use, under Integrations.", row.name)));
-        }
-        Ok(Ok(target))
-    }
-
-    async fn open_model_session(&self, a: OpenModelSessionArgs) -> Result<Outcome<ModelSession>> {
-        let workspace = a.workspace.to_lowercase();
-        let target = match self.resolve_route(&workspace, &a.task, a.hosted_open).await? {
-            Ok(target) => target,
-            Err(problem) => return Ok(fail(FailureCode::Forbidden, problem)),
-        };
-        let token = format!("g1tm_{}", crypto::random_hex(24));
-        let now = now_ms();
-        let (connection, model) = match &target {
-            Some((row, model)) => (Some(row), model.clone()),
-            None => (None, None),
-        };
-        // On g1t's models, a tier the workspace chose for this work replaces
-        // the runner's (Auto's).
-        let choice = if connection.is_none() { hosted_choice(&self.route_rows(&workspace).await?, &a.task) } else { None };
-        let tier = choice.clone().or_else(|| a.tier.clone());
-        self.db
-            .batch(vec![
-                self.db
-                    .prepare("DELETE FROM model_sessions WHERE expires_at < ?")
-                    .bind(&[rfc3339(now).into()])?,
-                self.db
-                    .prepare(
-                        "INSERT INTO model_sessions (token_hash, workspace, connection_id, repo, number, task, expires_at, model, tier, requested_by)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    )
-                    .bind(&[
-                        crypto::sha256_hex(&token).into(),
-                        workspace.as_str().into(),
-                        optional(connection.map(|row| row.id.as_str())),
-                        format!("{}/{}", a.repo.namespace, a.repo.name).into(),
-                        a.number.into(),
-                        a.task.as_str().into(),
-                        rfc3339(now + MODEL_SESSION_SECONDS * 1000).into(),
-                        optional(model.as_deref()),
-                        // The tier is g1t's routing; it means nothing on the workspace's own provider.
-                        optional(tier.as_deref().filter(|tier| connection.is_none() && MODEL_TIERS.contains(tier))),
-                        optional(requester(a.requested_by.as_deref()).as_deref()),
-                    ])?,
-            ])
-            .await?;
-        let id = session_id(&crypto::sha256_hex(&token));
-        Ok(Outcome::Ok(ModelSession {
-            token,
-            billed_to: if connection.is_some() { "workspace" } else { "g1t" }.to_owned(),
-            provider_name: connection.map(|row| row.name.clone()),
-            model,
-            id,
-            tier_choice: choice,
-        }))
-    }
-
-    async fn model_upstream(&self, a: ModelUpstreamArgs) -> Result<Option<ModelUpstream>> {
-        let Some(session) = self
-            .db
-            .prepare("SELECT * FROM model_sessions WHERE token_hash = ? AND expires_at > ?")
-            .bind(&[crypto::sha256_hex(&a.token).into(), rfc3339(now_ms()).into()])?
-            .first::<SessionRow>(None)
-            .await?
-        else {
-            return Ok(None);
-        };
-        let base = ModelUpstream {
-            route: "g1t".to_owned(),
-            api: "anthropic".to_owned(),
-            model: None,
-            official: false,
-            provider: "g1t".to_owned(),
-            workspace: session.workspace,
-            repo: session.repo,
-            number: session.number,
-            task: session.task,
-            session: session_id(&session.token_hash),
-            tier: session.tier,
-            requested_by: session.requested_by,
-            base_url: None,
-            api_key: None,
-            auth_header: None,
-            gateway_token: None,
-            cap_micros: session.cap_micros.filter(|cap| *cap > 0),
-        };
-        let Some(connection_id) = session.connection_id else {
-            return Ok(Some(base));
-        };
-        // A connection removed during the run takes its key with it.
-        let Some(row) = self.row(&connection_id).await? else {
-            return Ok(None);
-        };
-        let provider = row.provider();
-        let config = row.config();
-        Ok(Some(ModelUpstream {
-            route: if provider == Provider::Anthropic { "anthropic" } else { "endpoint" }.to_owned(),
-            api: provider.api().to_owned(),
-            model: session.model,
-            official: matches!(provider, Provider::Openai | Provider::AzureOpenai),
-            provider: provider.name().to_owned(),
-            base_url: Some(models::base_url(provider, &config)),
-            api_key: self.secrets(&row).secret,
-            auth_header: Some(models::auth_header(provider, &config)),
-            gateway_token: matches!(provider, Provider::AnthropicEndpoint | Provider::OpenaiEndpoint)
-                .then(|| self.secrets(&row).signing_secret)
-                .flatten(),
-            ..base
-        }))
-    }
-
-    /// Where a workspace's AI Gateway requests go on its own key: its first
-    /// model provider that speaks Anthropic's API (an Anthropic key, or an
-    /// Anthropic-compatible endpoint). None sends them to g1t's models.
-    async fn gateway_upstream(&self, a: GatewayUpstreamArgs) -> Result<Option<ModelUpstream>> {
-        let workspace = a.workspace.to_lowercase();
-        let rows = self.rows(&workspace).await?;
-        let Some(row) = gateway_connection(&rows) else {
-            return Ok(None);
-        };
-        let provider = row.provider();
-        let config = row.config();
-        let secrets = self.secrets(row);
-        Ok(Some(ModelUpstream {
-            route: if provider == Provider::Anthropic { "anthropic" } else { "endpoint" }.to_owned(),
-            api: provider.api().to_owned(),
-            // The request names its model; a connection's own model is for
-            // agent runs.
-            model: None,
-            official: false,
-            provider: provider.name().to_owned(),
-            workspace,
-            repo: String::new(),
-            number: 0,
-            task: "gateway".to_owned(),
-            session: String::new(),
-            tier: None,
-            requested_by: None,
-            base_url: Some(models::base_url(provider, &config)),
-            api_key: secrets.secret.clone(),
-            auth_header: Some(models::auth_header(provider, &config)),
-            gateway_token: (provider == Provider::AnthropicEndpoint).then_some(secrets.signing_secret).flatten(),
-            cap_micros: None,
-        }))
-    }
-
-    /// The workspace's own model providers, with their keys and the AI
-    /// Gateway models each takes, for the model proxy to route by.
-    async fn gateway_providers(&self, a: GatewayProvidersArgs) -> Result<Vec<GatewayProvider>> {
-        let workspace = a.workspace.to_lowercase();
-        let rows = self.rows(&workspace).await?;
-        Ok(rows
-            .iter()
-            .filter(|row| row.provider().kind() == ProviderKind::Models)
-            .map(|row| {
-                let secrets = self.secrets(row);
-                gateway_provider(row, secrets)
-            })
-            .collect())
-    }
-
-    /// Ends the model sessions of a run that has finished: their tokens are
-    /// refused from now on, whatever time they had left.
-    async fn close_model_sessions(&self, a: CloseModelSessionsArgs) -> Result<u32> {
-        let hashes = closable_hashes(&a.token_hashes);
-        if hashes.is_empty() {
-            return Ok(0);
-        }
-        let marks = vec!["?"; hashes.len()].join(", ");
-        let mut values: Vec<JsValue> = hashes.iter().map(|hash| hash.as_str().into()).collect();
-        values.push(rfc3339(now_ms()).into());
-        let result = self
-            .db
-            .prepare(format!("DELETE FROM model_sessions WHERE token_hash IN ({marks}) AND expires_at > ?"))
-            .bind(&values)?
-            .run()
-            .await?;
-        Ok(result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32)
-    }
-
-    /// Sets the most a run may spend on models, which the model proxy holds
-    /// its token to. The sandbox calls it once it knows the run's caps.
-    async fn cap_model_sessions(&self, a: CapModelSessionsArgs) -> Result<u32> {
-        let hashes = closable_hashes(&a.token_hashes);
-        if hashes.is_empty() {
-            return Ok(0);
-        }
-        let marks = vec!["?"; hashes.len()].join(", ");
-        let mut values: Vec<JsValue> = vec![session_cap(a.cap_micros)];
-        values.extend(hashes.iter().map(|hash| JsValue::from(hash.as_str())));
-        values.push(rfc3339(now_ms()).into());
-        let result = self
-            .db
-            .prepare(format!("UPDATE model_sessions SET cap_micros = ? WHERE token_hash IN ({marks}) AND expires_at > ?"))
-            .bind(&values)?
-            .run()
-            .await?;
-        Ok(result.meta()?.and_then(|meta| meta.changes).unwrap_or(0) as u32)
     }
 
     // --- Writing back -----------------------------------------------------------
@@ -1585,34 +1125,6 @@ impl Integrations {
     }
 }
 
-/// The connection AI Gateway requests use on the workspace's own key: the
-/// first model provider that speaks Anthropic's API, in the order the
-/// workspace connected them.
-fn gateway_connection(rows: &[Row]) -> Option<&Row> {
-    rows.iter().find(|row| row.provider().kind() == ProviderKind::Models && row.provider().api() == "anthropic")
-}
-
-/// What the AI Gateway needs of one model connection, given its secrets.
-fn gateway_provider(row: &Row, secrets: Secrets) -> GatewayProvider {
-    let provider = row.provider();
-    let config = row.config();
-    GatewayProvider {
-        id: row.id.clone(),
-        name: row.name.clone(),
-        provider: provider.name().to_owned(),
-        api: provider.api().to_owned(),
-        official: matches!(provider, Provider::Openai | Provider::AzureOpenai),
-        base_url: models::base_url(provider, &config),
-        api_key: secrets.secret,
-        auth_header: models::auth_header(provider, &config),
-        gateway_token: matches!(provider, Provider::AnthropicEndpoint | Provider::OpenaiEndpoint)
-            .then_some(secrets.signing_secret)
-            .flatten(),
-        patterns: config.gateway_patterns(provider),
-        models: row.models.as_deref().and_then(|models| serde_json::from_str(models).ok()).unwrap_or_default(),
-    }
-}
-
 fn clone_row(row: &Row) -> Row {
     Row {
         id: row.id.clone(),
@@ -1671,15 +1183,6 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "comment" => reply(&service.comment_outside(args(body)?).await?),
         "close" => reply(&service.close_outside(args(body)?).await?),
         "links" => reply(&service.links(args(body)?).await?),
-        "model_provider" => reply(&service.model_provider(args(body)?).await?),
-        "open_model_session" => reply(&service.open_model_session(args(body)?).await?),
-        "model_upstream" => reply(&service.model_upstream(args(body)?).await?),
-        "gateway_upstream" => reply(&service.gateway_upstream(args(body)?).await?),
-        "gateway_providers" => reply(&service.gateway_providers(args(body)?).await?),
-        "close_model_sessions" => reply(&service.close_model_sessions(args(body)?).await?),
-        "cap_model_sessions" => reply(&service.cap_model_sessions(args(body)?).await?),
-        "routes" => reply(&service.routes(args(body)?).await?),
-        "set_routes" => reply(&service.set_routes(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -1739,108 +1242,22 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 }
 
 #[cfg(test)]
-mod close_tests {
-    use super::{closable_hashes, requester};
-
-    #[test]
-    fn a_session_is_for_a_person_never_the_agent() {
-        assert_eq!(requester(Some(" Ada ")).as_deref(), Some("ada"));
-        assert_eq!(requester(Some("g1t")), None);
-        assert_eq!(requester(Some("G1T")), None);
-        assert_eq!(requester(Some("  ")), None);
-        assert_eq!(requester(None), None);
-    }
-
-    #[test]
-    fn only_token_hashes_are_closed() {
-        let hash = "a".repeat(64);
-        let got = closable_hashes(&[hash.clone(), hash.to_uppercase(), "nope".into(), "g".repeat(64), String::new()]);
-        assert_eq!(got, vec![hash]);
-        let many: Vec<String> = (0..40).map(|i| format!("{i:064x}")).collect();
-        assert_eq!(closable_hashes(&many).len(), 20);
-    }
-}
-
-#[cfg(test)]
-mod choice_tests {
-    use super::{RouteRow, hosted_choice};
-
-    fn route(task: &str, connection: Option<&str>, model: Option<&str>) -> RouteRow {
-        RouteRow { task: task.into(), connection_id: connection.map(Into::into), model: model.map(Into::into) }
-    }
-
-    #[test]
-    fn a_tier_chosen_on_g1ts_models_is_the_works_own_or_the_defaults() {
-        let routes = vec![route("default", None, Some("large")), route("review", None, Some("frontier")), route("plan", None, None)];
-        assert_eq!(hosted_choice(&routes, "review").as_deref(), Some("frontier"));
-        // No route of its own: the default's.
-        assert_eq!(hosted_choice(&routes, "implement").as_deref(), Some("large"));
-        // Its own route to g1t's models on Auto: Auto, not the default's.
-        assert_eq!(hosted_choice(&routes, "plan"), None);
-        // No routes at all: Auto.
-        assert_eq!(hosted_choice(&[], "implement"), None);
-    }
-
-    #[test]
-    fn a_route_to_the_workspaces_own_provider_chooses_no_tier() {
-        let routes = vec![route("default", Some("con_1"), Some("claude-sonnet-5-5")), route("update", None, Some("huge"))];
-        assert_eq!(hosted_choice(&routes, "implement"), None);
-        // Not a tier: Auto.
-        assert_eq!(hosted_choice(&routes, "update"), None);
-    }
-}
-
-#[cfg(test)]
-mod gateway_tests {
+mod config_tests {
     use super::*;
 
     #[test]
-    fn gateway_models_are_checked_and_only_on_model_providers() {
+    fn model_providers_and_auto_assign_are_no_longer_taken() {
         let secrets = Secrets { secret: Some("sk-test".into()), signing_secret: None };
-        let mut config = ConnectionConfig { gateway_models: Some(vec![" gpt-* ".into(), "gpt-*".into()]), ..ConnectionConfig::default() };
-        assert!(check_config(Provider::Openai, "acme", &mut config, &secrets).is_ok());
-        assert_eq!(config.gateway_models.as_deref(), Some(&["gpt-*".to_owned()][..]));
-        let mut bad = ConnectionConfig { gateway_models: Some(vec!["g*t".into()]), ..ConnectionConfig::default() };
-        assert!(check_config(Provider::Openai, "acme", &mut bad, &secrets).is_err());
-        let mut alerts = ConnectionConfig { repo: Some("acme/web".into()), gateway_models: Some(vec!["*".into()]), ..ConnectionConfig::default() };
-        assert!(check_config(Provider::Webhook, "acme", &mut alerts, &secrets).is_err());
-    }
-
-    fn row(provider: &str, config: &str) -> Row {
-        Row {
-            id: "con_1".into(),
-            workspace: "acme".into(),
-            provider: provider.into(),
-            name: "Ours".into(),
-            config: config.into(),
-            secrets: None,
-            secret_hint: Some("3f9a".into()),
-            created_by: "ada".into(),
-            created_at: "2026-10-07T00:00:00Z".into(),
-            last_used_at: None,
-            last_error: None,
-            models: Some(r#"["llama3.3","qwen3"]"#.into()),
-        }
-    }
-
-    #[test]
-    fn a_gateway_provider_says_where_and_which_models() {
-        let secrets = || Secrets { secret: Some("sk-live".into()), signing_secret: Some("cf-token".into()) };
-        let endpoint = gateway_provider(
-            &row("openai_endpoint", r#"{"baseUrl":"https://llm.acme.dev/v1","gatewayModels":["ollama/*"]}"#),
-            secrets(),
-        );
-        assert_eq!(endpoint.api, "openai");
-        assert_eq!(endpoint.base_url, "https://llm.acme.dev/v1");
-        assert_eq!(endpoint.auth_header, "authorization");
-        assert_eq!(endpoint.patterns, ["ollama/*"]);
-        assert_eq!(endpoint.models, ["llama3.3", "qwen3"]);
-        assert_eq!(endpoint.gateway_token.as_deref(), Some("cf-token"));
-        let anthropic = gateway_provider(&row("anthropic", "{}"), secrets());
-        assert_eq!(anthropic.patterns, ["claude-*"]);
-        assert_eq!(anthropic.base_url, "https://api.anthropic.com");
-        // A fixed provider's gateway token is never sent anywhere.
-        assert_eq!(anthropic.gateway_token, None);
-        assert!(gateway_provider(&row("openai", "{}"), secrets()).official);
+        let mut config = ConnectionConfig::default();
+        assert!(check_config(Provider::Anthropic, "acme", &mut config, &secrets).is_err());
+        let mut alerts = ConnectionConfig {
+            repo: Some("acme/web".into()),
+            assign: true,
+            gateway_models: Some(vec!["*".into()]),
+            ..ConnectionConfig::default()
+        };
+        assert!(check_config(Provider::Webhook, "acme", &mut alerts, &secrets).is_ok());
+        assert!(!alerts.assign);
+        assert_eq!(alerts.gateway_models, None);
     }
 }

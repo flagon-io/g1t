@@ -360,13 +360,10 @@ impl Billing {
                 Err(why) => format!("card check not passed: {why}"),
             });
         }
-        // AI credit: credited once, by whichever of this and the person
-        // coming back claims the page first (ai.rs).
-        if open.feature.as_deref() == Some(crate::ai::AI_CREDIT) {
-            return Ok(match self.settle_ai_credit(session_id).await? {
-                Ok(done) => done,
-                Err(why) => format!("AI credit not credited: {why}"),
-            });
+        // AI credit, from before g1t stopped selling it: a page left open
+        // then is never credited as anything else.
+        if open.feature.as_deref() == Some("ai_credit") {
+            return Ok("ignored: AI credit is no longer sold".to_owned());
         }
         let Some(stripe) = &self.stripe else { return Ok("ignored: payments off".to_owned()) };
         let session = stripe.session(session_id).await?;
@@ -542,7 +539,7 @@ impl Billing {
         }
         let reference = format!("refund/{charge_id}/{refunded}");
         if new > 0 {
-            self.enter(&workspace, EntryKind::TopUp, -new, "Refunded to the card", &reference, None, None, None, None).await?;
+            self.enter(&workspace, EntryKind::TopUp, -new, "Refunded to the card", &reference, None, None, None).await?;
         }
         self.record_extras(&workspace, &reference, charge["payment_intent"].as_str(), new_extras, None).await?;
         // An off-session charge's tax was recorded by g1t (auto-reload):
@@ -941,7 +938,6 @@ impl Billing {
                 line.amount_micros,
                 &format!("Paid on the enterprise's invoice {invoice_id}"),
                 &format!("inv/{invoice_id}/{}", line.workspace),
-                None,
                 None,
                 None,
                 None,

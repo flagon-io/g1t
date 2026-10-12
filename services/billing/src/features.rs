@@ -147,7 +147,7 @@ pub(crate) fn security_plan_at(book: &std::collections::BTreeMap<&str, f64>) -> 
             "Dependency review on pull requests, and the workspace's security overview".to_owned(),
             "No price of its own: scans are charged at cost plus 20%, like everything g1t runs".to_owned(),
         ],
-        overage: "Fixes by g1t's agent are charged as agent usage, like any other agent run. Secret scanning, push protection, vulnerability alerts and security updates stay free.".to_owned(),
+        overage: "Secret scanning, push protection, vulnerability alerts and security updates stay free.".to_owned(),
     }
 }
 
@@ -200,13 +200,13 @@ impl Billing {
             card_fee_cents: 0,
             includes: vec![
                 format!(
-                    "{} of usage each month, used first: models at the provider's price with the g1t agent rate, everything else g1t runs at cost plus {}%",
+                    "{} of usage each month, used first: everything g1t runs at cost plus {}%",
                     dollars(p.plan_included_micros),
                     self.margin_percent
                 ),
                 "Everyone in the workspace at one price, never per person".to_owned(),
                 "Unlimited projects, previews and repositories".to_owned(),
-                "Agents, checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories".to_owned(),
+                "Checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories".to_owned(),
                 format!(
                     "Usage past {} is charged the same way, up to your spend limit",
                     dollars(p.plan_included_micros),
@@ -223,7 +223,7 @@ impl Billing {
                 price_of("private_storage", crate::storage::STORAGE_MICROS_PER_GB_MONTH, 1.0),
                 thousands(p.git_included),
                 price_of("git_operations", crate::storage::GIT_MICROS_PER_THOUSAND, 1.0),
-            ) + " Models are billed at the provider's price, with no markup, plus the g1t agent rate on their tokens, on your own model keys too. Your own runners cost nothing.",
+            ) + " Your own runners cost nothing.",
         }
     }
 
@@ -260,11 +260,6 @@ impl Billing {
     ) -> Result<()> {
         let now = rfc3339(now_ms());
         let period_end = subscription.period_end().map(|seconds| rfc3339(seconds.max(0) as u64 * 1000));
-        // Whether this plan was on already: the upgrade credit is for starting it.
-        let was_on = self
-            .subscription_row(workspace, feature)
-            .await?
-            .is_some_and(|row| row.subscription_id == subscription.id && status_from(&row.status).on());
         self.db
             .prepare(
                 "INSERT INTO subscriptions
@@ -286,10 +281,6 @@ impl Billing {
             ])?
             .run()
             .await?;
-        // Starting the paid plan comes with $5 of AI credit, once (ai.rs).
-        if feature == Feature::Plan && !was_on && status_of(subscription) == SubscriptionStatus::Active {
-            self.grant_upgrade_credit(workspace).await?;
-        }
         Ok(())
     }
 
@@ -917,6 +908,6 @@ mod security_activation {
         assert_eq!(security_plan_at(&std::collections::BTreeMap::new()).monthly_cents, 0);
         assert!(plan.includes.iter().any(|line| line.contains("public repositories have it free")));
         assert!(plan.includes.iter().any(|line| line.contains("cost plus 20%")));
-        assert!(plan.overage.contains("agent usage"));
+        assert!(plan.overage.contains("stay free") && !plan.overage.contains("agent"));
     }
 }

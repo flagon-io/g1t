@@ -513,6 +513,15 @@ impl Billing {
         Ok(Outcome::Ok(self.credits_of(&workspace).await?))
     }
 
+    /// What is owed now, with the balance `balance`: credit scoped to
+    /// models (AI credit, from when g1t sold it) is not money for anything
+    /// else, so what is left of it is owed on top of a balance it props up.
+    pub(crate) async fn owed_with(&self, workspace: &str, balance: i64) -> Result<i64> {
+        let credits = self.credits_of(workspace).await?;
+        let left: i64 = credits.grants.iter().filter(|g| g.scope == "models").map(|g| g.left_micros).sum();
+        Ok((left - balance).max(0))
+    }
+
     /// What was left of credit scoped to models (AI credit) just before
     /// `before`, from the ledger up to then: what a month's close must not
     /// count as money for anything else.
@@ -619,7 +628,7 @@ impl Billing {
             ])?
             .run()
             .await?;
-        self.enter(workspace, EntryKind::TopUp, amount, &description, &reference, None, None, Some(by), None).await?;
+        self.enter(workspace, EntryKind::TopUp, amount, &description, &reference, None, Some(by), None).await?;
         self.mark_credit(&reference, kind).await?;
         Ok(reference)
     }
@@ -730,7 +739,7 @@ impl Billing {
             cents(grant.amount_micros),
             &grant.created_at[..10]
         );
-        self.enter(&grant.workspace, EntryKind::TopUp, -take, &description, &reference, None, None, Some(by), None).await?;
+        self.enter(&grant.workspace, EntryKind::TopUp, -take, &description, &reference, None, Some(by), None).await?;
         self.mark_credit(&reference, grant.kind()).await?;
         Ok(take)
     }

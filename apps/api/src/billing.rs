@@ -1,10 +1,10 @@
-//! Billing: a workspace's usage, budget, AI credit and invoices. The
+//! Billing: a workspace's usage, budget and invoices. The
 //! billing service keeps them and answers in camelCase; this is their
 //! public shape, in snake_case, with money as whole millionths of a dollar
 //! (`_micros`) or, for invoices, cents (`_cents`).
 //!
 //! Reading is for the workspace's members, a workspace's own token
-//! included. Changing the budget and buying AI credit are for its owners,
+//! included. Changing the budget is for its owners,
 //! as people: signed in or with a personal access token. A workspace's
 //! token and a run's token never change billing, whatever their scopes say.
 
@@ -16,9 +16,10 @@ use worker::Result;
 
 use crate::operations::{Op, Services};
 
-/// The product families usage is grouped into, in order.
-pub(crate) const PRODUCTS: [&str; 8] =
-    ["agent", "sandboxes", "gateway", "deployments", "git_storage", "packages", "security", "search"];
+/// The product families usage is grouped into, in order. `other` holds
+/// usage on meters g1t no longer has, such as agent runs and model
+/// requests from before they were retired.
+pub(crate) const PRODUCTS: [&str; 7] = ["sandboxes", "deployments", "git_storage", "packages", "security", "search", "other"];
 
 /// Where a budget's alerts can be, in percent of its limit.
 pub(crate) const ALERT_LEVELS: [u32; 4] = [50, 75, 90, 100];
@@ -109,7 +110,7 @@ pub(crate) fn person(viewer: &Viewer, agent_scoped: bool) -> std::result::Result
         None => Err((FailureCode::Unauthenticated, "This needs a g1t access token.")),
         Some(user) if agent_scoped || user.kind == PrincipalKind::Agent => Err((
             FailureCode::Forbidden,
-            "A run's token never changes billing: a workspace's budget and AI credit are for its owners.",
+            "A run's token never changes billing: a workspace's budget is for its owners.",
         )),
         Some(user) if user.kind != PrincipalKind::User => Err((
             FailureCode::Forbidden,
@@ -376,29 +377,6 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
             .await?;
             shaped(set, &budget_json)
         }
-        Op::GetAiCredit => shaped(g1t_kit::call(billing, "ai_credit", &account).await?, &snake),
-        Op::BuyAiCredit => {
-            let actor = match person(viewer, services.scope.is_some()) {
-                Ok(user) => user,
-                Err((code, message)) => return failed(code, message),
-            };
-            let cents = match &input["amount_cents"] {
-                Value::Number(number) => number.as_u64(),
-                Value::String(digits) => digits.trim().parse().ok(),
-                _ => None,
-            };
-            let Some(cents) = cents.and_then(|cents| u32::try_from(cents).ok()).filter(|cents| *cents > 0) else {
-                return failed(FailureCode::Invalid, "Give amount_cents: the credit in cents, in whole dollars, such as 5000 for $50.");
-            };
-            let return_url = format!("{}/{workspace}/-/billing", services.addresses.site.trim_end_matches('/'));
-            let checkout: Outcome<Value> = g1t_kit::call(
-                billing,
-                "buy_ai_credit",
-                &json!({ "actor": actor, "workspace": workspace, "amountCents": cents, "returnUrl": return_url }),
-            )
-            .await?;
-            shaped(checkout, &|checkout| json!({ "url": checkout["url"] }))
-        }
         Op::ListInvoices => {
             let details: Outcome<Value> = g1t_kit::call(billing, "billing_details", &account).await?;
             let details = match details {
@@ -427,16 +405,16 @@ mod tests {
             "totals": { "priceMicros": 12_500_000, "discountMicros": 0, "includedMicros": 2_000_000, "creditsMicros": 500_000,
                         "chargedMicros": 10_000_000, "pendingMicros": 300_000, "costMicros": 9_000_000 },
             "days": [
-                { "day": "2026-10-02", "product": "agent", "micros": 4_000_000 },
+                { "day": "2026-10-02", "product": "other", "micros": 4_000_000 },
                 { "day": "2026-10-02", "product": "sandboxes", "micros": 500_000 },
-                { "day": "2026-10-01", "product": "agent", "micros": 8_000_000 },
+                { "day": "2026-10-01", "product": "other", "micros": 8_000_000 },
             ],
             "products": [
-                { "key": "agent", "label": "Agent", "micros": 12_000_000, "features": [{ "key": "runs", "label": "Runs", "micros": 12_000_000, "count": 3 }],
-                  "meters": [{ "key": "agent_models", "label": "Models", "product": "agent", "unit": "tokens", "quantity": 1.5e6,
+                { "key": "other", "label": "Other", "micros": 12_000_000, "features": [],
+                  "meters": [{ "key": "other", "label": "Other", "product": "other", "unit": "entries", "quantity": 3.0,
                                "micros": 12_000_000, "pendingMicros": 0, "daily": [8_000_000, 4_000_000], "allowance": null,
-                               "byProject": [{ "project": "acme/web", "micros": 9_000_000, "quantity": 1e6 },
-                                             { "project": "", "micros": 3_000_000, "quantity": 5e5 }] }] },
+                               "byProject": [{ "project": "acme/web", "micros": 9_000_000, "quantity": 2.0 },
+                                             { "project": "", "micros": 3_000_000, "quantity": 1.0 }] }] },
                 { "key": "sandboxes", "label": "Sandboxes", "micros": 500_000, "features": [],
                   "meters": [{ "key": "sandbox", "label": "Sandbox time", "product": "sandboxes", "unit": "seconds", "quantity": 600.0,
                                "micros": 500_000, "pendingMicros": 0, "daily": [0, 500_000],
@@ -467,29 +445,6 @@ mod tests {
         assert_eq!(by_day["groups"], json!([{ "key": "2026-10-01", "micros": 8_000_000 }, { "key": "2026-10-02", "micros": 4_500_000 }]));
         let by_product = usage_json(&report, Some("product"));
         assert_eq!(by_product["groups"][1], json!({ "key": "sandboxes", "label": "Sandboxes", "micros": 500_000 }));
-    }
-
-    #[test]
-    fn ai_credit_is_snake_case() {
-        let credit = json!({
-            "balanceMicros": 42_000_000, "purchasedMicros": 40_000_000, "givenMicros": 2_000_000,
-            "grants": [{ "id": "crd_1", "kind": "purchase", "amountMicros": 40_000_000, "usedMicros": 0, "leftMicros": 40_000_000, "expiresAt": null }],
-            "freeViaDiscount": false, "postpaid": false, "blocked": false, "canBuy": true,
-            "presetsCents": [2500, 5000], "minCents": 1000, "maxCents": 100_000,
-            "cardFee": { "on": true, "percentMicros": 29_000.0, "fixedCents": 30 },
-            "reload": { "enabled": false, "thresholdMicros": 0, "targetMicros": 0, "monthlyMaxMicros": 0, "reloadedMicros": 0, "failedAt": null, "error": null },
-            "agentRateMicros": 3.6, "modelMarkupPercent": 10, "gatewayMarkupPercent": 5, "upgradeCreditMicros": 0, "expiresDays": 365,
-        });
-        let out = snake(&credit);
-        assert_eq!(out["balance_micros"], 42_000_000);
-        assert_eq!(out["grants"][0]["left_micros"], 40_000_000);
-        assert_eq!(out["card_fee"]["fixed_cents"], 30);
-        assert_eq!(out["reload"]["monthly_max_micros"], 0);
-        assert_eq!(out["can_buy"], true);
-        assert!(out.get("balanceMicros").is_none());
-        assert_eq!(snake_key("line1"), "line1");
-        assert_eq!(snake_key("last4"), "last4");
-        assert_eq!(snake_key("taxIdType"), "tax_id_type");
     }
 
     #[test]
@@ -546,7 +501,7 @@ mod tests {
             "unavailable": null,
         });
         let usage = [json!({ "invoiceId": "inv_1", "workspace": "acme", "reason": "month", "period": "2026-09", "amountMicros": 5_000_000,
-                             "status": "paid", "hostedUrl": null, "pdfUrl": null, "lines": [{ "description": "Agent", "amountMicros": 5_000_000 }],
+                             "status": "paid", "hostedUrl": null, "pdfUrl": null, "lines": [{ "description": "Sandbox time", "amountMicros": 5_000_000 }],
                              "createdAt": "2026-10-01T00:00:00Z" })];
         let out = invoices_json(&details, &usage);
         assert_eq!(out["invoices"][0]["total_cents"], 2000);
@@ -559,12 +514,10 @@ mod tests {
         assert!(shown.get("invoices").is_none() && shown.get("upcoming").is_none());
     }
 
-    const OPS: [Op; 7] = [
+    const OPS: [Op; 5] = [
         Op::GetUsage,
         Op::GetBudget,
         Op::SetBudget,
-        Op::GetAiCredit,
-        Op::BuyAiCredit,
         Op::ListInvoices,
         Op::GetBillingDetails,
     ];
@@ -592,7 +545,7 @@ mod tests {
         for preset in [Preset::ReadOnly, Preset::Agent] {
             let access = token(preset);
             let seen: Vec<&str> = tool.visible(&Gate::Token(&access)).iter().map(|action| action.name).collect();
-            assert_eq!(seen, ["usage", "budget", "ai_credit", "invoices", "billing_details"], "{}", preset.as_str());
+            assert_eq!(seen, ["usage", "budget", "invoices", "billing_details"], "{}", preset.as_str());
         }
         let full = TokenAccess::full();
         assert_eq!(tool.visible(&Gate::Token(&full)).len(), OPS.len());
@@ -606,7 +559,7 @@ mod tests {
         // 2024-02-29.
         assert_eq!(this_month(1_709_208_000_000.0), ("2024-02-01".to_owned(), "2024-02-29".to_owned()));
         assert!(is_day("2026-10-07") && !is_day("2026-10-7") && !is_day("20261007xx"));
-        assert_eq!(list(&json!({ "products": "agent, sandboxes,," }), "products"), vec!["agent", "sandboxes"]);
-        assert_eq!(list(&json!({ "products": ["agent"] }), "products"), vec!["agent"]);
+        assert_eq!(list(&json!({ "products": "sandboxes, search,," }), "products"), vec!["sandboxes", "search"]);
+        assert_eq!(list(&json!({ "products": ["other"] }), "products"), vec!["other"]);
     }
 }

@@ -1,11 +1,16 @@
-//! Run credentials: a token per sandbox run, bound to the run, its
-//! repository and what its kind of work needs, acting as an agent on
-//! behalf of the person who started the work. See
-//! `g1t_contracts::credentials` for the policy.
+//! Run credentials: a token per sandbox run (checks, the merge queue, a
+//! merge check, a deployment or a security update's bump), bound to the
+//! run, its repository and what its kind of work needs, acting as g1t on
+//! behalf of the person who started the work, or of the workspace for
+//! g1t's own. See `g1t_contracts::credentials` for the policy.
+//!
+//! Credentials made for agent runs before g1t stopped running agents keep
+//! resolving until they expire (at most six hours), so nothing in flight
+//! breaks; no new ones are made.
 
 use g1t_contracts::credentials::{
     Acting, BindRunCredentialsArgs, CreateRunCredentialArgs, Principal, RevokeRunCredentialsArgs,
-    RunBinding, intersect, intersect_grants, operations_for,
+    RunBinding, RunCredentialKind, intersect, intersect_grants, operations_for,
 };
 use g1t_contracts::identity::{
     AGENT_ID, AGENT_NAME, AgentScope, CreateAccessTokenArgs, CreatedAccessToken,
@@ -22,6 +27,19 @@ const MAX_RUN_TTL_SECONDS: u64 = 6 * 60 * 60;
 const MIN_RUN_TTL_SECONDS: u64 = 60;
 /// More hashes than one sandbox ever holds.
 const MAX_HASHES: usize = 8;
+
+/// The kinds of run a credential is still made for: the sandbox work
+/// that is not an agent's.
+fn issued_for(kind: RunCredentialKind) -> bool {
+    matches!(
+        kind,
+        RunCredentialKind::Checks
+            | RunCredentialKind::Queue
+            | RunCredentialKind::Mergecheck
+            | RunCredentialKind::Deploy
+            | RunCredentialKind::Bump
+    )
+}
 
 /// A SHA-256 in lowercase hex, as tokens are stored.
 fn is_hash(value: &str) -> bool {
@@ -100,10 +118,13 @@ impl Identity {
         &self,
         a: CreateRunCredentialArgs,
     ) -> Result<CreatedAccessToken> {
-        let agent = a
-            .agent
-            .filter(|agent| !agent.trim().is_empty())
-            .unwrap_or_else(|| AGENT_NAME.to_owned());
+        if !issued_for(a.kind) {
+            return Err(worker::Error::RustError(format!(
+                "no run credential is made for {} runs",
+                a.kind.as_str()
+            )));
+        }
+        let agent = AGENT_NAME.to_owned();
         let scope = AgentScope {
             repo: a.repo.clone(),
             operations: operations_for(a.kind, a.usage)
@@ -121,8 +142,7 @@ impl Identity {
                 push: a.push,
             }),
         };
-        // g1t's own work (a security update, an agent it put on an upgrade)
-        // has no person behind it: its credential acts for the workspace,
+        // g1t's own work (a security update's bump) has no person behind it: its credential acts for the workspace,
         // as a workspace's own token would.
         let on_behalf_of = if a.on_behalf_of.kind == PrincipalKind::System {
             match self.workspace_id_of(&a.repo.namespace).await? {
@@ -167,7 +187,7 @@ impl Identity {
         Ok(created)
     }
 
-    /// Ties a sandbox's credentials to the agent run it recorded. A token
+    /// Ties a sandbox's credentials to the run it recorded. A token
     /// already bound keeps its run.
     pub async fn bind_run_credentials(&self, a: BindRunCredentialsArgs) -> Result<bool> {
         let hashes: Vec<&String> = a
@@ -236,7 +256,13 @@ impl Identity {
 
 #[cfg(test)]
 mod tests {
-    use super::is_hash;
+    use super::{RunCredentialKind, is_hash, issued_for};
+
+    #[test]
+    fn credentials_are_made_only_for_sandbox_work_that_is_not_an_agents() {
+        let issued: Vec<&str> = RunCredentialKind::ALL.iter().filter(|kind| issued_for(**kind)).map(|kind| kind.as_str()).collect();
+        assert_eq!(issued, ["checks", "queue", "mergecheck", "deploy", "bump"]);
+    }
 
     #[test]
     fn only_hashes_are_taken() {

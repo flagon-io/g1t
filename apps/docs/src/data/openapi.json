@@ -122,13 +122,11 @@
     },
     {
       "name": "Billing",
-      "description": "A workspace's usage, its budget, its AI credit and its invoices. Members read them; owners change the budget and buy credit, as people. A run's token never changes billing.",
+      "description": "A workspace's usage, its budget and its invoices. Members read them; owners change the budget, as people. A run's token never changes billing.",
       "x-tools": [
         "get_usage",
         "get_budget",
         "set_budget",
-        "get_ai_credit",
-        "buy_ai_credit",
         "list_invoices",
         "get_billing_details"
       ]
@@ -19083,7 +19081,7 @@
           "Billing"
         ],
         "summary": "Get a workspace's usage",
-        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (agent, sandboxes, gateway, deployments, git_storage, packages, security, search) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes, counted in any range that reaches into the current month, and `pending_charged_micros` is what of it will be charged then, after the discount and what g1t covers; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, the split `by_project`, and a `note` where the quantity needs one: the agent rate's meters, `agent_rate` and `agent_rate_own` (on the workspace's own model key), count weighted tokens and name the weights), `projects` (every repository with usage in the range), `models` (the agent's input, output, cache-read and cache-write tokens by model, most first), `by_agent` and `by_person` (the agent product at price by the agent that did the work, by handle, and by who asked, by username; `g1t` is g1t's own runs on repositories, an empty key is work attributed to no one; each sums to the agent product), and the AI credit and other credit left now. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family is listed, in order, even with nothing used; this example shows two. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=agent,sandboxes`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
+        "description": "A workspace's usage over a range of days, at price, and what paid for it. `from` and `until` are UTC days, `YYYY-MM-DD`, with `until` included and at most 400 days in all; left out, the current month so far. `products` narrows it to product families (sandboxes, deployments, git_storage, packages, security, search, other) and `projects` to repositories (\"owner/name\"). Returns `totals`: `price_micros` less `discount_micros`, `included_micros` and `credits_micros` is `charged_micros`, what is left for the workspace to pay; `pending_micros` is metered this month and charged when it closes, counted in any range that reaches into the current month, and `pending_charged_micros` is what of it will be charged then, after the discount and what g1t covers; `cost_micros` is what it cost g1t. Then `days` (each day and product with usage), `products` (every family, with its meters: quantity, unit, amount, a `daily` amount for each day of the range, any `allowance`, and the split `by_project`), `projects` (every repository with usage in the range), and the credit left now: `credit_micros`, and `ai_credit_micros` for AI credit bought earlier, which still pays toward what is owed. Usage on a meter g1t no longer has, such as agent runs and model requests from before they were retired, is kept on one meter in a last product, `other`, shown only when it has something, so nothing charged is left out. `models`, `by_agent` and `by_person` are always empty, and each product's `features` too. With `group_by` (`product`, `project` or `day`), `groups` adds up the range that way. Amounts are whole millionths of a dollar. Members of the workspace only.\n\nEvery product family with meters is listed, in order, even with nothing used; this example shows two. `other` comes last, and only when it has something: usage on meters g1t no longer has, such as agent runs from before they were retired. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=sandboxes,deployments`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`.",
         "x-operation": "get_usage",
         "x-mcp-tool": "billing",
         "x-mcp-action": "usage",
@@ -19134,14 +19132,13 @@
               "items": {
                 "type": "string",
                 "enum": [
-                  "agent",
                   "sandboxes",
-                  "gateway",
                   "deployments",
                   "git_storage",
                   "packages",
                   "security",
-                  "search"
+                  "search",
+                  "other"
                 ]
               }
             },
@@ -19196,7 +19193,7 @@
                   "days": [
                     {
                       "day": "2026-10-06",
-                      "product": "agent",
+                      "product": "other",
                       "micros": 12400000
                     },
                     {
@@ -19206,63 +19203,11 @@
                     },
                     {
                       "day": "2026-10-07",
-                      "product": "agent",
+                      "product": "other",
                       "micros": 9800000
                     }
                   ],
                   "products": [
-                    {
-                      "key": "agent",
-                      "label": "Agent",
-                      "micros": 41000000,
-                      "meters": [
-                        {
-                          "key": "agent_models",
-                          "label": "Models",
-                          "product": "agent",
-                          "unit": "tokens",
-                          "quantity": 9120000,
-                          "micros": 41000000,
-                          "pending_micros": 0,
-                          "daily": [
-                            3100000,
-                            5200000,
-                            4400000,
-                            6000000,
-                            0,
-                            12400000,
-                            9800000
-                          ],
-                          "allowance": null,
-                          "by_project": [
-                            {
-                              "project": "flagon-io/g1t",
-                              "micros": 36000000,
-                              "quantity": 8010000
-                            },
-                            {
-                              "project": "flagon-io/hello",
-                              "micros": 5000000,
-                              "quantity": 1110000
-                            }
-                          ]
-                        }
-                      ],
-                      "features": [
-                        {
-                          "key": "runs",
-                          "label": "Runs",
-                          "micros": 33000000,
-                          "count": 14
-                        },
-                        {
-                          "key": "reviews",
-                          "label": "Reviews",
-                          "micros": 8000000,
-                          "count": 9
-                        }
-                      ]
-                    },
                     {
                       "key": "sandboxes",
                       "label": "Sandboxes",
@@ -19300,49 +19245,54 @@
                         }
                       ],
                       "features": []
+                    },
+                    {
+                      "key": "other",
+                      "label": "Other",
+                      "micros": 41000000,
+                      "meters": [
+                        {
+                          "key": "other",
+                          "label": "Other",
+                          "product": "other",
+                          "unit": "entries",
+                          "quantity": 23,
+                          "micros": 41000000,
+                          "pending_micros": 0,
+                          "daily": [
+                            3100000,
+                            5200000,
+                            4400000,
+                            6000000,
+                            0,
+                            12400000,
+                            9800000
+                          ],
+                          "allowance": null,
+                          "by_project": [
+                            {
+                              "project": "flagon-io/g1t",
+                              "micros": 36000000,
+                              "quantity": 14
+                            },
+                            {
+                              "project": "flagon-io/hello",
+                              "micros": 5000000,
+                              "quantity": 9
+                            }
+                          ]
+                        }
+                      ],
+                      "features": []
                     }
                   ],
                   "projects": [
                     "flagon-io/g1t",
                     "flagon-io/hello"
                   ],
-                  "models": [
-                    {
-                      "model": "claude-sonnet-5-5",
-                      "input": 310000,
-                      "output": 420000,
-                      "cache_read": 7800000,
-                      "cache_write": 590000
-                    }
-                  ],
-                  "by_agent": [
-                    {
-                      "key": "g1t",
-                      "label": "@g1t",
-                      "micros": 21400000,
-                      "count": 14
-                    },
-                    {
-                      "key": "mike",
-                      "label": "@mike",
-                      "micros": 800000,
-                      "count": 6
-                    }
-                  ],
-                  "by_person": [
-                    {
-                      "key": "chase",
-                      "label": "@chase",
-                      "micros": 21900000,
-                      "count": 19
-                    },
-                    {
-                      "key": "",
-                      "label": "No one asked",
-                      "micros": 300000,
-                      "count": 1
-                    }
-                  ],
+                  "models": [],
+                  "by_agent": [],
+                  "by_person": [],
                   "included": {
                     "used": 20,
                     "of": 20,
@@ -19686,270 +19636,6 @@
         }
       }
     },
-    "/workspaces/{workspace}/ai_credit": {
-      "get": {
-        "operationId": "get_ai_credit",
-        "tags": [
-          "Billing"
-        ],
-        "summary": "Get a workspace's AI credit",
-        "description": "A workspace's AI credit, which pays for agent and AI gateway usage: what is left (`balance_micros`), how much of it was bought and given, its `grants` newest first, whether new runs on g1t's models are refused for want of it (`blocked`), whether it can be bought (`can_buy`) and for how much (`min_cents`, `max_cents`, `presets_cents`, and the `card_fee` added on top), auto-reload, the agent rate and the markups on models. `free_via_discount` or `postpaid` mean no credit is needed. Members of the workspace only.\n\n`card_fee.percent_micros` is per dollar charged, in millionths: 29000 is 2.9%. `blocked` is true when the credit has run out and new runs on g1t's models wait for more; runs on a model provider the workspace connected itself never need it.",
-        "x-operation": "get_ai_credit",
-        "x-mcp-tool": "billing",
-        "x-mcp-action": "ai_credit",
-        "x-scope": "billing:read",
-        "security": [
-          {
-            "token": [
-              "billing:read"
-            ]
-          }
-        ],
-        "parameters": [
-          {
-            "name": "workspace",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "The workspace's slug, e.g. \"flagon-io\"."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "balance_micros": 62000000,
-                  "purchased_micros": 50000000,
-                  "given_micros": 12000000,
-                  "grants": [
-                    {
-                      "id": "crd_01kkr2m4c8f1t7qh3d6n9w5p0x",
-                      "workspace": "flagon-io",
-                      "kind": "purchase",
-                      "amount_micros": 50000000,
-                      "used_micros": 0,
-                      "left_micros": 50000000,
-                      "note": "AI credit bought",
-                      "refund_for": null,
-                      "refund_day": null,
-                      "expires_at": "2027-10-02T00:00:00.000Z",
-                      "created_by": "ana",
-                      "created_at": "2026-10-02T16:20:00.000Z",
-                      "state": "open",
-                      "closed_at": null,
-                      "closed_note": null,
-                      "closed_by": null
-                    }
-                  ],
-                  "free_via_discount": false,
-                  "postpaid": false,
-                  "blocked": false,
-                  "can_buy": true,
-                  "presets_cents": [
-                    2500,
-                    5000,
-                    10000,
-                    25000
-                  ],
-                  "min_cents": 1000,
-                  "max_cents": 100000,
-                  "card_fee": {
-                    "on": true,
-                    "percent_micros": 29000,
-                    "fixed_cents": 30
-                  },
-                  "reload": {
-                    "enabled": false,
-                    "threshold_micros": 10000000,
-                    "target_micros": 50000000,
-                    "monthly_max_micros": 200000000,
-                    "reloaded_micros": 0,
-                    "failed_at": null,
-                    "error": null
-                  },
-                  "agent_rate_micros": 3.6,
-                  "model_markup_percent": 10,
-                  "gateway_markup_percent": 5,
-                  "upgrade_credit_micros": 10000000,
-                  "expires_days": 365
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "A token is required, or the one sent is not valid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "It does not exist, or you cannot see it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "The input is not valid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "x-example-params": {
-          "workspace": "flagon-io"
-        }
-      }
-    },
-    "/workspaces/{workspace}/ai_credit/checkout": {
-      "post": {
-        "operationId": "buy_ai_credit",
-        "tags": [
-          "Billing"
-        ],
-        "summary": "Buy AI credit",
-        "description": "Start buying AI credit. Returns `url`, a payment page to open in a browser and pay by card; it comes back to the workspace's billing page. `amount_cents` is the credit, in whole dollars from $10 (1000) to $1,000 (100000); any card fee is added on top. The credit is added once the payment goes through. Owners only, as a person: signed in or with a personal access token. A workspace's own token and g1t's agents never buy credit.\n\nOpen `url` in a browser to pay. Nothing is charged until the payment is made there; the credit then shows in get_ai_credit. An amount outside `min_cents` to `max_cents`, or not in whole dollars, is refused with `invalid`; a workspace that cannot buy credit (see `can_buy`) gets `conflict` or `payment_required`.",
-        "x-operation": "buy_ai_credit",
-        "x-mcp-tool": "billing",
-        "x-mcp-action": "buy_ai_credit",
-        "x-scope": "billing:write",
-        "security": [
-          {
-            "token": [
-              "billing:write"
-            ]
-          }
-        ],
-        "parameters": [
-          {
-            "name": "workspace",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "The workspace's slug, e.g. \"flagon-io\"."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "url": "https://checkout.example.com/c/pay/cs_test_a1b2c3"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "A token is required, or the one sent is not valid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "It does not exist, or you cannot see it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request conflicts with the current state.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "The input is not valid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "amount_cents": {
-                    "type": "integer",
-                    "minimum": 1000,
-                    "maximum": 100000,
-                    "multipleOf": 100,
-                    "description": "The credit to buy, in cents, in whole dollars: 5000 is $50."
-                  }
-                },
-                "required": [
-                  "amount_cents"
-                ]
-              },
-              "example": {
-                "amount_cents": 5000
-              }
-            }
-          }
-        },
-        "x-example-params": {
-          "workspace": "flagon-io"
-        }
-      }
-    },
     "/workspaces/{workspace}/invoices": {
       "get": {
         "operationId": "list_invoices",
@@ -19957,7 +19643,7 @@
           "Billing"
         ],
         "summary": "List a workspace's invoices",
-        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, AI credit and usage), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
+        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, usage and any AI credit bought earlier), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
         "x-operation": "list_invoices",
         "x-mcp-tool": "billing",
         "x-mcp-action": "invoices",

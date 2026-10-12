@@ -166,8 +166,8 @@ impl Billing {
         let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
         let Some(account) = self.row(workspace).await? else { return Ok(Err("Nothing billed yet.".into())) };
         let Some(customer) = account.customer_id else { return Ok(Err("No card on file.".into())) };
-        // AI credit left props up the balance but pays only for models: it
-        // is not money for anything else (ai.rs).
+        // AI credit left (bought before g1t stopped selling it) props up the
+        // balance but pays only for models: it is not money for anything else.
         let owed = self.owed_with(workspace, account.balance_micros).await?;
         // Only a month's close charges no less than the minimum
         // (`MIN_CHARGE_MICROS`), so a payment's fee is never most of it;
@@ -211,8 +211,13 @@ impl Billing {
                           WHEN task = 'context' THEN 'Search embeddings'
                           WHEN task = 'storage' THEN 'Private repository storage'
                           WHEN task = 'git' THEN 'Git operations'
+                          WHEN task = 'cache' THEN 'Actions cache storage'
+                          WHEN task = 'domains' THEN 'Custom domains'
+                          WHEN task = 'package_storage' THEN 'Package storage'
+                          -- From when g1t ran agents and sold model access.
                           WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
-                          ELSE 'Agents on g1t''s models' END AS kind,
+                          WHEN reference LIKE 'run%' OR task = 'gateway' THEN 'Agents on g1t''s models'
+                          ELSE 'Other usage' END AS kind,
                         -SUM(amount_micros) AS charged
                  FROM ledger WHERE workspace = ? AND kind = 'usage' AND created_at > ? AND created_at <= ?
                  GROUP BY 1 ORDER BY charged DESC",
@@ -374,7 +379,7 @@ impl Billing {
                 crate::features::cents(extras.fee_cents * 10_000)
             )
         };
-        self.enter(workspace, EntryKind::TopUp, amount, &description, &invoice.id, None, None, None, None).await?;
+        self.enter(workspace, EntryKind::TopUp, amount, &description, &invoice.id, None, None, None).await?;
         self.record_extras(workspace, &invoice.id, invoice.payment_intent.as_deref(), extras, None).await?;
         // Prepaid cards pay, but never raise the limit.
         if let (Some(stripe), Some(charge)) = (&self.stripe, &invoice.charge)

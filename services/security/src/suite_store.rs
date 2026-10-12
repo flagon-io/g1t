@@ -1178,15 +1178,6 @@ impl Store {
         Ok(())
     }
 
-    pub async fn set_code_issue(&self, repo_id: &str, id: &str, issue: u32) -> Result<()> {
-        self.db
-            .prepare("UPDATE code_alerts SET issue = ? WHERE repo_id = ? AND id = ?")
-            .bind(&[issue.into(), repo_id.into(), id.into()])?
-            .run()
-            .await?;
-        Ok(())
-    }
-
     pub async fn code_counts(&self, repo_id: &str) -> Result<SeverityCounts> {
         let rows = self
             .db
@@ -1293,30 +1284,6 @@ impl Store {
             .all()
             .await?
             .results::<DependencyRow>()
-    }
-
-    // --- Fixes --------------------------------------------------------------
-
-    pub async fn fix_issue(&self, alert_id: &str) -> Result<Option<u32>> {
-        Ok(self
-            .db
-            .prepare("SELECT issue AS n FROM alert_fixes WHERE alert_id = ?")
-            .bind(&[alert_id.into()])?
-            .first::<NumberRow>(None)
-            .await?
-            .map(|row| row.n.max(0) as u32))
-    }
-
-    pub async fn add_fix(&self, repo_id: &str, alert_id: &str, issue: u32, by: &str) -> Result<()> {
-        self.db
-            .prepare(
-                "INSERT INTO alert_fixes (alert_id, repo_id, issue, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5)
-                 ON CONFLICT (alert_id) DO UPDATE SET issue = ?3, created_by = ?4, created_at = ?5",
-            )
-            .bind(&[alert_id.into(), repo_id.into(), issue.into(), by.into(), now().into()])?
-            .run()
-            .await?;
-        Ok(())
     }
 
     // --- Snapshots and counts -----------------------------------------------

@@ -5,10 +5,9 @@
 //!   invoice and off-session charge (`stripe::checkout_tax_fields`,
 //!   `invoice_tax_fields`, `tax_calculation`), at g1t's tax code, every
 //!   price excluding tax. Prices on g1t are shown before tax.
-//! - **The card fee.** Stripe's fee, grossed up (`ai::card_fee_cents`), as a
+//! - **The card fee.** Stripe's fee, grossed up (`card_fee_cents`), as a
 //!   line of its own on every card payment: the plan and Security and
-//!   quality (a monthly item), prepaying, AI credit, auto-reload and
-//!   invoices charged to a card. Never on a bank transfer or an invoice
+//!   quality (a monthly item), prepaying and invoices charged to a card. Never on a bank transfer or an invoice
 //!   sent to be paid (an enterprise's). Switched by the `card_fee` cost
 //!   setting, on by default. Tax applies to it as to what it is paid with.
 //! - **Neither is revenue.** A payment's balance credit is what it paid
@@ -20,7 +19,7 @@
 //!   the owners once, and the Billing page asks for the address. Saving
 //!   billing details with one clears it.
 
-use g1t_contracts::billing::CardFee;
+use g1t_contracts::billing::{CardFee, MICROS_PER_DOLLAR};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -54,12 +53,27 @@ pub(crate) fn refund_split(refunded_cents: i64, paid_cents: i64, tax_cents: i64,
     (refunded - tax - fee, tax, fee)
 }
 
+/// The card fee on `credit_cents`, so that what is left after Stripe's fee
+/// is the credit: the total is `(credit + fixed) / (1 − percent)`, rounded
+/// up to the cent. None when the fee is off.
+pub(crate) fn card_fee_cents(credit_cents: u32, fee: &CardFee) -> u32 {
+    if !fee.on || credit_cents == 0 {
+        return 0;
+    }
+    let rate = fee.percent_micros / MICROS_PER_DOLLAR as f64;
+    if !(0.0..0.5).contains(&rate) {
+        return 0;
+    }
+    let total = ((f64::from(credit_cents) + f64::from(fee.fixed_cents)) / (1.0 - rate)).ceil();
+    (total as u32).saturating_sub(credit_cents)
+}
+
 /// The card fee on a card payment of `cents`, when the setting is on.
 pub(crate) fn fee_for(cents: i64, fee: &CardFee) -> i64 {
     if cents <= 0 {
         return 0;
     }
-    i64::from(crate::ai::card_fee_cents(u32::try_from(cents).unwrap_or(u32::MAX), fee))
+    i64::from(card_fee_cents(u32::try_from(cents).unwrap_or(u32::MAX), fee))
 }
 
 /// What the owners are told when Stripe Tax cannot place the workspace.
@@ -146,6 +160,23 @@ impl Billing {
             }
         }
         Ok((extras, transaction))
+    }
+
+    /// The card fee, as the price book and the `card_fee` setting have it.
+    pub(crate) async fn card_fee(&self) -> Result<CardFee> {
+        #[derive(Deserialize)]
+        struct Row {
+            value: String,
+        }
+        let on = self
+            .db
+            .prepare("SELECT value FROM cost_settings WHERE key = 'card_fee'")
+            .first::<Row>(None)
+            .await?
+            .is_none_or(|row| row.value.trim() != "off");
+        let percent = self.price("card_fee_percent").await?.map_or(29_000.0, |(_, price)| price);
+        let fixed = self.price("card_fee_fixed").await?.map_or(300_000.0, |(_, price)| price);
+        Ok(CardFee { on, percent_micros: percent, fixed_cents: (fixed / 10_000.0).round().max(0.0) as u32 })
     }
 
     /// The card fee on a card payment, as the price book and the `card_fee`
@@ -235,6 +266,20 @@ mod tests {
 
     fn fee(on: bool) -> CardFee {
         CardFee { on, percent_micros: 29_000.0, fixed_cents: 30 }
+    }
+
+    #[test]
+    fn the_card_fee_is_stripes_fee_grossed_up_and_off_when_switched_off() {
+        // $25: ($25 + $0.30) / 0.971 = $26.06, so a $1.06 fee.
+        assert_eq!(card_fee_cents(2_500, &fee(true)), 106);
+        // What is left after Stripe's 2.9% + 30¢ is at least the amount.
+        for credit in [1_000u32, 2_500, 5_000, 10_000, 100_000] {
+            let total = credit + card_fee_cents(credit, &fee(true));
+            let net = f64::from(total) - (f64::from(total) * 0.029).round() - 30.0;
+            assert!(net >= f64::from(credit) - 1.0, "{credit}: {total} leaves {net}");
+        }
+        assert_eq!(card_fee_cents(2_500, &fee(false)), 0);
+        assert_eq!(card_fee_cents(0, &fee(true)), 0);
     }
 
     #[test]

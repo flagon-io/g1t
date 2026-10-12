@@ -36,8 +36,8 @@
 		"consumers": [{ "queue": "g1t-events-billing", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
 	"vars": {
-		// What is added to a model run's cost, in percent: g1t's overhead for
-		// running and building it. The price book's markups are the same.
+		// What is added to what g1t runs at cost, in percent: g1t's overhead
+		// for running and building it. The price book's markups are the same.
 		"MARGIN_PERCENT": "20",
 		// While g1t is being built out, workspaces pay nothing: runs are
 		// recorded with what they cost, and nothing is charged. Set to
@@ -111,8 +111,8 @@
 		// through.
 		"MIN_CHARGE_MICROS": "5000000",
 		// Where the keeper reads what g1t pays (src/keeper.rs). Its token,
-		// CLOUDFLARE_USAGE_TOKEN, is a secret: Billing, Account Analytics
-		// and AI Gateway, read only. The daily cost reconciliation
+		// CLOUDFLARE_USAGE_TOKEN, is a secret: Billing and Account
+		// Analytics, read only. The daily cost reconciliation
 		// (src/costs.rs, src/margin.rs) reads the bill with
 		// CLOUDFLARE_BILLING_TOKEN (Account: Billing Read, Account Analytics
 		// Read) when it is set, else with the usage token. With neither it
@@ -123,7 +123,6 @@
 		// (src/cycle.rs). The subscriptions' read (current_period_start)
 		// takes over once it has worked.
 		"CLOUDFLARE_BILLING_DAY": "28",
-		"AI_GATEWAY_ID": "g1t",
 		// Where margin alerts go: a product or all of g1t under the margin
 		// floor, leaks, drift. Empty sends none (sudo still shows them).
 		"COSTS_ALERT_EMAIL": "hey@flagon.io",
@@ -134,8 +133,7 @@
 		"COMPED_MONTHLY_CEILING_MICROS": "150000000",
 		// All of g1t's own spend in a day (comped, the trial and open-source
 		// pools, free overruns, anything charged without real money): at
-		// $75, new agent runs on hosted models that g1t pays for pause until
-		// 00:00 UTC; staff are emailed and can lift it in sudo. Workspaces
+		// $75, staff are emailed and can lift the breaker in sudo. Workspaces
 		// paying with real money are never paused. 0 turns either cap off.
 		"PLATFORM_DAILY_SPEND_CAP_MICROS": "75000000",
 		// The platform watch (src/platform.rs, and "Spend guardrails" in
@@ -173,11 +171,11 @@
 		// Workers Paid ($5) and Workers for Platforms ($25).
 		"CLOUDFLARE_FIXED_MONTHLY_MICROS": "30000000"
 	},
-	// Settling runs every 15 minutes, and the tick at a quarter past each
-	// hour also runs the platform watch; checking costs daily (keeper::DAILY).
+	// The tick every 15 minutes (Stripe, autopay, closing months), which at
+	// a quarter past each hour also runs the platform watch; checking costs
+	// daily (keeper::DAILY).
 	"triggers": { "crons": ["*/15 * * * *", "17 4 * * *"] },
-	// Secrets: STRIPE_SECRET_KEY. Without it nothing is charged and the
-	// runner decides who may start agents some other way.
+	// Secrets: STRIPE_SECRET_KEY. Without it nothing is charged.
 	// STRIPE_WEBHOOK_SECRET: the signing secret (whsec_…) of the destination
 	// made in Stripe's dashboard for https://api.g1t.sh/stripe/webhook.
 	// Without it every event is refused (the replay still reads them).

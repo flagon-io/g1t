@@ -18,11 +18,8 @@
 //! the methods and their arguments.
 
 mod accounts;
-mod ai;
-mod attribution;
 mod budget;
 mod charged;
-mod catalogue;
 mod cards;
 mod closing;
 mod compute;
@@ -43,7 +40,6 @@ mod sales;
 mod statement;
 mod webhooks;
 mod features;
-mod gateway;
 mod keeper;
 mod limits;
 mod rename;
@@ -53,14 +49,12 @@ mod stripe;
 mod stripe_sync;
 mod subscriptions;
 mod tax;
-mod tokens;
 
 use g1t_contracts::billing::*;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use worker::wasm_bindgen::JsValue;
 use worker::{Context, D1Database, Env, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 use futures_util::future::{try_join, try_join5};
@@ -74,30 +68,12 @@ const MAX_TOP_UP_CENTS: u32 = 1_000_000;
 const MIN_BANK_TRANSFER_CENTS: u32 = 100_000;
 const MAX_BANK_TRANSFER_CENTS: u32 = 10_000_000;
 const LEDGER_PAGE: u32 = 100;
-/// A run's reported cost is believed up to this much. A sandbox cannot
-/// spend more in the time it has, so anything above is a fault.
-const MAX_RUN_COST_USD: f64 = 100.0;
-
-/// What a run is charged: its cost plus the margin, rounded up to a whole
-/// millionth of a dollar.
-pub fn charge_micros(cost_usd: f64, margin_percent: u32) -> i64 {
-    let cost_micros = (cost_usd.clamp(0.0, MAX_RUN_COST_USD) * MICROS_PER_DOLLAR as f64).ceil();
-    (cost_micros * f64::from(100 + margin_percent) / 100.0).ceil() as i64
-}
-
-/// What a cost g1t trusts (the price book's, or what AI Gateway priced a
-/// run at) is charged at: plus the margin, rounded up to a whole millionth.
-/// Unlike `charge_micros`, never capped: only a sandbox's own report is
-/// held to `MAX_RUN_COST_USD`, so a run that really cost more is charged
-/// for all of it once it is settled.
+/// What a cost g1t trusts (the price book's) is charged at: plus the
+/// margin, rounded up to a whole millionth.
 pub fn margin_on(cost_micros: i64, margin_percent: u32) -> i64 {
     let cost = i128::from(cost_micros.max(0));
     let charge = (cost * i128::from(100 + margin_percent) + 99) / 100;
     i64::try_from(charge).unwrap_or(i64::MAX)
-}
-
-fn hash(token: &str) -> String {
-    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 fn optional(value: Option<&str>) -> JsValue {
@@ -164,29 +140,6 @@ impl From<LedgerRow> for LedgerEntry {
     }
 }
 
-#[derive(Clone, Deserialize)]
-struct RunRow {
-    workspace: String,
-    repo: String,
-    number: u32,
-    task: String,
-    model: String,
-    token_hash: String,
-    billed_to: Option<String>,
-    /// The agent doing the work, by handle, and who asked, by username:
-    /// copied onto every ledger line the run makes.
-    #[serde(default)]
-    agent: Option<String>,
-    #[serde(default)]
-    asked_by: Option<String>,
-}
-
-impl RunRow {
-    fn own_provider(&self) -> bool {
-        self.billed_to.as_deref() == Some("workspace")
-    }
-}
-
 #[derive(Deserialize)]
 struct CheckoutRow {
     workspace: String,
@@ -199,14 +152,14 @@ struct CheckoutRow {
 pub(crate) struct NewCheckout<'a> {
     pub id: &'a str,
     pub workspace: &'a str,
-    /// What it pays for, in cents: the prepayment, the plan's price, the AI
-    /// credit; 0 for a card check.
+    /// What it pays for, in cents: the prepayment or the plan's price; 0
+    /// for a card check.
     pub amount_cents: u32,
-    /// The card fee on top, for AI credit.
+    /// The card fee on top.
     pub fee_cents: u32,
     pub created_by: &'a str,
-    /// None for a prepayment; `plan`, `security`, `card_check` or
-    /// `ai_credit` otherwise.
+    /// None for a prepayment; `plan`, `security` or `card_check` otherwise
+    /// (`ai_credit` on pages from before AI credit was retired).
     pub feature: Option<&'a str>,
 }
 
@@ -267,8 +220,6 @@ struct Billing {
     identity: Option<worker::Fetcher>,
     /// How far unpaid usage may go; see `limits`.
     ceilings: limits::Ceilings,
-    /// `PREPAID_ONLY`: the old rule, that agents need credit first.
-    prepaid_only: bool,
     /// The caps on what g1t pays for itself; see `budget`.
     caps: budget::Caps,
     /// The worker's bindings, for emailing staff (`EMAIL`).
@@ -358,7 +309,6 @@ impl Billing {
         amount_micros: i64,
         description: &str,
         reference: &str,
-        run: Option<&RunRow>,
         cost_micros: Option<i64>,
         created_by: Option<&str>,
         customer: Option<&str>,
@@ -374,9 +324,8 @@ impl Billing {
                 self.db
                     .prepare(
                         "INSERT INTO ledger
-                           (id, workspace, kind, amount_micros, description, repo, number, task,
-                            model, cost_micros, reference, created_by, created_at, billed_to, agent, asked_by)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                           (id, workspace, kind, amount_micros, description, cost_micros, reference, created_by, created_at, billed_to)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'g1t')",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -386,17 +335,10 @@ impl Billing {
                         // amount this service will see exactly.
                         (amount_micros as f64).into(),
                         description.into(),
-                        optional(run.map(|run| run.repo.as_str())),
-                        run.map_or(JsValue::NULL, |run| run.number.into()),
-                        optional(run.map(|run| run.task.as_str())),
-                        optional(run.map(|run| run.model.as_str())),
                         cost_micros.map_or(JsValue::NULL, |cost| (cost as f64).into()),
                         reference.into(),
                         optional(created_by),
                         timestamp.as_str().into(),
-                        run.map_or("g1t", |run| if run.own_provider() { "workspace" } else { "g1t" }).into(),
-                        optional(run.and_then(|run| run.agent.as_deref())),
-                        optional(run.and_then(|run| run.asked_by.as_deref())),
                     ])?,
                 self.db
                     .prepare(
@@ -721,7 +663,6 @@ impl Billing {
             &description,
             &session.id,
             None,
-            None,
             Some(by),
             session.customer.as_deref(),
         )
@@ -742,190 +683,6 @@ impl Billing {
             .run()
             .await?;
         Ok(())
-    }
-
-    /// A refusal if the workspace has no credit to start an agent with.
-    async fn out_of_credit<T>(&self, workspace: &str) -> Result<Option<Outcome<T>>> {
-        // Billing is postpaid: usage limits decide whether work starts
-        // (see `limits`), and credit is a prepayment that lowers what is
-        // owed. A balance no longer has to be positive to start.
-        if self.free || !self.prepaid_only {
-            return Ok(None);
-        }
-        let balance = self
-            .row(workspace)
-            .await?
-            .map_or(0, |row| row.balance_micros);
-        Ok((balance <= 0).then(|| {
-            Outcome::fail(
-                FailureCode::PaymentRequired,
-                format!(
-                    "The {workspace} workspace has no agent credit. An owner can add some under Billing on the workspace's page."
-                ),
-            )
-        }))
-    }
-
-    async fn can_start(&self, a: CanStartArgs) -> Result<Outcome<bool>> {
-        if self.stripe.is_none() {
-            return Ok(Outcome::Ok(true));
-        }
-        if let Some(stopped) = self.stopped(&a.workspace).await? {
-            return Ok(stopped);
-        }
-        Ok(self
-            .out_of_credit(&a.workspace.to_lowercase())
-            .await?
-            .unwrap_or(Outcome::Ok(true)))
-    }
-
-    async fn start_run(&self, a: StartRunArgs) -> Result<Outcome<Option<RunTicket>>> {
-        if self.stripe.is_none() {
-            return Ok(Outcome::Ok(None));
-        }
-        let workspace = a.workspace.to_lowercase();
-        if let Some(stopped) = self.stopped(&workspace).await? {
-            return Ok(stopped);
-        }
-        if let Some(refused) = self.out_of_credit(&workspace).await? {
-            return Ok(refused);
-        }
-        // On g1t's models, a workspace on the plan needs AI credit (or
-        // included usage) first: g1t never fronts a model's cost (ai.rs).
-        if a.billed_to != "workspace"
-            && let Some(why) = self.ai_refusal(&workspace).await?
-        {
-            return Ok(Outcome::fail(FailureCode::PaymentRequired, why));
-        }
-        let now = now_ms();
-        let run_id = new_id("run", now);
-        let mut bytes = [0u8; 32];
-        getrandom::getrandom(&mut bytes).expect("no source of randomness");
-        let token = hex::encode(bytes);
-        self.db
-            .prepare(
-                "INSERT INTO runs (id, workspace, repo, number, task, model, token_hash, created_at, billed_to, session_id, tier, agent, asked_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                run_id.as_str().into(),
-                workspace.into(),
-                format!("{}/{}", a.repo.namespace, a.repo.name).into(),
-                a.number.into(),
-                a.task.into(),
-                a.model.into(),
-                hash(&token).into(),
-                rfc3339(now).into(),
-                if a.billed_to == "workspace" { "workspace" } else { "g1t" }.into(),
-                // On the workspace's own provider too: the proxy counts the
-                // run's tokens under it, and the agent rate is charged on them.
-                optional(a.session.as_deref()),
-                optional(a.tier.as_deref().filter(|tier| tokens::is_tier(tier))),
-                // Whose work it is, for Spend: the agent by handle (a run
-                // under `<workspace>/@<handle>` is that agent's even when
-                // the caller does not say), and who asked.
-                optional(attribution::agent_of(a.agent.as_deref(), &a.repo.name).as_deref()),
-                optional(attribution::handle(a.asked_by.as_deref()).as_deref()),
-            ])?
-            .run()
-            .await?;
-        Ok(Outcome::Ok(Some(RunTicket { run_id, token })))
-    }
-
-    async fn finish_run(&self, a: FinishRunArgs) -> Result<Outcome<bool>> {
-        let run = self
-            .db
-            .prepare(
-                "SELECT workspace, repo, number, task, model, token_hash, billed_to, agent, asked_by FROM runs
-                 WHERE id = ? AND finished_at IS NULL",
-            )
-            .bind(&[a.run_id.as_str().into()])?
-            .first::<RunRow>(None)
-            .await?;
-        let Some(run) = run.filter(|run| run.token_hash == hash(&a.token)) else {
-            return Ok(Outcome::fail(FailureCode::NotFound, "Run not found."));
-        };
-        if !a.cost_usd.is_finite() || a.cost_usd < 0.0 {
-            return Ok(Outcome::fail(FailureCode::Invalid, "That is not a cost."));
-        }
-        // Only whoever closes the run charges for it.
-        let claimed = self
-            .db
-            .prepare(
-                "UPDATE runs SET finished_at = ? WHERE id = ? AND finished_at IS NULL RETURNING id",
-            )
-            .bind(&[rfc3339(now_ms()).into(), a.run_id.as_str().into()])?
-            .first::<Touched>(None)
-            .await?;
-        if claimed.is_none() {
-            return Ok(Outcome::Ok(false));
-        }
-        // On the workspace's own provider, the model was paid for there and
-        // the run's sandbox time is recorded on its own: only the agent rate
-        // is charged, on its own meter.
-        if run.own_provider() {
-            self.charge_agent_rate(&a.run_id, &run, a.tokens).await?;
-            return Ok(Outcome::Ok(true));
-        }
-        // Its cost plus the margin, on the account's terms; then the plan's
-        // included usage and the trial credit pay what they can, and g1t
-        // covers a free workspace's overrun (see `credits`). Agents are
-        // never the open-source pool's.
-        // The model at the provider's price and the price book's markup on it
-        // (`agent_models`: none from 2026-10-08); g1t's own part is the agent
-        // rate, charged on a line of its own below.
-        let base = charge_micros(a.cost_usd, self.model_markup().await?);
-        let (charge, terms_note, discount) = self.charged(&run.workspace, base).await?;
-        let month = credits::month_of(&rfc3339(now_ms()));
-        let eligible = credits::eligible_for(Some(ComputeKind::Agent), None);
-        let drawn = self.draw(&run.workspace, charge, &month, &eligible).await?;
-        let mut description = match run.task.as_str() {
-            "plan" => format!("Planning for {}", run.repo),
-            "review" => format!("Review of {}#{}", run.repo, run.number),
-            "update" => format!("Catching up {}#{}", run.repo, run.number),
-            "reply" => reply_label(&run.repo),
-            "session" => session_label(&run.repo),
-            _ => format!("Work on {}#{}", run.repo, run.number),
-        };
-        description.push_str(&terms_note);
-        description.push_str(&drawn.note());
-        self.enter(
-            &run.workspace,
-            EntryKind::Usage,
-            -(charge - drawn.total()),
-            &description,
-            &a.run_id,
-            Some(&run),
-            Some(charge_micros(a.cost_usd, 0)),
-            None,
-            None,
-        )
-        .await?;
-        self.record_drawn(&a.run_id, &drawn).await?;
-        self.record_discount(&a.run_id, discount).await?;
-        self.count_spend(&run.workspace, charge_micros(a.cost_usd, 0), charge - drawn.total(), &drawn).await;
-        self.charge_agent_rate(&a.run_id, &run, a.tokens).await?;
-        Ok(Outcome::Ok(true))
-    }
-}
-
-/// A workspace agent's chat reply, as its ledger line reads. The agents
-/// service bills a reply under `<workspace>/@<handle>` (no repository has an
-/// `@` in its name), so the line names the agent, not a project.
-fn reply_label(repo: &str) -> String {
-    match repo.split_once("/@") {
-        Some((workspace, handle)) => format!("Chat reply by @{handle} in {workspace}"),
-        None => format!("Chat reply in {repo}"),
-    }
-}
-
-/// A workspace agent's session (a piece of work it spun off, a routine's
-/// run, or a colleague's help with one), billed under the agent whose
-/// budget pays for it.
-fn session_label(repo: &str) -> String {
-    match repo.split_once("/@") {
-        Some((workspace, handle)) => format!("Agent session for @{handle} in {workspace}"),
-        None => format!("Agent session in {repo}"),
     }
 }
 
@@ -960,8 +717,8 @@ impl Billing {
                 .prepare(
                     "INSERT INTO ledger
                        (id, workspace, kind, amount_micros, description, repo, task,
-                        cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, quantity, agent, asked_by)
-                     VALUES (?, ?, 'usage', 0, ?, ?, 'self_hosted', 0, ?, ?, 'workspace', 0, 0, 0, 0, ?, ?, ?)",
+                        cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, quantity)
+                     VALUES (?, ?, 'usage', 0, ?, ?, 'self_hosted', 0, ?, ?, 'workspace', 0, 0, 0, 0, ?)",
                 )
                 .bind(&[
                     new_id("led", now).into(),
@@ -971,8 +728,6 @@ impl Billing {
                     a.reference.as_str().into(),
                     timestamp.as_str().into(),
                     (seconds as f64).into(),
-                    optional(attribution::handle(a.agent.as_deref()).as_deref()),
-                    optional(attribution::handle(a.asked_by.as_deref()).as_deref()),
                 ])?
                 .run()
                 .await?;
@@ -1025,8 +780,8 @@ impl Billing {
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version, quantity, compute, agent, asked_by)
-                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version, quantity, compute)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -1044,10 +799,6 @@ impl Billing {
                         optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
                         (seconds as f64).into(),
                         optional(a.kind.map(ComputeKind::as_str)),
-                        // An agent's sandbox is its work too: on its own
-                        // line with it, under whoever asked.
-                        optional(attribution::handle(a.agent.as_deref()).as_deref()),
-                        optional(attribution::handle(a.asked_by.as_deref()).as_deref()),
                     ])?,
                 self.db
                     .prepare(
@@ -1184,7 +935,6 @@ impl Billing {
                 .unwrap_or(20),
             free: env.var("FREE_WHILE_BUILDING").is_ok_and(|v| v.to_string() == "true"),
             ceilings: limits::Ceilings::from_env(env),
-            prepaid_only: env.var("PREPAID_ONLY").is_ok_and(|v| v.to_string() == "true"),
             trials_on: {
                 let plans = credits::Config::from_env(env);
                 plans.trial_workspace_micros > 0 && plans.trial_monthly_pool_micros > 0
@@ -1201,13 +951,7 @@ impl Billing {
 
 /// The fifteen-minute steps, each on its own: one failing never skips the
 /// rest.
-async fn tick(billing: &Billing, env: &Env, keeper: &keeper::Keeper) {
-    if let Err(error) = billing.settle_runs(keeper).await {
-        worker::console_error!("settling runs failed: {error}");
-    }
-    if let Err(error) = billing.settle_own_runs().await {
-        worker::console_error!("closing runs on own providers failed: {error}");
-    }
+async fn tick(billing: &Billing, env: &Env) {
     // Stripe events billing never received, handled now.
     match billing.replay_events().await {
         Ok(done) => worker::console_log!("stripe replay: {done}"),
@@ -1229,12 +973,6 @@ async fn tick(billing: &Billing, env: &Env, keeper: &keeper::Keeper) {
         && let Err(error) = billing.autopay(users).await {
             worker::console_error!("paying at the limit failed: {error}");
         }
-    // AI credit below a workspace's auto-reload threshold, reloaded (ai.rs).
-    match billing.reload_ai_credit().await {
-        Ok(0) => {}
-        Ok(done) => worker::console_log!("auto-reloaded AI credit for {done} workspaces"),
-        Err(error) => worker::console_error!("auto-reloading AI credit failed: {error}"),
-    }
     // Last month's metered usage (scans, embeddings, storage) goes on the
     // ledger before the month is closed and invoiced.
     if let Err(error) = billing.charge_pending().await {
@@ -1282,7 +1020,7 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     }
     let daily = event.cron() == keeper::DAILY;
     if !daily {
-        tick(&billing, &env, &keeper).await;
+        tick(&billing, &env).await;
     }
     // Once a day: Stripe's endpoint kept listening to billing's events and
     // enabled, and saved cards and plans not read in a while read again.
@@ -1341,13 +1079,15 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         if let Err(error) = billing.sweep_reservations().await {
             worker::console_error!("clearing reservations failed: {error}");
         }
-        // The AI Gateway's log keeps 30 days (gateway.rs).
-        if let Err(error) = billing.forget_gateway_requests().await {
+        // The AI Gateway's request log, from when there was one, still
+        // keeps only its last 30 days until it is empty.
+        let cutoff = rfc3339(now_ms().saturating_sub(30 * 24 * 60 * 60 * 1000));
+        let cleared = match billing.db.prepare("DELETE FROM gateway_requests WHERE created_at < ?").bind(&[cutoff.into()]) {
+            Ok(statement) => statement.run().await.map(|_| ()),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = cleared {
             worker::console_error!("clearing old AI Gateway requests failed: {error}");
-        }
-        // Checks of the providers' model lists keep 90 days (catalogue.rs).
-        if let Err(error) = billing.forget_model_checks().await {
-            worker::console_error!("clearing old model checks failed: {error}");
         }
     }
 }
@@ -1390,30 +1130,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "credits" => reply(&billing.credits(args(body)?).await?),
         "usage" => reply(&billing.usage(args(body)?).await?),
         "usage_report" => reply(&billing.usage_report(args(body)?).await?),
-        "ai_credit" => reply(&billing.ai_credit(args(body)?).await?),
-        "buy_ai_credit" => reply(&billing.buy_ai_credit(args(body)?).await?),
-        "confirm_ai_credit" => reply(&billing.confirm_ai_credit(args(body)?).await?),
-        "set_ai_reload" => reply(&billing.set_ai_reload(args(body)?).await?),
         "set_budget" => reply(&billing.set_budget(args(body)?).await?),
         "billing_details" => reply(&billing.billing_details(args(body)?).await?),
         "set_billing_details" => reply(&billing.set_billing_details(args(body)?).await?),
-        "record_tokens" => reply(&billing.record_tokens(args(body)?).await?),
-        "token_usage" => reply(&billing.token_usage(args(body)?).await?),
-        "gateway_models" => reply(&billing.gateway_models().await?),
-        "model_defaults" => reply(&billing.model_defaults().await?),
-        "record_discovery" => reply(&billing.record_discovery(args(body)?).await?),
-        "admin_models" => reply(&billing.admin_models().await?),
-        "admin_decide_model" => reply(&billing.admin_decide_model(args(body)?).await?),
-        "admin_set_model_default" => reply(&billing.admin_set_model_default(args(body)?).await?),
-        "gateway_admit" => reply(&billing.gateway_admit(args(body)?).await?),
-        "record_gateway" => reply(&billing.record_gateway(args(body)?).await?),
-        "gateway_requests" => reply(&billing.gateway_requests(args(body)?).await?),
         "checkout" => reply(&billing.checkout(args(body)?).await?),
         "confirm" => reply(&billing.confirm(args(body)?).await?),
-        "can_start" => reply(&billing.can_start(args(body)?).await?),
         "trial" => reply(&billing.trial(args(body)?).await?),
-        "start_run" => reply(&billing.start_run(args(body)?).await?),
-        "finish_run" => reply(&billing.finish_run(args(body)?).await?),
         "features" => reply(&billing.features(args(body)?).await?),
         "subscribe" => reply(&billing.subscribe(args(body)?).await?),
         "confirm_subscription" => reply(&billing.confirm_subscription(args(body)?).await?),
@@ -1508,21 +1230,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_run_is_charged_its_cost_plus_the_margin() {
-        // $0.05 at 20% is six cents.
-        assert_eq!(charge_micros(0.05, 20), 60_000);
-        assert_eq!(charge_micros(1.0, 20), 1_200_000);
-        assert_eq!(charge_micros(0.05, 0), 50_000);
-    }
-
-    #[test]
-    fn fractions_of_a_millionth_round_up_and_nothing_costs_less_than_nothing() {
-        assert_eq!(charge_micros(0.000_000_4, 20), 2);
-        assert_eq!(charge_micros(0.0, 20), 0);
-        assert_eq!(charge_micros(-3.0, 20), 0);
-    }
-
-    #[test]
     fn sandbox_time_is_charged_from_the_first_second() {
         // 21 millionths a second at cost, plus 20%.
         let price = Price::price_for(21.0, 20);
@@ -1547,11 +1254,6 @@ mod tests {
         assert_eq!(duration(40), "40s");
         assert_eq!(duration(192), "3m 12s");
         assert_eq!(duration(3720), "1h 2m");
-    }
-
-    #[test]
-    fn an_absurd_cost_is_capped() {
-        assert_eq!(charge_micros(1e9, 20), 120 * MICROS_PER_DOLLAR);
     }
 
     /// Every migration, in order, as D1 applies them.
@@ -1651,55 +1353,9 @@ mod tests {
 
 
     #[test]
-    fn ai_prices_are_price_book_data_with_dated_versions() {
-        let sql = include_str!("../migrations/0040_ai_credit.sql");
-        let row = |needle: &str| sql.lines().find(|l| l.contains(needle)).unwrap_or_else(|| panic!("no {needle}")).to_owned();
-        // AI Gateway: the provider's price, no markup while in beta.
-        assert!(row("('gateway_models', 'AI Gateway models'").contains("1000000, 0, 'list'"));
-        // Models lose their markup from 2026-10-08, a fall that applies at once…
-        assert!(row("('pv_agent_models_2'").contains("1000000, 0, '2026-10-08"));
-        // …and the agent rate is $0.25 a million tokens after 14 days' notice.
-        assert!(row("('pv_agent_tokens_2'").contains("250000, 0, '2026-10-22"));
-        // The card fee is 2.9% + 30¢, switchable.
-        assert!(row("('card_fee_percent'").contains("29000"));
-        assert!(row("('card_fee_fixed'").contains("300000"));
-        assert!(row("('card_fee', 'on'").contains("'on'"));
-    }
-
-    #[test]
-    fn a_chat_reply_is_labelled_by_its_agent() {
-        assert_eq!(reply_label("acme/@ship"), "Chat reply by @ship in acme");
-        assert_eq!(reply_label("acme/web"), "Chat reply in acme/web");
-    }
-
-    #[test]
-    fn the_agent_rate_on_an_own_model_key_is_its_own_dated_meter() {
-        let sql = include_str!("../migrations/0041_agent_rate_own_key.sql");
-        let row = |needle: &str| sql.lines().find(|l| l.contains(needle)).unwrap_or_else(|| panic!("no {needle}")).to_owned();
-        // Nothing until the notice has run…
-        assert!(row("('pv_agent_tokens_own_1'").contains("0, 0, '2026-10-08"));
-        // …then $0.25 a million tokens, as on g1t's models, 14 days after.
-        assert!(row("('pv_agent_tokens_own_2'").contains("250000, 0, '2026-10-22"));
-        assert!(row("('agent_tokens_own',").contains("'million tokens', 0, 0, 'list'"));
-        assert_eq!(ai::agent_rate_meter(true), "agent_tokens_own");
-    }
-
-    #[test]
-    fn the_agent_rate_counts_every_token_once_until_a_weight_is_decided() {
-        let sql = include_str!("../migrations/0042_agent_rate_weights.sql");
-        for kind in ["input", "output", "cache_read", "cache_write"] {
-            let meter = format!("('agent_token_weight_{kind}', 'Agent rate weight");
-            let row = sql.lines().find(|l| l.contains(&meter)).unwrap_or_else(|| panic!("no {kind} weight"));
-            assert!(row.contains("'weight', 1000000, 0, 'list'"), "{kind}: {row}");
-            let version = format!("('pv_agent_token_weight_{kind}_1', 'agent_token_weight_{kind}', 1, 1000000,");
-            assert!(sql.contains(&version), "{kind} has no applied version");
-        }
-        assert_eq!(ai::weight_of(1_000_000.0), 1.0);
-    }
-    #[test]
     fn every_checkout_insert_fills_the_table() {
-        // The plan's, the activation's, a card check's, a prepayment's and
-        // AI credit's pages all go through one insert, and it names every
+        // The plan's, the activation's, a card check's and a prepayment's
+        // pages all go through one insert, and it names every
         // column the table needs and none it lacks: a missing NOT NULL
         // column, or one from a migration not yet applied, was a 500.
         let table = columns("checkouts");
@@ -1720,7 +1376,6 @@ mod tests {
             ("lib.rs", include_str!("lib.rs")),
             ("features.rs", include_str!("features.rs")),
             ("cards.rs", include_str!("cards.rs")),
-            ("ai.rs", include_str!("ai.rs")),
         ] {
             let inserts = source.matches(concat!("INSERT INTO ", "checkouts")).count();
             assert!(inserts <= usize::from(file == "lib.rs"), "{file} inserts into checkouts on its own");

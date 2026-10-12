@@ -777,7 +777,7 @@ these pages answer **This needs you to sign in** (`403`):
 | Applications you signed in to, and signing in with GitHub | Settings → Connected applications, Settings → GitHub |
 | Letting a device or an application sign in | `g1t.sh/device`, `g1t.sh/oauth/authorize` |
 | Deleting a workspace, and giving it to another owner | A workspace's General settings, and its Members page |
-| Payment methods: the billing portal, adding a card, subscribing and buying AI credit | A workspace's Billing |
+| Payment methods: the billing portal, adding a card and subscribing | A workspace's Billing |
 
 ### Chat and notifications without the website
 

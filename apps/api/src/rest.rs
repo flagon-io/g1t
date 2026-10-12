@@ -276,7 +276,7 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("GET", "/workspaces/:workspace/members/:username/teams", Op::ListUserTeams, &[]),
-    // A workspace's billing: usage, budget, AI credit and invoices.
+    // A workspace's billing: usage, budget and invoices.
     route(
         "GET",
         "/workspaces/:workspace/usage",
@@ -285,8 +285,6 @@ pub const ROUTES: &[Route] = &[
     ),
     route("GET", "/workspaces/:workspace/budget", Op::GetBudget, &[]),
     route("PUT", "/workspaces/:workspace/budget", Op::SetBudget, &[]),
-    route("GET", "/workspaces/:workspace/ai_credit", Op::GetAiCredit, &[]),
-    route("POST", "/workspaces/:workspace/ai_credit/checkout", Op::BuyAiCredit, &[]),
     route("GET", "/workspaces/:workspace/invoices", Op::ListInvoices, &[]),
     route("GET", "/workspaces/:workspace/billing_details", Op::GetBillingDetails, &[]),
     // The AI Gateway's log of a workspace's requests.
@@ -1444,8 +1442,6 @@ mod tests {
         assert_eq!(input, json!({ "alerts": [50], "workspace": "acme" }));
         let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
         assert_eq!(op("GET", "/workspaces/acme/budget"), Op::GetBudget);
-        assert_eq!(op("GET", "/workspaces/acme/ai_credit"), Op::GetAiCredit);
-        assert_eq!(op("POST", "/workspaces/acme/ai_credit/checkout"), Op::BuyAiCredit);
         assert_eq!(op("GET", "/workspaces/acme/invoices"), Op::ListInvoices);
         assert_eq!(op("GET", "/workspaces/acme/billing_details"), Op::GetBillingDetails);
     }

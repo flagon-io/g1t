@@ -5767,7 +5767,7 @@
       "days": [
         {
           "day": "2026-10-06",
-          "product": "agent",
+          "product": "other",
           "micros": 12400000
         },
         {
@@ -5777,63 +5777,11 @@
         },
         {
           "day": "2026-10-07",
-          "product": "agent",
+          "product": "other",
           "micros": 9800000
         }
       ],
       "products": [
-        {
-          "key": "agent",
-          "label": "Agent",
-          "micros": 41000000,
-          "meters": [
-            {
-              "key": "agent_models",
-              "label": "Models",
-              "product": "agent",
-              "unit": "tokens",
-              "quantity": 9120000,
-              "micros": 41000000,
-              "pending_micros": 0,
-              "daily": [
-                3100000,
-                5200000,
-                4400000,
-                6000000,
-                0,
-                12400000,
-                9800000
-              ],
-              "allowance": null,
-              "by_project": [
-                {
-                  "project": "flagon-io/g1t",
-                  "micros": 36000000,
-                  "quantity": 8010000
-                },
-                {
-                  "project": "flagon-io/hello",
-                  "micros": 5000000,
-                  "quantity": 1110000
-                }
-              ]
-            }
-          ],
-          "features": [
-            {
-              "key": "runs",
-              "label": "Runs",
-              "micros": 33000000,
-              "count": 14
-            },
-            {
-              "key": "reviews",
-              "label": "Reviews",
-              "micros": 8000000,
-              "count": 9
-            }
-          ]
-        },
         {
           "key": "sandboxes",
           "label": "Sandboxes",
@@ -5871,49 +5819,54 @@
             }
           ],
           "features": []
+        },
+        {
+          "key": "other",
+          "label": "Other",
+          "micros": 41000000,
+          "meters": [
+            {
+              "key": "other",
+              "label": "Other",
+              "product": "other",
+              "unit": "entries",
+              "quantity": 23,
+              "micros": 41000000,
+              "pending_micros": 0,
+              "daily": [
+                3100000,
+                5200000,
+                4400000,
+                6000000,
+                0,
+                12400000,
+                9800000
+              ],
+              "allowance": null,
+              "by_project": [
+                {
+                  "project": "flagon-io/g1t",
+                  "micros": 36000000,
+                  "quantity": 14
+                },
+                {
+                  "project": "flagon-io/hello",
+                  "micros": 5000000,
+                  "quantity": 9
+                }
+              ]
+            }
+          ],
+          "features": []
         }
       ],
       "projects": [
         "flagon-io/g1t",
         "flagon-io/hello"
       ],
-      "models": [
-        {
-          "model": "claude-sonnet-5-5",
-          "input": 310000,
-          "output": 420000,
-          "cache_read": 7800000,
-          "cache_write": 590000
-        }
-      ],
-      "by_agent": [
-        {
-          "key": "g1t",
-          "label": "@g1t",
-          "micros": 21400000,
-          "count": 14
-        },
-        {
-          "key": "mike",
-          "label": "@mike",
-          "micros": 800000,
-          "count": 6
-        }
-      ],
-      "by_person": [
-        {
-          "key": "chase",
-          "label": "@chase",
-          "micros": 21900000,
-          "count": 19
-        },
-        {
-          "key": "",
-          "label": "No one asked",
-          "micros": 300000,
-          "count": 1
-        }
-      ],
+      "models": [],
+      "by_agent": [],
+      "by_person": [],
       "included": {
         "used": 20,
         "of": 20,
@@ -5937,7 +5890,7 @@
         }
       ]
     },
-    "notes": "Every product family is listed, in order, even with nothing used; this example shows two. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=agent,sandboxes`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`."
+    "notes": "Every product family with meters is listed, in order, even with nothing used; this example shows two. `other` comes last, and only when it has something: usage on meters g1t no longer has, such as agent runs from before they were retired. `daily` has one amount for each day of the range, oldest first. `projects` and `products` take several values separated by commas: `?products=sandboxes,deployments`. A range of more than 400 days, or one that ends before it starts, is refused with `invalid`."
   },
   "get_budget": {
     "params": {
@@ -5994,80 +5947,6 @@
       "message": null
     },
     "notes": "Fields left out keep their value. A limit above `max_amount_micros` is refused with `invalid`. Called by anyone but an owner signed in as a person, or by a workspace's own token or one of g1t's agents, it is refused with `forbidden`. Each alert is sent once a month, to the owners by email and, with `webhook`, as a JSON POST."
-  },
-  "get_ai_credit": {
-    "params": {
-      "workspace": "flagon-io"
-    },
-    "response": {
-      "balance_micros": 62000000,
-      "purchased_micros": 50000000,
-      "given_micros": 12000000,
-      "grants": [
-        {
-          "id": "crd_01kkr2m4c8f1t7qh3d6n9w5p0x",
-          "workspace": "flagon-io",
-          "kind": "purchase",
-          "amount_micros": 50000000,
-          "used_micros": 0,
-          "left_micros": 50000000,
-          "note": "AI credit bought",
-          "refund_for": null,
-          "refund_day": null,
-          "expires_at": "2027-10-02T00:00:00.000Z",
-          "created_by": "ana",
-          "created_at": "2026-10-02T16:20:00.000Z",
-          "state": "open",
-          "closed_at": null,
-          "closed_note": null,
-          "closed_by": null
-        }
-      ],
-      "free_via_discount": false,
-      "postpaid": false,
-      "blocked": false,
-      "can_buy": true,
-      "presets_cents": [
-        2500,
-        5000,
-        10000,
-        25000
-      ],
-      "min_cents": 1000,
-      "max_cents": 100000,
-      "card_fee": {
-        "on": true,
-        "percent_micros": 29000,
-        "fixed_cents": 30
-      },
-      "reload": {
-        "enabled": false,
-        "threshold_micros": 10000000,
-        "target_micros": 50000000,
-        "monthly_max_micros": 200000000,
-        "reloaded_micros": 0,
-        "failed_at": null,
-        "error": null
-      },
-      "agent_rate_micros": 3.6,
-      "model_markup_percent": 10,
-      "gateway_markup_percent": 5,
-      "upgrade_credit_micros": 10000000,
-      "expires_days": 365
-    },
-    "notes": "`card_fee.percent_micros` is per dollar charged, in millionths: 29000 is 2.9%. `blocked` is true when the credit has run out and new runs on g1t's models wait for more; runs on a model provider the workspace connected itself never need it."
-  },
-  "buy_ai_credit": {
-    "params": {
-      "workspace": "flagon-io"
-    },
-    "request": {
-      "amount_cents": 5000
-    },
-    "response": {
-      "url": "https://checkout.example.com/c/pay/cs_test_a1b2c3"
-    },
-    "notes": "Open `url` in a browser to pay. Nothing is charged until the payment is made there; the credit then shows in get_ai_credit. An amount outside `min_cents` to `max_cents`, or not in whole dollars, is refused with `invalid`; a workspace that cannot buy credit (see `can_buy`) gets `conflict` or `payment_required`."
   },
   "list_invoices": {
     "params": {

@@ -106,7 +106,7 @@ struct Presented {
     user_id: Option<String>,
     workspace_id: Option<String>,
     last_used_at: Option<String>,
-    /// Set on an agent's token: what it may do, as JSON `AgentScope`.
+    /// Set on a sandbox run's credential: what it may do, as JSON `AgentScope`.
     agent_scope: Option<String>,
     scopes: Option<String>,
     #[serde(default)]
@@ -172,9 +172,10 @@ impl Identity {
         else {
             return Ok(None);
         };
-        // An agent's token: g1t on behalf of the person it was made
-        // for, in its repository's workspace while they belong to it, and
-        // only for what its scope lists. See run_credentials.rs.
+        // A sandbox run's credential (or an older agent token): g1t on
+        // behalf of the person it was made for, in its repository's
+        // workspace while they belong to it, and only for what its scope
+        // lists. See run_credentials.rs.
         if let Some(scope) = presented
             .agent_scope
             .as_deref()
@@ -405,46 +406,6 @@ impl Identity {
             self.audit_account(&a.user, "token.deleted", &format!("Deleted access token {name}")).await;
         }
         Ok(())
-    }
-
-    /// A token for a g1t agent working for `on_behalf_of`, which can do
-    /// only what `scope` lists. It is recorded as theirs, so it is listed and
-    /// can be deleted with their other tokens.
-    pub async fn create_agent_token(&self, a: CreateAgentTokenArgs) -> Result<CreatedAccessToken> {
-        let created = self
-            .mint(
-                Owner::User(&a.on_behalf_of.id),
-                &format!("g1t agent in {}/{}", a.scope.repo.namespace, a.scope.repo.name),
-                Some(a.ttl_seconds),
-                &Grant::default(),
-                false,
-            )
-            .await?;
-        self.db
-            .prepare("UPDATE access_tokens SET agent_scope = ? WHERE id = ?")
-            .bind(&[
-                serde_json::to_string(&a.scope)?.into(),
-                created.info.id.as_str().into(),
-            ])?
-            .run()
-            .await?;
-        Ok(created)
-    }
-
-    /// What an agent's token may do, or `None` for any other token.
-    pub async fn agent_scope(&self, a: TokenArgs) -> Result<Option<AgentScope>> {
-        let scope: Option<Option<String>> = self
-            .db
-            .prepare(format!(
-                "SELECT agent_scope FROM access_tokens
-                 WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
-            ))
-            .bind(&[crypto::sha256_hex(&a.token).into()])?
-            .first::<Option<String>>(Some("agent_scope"))
-            .await?;
-        Ok(scope
-            .flatten()
-            .and_then(|scope| serde_json::from_str(&scope).ok()))
     }
 
     pub async fn list_access_tokens(&self, a: UserArgs) -> Result<Vec<AccessToken>> {

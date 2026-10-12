@@ -1,16 +1,9 @@
 //! Keeps every price current with what g1t actually pays.
 //!
 //! g1t passes its own costs through, so a price is only right while the
-//! cost under it is. Two jobs keep them right, on the billing service's
-//! cron:
+//! cost under it is. One job keeps them right, on the billing service's
+//! daily cron:
 //!
-//! - **Settling runs** (every 15 minutes). A model run is charged when it
-//!   finishes at what the sandbox reported. Each of g1t's hosted runs goes
-//!   through its AI Gateway, which prices every request at the provider's
-//!   current rates and logs it with the run's session. Settling sums those
-//!   logs and corrects the charge to the gateway's figure, with a
-//!   correction on the statement. A run whose sandbox died before
-//!   reporting is charged here instead of never.
 //! - **Checking costs** (daily). What Cloudflare billed g1t's account, from
 //!   its usage API, is measured against how much was used: Containers
 //!   against the seconds containers ran, Workers for Platforms per request
@@ -22,7 +15,7 @@
 //!   waits for staff in sudo, so one odd day of data cannot reprice
 //!   everything.
 
-use g1t_contracts::billing::{EntryKind, MICROS_PER_DOLLAR, Price, PriceBook, PriceChange};
+use g1t_contracts::billing::{MICROS_PER_DOLLAR, Price, PriceBook, PriceChange};
 
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
@@ -30,31 +23,22 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use worker::{Env, Fetch, Headers, Method, Request, RequestInit, Result};
 
-use crate::{Billing, RunRow};
+use crate::Billing;
 
 /// The cron that also checks costs against Cloudflare's bill.
 pub(crate) const DAILY: &str = "17 4 * * *";
 /// The quarter-hourly tick: settling, and once an hour the platform watch.
 pub(crate) const QUARTER_HOURLY: &str = "*/15 * * * *";
 
-/// A run is settled once its logs have had time to land.
-const SETTLE_AFTER_MS: u64 = 5 * 60 * 1000;
-/// A run with no gateway logs after this is left as reported.
-const GIVE_UP_AFTER_MS: u64 = 3 * 60 * 60 * 1000;
-/// A run never finished after this died without reporting.
-const ABANDONED_AFTER_MS: u64 = 3 * 60 * 60 * 1000;
-
 /// Where the keeper reads what g1t pays.
 pub(crate) struct Keeper {
-    /// `CLOUDFLARE_USAGE_TOKEN`: Billing, Account Analytics and AI Gateway,
-    /// read only.
+    /// `CLOUDFLARE_USAGE_TOKEN`: Billing and Account Analytics, read only.
     token: Option<String>,
     /// What reads the bill for `costs`: `CLOUDFLARE_BILLING_TOKEN`
     /// (Account: Billing Read and Account Analytics Read), or the usage
     /// token, which has both.
     billing_token: Option<String>,
     account: String,
-    gateway: String,
 }
 
 impl Keeper {
@@ -66,7 +50,6 @@ impl Keeper {
             billing_token: secret("CLOUDFLARE_BILLING_TOKEN").or_else(|| token.clone()),
             token,
             account: var("CLOUDFLARE_ACCOUNT_ID"),
-            gateway: var("AI_GATEWAY_ID"),
         }
     }
 
@@ -114,71 +97,6 @@ impl Keeper {
         format!("https://api.cloudflare.com/client/v4/accounts/{}{path}", self.account)
     }
 
-    /// AI Gateway's id, empty when there is none.
-    pub(crate) fn gateway(&self) -> &str {
-        &self.gateway
-    }
-
-    /// A GraphQL query over AI Gateway's analytics: with the keeper's token
-    /// (AI Gateway Read) first, and on failure with the bill's. A token
-    /// without Account Analytics Read gets an error ("caller does not hold
-    /// any of the required permissions for this dataset"); when the answer
-    /// has no rows, `gateway_visible` tells a token that cannot see the
-    /// gateway from a gateway nothing went through.
-    pub(crate) async fn gateway_graphql(&self, body: Value) -> Result<Value> {
-        let Some(token) = &self.token else {
-            return self.graphql(body).await;
-        };
-        match send_with(token, Method::Post, "https://api.cloudflare.com/client/v4/graphql", Some(body.clone())).await {
-            Ok(answer) => Ok(answer),
-            Err(error) => match &self.billing_token {
-                Some(billing) if billing != token => self.graphql(body).await,
-                _ => Err(error),
-            },
-        }
-    }
-
-    /// Whether the token AI Gateway's analytics are read with can see the
-    /// gateway: the REST API answers 403 for a token without AI Gateway
-    /// Read and 404 for a gateway id that is not there. None when the
-    /// answer says neither (Cloudflare down, no token).
-    pub(crate) async fn gateway_visible(&self) -> Option<bool> {
-        let token = self.token.as_deref().or(self.billing_token.as_deref())?;
-        match send_with(token, Method::Get, &self.api(&format!("/ai-gateway/gateways/{}", self.gateway)), None).await {
-            Ok(_) => Some(true),
-            Err(error) => refused(&error.to_string()).then_some(false),
-        }
-    }
-
-    /// What AI Gateway priced a session's requests at, and how many there
-    /// were, with the requests it had no price for.
-    async fn session_cost(&self, session: &str) -> Result<SessionCost> {
-        let mut total = SessionCost { complete: true, ..SessionCost::default() };
-        for page in 1..=MAX_LOG_PAGES {
-            // The filter goes as URL-encoded JSON; the bracket form is
-            // ignored, and would sum every log there is. Session ids are
-            // [a-z0-9_], which need no escaping inside it.
-            let filter = format!(
-                "%5B%7B%22key%22%3A%22metadata.value%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%5B%22{session}%22%5D%7D%5D"
-            );
-            let url = self.api(&format!(
-                "/ai-gateway/gateways/{}/logs?per_page=50&page={page}&filters={filter}",
-                self.gateway
-            ));
-            let body = self.send(Method::Get, &url, None).await?;
-            let logs = body["result"].as_array().cloned().unwrap_or_default();
-            for log in &logs {
-                total.add(log);
-            }
-            if logs.len() < 50 {
-                return Ok(total);
-            }
-        }
-        // More logs than were read: what was read is less than the run.
-        total.complete = false;
-        Ok(total)
-    }
-
     /// The account's billable usage, one row per service per day, as
     /// Cloudflare reports it.
     async fn billable_usage(&self, from: &str, to: &str) -> Result<Vec<UsageRow>> {
@@ -216,13 +134,6 @@ impl Keeper {
             memory_byte_seconds: total.memory_byte_seconds + g["sum"]["allocatedMemory"].as_f64().unwrap_or(0.0),
         }))
     }
-}
-
-/// Whether an error from `send_with` is Cloudflare saying no to the token
-/// (401, 403) or that there is no such thing for it (404), rather than
-/// failing.
-pub(crate) fn refused(error: &str) -> bool {
-    ["Cloudflare answered 401", "Cloudflare answered 403", "Cloudflare answered 404"].iter().any(|s| error.contains(s))
 }
 
 /// A request to Cloudflare's API with a bearer token; anything but 200 is
@@ -410,121 +321,6 @@ struct ChangeRow {
     created_at: String,
 }
 
-#[derive(Deserialize)]
-struct Unsettled {
-    id: String,
-    workspace: String,
-    repo: String,
-    number: u32,
-    task: String,
-    model: String,
-    token_hash: String,
-    billed_to: Option<String>,
-    session_id: String,
-    created_at: String,
-    finished_at: Option<String>,
-    #[serde(default)]
-    agent: Option<String>,
-    #[serde(default)]
-    asked_by: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct Charged {
-    cost_micros: Option<i64>,
-    description: String,
-    amount_micros: i64,
-}
-
-/// What a settled run's correction comes to, from the charges at the
-/// reported and the gateway's cost and what the workspace was charged at
-/// first. A charge up is drawn down like any charge; a charge down is
-/// given back only up to what the workspace paid, since what a credit or
-/// a pool paid was never the workspace's money.
-pub(crate) fn correction(reported_charge: i64, gateway_charge: i64, first_charged: i64) -> i64 {
-    let delta = gateway_charge - reported_charge;
-    if delta >= 0 { delta } else { delta.max(-first_charged.max(0)) }
-}
-
-/// A session's logs are read 50 at a time, up to this many pages.
-const MAX_LOG_PAGES: u32 = 40;
-
-/// What AI Gateway's logs say a session cost.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SessionCost {
-    /// What the gateway priced the requests at, in dollars.
-    pub cost_usd: f64,
-    pub requests: u32,
-    /// Requests that used tokens but that the gateway put no price on: a
-    /// model it has no price for. Their cost is not in `cost_usd`.
-    pub unpriced: u32,
-    /// The models of those, for the statement and the drift.
-    pub unpriced_models: Vec<String>,
-    /// False when there were more logs than were read.
-    pub complete: bool,
-}
-
-impl SessionCost {
-    /// Adds one log, read leniently: `cost` in dollars, `tokens_in` and
-    /// `tokens_out`, `cached` for an answer from the gateway's own cache
-    /// (which costs nothing).
-    pub(crate) fn add(&mut self, log: &Value) {
-        self.requests += 1;
-        let number = |key: &str| log[key].as_f64().or_else(|| log[key].as_str().and_then(|s| s.parse().ok()));
-        let cost = number("cost").filter(|c| c.is_finite() && *c > 0.0);
-        let tokens = number("tokens_in").unwrap_or(0.0) + number("tokens_out").unwrap_or(0.0);
-        let cached = log["cached"].as_bool().unwrap_or(false);
-        match cost {
-            Some(cost) => self.cost_usd += cost,
-            None if tokens > 0.0 && !cached => {
-                self.unpriced += 1;
-                let model = log["model"].as_str().unwrap_or("an unnamed model").to_owned();
-                if !self.unpriced_models.contains(&model) {
-                    self.unpriced_models.push(model);
-                }
-            }
-            None => {}
-        }
-    }
-
-    /// Whether the gateway's figure is the whole of what the run cost.
-    pub(crate) fn whole(&self) -> bool {
-        self.complete && self.unpriced == 0
-    }
-}
-
-/// The cost a run is settled at, in millionths: the gateway's figure when
-/// it priced every request; otherwise (a model it has no price for, or
-/// more logs than were read) never less than the sandbox reported, since
-/// the gateway's sum is then short of what the provider bills. With a
-/// reason for the statement and the drift when it is not the gateway's
-/// figure alone.
-pub(crate) fn settled_cost(reported_micros: i64, gateway: &SessionCost) -> (i64, Option<String>) {
-    // Not held to MAX_RUN_COST_USD: the gateway's figure is trusted.
-    let priced = if gateway.cost_usd.is_finite() { (gateway.cost_usd.max(0.0) * MICROS_PER_DOLLAR as f64).ceil() as i64 } else { 0 };
-    if gateway.whole() {
-        return (priced, None);
-    }
-    let mut why = Vec::new();
-    if gateway.unpriced > 0 {
-        why.push(format!(
-            "AI Gateway has no price for {} of its {} requests ({})",
-            gateway.unpriced,
-            gateway.requests,
-            gateway.unpriced_models.join(", ")
-        ));
-    }
-    if !gateway.complete {
-        why.push(format!("more than {} of its requests were logged", gateway.requests));
-    }
-    (priced.max(reported_micros.max(0)), Some(why.join("; ")))
-}
-
-fn ms(timestamp: &str) -> u64 {
-    // RFC 3339 in UTC, as g1t writes them.
-    worker::js_sys::Date::parse(timestamp) as u64
-}
-
 impl Billing {
     pub(crate) async fn prices(&self) -> Result<PriceBook> {
         // Three reads at once; the plans are priced from the rows already
@@ -543,7 +339,11 @@ impl Billing {
         )
         .await;
         let (prices, changes, coming) = (prices?, changes?, coming?);
-        let model_markup = prices.iter().find(|row| row.meter == "agent_models").map_or(self.margin_percent, |row| row.markup_percent);
+        // Agents' and models' meters, from before g1t stopped running
+        // agents, stay in the table but are no longer prices.
+        let prices: Vec<PriceRow> = prices.into_iter().filter(|row| !crate::pricing::retired(&row.meter)).collect();
+        let changes: Vec<ChangeRow> = changes.into_iter().filter(|row| !crate::pricing::retired(&row.meter)).collect();
+        let coming: Vec<PriceChange> = coming.into_iter().filter(|change| !crate::pricing::retired(&change.meter)).collect();
         let book: std::collections::BTreeMap<&str, f64> = prices
             .iter()
             .map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent)))
@@ -589,9 +389,8 @@ impl Billing {
                     effective_at: None,
                 }))
                 .collect(),
-            // The markup on models' provider price: the price book's
-            // `agent_models` (none from 2026-10-08).
-            model_margin_percent: model_markup,
+            // Nothing is charged for models any more; kept for readers.
+            model_margin_percent: self.margin_percent,
             plans,
             free: Some(g1t_contracts::billing::FreeTier {
                 trial_workspace_micros: if self.trials_on { self.plans.trial_workspace_micros } else { 0 },
@@ -635,231 +434,6 @@ impl Billing {
             .map(|row| (row.cost_micros, Price::price_for(row.cost_micros, row.markup_percent))))
     }
 
-    /// Corrects finished runs to what AI Gateway priced them at, and
-    /// charges runs whose sandbox died before reporting.
-    pub(crate) async fn settle_runs(&self, keeper: &Keeper) -> Result<()> {
-        if keeper.token.is_none() || keeper.gateway.is_empty() {
-            return Ok(());
-        }
-        let now = now_ms();
-        let runs = self
-            .db
-            .prepare(
-                "SELECT id, workspace, repo, number, task, model, token_hash, billed_to, session_id, created_at, finished_at, agent, asked_by
-                 FROM runs
-                 WHERE session_id IS NOT NULL AND settled_at IS NULL AND COALESCE(billed_to, 'g1t') = 'g1t'
-                   AND ((finished_at IS NOT NULL AND finished_at < ?1) OR created_at < ?2)
-                 ORDER BY created_at LIMIT 10",
-            )
-            .bind(&[rfc3339(now - SETTLE_AFTER_MS).into(), rfc3339(now - ABANDONED_AFTER_MS).into()])?
-            .all()
-            .await?
-            .results::<Unsettled>()?;
-        for run in runs {
-            let gateway = match keeper.session_cost(&run.session_id).await {
-                Ok(found) => found,
-                Err(error) => {
-                    worker::console_error!("could not read gateway logs for {}: {error}", run.id);
-                    continue;
-                }
-            };
-            let since = ms(run.finished_at.as_deref().unwrap_or(&run.created_at));
-            if gateway.requests == 0 && now.saturating_sub(since) < GIVE_UP_AFTER_MS {
-                continue;
-            }
-            self.settle(&run, &gateway).await?;
-        }
-        Ok(())
-    }
-
-    /// Closes runs on a workspace's own model provider: none is on g1t's
-    /// gateway, so nothing is corrected, but tokens the proxy counted after
-    /// the run reported, or for a sandbox that died before reporting, are
-    /// charged their agent rate now. Needs no gateway token.
-    pub(crate) async fn settle_own_runs(&self) -> Result<()> {
-        #[derive(Deserialize)]
-        struct Own {
-            id: String,
-            workspace: String,
-            repo: String,
-            number: u32,
-            task: String,
-            model: String,
-            token_hash: String,
-            billed_to: Option<String>,
-            #[serde(default)]
-            agent: Option<String>,
-            #[serde(default)]
-            asked_by: Option<String>,
-        }
-        let now = now_ms();
-        let runs = self
-            .db
-            .prepare(
-                "SELECT id, workspace, repo, number, task, model, token_hash, billed_to, agent, asked_by
-                 FROM runs
-                 WHERE billed_to = 'workspace' AND session_id IS NOT NULL AND settled_at IS NULL
-                   AND ((finished_at IS NOT NULL AND finished_at < ?1) OR created_at < ?2)
-                 ORDER BY created_at LIMIT 25",
-            )
-            .bind(&[rfc3339(now - SETTLE_AFTER_MS).into(), rfc3339(now - ABANDONED_AFTER_MS).into()])?
-            .all()
-            .await?
-            .results::<Own>()?;
-        for run in runs {
-            let settled_at = rfc3339(now_ms());
-            let claimed = self
-                .db
-                .prepare(
-                    "UPDATE runs SET settled_at = ?1, finished_at = COALESCE(finished_at, ?1)
-                     WHERE id = ?2 AND settled_at IS NULL RETURNING id",
-                )
-                .bind(&[settled_at.as_str().into(), run.id.as_str().into()])?
-                .first::<Value>(None)
-                .await?;
-            if claimed.is_none() {
-                continue;
-            }
-            let row = RunRow {
-                workspace: run.workspace,
-                repo: run.repo,
-                number: run.number,
-                task: run.task,
-                model: run.model,
-                token_hash: run.token_hash,
-                billed_to: run.billed_to,
-                agent: run.agent,
-                asked_by: run.asked_by,
-            };
-            self.charge_agent_rate(&run.id, &row, None).await?;
-        }
-        Ok(())
-    }
-
-    async fn settle(&self, run: &Unsettled, gateway: &SessionCost) -> Result<()> {
-        let requests = gateway.requests;
-        let row = RunRow {
-            workspace: run.workspace.clone(),
-            repo: run.repo.clone(),
-            number: run.number,
-            task: run.task.clone(),
-            model: run.model.clone(),
-            token_hash: run.token_hash.clone(),
-            billed_to: run.billed_to.clone(),
-            agent: run.agent.clone(),
-            asked_by: run.asked_by.clone(),
-        };
-        let charged = self
-            .db
-            .prepare("SELECT cost_micros, description, amount_micros FROM ledger WHERE reference = ?")
-            .bind(&[run.id.as_str().into()])?
-            .first::<Charged>(None)
-            .await?;
-        let reported = charged.as_ref().and_then(|c| c.cost_micros).unwrap_or(0);
-        // The gateway's figure; never under what the sandbox reported when
-        // the gateway could not price all of it (see `settled_cost`).
-        let (gateway_micros, short) = settled_cost(reported, gateway);
-        let terms = self.terms_of(&run.workspace).await?;
-        // Models at the price book's markup on the provider's price
-        // (`agent_models`), as `finish_run` charges them.
-        let markup = self.model_markup().await?;
-        // A cost's charge on the account's terms, and what a discount gave
-        // below cost plus the markup (counted as given, see `charged`).
-        let charge_for = |micros: i64| {
-            if self.free { (0, 0) } else { terms.discounted(crate::margin_on(micros, markup)) }
-        };
-        let settled_at = rfc3339(now_ms());
-        // Claim it, so two crons never settle it twice.
-        let claimed = self
-            .db
-            .prepare(
-                "UPDATE runs SET settled_at = ?, gateway_cost_micros = ?, gateway_note = ?, finished_at = COALESCE(finished_at, ?)
-                 WHERE id = ? AND settled_at IS NULL RETURNING id",
-            )
-            .bind(&[
-                settled_at.as_str().into(),
-                (gateway_micros as f64).into(),
-                short.as_deref().map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
-                settled_at.as_str().into(),
-                run.id.as_str().into(),
-            ])?
-            .first::<Value>(None)
-            .await?;
-        if claimed.is_none() || requests == 0 {
-            return Ok(());
-        }
-        // Tokens counted after the run reported are charged their agent
-        // rate now (ai.rs).
-        self.charge_agent_rate(&run.id, &row, None).await?;
-        if let Some(why) = &short {
-            worker::console_warn!("run {} settled at no less than reported: {why}", run.id);
-        }
-        let short_note = short.as_ref().map_or(String::new(), |why| format!(" ({why}; charged at no less than the sandbox reported)"));
-        let free_note = if self.free { " (free while g1t is being built out)" } else { "" };
-        match charged {
-            // Never reported: charged now, from the gateway's figure.
-            None => {
-                let (charge, discount) = charge_for(gateway_micros);
-                let eligible = crate::credits::eligible_for(Some(g1t_contracts::billing::ComputeKind::Agent), None);
-                let drawn = self.draw(&run.workspace, charge, &settled_at[..7], &eligible).await?;
-                let description = format!(
-                    "Work on {}#{}, settled from AI Gateway after the sandbox stopped without reporting{short_note}{free_note}{}",
-                    run.repo,
-                    run.number,
-                    drawn.note()
-                );
-                self.enter(&run.workspace, EntryKind::Usage, -(charge - drawn.total()), &description, &run.id, Some(&row), Some(gateway_micros), None, None)
-                    .await?;
-                self.record_drawn(&run.id, &drawn).await?;
-                self.record_discount(&run.id, discount).await?;
-                self.count_spend(&run.workspace, gateway_micros, charge - drawn.total(), &drawn).await;
-            }
-            Some(charged) => {
-                let delta = gateway_micros - reported;
-                if delta == 0 {
-                    return Ok(());
-                }
-                let ((was, was_given), (now, now_given)) = (charge_for(reported), charge_for(gateway_micros));
-                let change = correction(was, now, -charged.amount_micros);
-                // What the discount gives moves with the charge.
-                let discount = now_given - was_given;
-                // A charge up is paid for like any other charge.
-                let drawn = if change > 0 {
-                    let eligible = crate::credits::eligible_for(Some(g1t_contracts::billing::ComputeKind::Agent), None);
-                    self.draw(&run.workspace, change, &settled_at[..7], &eligible).await?
-                } else {
-                    crate::credits::Drawn::default()
-                };
-                let description = format!(
-                    "Correction to “{}”: AI Gateway priced its {requests} model requests at {}, not {}{short_note}{}",
-                    charged.description,
-                    crate::features::dollars(gateway_micros),
-                    crate::features::dollars(reported),
-                    drawn.note(),
-                );
-                let reference = format!("{}/settled", run.id);
-                self.enter(
-                    &run.workspace,
-                    EntryKind::Usage,
-                    -(change - drawn.total()),
-                    &description,
-                    &reference,
-                    Some(&row),
-                    Some(delta),
-                    None,
-                    None,
-                )
-                .await?;
-                self.record_drawn(&reference, &drawn).await?;
-                self.record_discount(&reference, discount).await?;
-                self.count_spend(&run.workspace, delta, change - drawn.total(), &drawn).await;
-            }
-        }
-        Ok(())
-    }
-
-    /// Checks each cost against what Cloudflare billed this month, and
-    /// moves the ones that changed.
     pub(crate) async fn reconcile(&self, keeper: &Keeper) -> Result<()> {
         if keeper.token.is_none() {
             return Ok(());
@@ -975,82 +549,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_correction_never_gives_back_what_the_workspace_did_not_pay() {
-        // Up by 2 cents: charged in full (then drawn down like any charge).
-        assert_eq!(correction(100_000, 120_000, 100_000), 20_000);
-        // Down by 2 cents, all of it paid by the workspace: given back.
-        assert_eq!(correction(120_000, 100_000, 120_000), -20_000);
-        // Down, but the open-source pool paid all but a cent: a cent back.
-        assert_eq!(correction(120_000, 100_000, 10_000), -10_000);
-        // Paid entirely by a credit or pool: nothing back.
-        assert_eq!(correction(120_000, 100_000, 0), 0);
-    }
-
-    fn logs(entries: &[Value]) -> SessionCost {
-        let mut total = SessionCost { complete: true, ..SessionCost::default() };
-        for log in entries {
-            total.add(log);
-        }
-        total
-    }
-
-    #[test]
-    fn a_run_is_settled_at_the_gateways_figure_when_it_priced_every_request() {
-        let gateway = logs(&[
-            json!({ "cost": 0.012, "tokens_in": 4000, "tokens_out": 300, "model": "claude-sonnet-5-5" }),
-            json!({ "cost": "0.003", "tokens_in": 900, "tokens_out": 40, "model": "claude-haiku-4-5" }),
-            // Served from the gateway's own cache: no cost, and none owed.
-            json!({ "cost": 0, "tokens_in": 900, "tokens_out": 40, "cached": true }),
-            // An error with no tokens costs nothing either.
-            json!({ "cost": null, "tokens_in": 0, "tokens_out": 0 }),
-        ]);
-        assert!(gateway.whole());
-        assert_eq!(gateway.requests, 4);
-        // Down from what the sandbox said, or up: the gateway's figure.
-        assert_eq!(settled_cost(20_000, &gateway), (15_000, None));
-        assert_eq!(settled_cost(9_000, &gateway), (15_000, None));
-    }
-
-    #[test]
-    fn a_model_the_gateway_cannot_price_is_never_settled_down_to_nothing() {
-        let gateway = logs(&[
-            json!({ "cost": 0.002, "tokens_in": 100, "tokens_out": 10, "model": "claude-haiku-4-5" }),
-            json!({ "cost": 0, "tokens_in": 50_000, "tokens_out": 2_000, "model": "claude-new-1" }),
-            json!({ "tokens_in": 50_000, "tokens_out": 2_000, "model": "claude-new-1" }),
-        ]);
-        assert!(!gateway.whole());
-        assert_eq!((gateway.unpriced, gateway.unpriced_models.clone()), (2, vec!["claude-new-1".to_owned()]));
-        // The sandbox said $0.90: kept, not cut to the gateway's $0.002.
-        let (cost, why) = settled_cost(900_000, &gateway);
-        assert_eq!(cost, 900_000);
-        assert!(why.unwrap().contains("no price for 2 of its 3 requests (claude-new-1)"));
-        // A sandbox that reported less than the gateway priced: the gateway's.
-        assert_eq!(settled_cost(1_000, &gateway).0, 2_000);
-    }
-
-    #[test]
-    fn more_logs_than_were_read_never_settle_a_run_down() {
-        let mut gateway = logs(&[json!({ "cost": 1.0, "tokens_in": 1, "tokens_out": 1 })]);
-        gateway.complete = false;
-        let (cost, why) = settled_cost(3_000_000, &gateway);
-        assert_eq!(cost, 3_000_000);
-        assert!(why.unwrap().contains("more than 1 of its requests"));
-    }
-
-    #[test]
-    fn a_gateway_figure_over_the_report_cap_is_charged_in_full() {
-        // A sandbox's report is believed up to $100; the gateway's is not capped.
-        let gateway = logs(&[json!({ "cost": 140.0, "tokens_in": 1, "tokens_out": 1 })]);
-        assert_eq!(settled_cost(100_000_000, &gateway).0, 140_000_000);
-        assert_eq!(crate::charge_micros(140.0, 20), 120_000_000);
+    fn a_cost_plus_the_margin_rounds_up_to_a_whole_micro() {
         assert_eq!(crate::margin_on(140_000_000, 20), 168_000_000);
-        // Exactly cost plus the margin, rounded up, in whole micros (dollars
-        // as floats can come out a micro high), never under it.
+        // Exactly cost plus the margin, rounded up, in whole micros, never under it.
         for cost in [0_i64, 1, 7, 999, 123_457, 99_999_999] {
             let exact = (cost * 120 + 99) / 100;
             assert_eq!(crate::margin_on(cost, 20), exact, "{cost}");
             assert!(crate::margin_on(cost, 20) * 100 >= cost * 120, "{cost}");
-            assert!(crate::charge_micros(cost as f64 / 1e6, 20) >= exact, "{cost}");
         }
     }
 

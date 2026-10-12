@@ -1038,7 +1038,7 @@ impl Identity {
                     ])
                     .await?;
                 joined = Some(slug.clone());
-                // They are a member now: the workspace's @g1t welcomes them (agents service).
+                // They are a member now: everyone listening hears of it.
                 self.announce_member_joined(workspace_id, slug, user, row.joins_as(), JoinedHow::Joined).await;
             }
         }

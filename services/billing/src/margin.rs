@@ -497,14 +497,10 @@ pub(crate) enum DriftKind {
     Count,
     /// The price book's cost of a bucket's usage differs from what the
     /// same usage comes to at Cloudflare's list prices, before the included
-    /// amounts (a price may be stale); on `models`, the ledger's model cost
-    /// differs from what AI Gateway priced the same traffic at.
+    /// amounts (a price may be stale).
     Cost,
     /// Cloudflare charged for something nothing charges customers for.
     Leak,
-    /// Model usage AI Gateway put no price on: its cost is not what the
-    /// provider bills, so neither the ledger nor the gateway total has it.
-    Unpriced,
 }
 
 impl DriftKind {
@@ -513,7 +509,6 @@ impl DriftKind {
             DriftKind::Count => "count",
             DriftKind::Cost => "cost",
             DriftKind::Leak => "leak",
-            DriftKind::Unpriced => "unpriced",
         }
     }
 }
@@ -540,6 +535,12 @@ pub(crate) struct Drift {
 /// cost (a meter in the bucket with no list price) the price book is not
 /// checked. A leak is still what Cloudflare billed: money spent.
 pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted: bool, min_cost_micros: i64, list_micros: Option<f64>) -> Vec<Drift> {
+    // Models: g1t no longer runs agents or sells model access. What their
+    // usage cost before is the ledger's own figure, with nothing to set it
+    // against.
+    if NOT_CLOUDFLARE.contains(&bucket) {
+        return Vec::new();
+    }
     let overhead = OVERHEAD.contains(&bucket);
     let sum = |f: &dyn Fn(&ProductDay) -> f64| days.iter().map(f).sum::<f64>();
     let cf_cost = sum(&|d| d.cf_cost_micros as f64);
@@ -558,26 +559,14 @@ pub(crate) fn drifts(bucket: &str, days: &[ProductDay], threshold: f64, counted:
             out.push(Drift { bucket: bucket.into(), kind: DriftKind::Count, ours: own_quantity, cloudflare: cf_quantity, delta_percent: delta });
         }
     }
-    // Models: what AI Gateway priced g1t's own provider traffic at (its
-    // lines, as "Cloudflare's" side) against the ledger's model cost. Only
-    // once the gateway has been read; then the ledger having none of it is
-    // drift too (traffic no run was charged for). Every other bucket: its
-    // usage at Cloudflare's list prices, before the included amounts.
-    let not_cloudflare = NOT_CLOUDFLARE.contains(&bucket);
-    let theirs = if not_cloudflare { cf_cost } else { list_micros.unwrap_or(0.0) };
+    // Its usage at Cloudflare's list prices, before the included amounts.
+    let theirs = list_micros.unwrap_or(0.0);
     let enough = theirs.max(own_cost) >= min_cost_micros as f64;
-    let models = not_cloudflare && cf_cost > 0.0;
-    if enough && !overhead && theirs > 0.0 && (own_cost > 0.0 || models) {
+    if enough && !overhead && theirs > 0.0 && own_cost > 0.0 {
         let delta = delta_percent(own_cost, theirs);
         if delta.is_some_and(|d| d.abs() > threshold) {
             out.push(Drift { bucket: bucket.into(), kind: DriftKind::Cost, ours: own_cost, cloudflare: theirs, delta_percent: delta });
         }
-    }
-    // The ledger has model cost and the gateway priced none of it: a token
-    // that cannot see AI Gateway reads as no rows, never an error, so this
-    // is not agreement. Said, rather than left as no row at all.
-    if NOT_CLOUDFLARE.contains(&bucket) && cf_cost <= 0.0 && own_cost >= min_cost_micros as f64 && own_cost > 0.0 {
-        out.push(Drift { bucket: bucket.into(), kind: DriftKind::Cost, ours: own_cost, cloudflare: 0.0, delta_percent: None });
     }
     if !overhead && cf_cost >= min_cost_micros as f64 && value <= 0.0 {
         out.push(Drift { bucket: bucket.into(), kind: DriftKind::Leak, ours: value, cloudflare: cf_cost, delta_percent: None });
@@ -605,34 +594,6 @@ pub(crate) fn list_costs(rules: &[Rule], lines: &[LineRow]) -> BTreeMap<String, 
         };
     }
     out
-}
-
-/// What can make AI Gateway's cost differ from what the providers bill,
-/// said for staff: cache tokens (priced by the gateway at its own rates for
-/// them, which may lag the provider's), requests Cloudflare billed itself,
-/// models it has no price for, and runs settled short.
-fn caveat_notes(c: &costs::GatewayCaveats) -> Vec<String> {
-    let mut notes = Vec::new();
-    if c.cache_read_tokens > 0.0 || c.cache_write_tokens > 0.0 {
-        notes.push(format!(
-            "{} prompt-cache read and {} cache write tokens went through it: check its cost against the provider's invoice, since cache reads are billed far below input and writes above it",
-            crate::features::thousands(c.cache_read_tokens.round() as u64),
-            crate::features::thousands(c.cache_write_tokens.round() as u64)
-        ));
-    }
-    if c.wholesale_usd > 0.0 {
-        notes.push(format!(
-            "{} of it Cloudflare billed itself (unified billing): that part is on Cloudflare's bill, not a provider's",
-            dollars(micros(c.wholesale_usd))
-        ));
-    }
-    if !c.unpriced.is_empty() {
-        notes.push(format!("it has no price for {} (tokens used, $0)", c.unpriced.join(", ")));
-    }
-    if c.short_runs > 0 {
-        notes.push(format!("{} runs were settled at no less than the sandbox reported because the gateway could not price all of them", c.short_runs));
-    }
-    notes
 }
 
 /// Where a testing reset's history starts: all of a workspace's ledger.
@@ -687,152 +648,6 @@ pub(crate) fn reset_usage(kept: &[(String, String, String, i64, i64)]) -> Vec<Us
             given: Given { reset: *value, ..Given::default() },
         })
         .collect()
-}
-
-/// A testing reset inside the drift window.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ResetNote {
-    pub workspace: String,
-    /// The UTC day it was reset.
-    pub day: String,
-    /// Whether it kept what it wiped (`reset_costs`, migration 0046):
-    /// then the ledger's side has it, given away. A reset from before
-    /// that wiped model usage the gateway still counts.
-    pub recorded: bool,
-    /// Of what it kept, model cost on the window's days.
-    pub models_micros: i64,
-}
-
-/// The resets: each audit entry (account `ws_<slug>`, when) and each kept
-/// reset (workspace, reset_at, its model cost in the window). An audit
-/// entry with no kept reset at the same instant is from before resets kept
-/// what they wiped.
-pub(crate) fn reset_notes(audits: &[(String, String)], kept: &[(String, String, i64)]) -> Vec<ResetNote> {
-    let mut notes: Vec<(String, ResetNote)> = kept
-        .iter()
-        .map(|(workspace, at, models)| {
-            (at.clone(), ResetNote { workspace: workspace.clone(), day: at[..10.min(at.len())].to_owned(), recorded: true, models_micros: *models })
-        })
-        .collect();
-    for (account, at) in audits {
-        let workspace = account.strip_prefix("ws_").unwrap_or(account);
-        if !kept.iter().any(|(w, a, _)| w == workspace && a == at) {
-            notes.push((at.clone(), ResetNote { workspace: workspace.to_owned(), day: at[..10.min(at.len())].to_owned(), recorded: false, models_micros: 0 }));
-        }
-    }
-    notes.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.workspace.cmp(&b.1.workspace)));
-    notes.into_iter().map(|(_, n)| n).collect()
-}
-
-/// Model usage a reset wiped before resets kept it is not a leak: while
-/// such a reset is in the window the models leak is not raised, and the
-/// models cost drift says what the gap is.
-pub(crate) fn wiped_not_leaked(drift: &Drift, resets: &[ResetNote]) -> bool {
-    drift.kind == DriftKind::Leak && NOT_CLOUDFLARE.contains(&drift.bucket.as_str()) && resets.iter().any(|r| !r.recorded)
-}
-
-/// What the models drift says about resets in the window.
-fn reset_sentences(resets: &[ResetNote]) -> Vec<String> {
-    resets
-        .iter()
-        .filter_map(|r| {
-            if !r.recorded {
-                Some(format!(
-                    "AI Gateway's figure includes model usage wiped by a testing reset of {} on {}, from before resets kept what they wiped: the ledger no longer has it, so that part of the gap is the reset, not a leak. It leaves the {DRIFT_DAYS} days on {}.",
-                    r.workspace,
-                    r.day,
-                    day_after(&r.day, DRIFT_DAYS)
-                ))
-            } else if r.models_micros > 0 {
-                Some(format!(
-                    "The ledger's figure includes {} of model cost wiped by a testing reset of {} on {}, counted as given away (testing resets).",
-                    dollars(r.models_micros),
-                    r.workspace,
-                    r.day
-                ))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-/// The models drift's detail: the gateway's total against the ledger's,
-/// and any testing reset in the window.
-pub(crate) fn models_detail(drift: &Drift, caveats: &costs::GatewayCaveats, resets: &[ResetNote], read: &costs::GatewayRead) -> String {
-    if drift.cloudflare <= 0.0 {
-        let head = format!(
-            "Models: the ledger's model cost is {} over the last {DRIFT_DAYS} days and AI Gateway priced nothing, so the two were not compared.",
-            dollars(drift.ours as i64)
-        );
-        let why = if caveats.requests > 0.0 {
-            format!(
-                "The gateway logged {} requests in those days but put no price on them: it has no price for the models used{}. Add their prices to the gateway, or route those models where they are priced.",
-                crate::features::thousands(caveats.requests.round() as u64),
-                if caveats.unpriced.is_empty() { String::new() } else { format!(" ({})", caveats.unpriced.join(", ")) }
-            )
-        } else {
-            match read {
-                costs::GatewayRead::Empty { visible: Some(false) } => "The token billing reads AI Gateway with (CLOUDFLARE_USAGE_TOKEN, else CLOUDFLARE_BILLING_TOKEN) cannot see the gateway named in AI_GATEWAY_ID: Cloudflare refused it (no Account, AI Gateway, Read on the token, or no gateway by that id). Give the token AI Gateway Read, or fix AI_GATEWAY_ID.".to_owned(),
-                costs::GatewayRead::Empty { visible: Some(true) } => "The token can see the gateway and it logged no requests in those days: model calls went around it. Check that every caller of a hosted model uses the gateway's URL (services/models, the runner's ANTHROPIC_BASE_URL).".to_owned(),
-                costs::GatewayRead::Failed(error) => format!("AI Gateway's analytics could not be read: {error}"),
-                costs::GatewayRead::NotRead => "AI Gateway was not read on this run: no AI_GATEWAY_ID, or no CLOUDFLARE_USAGE_TOKEN or CLOUDFLARE_BILLING_TOKEN.".to_owned(),
-                costs::GatewayRead::Rows | costs::GatewayRead::Empty { visible: None } => "The gateway answered without requests for these days, and whether its token can see the gateway could not be told: either the token lacks AI Gateway Read, or model calls went around the gateway.".to_owned(),
-            }
-        };
-        return format!("{head} {why}");
-    }
-    let lower = drift.ours < drift.cloudflare;
-    let wiped = resets.iter().any(|r| !r.recorded);
-    let mut detail = format!(
-        "Models: AI Gateway priced g1t's own provider traffic at {} over the last {DRIFT_DAYS} days; the ledger's model cost for the same days is {} ({:+.1}%). {}",
-        dollars(drift.cloudflare as i64),
-        dollars(drift.ours as i64),
-        drift.delta_percent.unwrap_or(0.0),
-        if lower && wiped {
-            "The gateway counts model calls the ledger no longer has: a testing reset wiped them (below). Beyond that, runs not yet settled, runs with no session, or calls with no run."
-        } else if lower {
-            "Model calls g1t paid for were not charged: runs not yet settled, runs with no session, or calls with no run (the ledger catches up as runs settle; a gap that stays is a leak)."
-        } else {
-            "The ledger counts more than the gateway priced: runs that went to a provider without the gateway, or sandbox reports the gateway could not correct."
-        }
-    );
-    for sentence in reset_sentences(resets) {
-        detail.push(' ');
-        detail.push_str(&sentence);
-    }
-    let notes = caveat_notes(caveats);
-    if !notes.is_empty() {
-        detail.push_str(" The gateway's cost may be off: ");
-        detail.push_str(&notes.join("; "));
-        detail.push('.');
-    }
-    detail
-}
-
-/// The unpriced drift's detail.
-pub(crate) fn unpriced_detail(caveats: &costs::GatewayCaveats) -> String {
-    format!(
-        "Models: AI Gateway's cost is not all of what the providers bill over the last {DRIFT_DAYS} days: {}. Runs on a model with no gateway price are charged no less than the sandbox reported; add the model's price to the gateway (or route away from it) so it is charged at cost.",
-        caveat_notes(&costs::GatewayCaveats { cache_read_tokens: 0.0, cache_write_tokens: 0.0, wholesale_usd: 0.0, ..caveats.clone() }).join("; ")
-    )
-}
-
-/// Model usage AI Gateway could not price over the window, as drift on
-/// the models bucket: models with tokens and no cost, or runs settled
-/// short. None when there is none.
-pub(crate) fn unpriced_drift(caveats: &costs::GatewayCaveats) -> Option<(Drift, String)> {
-    if caveats.unpriced.is_empty() && caveats.short_runs == 0 {
-        return None;
-    }
-    let drift = Drift {
-        bucket: NOT_CLOUDFLARE[0].into(),
-        kind: DriftKind::Unpriced,
-        ours: f64::from(caveats.short_runs),
-        cloudflare: caveats.unpriced.len() as f64,
-        delta_percent: None,
-    };
-    Some((drift, unpriced_detail(caveats)))
 }
 
 /// When the last `days` in a row (each with enough cost to say something)
@@ -974,11 +789,6 @@ pub(crate) fn unit_size(unit: &str) -> f64 {
 fn day_before(day: &str, days: u64) -> String {
     let ms = g1t_contracts::time::parse_rfc3339(&format!("{day}T00:00:00Z")).unwrap_or(0);
     rfc3339(ms.saturating_sub(days * DAY_MS))[..10].to_owned()
-}
-
-fn day_after(day: &str, days: u64) -> String {
-    let ms = g1t_contracts::time::parse_rfc3339(&format!("{day}T00:00:00Z")).unwrap_or(0);
-    rfc3339(ms + days * DAY_MS)[..10].to_owned()
 }
 
 /// Dollars to the cent from a dollar up, finer below: `$17.02`, `$0.063`.
@@ -1129,7 +939,6 @@ impl Billing {
     /// day has come, and raise or clear alerts.
     pub(crate) async fn costs_daily(&self, env: &Env, keeper: &crate::keeper::Keeper) -> Result<CostsRun> {
         let mut run = CostsRun::default();
-        let mut gateway = costs::GatewayRead::default();
         // The subscriptions first: they say when the billing cycle starts,
         // which the bill is priced by. Not a problem for the run: the last
         // read, or the estimate, stays.
@@ -1138,7 +947,7 @@ impl Billing {
         {
             worker::console_error!("Cloudflare's subscriptions were not read: {error}");
         }
-        let (since, until, bill_since) = match self.read_cloudflare(keeper, &mut run.problems, &mut gateway).await? {
+        let (since, until, bill_since) = match self.read_cloudflare(keeper, &mut run.problems).await? {
             Some((since, until, lines, bill_since)) => {
                 run.lines = lines;
                 (since, until, Some(bill_since))
@@ -1165,7 +974,7 @@ impl Billing {
         let window = day_before(&until, costs::BACKFILL_DAYS - 1);
         let reconcile_from = [Some(window), Some(since.clone()), bill_since].into_iter().flatten().min().unwrap_or_default();
         run.days = self.reconcile_range(&reconcile_from, &until).await?;
-        let drift = self.find_drift(&until, &gateway).await?;
+        let drift = self.find_drift(&until).await?;
         run.proposals = self.measure_units(&until).await?;
         self.apply_due_versions().await?;
         run.alerts = self.raise_alerts(env, &until, &drift).await?;
@@ -1415,46 +1224,6 @@ impl Billing {
         ))
     }
 
-    /// Testing resets on or after `since` (the day they wiped usage up to
-    /// is their own, so one before it wiped nothing in the days): those
-    /// that kept what they wiped (`reset_costs`) and those from before
-    /// resets did, known only from the audit log.
-    async fn resets_since(&self, since: &str, until: &str) -> Result<Vec<ResetNote>> {
-        let end = format!("{until}T23:59:59.999Z");
-        #[derive(Deserialize)]
-        struct Audit {
-            account: String,
-            created_at: String,
-        }
-        let audits = self
-            .db
-            .prepare("SELECT account, created_at FROM admin_actions WHERE action = 'reset' AND created_at >= ?1 AND created_at <= ?2")
-            .bind(&[since.into(), end.as_str().into()])?
-            .all()
-            .await?
-            .results::<Audit>()?;
-        #[derive(Deserialize)]
-        struct Kept {
-            workspace: String,
-            reset_at: String,
-            models: Option<i64>,
-        }
-        let kept = self
-            .db
-            .prepare(
-                "SELECT workspace, reset_at, SUM(CASE WHEN bucket = ?3 AND day >= ?1 THEN cost_micros ELSE 0 END) AS models
-                 FROM reset_costs WHERE reset_at >= ?1 AND reset_at <= ?2 GROUP BY workspace, reset_at",
-            )
-            .bind(&[since.into(), end.as_str().into(), NOT_CLOUDFLARE[0].into()])?
-            .all()
-            .await?
-            .results::<Kept>()?;
-        Ok(reset_notes(
-            &audits.into_iter().map(|a| (a.account, a.created_at)).collect::<Vec<_>>(),
-            &kept.into_iter().map(|k| (k.workspace, k.reset_at, k.models.unwrap_or(0))).collect::<Vec<_>>(),
-        ))
-    }
-
     /// Reconciles the days and writes `margin_days` and `workspace_costs`.
     async fn reconcile_range(&self, since: &str, until: &str) -> Result<u32> {
         let rules = self.rules().await?;
@@ -1566,44 +1335,9 @@ impl Billing {
             .collect())
     }
 
-    /// What AI Gateway's lines over the days, and the runs settled in them,
-    /// say about whether its cost is what the providers bill.
-    async fn gateway_caveats(&self, since: &str, until: &str) -> Result<costs::GatewayCaveats> {
-        #[derive(Deserialize)]
-        struct Line {
-            meter: String,
-            quantity: f64,
-            cost_usd: f64,
-        }
-        let lines: Vec<(String, f64, f64)> = self
-            .db
-            .prepare("SELECT meter, quantity, cost_usd FROM cost_lines WHERE source = ?1 AND day >= ?2 AND day <= ?3")
-            .bind(&[costs::SOURCE_GATEWAY.into(), since.into(), until.into()])?
-            .all()
-            .await?
-            .results::<Line>()?
-            .into_iter()
-            .map(|l| (l.meter, l.quantity, l.cost_usd))
-            .collect();
-        let mut caveats = costs::gateway_caveats(&lines);
-        #[derive(Deserialize)]
-        struct Short {
-            n: Option<f64>,
-        }
-        caveats.short_runs = self
-            .db
-            .prepare("SELECT COUNT(*) AS n FROM runs WHERE gateway_note IS NOT NULL AND settled_at >= ?1 AND settled_at <= ?2")
-            .bind(&[since.into(), format!("{until}T23:59:59.999Z").into()])?
-            .first::<Short>(None)
-            .await?
-            .and_then(|s| s.n)
-            .unwrap_or(0.0) as u32;
-        Ok(caveats)
-    }
-
     /// Drift over the last week, written to `cost_drift` (replacing the
     /// last run's), with unmapped Cloudflare meters as leaks.
-    async fn find_drift(&self, until: &str, read: &costs::GatewayRead) -> Result<Vec<(Drift, String)>> {
+    async fn find_drift(&self, until: &str) -> Result<Vec<(Drift, String)>> {
         let since = day_before(until, DRIFT_DAYS - 1);
         let settings = self.cost_settings().await?;
         let rules = self.rules().await?;
@@ -1612,8 +1346,6 @@ impl Billing {
         for d in days {
             by.entry(d.bucket.clone()).or_default().push(d);
         }
-        let caveats = self.gateway_caveats(&since, until).await?;
-        let resets = self.resets_since(&since, until).await?;
         // The same days' usage at list prices, before the included amounts:
         // what the price book is checked against (never the bill, which is
         // net of them).
@@ -1626,9 +1358,6 @@ impl Billing {
             .results::<LineRow>()?;
         let list = list_costs(&rules, &lines);
         let mut found = Vec::new();
-        if let Some(drift) = unpriced_drift(&caveats) {
-            found.push(drift);
-        }
         for (bucket, days) in &by {
             let bucket_rules: Vec<&Rule> = rules.iter().filter(|r| &r.bucket == bucket).collect();
             let threshold = bucket_rules.iter().map(|r| r.drift_percent).fold(f64::INFINITY, f64::min);
@@ -1636,12 +1365,8 @@ impl Billing {
             let counted = bucket_rules.iter().any(|r| r.own_meter.is_some());
             let list_micros = list.get(bucket).copied().flatten();
             for drift in drifts(bucket, days, threshold, counted, settings.min_daily_cost_micros, list_micros) {
-                if wiped_not_leaked(&drift, &resets) {
-                    continue;
-                }
                 let title = costs::bucket_title(bucket);
                 let detail = match drift.kind {
-                    DriftKind::Cost if NOT_CLOUDFLARE.contains(&bucket.as_str()) => models_detail(&drift, &caveats, &resets, read),
                     DriftKind::Count => format!(
                         "{title}: g1t counted {}, Cloudflare {} over the last {DRIFT_DAYS} days ({:+.1}%). Customers are charged for what g1t counts; check what Cloudflare counts as a unit and change the repos service's operation_mapping (set_operation_mapping).",
                         crate::features::thousands(drift.ours.max(0.0).round() as u64),
@@ -1657,16 +1382,10 @@ impl Billing {
                     DriftKind::Leak if bucket == UNMAPPED => {
                         format!("Cloudflare charged {} for meters no mapping claims. Map them on Costs & margin.", dollars(drift.cloudflare as i64))
                     }
-                    DriftKind::Leak if NOT_CLOUDFLARE.contains(&bucket.as_str()) => format!(
-                        "{title}: AI Gateway priced g1t's own provider traffic at {} over the last {DRIFT_DAYS} days and the ledger has no model charge for it, not even a comped or free one: model calls with no billing run behind them (a run started without a ticket, or something else using g1t's gateway).",
-                        dollars(drift.cloudflare as i64)
-                    ),
                     DriftKind::Leak => format!(
                         "{title}: Cloudflare charged {} over the last {DRIFT_DAYS} days and customers were charged nothing for it.",
                         dollars(drift.cloudflare as i64)
                     ),
-                    // Raised from the gateway's lines, not per bucket.
-                    DriftKind::Unpriced => unpriced_detail(&caveats),
                 };
                 found.push((drift, detail));
             }
@@ -2878,56 +2597,6 @@ mod tests {
     }
 
     #[test]
-    fn the_gateways_total_against_the_ledgers_model_cost_is_drift() {
-        // The gateway priced $5 of g1t's own traffic; the ledger has $3.
-        let short = drifts("models", &[day("models", 5_000_000, 3_000_000, 3_600_000, 0.0, 0.0)], 10.0, false, 100_000, None);
-        assert_eq!(short.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost]);
-        assert!((short[0].delta_percent.unwrap() + 40.0).abs() < 1e-9);
-        // Gateway traffic with nothing on the ledger at all: cost drift and a leak.
-        let none = drifts("models", &[day("models", 2_000_000, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None);
-        assert_eq!(none.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost, DriftKind::Leak]);
-        // Within the threshold: nothing.
-        assert!(drifts("models", &[day("models", 1_050_000, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
-        // The gateway priced nothing against a ledger that has model cost:
-        // not agreement (a token that cannot see AI Gateway reads as no
-        // rows), so it is said. Under the minimum, or no model cost: nothing.
-        let silent = drifts("models", &[day("models", 0, 1_000_000, 1_200_000, 0.0, 0.0)], 10.0, false, 100_000, None);
-        assert_eq!(silent, vec![Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 1_000_000.0, cloudflare: 0.0, delta_percent: None }]);
-        // Why it is empty, as far as the run could tell.
-        let why = |caveats: &costs::GatewayCaveats, read: costs::GatewayRead| models_detail(&silent[0], caveats, &[], &read);
-        let none = costs::GatewayCaveats::default();
-        let said = why(&none, costs::GatewayRead::Empty { visible: Some(false) });
-        assert!(said.contains("$1.00") && said.contains("priced nothing") && said.contains("cannot see the gateway") && said.contains("AI Gateway Read"), "{said}");
-        let said = why(&none, costs::GatewayRead::Empty { visible: Some(true) });
-        assert!(said.contains("logged no requests") && said.contains("went around it"), "{said}");
-        let said = why(&none, costs::GatewayRead::Failed("Cloudflare answered 500".into()));
-        assert!(said.contains("could not be read: Cloudflare answered 500"), "{said}");
-        assert!(why(&none, costs::GatewayRead::NotRead).contains("not read on this run"));
-        assert!(why(&none, costs::GatewayRead::Empty { visible: None }).contains("could not be told"));
-        // Requests with no price: neither the token nor a bypass.
-        let unpriced = costs::GatewayCaveats { requests: 42.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
-        let said = why(&unpriced, costs::GatewayRead::Rows);
-        assert!(said.contains("logged 42 requests") && said.contains("no price for the models used (anthropic_claude_new_1)"), "{said}");
-        assert!(drifts("models", &[day("models", 0, 50_000, 60_000, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
-        assert!(drifts("models", &[day("models", 0, 0, 0, 0.0, 0.0)], 10.0, false, 100_000, None).is_empty());
-        // The detail says which way and why it may be off.
-        let caveats = costs::GatewayCaveats { cache_read_tokens: 3_000_000.0, unpriced: vec!["anthropic_claude_new_1".into()], ..Default::default() };
-        let detail = models_detail(&short[0], &caveats, &[], &costs::GatewayRead::default());
-        assert!(detail.contains("$5.00") && detail.contains("$3.00") && detail.contains("were not charged"), "{detail}");
-        assert!(detail.contains("3,000,000 prompt-cache read") && detail.contains("no price for anthropic_claude_new_1"), "{detail}");
-    }
-
-    #[test]
-    fn model_usage_the_gateway_cannot_price_is_drift_even_when_the_totals_agree() {
-        assert!(unpriced_drift(&costs::GatewayCaveats::default()).is_none());
-        // Cache tokens alone are a note on the cost drift, not drift.
-        assert!(unpriced_drift(&costs::GatewayCaveats { cache_write_tokens: 10.0, ..Default::default() }).is_none());
-        let (drift, detail) = unpriced_drift(&costs::GatewayCaveats { unpriced: vec!["anthropic_claude_new_1".into()], short_runs: 2, ..Default::default() }).unwrap();
-        assert_eq!((drift.bucket.as_str(), drift.kind.as_str()), ("models", "unpriced"));
-        assert!(detail.contains("no price for anthropic_claude_new_1") && detail.contains("2 runs were settled"), "{detail}");
-    }
-
-    #[test]
     fn a_workspace_that_costs_more_than_it_pays_is_flagged() {
         let rows = vec![("acme".to_string(), 5_000_000, 1_000_000), ("beta".to_string(), 900_000, 0), ("gamma".to_string(), 2_000_000, 3_000_000)];
         let found = anomalies(&rows, 1.0, 1_000_000);
@@ -2975,18 +2644,19 @@ mod tests {
     }
 
     #[test]
-    fn what_a_reset_kept_is_on_the_ledgers_side_of_the_models_drift() {
+    fn what_a_reset_kept_is_on_the_ledgers_side_of_model_cost() {
         let models = |days: &[ProductDay]| days.iter().find(|d| d.bucket == "models").cloned().unwrap();
-        // Without it: AI Gateway's $11.11 against the ledger's $2.49.
+        // Without it: the ledger's $2.49 of model cost.
         let (days, _) = gateway_and_ledger(false);
-        let drift = drifts("models", &[models(&days)], 10.0, false, 100_000, None);
-        assert_eq!(drift.iter().map(|d| d.kind).collect::<Vec<_>>(), vec![DriftKind::Cost]);
-        assert_eq!((drift[0].ours, drift[0].cloudflare), (2_490_000.0, 11_110_000.0));
-        // With it: the ledger's model cost and the reset's add up to the gateway's.
+        assert_eq!(models(&days).own_cost_micros, 2_490_000);
+        // With it: the ledger's model cost and the reset's add up to what
+        // AI Gateway priced.
         let (days, _) = gateway_and_ledger(true);
         let m = models(&days);
         assert_eq!(m.own_cost_micros, 11_110_000);
+        // Models are no longer compared with anything: no drift either way.
         assert!(drifts("models", &[m], 10.0, false, 100_000, None).is_empty());
+        assert!(drifts("models", &[models(&gateway_and_ledger(false).0)], 10.0, false, 100_000, None).is_empty());
         // The reset's own row makes no bucket of its own.
         assert!(!days.iter().any(|d| d.bucket.is_empty()));
     }
@@ -3104,33 +2774,5 @@ mod tests {
         let kept = [("2026-10-05".to_string(), "syntaqx".to_string(), "models".to_string(), 8_620_000, 10_344_000)];
         assert_eq!(reset_usage(&kept), reset_usage(&kept));
         assert_eq!(reset_usage(&kept).len(), 1);
-    }
-
-    #[test]
-    fn a_reset_from_before_resets_kept_their_cost_is_said_not_called_a_leak() {
-        let notes = reset_notes(
-            &[("ws_syntaqx".into(), "2026-10-07T09:41:00.000Z".into()), ("ws_acme".into(), "2026-10-08T01:00:00.000Z".into())],
-            &[("acme".into(), "2026-10-08T01:00:00.000Z".into(), 1_500_000)],
-        );
-        assert_eq!(
-            notes,
-            vec![
-                ResetNote { workspace: "syntaqx".into(), day: "2026-10-07".into(), recorded: false, models_micros: 0 },
-                ResetNote { workspace: "acme".into(), day: "2026-10-08".into(), recorded: true, models_micros: 1_500_000 },
-            ]
-        );
-        let drift = Drift { bucket: "models".into(), kind: DriftKind::Cost, ours: 2_490_000.0, cloudflare: 11_110_000.0, delta_percent: Some(-77.6) };
-        let detail = models_detail(&drift, &costs::GatewayCaveats::default(), &notes, &costs::GatewayRead::default());
-        assert!(detail.contains("includes model usage wiped by a testing reset of syntaqx on 2026-10-07"), "{detail}");
-        assert!(detail.contains("not a leak") && detail.contains("leaves the 7 days on 2026-10-14"), "{detail}");
-        assert!(!detail.contains("a gap that stays is a leak"), "{detail}");
-        assert!(detail.contains("$1.50 of model cost wiped by a testing reset of acme on 2026-10-08, counted as given away (testing resets)"), "{detail}");
-        // The models leak is not raised while such a reset is in the window.
-        let leak = Drift { bucket: "models".into(), kind: DriftKind::Leak, ours: 0.0, cloudflare: 11_110_000.0, delta_percent: None };
-        assert!(wiped_not_leaked(&leak, &notes));
-        assert!(!wiped_not_leaked(&leak, &notes[1..]));
-        assert!(!wiped_not_leaked(&Drift { bucket: "actions_cache".into(), ..leak }, &notes));
-        // No reset: the detail is as before.
-        assert!(models_detail(&drift, &costs::GatewayCaveats::default(), &[], &costs::GatewayRead::default()).contains("a gap that stays is a leak"));
     }
 }
