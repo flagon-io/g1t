@@ -34,7 +34,7 @@ import { page } from "../../../lib/meta";
 import { workspaceAgents } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 
-export { shouldRevalidate } from "../../../lib/customize.server";
+export { shouldRevalidate } from "../../../lib/customize-revalidate";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Customize · ${params.owner} · g1t` });

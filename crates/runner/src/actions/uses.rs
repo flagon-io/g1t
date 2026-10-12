@@ -300,6 +300,10 @@ impl Job {
                 let _ = std::fs::create_dir_all(&dir);
                 let mut command = Command::new("tar");
                 command.arg("-xzf").arg(&archive).arg("-C").arg(&dir).arg("--strip-components=1");
+                if cfg!(windows) {
+                    // GNU tar on Windows reads `C:...` as a host and a file.
+                    command.arg("--force-local");
+                }
                 let mut commands = Commands::default();
                 matches!(process::run(command, Duration::from_secs(300).min(self.remaining_time()), &mut self.log, &mut commands), Ok(Ended::Exited(0)))
             }
@@ -334,7 +338,7 @@ impl Job {
         }
         let _ = std::fs::create_dir_all(&dir);
         let url = format!("https://codeload.github.com/{owner}/{repo}/tar.gz/{}", sha.unwrap_or(git_ref));
-        let script = format!("set -o pipefail; curl -fsSL --retry 3 '{url}' | tar -xz -C '{}' --strip-components=1", dir.display());
+        let script = format!("set -o pipefail; curl -fsSL --retry 3 '{url}' | tar{} -xz -C '{}' --strip-components=1", super::blobs::tar_local(), dir.display());
         let mut command = Command::new("bash");
         command.args(["-c", &script]);
         let mut commands = Commands::default();
