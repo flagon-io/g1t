@@ -58,6 +58,7 @@ import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../
 import { accessTo, refusal } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
 import { runControls } from "../../lib/run-controls";
+import { endPlace } from "../../lib/log-follow";
 import { type GraphJob, type Unit, groupJobs, jobsOf, unitStanding } from "../../lib/run-graph";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
@@ -198,7 +199,8 @@ function StepRow({
             {quiet}
           </p>
         )}
-        {running && <div ref={end} aria-hidden className="h-px" />}
+        {/* The end of the log: kept clear of what covers the window's bottom (a phone's tab bar), with room under the last line. */}
+        {running && <div ref={end} aria-hidden className="h-px scroll-mb-[calc(var(--tabbar-h)+0.75rem)]" />}
       </div>
     </details>
   );
@@ -254,18 +256,31 @@ const TIMESTAMPS_KEY = "g1t:actions:log-timestamps";
 /**
  * Following the running step's log as it grows, as GitHub does: while the
  * end of it is in view, new lines keep it in view; once the viewer
- * scrolls up, it stays put and `behind` says there is more below.
+ * scrolls up, it stays put and `behind` says there is more below. The end
+ * is in view only with the last line wholly above whatever covers the
+ * window's bottom (lib/log-follow.ts), and following pins it there again
+ * once the new lines have been laid out.
  */
 function useFollow(running: number | null, grew: unknown): { end: RefObject<HTMLDivElement | null>; behind: boolean; jump: () => void } {
   const end = useRef<HTMLDivElement | null>(null);
   const following = useRef(false);
+  // Jump to latest's smooth scroll is on its way: the scrolls it makes are
+  // not the viewer scrolling up.
+  const jumping = useRef(false);
   const [behind, setBehind] = useState(false);
-  // Where the end of the log is: folded away (a closed step draws nothing),
-  // on screen or nearly (the viewer is reading the latest), or below.
-  const where = (): "folded" | "here" | "below" => {
-    const box = end.current?.getBoundingClientRect();
-    if (!box || (box.width === 0 && box.height === 0)) return "folded";
-    return box.top <= window.innerHeight + 160 ? "here" : "below";
+  const where = () => {
+    const marker = end.current;
+    const covered = marker ? parseFloat(getComputedStyle(marker).scrollMarginBottom) || 0 : 0;
+    return endPlace(marker?.getBoundingClientRect() ?? null, { height: window.innerHeight, covered });
+  };
+  // The end of the log at the bottom of what can be seen, now and once
+  // anything still settling (a long log's rows being measured, the Jump to
+  // latest bar going away) has been laid out.
+  const pin = () => {
+    end.current?.scrollIntoView({ block: "end" });
+    requestAnimationFrame(() => {
+      if (following.current && where() !== "folded") end.current?.scrollIntoView({ block: "end" });
+    });
   };
   useEffect(() => {
     if (running === null) {
@@ -275,15 +290,22 @@ function useFollow(running: number | null, grew: unknown): { end: RefObject<HTML
     }
     // The viewer moving decides: at the end, follow; scrolled up, stay.
     const moved = () => {
+      if (jumping.current) return;
       const at = where();
       following.current = at === "here";
       setBehind(at === "below");
     };
-    // A step folded or opened moves nothing the viewer chose; it only
-    // changes whether there is anything below to jump to.
+    // A step folded or opened, or the window resized (a phone's address
+    // bar or keyboard), moves nothing the viewer chose: a log followed
+    // stays at its end, and whether there is anything below to jump to may
+    // change.
     const toggled = () => {
       const at = where();
       if (at === "folded") following.current = false;
+      else if (following.current && at === "below" && !jumping.current) {
+        pin();
+        return;
+      }
       setBehind(at === "below");
     };
     window.addEventListener("scroll", moved, { passive: true });
@@ -298,7 +320,7 @@ function useFollow(running: number | null, grew: unknown): { end: RefObject<HTML
   useLayoutEffect(() => {
     if (running === null || !end.current) return;
     if (following.current && where() !== "folded") {
-      end.current.scrollIntoView({ block: "end" });
+      pin();
       return;
     }
     // Not following: once there is a log and its end is on screen, follow
@@ -308,9 +330,27 @@ function useFollow(running: number | null, grew: unknown): { end: RefObject<HTML
     if (grew && at === "here") following.current = true;
     setBehind(at === "below");
   }, [grew, running]);
+  // Smoothly there, then pinned where the end is once the scroll is over:
+  // lines that arrived on the way, and the bar this button sits in going
+  // away, move it.
   const jump = () => {
     following.current = true;
-    end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    const marker = end.current;
+    if (!marker) return;
+    jumping.current = true;
+    setBehind(false);
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      jumping.current = false;
+      window.removeEventListener("scrollend", settle);
+      if (following.current && where() !== "folded") pin();
+    };
+    window.addEventListener("scrollend", settle);
+    // A browser without `scrollend`, or nothing left to scroll.
+    window.setTimeout(settle, 800);
+    marker.scrollIntoView({ block: "end", behavior: "smooth" });
   };
   return { end, behind, jump };
 }
@@ -651,7 +691,7 @@ function JobView({ job, base, rerun }: { job: Job; base: string; rerun: ReactNod
         ))}
       </Card>
       {behind && !searching && (
-        <div className="pointer-events-none sticky bottom-4 z-10 flex justify-center">
+        <div className="pointer-events-none sticky bottom-[calc(var(--tabbar-h)+1rem)] z-10 flex justify-center">
           <Button variant="secondary" size="sm" onClick={jump} className="pointer-events-auto shadow-md ring-1 ring-line">
             <ArrowDown size={14} />
             Jump to latest

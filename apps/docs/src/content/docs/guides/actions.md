@@ -1217,8 +1217,10 @@ being printed: the runner sends what a step prints every second, and the
 page asks for more every second while a step is running.
 
 - The running step opens by itself, and its timer counts up. Its log
-  follows the newest line while the end of it is on screen. Scroll up and
-  it stays where you are, with **Jump to latest** to go back to the end.
+  follows the newest line while the end of it is on screen, with the last
+  line wholly in view (above the tab bar on a phone). Scroll up and it
+  stays where you are, with **Jump to latest** to go back to the end and
+  follow it again.
 - A step that prints nothing for a while says so under its last line:
   **Running · no output for 2m 10s**, or **no output yet** before its
   first line. The job's header names the step it is on.
