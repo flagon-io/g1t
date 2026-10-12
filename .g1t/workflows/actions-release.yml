@@ -59,6 +59,11 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          # Without the job's own token left in git's config: it would go
+          # with every request to g1t.sh, beside the publish token below,
+          # and git sends the first, which may only write this repository,
+          # so the pushes to g1t/<name> were refused (403).
+          persist-credentials: false
       - name: Push each action and move its major tag
         env:
           PUBLISH_TOKEN: ${{ secrets.ACTIONS_PUBLISH_TOKEN }}
