@@ -71,11 +71,19 @@ pub fn obtain(site: &str, manifest: &update::Manifest, keys: &[String], images: 
         let path = dir.join(safe_name(&file.name)?);
         if !(path.exists() && sha256_file(&path)? == file.sha256) {
             progress(&format!("Fetching the sandbox's {key} image ({} MB)", file.size.div_ceil(1_000_000)));
-            download_checked(&format!("{}/{}/{}", update::downloads_at(site), manifest.version, file.name), &path, file)?;
+            download_checked(&format!("{}/{}/{}", update::downloads_at(site), manifest.version, file.name), &path, file, &|percent| {
+                progress(&said_progress(key, percent, file.size));
+            })?;
         }
         files.insert(key.clone(), path);
     }
     Ok(Local { version: manifest.version.clone(), files, runner_image: sandbox.runner_image.clone() })
+}
+
+/// How far a download is, as a log line the desktop app reads for its
+/// progress bar: `Fetching the sandbox's wsl-x64 image: 40% of 612 MB`.
+pub fn said_progress(key: &str, percent: u64, size: u64) -> String {
+    format!("Fetching the sandbox's {key} image: {percent}% of {} MB", size.div_ceil(1_000_000))
 }
 
 /// A file name from a manifest, which must not name a folder.
@@ -87,14 +95,16 @@ fn safe_name(name: &str) -> Result<&str> {
 }
 
 /// Downloads to `path`, hashing as it goes; the file only takes its name
-/// once its SHA-256 is the manifest's.
-fn download_checked(url: &str, path: &Path, want: &SandboxFile) -> Result<()> {
+/// once its SHA-256 is the manifest's. Says how far it is at each tenth
+/// (`progress`, in percent), when the manifest gives the file's size.
+fn download_checked(url: &str, path: &Path, want: &SandboxFile, progress: &dyn Fn(u64)) -> Result<()> {
     let response = ureq::get(url).timeout(std::time::Duration::from_secs(3600)).call().map_err(|e| anyhow!("could not fetch {url}: {e}"))?;
     let part = path.with_extension("part");
     let mut out = std::fs::File::create(&part).with_context(|| format!("could not write {}", part.display()))?;
     let mut reader = response.into_reader();
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 1 << 20];
+    let (mut done, mut said) = (0u64, 0u64);
     loop {
         let read = reader.read(&mut buffer).with_context(|| format!("the download of {url} broke off"))?;
         if read == 0 {
@@ -102,6 +112,12 @@ fn download_checked(url: &str, path: &Path, want: &SandboxFile) -> Result<()> {
         }
         hasher.update(&buffer[..read]);
         out.write_all(&buffer[..read])?;
+        done += read as u64;
+        let tenth = tenths(done, want.size);
+        if tenth > said {
+            said = tenth;
+            progress(tenth * 10);
+        }
     }
     out.sync_all()?;
     drop(out);
@@ -111,6 +127,12 @@ fn download_checked(url: &str, path: &Path, want: &SandboxFile) -> Result<()> {
     }
     std::fs::rename(&part, path)?;
     Ok(())
+}
+
+/// How many whole tenths of `size` are `done`, below ten: the last is
+/// said by the download ending. None of a file of no known size.
+fn tenths(done: u64, size: u64) -> u64 {
+    done.saturating_mul(10).checked_div(size).map_or(0, |tenths| tenths.min(9))
 }
 
 /// A local image (`--image-file`), unchecked: for a build of the sandbox
@@ -178,6 +200,17 @@ mod tests {
             serde_json::from_str(r#"{"version":"0.3.0","files":{},"sandbox":{"runner_image":"r@sha256:1","files":{"wsl-x64":{"name":"w.tar.gz","sha256":"00"}}}}"#).unwrap();
         let refused = obtain("https://g1t.sh", &manifest, &["vm-arm64-disk".into()], &std::env::temp_dir(), &|_| {}).unwrap_err();
         assert!(refused.to_string().contains("no sandbox image vm-arm64-disk"));
+    }
+
+    #[test]
+    fn a_download_says_how_far_it_is_by_tenths() {
+        assert_eq!(tenths(0, 600), 0);
+        assert_eq!(tenths(59, 600), 0);
+        assert_eq!(tenths(60, 600), 1);
+        assert_eq!(tenths(599, 600), 9);
+        assert_eq!(tenths(600, 600), 9);
+        assert_eq!(tenths(5, 0), 0);
+        assert_eq!(said_progress("wsl-x64", 40, 612_000_000), "Fetching the sandbox's wsl-x64 image: 40% of 612 MB");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { HEARTBEAT_MS, type DesktopRunnerView, backendOf, diagnosisOf, reportDue, reportKey, reportOf } from "./desktop-runner.ts";
+import { HEARTBEAT_MS, type DesktopRunnerView, backendOf, diagnosisOf, jobHref, reportDue, reportKey, reportOf } from "./desktop-runner.ts";
 
 function view(over: Partial<DesktopRunnerView> = {}): DesktopRunnerView {
   return {
@@ -72,6 +72,84 @@ test("a sandboxed desktop reports each kind of job, without its buttons", () => 
   assert.equal(kept.capabilities?.length, 2);
   assert.equal(diagnosisOf({ code: "idle", tone: "ok", title: "Waiting for jobs" })!.capabilities, undefined);
   assert.equal(reportOf(view())!.diagnosis.capabilities, undefined);
+});
+
+test("each kind of job reports its state, whether the person stopped it, and its job, without what only works here", () => {
+  const linux = {
+    id: "linux",
+    label: "Linux jobs",
+    tone: "working" as const,
+    title: "Running a job",
+    cause: null,
+    fix: null,
+    state: "busy" as const,
+    about: "A Linux VM of its own, each job in a fresh container",
+    enabled: true,
+    job: { kind: "workflow", name: "build", repo: "acme/web", link: "https://g1t.sh/acme/web/actions" },
+    runner: "build-box-linux",
+    isolation: "nested-container",
+    version: "0.3.0",
+    available: true,
+    can_toggle: true,
+    progress: null,
+    actions: [],
+  };
+  const windows = {
+    id: "windows",
+    label: "Windows jobs",
+    tone: "off" as const,
+    title: "Stopped",
+    cause: "You stopped Windows jobs on this computer. They stay stopped until you start them.",
+    fix: null,
+    state: "stopped" as const,
+    enabled: false,
+    can_toggle: true,
+    actions: [],
+  };
+  const sandboxed = view({
+    backend: "sandboxed",
+    diagnosis: { code: "busy", tone: "working", title: "Running build (acme/web)", cause: null, fix: null, actions: [], capabilities: [linux, windows], in_capabilities: true },
+  });
+  const report = reportOf(sandboxed)!;
+  assert.equal(report.diagnosis.in_capabilities, true);
+  assert.deepEqual(report.diagnosis.capabilities![0], {
+    id: "linux",
+    label: "Linux jobs",
+    tone: "working",
+    title: "Running a job",
+    cause: null,
+    fix: null,
+    state: "busy",
+    about: "A Linux VM of its own, each job in a fresh container",
+    enabled: true,
+    job: { kind: "workflow", name: "build", repo: "acme/web" },
+    runner: "build-box-linux",
+    isolation: "nested-container",
+    version: "0.3.0",
+  });
+  assert.equal(report.diagnosis.capabilities![1].enabled, false);
+  // Starting Windows jobs again is a report due.
+  const last = { key: reportKey(report), at: 0 };
+  const started = reportOf(view({ ...sandboxed, diagnosis: { ...sandboxed.diagnosis, capabilities: [linux, { ...windows, enabled: true, state: "starting", title: "Starting", tone: "working" }] } }))!;
+  assert.equal(reportDue(last, started, 1000), true);
+  // What the server keeps reads back the same, and drops what isn't one of the app's.
+  const kept = diagnosisOf(JSON.parse(JSON.stringify(report.diagnosis)))!;
+  assert.deepEqual(kept, report.diagnosis);
+  const odd = diagnosisOf({ ...report.diagnosis, capabilities: [{ ...report.diagnosis.capabilities![0], state: "dancing", enabled: "yes", job: { name: "x" } }] })!;
+  assert.equal(odd.capabilities![0].state, undefined);
+  assert.equal(odd.capabilities![0].enabled, undefined);
+  assert.equal(odd.capabilities![0].job, undefined);
+  // Only a diagnosis with kinds of job says they say it all.
+  assert.equal(diagnosisOf({ code: "idle", tone: "ok", title: "Waiting for jobs", in_capabilities: true })!.in_capabilities, undefined);
+});
+
+test("a kind of job's work links to its run when the runner says which", () => {
+  const capability = { runner: "build-box-linux", job: { kind: "workflow", name: "build", repo: "acme/web" } };
+  const runners = [{ name: "build-box-linux", work: { kind: "workflow" as const, id: "job_1", name: "build", repo: "acme/web", runId: "run_9", startedAt: null } }];
+  assert.equal(jobHref(capability, runners), "/acme/web/actions/runs/run_9");
+  assert.equal(jobHref(capability, []), "/acme/web/actions");
+  assert.equal(jobHref({ runner: null, job: { kind: "agent", name: "fix", repo: "acme/web" } }, runners), "/acme/web/agents");
+  assert.equal(jobHref({ runner: "x", job: null }, runners), null);
 });
 
 test("only a diagnosis and a backend the app makes are kept", () => {

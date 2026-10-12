@@ -289,11 +289,12 @@ pub fn runner_register(app: AppHandle, webview: Webview, workspace: String, toke
 }
 
 /// A button for the runner: Start, Stop, or a diagnosis's fix
-/// (runner/diagnosis.rs), from settings or the site's card.
+/// (runner/diagnosis.rs), from settings or the site's card. With a kind
+/// of job (`capability`: `linux`, `windows`), Start and Stop are its alone.
 #[tauri::command]
-pub fn runner_control(app: AppHandle, webview: Webview, action: String) -> Result<(), String> {
+pub fn runner_control(app: AppHandle, webview: Webview, action: String, capability: Option<String>) -> Result<(), String> {
     from_site(&app, &webview).or_else(|_| from_settings(&webview))?;
-    runner::act(&app, &action)
+    runner::act(&app, &action, capability.as_deref())
 }
 
 #[cfg(test)]

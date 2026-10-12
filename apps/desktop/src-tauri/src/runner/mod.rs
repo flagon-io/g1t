@@ -15,6 +15,12 @@
 //!   is `g1t-runner sandbox` (launcher.rs) on every OS: `up` a few seconds
 //!   after the window, `status` every few seconds while it runs, `down`
 //!   as g1t quits, and `down --drain` when another backend is chosen.
+//!   Each kind of job it runs (Linux jobs, Windows jobs) starts and stops
+//!   on its own too: settings keep which are on (`runnerCapabilities`),
+//!   every `up` names them (`--only`), and stopping one is `down --only`
+//!   it, which leaves the other running. One that should run and doesn't
+//!   while the other runs is tried again by itself, every few minutes, and
+//!   every five while the newest release has no sandbox images.
 //! - **Registering.** The first time, and when the workspace or backend
 //!   changes, the app needs a registration token for the workspace. Only
 //!   the site can make one, for an owner who is signed in: the app asks
@@ -112,6 +118,12 @@ struct Now {
     fix: Option<String>,
     /// How the sandbox is, while jobs run sandboxed.
     sandbox: Option<Status>,
+    /// A sandbox run is up, or on its way.
+    live: bool,
+    /// The kinds of job a launcher command is starting now.
+    starting: Vec<String>,
+    /// How far the sandbox's image has downloaded, while it does.
+    download: Option<launcher::Download>,
 }
 
 /// What the site last said about the person.
@@ -165,6 +177,8 @@ pub struct View {
 enum Ask {
     /// Something changed: settings, Start or Stop, Retry.
     Look,
+    /// A kind of job was started: start what should run now, stopping nothing.
+    Soon,
     Retry,
     Token { workspace: String, token: String },
     Refused { workspace: String, allowed: bool, why: String },
@@ -256,9 +270,13 @@ fn workspace(app: &AppHandle) -> Option<String> {
     site.current.filter(|slug| site.owned.iter().any(|o| &o.slug == slug)).or_else(|| site.owned.first().map(|o| o.slug.clone()))
 }
 
+/// The kinds of job a sandbox can have.
+const KINDS: [&str; 3] = ["linux", "windows", "macos"];
+
 fn facts(app: &AppHandle, now: &Now) -> Facts {
     let server = config::server(app);
-    let backend = config::settings(app).runner_backend;
+    let settings = config::settings(app);
+    let backend = settings.runner_backend;
     Facts {
         workspace: workspace(app),
         backend: backend.label(),
@@ -268,9 +286,15 @@ fn facts(app: &AppHandle, now: &Now) -> Facts {
         exit_code: now.exit_code,
         wait_seconds: now.wait_seconds,
         server: server.host_str().unwrap_or("g1t").to_owned(),
+        site: server.as_str().trim_end_matches('/').to_owned(),
         platform: std::env::consts::OS.into(),
         fix: now.fix.clone(),
         sandbox: now.sandbox.clone().filter(|_| backend == Backend::Sandboxed),
+        off: KINDS.iter().filter(|kind| !settings.runner_capabilities.on(kind)).map(|kind| (*kind).to_owned()).collect(),
+        live: now.live,
+        starting: now.starting.clone(),
+        download: now.download.clone(),
+        held: !settings.runner || *app.state::<Shared>().paused.lock().unwrap(),
     }
 }
 
@@ -346,6 +370,26 @@ pub fn set_paused(app: &AppHandle, paused: bool) {
     settings_changed(app);
 }
 
+/// Start or Stop on one kind of job's card: kept in settings, and the
+/// thread starts or stops that kind alone. Starting one with the runner
+/// off or stopped starts the runner too: that is what was asked.
+pub fn set_kind(app: &AppHandle, kind: &str, on: bool) -> Result<(), String> {
+    let mut settings = config::settings(app);
+    if !settings.runner_capabilities.set(kind, on) {
+        return Err(format!("g1t runs no {kind} jobs"));
+    }
+    if on {
+        settings.runner = true;
+        *app.state::<Shared>().paused.lock().unwrap() = false;
+    }
+    settings::apply(app, settings)?;
+    if on {
+        ask(app, Ask::Soon);
+    }
+    settings_changed(app);
+    Ok(())
+}
+
 /// The tray's Start or Stop row.
 pub fn toggle(app: &AppHandle) {
     let view = view(app);
@@ -384,10 +428,14 @@ pub fn register(app: &AppHandle, workspace: String, token: Option<String>, allow
 }
 
 /// A diagnosis's button, or Start and Stop: from the settings window, or
-/// from the site's card for this computer.
-pub fn act(app: &AppHandle, action: &str) -> Result<(), String> {
+/// from the site's card for this computer. With a kind of job (`linux`,
+/// `windows`), Start and Stop are that kind's alone.
+pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     let browse = |url: &str| app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string());
+    if let ("start" | "stop", Some(kind)) = (action, kind) {
+        return set_kind(app, kind, action == "start");
+    }
     match action {
         "start" => {
             set_paused(app, false);
@@ -500,17 +548,22 @@ enum Process {
 }
 
 /// A launcher command that takes a while.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Step {
     Up,
     Update,
+    /// `up --only <kind>`: one kind of job, started while the rest run.
+    Start(String),
+    /// `down --only <kind>`: one kind of job, stopped, the rest running on.
+    Stop(String),
 }
 
 impl Step {
-    fn name(self) -> &'static str {
+    fn name(&self) -> &'static str {
         match self {
-            Step::Up => "up",
+            Step::Up | Step::Start(_) => "up",
             Step::Update => "update",
+            Step::Stop(_) => "down",
         }
     }
 }
@@ -564,7 +617,7 @@ impl Run {
 
     fn step(&self) -> Option<Step> {
         match &self.process {
-            Process::Sandbox(Some((step, _))) => Some(*step),
+            Process::Sandbox(Some((step, _))) => Some(step.clone()),
             _ => None,
         }
     }
@@ -584,6 +637,9 @@ struct Keeper {
     image_pending: bool,
     /// Why the last update failed, said until the next one works.
     update_failed: Option<String>,
+    /// A kind of job that should run and doesn't, while another runs:
+    /// when it is tried again, and how many times it has been.
+    retry: Vec<(String, Instant, u32)>,
 }
 
 /// What a set of the state carries besides its code.
@@ -602,7 +658,20 @@ fn detail(text: impl Into<String>) -> Extra {
 impl Keeper {
     fn new(app: AppHandle, tx: Sender<Ask>) -> Keeper {
         let now = Instant::now();
-        Keeper { app, tx, run: None, generation: 0, token: None, not_before: now + AFTER_START, failures: 0, next_update: now + FIRST_UPDATE, log: None, image_pending: false, update_failed: None }
+        Keeper {
+            app,
+            tx,
+            run: None,
+            generation: 0,
+            token: None,
+            not_before: now + AFTER_START,
+            failures: 0,
+            next_update: now + FIRST_UPDATE,
+            log: None,
+            image_pending: false,
+            update_failed: None,
+            retry: Vec::new(),
+        }
     }
 
     fn keep(mut self, rx: Receiver<Ask>) {
@@ -637,9 +706,9 @@ impl Keeper {
                 exit_code: extra.exit_code,
                 wait_seconds: extra.wait_seconds,
                 job,
-                version: now.version.clone(),
                 fix: extra.fix,
-                sandbox: now.sandbox.clone(),
+                live: self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher),
+                ..now.clone()
             };
             let changed = *now != next;
             *now = next;
@@ -691,9 +760,19 @@ impl Keeper {
     fn handle(&mut self, ask: Ask) {
         match ask {
             Ask::Look | Ask::Quit(_) => {}
+            Ask::Soon => {
+                self.not_before = Instant::now();
+                for (_, at, _) in &mut self.retry {
+                    *at = Instant::now();
+                }
+            }
             Ask::Retry => {
                 self.not_before = Instant::now();
                 self.failures = 0;
+                // Each kind of job that waits to be tried again is tried now.
+                for (_, at, _) in &mut self.retry {
+                    *at = Instant::now();
+                }
                 match self.code() {
                     // The runner is fine: only the update is tried again.
                     Code::UpdateFailed => {
@@ -742,6 +821,18 @@ impl Keeper {
             if out && (run.json.is_some() || launcher::starts_status(line)) {
                 run.json.get_or_insert_with(Vec::new).push(line.to_owned());
             } else {
+                if let Some(download) = launcher::download(line) {
+                    let changed = {
+                        let shared = self.app.state::<Shared>();
+                        let mut now = shared.now.lock().unwrap();
+                        let changed = now.download.as_ref() != Some(&download);
+                        now.download = Some(download);
+                        changed
+                    };
+                    if changed {
+                        publish(&self.app);
+                    }
+                }
                 self.write_log(line);
             }
             return;
@@ -833,10 +924,19 @@ impl Keeper {
                     native::stop(child);
                 }
                 let binary = native::binary(&folder(&self.app));
-                if let Err(why) = launcher::down(&binary, &native_dir(&self.app, Backend::Sandboxed), how) {
-                    self.write_log(&format!("g1t: the sandbox didn't stop cleanly: {why}"));
-                }
-                self.app.state::<Shared>().now.lock().unwrap().sandbox = None;
+                // How it is once stopped, so each kind of job's card says so.
+                let stopped = match launcher::down(&binary, &native_dir(&self.app, Backend::Sandboxed), how) {
+                    Ok(status) => Some(status),
+                    Err(why) => {
+                        self.write_log(&format!("g1t: the sandbox didn't stop cleanly: {why}"));
+                        None
+                    }
+                };
+                let shared = self.app.state::<Shared>();
+                let mut now = shared.now.lock().unwrap();
+                now.sandbox = stopped.filter(|_| how != Down::Delete);
+                now.starting.clear();
+                now.download = None;
             }
             (Process::Child(child), Engine::Launcher) => native::stop(child),
             (Process::Child(child), Engine::Native { docker }) => {
@@ -944,6 +1044,8 @@ impl Keeper {
                 self.not_before = Instant::now();
             } else if !busy && listening && !stepping && Instant::now() >= self.next_update {
                 self.update();
+            } else if !moved && !stepping {
+                self.kinds(workspace.as_deref());
             }
             self.poll();
             return;
@@ -1178,6 +1280,30 @@ impl Keeper {
                 Err(why) => return self.no_status(why),
             };
         }
+        // The kinds of job the person stopped are stopped here too, before
+        // anything starts (the launcher keeps them off); with every kind
+        // stopped, nothing starts.
+        let kinds = config::settings(&app).runner_capabilities;
+        if status.per_kind() {
+            let stopping: Vec<String> = status.capabilities.iter().filter(|c| !kinds.on(&c.id) && !c.off()).map(|c| c.id.clone()).collect();
+            for kind in &stopping {
+                if let Err(why) = launcher::down_only(&binary, &dir, kind) {
+                    self.write_log(&format!("g1t: {} couldn't be stopped: {why}", diagnosis::kind_label(kind)));
+                }
+            }
+            if !stopping.is_empty() {
+                status = match launcher::status(&binary, &dir) {
+                    Ok(status) => status,
+                    Err(why) => return self.no_status(why),
+                };
+                self.seen(&status);
+            }
+        }
+        let wanted: Vec<String> = status.capabilities.iter().filter(|c| c.available && kinds.on(&c.id)).map(|c| c.id.clone()).collect();
+        if status.capabilities.iter().any(|c| c.available) && wanted.is_empty() {
+            self.not_before = Instant::now() + LOOK_AGAIN;
+            return self.set(Code::KindsStopped, Extra::default());
+        }
         let mut token = None;
         if !ours || !kept.as_ref().is_some_and(|k| k.registered) || status.unregistered() {
             match self.token.take() {
@@ -1195,16 +1321,122 @@ impl Keeper {
         self.image_pending = false;
         let name = backend::machine_name();
         let url = server.as_str().trim_end_matches('/').to_owned();
-        let up = launcher::Up { url: &url, name: &name, labels: "desktop", token: token.as_deref() };
-        let args = match step {
-            Step::Up => launcher::up_args(&dir, &up),
-            Step::Update => launcher::update_args(&dir),
+        let up = launcher::Up { url: &url, name: &name, labels: "desktop", token: token.as_deref(), only: wanted.iter().map(String::as_str).collect() };
+        let (args, starting) = match step {
+            Step::Update => (launcher::update_args(&dir), vec![]),
+            _ => (launcher::up_args(&dir, &up), wanted.clone()),
         };
         if let Err(why) = self.spawn_step(step, args, up.token) {
             self.run = None;
             return self.not_started(workspace, token, why);
         }
+        self.now_starting(starting);
         self.set(Code::Starting, detail(STARTING_SANDBOX));
+    }
+
+    /// Says which kinds of job a launcher command is starting now.
+    fn now_starting(&self, kinds: Vec<String>) {
+        let changed = {
+            let shared = self.app.state::<Shared>();
+            let mut now = shared.now.lock().unwrap();
+            let changed = now.starting != kinds;
+            now.starting = kinds;
+            changed
+        };
+        if changed {
+            publish(&self.app);
+        }
+    }
+
+    /// Each kind of job as the person has it: one they stopped is stopped
+    /// (`down --only`), one they started is started (`up --only`), and one
+    /// that should run and doesn't while another runs is tried again in a
+    /// while: every five minutes while the release has no sandbox images.
+    /// One launcher command at a time, each leaving the others as they are.
+    fn kinds(&mut self, workspace: Option<&str>) {
+        if !self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher) {
+            return;
+        }
+        let Some(status) = self.app.state::<Shared>().now.lock().unwrap().sandbox.clone() else { return };
+        if !status.per_kind() {
+            return;
+        }
+        let on = config::settings(&self.app).runner_capabilities;
+        for capability in &status.capabilities {
+            if !on.on(&capability.id) && !capability.off() {
+                return self.kind_step(Step::Stop(capability.id.clone()), None);
+            }
+            if on.on(&capability.id) && capability.off() && capability.available {
+                return self.start_kind(capability, workspace);
+            }
+        }
+        // Nothing runs: the sandbox as a whole starts again (sandbox_stopped).
+        if !status.running() {
+            self.retry.clear();
+            return;
+        }
+        let now = Instant::now();
+        for capability in &status.capabilities {
+            let id = capability.id.as_str();
+            let wanting = on.on(id) && !capability.off() && capability.available && matches!(capability.state, State::Error | State::Stopped | State::Absent);
+            if !wanting {
+                self.retry.retain(|(kind, _, _)| kind != id);
+                continue;
+            }
+            let images = id == "linux" && status.trouble().is_some_and(|(cause, _)| launcher::why(&cause) == launcher::Why::NoImages);
+            match self.retry.iter().position(|(kind, _, _)| kind == id) {
+                // Just seen not running: tried again in a while.
+                None => self.retry.push((id.to_owned(), now + again(images, 1), 1)),
+                Some(at) if now >= self.retry[at].1 => {
+                    let tries = self.retry[at].2 + 1;
+                    self.retry[at] = (id.to_owned(), now + again(images, tries), tries);
+                    self.write_log(&format!("g1t: trying {} again.", diagnosis::kind_label(id)));
+                    return self.start_kind(capability, workspace);
+                }
+                Some(_) => {}
+            }
+        }
+    }
+
+    /// Starts one kind of job; one never registered needs a token from the
+    /// site first, which is asked for, and it starts once it is here.
+    fn start_kind(&mut self, capability: &launcher::Capability, workspace: Option<&str>) {
+        let mut token = None;
+        if capability.state == State::Absent {
+            let Some(workspace) = workspace else { return };
+            match self.token.take() {
+                Some((for_workspace, given)) if for_workspace == workspace => token = Some(given),
+                other => {
+                    self.token = other;
+                    if wanted(&self.app).is_none() {
+                        *self.app.state::<Shared>().wanted.lock().unwrap() = Some(workspace.to_owned());
+                        let _ = self.app.emit_to(EventTarget::webview(frame::SITE), WANTED_EVENT, workspace.to_owned());
+                    }
+                    return;
+                }
+            }
+        }
+        self.kind_step(Step::Start(capability.id.clone()), token);
+    }
+
+    /// `up --only` or `down --only` one kind of job, while the rest run on.
+    fn kind_step(&mut self, step: Step, token: Option<String>) {
+        let dir = native_dir(&self.app, Backend::Sandboxed);
+        let (args, starting, said) = match &step {
+            Step::Start(kind) => {
+                let url = config::server(&self.app).as_str().trim_end_matches('/').to_owned();
+                let name = backend::machine_name();
+                let up = launcher::Up { url: &url, name: &name, labels: "desktop", token: token.as_deref(), only: vec![kind.as_str()] };
+                (launcher::up_args(&dir, &up), vec![kind.clone()], format!("starting {}", diagnosis::kind_label(kind)))
+            }
+            Step::Stop(kind) => (launcher::down_only_args(&dir, kind), vec![], format!("stopping {}", diagnosis::kind_label(kind))),
+            Step::Up | Step::Update => return,
+        };
+        self.write_log(&format!("g1t: {said}."));
+        match self.spawn_step(step, args, token.as_deref()) {
+            Ok(()) => self.now_starting(starting),
+            Err(why) => self.write_log(&format!("g1t: {why}")),
+        }
     }
 
     /// `sandbox status` didn't answer: a `g1t-runner` from before its
@@ -1320,12 +1552,20 @@ impl Keeper {
             }
         }
         self.seen(&status);
-        match step {
+        match &step {
             Some(Step::Up) => return self.set(Code::Starting, detail(STARTING_SANDBOX)),
             Some(Step::Update) if status.state == State::Updating => return self.set(Code::Updating, detail("Updating the sandbox to the newest image.")),
             _ => {}
         }
         let (code, extra) = shown(&status);
+        // Every kind of job stopped by the person: nothing to start again.
+        if step.is_none() && status.all_off() && !status.running() {
+            self.run = None;
+            self.generation += 1;
+            self.retry.clear();
+            self.not_before = Instant::now() + LOOK_AGAIN;
+            return self.set(Code::KindsStopped, Extra::default());
+        }
         if step.is_none() && !status.running() && !matches!(status.state, State::Starting | State::Updating) {
             return self.sandbox_stopped(&status, code, extra);
         }
@@ -1345,7 +1585,8 @@ impl Keeper {
         self.run = None;
         self.generation += 1;
         self.failures += 1;
-        let wait = Duration::from_secs(15 * 2u64.pow(self.failures.min(6))).min(MOST_BACKOFF);
+        // A release without the sandbox's images is looked at again every few minutes.
+        let wait = if code == Code::WaitingForImage { launcher::IMAGES_AGAIN } else { again(false, self.failures) };
         self.not_before = Instant::now() + wait;
         let (code, extra) = match code {
             Code::Idle | Code::Busy | Code::Starting | Code::Updating => (Code::SandboxFailed, Extra { detail: status.error.clone().or_else(|| some_text("The sandbox stopped by itself.")), ..Extra::default() }),
@@ -1388,6 +1629,12 @@ impl Keeper {
         run.stale = run.polling;
         let with_token = run.with_token;
         let status = launcher::parse(&printed);
+        {
+            let shared = self.app.state::<Shared>();
+            let mut now = shared.now.lock().unwrap();
+            now.starting.clear();
+            now.download = None;
+        }
         let error = match (&status, worked) {
             (Ok(status), true) => status.error.clone().filter(|_| !status.running()),
             (Ok(status), false) => Some(status.error.clone().unwrap_or_else(|| format!("g1t-runner sandbox {} failed.", step.name()))),
@@ -1397,6 +1644,14 @@ impl Keeper {
         let running = status.as_ref().is_some_and(Status::running);
         if let Some(error) = &error {
             self.write_log(&format!("g1t: sandbox {}: {error}", step.name()));
+        }
+        // One kind of job started or stopped: how the sandbox is now says
+        // the rest, and one that didn't start is tried again in a while.
+        if matches!(step, Step::Start(_) | Step::Stop(_)) {
+            if let Some(status) = status {
+                self.sandbox_now(status);
+            }
+            return;
         }
         // Registered: from now on it starts with no token.
         if step == Step::Up && with_token && (error.is_none() || running) {
@@ -1415,15 +1670,20 @@ impl Keeper {
             if step == Step::Update {
                 self.update_failed = Some(format!("The sandbox's image couldn't be updated: {error}"));
             } else if !running {
-                // Nothing runs: tidied away, and tried again in a while.
+                // Nothing runs: tidied away, and tried again in a while;
+                // a release without the sandbox's images every few minutes.
                 self.halt();
                 self.failures += 1;
-                let wait = Duration::from_secs(15 * 2u64.pow(self.failures.min(6))).min(MOST_BACKOFF);
-                self.not_before = Instant::now() + wait;
                 let (code, cause, fix) = status
                     .as_ref()
                     .and_then(diagnosis::sandbox_trouble)
                     .unwrap_or_else(|| (diagnosis::sandbox_code(launcher::why(&error)), error.clone(), None));
+                let wait = if code == Code::WaitingForImage { launcher::IMAGES_AGAIN } else { again(false, self.failures) };
+                self.not_before = Instant::now() + wait;
+                // The cards say why from what `up` said, not from the stopped sandbox.
+                if let Some(failed) = status {
+                    self.app.state::<Shared>().now.lock().unwrap().sandbox = Some(failed);
+                }
                 return self.set(code, Extra { detail: Some(cause), fix, wait_seconds: Some(wait.as_secs()), ..Extra::default() });
             }
         } else if step == Step::Up {
@@ -1451,20 +1711,29 @@ fn some_text(text: &str) -> Option<String> {
     Some(text.to_owned())
 }
 
+/// How long before trying again, the `tries`th time: every few minutes
+/// while the release has no sandbox images, else longer each time.
+fn again(images: bool, tries: u32) -> Duration {
+    if images { launcher::IMAGES_AGAIN } else { Duration::from_secs(15 * 2u64.pow(tries.min(6))).min(MOST_BACKOFF) }
+}
+
 /// What the app shows for how the sandbox is, with no launcher command
-/// running: what is wrong with Linux jobs first, else what its runners do.
+/// running: what its runners do while one runs (each kind of job's card
+/// says the rest), else what is wrong with Linux jobs.
 fn shown(status: &Status) -> (Code, Extra) {
+    if status.job().is_some() {
+        return (Code::Busy, Extra::default());
+    }
+    if status.running() {
+        return (Code::Idle, Extra::default());
+    }
     if let Some((code, cause, fix)) = diagnosis::sandbox_trouble(status) {
         return (code, Extra { detail: Some(cause), fix, ..Extra::default() });
     }
-    let linux = status.linux();
-    match (linux.state, status.job()) {
-        (_, Some(_)) => (Code::Busy, Extra::default()),
-        (State::Running, None) => (Code::Idle, Extra::default()),
-        (State::Starting, None) => (Code::Starting, detail(STARTING_SANDBOX)),
-        (State::Updating, None) => (Code::Updating, detail("Updating the sandbox to the newest image.")),
-        // Linux jobs aren't running, but Windows jobs are.
-        _ if status.running() => (Code::Idle, Extra::default()),
+    match status.linux().state {
+        State::Starting => (Code::Starting, detail(STARTING_SANDBOX)),
+        State::Updating => (Code::Updating, detail("Updating the sandbox to the newest image.")),
+        _ if status.all_off() => (Code::KindsStopped, Extra::default()),
         _ => (Code::SandboxFailed, detail("The sandbox isn't running.")),
     }
 }
@@ -1549,13 +1818,26 @@ mod tests {
         assert_eq!(shown(&starting).0, Code::Starting);
         let updating = status(r#"{"schema":1,"state":"updating","capabilities":[{"id":"linux","available":true,"state":"updating"}]}"#);
         assert_eq!(shown(&updating).0, Code::Updating);
-        // Windows jobs run while WSL is missing: what is wrong with Linux jobs is what it says.
+        // Windows jobs run while WSL is missing: the runner waits for jobs,
+        // and the Linux card says what is wrong (diagnosis.rs).
         let no_wsl = status(r#"{"schema":1,"state":"error","error":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","capabilities":[
             {"id":"linux","available":false,"state":"error","cause":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","fix":"Open a terminal as administrator and run `wsl --install --no-distribution`."},
             {"id":"windows","available":true,"state":"running"}]}"#);
-        let (code, extra) = shown(&no_wsl);
+        assert_eq!(shown(&no_wsl).0, Code::Idle);
+        let (code, extra) = shown(&status(r#"{"schema":1,"state":"error","error":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.","capabilities":[
+            {"id":"linux","available":false,"state":"error","cause":"WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own."},
+            {"id":"windows","available":false,"state":"absent"}]}"#));
         assert_eq!(code, Code::NoWsl);
         assert!(extra.detail.unwrap().starts_with("WSL is not installed"));
+        // 0.3.0 without its images, on Home: waiting for them, not failing.
+        let images = status(r#"{"schema":1,"state":"error","error":"release 0.3.0 has no sandbox images","capabilities":[{"id":"linux","available":true,"state":"error","turned_off":false},{"id":"windows","available":false,"state":"absent","turned_off":false}]}"#);
+        assert_eq!(shown(&images).0, Code::WaitingForImage);
+        assert_eq!(again(true, 5), launcher::IMAGES_AGAIN);
+        assert_eq!(again(false, 1), Duration::from_secs(30));
+        assert_eq!(again(false, 9), MOST_BACKOFF);
+        // Every kind of job stopped by the person.
+        let off = status(r#"{"schema":1,"state":"stopped","capabilities":[{"id":"linux","available":true,"state":"stopped","turned_off":true},{"id":"windows","available":true,"state":"stopped","turned_off":true}]}"#);
+        assert_eq!(shown(&off).0, Code::KindsStopped);
         let failed = status(r#"{"schema":1,"state":"error","error":"the sandbox did not start within 180 seconds","capabilities":[{"id":"linux","available":true,"state":"error"}]}"#);
         let (code, extra) = shown(&failed);
         assert_eq!((code, extra.detail.as_deref()), (Code::SandboxFailed, Some("the sandbox did not start within 180 seconds")));

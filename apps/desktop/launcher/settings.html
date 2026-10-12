@@ -53,19 +53,22 @@
 						>
 						<input type="checkbox" role="switch" id="runner" />
 					</label>
-					<!-- What it is doing; when it isn't running, why and how to fix it (src/runner/diagnosis.rs). -->
-					<div class="diagnosis" id="runner-diagnosis" aria-live="polite">
+					<!--
+						What affects the whole runner (signed out, no workspace, turned off,
+						the sandbox down): why, and how to fix it (src/runner/diagnosis.rs).
+						Hidden when the cards below say it all.
+					-->
+					<div class="diagnosis" id="runner-diagnosis" role="status" aria-live="polite" hidden>
 						<span class="dot" id="runner-dot" aria-hidden="true"></span>
 						<span class="diagnosis-text">
 							<strong id="runner-title">Runner</strong>
 							<span class="muted" id="runner-cause"></span>
 							<span id="runner-fix"></span>
 							<span class="buttons" id="runner-actions"></span>
-							<!-- Sandboxed: each kind of job it runs, Linux and Windows, on its own line. -->
-							<ul class="capabilities" id="runner-capabilities" hidden></ul>
 						</span>
-						<button type="button" id="runner-toggle">Stop</button>
 					</div>
+					<!-- Sandboxed: each kind of job it runs, a card of its own, started and stopped on its own. -->
+					<div class="kinds" id="runner-kinds" role="list" aria-label="Kinds of job this computer runs" hidden></div>
 					<label class="setting">
 						<span><strong>How jobs run</strong><span class="muted" id="runner-backend-note">&nbsp;</span></span>
 						<select id="runnerBackend">

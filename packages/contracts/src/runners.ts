@@ -154,18 +154,50 @@ export type DesktopDiagnosis = {
   fix: string | null;
   /** A sandboxed desktop's kinds of job, each with how it is: Linux jobs can run while Windows jobs cannot. */
   capabilities?: DesktopCapability[];
+  /** The kinds of job say all of this, each for itself: a page showing them shows no line of the whole runner's as well. */
+  in_capabilities?: boolean;
 };
 
-/** One kind of job a sandboxed desktop runs (`linux`, `windows`, `macos`), as its app says it. */
+/** How one kind of job is, as its card's label says it. */
+export type DesktopCapabilityState = "busy" | "idle" | "starting" | "downloading" | "updating" | "waiting" | "stopped" | "unavailable" | "problem";
+
+/** What a kind of job is running. */
+export type DesktopJob = {
+  /** `workflow` or `agent`. */
+  kind: string;
+  name: string;
+  /** `acme/web`. */
+  repo: string;
+};
+
+/**
+ * One kind of job a sandboxed desktop runs (`linux`, `windows`, `macos`),
+ * as its app says it. Each starts and stops on its own: `enabled` is false
+ * for one the person stopped, which is not failing. The fields after
+ * `fix` come from newer apps; older ones leave them out.
+ */
 export type DesktopCapability = {
   id: string;
   /** `Linux jobs`. */
   label: string;
   tone: DesktopDiagnosis["tone"];
-  /** `Waiting for jobs`, `Not available`. */
+  /** `Waiting for jobs`, `Not available`: its state in a few words. */
   title: string;
   cause: string | null;
   fix: string | null;
+  state?: DesktopCapabilityState;
+  /** What is wrong, in a few words: `WSL isn't installed`. */
+  headline?: string | null;
+  /** What it is, in a line: `A Linux VM of its own, each job in a fresh container`. */
+  about?: string | null;
+  /** On in the person's settings; false when they stopped it. */
+  enabled?: boolean;
+  job?: DesktopJob | null;
+  /** Its runner's name on g1t: `build-box-linux`. */
+  runner?: string | null;
+  /** `nested-container` or `vm`. */
+  isolation?: string | null;
+  version?: string | null;
 };
 
 /** How a desktop runs jobs. */

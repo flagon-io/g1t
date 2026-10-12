@@ -200,6 +200,8 @@ and needs no token.
 | --- | --- |
 | `g1t-runner sandbox up` | Makes the sandbox if there is none, and starts both runners. Waits until the Linux runner is asking for work. |
 | `g1t-runner sandbox down` | Stops both now. A running job is cut short, and its run says the runner was stopped. `--drain` waits for it to finish instead. `--delete` also removes the VM and everything in it; the runners stay listed on g1t until you remove them there. |
+| `g1t-runner sandbox down --only windows` | Stops Windows jobs alone and keeps them off: Linux jobs carry on, and a later `up` leaves Windows jobs stopped. `--only linux` does the same for Linux jobs, leaving Windows jobs running. Takes `--drain`, not `--delete`. |
+| `g1t-runner sandbox up --only windows` | Turns Windows jobs on again and starts them, leaving Linux jobs as they are. `--only linux,windows` turns on both. |
 | `g1t-runner sandbox status` | Says how each capability is, and what to do about one that is not available. |
 | `g1t-runner sandbox update` | Drains the Linux runner (the job it is running finishes), swaps in the newest release's image, and starts it again. The registration is kept, so it is the same runner on g1t. |
 
@@ -211,7 +213,8 @@ and needs no token.
 | `--cpus` | The Linux VM's runner's CPUs, and so its jobs'. Half the computer's, at most 8, if left out. |
 | `--memory` | Its memory, such as `8g`. A quarter of the computer's, between 2 and 8 GB and never more than half, if left out. |
 | `--disk` | The VM's disk on macOS and Linux, such as `64g` (64 GB if left out). On Windows the disk is not limited: WSL can only resize it with all of WSL shut down. |
-| `--no-native`, `--native` | Leave out the native capability, or bring it back. Kept until said otherwise. |
+| `--only` | The kinds of job to start, of `linux`, `windows` and `macos` (`native` is this computer's own): turned on, and kept on. The others are left as they are, running or not. Without it, `up` starts every kind that isn't turned off. `down` takes it too. |
+| `--no-native`, `--native` | Turn the native capability off, or on again, as `down --only` and `up --only` do. Kept until said otherwise. |
 | `--state-dir` | Where the sandbox keeps its settings and images. `~/.g1t-runner/sandbox` if left out. Every command takes it. |
 | `--json` | Print the status as JSON when done (see below). Every command takes it. |
 
@@ -330,9 +333,9 @@ the same object with `--json` when they are done, and exit 1 with
   "resources": { "cpus": 4, "memory_mib": 8192, "disk_gib": 64 },
   "capabilities": [
     { "id": "linux", "available": true, "state": "running", "isolation": "nested-container",
-      "runner_version": "0.3.0", "job": null, "cause": null, "fix": null },
+      "runner_version": "0.3.0", "job": null, "cause": null, "fix": null, "turned_off": false },
     { "id": "windows", "available": false, "state": "absent", "isolation": "vm",
-      "runner_version": null, "job": null,
+      "runner_version": null, "job": null, "turned_off": false,
       "cause": "Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).",
       "fix": "On Windows 11 Pro, Enterprise or Education, turn on Windows Sandbox under Settings, System, Optional features, More Windows features, then restart." }
   ],
@@ -347,7 +350,8 @@ the same object with `--json` when they are done, and exit 1 with
 | `runner_version`, `image_version`, `launcher_version` | The runner inside the VM, the VM's image, and this `g1t-runner`. |
 | `job` | What the Linux runner is running now, or null. |
 | `error` | A sentence for a person when something is wrong, or null. |
-| `capabilities` | Each kind of job the computer can run sandboxed: `linux`, and `windows` or `macos`. `available` says whether it can be had here; when not, `cause` says why and `fix` what to do. Each has its own `state`, `job` and `runner_version`. |
+| `capabilities` | Each kind of job the computer can run sandboxed: `linux`, and `windows` or `macos`. `available` says whether it can be had here; when not, `cause` says why and `fix` what to do. Each has its own `state`, `job` and `runner_version`. A native one whose runner didn't start is in `error`, with why in `cause`. |
+| `turned_off` | On each capability: someone stopped it (`down --only`, `--no-native`). Its `state` is then `stopped`: stopped by a person, not failing, and nothing in `error`. |
 
 Fields are only added; `schema` changes if one changes meaning.
 

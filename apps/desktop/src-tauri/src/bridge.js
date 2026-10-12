@@ -153,9 +153,12 @@
           error: answer.error == null ? null : String(answer.error),
         });
       },
-      // Start, stop, or a diagnosis's fix, by its id.
-      act: function (action) {
-        return invoke("runner_control", { action: String(action) });
+      // Start, stop, or a diagnosis's fix, by its id; Start and Stop of one
+      // kind of job alone (`linux`, `windows`) with its id as `capability`.
+      act: function (action, capability) {
+        var args = { action: String(action) };
+        if (capability != null) args.capability = String(capability);
+        return invoke("runner_control", args);
       },
       // The app wants a registration token for a workspace.
       onWanted: function (listener) {

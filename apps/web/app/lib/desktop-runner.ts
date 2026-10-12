@@ -18,13 +18,26 @@
  */
 import { useEffect, useState } from "react";
 
-import type { DesktopBackend, DesktopCapability, DesktopDiagnosis, DesktopReport } from "@g1t/contracts";
+import type { DesktopBackend, DesktopCapability, DesktopCapabilityState, DesktopDiagnosis, DesktopJob, DesktopReport, Runner } from "@g1t/contracts";
+
+import { agentRunHref, workflowRunHref } from "./runners.ts";
 
 /** A fix, as a button: its id is the app's (`runner_control`). */
 export type DesktopRunnerAction = { id: string; label: string };
 
-/** A kind of job the sandbox runs, with its fixes' buttons (`diagnosis::CapabilityLine` in the app). */
-export type DesktopRunnerCapability = DesktopCapability & { actions: DesktopRunnerAction[] };
+/**
+ * A kind of job the sandbox runs, with its fixes' buttons
+ * (`diagnosis::CapabilityLine` in the app), and what only this computer
+ * knows: whether it can start and stop on its own, and how far its
+ * image has downloaded.
+ */
+export type DesktopRunnerCapability = DesktopCapability & {
+  actions: DesktopRunnerAction[];
+  available?: boolean;
+  can_toggle?: boolean;
+  progress?: number | null;
+  job?: (DesktopJob & { link?: string | null }) | null;
+};
 
 /** What the app says of its runner (`runner::View` in the app). */
 export type DesktopRunnerView = {
@@ -50,7 +63,8 @@ export type DesktopRunnerBridge = {
   status(): Promise<DesktopRunnerView>;
   offer(offer: DesktopRunnerOffer): Promise<string | null>;
   register(answer: { workspace: string; token?: string | null; allowed?: boolean; error?: string | null }): Promise<void>;
-  act(action: string): Promise<void>;
+  /** A fix, or Start and Stop: of one kind of job alone with its id as `capability`. */
+  act(action: string, capability?: string): Promise<void>;
   onWanted(listener: (workspace: string) => void): () => void;
   onStatus(listener: (view: DesktopRunnerView) => void): () => void;
 };
@@ -87,12 +101,30 @@ export function useDesktopRunner(): DesktopRunnerView | null {
 /** How often a desktop says it is still open, with nothing new: within the server's ten minutes. */
 export const HEARTBEAT_MS = 4 * 60 * 1000;
 
+/** A kind of job as the server keeps it: what it says, without what only works or changes on that computer. */
+function plainCapability(capability: DesktopCapability): DesktopCapability {
+  const { id, label, tone, title, cause, fix, state, headline, about, enabled, job, runner, isolation, version } = capability;
+  const said: DesktopCapability = { id, label, tone, title, cause: cause ?? null, fix: fix ?? null };
+  if (state) said.state = state;
+  if (headline) said.headline = headline;
+  if (about) said.about = about;
+  if (typeof enabled === "boolean") said.enabled = enabled;
+  if (job) said.job = { kind: job.kind, name: job.name, repo: job.repo };
+  if (runner) said.runner = runner;
+  if (isolation) said.isolation = isolation;
+  if (version) said.version = version;
+  return said;
+}
+
 /** What goes to the server, without the buttons, which only work on that computer. */
 export function reportOf(view: DesktopRunnerView): DesktopReport | null {
   if (!view.workspace) return null;
-  const plain = ({ code, tone, title, cause, fix, capabilities }: DesktopDiagnosis): DesktopDiagnosis => {
+  const plain = ({ code, tone, title, cause, fix, capabilities, in_capabilities }: DesktopDiagnosis): DesktopDiagnosis => {
     const said: DesktopDiagnosis = { code, tone, title, cause, fix };
-    if (capabilities?.length) said.capabilities = capabilities.map(({ id, label, tone, title, cause, fix }) => ({ id, label, tone, title, cause: cause ?? null, fix: fix ?? null }));
+    if (capabilities?.length) {
+      said.capabilities = capabilities.map(plainCapability);
+      if (in_capabilities) said.in_capabilities = true;
+    }
     return said;
   };
   return { workspace: view.workspace, machine: view.machine, backend: view.backend, version: view.version, diagnosis: plain(view.diagnosis), closed: plain(view.closed) };
@@ -106,8 +138,8 @@ export function reportDue(last: { key: string; at: number } | null, report: Desk
 
 export function reportKey(report: DesktopReport): string {
   const { diagnosis } = report;
-  const capabilities = (diagnosis.capabilities ?? []).map((c) => [c.id, c.tone, c.title, c.cause, c.fix].join("\u0001"));
-  return [report.workspace, report.machine, report.backend, report.version, diagnosis.code, diagnosis.title, diagnosis.cause, diagnosis.fix, ...capabilities].join("\u0000");
+  const capabilities = (diagnosis.capabilities ?? []).map((c) => [c.id, c.tone, c.title, c.cause, c.fix, c.state, c.enabled, c.headline, c.job?.name, c.job?.repo, c.version].join("\u0001"));
+  return [report.workspace, report.machine, report.backend, report.version, diagnosis.code, diagnosis.title, diagnosis.cause, diagnosis.fix, diagnosis.in_capabilities, ...capabilities].join("\u0000");
 }
 
 /** A string with something in it, or null. */
@@ -115,6 +147,7 @@ export const text = (value: unknown): string | null => (typeof value === "string
 
 const BACKENDS: DesktopBackend[] = ["sandboxed", "docker", "host"];
 const TONES: DesktopDiagnosis["tone"][] = ["ok", "working", "off", "warning", "problem"];
+const STATES: DesktopCapabilityState[] = ["busy", "idle", "starting", "downloading", "updating", "waiting", "stopped", "unavailable", "problem"];
 
 export function backendOf(value: unknown): DesktopBackend | null {
   return BACKENDS.find((backend) => backend === value) ?? null;
@@ -132,7 +165,10 @@ export function diagnosisOf(value: unknown): DesktopDiagnosis | null {
   const capabilities = Array.isArray(given.capabilities)
     ? given.capabilities.map(capabilityOf).filter((c): c is DesktopCapability => c !== null).slice(0, MAX_CAPABILITIES)
     : [];
-  if (capabilities.length > 0) said.capabilities = capabilities;
+  if (capabilities.length > 0) {
+    said.capabilities = capabilities;
+    if (given.in_capabilities === true) said.in_capabilities = true;
+  }
   return said;
 }
 
@@ -148,7 +184,30 @@ function capabilityOf(value: unknown): DesktopCapability | null {
   const title = text(given.title);
   const tone = TONES.find((t) => t === given.tone);
   if (!id || !label || !title || !tone) return null;
-  return { id, label, tone, title, cause: text(given.cause), fix: text(given.fix) };
+  const said: DesktopCapability = { id, label, tone, title, cause: text(given.cause), fix: text(given.fix) };
+  const state = STATES.find((s) => s === given.state);
+  if (state) said.state = state;
+  for (const key of ["headline", "about", "runner", "isolation", "version"] as const) {
+    const value = text(given[key]);
+    if (value) said[key] = value;
+  }
+  if (typeof given.enabled === "boolean") said.enabled = given.enabled;
+  const job = given.job && typeof given.job === "object" ? (given.job as Record<string, unknown>) : null;
+  const [kind, name, repo] = [text(job?.kind), text(job?.name), text(job?.repo)];
+  if (kind && name && repo) said.job = { kind, name, repo };
+  return said;
+}
+
+/**
+ * Where a kind of job's current work is on g1t: its run, from the runner
+ * it is (by its name, `build-box-linux`), else its repository's runs.
+ */
+export function jobHref(capability: Pick<DesktopCapability, "job" | "runner">, runners: Pick<Runner, "name" | "work">[]): string | null {
+  const job = capability.job;
+  if (!job) return null;
+  const work = capability.runner ? runners.find((runner) => runner.name === capability.runner)?.work : null;
+  if (work?.runId && work.repo) return work.kind === "workflow" ? workflowRunHref(work.repo, work.runId) : agentRunHref(work.repo, work.runId);
+  return job.kind === "agent" ? `/${job.repo}/agents` : `/${job.repo}/actions`;
 }
 
 /** The words for how a desktop runs jobs, as its settings say them. */
