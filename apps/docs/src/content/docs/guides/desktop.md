@@ -120,9 +120,10 @@ either way.
 
 ## Settings
 
-The app's own settings are in a window of their own: **Settings** in the
-File menu (the g1t menu on macOS), **Settings…** in the tray, or **Desktop
-app settings** in your account menu on g1t. Each change takes effect at
+The app's own settings are in a window of their own: the **Settings**
+button at the right of the title bar, **Settings** in the File menu (the
+g1t menu on macOS) or Ctrl+, (⌘, on macOS), **Settings…** in the tray, or
+**Desktop app settings** in your account menu on g1t. Each change takes effect at
 once and is kept on this computer. Your account's settings, which things
 notify you among them, stay on g1t, in [your settings](/guides/notifications/#settings).
 

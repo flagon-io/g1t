@@ -263,6 +263,11 @@ pub fn act(app: &AppHandle, action: &str) -> Result<(), String> {
         "back" => site.eval("history.back()").map_err(|error| error.to_string())?,
         "forward" => site.eval("history.forward()").map_err(|error| error.to_string())?,
         "search" => app.emit_to(EventTarget::webview(SITE), SEARCH_EVENT, ()).map_err(|error| error.to_string())?,
+        // The app's settings, a click away rather than only in its menu.
+        "settings" => {
+            crate::settings::open(app);
+            return Ok(());
+        }
         "focus" => {}
         other => return Err(format!("the bar cannot {other}")),
     }
