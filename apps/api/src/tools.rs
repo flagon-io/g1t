@@ -20,6 +20,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
@@ -75,6 +76,8 @@ pub const TOOLS: &[Tool] = &[
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
             a("get", Op::GetRepo, "One repository"),
+            a("tarball", Op::Archives(ArchiveOp::DownloadTarball), "A 10-minute link to a branch, tag or commit as a .tar.gz"),
+            a("zipball", Op::Archives(ArchiveOp::DownloadZipball), "A 10-minute link to a branch, tag or commit as a .zip"),
             a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
             a("update", Op::UpdateRepo, "Change description, website, topics, default branch, protection"),
             a("get_settings", Op::GetRepoSettings, "How pull requests merge, and the default branch's protection as its rules stack"),

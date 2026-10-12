@@ -20,7 +20,7 @@
 //
 // Usage: node configs.mjs [outDir]
 // Environment: PUBLIC_URL, GITSTORE_URL, GITSTORE_SECRET, MAIL_URL,
-// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, USERCONTENT_KEY, CONNECTORS_KEY,
+// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, USERCONTENT_KEY, REPOS_KEY, CONNECTORS_KEY,
 // USERCONTENT_URL,
 // PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, BACKUP_S3_BUCKET, DOCS_S3_BUCKET, S3_REGION,
 // S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_ENDPOINT, and optionally
@@ -80,6 +80,7 @@ const OFF = Object.fromEntries(
 /** Sealing keys, by the service that holds each (hosted: Wrangler secrets). */
 const SECRETS = {
   g1t: "USERCONTENT_KEY",
+  "g1t-repos": "REPOS_KEY",
   "g1t-actions": "ACTIONS_KEY",
   "g1t-integrations": "INTEGRATIONS_KEY",
   "g1t-agents": "CONNECTORS_KEY",

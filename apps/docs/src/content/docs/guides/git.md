@@ -76,9 +76,25 @@ exist says **No one on g1t goes by that name**, since profiles are public.
 On a repository's **Files** page, **Code** → **Download ZIP** downloads the
 branch shown as one zip, its files in a folder named `<repo>-<branch>`. It
 works for anyone who can see the repository, and for any branch, tag or
-commit at `g1t.sh/<workspace>/<repo>/archive/<ref>.zip`. A ZIP holds the
-files, not the history; clone for that. A repository with more than 10,000
-files or over 24 MB is too large to download this way, so clone it instead.
+commit at `g1t.sh/<workspace>/<repo>/archive/<ref>.zip`, or as a gzipped
+tar at `…/archive/<ref>.tar.gz`. Executable files and symlinks stay as
+they are in git. An archive holds the files, not the history; clone for
+that. A repository with more than 10,000 files or over 24 MB is too large
+to download this way, so clone it instead.
+
+The API serves the same archives at GitHub's addresses,
+[`GET /repos/{owner}/{repo}/tarball/{ref}`](/reference/api/repositories/download-tarball-archive/)
+and [`/zipball/{ref}`](/reference/api/repositories/download-zipball-archive/):
+each answers with a redirect to a link that needs no token, good for 10
+minutes, for the commit the ref names. Its files are in one folder named
+as GitHub names it, `<workspace>-<repo>-<first 7 of the commit>`, which is
+what `actions/checkout` expects when it downloads a repository in a job
+container without git. With a token, a private repository's work too:
+
+```sh
+curl -L -H "Authorization: Bearer $G1T_TOKEN" -o hello.tar.gz \
+  https://api.g1t.sh/repos/flagon-io/hello/tarball/main
+```
 
 ## Raw files
 
@@ -196,6 +212,33 @@ https://g1t.sh/pulls/<pull request id>.git
 Only whoever opened the pull request can push to it, or, for one g1t
 made, whoever asked for it. Pushes to a fork
 update the pull request's head commit on its page.
+
+## Pull request refs
+
+g1t keeps `refs/pull/<number>/head` and `refs/pull/<number>/merge` in a
+repository for each open pull request (see
+[What a pull request's run builds](/guides/actions/#what-a-pull-requests-run-builds)). You can
+fetch them like any branch, and a `git clone --mirror` gets them, as on
+GitHub:
+
+```sh
+git fetch origin refs/pull/12/head
+```
+
+They are hidden refs, as on GitHub: only g1t moves them. A push leaves
+them out of what it reads from the repository, and a push that names one
+is refused for that ref alone, with the rest of the push applied. So
+`git push --mirror` of a repository you cloned with `--mirror` from
+GitHub moves every branch and tag and reports only the pull request refs:
+
+```text
+ ! [remote rejected] refs/pull/1/head -> refs/pull/1/head (deny updating a hidden ref)
+```
+
+Git then says some refs failed to push; the branches and tags are there.
+To leave them out, push branches and tags alone:
+`git push origin --all && git push origin --tags`. A push with `--atomic`
+that names one is refused whole.
 
 ## Limits
 

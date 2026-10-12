@@ -311,7 +311,7 @@ impl Search {
         let listed: FileList = g1t_kit::call(
             &self.repos,
             "list_files",
-            &ListFilesArgs { repo_id: repo_id.to_owned(), git_ref: None, skip_dirs: Self::skip_dirs(), limit: MAX_REPO_FILES },
+            &ListFilesArgs { repo_id: repo_id.to_owned(), git_ref: None, skip_dirs: Self::skip_dirs(), limit: MAX_REPO_FILES, links: false },
         )
         .await?;
         let stored: HashMap<String, String> = store::all::<Stored>(

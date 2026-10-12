@@ -29,6 +29,7 @@ use crate::alerts::{AlertKind, SecurityAlert};
 use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
@@ -328,6 +329,8 @@ pub enum Op {
     Tokens(TokenOp),
     /// Workflow run artifacts, and how long they are kept: run_artifacts.rs.
     Artifacts(ArtifactsOp),
+    /// A branch, tag or commit as a tarball or zipball: archives.rs.
+    Archives(ArchiveOp),
     /// A repository's deploy keys: deploy_keys.rs.
     DeployKeys(DeployKeysOp),
     /// A repository's mirroring: its remotes, takeovers and hand-backs:
@@ -711,7 +714,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 380] = [
+    pub const ALL: [Op; 382] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1003,6 +1006,8 @@ impl Op {
         Op::Artifacts(ArtifactsOp::DeleteArtifact),
         Op::Artifacts(ArtifactsOp::GetArtifactRetention),
         Op::Artifacts(ArtifactsOp::SetArtifactRetention),
+        Op::Archives(ArchiveOp::DownloadTarball),
+        Op::Archives(ArchiveOp::DownloadZipball),
         Op::DeployKeys(DeployKeysOp::ListDeployKeys),
         Op::DeployKeys(DeployKeysOp::GetDeployKey),
         Op::DeployKeys(DeployKeysOp::CreateDeployKey),
@@ -1306,6 +1311,7 @@ impl Op {
             Op::Protection(op) => op.name(),
             Op::Tokens(op) => op.name(),
             Op::Artifacts(op) => op.name(),
+            Op::Archives(op) => op.name(),
             Op::DeployKeys(op) => op.name(),
             Op::Mirrors(op) => op.name(),
             Op::Packages(op) => op.name(),
@@ -1879,6 +1885,7 @@ impl Op {
             Op::Protection(op) => op.description(),
             Op::Tokens(op) => op.description(),
             Op::Artifacts(op) => op.description(),
+            Op::Archives(op) => op.description(),
             Op::DeployKeys(op) => op.description(),
             Op::Mirrors(op) => op.description(),
             Op::Packages(op) => op.description(),
@@ -3373,12 +3380,19 @@ impl Op {
             Op::Protection(op) => op.input(),
             Op::Tokens(op) => op.input(),
             Op::Artifacts(op) => op.input(),
+            Op::Archives(op) => op.input(),
             Op::DeployKeys(op) => op.input(),
             Op::Mirrors(op) => op.input(),
             Op::Packages(op) => op.input(),
             Op::Folios(op) => op.input(),
             Op::Customize(op) => op.input(),
         }
+    }
+
+    /// Whether REST answers with a redirect to the `url` it returns, as
+    /// GitHub's downloads do.
+    pub(crate) fn redirects(self) -> bool {
+        matches!(self, Op::Artifacts(ArtifactsOp::DownloadArtifact) | Op::Archives(_))
     }
 
     /// Whether the operation refuses an anonymous caller outright.
@@ -3393,6 +3407,10 @@ impl Op {
         // A public repository's artifacts are anyone's to read.
         if let Op::Artifacts(op) = self {
             return op.writes();
+        }
+        // And its archives.
+        if let Op::Archives(_) = self {
+            return false;
         }
         // So are public packages.
         if let Op::Packages(op) = self {
@@ -5733,6 +5751,7 @@ impl Op {
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
+            Op::Archives(op) => crate::archives::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
             Op::Mirrors(op) => crate::mirrors::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,

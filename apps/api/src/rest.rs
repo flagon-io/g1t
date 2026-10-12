@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
@@ -274,6 +275,10 @@ pub const ROUTES: &[Route] = &[
     ),
     route("POST", "/repos", Op::CreateRepo, &[]),
     route("GET", "/repos/:owner/:name", Op::GetRepo, &[]),
+    // A branch, tag or commit as one archive: a redirect to a link good for
+    // ten minutes, as GitHub's go to codeload.
+    route("GET", "/repos/:owner/:name/tarball/:ref", Op::Archives(ArchiveOp::DownloadTarball), &[]),
+    route("GET", "/repos/:owner/:name/zipball/:ref", Op::Archives(ArchiveOp::DownloadZipball), &[]),
     route("PATCH", "/repos/:owner/:name", Op::UpdateRepo, &[]),
     route("POST", "/repos/:owner/:name/transfer", Op::TransferRepo, &[]),
     route("DELETE", "/repos/:owner/:name", Op::DeleteRepo, &[]),
@@ -1434,6 +1439,25 @@ mod tests {
         assert_eq!(op("GET", "/repos/acme/web/check-runs/cr_1/annotations"), Op::Checks(ChecksOp::ListCheckRunAnnotations));
         assert_eq!(op("POST", "/repos/acme/web/check-suites/cs_1/rerequest"), Op::Checks(ChecksOp::RerequestCheckSuite));
         assert_eq!(op("GET", "/repos/acme/web/commits/main/check-suites"), Op::Checks(ChecksOp::ListCheckSuitesForRef));
+    }
+
+    #[test]
+    fn archives_are_at_githubs_addresses_and_redirect() {
+        let sha = "4807077b296e6edbf410d55e72749d3e1170c291";
+        let (route, input) = resolve("GET", &format!("/repos/acme/web/tarball/{sha}"), &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::Archives(ArchiveOp::DownloadTarball));
+        assert_eq!(input, json!({ "ref": sha, "repo": "acme/web" }));
+        // A branch with slashes, URL-encoded as octokit sends it.
+        let (route, input) = resolve("GET", "/repos/acme/web/zipball/release%2F1.x", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::Archives(ArchiveOp::DownloadZipball));
+        assert_eq!(input, json!({ "ref": "release/1.x", "repo": "acme/web" }));
+        // Both answer with a redirect to their link, as the artifact download does.
+        assert!(route.op.redirects());
+        assert!(Op::Archives(ArchiveOp::DownloadTarball).redirects());
+        assert!(Op::Artifacts(ArtifactsOp::DownloadArtifact).redirects());
+        assert!(!Op::GetRepo.redirects());
+        // Anyone may ask for a public repository's.
+        assert!(!route.op.needs_user());
     }
 
     #[test]
