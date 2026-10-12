@@ -275,7 +275,7 @@ QUEUE_PULL="$(json pull.number)"
 node -e 'const q = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const e = q.active.find((e) => e.number === Number(process.argv[2])); if (!e) process.exit(1); console.log(`#${e.number} is ${e.state} in the queue`)' "$WORK/api" "$QUEUE_PULL" \
   || fail "#$QUEUE_PULL is not in the queue: $(head -c 400 "$WORK/api")"
 [ "$(get "/$WORKSPACE/$REPO/queue")" = 200 ] && grep -q "Through the queue" "$WORK/body" || fail "queue page"
-# Testing a queued state needs a sandbox, and agents are off: take it out.
+# Testing a queued state needs a sandbox, and cloud runners are off: take it out.
 out="$(post "/$WORKSPACE/$REPO/pull/$QUEUE_PULL" --data-urlencode "action=unqueue")"
 echo "unqueue: $out"
 [ "$(api GET "/repos/$WORKSPACE/$REPO/queue")" = 200 ] || fail "queue"

@@ -103,20 +103,20 @@ test("stages follow bindings: nothing binds to a unit that ships after it", () =
 
 test("inside a stage, a Worker that does not exist yet goes before those bound to it", () => {
   const u = (id, worker, bindsTo = []) => ({ id, worker, bindsTo });
-  const artifacts = u("artifacts", "g1t-artifacts", ["g1t-agents", "g1t-identity"]);
-  const agents = u("agents", "g1t-agents", ["g1t-artifacts", "g1t-identity"]);
-  const chat = u("chat", "g1t-chat", ["g1t-agents"]);
+  const artifacts = u("artifacts", "g1t-artifacts", ["g1t-notify", "g1t-identity"]);
+  const notify = u("notify", "g1t-notify", ["g1t-artifacts", "g1t-identity"]);
+  const chat = u("chat", "g1t-chat", ["g1t-notify"]);
   const ids = (list) => list.map((wave) => wave.map((x) => x.id));
   // Nothing new: one wave, as before.
-  assert.deepEqual(ids(waves([artifacts, agents, chat], () => false)), [["artifacts", "agents", "chat"]]);
+  assert.deepEqual(ids(waves([artifacts, notify, chat], () => false)), [["artifacts", "notify", "chat"]]);
   // A renamed Worker: it first, then what binds to it.
-  assert.deepEqual(ids(waves([agents, chat, artifacts], (x) => x.id === "artifacts")), [["chat", "artifacts"], ["agents"]]);
+  assert.deepEqual(ids(waves([notify, chat, artifacts], (x) => x.id === "artifacts")), [["chat", "artifacts"], ["notify"]]);
   // New Workers bound to each other: no order helps, so together.
-  assert.deepEqual(ids(waves([artifacts, agents], () => true)), [["artifacts", "agents"]]);
-  // This repository's agents unit binds to the artifacts Worker, in the same stage.
+  assert.deepEqual(ids(waves([artifacts, notify], () => true)), [["artifacts", "notify"]]);
+  // This repository's chat unit binds to the notify Worker, in the same stage.
   const real = (id) => stack.units.find((x) => x.id === id);
-  assert.equal(real("artifacts").stage, real("agents").stage);
-  assert.deepEqual(ids(waves([real("agents"), real("artifacts")], (x) => x.id === "artifacts")), [["artifacts"], ["agents"]]);
+  assert.equal(real("chat").stage, real("notify").stage);
+  assert.deepEqual(ids(waves([real("chat"), real("notify")], (x) => x.id === "notify")), [["notify"], ["chat"]]);
 });
 
 test("Rust workers build with the shared script and the same wasm-opt level", () => {
@@ -412,9 +412,8 @@ test("this repository's test-only sources are read from git", () => {
   const atHead = { read: (path) => git.show(head, path), list: (dir) => git.list(head, dir) };
   const only = (u, file) => testOnlySource(file, unit(u).crateDirs, atHead);
   assert.ok(only("api", "apps/api/src/responses.rs"));
-  assert.ok(only("billing", "services/billing/src/catalogue_tests.rs"));
-  assert.ok(only("billing", "services/billing/src/gateway_tests.rs"));
-  assert.ok(!only("billing", "services/billing/src/catalogue.rs"));
+  assert.ok(!only("billing", "services/billing/src/compute.rs"));
+  assert.ok(!only("billing", "services/billing/src/limits.rs"));
   assert.ok(!only("api", "apps/api/src/toolkit.rs"));
 });
 
@@ -422,19 +421,19 @@ test("decide: a change only to tests deploys nothing", () => {
   const units = ["actions", "billing", "runner"].map(unit);
   const live = { actions: { sha: OLD }, billing: { sha: OLD }, runner: { sha: OLD } };
   const files = {
-    [`${HEAD}:services/billing/src/gateway.rs`]: "#[cfg(test)]\n#[path = \"gateway_tests.rs\"]\nmod tests;\n",
-    [`${HEAD}:services/billing/src/lib.rs`]: "mod gateway;\n",
+    [`${HEAD}:services/billing/src/compute.rs`]: "#[cfg(test)]\n#[path = \"compute_tests.rs\"]\nmod tests;\n",
+    [`${HEAD}:services/billing/src/lib.rs`]: "mod compute;\n",
   };
   const gitApi = {
-    ...fakeGit(["crates/actions/tests/repository_workflows.rs", "services/billing/src/gateway_tests.rs"]),
+    ...fakeGit(["crates/actions/tests/repository_workflows.rs", "services/billing/src/compute_tests.rs"]),
     show: (sha, path) => files[`${sha}:${path}`] ?? "",
-    list: (sha, dir) => Object.keys(files).map((k) => k.slice(sha.length + 1)).filter((p) => p.startsWith(`${dir}/`)).concat(dir === "services/billing/src" ? ["services/billing/src/gateway_tests.rs"] : []),
+    list: (sha, dir) => Object.keys(files).map((k) => k.slice(sha.length + 1)).filter((p) => p.startsWith(`${dir}/`)).concat(dir === "services/billing/src" ? ["services/billing/src/compute_tests.rs"] : []),
   };
   const decisions = decide(units, { live, head: HEAD, gitApi });
   assert.deepEqual(decisions.map((d) => [d.unit.id, d.deploy, d.image]), [["actions", false, false], ["billing", false, false], ["runner", false, false]]);
   // With a source that ships beside them, only that is listed.
-  const mixed = decide([unit("billing")], { live, head: HEAD, gitApi: { ...gitApi, changed: () => ["services/billing/src/gateway_tests.rs", "services/billing/src/gateway.rs"] } });
-  assert.deepEqual([mixed[0].deploy, mixed[0].files], [true, ["services/billing/src/gateway.rs"]]);
+  const mixed = decide([unit("billing")], { live, head: HEAD, gitApi: { ...gitApi, changed: () => ["services/billing/src/compute_tests.rs", "services/billing/src/compute.rs"] } });
+  assert.deepEqual([mixed[0].deploy, mixed[0].files], [true, ["services/billing/src/compute.rs"]]);
 });
 
 test("own folders, declared inputs and root files", () => {

@@ -10,7 +10,7 @@
 # repositories as bare repos on a volume (gitstore), the API in a second
 # workerd beside it, packages' files, backups and the clone pack cache in
 # RustFS (S3-compatible storage), and Mailpit for mail.
-# Agents, deployments, context search and billing are off. See
+# Cloud runners, deployments and billing are off. See
 # docs.g1t.sh/guides/self-hosting-architecture/.
 name: g1t
 

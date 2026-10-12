@@ -13,14 +13,14 @@
 //   instead of R2, the repos service its nightly backups (a bucket of
 //   their own, BACKUP_S3_BUCKET), and the artifacts service the files in pages
 //   (DOCS_S3_BUCKET);
-// - services that are off in this phase (agents, the context hub, the
-//   g1t.page dispatcher, model proxy) are bound to workers/off instead, and
-//   events stop queueing work for them;
+// - services that are off in this phase (the cloud runner, the g1t.page
+//   dispatcher) are bound to workers/off instead, and events stop queueing
+//   work for them;
 // - URLs that name g1t.sh name PUBLIC_URL instead, and billing is free.
 //
 // Usage: node configs.mjs [outDir]
 // Environment: PUBLIC_URL, GITSTORE_URL, GITSTORE_SECRET, MAIL_URL,
-// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, USERCONTENT_KEY, REPOS_KEY, CONNECTORS_KEY,
+// ACTIONS_KEY, INTEGRATIONS_KEY, WEBHOOKS_KEY, IDENTITY_KEY, USERCONTENT_KEY, REPOS_KEY,
 // USERCONTENT_URL,
 // PACKAGES_TOKEN_SECRET, S3_ENDPOINT, S3_BUCKET, BACKUP_S3_BUCKET, DOCS_S3_BUCKET, S3_REGION,
 // S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_ENDPOINT, and optionally
@@ -69,9 +69,7 @@ export const RUNNING = STACK.filter((unit) => unit.self_host === "run")
 
 /** What the off Worker calls each service that is off in phase 1. */
 const OFF_NAMES = {
-  "g1t-runner": "Agents",
-  "g1t-context": "Context search and memory",
-  "g1t-models": "Hosted models",
+  "g1t-runner": "Cloud runners",
 };
 const OFF = Object.fromEntries(
   STACK.filter((unit) => unit.self_host === "off").map((unit) => [unit.worker, OFF_NAMES[unit.worker] ?? unit.worker]),
@@ -83,7 +81,6 @@ const SECRETS = {
   "g1t-repos": "REPOS_KEY",
   "g1t-actions": "ACTIONS_KEY",
   "g1t-integrations": "INTEGRATIONS_KEY",
-  "g1t-agents": "CONNECTORS_KEY",
   "g1t-webhooks": "WEBHOOKS_KEY",
 };
 
@@ -109,7 +106,7 @@ const GITHUB_SECRETS = {
 const SELF_HOST_CRONS = new Set(["g1t-repos", "g1t-events", "g1t-identity", "g1t-security", "g1t-webhooks", "g1t-packages", "g1t-artifacts"]);
 
 /** Queues whose consumers are off: events stops sending to them. */
-const OFF_QUEUES = new Set(["g1t-events-runner", "g1t-events-context"]);
+const OFF_QUEUES = new Set(["g1t-events-runner"]);
 
 /** Strips comments and trailing commas from JSONC. Strings are respected. */
 function parseJsonc(text) {

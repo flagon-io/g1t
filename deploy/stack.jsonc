@@ -18,8 +18,7 @@
 	//
 	// migrations: every pending D1 migration, before any code.
 	// core:       the services, reached through service bindings.
-	// edge:       public endpoints other than the site: API, MCP, g1t.page, status
-	//             (models is public too, but in core: agents binds to it).
+	// edge:       public endpoints other than the site: API, MCP, g1t.page, status.
 	// front:      the site, sudo and the docs.
 	"stages": ["migrations", "core", "edge", "front"],
 
@@ -147,8 +146,8 @@
 				"The D1 database, before the first deploy: npx wrangler d1 create g1t-docs, then put its id in services/artifacts/wrangler.jsonc",
 				"The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files",
 				"The queue the events service sends it merges and pushes on (pages whose cited code changed, projects' docs): npx wrangler queues create g1t-events-docs. The service also sends its own backfill jobs to it (JOBS)",
-				"The Vectorize index agents recall Docs from: npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id and space_id (npx wrangler vectorize create-metadata-index g1t-docs --property-name=<name> --type=string)",
-				"The Vectorize index for artifacts (folios), before the first deploy with FOLIO_VECTORS: npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id, scope and kind (npx wrangler vectorize create-metadata-index g1t-folios --property-name=<name> --type=string). Without it, artifacts are searched and recalled by words"
+				"The Vectorize index Docs are searched by meaning from: npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id and space_id (npx wrangler vectorize create-metadata-index g1t-docs --property-name=<name> --type=string)",
+				"The Vectorize index for artifacts (folios), before the first deploy with FOLIO_VECTORS: npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id, scope and kind (npx wrangler vectorize create-metadata-index g1t-folios --property-name=<name> --type=string). Without it, artifacts are searched by words"
 			],
 			"self_host": "run"
 		},
@@ -184,21 +183,6 @@
 			"setup": [
 				"The VAPID key pair for browser push: `node scripts/ops/vapid-keys.mjs` prints both halves and stores nothing. Put the public half in VAPID_PUBLIC_KEY in services/notify/wrangler.jsonc, and the private half with `npx wrangler secret put VAPID_PRIVATE_KEY` in services/notify"
 			],
-			"self_host": "run"
-		},
-		"agents": {
-			"path": "services/agents",
-			"kind": "ts-worker",
-			"worker": "g1t-agents",
-			"d1": { "database": "g1t-agents", "migrations": "migrations" },
-			"stage": "core",
-			"secrets": ["CONNECTORS_KEY"],
-			"setup": [
-				"The D1 database, before the first deploy: npx wrangler d1 create g1t-agents, then put its id in services/agents/wrangler.jsonc"
-			],
-			// Replies route and gate model work exactly as runs do, with the
-			// runner's own modules: its routing policy and who may use hosted models.
-			"inputs": ["services/runner/src/model-env.ts", "services/runner/src/hosted.ts"],
 			"self_host": "run"
 		},
 		"billing": {
@@ -279,7 +263,7 @@
 			"kind": "ts-worker",
 			"worker": "g1t-runner",
 			"stage": "core",
-			"secrets": ["AI_GATEWAY_TOKEN"],
+			"secrets": [],
 			"setup": [
 				"Containers on the account; Docker on the machine that builds a new image",
 				"The base image, once: node scripts/deploy.mjs build-base"
@@ -291,18 +275,6 @@
 				"base": { "context": "services/runner/base", "lock": "services/runner/base.json" },
 				"repository": "g1t-runner"
 			},
-			"self_host": "off"
-		},
-		"context": {
-			"path": "services/context",
-			"kind": "ts-worker",
-			"worker": "g1t-context",
-			"d1": { "database": "g1t-context", "migrations": "migrations" },
-			"stage": "core",
-			"secrets": [],
-			"setup": [
-				"The Vectorize index: npx wrangler vectorize create g1t-context --dimensions=768 --metric=cosine, with metadata indexes on workspace, kind, project and private"
-			],
 			"self_host": "off"
 		},
 		"og": {
@@ -331,19 +303,6 @@
 				"The actions cache bucket's lifecycle rule limited to `c/`, so artifacts under `a/` are kept their retention-days (docs.g1t.sh/guides/deploy-to-cloudflare/#a-first-deploy-to-a-new-account)"
 			],
 			"self_host": "separate"
-		},
-		"models": {
-			"path": "services/models",
-			"kind": "ts-worker",
-			"worker": "g1t-models",
-			// Core, though it is public at models.g1t.sh: the agents service
-			// reaches it by service binding for chat replies. It binds only to
-			// core services itself.
-			"stage": "core",
-			"secrets": ["AI_GATEWAY_TOKEN"],
-			"setup": ["The AI Gateway `g1t`"],
-			// Not run self-hosted, but bound to the off Worker: agents binds to it.
-			"self_host": "off"
 		},
 		"pages": {
 			"path": "services/pages",
