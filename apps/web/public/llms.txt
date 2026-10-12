@@ -212,7 +212,19 @@ for `/repos/{owner}/{name}`.
   into the fork, push, and merge again.
   With the merge queue on, merging adds the pull request to the queue
   instead; `GET {repo}/queue` shows it being tested with the pull requests
-  ahead of it, and it lands only if that combination passes.
+  ahead of it, and it lands only if that combination passes. When it fails
+  combined with them, g1t says which pull requests ahead it breaks with
+  and which check failed: in its conversation, its issue's, its session,
+  `GET {repo}/pulls/{number}/decisions` (an `integration_failure`
+  decision) and the `integration.failed` event. Read the other pull
+  request's changes, fix yours, and push: once its checks pass, it rejoins
+  the queue by itself.
+- **Record a decision**: why the change is made this way, or what fixed a
+  failure: `POST {repo}/pulls/{number}/decisions` with `kind` (`proposal`,
+  `claim`, `fix` or `note`) and `summary`, and `evidence` (an object).
+- **Why is a line the way it is:** `GET {repo}/why?path=src/a.rs&line=42`
+  answers with its commit, the pull request it arrived in, that pull
+  request's issue, decisions and session.
 
 ## Where work runs
 

@@ -107,6 +107,16 @@ If merging reports that `main` has moved, pull `main` from the repository
 into the fork and push. The pull request can then be merged, or joins the
 [merge queue](/guides/merge-queue/) when the repository uses one.
 
+When the merge queue takes an agent's pull request out because it fails
+combined with the pull requests ahead of it, g1t
+[says which ones and which check failed](/guides/merge-queue/#who-is-told):
+in the pull request's session, as an `integration_failure` decision
+(`pull_request` `list_decisions`), and as the `integration.failed` event.
+The agent reads the other pull request's changes, fixes its own, and
+pushes; once the checks pass, the pull request rejoins the queue by
+itself. It can say what it changed with `pull_request` `record_decision`
+(`kind` `fix`), and `repository` `why` explains any line it is unsure of.
+
 ### Repository instructions
 
 Each agent reads a repository's instructions from a file at its root:

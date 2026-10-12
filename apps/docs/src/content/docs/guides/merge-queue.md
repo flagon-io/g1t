@@ -134,18 +134,88 @@ date, [catch it up](/guides/pull-requests/#catching-up) first: when it and
 An entry fails when its `merge_group` workflows or required checks fail
 on the combined state, when it does not merge cleanly with what is ahead of it, or
 when the state cannot be built.
-It leaves the queue, and:
 
-1. Its pull request records the failure, saying why: which workflow failed
-   on the state, which required check did not report, or, for a conflict,
-   the pull request ahead it collided with and the files.
-2. Its conversation records that it was taken out of the queue, and why: a
-   conflict links the pull request it collided with and each conflicting
-   file, which opens in the pull request's changes.
-3. The entries that were tested on top of it are tested again without it.
+### Who answers for it
 
-Its author fixes it, starting from `main` as it is now, and merges it
-again to put it back in the queue.
+A state that fails while an entry ahead of it is still being tested is
+held until those ahead are settled. If one of them fails too, the held
+entry is tested again without it and is not blamed. Once every entry ahead
+has passed, the held entry answers for the failure. So when #41 is
+broken, it leaves the queue, and #44 and #46, which were tested with #41
+in them, are tested again without it rather than taken out with it.
+
+The entry that answers for a failure leaves the queue, and g1t works out
+what it failed with:
+
+| What happened | Who it failed with (`suspects`) |
+| --- | --- |
+| Tested on `main` alone | Nobody: the change is the cause. |
+| Its own checks fail on its head too | Nobody: the change is the cause. |
+| It conflicts with an entry ahead | That entry, and the conflicting files. |
+| A required check did not report, or the state could not be built | Nobody: the note says what to fix. |
+| Its own checks pass, one entry ahead | That entry. |
+| Its own checks pass, several entries ahead | Found by building smaller combinations, below. |
+
+### Narrowing it down
+
+An entry whose own checks pass but which fails combined with several
+entries ahead breaks *with* some of them. g1t builds `main` with the first
+half of those entries and the failing one, and runs the `merge_group`
+workflows on it, as for any queued state. If that fails, the cause is in
+that half; if it passes, in the other half. It halves again until one entry
+is left, or it has built three extra combinations. With the default four
+entries to a batch, at most three are ahead of a failing entry, and two
+builds always find the one it breaks with; three builds find one among up
+to eight.
+
+These combinations are built in sandboxes as the queue's states are, on
+`g1t-queue/<id>` branches that are deleted afterwards, and never land. They
+do not hold up the queue: the entries behind are tested again at once. When
+a combination cannot be built or checked, or its checks are still running
+past the rule's timeout when the queue next moves, g1t stops and reports
+the entries still suspected.
+
+The halving assumes one entry ahead is the cause. When the failure needs
+two of them together, what is reported is the half that still failed, and
+can name more than one pull request.
+
+### Who is told
+
+1. Its pull request records the failed check, saying why: which workflow
+   failed on the state, which required check did not report, or, for a
+   conflict, the pull request ahead it collided with and the files.
+2. Its conversation records that it was taken out of the queue, then what
+   g1t found: the pull requests it fails with, whether that was narrowed
+   down, and the check that failed.
+3. Its issue's conversation says the same in one line, and so does the
+   pull request's [session](/guides/why-blame/#sessions), so the agent
+   working on it reads it there.
+4. A [decision record](/guides/why-blame/#decision-records) of kind
+   `integration_failure`, confidence `tested`, keeps it, with the
+   combination, the check and the suspects as evidence.
+5. The `integration.failed` [event](/guides/webhooks/#events) carries the
+   same to webhooks and to anyone following the repository's events:
+   `pull` (the entry that failed, also `number`), `issue`, `combination`
+   (the pull requests tested together, in order), `check` (`name`,
+   `conclusion`, `url`), `bisected`, `suspects`, `other_pulls` and `commit`.
+6. The entries that were tested on top of it are tested again without it.
+
+A combined state that passes is recorded too: an `integration_passed`
+decision and the `integration.passed` event, with `pull` and `combination`.
+
+### Getting back in the queue
+
+The merge stays asked for. Push a fix to the pull request, starting from
+`main` as it is now: once every check on the new commit has finished, none
+failed and every required check passed, g1t merges it again as whoever
+queued it, which puts it back in the queue. Everything a merge needs is
+checked again then, so if an approval was dismissed by the push, the
+conversation says so and you merge it again once it is approved. Until a
+new commit's checks pass, merging it again is refused: "It failed in the
+merge queue; push a fix to try again."
+
+A pull request whose checks are not reported by workflows (none run on its
+pushes) is not put back by itself: merge it again once it is fixed.
 
 ## The Merge queue page
 
@@ -209,3 +279,9 @@ curl https://api.g1t.sh/repos/acme/web/queue
 | `results` | What building the state recorded, each with `command`, `passed` and `output`. The workflow runs on it are on its commit, `combined_commit`. |
 | `error` | Why it failed: a conflict, a workflow that failed on it, a required check that did not report, or what could not be built. |
 | `enqueued_by` | Who added it: a username, or `g1t` when it was merged automatically. |
+
+An agent working on a pull request learns of a failure without polling the
+queue: from the `integration.failed` event, from the note in the pull
+request's session (`pull_request` `read_session`), or from its decisions
+(`pull_request` `list_decisions`, or
+`GET /repos/{owner}/{name}/pulls/{number}/decisions`).
