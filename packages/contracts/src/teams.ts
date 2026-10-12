@@ -95,8 +95,6 @@ export type RosterPerson = {
   /** An IANA time zone, for their local time. */
   timezone: string | null;
   owns: string[];
-  /** Who they report to, by username. */
-  manager: string | null;
   maintainer: boolean;
 };
 

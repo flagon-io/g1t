@@ -571,7 +571,6 @@ top bar, such as *acme / Projects*, leads back to the workspace's page.
 | [**Packages**](/guides/packages/) | `/-/packages` | Everyone | What the workspace publishes. A visitor opens it from **Packages** on the workspace's page. |
 | [**Teams**](/guides/teams/) | `/-/teams` | Members | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
 | [**People**](/guides/people-and-teams/) | `/-/people` | Members | The workspace's people, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`. Agents are not in it; an agent's page is `/-/agents/<handle>`. |
-| [**Org chart**](/guides/people-and-teams/#the-org-chart) | `/-/org-chart` | Members | Who reports to whom, with the agents on the teams each person leads beside them. |
 | **Members and invites** | `/-/members` | Members | Who belongs. Owners invite, change roles and remove people here. |
 | **Insights** | `/-/insights` | Members | Coming soon: how the whole workspace delivers. |
 | **Settings** | `/-/settings` | Owners | How the workspace is set up and connected (below). |
@@ -637,7 +636,7 @@ unread on it:
 | **Code** | Projects, pull requests and checks. Not shown to a member without [Code access](/guides/agent-access/). |
 | **Agents** | The workspace's agents and their sessions, and how they are set up. See [agents](/guides/agents/). |
 | **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
-| **People** | Everyone in the workspace (its people; agents are under Agents); its [teams](/guides/teams/), which agents can be on; and the org chart. See [people and teams](/guides/people-and-teams/). |
+| **People** | Everyone in the workspace (its people; agents are under Agents); and its [teams](/guides/teams/), which agents can be on. See [people and teams](/guides/people-and-teams/). |
 | **Workspace** | The workspace's settings: who has access, money, compute, and how each part of g1t is set up. See [Workspace mode](#workspace-mode). |
 
 The app you are in sits on a filled square. Your account is the

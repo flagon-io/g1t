@@ -1,28 +1,25 @@
-import { Bot, ChevronRight, KeyRound, MapPin, MessageSquare, Network, Pencil, UsersRound, Wallet } from "lucide-react";
+import { Bot, ChevronRight, KeyRound, MapPin, MessageSquare, Pencil, UsersRound, Wallet } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Form, Link, data, redirect, useNavigation } from "react-router";
 
 import type { DirectoryPerson } from "@g1t/contracts";
 
 import type { Route } from "./+types/person";
-import { AgentLink, AgentPersonFace, Coming, LocalTime, PersonFace, PersonLink, TeamKindMark } from "../../../components/people";
+import { AgentLink, AgentPersonFace, Coming, LocalTime, PersonFace, TeamKindMark } from "../../../components/people";
 import { PresenceSummary } from "../../../components/presence";
 import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../../components/ui";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
-import { SelectField } from "../../../components/ui/select";
 import { channelPath } from "../../../lib/chat";
 import { page } from "../../../lib/meta";
 import {
   agentsOn,
   codeAccessWords,
   leads,
-  managerChoices,
   ownsFromText,
   peopleAgent,
   personName,
-  reportsOf,
   teamsOfPerson,
 } from "../../../lib/people";
 import { teamPath } from "../../../lib/teams";
@@ -33,12 +30,6 @@ import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const name = loaderData ? personName(loaderData.person) : params.username;
   return page(args, { title: `${name} · People · ${params.owner} · g1t` });
-}
-
-/** The few fields of everyone else a profile shows. */
-function slim(person: DirectoryPerson) {
-  const { user_id, username, display_username, name, avatar, title, manager } = person;
-  return { user_id, username, display_username, name, avatar, title, manager };
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -60,7 +51,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     slug: params.owner.toLowerCase(),
     person,
-    people: directory.people.map(slim),
     teams,
     agents: all,
     base: directory.base_permission,
@@ -84,14 +74,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     throw redirect(channelPath(params.owner.toLowerCase(), opened.value));
   }
   if (intent === "profile") {
-    const changes: { title?: string; owns?: string[]; manager?: string } = {
+    const changes = {
       title: String(form.get("title") ?? ""),
       owns: ownsFromText(String(form.get("owns") ?? "")),
     };
-    if (form.has("manager")) {
-      const manager = String(form.get("manager") ?? "");
-      changes.manager = manager === "none" ? "" : manager;
-    }
     const saved = await identity.setMemberProfile(user, params.owner, params.username, changes);
     return saved.ok ? { intent, saved: true as const, error: null } : { intent, error: saved.error.message };
   }
@@ -99,9 +85,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function PersonProfile({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, person, people, teams, agents, base, canManage, self, spend } = loaderData;
-  const manager = person.manager ? people.find((p) => p.username === person.manager) : null;
-  const reports = reportsOf(people as DirectoryPerson[], person.username);
+  const { slug, person, teams, agents, base, canManage, self, spend } = loaderData;
   const teamAgents = teams.flatMap((team) => agentsOn(team, agents).map((agent) => ({ agent, team })));
   const seen = new Set<string>();
   const uniqueAgents = teamAgents.filter(({ agent }) => (seen.has(agent.id) ? false : (seen.add(agent.id), true)));
@@ -154,7 +138,7 @@ export default function PersonProfile({ loaderData, actionData }: Route.Componen
               </SubmitButton>
             </Form>
           )}
-          {mayEdit && <EditProfile person={person} people={people as DirectoryPerson[]} canManage={canManage} actionData={actionData} />}
+          {mayEdit && <EditProfile person={person} actionData={actionData} />}
         </div>
       </header>
       {actionData?.intent === "message" && <ErrorText>{actionData.error}</ErrorText>}
@@ -196,23 +180,6 @@ export default function PersonProfile({ loaderData, actionData }: Route.Componen
           ) : (
             <Quiet>Not on a team yet.</Quiet>
           )}
-        </Card>
-
-        <Card icon={<Network size={14} />} title="Reporting line">
-          <dl className="space-y-3 text-sm">
-            <div>
-              <dt className="text-xs text-faint">Reports to</dt>
-              <dd className="mt-1">{manager ? <PersonRow slug={slug} person={manager} /> : <Quiet>No one{canManage ? ". Set it under Edit profile." : "."}</Quiet>}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-faint">
-                Reports <span className="tabular-nums">{reports.length}</span>
-              </dt>
-              <dd className="mt-1 space-y-1.5">
-                {reports.length ? reports.map((report) => <PersonRow key={report.username} slug={slug} person={report} />) : <Quiet>No one reports to them.</Quiet>}
-              </dd>
-            </div>
-          </dl>
         </Card>
 
         <Card icon={<Bot size={14} />} title="Agents on their teams">
@@ -285,28 +252,12 @@ function Quiet({ children }: { children: ReactNode }) {
   return <p className="text-sm text-faint">{children}</p>;
 }
 
-function PersonRow({ slug, person }: { slug: string; person: Pick<DirectoryPerson, "user_id" | "username" | "display_username" | "name" | "avatar" | "title"> }) {
-  return (
-    <span className="flex min-w-0 items-center gap-2.5">
-      <PersonFace person={person} size={24} ring="var(--color-surface)" />
-      <span className="min-w-0 truncate">
-        <PersonLink workspace={slug} person={person} className="font-medium" />
-        {person.title && <span className="text-muted"> · {person.title}</span>}
-      </span>
-    </span>
-  );
-}
-
-/** Their title and what they own (theirs, or an owner's to change), and who they report to (an owner's). */
+/** Their title and what they own: theirs, or an owner's, to change. */
 function EditProfile({
   person,
-  people,
-  canManage,
   actionData,
 }: {
   person: DirectoryPerson;
-  people: DirectoryPerson[];
-  canManage: boolean;
   actionData: { intent: string; error: string | null; saved?: true } | undefined;
 }) {
   const [open, setOpen] = useState(false);
@@ -314,7 +265,6 @@ function EditProfile({
   useEffect(() => {
     if (saved) setOpen(false);
   }, [saved, actionData]);
-  const choices = managerChoices(people, person.username);
   return (
     <>
       <Button variant="outline" onClick={() => setOpen(true)}>
@@ -335,17 +285,6 @@ function EditProfile({
             <Field label="What they own" hint="One per line: a product, a process, an account. Agents ask them about these.">
               <Textarea name="owns" defaultValue={person.owns.join("\n")} rows={3} placeholder={"storefront\nthe release process"} />
             </Field>
-            {canManage && (
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-muted">Reports to</span>
-                <SelectField
-                  name="manager"
-                  defaultValue={person.manager ?? "none"}
-                  className="w-full"
-                  options={[{ value: "none", label: "No one" }, ...choices.map((p) => ({ value: p.username, label: `${personName(p)}${p.title ? ` · ${p.title}` : ""}` }))]}
-                />
-              </label>
-            )}
             {actionData?.intent === "profile" && <ErrorText>{actionData.error}</ErrorText>}
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setOpen(false)}>

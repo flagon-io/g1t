@@ -1340,9 +1340,8 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 
 /**
  * People's sidebar: everyone in the workspace (its people; agents are
- * under Agents); its teams, which agents can be on; and the org chart. Who
- * belongs, and inviting people, is the workspace's: Workspace mode's
- * Access group.
+ * under Agents) and its teams, which agents can be on. Who belongs, and
+ * inviting people, is the workspace's: Workspace mode's Access group.
  */
 function PeopleSidebar({ slug }: { slug: string }) {
   const { pathname } = useLocation();
@@ -1359,9 +1358,6 @@ function PeopleSidebar({ slug }: { slug: string }) {
           </SidebarLink>
           <SidebarLink to={`/${slug}/-/teams`} icon={<UsersRound size={15} />} current={at("teams")}>
             Teams
-          </SidebarLink>
-          <SidebarLink to={`/${slug}/-/org-chart`} icon={<Network size={15} />} current={at("org-chart")}>
-            Org chart
           </SidebarLink>
         </NavRows>
       </nav>
@@ -1461,7 +1457,6 @@ const SECTIONS: Record<string, string> = {
   secrets: "Secrets and variables",
   settings: "Settings",
   people: "People",
-  "org-chart": "Org chart",
   members: "Members",
   permissions: "Permissions",
   projects: "Projects",

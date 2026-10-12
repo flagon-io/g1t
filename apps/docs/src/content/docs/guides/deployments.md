@@ -334,9 +334,6 @@ An app deployed elsewhere gets a screenshot of its production address
 too, and any project can show an uploaded image instead. See
 [production's picture](/guides/projects/#productions-picture).
 
-The [checklist on the overview](/guides/projects/#get-to-production) also
-tracks the first production deploy, a custom domain and a first preview.
-
 ## Deploying from a workflow
 
 A [workflow](/guides/actions/) job can build and deploy the project

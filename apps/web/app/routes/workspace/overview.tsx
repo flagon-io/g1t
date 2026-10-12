@@ -5,14 +5,13 @@ import type { PackageSummary, Project, ProjectDeploys } from "@g1t/contracts";
 
 import type { Route } from "./+types/overview";
 import { DeployLink, host, StatusDot } from "../../components/deploy";
-import { ButtonLink, CopyLine, TimeAgo } from "../../components/ui";
+import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { UsageCard } from "../../components/usage-card";
 import { PullIcon } from "../../components/work-icons";
 import { openedBy } from "../../lib/opened-by";
-import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { kindLabel, libraryPackages, packageLine, packagePath, primaryLink } from "../../lib/project-kind";
 import { PinButton } from "../../components/pin-button";
 import { sortProjects } from "../../lib/project-list";
@@ -118,29 +117,14 @@ function Stat({ value, label }: { value: number; label: string }) {
 }
 
 /** What a member sees in a workspace with no projects yet. */
-function GetStarted({ slug }: { slug: string }) {
-  const addresses = useAddresses();
+function NoProjects({ slug }: { slug: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-8">
-      <span className="flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/30">
-        <Box size={18} />
-      </span>
-      <h2 className="mt-4 text-lg font-semibold tracking-tight">Create your first project</h2>
-      <p className="mt-1.5 max-w-xl text-sm text-muted">
-        A project is what you build and run: its code, the issues that say what should change, the agents and
-        people who change it, and where it is deployed.
-      </p>
-      <div className="mt-6 flex flex-wrap gap-3">
-        <ButtonLink to={`/new?workspace=${slug}`} variant="accent">
-          <Plus size={14} />
-          New project
-        </ButtonLink>
-      </div>
-      <p className="mt-6 text-sm text-muted">Or push code you already have, and it becomes a project:</p>
-      <div className="mt-2 max-w-xl">
-        <CopyLine prompt text={`git push ${cloneUrl(addresses, `${slug}/my-project`)} main`} />
-      </div>
-    </div>
+    <EmptyState title="No projects yet">
+      <ButtonLink to={`/new?workspace=${slug}`} variant="accent" className="mt-3">
+        <Plus size={14} />
+        New project
+      </ButtonLink>
+    </EmptyState>
   );
 }
 
@@ -284,7 +268,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
     <div className="grid gap-10 lg:grid-cols-[1fr_18rem]">
       <div className="min-w-0 space-y-10">
         {total === 0 && role ? (
-          <GetStarted slug={slug} />
+          <NoProjects slug={slug} />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -77,7 +77,7 @@ g1t uses the cookies it needs to work, and one analytics cookie. There are **no 
 
 Cloudflare may set its own security cookies (such as `__cf_bm`) to tell people from bots when g1t is under attack.
 
-The site also keeps a few preferences in your browser's local storage, which never leave your device: which coding agent you set up with, how you like diffs shown, and checklist items you've dismissed. HeyCatch keeps a copy of its analytics id there too, which is sent with each analytics event.
+The site also keeps a few preferences in your browser's local storage, which never leave your device: which coding agent you set up with and how you like diffs shown. HeyCatch keeps a copy of its analytics id there too, which is sent with each analytics event.
 
 **Fonts.** g1t.sh and docs.g1t.sh serve their typefaces themselves, so loading a page asks no one else for them.
 

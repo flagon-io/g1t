@@ -12,6 +12,7 @@ import {
   libraryPackages,
   neverDeploys,
   primaryLink,
+  projectPlan,
   projectChanges,
   linksFromForm,
   linksToShow,
@@ -146,4 +147,15 @@ test("custom links are read from a form's rows, blank rows left out", () => {
     { label: "Status", url: "status.g1t.sh" },
     { label: "", url: "npmjs.com/x" },
   ]);
+});
+
+test("only what g1t deploys leads with production", () => {
+  assert.equal(projectPlan({ kind: "app", runs: "g1t" }), "production");
+  assert.equal(projectPlan({ kind: "docs", runs: "g1t" }), "production");
+  assert.equal(projectPlan({ kind: "app", runs: "elsewhere" }), "elsewhere");
+  assert.equal(projectPlan({ kind: "app", runs: null }), "unknown");
+  assert.equal(projectPlan({ kind: "tool", runs: null }), "release");
+  assert.equal(projectPlan({ kind: "library", runs: null }), "release");
+  assert.equal(projectPlan({ kind: "docs", runs: "elsewhere" }), "docs");
+  assert.equal(projectPlan({ kind: "other", runs: null }), "other");
 });

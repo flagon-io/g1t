@@ -45,7 +45,6 @@ import { CheckBadge } from "../../components/checks";
 import { Elapsed, formatCost, useLiveRefresh } from "../../components/agents";
 import { ActivityFeed, DeployStrip, Meter, NeedsList, Panel, Quiet, Unavailable, percent } from "../../components/mission";
 import { type ActiveBranch, ActiveBranches } from "../../components/branches";
-import { ProductionChecklist } from "../../components/checklist";
 import { PackageIcon } from "../../components/package-icon";
 import { Hint } from "../../components/ui/hint";
 import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
@@ -79,12 +78,10 @@ import {
   runHealth,
   stuckMinutes,
 } from "../../lib/mission";
-import { agentWasAssigned, checklistPlan, hasInstructions, productionChecklist, releaseChecklist, startChecklist } from "../../lib/checklist";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import {
   PUBLISH_GUIDES,
   bare,
-  hasRelease,
   kindLabel,
   linksToShow,
   latestTag,
@@ -92,6 +89,7 @@ import {
   packageName,
   packagePath,
   projectChanges,
+  projectPlan,
   publishGuide,
 } from "../../lib/project-kind";
 import { AboutEditor, KindMenu, LinkList } from "../../components/project-about";
@@ -150,7 +148,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const soft = <T,>(promise: Promise<T> | null): Promise<T | null> =>
     promise ? promise.catch((error) => (console.warn("overview:", error), null)) : Promise.resolve(null);
   // People with a role of their own here see its running parts: deployments,
-  // memory, setup; everyone who can read it sees the rest. Not awaited: only
+  // memory; everyone who can read it sees the rest. Not awaited: only
   // those sections wait on the repository lookup, which the layout makes in
   // this request too.
   const accessP = accessTo(context, params);
@@ -159,16 +157,14 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     memberP.then((member) => (member ? soft(start()) : null));
   const repoP = soft(repoFor(context, params));
   const projectP = soft(projectFor(context, params));
-  // A library or a tool shows its packages where an app shows production,
-  // and every project g1t does not deploy counts a workflow in its checklist.
+  // A library or a tool shows its packages where an app shows production.
   // Deployments from anywhere (g1t.page, g1t Actions, the API), by environment, for anyone who can read it.
   const environmentsP = projectP.then((found) =>
     soft(deployments.environments(found?.ok && found.value.source.kind === "hosted" ? found.value.source.repo : path, viewer)),
   );
-  const planP = projectP.then((project) => (project?.ok ? checklistPlan(project.value).plan : null));
+  const planP = projectP.then((project) => (project?.ok ? projectPlan(project.value) : null));
   const libraryRepoP = Promise.all([planP, repoP]).then(([plan, repo]) => (plan === "release" && repo?.ok ? repo.value : null));
   const packagesP = libraryRepoP.then((repo) => (repo ? soft(packages.list(params.owner, viewer, { repoId: repo.id })) : null));
-  const workflowsP = planP.then((plan) => (plan && plan !== "production" ? forMembers(() => actions.workflows(path, viewer)) : null));
   // Recent workflow runs, for Health when no pull request's checks have finished lately.
   const workflowRunsP = soft(actions.runs(path, viewer, { limit: 30 }));
   // Only the kinds the feed shows: the newest events are mostly session
@@ -218,7 +214,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     branchesP.catch(() => null),
     new Promise<"slow">((resolve) => setTimeout(() => resolve("slow"), crawler ? BRANCHES_WAIT_CRAWLER_MS : BRANCHES_WAIT_MS)),
   ]);
-  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, runs, queue, issues, memories, recent, mine, domains, root, packageList, workflows, tagList] = await Promise.all([
+  const [{ insider: member, can }, project, settings, list, open, closed, log, counts, runs, queue, issues, memories, recent, mine, packageList, tagList] = await Promise.all([
     accessP,
     projectP,
     forMembers(() => deployments.settings(ref, viewer)),
@@ -234,11 +230,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     forMembers(() => agents.listMemories(viewer, params.owner, path)),
     eventsP,
     minePullsP,
-    // For the checklist, which only members see.
-    forMembers(() => deployments.domains(ref, viewer)),
-    forMembers(() => repos.tree(path, viewer, null, "")),
     packagesP,
-    workflowsP,
     // The latest release, for About.
     soft(repos.tags(path, viewer)),
   ]);
@@ -367,9 +359,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const knows = distinctFacts([...memoryList.filter((m) => m.pinned), ...memoryList.filter((m) => !m.pinned).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))]).slice(0, 5);
   const openIssues = ok(issues);
 
-  // --- Getting to production ----------------------------------------------------
-  const wentLive = (status: string) => status === "ready" || status === "replaced" || status === "down";
-  const liveApps = ok(list)?.live ?? [];
+  // --- Where it runs ------------------------------------------------------------
   const commitNow = ok(log)?.[0] ?? null;
   // Production deployed somewhere other than g1t.page (by g1t Actions, or
   // reported through the API): the slot an app deployed elsewhere shows.
@@ -380,50 +370,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // elsewhere, runs elsewhere.
   const found = ok(project);
   const projectValue = found && deployment && found.kind === "app" && found.runs == null ? { ...found, runs: "elsewhere" as const } : found;
-  const plan = projectValue ? checklistPlan(projectValue) : { plan: "production" as const, title: "Get to production" };
-  const isLibrary = plan.plan === "release";
+  const isLibrary = projectValue != null && projectPlan(projectValue) === "release";
   const published = libraryPackages(ok(packageList) ?? []);
-  const hasWorkflow = workflows?.ok ? workflows.value.length > 0 : null;
-  const firstSteps = {
-    base,
-    hasCode: commitNow != null || projectValue?.source.kind === "mirror",
-    instructions: commitNow == null ? false : root?.ok ? hasInstructions(root.value.entries.map((entry) => entry.name)) : null,
-    agentAssigned: agentWasAssigned({
-      runAgents: runList.map((run) => run.agent),
-      pullAgents: [...openPulls, ...(ok(closed) ?? [])].map((pull) => pull.agent),
-      issues: openIssues ?? [],
-    }),
-  };
-  const links = projectValue?.links;
-  const checklist = !member
-    ? null
-    : plan.plan !== "production" && plan.plan !== "release"
-      ? startChecklist(plan.plan, {
-          ...firstSteps,
-          hasWorkflow,
-          productionUrl: projectValue?.productionUrl ?? null,
-          hasLinks: !!links && (links.homepage != null || links.docs != null || links.custom.length > 0),
-          hasDocsLink: !!links && (links.docs != null || links.homepage != null),
-        })
-    : isLibrary
-      ? releaseChecklist({
-          ...firstSteps,
-          hasWorkflow,
-          released: hasRelease(published),
-          releaseTo: published[0]
-            ? packagePath(published[0])
-            : (publishGuide(projectValue?.ecosystem ?? null)?.guide ?? "https://docs.g1t.sh/guides/packages/"),
-        })
-      : productionChecklist({
-        ...firstSteps,
-        deploysEnabled: ok(settings)?.enabled ?? false,
-        productionDeployed:
-          liveApps.some((app) => app.kind === "production") ||
-          builds.some((build) => build.kind === "production" && wentLive(build.status)),
-        domains: ok(domains)?.domains.length ?? null,
-        previewOpened:
-          liveApps.some((app) => app.kind === "preview") || builds.some((build) => build.kind === "preview" && wentLive(build.status)),
-      });
 
   // The checks on the latest commit and each active branch's head, in
   // one call once the branches are read: streamed in beside them.
@@ -442,7 +390,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     commit: ok(log)?.[0] ?? null,
     commits: (ok(log) ?? []).map((one) => ({ hash: one.hash, message: one.message.split("\n")[0] ?? "", author: one.author, coAuthors: one.coAuthors, at: one.authoredAt })),
     release: latestTag(ok(tagList) ?? []),
-    checklistTitle: plan.title,
     // Production as reported from outside g1t, for an app deployed elsewhere.
     deployment,
     // Its screenshot's address on the site (production-elsewhere.ts), when it has one to show.
@@ -472,7 +419,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     knows: knows as Memory[],
     memoryCount: memoryList.length,
     memoriesLoaded: memories?.ok ?? false,
-    checklist,
     library: isLibrary
       ? { packages: published.slice(0, PACKAGES_SHOWN), total: published.length, loaded: packageList?.ok ?? false }
       : null,
@@ -794,7 +740,7 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, builds, live, commit, open, agentsLive, columns, needs, landed, groups, health, knows, checklist, branches, library, checks } =
+  const { member, project, settings, builds, live, commit, open, agentsLive, columns, needs, landed, groups, health, knows, branches, library, checks } =
     loaderData;
   const base = `/${params.owner}/${params.repo}`;
   // What it is to its remotes, from the repository layout.
@@ -804,7 +750,7 @@ function Overview({
   const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
   const previews = live.filter((app) => app.kind === "preview");
   const latestProduction = builds.find((build) => build.kind === "production") ?? null;
-  const plan = project ? checklistPlan(project).plan : "production";
+  const plan = project ? projectPlan(project) : "production";
   const canChange = member && loaderData.can.manage_settings;
   // Its homepage and docs beside what it is, unless the card below already links there.
   const headUrl =
@@ -836,8 +782,8 @@ function Overview({
 
   // A mirror that is not taken over is a read-only copy (lib/mirror.ts
   // `offers`): what it is, where it comes from and what it holds, and
-  // nothing to start. Where it runs, the checklist, Right now and the
-  // agents' panels come back with a takeover.
+  // nothing to start. Where it runs, Right now and the agents' panels
+  // come back with a takeover.
   const readOnlyMirror = mirrorRepo?.mirror && !writable(mirrorRepo.mirror) ? mirrorRepo.mirror : null;
   if (readOnlyMirror) {
     return (
@@ -1078,8 +1024,6 @@ function Overview({
           </p>
         )}
       </section>
-
-      {checklist && <ProductionChecklist base={base} items={checklist} title={loaderData.checklistTitle} />}
 
       <Panel
         title="Right now"
@@ -1573,7 +1517,7 @@ function CloneCard({ addresses, path }: { addresses: ReturnType<typeof useAddres
  * The overview of a mirror g1t does not lead (standing by, in CI failover
  * or handing back): the remote it copies and when it last did, the facts
  * of the copy, its latest commits, and About. Nothing here starts
- * anything: there is no place it runs, no checklist and no Right now, since
+ * anything: there is no place it runs and no Right now, since
  * work happens on the remote until someone takes over.
  */
 function MirrorOverview({

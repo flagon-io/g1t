@@ -317,7 +317,6 @@ const PAGE_MODES: Record<string, ModeKey> = {
   members: "workspace",
   permissions: "workspace",
   teams: "people",
-  "org-chart": "people",
   workspace: "workspace",
   spend: "workspace",
   usage: "workspace",
