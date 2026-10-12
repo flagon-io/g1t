@@ -2227,6 +2227,11 @@ impl Actions {
             self.report_pending(&run).await?;
         }
         self.advance(&run.id).await?;
+        // A page left open on the attempt that ended, which asks for nothing
+        // while its run is over, hears that it is going again: re-run from
+        // the API, the MCP tool, a pull request or another tab, as well as
+        // from that page, it offers Cancel run and not the re-runs.
+        self.tell_live(&run.repo_id, &run.id, Some(&run.sha), run.pull).await;
         self.run_summary(&run.id).await
     }
 

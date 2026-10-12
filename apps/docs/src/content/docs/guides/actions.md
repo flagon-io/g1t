@@ -1374,8 +1374,16 @@ with debug logging.
 
 ### Cancelling
 
-**Cancel run** cancels jobs that have not started at once. A job that is
-running is stopped the way GitHub stops one:
+**Cancel run** is at the top of the run's page while any job of its latest
+attempt has not finished: waiting for the jobs it needs, held for an
+environment's approval, queued for a runner (a self-hosted job waits
+until a runner with its labels takes it), or running. It is there on an
+earlier attempt's page too, and on a job's, and the re-run buttons appear
+only once the run has finished. A page left open on a finished run hears
+when it is re-run, from anywhere, and offers Cancel run.
+
+It cancels jobs that have not started at once. A job that is running is
+stopped the way GitHub stops one:
 
 1. The step it is on gets `SIGINT`, then `SIGTERM` 7.5 seconds later, and
    is killed 2.5 seconds after that. Signals reach the processes the step

@@ -57,6 +57,7 @@ import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
+import { runControls } from "../../lib/run-controls";
 import { type GraphJob, type Unit, groupJobs, jobsOf, unitStanding } from "../../lib/run-graph";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
@@ -1222,16 +1223,15 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   const { run, jobs, notes } = detail;
   const deployments = detail.pendingDeployments ?? [];
   const attempts = detail.attempts ?? [];
-  const latest = attempts.length === 0 || run.attempt === attempts[attempts.length - 1]!.attempt;
   const base = `/${params.owner}/${params.repo}`;
   const [search] = useSearchParams();
   // One of the run's buttons is working: the others wait for it.
   const busy = usePending();
+  // The attempt shown is still going.
   const live = run.status !== "completed";
-  // Cancelled, while its jobs run their cleanup steps.
-  const cancelling = live && run.conclusion === "cancelled";
-  // Re-running is for the latest attempt of a finished run.
-  const canRerun = member && !run.error && !live && latest;
+  // Cancel run while any of the run is going, from whichever attempt's
+  // page; re-running is for the latest attempt of a finished run.
+  const { latest, going, cancelling, canCancel, canRerun } = runControls({ run, jobs, attempts, member });
   // A mirror standing by runs nothing; in CI failover it runs them again.
   const rerunBlocked = useWorkflowReason();
   const logsUrl = `${base}/actions/runs/${run.id}/logs.zip${latest ? "" : `?attempt=${run.attempt}`}`;
@@ -1240,7 +1240,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   // streams on its own), every few seconds without it. Waiting on a person
   // needs no quick refresh.
   const { live: heard } = useRepoLive({ match: repoPages.run(run.id, run.sha) });
-  useRefreshWhile(live, run.status === "action_required" || run.status === "waiting" ? 8000 : heard ? 10_000 : 2500);
+  useRefreshWhile(going, run.status === "action_required" || run.status === "waiting" ? 8000 : heard ? 10_000 : 2500);
 
   // The job asked for; none is the run's summary.
   const selected = jobs.find((job) => job.id === search.get("job")) ?? null;
@@ -1275,7 +1275,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
                 </Button>
               </Hint>
             )}
-            {member && !run.error && live && (
+            {canCancel && (
               <Form method="post" className="flex gap-2">
                 {cancelling ? (
                   <Hint label="Stop its jobs now, without waiting for their cleanup steps">
