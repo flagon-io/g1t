@@ -114,8 +114,8 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
               {after.map(([label, value], index) => (
                 <tr key={label} className="border-t border-line align-top">
                   <td className="py-1.5 pr-4 text-muted">{label}</td>
-                  <td className="py-1.5 pr-4 break-words text-faint">{before[index][1]}</td>
-                  <td className={`py-1.5 break-words ${value !== before[index][1] ? "font-medium text-fg" : "text-muted"}`}>{value}</td>
+                  <td className="py-1.5 pr-4 wrap-break-word text-faint">{before[index][1]}</td>
+                  <td className={`py-1.5 wrap-break-word ${value !== before[index][1] ? "font-medium text-fg" : "text-muted"}`}>{value}</td>
                 </tr>
               ))}
             </tbody>
@@ -630,7 +630,7 @@ export function CreditList({
                 " · no expiry"
               )}
             </p>
-            <p className="mt-0.5 text-sm break-words">
+            <p className="mt-0.5 text-sm wrap-break-word">
               {grant.kind === "refund" && grant.refundFor && <span className="text-muted">For {grant.refundFor}{grant.refundDay ? ` (${grant.refundDay})` : ""}: </span>}
               {grant.note}
             </p>
@@ -818,7 +818,7 @@ export function LedgerSection({
         <EmptyState title="Nothing yet" />
       ) : (
         <div className="-mx-4 -my-4 overflow-x-auto sm:-mx-5 sm:-my-5">
-          <table className="w-full min-w-[36rem] text-sm">
+          <table className="w-full min-w-xl text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-2 font-medium sm:pl-5">When</th>
@@ -842,7 +842,7 @@ export function LedgerSection({
                           {entry.workspace}
                         </Link>
                       )}
-                      <span className="break-words">{entry.description}</span>
+                      <span className="wrap-break-word">{entry.description}</span>
                       {givenParts(entry).map((part) => (
                         <Badge key={part.label} tone="lavender">
                           Given · {part.label} {usd(part.micros)}
@@ -894,7 +894,7 @@ export function AuditSection({ audit, description = "Every change made in sudo, 
                   <When at={entry.createdAt} time />
                 </span>
               </p>
-              {entry.detail && <p className="mt-0.5 text-sm break-words text-fg-soft">{entry.detail}</p>}
+              {entry.detail && <p className="mt-0.5 text-sm wrap-break-word text-fg-soft">{entry.detail}</p>}
               <p className="mt-0.5 flex items-center gap-1 font-mono text-xs text-faint">
                 <UserRound size={11} />
                 {entry.by}

@@ -429,7 +429,7 @@ function PipelineCard({ card, base, stage }: { card: Card; base: string; stage: 
       >
         <span className="line-clamp-2 text-[0.8125rem] leading-snug font-medium">{card.title}</span>
         <span className="mt-1.5 flex items-center gap-1.5 text-[0.6875rem] text-muted">
-          <Avatar name={card.agent} size={14} />
+          <Avatar name={card.agent} image={null} size={14} />
           <span className="font-mono text-faint">#{card.number}</span>
           <span className="grow" />
           {card.needsYou ? (
@@ -633,7 +633,7 @@ function OverviewSkeleton() {
       {/* Production: its screenshot beside where it is live, then the facts under them. */}
       <section aria-hidden="true" className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
-          <Skeleton className="aspect-[16/10] w-full shrink-0 rounded-lg sm:w-72" />
+          <Skeleton className="aspect-16/10 w-full shrink-0 rounded-lg sm:w-72" />
           <div className="min-w-0 grow">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="mt-3 h-5 w-72 max-w-full" />
@@ -1055,7 +1055,7 @@ function Overview({
                                 </>
                               ) : byAgent ? (
                                 <>
-                                  <Avatar name={pull.agent} size={13} />
+                                  <Avatar name={pull.agent} image={null} size={13} />
                                   made by {pull.agent}
                                 </>
                               ) : (

@@ -43,7 +43,7 @@ export default function Velocity({ loaderData }: Route.ComponentProps) {
           <EmptyState title="Nobody is spending right now" />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-            <table className="w-full min-w-[46rem] text-sm">
+            <table className="w-full min-w-184 text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium">Workspace</th>

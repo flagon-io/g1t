@@ -255,7 +255,7 @@ export function CopyLine({
           seen. A word itself, an address or a flag, is never broken in
           two, which would change what is copied by eye; one longer than
           the line scrolls sideways instead. */}
-      <code className="min-w-0 grow overflow-x-auto whitespace-pre-wrap [scrollbar-width:thin]">
+      <code className="min-w-0 grow overflow-x-auto whitespace-pre-wrap scrollbar-thin">
         {prompt && <span className="mr-2 text-faint select-none">$</span>}
         {text.split(/(\s+)/).map((part, index) =>
           /\S/.test(part) ? (

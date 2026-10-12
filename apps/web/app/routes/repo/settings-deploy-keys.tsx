@@ -136,7 +136,7 @@ function KeyRow({ deployKey }: { deployKey: DeployKey }) {
       <KeyRound size={16} className="mt-0.5 shrink-0 text-faint" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
-          <span className="min-w-0 break-words">{deployKey.title}</span>
+          <span className="min-w-0 wrap-break-word">{deployKey.title}</span>
           {deployKey.read_only ? (
             <Badge>Read-only</Badge>
           ) : (

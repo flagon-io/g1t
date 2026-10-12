@@ -52,6 +52,8 @@ export default [
   // The card that opens over a person's name or avatar (lib/hovercard.ts).
   // `-` is no workspace's name, so nothing else is ever found here.
   route("-/hovercard/user/:username", "routes/hovercard-user.ts"),
+  // A person's picture by username, for avatars drawn from a name alone.
+  route("-/avatar/user/:username", "routes/avatar-user.ts"),
   // Live notifications: each tab's feed socket, and the person's
   // notification settings as JSON (services/notify).
   route("-/live", "routes/notify/live.ts"),

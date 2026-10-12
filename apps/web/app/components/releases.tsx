@@ -40,7 +40,7 @@ export function ReleaseCard({ release, repo, linkTitle = true }: { release: Rele
       <Card className="min-w-0 overflow-hidden">
         <div className="border-b border-line px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="min-w-0 text-xl font-semibold tracking-tight break-words">
+            <h3 className="min-w-0 text-xl font-semibold tracking-tight wrap-break-word">
               {linkTitle ? (
                 <Link to={`${base}/releases/tag/${encodeTag(release.tagName)}`} className="hover:text-accent hover:underline">
                   {title}

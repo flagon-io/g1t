@@ -198,7 +198,7 @@ export function InboxEmpty({ tab, view }: { tab: InboxTab; view?: "inbox" | "sav
 export function InboxTabs({ tab, counts, onChange }: { tab: InboxTab; counts: InboxCounts | null; onChange: (tab: InboxTab) => void }) {
   return (
     <Tabs value={tab} onValueChange={(value) => onChange(value as InboxTab)}>
-      <TabsList className="flex w-full overflow-x-auto [scrollbar-width:none]">
+      <TabsList className="flex w-full overflow-x-auto scrollbar-none">
         {INBOX_TABS.map((entry) => {
           const count = tabCount(counts, entry.tab);
           return (

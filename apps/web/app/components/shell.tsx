@@ -509,7 +509,7 @@ const REPO_SETTINGS_PAGE = /^\/([^/]+)\/([^/-][^/]*)\/settings(\/|$)/;
 const LAYER =
   "absolute inset-0 [transition:translate_380ms_cubic-bezier(0.32,0.72,0,1),opacity_220ms_ease-out] will-change-[translate,opacity] motion-reduce:transition-none";
 /** One list, filling its layer. */
-const PANEL = "h-full overflow-y-auto px-1 pt-1 pb-4 [scrollbar-width:thin]";
+const PANEL = "h-full overflow-y-auto px-1 pt-1 pb-4 scrollbar-thin";
 
 /** One list in the stack: what it is, and its rows. */
 type Level = { key: string; node: ReactNode };
@@ -1944,7 +1944,7 @@ export function AppShell({
   const conversation = isConversation(going ?? pathname);
   // Where the page panel starts: 8px past the rail (56px), or 8px past the sidebar (56 + 240px) when it is open.
   // The page starts where the rail (3.5rem) and, open, the sidebar (15rem) end.
-  const pad = ws ? (inline ? "md:pl-14 lg:pl-[18.5rem]" : "md:pl-14") : inline ? "lg:pl-[15rem]" : "";
+  const pad = ws ? (inline ? "md:pl-14 lg:pl-74" : "md:pl-14") : inline ? "lg:pl-60" : "";
 
   return (
     <SidebarProvider open={!closed} onOpenChange={(open) => setClosed(!open)} openMobile={drawer} onOpenMobileChange={setDrawer} toggleSidebar={toggleSidebar}>

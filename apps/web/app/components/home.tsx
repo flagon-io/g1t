@@ -608,15 +608,15 @@ export function SpendCard({ spend, slug, span }: { spend: Spend | null; slug: st
             <p className="mt-4 text-sm text-muted">Nothing on the statement {inSpan(span)}.</p>
           ) : (
             <>
-              <div className="mt-4 flex h-2.5 gap-[2px] overflow-hidden rounded-full" role="img" aria-label="Spend by kind of charge">
+              <div className="mt-4 flex h-2.5 gap-0.5 overflow-hidden rounded-full" role="img" aria-label="Spend by kind of charge">
                 {spend.lines.map((line) => (
-                  <span key={line.kind} className={`h-full min-w-[3px] ${kindColour(line.kind)}`} style={{ flexGrow: line.micros }} />
+                  <span key={line.kind} className={`h-full min-w-0.75 ${kindColour(line.kind)}`} style={{ flexGrow: line.micros }} />
                 ))}
               </div>
               <ul className="mt-3 space-y-2">
                 {spend.lines.map((line) => (
                   <li key={line.kind} className="flex items-center gap-2 text-sm">
-                    <span className={`size-2 shrink-0 rounded-[2px] ${kindColour(line.kind)}`} aria-hidden />
+                    <span className={`size-2 shrink-0 rounded-xs ${kindColour(line.kind)}`} aria-hidden />
                     <span className="min-w-0 grow truncate text-fg-soft">{line.kind}</span>
                     <span className="text-fg tabular-nums">{money(line.micros)}</span>
                   </li>

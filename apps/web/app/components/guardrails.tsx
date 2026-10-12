@@ -69,7 +69,7 @@ function TriSelect({
 /** Hosts in a compact list. */
 function Hosts({ hosts }: { hosts: string[] }) {
   return (
-    <span className="font-mono text-xs break-words text-faint">{hosts.length ? hosts.join(", ") : "none"}</span>
+    <span className="font-mono text-xs wrap-break-word text-faint">{hosts.length ? hosts.join(", ") : "none"}</span>
   );
 }
 
@@ -204,7 +204,7 @@ export function GuardrailsForm({
             {inheritedWorkflowDomains.length > 0 && (
               <p className="mt-2 text-xs text-faint">
                 From the workspace:{" "}
-                <span className="font-mono break-words">{inheritedWorkflowDomains.map(workflowDomainLine).join("; ")}</span>
+                <span className="font-mono wrap-break-word">{inheritedWorkflowDomains.map(workflowDomainLine).join("; ")}</span>
               </p>
             )}
           </Card>

@@ -62,7 +62,7 @@ export default function CodeAlertPage({ loaderData, params }: Route.ComponentPro
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight break-words">{alert.ruleName && alert.ruleName !== alert.ruleId ? alert.ruleName : shortRule(alert.ruleId)}</h2>
+          <h2 className="text-xl font-semibold tracking-tight wrap-break-word">{alert.ruleName && alert.ruleName !== alert.ruleId ? alert.ruleName : shortRule(alert.ruleId)}</h2>
           <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-muted">
             <span>#{alert.number}</span>
             <SeverityBadge severity={alert.severity} />

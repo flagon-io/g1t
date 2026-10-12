@@ -70,7 +70,7 @@ function Breadcrumbs({
         return (
           <span
             key={to}
-            className={`${i < folded ? "hidden sm:flex" : "flex"} items-center ${last ? "min-w-0" : i === segments.length - 2 ? "min-w-0 shrink-[2]" : "shrink-0"}`}
+            className={`${i < folded ? "hidden sm:flex" : "flex"} items-center ${last ? "min-w-0" : i === segments.length - 2 ? "min-w-0 shrink-2" : "shrink-0"}`}
           >
             {slash}
             {last ? (
@@ -485,7 +485,7 @@ export function BlobView({
         ) : lines ? (
           <CodeLines lines={lines} html={html} marked={marked} />
         ) : isImagePath(path) ? (
-          <div className="flex justify-center bg-[repeating-conic-gradient(var(--color-raised)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-6">
+          <div className="flex justify-center bg-[repeating-conic-gradient(var(--color-raised)_0_25%,transparent_0_50%)] bg-size-[16px_16px] p-6">
             <img src={raw} alt={path.split("/").pop() ?? path} className="max-h-[70vh] max-w-full" />
           </div>
         ) : (

@@ -34,7 +34,7 @@ export function CountBadge({ count, loud, className }: { count: number; loud: bo
   return (
     <span
       className={cn(
-        "absolute -top-1 -right-1.5 min-w-[1.125rem] rounded-full px-1 text-center text-[0.625rem] leading-[1.125rem] font-bold tabular-nums ring-2 ring-rail",
+        "absolute -top-1 -right-1.5 min-w-4.5 rounded-full px-1 text-center text-[0.625rem] leading-4.5 font-bold tabular-nums ring-2 ring-rail",
         loud ? "bg-accent text-bg" : "bg-line-strong text-fg",
         className,
       )}
@@ -189,7 +189,7 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
           <LayoutGrid />
         </PopoverTrigger>
       </SidebarMenuButton>
-      <PopoverContent side="right" align="end" sideOffset={12} aria-label="Apps" className="w-[23rem] p-2.5">
+      <PopoverContent side="right" align="end" sideOffset={12} aria-label="Apps" className="w-92 p-2.5">
         <AppsLauncher slug={slug} pins={pins} onToggle={onToggle} onClose={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
@@ -248,7 +248,7 @@ export function Rail({
             <SidebarMenuButton asChild size="icon" tooltip="Home">
               <Link to={homePagePath(slug)} aria-label="g1t: Home">
                 <span className="flex">
-                  <Mark tight className="h-[1.125rem] w-auto" />
+                  <Mark tight className="h-4.5 w-auto" />
                 </span>
               </Link>
             </SidebarMenuButton>
@@ -270,7 +270,7 @@ export function Rail({
         </SidebarMenu>
         {/* Your pinned apps: as many as you like, scrolling under a fade at either end. */}
         {shown.length > 0 && (
-          <SidebarMenu className="mt-2 w-auto min-h-0 grow gap-2 overflow-y-auto py-2 [mask-image:linear-gradient(to_bottom,transparent,#000_10px,#000_calc(100%-14px),transparent)] [scrollbar-width:none]">
+          <SidebarMenu className="mt-2 w-auto min-h-0 grow gap-2 overflow-y-auto py-2 mask-[linear-gradient(to_bottom,transparent,#000_10px,#000_calc(100%-14px),transparent)] scrollbar-none">
             {shown.map((app) => (
               <RailLink key={app.key} to={app.to} label={app.name} icon={app.icon(20)} current={at(app.to)} />
             ))}

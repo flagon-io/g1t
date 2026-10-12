@@ -289,7 +289,7 @@ function WhyPanel({
                 {current.issue.title} <span className="font-normal text-faint">#{current.issue.number}</span>
               </Link>
               {current.issue.body && (
-                <div className="mt-2 max-h-48 overflow-hidden text-muted [&_*]:text-[0.8125rem]! [&_*]:leading-5! mask-[linear-gradient(to_bottom,black_70%,transparent)]">
+                <div className="mt-2 max-h-48 overflow-hidden text-muted **:text-[0.8125rem]! **:leading-5! mask-[linear-gradient(to_bottom,black_70%,transparent)]">
                   <Markdown source={current.issue.body} repo={repoAt(base)} />
                 </div>
               )}

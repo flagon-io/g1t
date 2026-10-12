@@ -368,20 +368,20 @@ function TimeSplit({ data }: { data: RunnersPageData }) {
       {total === 0 ? (
         <p className="text-sm text-muted">No machine time yet this month.</p>
       ) : (
-        <div className="flex h-2.5 gap-[2px] overflow-hidden rounded-full" role="img" aria-label="This month's machine time by where it ran">
-          {cost.cloudSeconds > 0 && <span className="h-full min-w-[3px] bg-info" style={{ flexGrow: cost.cloudSeconds }} />}
-          {cost.ownSeconds > 0 && <span className="h-full min-w-[3px] bg-success" style={{ flexGrow: cost.ownSeconds }} />}
+        <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full" role="img" aria-label="This month's machine time by where it ran">
+          {cost.cloudSeconds > 0 && <span className="h-full min-w-0.75 bg-info" style={{ flexGrow: cost.cloudSeconds }} />}
+          {cost.ownSeconds > 0 && <span className="h-full min-w-0.75 bg-success" style={{ flexGrow: cost.ownSeconds }} />}
         </div>
       )}
       <ul className="mt-3 space-y-2 text-sm">
         <li className="flex items-center gap-2">
-          <span className="size-2 shrink-0 rounded-[2px] bg-info" aria-hidden />
+          <span className="size-2 shrink-0 rounded-xs bg-info" aria-hidden />
           <span className="min-w-0 grow truncate text-fg-soft">g1t cloud</span>
           <span className="text-muted tabular-nums">{machineTime(cost.cloudSeconds)}</span>
           <span className="w-20 text-right text-fg tabular-nums">{money(cost.cloudMicros)}</span>
         </li>
         <li className="flex items-center gap-2">
-          <span className="size-2 shrink-0 rounded-[2px] bg-success" aria-hidden />
+          <span className="size-2 shrink-0 rounded-xs bg-success" aria-hidden />
           <span className="min-w-0 grow truncate text-fg-soft">Your runners</span>
           <span className="text-muted tabular-nums">{machineTime(cost.ownSeconds)}</span>
           <span className="w-20 text-right text-fg tabular-nums">{money(0)}</span>

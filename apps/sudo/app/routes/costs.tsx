@@ -86,7 +86,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
         description={`Each of g1t's products over the last ${range} days: what customers were charged at price, given away or not, against what it cost. The margin is the charge less the cost, as a share of the charge; at cost plus ${MARKUP_PERCENT}% it is ${percentLabel(marginOnPrice(MARKUP_PERCENT))}. The floor is ${floor}%.`}
       >
         <div className="-mx-4 overflow-x-auto sm:-mx-5">
-          <table className="w-full min-w-[44rem] text-sm">
+          <table className="w-full min-w-176 text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-2 font-medium sm:px-5">Product</th>
@@ -138,7 +138,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
           <p className="text-sm text-muted">No costs shared out yet.</p>
         ) : (
           <div className="-mx-4 overflow-x-auto sm:-mx-5">
-            <table className="w-full min-w-[34rem] text-sm">
+            <table className="w-full min-w-136 text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium sm:px-5">Workspace</th>
@@ -321,7 +321,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         />
       </div>
       <div className="mt-3 overflow-x-auto rounded-lg border border-line bg-surface">
-        <table className="w-full min-w-[36rem] text-sm">
+        <table className="w-full min-w-xl text-sm">
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">
               <th className="px-4 py-2 font-medium sm:px-5">
@@ -452,7 +452,7 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
         </div>
       )}
       <div className="-mx-4 mt-5 overflow-x-auto sm:-mx-5">
-        <table className="w-full min-w-[34rem] text-sm">
+        <table className="w-full min-w-136 text-sm">
           <thead>
             <tr className="border-b border-line text-left text-xs text-muted">
               <th className="px-4 py-2 font-medium sm:px-5">{caps.month}, so far</th>
@@ -646,7 +646,7 @@ function UsageTable({ title, metrics, hourly }: { title: string; metrics: Platfo
         <p className="mt-2 text-sm text-muted">Nothing read yet.</p>
       ) : (
         <div className="-mx-4 mt-2 overflow-x-auto sm:-mx-5">
-          <table className="w-full min-w-[36rem] text-sm">
+          <table className="w-full min-w-xl text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-2 font-medium sm:px-5">Metric</th>

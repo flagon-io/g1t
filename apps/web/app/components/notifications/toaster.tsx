@@ -123,7 +123,7 @@ function ToastCard({ notification, paused }: { notification: FeedNotification; p
       role="status"
       className="g1t-toast group/toast pointer-events-auto relative overflow-hidden rounded-xl bg-surface shadow-[0_0_0_6px_var(--color-bg),0_20px_48px_-12px_rgba(0,0,0,0.9)] ring-1 ring-line-strong"
     >
-      {loud && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-accent" />}
+      {loud && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.75 bg-accent" />}
       <button type="button" onClick={open} className="flex w-full items-start gap-3 p-3 pr-9 text-left outline-none focus-visible:bg-raised/60">
         <span className="mt-0.5 shrink-0">
           <ActorAvatar notification={notification} />
@@ -251,7 +251,7 @@ export function Toaster() {
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
       }}
-      className="pointer-events-none fixed z-[65] flex flex-col gap-2 max-sm:inset-x-3 max-sm:top-[calc(env(safe-area-inset-top)+0.75rem)] max-sm:flex-col-reverse sm:right-5 sm:bottom-5 sm:w-[376px]"
+      className="pointer-events-none fixed z-65 flex flex-col gap-2 max-sm:inset-x-3 max-sm:top-[calc(env(safe-area-inset-top)+0.75rem)] max-sm:flex-col-reverse sm:right-5 sm:bottom-5 sm:w-94"
     >
       <style>{STYLES}</style>
       {offer && (
@@ -260,7 +260,7 @@ export function Toaster() {
         </div>
       )}
       {folded.length > 0 && (
-        <div className="pointer-events-auto flex h-[30px] items-center justify-between gap-2 self-center rounded-full bg-surface pr-1 pl-3 text-xs text-muted shadow-[0_0_0_6px_var(--color-bg),0_10px_30px_-10px_rgba(0,0,0,0.9)] ring-1 ring-line-strong">
+        <div className="pointer-events-auto flex h-7.5 items-center justify-between gap-2 self-center rounded-full bg-surface pr-1 pl-3 text-xs text-muted shadow-[0_0_0_6px_var(--color-bg),0_10px_30px_-10px_rgba(0,0,0,0.9)] ring-1 ring-line-strong">
           <span className="font-medium text-fg tabular-nums">+{folded.length} more</span>
           <Button
             type="button"

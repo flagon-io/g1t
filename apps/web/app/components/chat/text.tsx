@@ -30,7 +30,7 @@ export type TextContext = {
   codeLink?: (href: string) => string;
 };
 
-const PILL = "rounded-[4px] px-1 py-px font-medium";
+const PILL = "rounded-sm px-1 py-px font-medium";
 
 function SpanView({ span, context }: { span: Span; context: TextContext }): ReactNode {
   const emoji = useEmojiContext();
@@ -38,7 +38,7 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
     case "text":
       return renderEmoji(span.v, emoji.byName, emoji.usercontent);
     case "code":
-      return <code className="rounded-[4px] border border-line bg-raised px-1 py-px font-mono text-[0.84em] text-fg-soft">{span.v}</code>;
+      return <code className="rounded-sm border border-line bg-raised px-1 py-px font-mono text-[0.84em] text-fg-soft">{span.v}</code>;
     case "strong":
       return <strong className="font-semibold text-fg">{spans(span.c, context)}</strong>;
     case "em":
@@ -232,7 +232,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
   }, [language, code]);
   return (
     <div className="group/code relative my-1">
-      <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 pointer-coarse:pr-10 font-mono text-[0.8125rem] leading-relaxed text-fg-soft [scrollbar-width:thin]">
+      <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 pointer-coarse:pr-10 font-mono text-[0.8125rem] leading-relaxed text-fg-soft scrollbar-thin">
         <code>
           {rows
             ? rows.map((row, index) => (
@@ -277,7 +277,7 @@ export function MessageText({ body, context }: { body: string; context: TextCont
   if (onlyEmoji(body)) return <p className="text-3xl leading-tight">{body.trim()}</p>;
   if (onlyEmojiOrCustom(body, emoji.byName)) return <p className="text-3xl leading-tight">{renderEmoji(body.trim(), emoji.byName, emoji.usercontent, 32)}</p>;
   return (
-    <div className="space-y-1.5 text-[0.9375rem] leading-[1.55] break-words text-fg-soft">
+    <div className="space-y-1.5 text-[0.9375rem] leading-[1.55] wrap-break-word text-fg-soft">
       {parsed.map((block, index) => (
         <BlockView key={index} block={block} context={context} />
       ))}

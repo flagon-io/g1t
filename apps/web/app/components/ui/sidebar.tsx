@@ -244,7 +244,7 @@ export function SidebarContent({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="sidebar-content"
-      className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto [scrollbar-width:thin] group-data-[collapsible=icon]/sidebar:overflow-hidden", className)}
+      className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto scrollbar-thin group-data-[collapsible=icon]/sidebar:overflow-hidden", className)}
       {...props}
     />
   );

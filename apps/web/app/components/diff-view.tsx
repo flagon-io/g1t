@@ -30,8 +30,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 
 const ROW_STYLES: Record<DiffLine["kind"], string> = {
   context: "",
-  add: "bg-success/[0.09]",
-  delete: "bg-danger/[0.09]",
+  add: "bg-success/9",
+  delete: "bg-danger/9",
 };
 
 const GUTTER_STYLES: Record<DiffLine["kind"], string> = {
@@ -489,7 +489,7 @@ function FileSection({
             <Checkbox
               checked={viewed}
               onCheckedChange={(checked) => onViewed(checked === true)}
-              className="size-3.5 rounded-[4px] [&_svg]:size-2.5"
+              className="size-3.5 rounded-sm [&_svg]:size-2.5"
             />
             <span className="sr-only sm:not-sr-only">Viewed</span>
           </label>

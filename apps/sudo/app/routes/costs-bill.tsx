@@ -49,7 +49,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
           <p className="text-sm text-muted">Nothing has drifted.</p>
         ) : (
           <div className="-mx-4 overflow-x-auto sm:-mx-5">
-            <table className="w-full min-w-[44rem] text-sm">
+            <table className="w-full min-w-176 text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium sm:px-5">Product</th>
@@ -102,7 +102,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
 
       <Section className="mt-6" title="Price versions" description="Every price as it was and will be. A version never changes once written; each charge records the version it was made at.">
         <div className="-mx-4 overflow-x-auto sm:-mx-5">
-          <table className="w-full min-w-[44rem] text-sm">
+          <table className="w-full min-w-176 text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-2 font-medium sm:px-5">Meter</th>
@@ -151,7 +151,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
           <EmptyState title="No lines yet">The bill is read once a day at 04:17 UTC, or now with “Run the analysis now”.</EmptyState>
         ) : (
           <div className="-mx-4 overflow-x-auto sm:-mx-5">
-            <table className="w-full min-w-[48rem] text-sm">
+            <table className="w-full min-w-3xl text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium sm:px-5">Product / meter</th>
@@ -217,7 +217,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
           </Field>
           <div className="flex flex-col justify-end gap-2">
             <label className="flex items-center gap-2 text-sm text-muted">
-              <input type="checkbox" name="scaleToOwn" className="accent-[var(--g1t-accent)]" /> Scale to g1t's count
+              <input type="checkbox" name="scaleToOwn" className="accent-(--g1t-accent)" /> Scale to g1t's count
             </label>
             <div className="flex gap-2">
               <Button type="submit">Save mapping</Button>
@@ -238,8 +238,8 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
         <form method="post" action="#guardrails" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <input type="hidden" name="intent" value="settings" />
           <Field label="Apply small moves on their own">
-            <label className="flex h-[38px] items-center gap-2 text-sm text-fg-soft">
-              <input type="checkbox" name="autoApply" defaultChecked={report.settings.autoApply} className="accent-[var(--g1t-accent)]" /> On
+            <label className="flex h-9.5 items-center gap-2 text-sm text-fg-soft">
+              <input type="checkbox" name="autoApply" defaultChecked={report.settings.autoApply} className="accent-(--g1t-accent)" /> On
             </label>
           </Field>
           <Field label="Up to, either way, %">
@@ -264,8 +264,8 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
             <Input name="anomalyFloor" inputMode="decimal" defaultValue={dollarsField(report.settings.anomalyFloorMicros)} />
           </Field>
           <Field label="Card fee on card payments">
-            <label className="flex h-[38px] items-center gap-2 text-sm text-fg-soft">
-              <input type="checkbox" name="cardFee" defaultChecked={report.settings.cardFee ?? true} className="accent-[var(--g1t-accent)]" /> Its own line; never on invoiced billing or bank transfers
+            <label className="flex h-9.5 items-center gap-2 text-sm text-fg-soft">
+              <input type="checkbox" name="cardFee" defaultChecked={report.settings.cardFee ?? true} className="accent-(--g1t-accent)" /> Its own line; never on invoiced billing or bank transfers
             </label>
           </Field>
           <div className="sm:col-span-2 lg:col-span-4">
@@ -371,7 +371,7 @@ function CycleSection({ report }: { report: CostsReport }) {
             </div>
           )}
           <div className="-mx-4 mt-3 overflow-x-auto sm:-mx-5">
-            <table className="w-full min-w-[48rem] text-sm">
+            <table className="w-full min-w-3xl text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium sm:px-5">Meter</th>
@@ -419,7 +419,7 @@ function CycleSection({ report }: { report: CostsReport }) {
 function MappingsTable({ report }: { report: CostsReport }) {
   return (
     <div className="-mx-4 overflow-x-auto sm:-mx-5">
-      <table className="w-full min-w-[44rem] text-sm">
+      <table className="w-full min-w-176 text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">
             <th className="px-4 py-2 font-medium sm:px-5">Cloudflare</th>

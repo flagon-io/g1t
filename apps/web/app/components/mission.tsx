@@ -32,6 +32,8 @@ import { cn } from "../lib/cn";
 import { type ActivityGroup, type Need, type NeedKind, type Verb, isAgent, sparkPoints } from "../lib/mission";
 import { TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
+import { UserAvatar } from "./user-card";
+import { PersonLink } from "./work";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
@@ -295,7 +297,7 @@ export function ActivityFeed({
               <SelectContent>
                 <SelectItem value="all">Anyone</SelectItem>
                 {people.map((name) => (
-                  <SelectItem key={name} value={name} icon={<Avatar name={name} size={16} />}>
+                  <SelectItem key={name} value={name} icon={<Avatar name={name} image={isAgent(name) ? null : undefined} size={16} />}>
                     {name}
                   </SelectItem>
                 ))}
@@ -307,7 +309,7 @@ export function ActivityFeed({
       {shown.length === 0 ? (
         <Quiet>{groups.length === 0 ? empty : "Nothing matches these filters."}</Quiet>
       ) : (
-        <ol className="relative space-y-0.5 before:absolute before:top-3 before:bottom-3 before:left-[0.9375rem] before:w-px before:bg-line">
+        <ol className="relative space-y-0.5 before:absolute before:top-3 before:bottom-3 before:left-3.75 before:w-px before:bg-line">
           {shown.map((group) => {
             const look = VERB[group.parts[0].verb];
             const agent = group.actor == null || isAgent(group.actor);
@@ -315,21 +317,26 @@ export function ActivityFeed({
               <li key={group.id} className="relative flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
                 <span
                   className={cn(
-                    "relative z-10 mt-0.5 flex size-[1.375rem] shrink-0 items-center justify-center rounded-full bg-bg ring-1 ring-line",
+                    "relative z-10 mt-0.5 flex size-5.5 shrink-0 items-center justify-center rounded-full bg-bg ring-1 ring-line",
                     look.tone,
                   )}
                 >
                   {look.icon}
                 </span>
                 <span className="min-w-0 grow leading-6 text-muted">
-                  {group.actor ? (
-                    <span className={cn("mr-1.5 inline-flex items-center gap-1.5 align-middle font-medium", agent ? "text-accent" : "text-fg")}>
-                      <Avatar name={group.actor} size={16} />
-                      {group.actor}
-                    </span>
-                  ) : (
-                    <span className="mr-1 text-fg-soft">g1t:</span>
-                  )}
+                  <span className={cn("mr-1.5 inline-flex items-center gap-1.5 align-middle font-medium", agent ? "text-accent" : "text-fg")}>
+                    {agent ? (
+                      <>
+                        <Avatar name={group.actor ?? "g1t"} image={null} size={16} />
+                        {group.actor ?? "g1t"}
+                      </>
+                    ) : (
+                      <>
+                        <UserAvatar username={group.actor!} size={16} />
+                        <PersonLink name={group.actor!} className="hover:text-accent" />
+                      </>
+                    )}
+                  </span>
                   <GroupLine group={group} />
                   {showRepo && (
                     <Link
@@ -467,7 +474,7 @@ export function DeployStrip({
 }) {
   const shown = builds.slice(0, slots).reverse();
   return (
-    <div className="flex h-8 items-end gap-[3px]" aria-label="Recent builds, oldest first">
+    <div className="flex h-8 items-end gap-0.75" aria-label="Recent builds, oldest first">
       {Array.from({ length: slots - shown.length }, (_, i) => (
         <span key={`empty-${i}`} className="h-2 flex-1 rounded-sm bg-line/60" />
       ))}

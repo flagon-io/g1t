@@ -856,7 +856,7 @@ function DeploymentRow({ deployment, busy }: { deployment: PendingDeployment; bu
                   · <TimeAgo at={deployment.reviewedAt} />
                 </span>
               )}
-              {deployment.comment && <p className="mt-1 whitespace-pre-wrap break-words text-fg/85">{deployment.comment}</p>}
+              {deployment.comment && <p className="mt-1 whitespace-pre-wrap wrap-break-word text-fg/85">{deployment.comment}</p>}
             </dd>
           </>
         )}

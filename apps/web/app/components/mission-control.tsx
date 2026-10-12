@@ -29,6 +29,8 @@ import type { ShellData } from "./shell";
 import { Unavailable } from "./mission";
 import { SubmitButton, TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
+import { UserAvatar } from "./user-card";
+import { PersonLink } from "./work";
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -243,7 +245,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
             <Facts facts={row.facts} />
           </div>
         </div>
-        <div className="rounded-lg border border-warn/20 bg-warn/[0.06] p-3.5 md:col-span-2 2xl:col-span-1">
+        <div className="rounded-lg border border-warn/20 bg-warn/6 p-3.5 md:col-span-2 2xl:col-span-1">
           <p className="text-xs font-semibold text-warn">Why this needs you</p>
           <p className="mt-1.5 text-sm leading-6 text-fg-soft">{row.why}</p>
           <p className="mt-2 text-xs text-faint">
@@ -412,7 +414,7 @@ function WeekChart({ week }: { week: Week }) {
                     {day.count > 0 ? (
                       <span className="block rounded-t bg-accent" style={{ height: Math.max(3, Math.round((day.count / max) * (height - 4))) }} />
                     ) : (
-                      <span className="block h-[2px] rounded-full bg-line-strong" />
+                      <span className="block h-0.5 rounded-full bg-line-strong" />
                     )}
                   </div>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-md border border-line-strong bg-raised px-2.5 py-1.5 text-xs whitespace-nowrap shadow-lg shadow-black/40 md:group-hover:block">
@@ -491,11 +493,14 @@ function FeedLine({ group, titles }: { group: ActivityGroup; titles: Record<stri
   const more = group.parts.length - 1 + Math.max(0, part.numbers.length - 1);
   return (
     <li className="flex gap-2.5 py-2">
-      <span className="mt-px">
-        <Avatar name={actor} size={22} />
-      </span>
+      <span className="mt-px">{agent ? <Avatar name={actor} image={null} size={22} /> : <UserAvatar username={actor} size={22} />}</span>
       <span className="min-w-0 grow text-[0.8125rem] leading-5 text-muted">
-        <span className={cn("font-medium", agent ? "text-accent" : "text-fg")}>{actor}</span> {VERB[part.verb]}{" "}
+        {agent ? (
+          <span className="font-medium text-accent">{actor}</span>
+        ) : (
+          <PersonLink name={actor} className="font-medium text-fg hover:text-accent" />
+        )}{" "}
+        {VERB[part.verb]}{" "}
         {number != null ? (
           <Link to={`${base}/issues/${number}`} prefetch="intent" className="text-fg-soft hover:text-fg">
             <span className="font-mono text-xs">#{number}</span>
@@ -679,7 +684,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
         <Card asChild className="min-w-0 scroll-mt-20 self-start overflow-hidden">
           <section id="work">
             <div className="flex items-center gap-2 border-b border-line px-2 sm:px-3">
-              <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto [scrollbar-width:none]" aria-label="Overview">
+              <nav className="-mb-px flex min-w-0 grow gap-1 overflow-x-auto scrollbar-none" aria-label="Overview">
                 {(["needs", "landed"] as const).map((value) => (
                   <Link
                     key={value}

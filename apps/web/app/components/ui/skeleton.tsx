@@ -28,7 +28,7 @@ export function Skeleton({ className, ...props }: ComponentProps<"span">) {
  */
 export function SkeletonLine({ className, barClassName, width }: { className?: string; barClassName?: string; width?: string }) {
   return (
-    <span aria-hidden="true" className={cn("flex h-[1lh] items-center", className)}>
+    <span aria-hidden="true" className={cn("flex h-lh items-center", className)}>
       <Skeleton className={cn("h-3 w-full", barClassName)} style={width ? { width } : undefined} />
     </span>
   );

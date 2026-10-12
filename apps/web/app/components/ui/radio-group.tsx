@@ -102,7 +102,7 @@ export function RadioCard({
         "group/card relative flex h-full w-full flex-col items-start rounded-xl border border-line bg-surface/40 p-4 text-left outline-none transition-[border-color,background-color,box-shadow] duration-150",
         "hover:border-line-strong hover:bg-surface",
         "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg focus-visible:outline-none",
-        "data-[state=checked]:border-accent/70 data-[state=checked]:bg-accent/[0.06] data-[state=checked]:shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_35%,transparent),0_8px_24px_-12px_color-mix(in_srgb,var(--color-accent)_40%,transparent)]",
+        "data-[state=checked]:border-accent/70 data-[state=checked]:bg-accent/6 data-[state=checked]:shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_35%,transparent),0_8px_24px_-12px_color-mix(in_srgb,var(--color-accent)_40%,transparent)]",
         "disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:opacity-60 disabled:hover:border-line",
         className,
       )}

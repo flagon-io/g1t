@@ -94,7 +94,7 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
             />
           </div>
           <div className={CARD}>
-            <Table className="min-w-[40rem]">
+            <Table className="min-w-160">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-4">Package</TableHead>

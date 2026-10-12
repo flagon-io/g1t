@@ -170,7 +170,7 @@ function NotesList({ notes, me }: { notes: SalesRecord["notes"]; me: string }) {
     <ol className="mt-4 space-y-3">
       {sorted.map((note) => (
         <li key={note.id} className="border-l-2 border-accent/40 pl-3">
-          <p className="text-sm break-words whitespace-pre-line text-fg-soft">{note.text}</p>
+          <p className="text-sm wrap-break-word whitespace-pre-line text-fg-soft">{note.text}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-faint">
             <StaffName email={note.by} me={me} />
             <When at={note.createdAt} time />

@@ -230,6 +230,13 @@ test("the feed names people, not account ids", () => {
   assert.equal(nameActor("usr_gone", null), "someone");
 });
 
+test("a workspace acting as itself is g1t, never a person named after the workspace", () => {
+  assert.deepEqual(actorIds(["wsp_syntaqx", "usr_b51a1a09"]), ["usr_b51a1a09"]);
+  // Identity's lookup names a workspace id by its slug; the feed does not ask it.
+  assert.equal(nameActor("wsp_syntaqx", { wsp_syntaqx: "syntaqx" }), "g1t");
+  assert.equal(nameActor("wsp_syntaqx", null), "g1t");
+});
+
 test("waits read in the largest whole unit", () => {
   assert.equal(waitedFor(0), "0 min");
   assert.equal(waitedFor(45.7), "45 min");

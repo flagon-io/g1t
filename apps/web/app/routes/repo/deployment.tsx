@@ -101,7 +101,7 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
       </header>
 
       {deployment.description && (
-        <p className="mt-4 max-w-3xl text-sm text-fg-soft [overflow-wrap:anywhere]">{deployment.description}</p>
+        <p className="mt-4 max-w-3xl text-sm text-fg-soft wrap-anywhere">{deployment.description}</p>
       )}
 
       <Card asChild tone="plain" className="mt-6 grid grid-cols-1 gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -191,7 +191,7 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
               Payload
               <span className="font-normal text-faint">{Object.keys(deployment.payload).length} keys</span>
             </summary>
-            <pre className="max-h-[60vh] overflow-auto border-t border-line p-4 font-mono text-xs leading-relaxed text-muted whitespace-pre-wrap [overflow-wrap:anywhere]">
+            <pre className="max-h-[60vh] overflow-auto border-t border-line p-4 font-mono text-xs leading-relaxed text-muted whitespace-pre-wrap wrap-anywhere">
               {JSON.stringify(deployment.payload, null, 2)}
             </pre>
           </details>
@@ -214,8 +214,8 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 function StatusItem({ status, last, over }: { status: DeploymentStatus; last: boolean; over: boolean }) {
   return (
     <li className="relative flex gap-3 pb-5 last:pb-0">
-      {!last && <span aria-hidden="true" className="absolute top-6 bottom-1 left-[9px] w-px bg-line" />}
-      <span className="relative mt-0.5 flex size-[19px] shrink-0 items-center justify-center bg-bg">
+      {!last && <span aria-hidden="true" className="absolute top-6 bottom-1 left-2.25 w-px bg-line" />}
+      <span className="relative mt-0.5 flex size-4.75 shrink-0 items-center justify-center bg-bg">
         <DeploymentStateIcon state={status.state} size={18} over={over} />
       </span>
       <div className="min-w-0 grow">
@@ -230,7 +230,7 @@ function StatusItem({ status, last, over }: { status: DeploymentStatus; last: bo
             </Hint>
           </span>
         </p>
-        {status.description && <p className="mt-0.5 text-sm text-muted [overflow-wrap:anywhere]">{status.description}</p>}
+        {status.description && <p className="mt-0.5 text-sm text-muted wrap-anywhere">{status.description}</p>}
         {(status.environment_url || status.log_url) && (
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
             {status.environment_url && (
@@ -297,7 +297,7 @@ function BuildDetails({ build }: { build: Deployment & { log: string | null } })
         </span>
       </h2>
       {error && (
-        <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm [overflow-wrap:anywhere]">{error}</p>
+        <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm wrap-anywhere">{error}</p>
       )}
       {build.warnings.length > 0 && (
         <ul className="mt-3 space-y-1 rounded-lg border border-warn/30 bg-warn/5 px-4 py-3 text-sm">
@@ -308,7 +308,7 @@ function BuildDetails({ build }: { build: Deployment & { log: string | null } })
       )}
       <h3 className="mt-5 text-sm font-medium text-muted">Build log</h3>
       {/* Long lines wrap, so a narrow screen shows the whole log without scrolling sideways. */}
-      <Card asChild tone="bg" className="mt-3 max-h-[70vh] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-muted [overflow-wrap:anywhere]">
+      <Card asChild tone="bg" className="mt-3 max-h-[70vh] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-muted wrap-anywhere">
         <pre>
           {build.log || (build.status === "queued" || build.status === "building" ? "The log appears when the build finishes." : "No log.")}
         </pre>

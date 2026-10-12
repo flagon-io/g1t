@@ -252,7 +252,7 @@ export function ConnectorDirectory({ scope, views, connected, workspace, canMana
       <nav aria-label="Categories" className={cn(nav === "sidebar" && "md:sticky md:top-20 md:self-start")}>
         <ul
           className={cn(
-            "-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:px-0",
+            "-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 scrollbar-none sm:mx-0 sm:px-0",
             nav === "sidebar" && "md:mx-0 md:flex-col md:gap-px md:overflow-visible md:px-0",
           )}
         >
@@ -407,7 +407,7 @@ function ConnectorCard({
       )}
     >
       <div className="flex items-start gap-3">
-        <span className={cn(soon && "opacity-70 grayscale-[35%]")}>
+        <span className={cn(soon && "opacity-70 grayscale-35")}>
           <ConnectorMark view={view} />
         </span>
         <div className="min-w-0 grow">

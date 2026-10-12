@@ -75,6 +75,24 @@ export function UserCard({ username, children }: { username: string | null | und
   );
 }
 
+/**
+ * A person's avatar that opens their card and links to their profile, as
+ * their name beside it does. g1t, ghost and names that are no account's
+ * are the avatar alone.
+ */
+export function UserAvatar({ username, size = 20, image }: { username: string; size?: number; image?: string | null }) {
+  const name = username.toLowerCase();
+  const face = <Avatar name={username} image={image} size={size} />;
+  if (name === "g1t" || !hasCard(name)) return face;
+  return (
+    <UserCard username={name}>
+      <Link to={`/u/${name}`} tabIndex={-1} aria-hidden className="inline-flex shrink-0 rounded-full">
+        {face}
+      </Link>
+    </UserCard>
+  );
+}
+
 function Loading() {
   return (
     <div aria-busy="true" className="flex items-center gap-3">

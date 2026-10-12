@@ -34,12 +34,12 @@ function WeekBars({ weeks, values, height, label, scale }: { weeks: WeekCommits[
   // One scale for every contributor, so their bars compare.
   const top = scale ?? Math.max(1, ...values);
   return (
-    <div role="img" aria-label={label} className="flex items-end gap-[2px]" style={{ height }}>
+    <div role="img" aria-label={label} className="flex items-end gap-0.5" style={{ height }}>
       {values.map((value, at) => (
         <Hint key={weeks[at].week} label={`${count(value, "commit")} · week of ${weekLabel(weeks[at].week)}`}>
           <span className="flex h-full min-w-0 flex-1 items-end">
             <span
-              className={`w-full rounded-t-[2px] ${value > 0 ? "bg-accent" : "bg-line"}`}
+              className={`w-full rounded-t-xs ${value > 0 ? "bg-accent" : "bg-line"}`}
               style={{ height: value > 0 ? `${Math.max(6, (value / top) * 100)}%` : 2 }}
             />
           </span>

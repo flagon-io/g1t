@@ -113,7 +113,7 @@ export default function Credits({ loaderData, actionData }: Route.ComponentProps
       {credits && credits.months.length > 0 && (
         <Section className="mt-6" title="By month" description="The last 12 months by kind. Spent is what credit paid for that month, whenever it was given.">
           <div className="-mx-4 -my-4 overflow-x-auto sm:-mx-5 sm:-my-5">
-            <table className="w-full min-w-[34rem] text-sm">
+            <table className="w-full min-w-136 text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-muted">
                   <th className="px-4 py-2 font-medium sm:pl-5">Month</th>

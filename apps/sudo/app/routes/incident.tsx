@@ -176,7 +176,7 @@ function Header({ incident, now }: { incident: AdminIncidentDetail; now: string 
         {incident.source === "detected" && <Badge tone="warn">Detected by the checks</Badge>}
         {incident.visibility !== "public" && <Badge>Not on the status page</Badge>}
       </div>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight break-words">{incident.title}</h1>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight wrap-break-word">{incident.title}</h1>
       <p className="mt-1 text-sm text-muted">
         Impact began <When at={incident.started_at} time /> · declared by <span className="font-mono text-xs">{incident.created_by === "status" ? "the checks" : incident.created_by}</span>
         {incident.commander && (
@@ -216,11 +216,11 @@ function UpdateForm({ incident, components, error }: { incident: AdminIncidentDe
         {!draft && (
           <fieldset className="flex flex-wrap gap-2" aria-label="Who sees it">
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm has-checked:border-accent/60 has-checked:bg-accent/10">
-              <input type="radio" name="visibility" value="public" defaultChecked className="accent-[var(--g1t-accent)]" />
+              <input type="radio" name="visibility" value="public" defaultChecked className="accent-(--g1t-accent)" />
               <Globe size={14} aria-hidden="true" /> Public update
             </label>
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm has-checked:border-line-strong has-checked:bg-raised">
-              <input type="radio" name="visibility" value="internal" className="accent-[var(--g1t-accent)]" />
+              <input type="radio" name="visibility" value="internal" className="accent-(--g1t-accent)" />
               <Lock size={14} aria-hidden="true" /> Internal note
             </label>
           </fieldset>
@@ -260,7 +260,7 @@ function UpdateForm({ incident, components, error }: { incident: AdminIncidentDe
         <div className="flex flex-wrap items-center justify-between gap-3">
           {!draft ? (
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[var(--g1t-accent)]" />
+              <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-(--g1t-accent)" />
               Email subscribers (public updates only)
             </label>
           ) : (
@@ -325,7 +325,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
               </Field>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[var(--g1t-accent)]" />
+                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-(--g1t-accent)" />
                   Email subscribers
                 </label>
                 <Button type="submit" variant="lavender">
@@ -376,7 +376,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
                 {errorFor("resolve") && <Notice tone="error">{errorFor("resolve")}</Notice>}
                 <Textarea name="message" rows={3} required maxLength={4000} aria-label="Resolution update" placeholder="Pushes work again. A bad deploy was rolled back; nothing was lost." />
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-[var(--g1t-accent)]" />
+                  <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-(--g1t-accent)" />
                   Email subscribers
                 </label>
                 <Button type="submit" variant="lavender" className="w-full">

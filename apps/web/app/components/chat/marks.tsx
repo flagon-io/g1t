@@ -40,7 +40,7 @@ export function AgentPill({ className, deleted = false }: { className?: string; 
   return (
     <span
       className={cn(
-        "inline-flex h-4 shrink-0 items-center rounded-[4px] bg-accent/15 px-1 text-[0.5625rem] font-semibold tracking-[0.06em] text-accent uppercase",
+        "inline-flex h-4 shrink-0 items-center rounded-sm bg-accent/15 px-1 text-[0.5625rem] font-semibold tracking-[0.06em] text-accent uppercase",
         deleted && "bg-raised text-muted",
         className,
       )}

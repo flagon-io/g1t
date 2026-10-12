@@ -136,7 +136,7 @@ export function CardToasts() {
     <section
       aria-label="Notices"
       aria-live="polite"
-      className="pointer-events-none fixed z-[66] flex flex-col items-center gap-2 max-sm:inset-x-3 max-sm:top-[calc(env(safe-area-inset-top)+0.75rem)] sm:bottom-28 sm:left-1/2 sm:w-[min(26rem,calc(100vw-2rem))] sm:-translate-x-1/2"
+      className="pointer-events-none fixed z-66 flex flex-col items-center gap-2 max-sm:inset-x-3 max-sm:top-[calc(env(safe-area-inset-top)+0.75rem)] sm:bottom-28 sm:left-1/2 sm:w-[min(26rem,calc(100vw-2rem))] sm:-translate-x-1/2"
     >
       {list.map((toast) => (
         <div
@@ -239,7 +239,7 @@ export function CardBox({
           {card.fields.map((field) => (
             <div key={field.label} className="min-w-0">
               <dt className="text-[0.6875rem] font-medium text-faint">{field.label}</dt>
-              <dd className="line-clamp-2 text-xs break-words text-fg-soft">
+              <dd className="line-clamp-2 text-xs wrap-break-word text-fg-soft">
                 {field.value}
               </dd>
             </div>
@@ -292,11 +292,11 @@ function CardBody({ body, repo }: { body: string; repo?: string }) {
       <div
         ref={box}
         id={id}
-        className={cn("card-md relative rounded-lg border border-line/70 bg-bg/40 px-3 py-2", !open && "max-h-[11.5rem] overflow-hidden")}
+        className={cn("card-md relative rounded-lg border border-line/70 bg-bg/40 px-3 py-2", !open && "max-h-46 overflow-hidden")}
       >
         <Markdown source={body} repo={repoAt(repo)} />
         {folded && (
-          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-12 rounded-b-lg bg-gradient-to-t from-surface to-transparent" />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-12 rounded-b-lg bg-linear-to-t from-surface to-transparent" />
         )}
       </div>
       {(folded || open) && (

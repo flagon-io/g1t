@@ -11,7 +11,7 @@ export function Table({ className, frameProps, ...props }: Omit<ComponentProps<"
     <div
       data-slot="table-frame"
       {...frameProps}
-      className={cn("relative w-full overflow-x-auto outline-none [scrollbar-width:thin] focus-visible:ring-2 focus-visible:ring-accent", frameProps?.className)}
+      className={cn("relative w-full overflow-x-auto outline-none scrollbar-thin focus-visible:ring-2 focus-visible:ring-accent", frameProps?.className)}
     >
       <table data-slot="table" className={cn("w-full caption-bottom border-collapse text-sm", className)} {...props} />
     </div>

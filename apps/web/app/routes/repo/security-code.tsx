@@ -111,7 +111,7 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
         <section>
           <h3 className="text-base font-semibold tracking-tight">Recent analyses</h3>
           <div className={`${CARD} mt-2`}>
-            <Table className="min-w-[36rem]">
+            <Table className="min-w-xl">
               <TableHeader>
                 <TableRow>
                   <TableHead className="px-4">Tool</TableHead>

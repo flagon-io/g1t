@@ -422,7 +422,7 @@ function PersonRow({
         )}
         {/* The same room for Remove on every row, so the roles line up. */}
         {manage && (
-          <span className="flex w-[5.5rem] justify-end">
+          <span className="flex w-22 justify-end">
             {editable && person.direct != null && (
               <RemoveButton person={person} full={full} outside={outside} onDone={onDone} />
             )}
@@ -584,7 +584,7 @@ function TeamRow({
           </span>
         )}
         {manage && (
-          <span className="flex w-[5.5rem] justify-end">
+          <span className="flex w-22 justify-end">
             <AlertDialog open={open} onOpenChange={setOpen}>
               <Button type="button" variant="outline" onClick={() => setOpen(true)}>
                 Remove

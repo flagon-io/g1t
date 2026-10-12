@@ -63,7 +63,7 @@ function InviteTable({ invites, actionData }: { invites: Invite[]; actionData: A
   if (invites.length === 0) return <EmptyState title="No invites">Nothing matches.</EmptyState>;
   return (
     <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-      <table className="w-full min-w-[38rem] text-sm">
+      <table className="w-full min-w-152 text-sm">
         <thead>
           <tr className="text-left text-xs text-faint">
             <th className="px-4 py-2 font-medium">Code</th>

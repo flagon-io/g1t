@@ -99,7 +99,7 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
         Sessions
       </Link>
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Avatar name={pull.agent} size={22} />
+        <Avatar name={pull.agent} image={null} size={22} />
         <h2 className="min-w-0 grow text-lg font-semibold tracking-tight">
           <Link to={`${base}/pull/${pull.number}`} className="hover:text-accent">
             {pull.title} <span className="font-normal text-faint">#{pull.number}</span>

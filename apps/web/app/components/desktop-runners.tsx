@@ -233,7 +233,7 @@ function Detail({ term, children }: { term: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-w-0 items-baseline gap-3">
       <dt className="w-16 shrink-0 text-faint">{term}</dt>
-      <dd className="min-w-0 break-words text-fg-soft">{children}</dd>
+      <dd className="min-w-0 wrap-break-word text-fg-soft">{children}</dd>
     </div>
   );
 }

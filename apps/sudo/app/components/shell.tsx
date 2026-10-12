@@ -143,9 +143,9 @@ function SubLink({ item, pathname, counts }: { item: NavItem; pathname: string; 
       to={item.to}
       title={item.about}
       aria-current={current ? "page" : undefined}
-      className={`relative flex h-8 items-center gap-2 rounded-md pr-2 pl-[2.375rem] text-[0.8125rem] transition-colors ${
+      className={`relative flex h-8 items-center gap-2 rounded-md pr-2 pl-9.5 text-[0.8125rem] transition-colors ${
         current
-          ? "bg-raised font-medium text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-[1.1875rem] before:z-10 before:w-px before:bg-accent"
+          ? "bg-raised font-medium text-fg before:absolute before:top-1.5 before:bottom-1.5 before:left-4.75 before:z-10 before:w-px before:bg-accent"
           : item.soon
             ? "text-faint hover:bg-raised/60 hover:text-muted"
             : "text-muted hover:bg-raised/60 hover:text-fg"
@@ -185,7 +185,7 @@ function Section({ group, pathname, counts }: { group: NavGroup & { title: strin
         )}
         <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-faint transition-transform duration-150 group-open/section:rotate-90" />
       </summary>
-      <ul className="relative mt-px mb-1 space-y-px before:absolute before:top-1 before:bottom-1 before:left-[1.1875rem] before:w-px before:bg-line">
+      <ul className="relative mt-px mb-1 space-y-px before:absolute before:top-1 before:bottom-1 before:left-4.75 before:w-px before:bg-line">
         {group.items.map((item) => (
           <li key={item.to}>
             <SubLink item={item} pathname={pathname} counts={counts} />

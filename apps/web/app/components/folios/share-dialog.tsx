@@ -130,7 +130,7 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
               <Skeleton className="h-6 w-44" />
             </div>
           ) : (
-            <ul className="max-h-64 space-y-0.5 overflow-y-auto [scrollbar-width:thin]">
+            <ul className="max-h-64 space-y-0.5 overflow-y-auto scrollbar-thin">
               <Row face={<Face who={access.owner} size={26} />} name={access.owner.display_name} sub={`@${access.owner.name}`} end={<span className="text-xs text-faint">Owner</span>} />
               {access.rows.map((r) => {
                 const face = r.profile.kind === "team" ? <TeamFace /> : <Face who={r.profile} size={26} />;
@@ -296,7 +296,7 @@ function Row({ face, name, sub, end }: { face: ReactNode; name: string; sub: Rea
 
 function TeamFace() {
   return (
-    <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full bg-raised text-muted">
+    <span className="flex size-6.5 shrink-0 items-center justify-center rounded-full bg-raised text-muted">
       <Users size={13} />
     </span>
   );

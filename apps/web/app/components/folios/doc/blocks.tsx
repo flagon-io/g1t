@@ -109,7 +109,7 @@ function SourceEditor({ value, onChange, placeholder, mono = true, editable }: {
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onChange(draft)}
       onKeyDown={(e) => e.stopPropagation()}
-      className={`w-full resize-y rounded-md border border-line bg-bg px-2.5 py-2 text-[0.8125rem] leading-relaxed text-fg outline-none focus:border-[var(--color-accent)] ${mono ? "font-mono" : ""}`}
+      className={`w-full resize-y rounded-md border border-line bg-bg px-2.5 py-2 text-[0.8125rem] leading-relaxed text-fg outline-none focus:border-(--color-accent) ${mono ? "font-mono" : ""}`}
     />
   );
 }
@@ -202,7 +202,7 @@ function EmbedView({ url, title }: { url: string; title: string }) {
   }, [url]);
   const shown = card && card !== "missing" ? card : null;
   const state = shown?.state ?? null;
-  const tone = state === "open" ? "text-success" : state === "merged" ? "text-merged" : state === "closed" ? "text-danger" : "text-[var(--g1t-muted)]";
+  const tone = state === "open" ? "text-success" : state === "merged" ? "text-merged" : state === "closed" ? "text-danger" : "text-(--g1t-muted)";
   return (
     <a
       href={shown?.href ?? url}
@@ -267,13 +267,13 @@ export const Mention = createReactInlineContentSpec(
       const p = inlineContent.props;
       if (p.kind === "page") {
         return (
-          <a href={p.href || "#"} className="rounded px-0.5 font-medium text-[var(--color-accent)] no-underline hover:underline">
+          <a href={p.href || "#"} className="rounded px-0.5 font-medium text-(--color-accent) no-underline hover:underline">
             <FileText size={13} className="mr-0.5 inline -translate-y-px" aria-hidden="true" />
             {p.name || "Untitled"}
           </a>
         );
       }
-      return <span className={`rounded px-1 py-px font-medium ${p.kind === "agent" ? "bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]" : "bg-info/12 text-info"}`}>@{p.name}</span>;
+      return <span className={`rounded px-1 py-px font-medium ${p.kind === "agent" ? "bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-(--color-accent)" : "bg-info/12 text-info"}`}>@{p.name}</span>;
     },
   },
 );

@@ -201,7 +201,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const { slug, now, tz, span, digest, happened, attention: waiting, running: runningNow, head, spend } = loaderData;
   useMarkSeen(slug, now);
   return (
-    <div className="mx-auto w-full max-w-[1040px] space-y-5 px-4 py-5 md:px-10 md:py-8">
+    <div className="mx-auto w-full max-w-260 space-y-5 px-4 py-5 md:px-10 md:py-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-[1.75rem] leading-tight font-semibold tracking-tight">{span.key === "last" && span.note == null ? "Welcome back" : "Home"}</h1>

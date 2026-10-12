@@ -569,13 +569,13 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
         />
       )}
       <div
-        className={`rounded-xl border border-line-strong bg-surface transition-colors focus-within:border-accent/35 focus-within:ring-4 focus-within:ring-accent/[0.06] ${disabled ? "opacity-60" : ""}`}
+        className={`rounded-xl border border-line-strong bg-surface transition-colors focus-within:border-accent/35 focus-within:ring-4 focus-within:ring-accent/6 ${disabled ? "opacity-60" : ""}`}
       >
         {toolbar && (
           <div
             role="toolbar"
             aria-label="Formatting"
-            className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-1.5 py-1 [scrollbar-width:none]"
+            className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-1.5 py-1 scrollbar-none"
           >
             {tool("Bold", <Bold size={15} strokeWidth={2.4} />, state?.bold, () => chain().toggleBold().run())}
             {tool("Italic", <Italic size={15} />, state?.italic, () => chain().toggleItalic().run())}
@@ -593,7 +593,7 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
           </div>
         )}
         <div
-          className={`overflow-y-auto px-3.5 text-[0.9375rem] leading-6 text-fg [scrollbar-width:thin] ${compact ? "pt-2.5 pb-1" : "pt-3 pb-1.5"}`}
+          className={`overflow-y-auto px-3.5 text-[0.9375rem] leading-6 text-fg scrollbar-thin ${compact ? "pt-2.5 pb-1" : "pt-3 pb-1.5"}`}
           style={{ maxHeight: MAX_HEIGHT }}
           onClick={(event) => {
             // The whole box takes focus, not only its first line.

@@ -379,7 +379,7 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
           </Button>
         )}
       </div>
-      <nav aria-label="Artifacts" className="min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 [scrollbar-width:thin]">
+      <nav aria-label="Artifacts" className="min-h-0 grow overflow-y-auto px-2.5 pt-3 pb-4 scrollbar-thin">
         <form
           role="search"
           onSubmit={(e) => {

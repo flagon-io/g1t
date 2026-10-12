@@ -24,7 +24,7 @@ export function InputGroup({ className, ...props }: ComponentProps<"div">) {
     <div
       className={cn(
         "flex h-9 w-full min-w-0 items-stretch overflow-hidden rounded-md border border-line bg-bg text-sm transition-[border-color,box-shadow]",
-        "hover:border-line-strong has-[:focus-visible]:border-accent-dim has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/25",
+        "hover:border-line-strong has-focus-visible:border-accent-dim has-focus-visible:ring-2 has-focus-visible:ring-accent/25",
         "[&_input]:h-full [&_input]:rounded-none [&_input]:border-0 [&_input]:bg-transparent [&_input]:ring-0 [&_input]:focus-visible:ring-0",
         className,
       )}

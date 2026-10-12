@@ -90,7 +90,7 @@ export default function PullSecurity({ loaderData, params }: Route.ComponentProp
             <Verdict passed={scanning.review.passed} text={scanning.review.headline} />
             {scanning.review.changes.length > 0 && (
               <div className={CARD}>
-                <Table className="min-w-[36rem]">
+                <Table className="min-w-xl">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="px-4">Change</TableHead>

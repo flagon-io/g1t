@@ -212,18 +212,32 @@ export const DELETED_USER = "a deleted user";
 /** An account id rather than a name: usernames never hold an underscore. */
 const isAccountId = (actor: string) => actor.includes("_");
 
+/**
+ * A workspace acting as itself: a build or deployment run under the
+ * workspace's own identity. That is g1t working for the workspace, not a
+ * person, so it is never named after the workspace, as home.server.ts
+ * names it too.
+ */
+const isWorkspaceId = (actor: string) => actor.startsWith("wsp_");
+
 /** The account ids among `actors` to look up by name, once each. */
 export function actorIds(actors: (string | null)[]): string[] {
-  return [...new Set(actors.filter((actor): actor is string => actor != null && isAccountId(actor) && !(actor in G1T_ACTORS)))];
+  return [
+    ...new Set(
+      actors.filter((actor): actor is string => actor != null && isAccountId(actor) && !(actor in G1T_ACTORS) && !isWorkspaceId(actor)),
+    ),
+  ];
 }
 
 /**
  * An actor by name: an account id becomes its username, from `names` (the
- * identity service's lookup). An id it does not know is an account since
- * deleted; with no lookup at all, the actor is only "someone".
+ * identity service's lookup); a workspace is g1t. An id it does not know is
+ * an account since deleted; with no lookup at all, the actor is only
+ * "someone".
  */
 export function nameActor(actor: string | null, names: Record<string, string> | null): string | null {
   if (actor == null || !isAccountId(actor)) return actor;
+  if (isWorkspaceId(actor)) return "g1t";
   return G1T_ACTORS[actor] ?? names?.[actor] ?? (names ? DELETED_USER : "someone");
 }
 

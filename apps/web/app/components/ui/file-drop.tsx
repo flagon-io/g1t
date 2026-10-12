@@ -112,7 +112,7 @@ export function FileDrop({
         onDrop={drop}
         className={cn(
           "relative flex cursor-pointer rounded-lg border border-dashed border-line-strong bg-bg text-sm text-muted transition-colors",
-          "hover:border-accent/50 hover:bg-surface has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-bg",
+          "hover:border-accent/50 hover:bg-surface has-focus-visible:ring-2 has-focus-visible:ring-accent has-focus-visible:ring-offset-1 has-focus-visible:ring-offset-bg",
           compact ? "min-h-11 items-center gap-2 px-3 py-1.5 sm:min-h-9" : "flex-col items-center justify-center gap-1.5 px-4 py-6 text-center",
           dragging && "border-accent bg-accent/5 hover:border-accent hover:bg-accent/5",
         )}

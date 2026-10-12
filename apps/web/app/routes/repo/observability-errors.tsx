@@ -120,7 +120,7 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
                           </Link>
                         )}
                       </p>
-                      <p className="mt-1 text-sm break-words">{g.message}</p>
+                      <p className="mt-1 text-sm wrap-break-word">{g.message}</p>
                       <p className="mt-1.5 text-xs text-faint tabular-nums">
                         <span className="text-fg">{count(g.count)}</span> time{g.count === 1 ? "" : "s"} · first <TimeAgo at={g.first_us / 1000} /> · last{" "}
                         <TimeAgo at={g.last_us / 1000} />

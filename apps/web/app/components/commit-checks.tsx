@@ -119,7 +119,7 @@ export function CommitChecksMark({ checks, className }: { checks: CommitChecks |
       >
         <Mark state={checks.state} />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[28rem] p-0">
+      <PopoverContent align="start" className="w-md p-0">
         <ChecksList checks={checks} />
       </PopoverContent>
     </Popover>

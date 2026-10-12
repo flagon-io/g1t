@@ -138,7 +138,7 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
                       </Link>
                     )}
                   </p>
-                  {entry.detail && <p className="mt-0.5 text-sm break-words text-muted">{entry.detail}</p>}
+                  {entry.detail && <p className="mt-0.5 text-sm wrap-break-word text-muted">{entry.detail}</p>}
                 </div>
                 <p className="flex shrink-0 items-center gap-1 text-xs text-faint sm:w-56 sm:justify-end sm:pt-0.5">
                   {stripe && entry.by === "stripe" ? (

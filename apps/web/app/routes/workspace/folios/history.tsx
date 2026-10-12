@@ -102,7 +102,7 @@ export default function FolioHistory({ loaderData, params }: Route.ComponentProp
         </div>
       ) : (
         <div className="mt-6 grid gap-4 md:grid-cols-[17rem_minmax(0,1fr)]">
-          <ul className="space-y-px md:max-h-[calc(100dvh-14rem)] md:overflow-y-auto md:[scrollbar-width:thin]">
+          <ul className="space-y-px md:max-h-[calc(100dvh-14rem)] md:overflow-y-auto md:scrollbar-thin">
             {versions.map((v) => (
               <li key={v.id}>
                 <button type="button" onClick={() => setChosen(v.id)} aria-current={chosen === v.id} className={`w-full rounded-md px-2.5 py-2 text-left transition-colors ${chosen === v.id ? "bg-raised" : "hover:bg-raised/60"}`}>
@@ -122,7 +122,7 @@ export default function FolioHistory({ loaderData, params }: Route.ComponentProp
           </ul>
           <Card className="min-w-0 overflow-hidden">
             {detail ? (
-              <div className="max-h-[calc(100dvh-14rem)] overflow-auto py-2 [scrollbar-width:thin]">
+              <div className="max-h-[calc(100dvh-14rem)] overflow-auto py-2 scrollbar-thin">
                 <DiffView lines={detail.diff} />
               </div>
             ) : (

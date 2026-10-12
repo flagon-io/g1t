@@ -105,7 +105,7 @@ export default function Sessions({ loaderData, params }: Route.ComponentProps) {
             {sessions.map((session) => (
               <li key={session.number} className="px-4 py-3.5">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                  <Avatar name={session.agent} size={18} />
+                  <Avatar name={session.agent} image={null} size={18} />
                   <Link to={`${base}/sessions/${session.number}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
                     {session.title} <span className="font-normal text-faint">#{session.number}</span>
                   </Link>

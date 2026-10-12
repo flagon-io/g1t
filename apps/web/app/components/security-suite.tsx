@@ -145,7 +145,7 @@ export function CodeAlertItem({ alert, base }: { alert: CodeAlert; base: string 
       <span className={`mt-0.5 hidden shrink-0 sm:block ${alert.state === "open" ? "text-warn" : "text-muted"}`}>{STATE_ICON[alert.state]}</span>
       <div className="min-w-0 grow">
         <div className="flex flex-wrap items-center gap-2">
-          <Link to={`${base}/security/code-scanning/${alert.number}`} className="min-w-0 text-sm font-medium break-words hover:underline">
+          <Link to={`${base}/security/code-scanning/${alert.number}`} className="min-w-0 text-sm font-medium wrap-break-word hover:underline">
             {alert.ruleName && alert.ruleName !== alert.ruleId ? alert.ruleName : shortRule(alert.ruleId)}
           </Link>
           <SeverityBadge severity={alert.severity} />
@@ -313,7 +313,7 @@ export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: 
   }
   return (
     <div className={CARD}>
-      <Table className="min-w-[46rem]">
+      <Table className="min-w-184">
         <TableHeader>
           <TableRow>
             <TableHead className="px-4">Repository</TableHead>

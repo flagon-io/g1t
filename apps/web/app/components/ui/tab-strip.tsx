@@ -69,7 +69,7 @@ export function TabStrip({ label, className, children }: { label?: string; class
       aria-label={label}
       style={fade(edges.start, edges.end)}
       className={cn(
-        "relative flex overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0",
+        "relative flex overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-none [&::-webkit-scrollbar]:hidden *:shrink-0",
         className,
       )}
     >

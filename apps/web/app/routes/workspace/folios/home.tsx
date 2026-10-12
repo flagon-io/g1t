@@ -204,7 +204,7 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
         </div>
       </div>
       <BottomSheet open={filtersOpen} onOpenChange={setFiltersOpen} title="Filters">
-        <div className="flex flex-col gap-2 px-3 pb-4 [&>*]:w-full">{filters}</div>
+        <div className="flex flex-col gap-2 px-3 pb-4 *:w-full">{filters}</div>
       </BottomSheet>
 
       <TabStrip label="Which artifacts" className="mt-5 gap-1 border-b border-line">
@@ -293,7 +293,7 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
   const starting = navigation.state !== "idle" && navigation.formMethod?.toUpperCase() === "POST" && navigation.formAction?.includes("/-/artifacts/new/");
   const [choosing, setChoosing] = useState(false);
   return (
-    <div className="-mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0">
+    <div className="-mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-1 scrollbar-none sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0">
       {FOLIO_KINDS.map((kind) => {
         const ui = FOLIO_KIND_UI[kind];
         const body = (

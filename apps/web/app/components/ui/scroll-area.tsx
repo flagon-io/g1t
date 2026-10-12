@@ -5,7 +5,7 @@ import { cn } from "../../lib/cn";
 
 // shadcn/ui's scroll area, styled with g1t's tokens: a box that scrolls
 // with a thin bar of its own, the same on every platform, for a list in a
-// panel or a sidebar. Plain `overflow-y-auto` with `[scrollbar-width:thin]`
+// panel or a sidebar. Plain `overflow-y-auto` with `scrollbar-thin`
 // does for most of the site; this is for where the bar must sit inside
 // rounded corners or stay out of the way until hovered.
 

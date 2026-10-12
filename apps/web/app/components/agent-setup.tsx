@@ -93,7 +93,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
             <code>
               {agent.lang === "sh"
                 ? agent.code.split("\n").map((line, index) => (
-                    <span key={index} className="block whitespace-pre-wrap [overflow-wrap:anywhere]">
+                    <span key={index} className="block whitespace-pre-wrap wrap-anywhere">
                       <span className="mr-2 text-faint select-none">$</span>
                       {line}
                     </span>

@@ -152,7 +152,7 @@ function Entry({
     <li className="relative pl-10">
       {/* Its place on the rail. */}
       <span
-        className={`absolute top-4 left-[13px] size-3 rounded-full border-2 ${
+        className={`absolute top-4 left-3.25 size-3 rounded-full border-2 ${
           entry.state === "testing"
             ? "animate-pulse border-accent bg-accent/30"
             : entry.state === "passed" || entry.state === "landed"
@@ -180,7 +180,7 @@ function Entry({
             </Await>
           </Suspense>
           <span className="flex items-center gap-1.5">
-            <Avatar name={entry.agent} size={14} />
+            <Avatar name={entry.agent} image={null} size={14} />
             {entry.agent}
           </span>
           <span>
@@ -259,9 +259,9 @@ export default function Queue({ loaderData, params }: Route.ComponentProps) {
                 {queue.active.length} waiting to land{testing > 0 && `, ${testing} being tested now`}
               </span>
             </div>
-            <ol className="relative mt-3 space-y-3 before:absolute before:top-0 before:bottom-4 before:left-[18px] before:w-px before:bg-line">
+            <ol className="relative mt-3 space-y-3 before:absolute before:top-0 before:bottom-4 before:left-4.5 before:w-px before:bg-line">
               <li className="relative flex items-center gap-2 pl-10 text-xs text-muted">
-                <span className="absolute left-[11px] flex size-4 items-center justify-center rounded-full bg-raised ring-1 ring-line-strong">
+                <span className="absolute left-2.75 flex size-4 items-center justify-center rounded-full bg-raised ring-1 ring-line-strong">
                   <GitCommitHorizontal size={10} />
                 </span>
                 <span className="font-mono text-fg">{defaultBranch}</span>

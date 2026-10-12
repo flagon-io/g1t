@@ -69,14 +69,14 @@ export function MissionControlSkeleton() {
         <SkeletonLine className="w-72 max-w-full text-[1.75rem] leading-tight sm:text-[2rem]" barClassName="h-8" />
         {/* The date and the week's summary: one line wide, three on a phone. */}
         <div className="mt-1.5 text-sm">
-          <SkeletonLine className="w-[36rem] max-w-full" barClassName="h-3.5" />
+          <SkeletonLine className="w-xl max-w-full" barClassName="h-3.5" />
           <SkeletonLine className="w-full sm:hidden" barClassName="h-3.5" />
           <SkeletonLine className="w-2/3 sm:hidden" barClassName="h-3.5" />
         </div>
       </header>
       <div className="flex flex-wrap items-center gap-2">
-        <Skeleton className="h-[38px] w-28 rounded-md" />
-        <Skeleton className="h-[38px] w-44 rounded-md" />
+        <Skeleton className="h-9.5 w-28 rounded-md" />
+        <Skeleton className="h-9.5 w-44 rounded-md" />
       </div>
       <Card tone="plain" className="grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
@@ -104,7 +104,7 @@ export function MissionControlSkeleton() {
                 {/* The first row stands open, as the real list's does. */}
                 {index === 0 && (
                   <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-                    <Skeleton className="h-[17rem] rounded-xl" />
+                    <Skeleton className="h-68 rounded-xl" />
                     <Skeleton className="mt-3 h-8 w-44 rounded-md" />
                   </div>
                 )}

@@ -13,7 +13,7 @@ import { requireRepo } from "../../lib/access.server";
 import { ACTIVITY_TYPES, type ActivityLine, aboutBranch, activityLine } from "../../lib/about";
 import { page } from "../../lib/meta";
 import { events, identity } from "../../lib/services.server";
-import { UserCard } from "../../components/user-card";
+import { UserAvatar, UserCard } from "../../components/user-card";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Activity · ${params.owner}/${params.repo} · g1t` });
@@ -35,11 +35,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const line = activityLine(event);
     return line && (!only || aboutBranch(line, only, repo.defaultBranch)) ? [{ id: event.id, time: event.time, actor: event.actor, line }] : [];
   });
-  // Who: people by their name now; g1t as itself.
+  // Who: people by their name now; g1t as itself, and as a workspace
+  // acting under its own identity (lib/mission.ts), never named after it.
   const ids = [...new Set(lines.map((line) => line.actor).filter((actor): actor is string => !!actor && actor !== "g1t"))];
-  const names = ids.length > 0 ? await identity.usernames(ids).catch(() => ({}) as Record<string, string>) : {};
+  const names = ids.length > 0 ? await identity.usernames(ids.filter((id) => !id.startsWith("wsp_"))).catch(() => ({}) as Record<string, string>) : {};
+  const g1t = (actor: string | null) => actor === "g1t" || !!actor?.startsWith("wsp_");
   return {
-    lines: lines.map((line) => ({ ...line, who: line.actor === "g1t" ? "g1t" : line.actor ? (names[line.actor] ?? null) : null })),
+    lines: lines.map((line) => ({ ...line, who: g1t(line.actor) ? "g1t" : line.actor ? (names[line.actor] ?? null) : null })),
     next: found.length === PAGE ? found[found.length - 1].id : null,
     defaultBranch: repo.defaultBranch,
     branch: only,
@@ -143,7 +145,11 @@ export default function ActivityPage({ loaderData, params }: Route.ComponentProp
                   <span className="mt-0.5 shrink-0 text-faint">{icon}</span>
                   <span className="min-w-0 grow">
                     <span className="inline-flex items-center gap-1.5 align-middle">
-                      <Avatar name={who ?? "someone"} size={18} system={who === "g1t"} />
+                      {who && who !== "g1t" ? (
+                        <UserAvatar username={who} size={18} />
+                      ) : (
+                        <Avatar name={who ?? "someone"} image={null} size={18} system={who === "g1t"} />
+                      )}
                       {who && who !== "g1t" ? (
                         <UserCard username={who}>
                           <Link to={`/u/${who}`} className="font-medium hover:text-accent">

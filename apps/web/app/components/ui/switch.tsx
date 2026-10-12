@@ -52,7 +52,7 @@ export function SwitchCard({
       htmlFor={id}
       className={cn(
         "flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong",
-        "has-[[data-state=checked]]:border-accent/40 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60",
+        "has-data-[state=checked]:border-accent/40 has-disabled:cursor-not-allowed has-disabled:opacity-60",
         className,
       )}
     >

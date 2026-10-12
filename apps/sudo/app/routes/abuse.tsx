@@ -59,7 +59,7 @@ export default function Abuse({ loaderData }: Route.ComponentProps) {
                     <When at={event.time} time />
                   </span>
                 </p>
-                <p className="font-mono text-xs break-words text-faint">
+                <p className="font-mono text-xs wrap-break-word text-faint">
                   {metricsLine(event.data.metrics)}
                   {event.data.run ? ` · run ${event.data.run}` : ""} · sandbox {event.data.sandbox}
                 </p>

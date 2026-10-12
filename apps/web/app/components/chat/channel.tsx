@@ -639,9 +639,9 @@ export function ChannelView({ data }: { data: Loaded }) {
             const element = event.currentTarget;
             stick.current = atBottom(element);
           }}
-          className="min-h-0 grow overflow-y-auto overscroll-contain [scrollbar-gutter:stable] [scrollbar-width:thin]"
+          className="min-h-0 grow overflow-y-auto overscroll-contain scrollbar-gutter-stable scrollbar-thin"
         >
-          <div className="mx-auto flex min-h-full max-w-[56rem] flex-col justify-end px-2 pt-6 pb-3 sm:px-4">
+          <div className="mx-auto flex min-h-full max-w-4xl flex-col justify-end px-2 pt-6 pb-3 sm:px-4">
             {older ? (
               <div className="flex justify-center pb-4">
                 <Button
@@ -682,7 +682,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           </div>
         </div>
         <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] in-data-[keyboard=open]:pb-2">
-          <div className="mx-auto max-w-[56rem]">
+          <div className="mx-auto max-w-4xl">
             <TypingLine typers={typers} />
             {archived ? (
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -1017,7 +1017,7 @@ function ProfilePanel({
     .reverse();
   const time = card ? localTime(card.timezone, Date.now()) : null;
   return (
-    <div className="min-h-0 grow overflow-y-auto p-5 [scrollbar-width:thin]">
+    <div className="min-h-0 grow overflow-y-auto p-5 scrollbar-thin">
       <WithPresence person={{ username }} size={88}>
         <Avatar name={username} image={card?.avatar ?? null} size={88} />
       </WithPresence>
@@ -1218,7 +1218,7 @@ function MessageRow({
       {...press}
       aria-label={`${shownName(author)}, ${time}`}
       className={`group/message relative flex gap-3 rounded-lg px-2 transition-colors hover:bg-surface/70 sm:px-3 max-md:min-h-11 max-md:[-webkit-touch-callout:none] max-md:active:bg-surface/70 ${head ? "mt-3 pt-1 pb-1" : "py-0.5"} ${
-        threadOpen ? "bg-accent/[0.06] hover:bg-accent/[0.08]" : ""
+        threadOpen ? "bg-accent/6 hover:bg-accent/8" : ""
       }`}
     >
       <div className="w-9 shrink-0">
@@ -1285,7 +1285,7 @@ function MessageRow({
         )}
       </div>
       {!inThread && onThread && !message.pending && (
-        <Card radius="lg" className="absolute -top-3 right-3 hidden p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex has-[[data-state=open]]:flex">
+        <Card radius="lg" className="absolute -top-3 right-3 hidden p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex has-data-[state=open]:flex">
           <AddReaction messageId={message.id} />
           <Hint label="Reply in thread">
             <Button
@@ -1389,7 +1389,7 @@ function SidePanel({ title, subtitle, onClose, menu, children }: { title: string
     <aside
       {...swipe}
       aria-label={title}
-      className="fixed inset-0 z-40 flex flex-col bg-bg lg:static lg:z-auto lg:w-[22rem] lg:shrink-0 lg:border-l lg:border-line xl:w-[24rem] max-md:top-(--vv-top,0px) max-md:bottom-auto max-md:h-(--vv-height,100dvh) max-md:pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-0 z-40 flex flex-col bg-bg lg:static lg:z-auto lg:w-88 lg:shrink-0 lg:border-l lg:border-line xl:w-[24rem] max-md:top-(--vv-top,0px) max-md:bottom-auto max-md:h-(--vv-height,100dvh) max-md:pb-[env(safe-area-inset-bottom)]"
     >
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
         <Button type="button" onClick={onClose} aria-label="Back" variant="ghost" size="icon-lg" className="rounded-full active:bg-raised lg:hidden">
@@ -1449,7 +1449,7 @@ function ThreadPanel({
         onScroll={(event) => {
           stick.current = atBottom(event.currentTarget);
         }}
-        className="min-h-0 grow overflow-y-auto overscroll-contain px-1 py-3 [scrollbar-width:thin]"
+        className="min-h-0 grow overflow-y-auto overscroll-contain px-1 py-3 scrollbar-thin"
       >
         {/* One box for what scrolls, so its growing is seen (./stick.ts). */}
         <div>
@@ -1655,7 +1655,7 @@ function InfoPanel({
   const channel = data.channel;
   const humans = members.filter((m) => m.member.kind === "user");
   return (
-    <div className="min-h-0 grow overflow-y-auto p-4 [scrollbar-width:thin]">
+    <div className="min-h-0 grow overflow-y-auto p-4 scrollbar-thin">
       {channel.kind === "channel" && <ChannelAbout channel={channel} joined={joined} canManage={canManage} onUpdate={onUpdate} />}
       <section className="mt-5">
         <div className="mb-1 flex items-center justify-between px-1">

@@ -93,7 +93,7 @@ export default function Maintenance({ loaderData, actionData }: Route.ComponentP
                 <Textarea name="message" rows={3} maxLength={4000} aria-label="Update" placeholder="Running a little long: about 20 more minutes." />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="notify" className="accent-[var(--g1t-accent)]" />
+                    <input type="checkbox" name="notify" className="accent-(--g1t-accent)" />
                     Email subscribers
                   </label>
                   <Button type="submit" name="intent" value="update" variant="lavender">
@@ -128,7 +128,7 @@ export default function Maintenance({ loaderData, actionData }: Route.ComponentP
                   <Textarea name="message" rows={2} maxLength={4000} placeholder="Said for you when empty." />
                 </Field>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="notify" defaultChecked className="accent-[var(--g1t-accent)]" />
+                  <input type="checkbox" name="notify" defaultChecked className="accent-(--g1t-accent)" />
                   Email subscribers
                 </label>
                 <div className="flex flex-wrap gap-2">

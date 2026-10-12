@@ -39,7 +39,7 @@ function LogLine({ log, base, showRequest, fresh }: { log: TelemetryLog; base: s
         <span className="text-faint tabular-nums">{clock(log.time_us, true).slice(6)}</span>
         <LevelBadge level={log.severity} />
         <span className="hidden truncate text-muted sm:block">{log.service || "—"}</span>
-        <span className={cn("min-w-0 text-fg", open || !multiline ? "break-words whitespace-pre-wrap" : "truncate")}>{open ? log.body : log.body.split("\n")[0]}</span>
+        <span className={cn("min-w-0 text-fg", open || !multiline ? "wrap-break-word whitespace-pre-wrap" : "truncate")}>{open ? log.body : log.body.split("\n")[0]}</span>
       </button>
       {open && (
         <div className="space-y-2 px-3 pt-1 pb-3 pl-9">

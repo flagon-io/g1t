@@ -115,7 +115,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   return (
     <main className="mx-auto max-w-xl px-4 py-24 text-center">
       <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="mt-3 break-words text-muted">{details}</p>
+      <p className="mt-3 wrap-break-word text-muted">{details}</p>
       <div className="mt-8">
         <ButtonLink to="/" variant="quiet">
           Back to the overview

@@ -287,13 +287,13 @@ export function TimeChart({
                   >
                     {at === i && <div className="absolute inset-y-0 left-1/2 w-px bg-line-strong" aria-hidden="true" />}
                     {kind === "bars" && totals[i]! > 0 && (
-                      <div className="flex w-full max-w-5 flex-col-reverse gap-[2px] px-[1px]" style={{ height: `${(totals[i]! / top) * 100}%` }}>
+                      <div className="flex w-full max-w-5 flex-col-reverse gap-0.5 px-px" style={{ height: `${(totals[i]! / top) * 100}%` }}>
                         {series
                           .filter((s) => (s.values[i] ?? 0) > 0)
                           .map((s, k, all) => (
                             <div
                               key={s.key}
-                              className={cn("w-full min-h-[2px]", k === all.length - 1 && "rounded-t-[3px]")}
+                              className={cn("w-full min-h-0.5", k === all.length - 1 && "rounded-t-[3px]")}
                               style={{ flexGrow: s.values[i] ?? 0, flexBasis: 0, background: s.color }}
                             />
                           ))}

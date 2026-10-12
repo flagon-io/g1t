@@ -225,7 +225,7 @@ const CLAUDE = codingAgentById("claude")!;
 
 /** A person's avatar, as the app draws it. */
 function Face({ who, size = 28 }: { who: string; size?: number }) {
-  return <Avatar name={who.toLowerCase()} size={size} />;
+  return <Avatar name={who.toLowerCase()} image={null} size={size} />;
 }
 
 /** The coding agent's mark, its name and its badge, as commits and sessions show them. */
@@ -243,7 +243,7 @@ function WithAgent() {
 function PresenceDot({ away, ring = "var(--tour-side)" }: { away?: boolean; ring?: string }) {
   return (
     <span
-      className={cn("absolute -right-0.5 -bottom-0.5 size-[7px] rounded-full", away ? "bg-[var(--tour-side)] shadow-[inset_0_0_0_1.5px_var(--color-faint)]" : "bg-success")}
+      className={cn("absolute -right-0.5 -bottom-0.5 size-1.75 rounded-full", away ? "bg-(--tour-side) shadow-[inset_0_0_0_1.5px_var(--color-faint)]" : "bg-success")}
       style={{ boxShadow: `0 0 0 1.5px ${ring}${away ? ", inset 0 0 0 1.5px var(--color-faint)" : ""}` }}
     />
   );
@@ -298,17 +298,17 @@ const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget
 /** One rail item: the square behind its icon, filled for the mode you are in, and its name under it. */
 function RailItem({ icon, label, on, target, badge }: { icon: ReactNode; label: string; on: boolean; target?: CursorTarget; badge?: number }) {
   return (
-    <span className="flex w-full flex-col items-center gap-[3px] py-0.5">
+    <span className="flex w-full flex-col items-center gap-0.75 py-0.5">
       <span
         data-tour={target}
         className={cn(
-          "relative flex size-7 items-center justify-center rounded-[8px] transition-colors duration-500",
+          "relative flex size-7 items-center justify-center rounded-lg transition-colors duration-500",
           on ? "bg-[#2c2c33] text-fg shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" : "text-muted",
         )}
       >
         {icon}
         {badge ? (
-          <span className="absolute -top-1 -right-1.5 min-w-[0.875rem] rounded-full bg-accent px-[3px] text-center text-[8px] leading-[0.875rem] font-bold text-bg tabular-nums ring-[1.5px] ring-[#0b0b0d]">
+          <span className="absolute -top-1 -right-1.5 min-w-3.5 rounded-full bg-accent px-0.75 text-center text-[8px] leading-3.5 font-bold text-bg tabular-nums ring-[1.5px] ring-[#0b0b0d]">
             {badge}
           </span>
         ) : null}
@@ -338,7 +338,7 @@ function Rail({ scene }: { scene: Scene }) {
         <RailItem icon={<Building2 size={15} />} label="Workspace" on={false} />
         <RailItem icon={<CircleHelp size={15} />} label="Help" on={false} />
         <span className="relative mt-1">
-          <Avatar name="priya" size={26} />
+          <Avatar name="priya" image={null} size={26} />
           <PresenceDot ring="#0b0b0d" />
         </span>
       </div>
@@ -433,7 +433,7 @@ function ChatSide() {
       <div className="space-y-2 px-2 pt-2.5">
         <SideSearch>Jump to channel or person</SideSearch>
         <span className="grid grid-cols-3 rounded-md bg-surface p-0.5 text-center text-[10px] font-medium ring-1 ring-line">
-          <span className="rounded-[4px] bg-raised py-0.5 text-fg ring-1 ring-line-strong">All</span>
+          <span className="rounded-sm bg-raised py-0.5 text-fg ring-1 ring-line-strong">All</span>
           <span className="py-0.5 text-muted">Unread</span>
           <span className="py-0.5 text-muted">Mentions</span>
         </span>
@@ -491,7 +491,7 @@ function ChatMain({ frame }: { frame: Frame }) {
           ))}
         </span>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_2.5rem)] pb-1">
+      <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden mask-[linear-gradient(to_bottom,transparent,black_2.5rem)] pb-1">
         <div className="flex items-center gap-3 px-5 pt-1 pb-2 text-[11px] text-faint">
           <span className="h-px flex-1 bg-line" />
           Today
@@ -905,7 +905,7 @@ function Cursor({ frame, canvas, scale }: { frame: Frame; canvas: React.RefObjec
   return (
     <div
       aria-hidden="true"
-      className={cn("pointer-events-none absolute top-0 left-0 z-20 transition-[transform,opacity] duration-[900ms] ease-[cubic-bezier(.45,.05,.2,1)]", frame.cursorShown ? "opacity-100" : "opacity-0")}
+      className={cn("pointer-events-none absolute top-0 left-0 z-20 transition-[transform,opacity] duration-900 ease-[cubic-bezier(.45,.05,.2,1)]", frame.cursorShown ? "opacity-100" : "opacity-0")}
       style={{ transform: `translate(${at.x}px, ${at.y}px)` }}
     >
       <span
@@ -1026,7 +1026,7 @@ const TABS: { scenes: Scene[]; icon: ReactNode; label: string }[] = [
 function Phone({ frame }: { frame: Frame }) {
   const scenes: Scene[] = ["code", "session", "chat", "docs"];
   return (
-    <div className="relative flex h-[34rem] w-full flex-col overflow-hidden rounded-2xl bg-bg text-left text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark">
+    <div className="relative flex h-136 w-full flex-col overflow-hidden rounded-2xl bg-bg text-left text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
         <Avatar name="acme" size={26} square />
         <span key={frame.scene} className="tour-fade flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-fg">
@@ -1076,7 +1076,7 @@ function Phone({ frame }: { frame: Frame }) {
 function PhoneChat({ frame }: { frame: Frame }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_2.5rem)] [&>div]:px-3">
+      <div className="flex min-h-0 flex-1 flex-col justify-end overflow-hidden mask-[linear-gradient(to_bottom,transparent,black_2.5rem)] [&>div]:px-3">
         <Message who="Dana" time="09:12">
           <p>Two enterprise customers hit the CSV export timeout again this morning.</p>
         </Message>

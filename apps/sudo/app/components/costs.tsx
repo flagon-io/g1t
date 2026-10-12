@@ -116,7 +116,7 @@ export function DaysChart({ days, floor, revenueLabel, label }: { days: DayFigur
           <span className="hidden group-open:inline">Hide the table</span>
         </summary>
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[28rem] text-xs">
+          <table className="w-full min-w-md text-xs">
             <thead>
               <tr className="border-b border-line text-left text-muted">
                 <th className="py-1.5 pr-3 font-medium">Day</th>

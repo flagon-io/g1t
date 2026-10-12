@@ -101,7 +101,7 @@ export function EmojiPicker({ onPick, autoFocus = true }: { onPick: (emoji: stri
 
   let index = 0;
   return (
-    <div className="flex h-[26rem] w-[22.5rem] max-w-[calc(100vw-1rem)] flex-col" onKeyDown={onKeyDown}>
+    <div className="flex h-104 w-90 max-w-[calc(100vw-1rem)] flex-col" onKeyDown={onKeyDown}>
       <div className="flex items-center gap-2 border-b border-line p-2">
         <label className="flex h-8 min-w-0 grow items-center gap-2 rounded-md border border-line-strong bg-bg px-2 focus-within:border-accent/50">
           <Search size={14} className="shrink-0 text-faint" />
@@ -158,7 +158,7 @@ export function EmojiPicker({ onPick, autoFocus = true }: { onPick: (emoji: stri
         </div>
       </div>
       {!query.trim() && (
-        <nav aria-label="Emoji groups" className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-1.5 py-1 [scrollbar-width:none]">
+        <nav aria-label="Emoji groups" className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-1.5 py-1 scrollbar-none">
           {sections.map((section) => (
             <Hint key={section.key} label={section.title}>
               <Button
@@ -175,11 +175,11 @@ export function EmojiPicker({ onPick, autoFocus = true }: { onPick: (emoji: stri
           ))}
         </nav>
       )}
-      <div ref={grid} id={list} role="listbox" aria-label="Emoji" className="relative min-h-0 grow overflow-y-auto px-2 pb-2 [scrollbar-width:thin]">
+      <div ref={grid} id={list} role="listbox" aria-label="Emoji" className="relative min-h-0 grow overflow-y-auto px-2 pb-2 scrollbar-thin">
         {!data && !query.trim() && <p className="px-1 py-6 text-center text-sm text-faint">Loading emoji…</p>}
         {sections.map((section) => (
           <section key={section.key} data-section={section.key} aria-label={section.title}>
-            <h3 className="sticky top-0 z-[1] flex items-center justify-between bg-raised/95 px-1 pt-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-faint uppercase backdrop-blur">
+            <h3 className="sticky top-0 z-1 flex items-center justify-between bg-raised/95 px-1 pt-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-faint uppercase backdrop-blur">
               {section.title}
               {section.key === "custom" && manageHref && (
                 <Link to={manageHref} className="font-medium tracking-normal normal-case text-accent hover:underline">

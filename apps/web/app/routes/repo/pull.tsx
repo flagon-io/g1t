@@ -531,7 +531,7 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
               <Markdown source={entry.text} />
             </div>
           ) : entry.kind === "prompt" ? (
-            <Card className="mt-1.5 max-h-[32rem] overflow-y-auto p-4">
+            <Card className="mt-1.5 max-h-128 overflow-y-auto p-4">
               <Markdown source={entry.text} />
             </Card>
           ) : (
@@ -1303,7 +1303,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
         </div>
 
         <DetailsDisclosure
-          className={tab === "changes" ? "hidden" : "order-first lg:order-none"}
+          className={tab === "changes" ? "hidden" : "order-first lg:order-0"}
           summary={detailsSummary([
             [reviewerNames.length + teamReviewers.length, "reviewer", "reviewers"],
             [pull.assignees.length, "assignee", "assignees"],

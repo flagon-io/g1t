@@ -67,14 +67,14 @@ export function RolesTable() {
         </ul>
       </Card>
     <Card tone="plain" className="hidden overflow-x-auto sm:block">
-      <table className="w-full min-w-[34rem] text-sm">
+      <table className="w-full min-w-136 text-sm">
         <thead>
           <tr className="border-b border-line bg-surface text-left text-xs text-muted">
             <th scope="col" className="px-4 py-2.5 font-medium">
               Can
             </th>
             {REPO_ROLES.map((role) => (
-              <th key={role} scope="col" className="w-[4.5rem] px-1 py-2.5 text-center font-medium">
+              <th key={role} scope="col" className="w-18 px-1 py-2.5 text-center font-medium">
                 {REPO_ROLE_LABELS[role]}
               </th>
             ))}

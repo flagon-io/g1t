@@ -10,6 +10,8 @@ import { TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
+import { UserAvatar } from "./user-card";
+import { PersonLink } from "./work";
 
 /** Allowed or denied, and by which rule. */
 export function OutcomeMark({ entry }: { entry: AuditEntry }) {
@@ -28,18 +30,37 @@ export function OutcomeMark({ entry }: { entry: AuditEntry }) {
   );
 }
 
-/** Who acted, with whoever acted for someone (an app, or an old agent) shown as working for them. */
+/**
+ * Who acted, with whoever acted for someone (an app, or an old agent) shown
+ * as working for them. A person wears their own avatar and opens their
+ * card; a workspace its square, never a person's face.
+ */
 export function ActorLine({ entry }: { entry: AuditEntry }) {
+  const person = entry.actorKind === "person" && !entry.agent;
+  const face = person ? (
+    <UserAvatar username={entry.actor} size={18} />
+  ) : (
+    <Avatar
+      name={entry.agent ?? entry.actor}
+      image={null}
+      size={18}
+      square={entry.actorKind === "workspace"}
+      system={entry.actorKind === "system"}
+      agent={entry.actorKind === "agent" || !!entry.agent}
+    />
+  );
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <Avatar name={entry.agent ?? entry.actor} size={18} square={entry.actorKind === "workspace"} />
+      {face}
       <span className="truncate">
         {entry.onBehalfOf ? (
           <>
             <span className="font-medium">{entry.agent ?? entry.actor}</span>
             <span className="text-muted"> on behalf of </span>
-            <span className="font-medium">{entry.onBehalfOf}</span>
+            <PersonLink name={entry.onBehalfOf} className="font-medium hover:text-accent" />
           </>
+        ) : person ? (
+          <PersonLink name={entry.actor} className="font-medium hover:text-accent" />
         ) : (
           <span className="font-medium">{entry.actor}</span>
         )}

@@ -62,7 +62,7 @@ function MultiSelect({ name, label, options, chosen }: { name: string; label: st
     <details className="group relative">
       <summary className={cn(SELECT, "flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden")}>
         <span className="text-muted">{label}:</span>
-        <span className="max-w-[10rem] truncate">{summary}</span>
+        <span className="max-w-40 truncate">{summary}</span>
         <ChevronDown size={13} className="text-muted transition-transform group-open:rotate-180" />
       </summary>
       <Card tone="plain" radius="lg" className="absolute left-0 z-20 mt-1 w-64 bg-raised p-2 shadow-xl">
@@ -355,18 +355,18 @@ export function UsageChart({
                   aria-label={`${column.label}: ${money(column.total)}`}
                   className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end outline-none"
                 >
-                  <div className="flex w-full max-w-6 flex-col-reverse gap-[2px] px-[1px]" style={{ height: `${(column.total / top) * 100}%` }}>
+                  <div className="flex w-full max-w-6 flex-col-reverse gap-0.5 px-px" style={{ height: `${(column.total / top) * 100}%` }}>
                     {used
                       .filter((p) => (column.parts[p.key] ?? 0) > 0)
                       .map((p, at, all) => (
                         <div
                           key={p.key}
-                          className={cn("w-full min-h-[2px]", at === all.length - 1 && "rounded-t")}
+                          className={cn("w-full min-h-0.5", at === all.length - 1 && "rounded-t")}
                           style={{ flexGrow: column.parts[p.key] ?? 0, flexBasis: 0, background: productStyle(p.key).color }}
                         />
                       ))}
                   </div>
-                  <div className="absolute inset-y-0 left-1/2 -z-0 w-full -translate-x-1/2 rounded group-hover:bg-fg/[0.04] group-focus-visible:bg-fg/[0.06]" aria-hidden="true" />
+                  <div className="absolute inset-y-0 left-1/2 z-0 w-full -translate-x-1/2 rounded group-hover:bg-fg/4 group-focus-visible:bg-fg/6" aria-hidden="true" />
                   <div
                     className={cn(
                       "pointer-events-none absolute bottom-full z-10 mb-2 hidden w-52 rounded-lg border border-line-strong bg-raised p-2.5 text-xs shadow-xl group-hover:block group-focus-visible:block",
@@ -503,7 +503,7 @@ function MeterRow({ meter, color, projectHref }: { meter: MeterLine; color: stri
       <span className="hidden sm:block">
         <Sparkline values={meter.daily} color={color} />
       </span>
-      <span className="order-3 col-span-2 text-sm text-muted tabular-nums sm:order-none sm:col-span-1 sm:text-right">
+      <span className="order-3 col-span-2 text-sm text-muted tabular-nums sm:order-0 sm:col-span-1 sm:text-right">
         <MeterUsed meter={meter} />
       </span>
       <span className="text-right tabular-nums">
@@ -670,7 +670,7 @@ export function UsageSkeleton({ children }: { children?: ReactNode }) {
       {children}
       <Card tone="plain" className="grid gap-px overflow-hidden bg-line sm:grid-cols-3" aria-hidden="true">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-[7.5rem] bg-surface p-4">
+          <div key={i} className="h-30 bg-surface p-4">
             <Skeleton className="h-3 w-28" />
             <Skeleton className="mt-3 h-5 w-20" />
             <Skeleton className="mt-3 h-1.5 w-full" />
@@ -679,7 +679,7 @@ export function UsageSkeleton({ children }: { children?: ReactNode }) {
       </Card>
       <Card className="p-5" aria-hidden="true">
         <Skeleton className="h-4 w-28" />
-        <div className="mt-6 flex h-[200px] items-end gap-1">
+        <div className="mt-6 flex h-50 items-end gap-1">
           {Array.from({ length: 24 }, (_, i) => (
             <Skeleton key={i} className="flex-1 rounded-t" style={{ height: `${20 + ((i * 37) % 60)}%` }} />
           ))}

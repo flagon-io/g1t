@@ -233,7 +233,7 @@ function Loaded({
               <TableBody>
                 {overview.routes.slice(0, 15).map((r) => (
                   <TableRow key={`${r.method} ${r.route}`}>
-                    <TableCell className="w-1/2 max-w-[10rem] sm:max-w-0">
+                    <TableCell className="w-1/2 max-w-40 sm:max-w-0">
                       <Link
                         to={viewHref(`${path}/requests`, view, { route: r.route })}
                         className="flex min-w-0 items-center gap-2 font-mono text-xs hover:text-accent"

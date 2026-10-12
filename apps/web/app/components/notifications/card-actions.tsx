@@ -68,7 +68,7 @@ export function WaitingCards({ onNavigate }: { onNavigate?: () => void }) {
         {waiting.map((notification) => (
           <Card asChild key={notification.id} radius="lg" className="relative p-3">
             <li>
-              <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r bg-accent" />
+              <span aria-hidden="true" className="absolute inset-y-2 left-0 w-0.75 rounded-r bg-accent" />
               <div className="flex items-start gap-2">
                 <button
                   type="button"

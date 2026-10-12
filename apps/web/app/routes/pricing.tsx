@@ -405,7 +405,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </ul>
       </Card>
       <Card tone="plain" className="mt-4 hidden overflow-x-auto sm:block">
-        <table className="w-full min-w-[36rem] text-left text-sm">
+        <table className="w-full min-w-xl text-left text-sm">
           <thead className="border-b border-line text-xs text-muted">
             <tr>
               <th className="px-4 py-2.5 font-medium">
@@ -578,7 +578,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         )}
       </p>
       <Card tone="plain" className="mt-4 overflow-x-auto">
-        <table className="w-full text-left text-sm sm:min-w-[36rem]">
+        <table className="w-full text-left text-sm sm:min-w-xl">
           <thead className="border-b border-line text-xs text-muted">
             <tr>
               <th className="px-4 py-2.5 font-medium">What</th>

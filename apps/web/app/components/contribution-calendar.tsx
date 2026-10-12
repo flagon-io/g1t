@@ -69,7 +69,7 @@ export function ContributionCalendar({
     <Card asChild tone="plain" className="bg-surface/50 px-4 pt-3.5 pb-3">
       <section aria-label="Contributions">
         <h2 className="text-sm font-medium">{heading}</h2>
-        <div ref={scroller} className="mt-3 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:thin]">
+        <div ref={scroller} className="mt-3 overflow-x-auto overflow-y-hidden pb-1 scrollbar-thin">
           <div className="flex w-max text-[0.625rem] leading-none text-faint">
             {/* The weekdays, under the months' row. */}
             <div aria-hidden="true" className="mr-1.5 flex shrink-0 flex-col" style={{ gap: GAP, paddingTop: 16 }}>
@@ -104,7 +104,7 @@ export function ContributionCalendar({
                           data-date={day.date}
                           data-count={day.count}
                           data-commits={day.commits}
-                          className={`block rounded-[2px] ${SHADES[day.level]} ${hovered?.date === day.date ? "ring-1 ring-fg/60" : ""}`}
+                          className={`block rounded-xs ${SHADES[day.level]} ${hovered?.date === day.date ? "ring-1 ring-fg/60" : ""}`}
                           style={{ width: CELL, height: CELL }}
                         />
                       ) : (
@@ -131,7 +131,7 @@ export function ContributionCalendar({
         <div aria-hidden="true" className="mt-2 flex items-center justify-end gap-1 text-[0.6875rem] text-faint">
           <span className="mr-1">Less</span>
           {([0, 1, 2, 3, 4] as Level[]).map((level) => (
-            <span key={level} className={`block rounded-[2px] ${SHADES[level]}`} style={{ width: CELL, height: CELL }} />
+            <span key={level} className={`block rounded-xs ${SHADES[level]}`} style={{ width: CELL, height: CELL }} />
           ))}
           <span className="ml-1">More</span>
         </div>

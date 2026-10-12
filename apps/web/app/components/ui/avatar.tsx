@@ -55,7 +55,11 @@ export function Avatar({
   name: string;
   size?: number;
   square?: boolean;
-  /** The uploaded avatar's hash, as identity returns it. */
+  /**
+   * The uploaded avatar's hash, as identity returns it; null when there is
+   * none, or `name` is no account's. Left out, a person's picture is looked
+   * up by their username.
+   */
   image?: string | null;
   /** g1t itself (a user of kind `system`), whatever the name. */
   system?: boolean;
@@ -65,6 +69,7 @@ export function Avatar({
   ring?: string;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<string | null>(null);
   const usercontent = usercontentFrom(useRouteLoaderData("root"));
   const g1t = system || isSystemName(name);
   if (agent) {
@@ -147,7 +152,7 @@ export function Avatar({
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
   const hue = AVATAR_HUES[Math.abs(hash) % AVATAR_HUES.length];
-  return (
+  const letter = (
     <span
       aria-hidden="true"
       className="inline-flex shrink-0 items-center justify-center font-mono font-semibold uppercase"
@@ -163,6 +168,40 @@ export function Avatar({
       {name[0]}
     </span>
   );
+  // A person drawn by username alone (`image` not given, as opposed to
+  // null for "no upload"): their letter at once, and their uploaded
+  // picture over it once it has loaded, from the site's address for it.
+  if (square || image !== undefined || failed === name || !isUsername(name)) return letter;
+  return (
+    <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
+      {letter}
+      <img
+        // An image the browser had before the page woke has no load event to come.
+        ref={(img) => {
+          if (img?.complete && img.naturalWidth > 0) setLoaded(name);
+        }}
+        src={`/-/avatar/user/${name.toLowerCase()}`}
+        alt=""
+        aria-hidden="true"
+        width={size}
+        height={size}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(name)}
+        onError={() => setFailed(name)}
+        className={`absolute inset-0 bg-raised object-cover transition-opacity duration-150 ${loaded === name ? "opacity-100" : "opacity-0"}`}
+        style={{ width: size, height: size, borderRadius: size }}
+      />
+    </span>
+  );
+}
+
+/**
+ * A name an account could have: what has a picture to look up. Not ghost,
+ * nor "someone", what a feed says when it could not read who it was.
+ */
+function isUsername(name: string): boolean {
+  return name !== "ghost" && name !== "someone" && /^[a-z0-9-]{1,39}$/i.test(name);
 }
 
 /**

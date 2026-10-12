@@ -347,7 +347,7 @@ export function UploadDialog({
             </p>
             <div className="mt-2 flex items-center gap-2">
               <span className="flex h-6 items-center gap-1 rounded-full border border-accent/60 bg-accent/15 px-1.5 text-xs font-medium text-accent">
-                <img src={preview} alt="" className="size-[15px] object-contain" />3
+                <img src={preview} alt="" className="size-3.75 object-contain" />3
               </span>
               <img src={preview} alt="" className="size-9 object-contain" />
               <span className="ml-auto font-mono text-xs text-faint">:{clean || "name"}:</span>

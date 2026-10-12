@@ -432,7 +432,7 @@ function ActionsRow({ entry }: { entry: ActionsAccess }) {
             onValueChange={(role) => fetcher.submit({ intent: "actions-role", repo: entry.repo, role }, { method: "post" })}
           />
         )}
-        <span className="flex w-[2.125rem] justify-end">
+        <span className="flex w-8.5 justify-end">
           {!entry.linked && (
             <Hint label={`Stop ${entry.repo}'s workflows using it`}>
               <Button

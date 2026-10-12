@@ -31,7 +31,7 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
   if (count <= 0) return null;
   return (
     <span
-      className={`min-w-5 shrink-0 rounded-full group-hover/row:invisible px-1.5 text-center text-[0.6875rem] leading-[1.125rem] font-semibold tabular-nums ${
+      className={`min-w-5 shrink-0 rounded-full group-hover/row:invisible px-1.5 text-center text-[0.6875rem] leading-4.5 font-semibold tabular-nums ${
         entry.mentions > 0 ? "bg-accent text-bg" : "bg-line-strong text-fg"
       }`}
     >
@@ -173,7 +173,7 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
       {/* A phone's list (no heading): room at the end so the compose button never covers the last row. */}
       <nav
         aria-label="Conversations"
-        className={`min-h-0 grow overflow-y-auto px-2.5 pt-3 [scrollbar-width:thin] ${heading ? "pb-4" : "pb-[calc(5.5rem+env(safe-area-inset-bottom))]"}`}
+        className={`min-h-0 grow overflow-y-auto px-2.5 pt-3 scrollbar-thin ${heading ? "pb-4" : "pb-[calc(5.5rem+env(safe-area-inset-bottom))]"}`}
       >
         {loading ? (
           <SidebarSkeleton />

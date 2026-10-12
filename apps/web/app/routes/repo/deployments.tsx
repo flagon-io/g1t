@@ -704,7 +704,7 @@ function PagesOff({ pages, base, can, quiet }: { pages: Pages; base: string; can
     <>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
         {quiet ? "This repository can also be hosted here. " : ""}
-        Once on, production goes up at <span className="font-mono text-fg [overflow-wrap:anywhere]">{host(pages.settings.productionUrl)}</span>{" "}
+        Once on, production goes up at <span className="font-mono text-fg wrap-anywhere">{host(pages.settings.productionUrl)}</span>{" "}
         and every open pull request gets its own preview. Workers projects (a{" "}
         <code className="font-mono text-fg">wrangler.jsonc</code>) and static sites deploy without configuration.
       </p>

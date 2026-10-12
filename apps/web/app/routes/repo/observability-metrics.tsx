@@ -68,7 +68,7 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
           <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
             <Card asChild className="min-w-0 self-start overflow-hidden">
               <nav aria-label="Metrics">
-                <ul className="max-h-[32rem] divide-y divide-line overflow-auto">
+                <ul className="max-h-128 divide-y divide-line overflow-auto">
                   {metrics.map((m) => (
                     <li key={m.name}>
                       <Link

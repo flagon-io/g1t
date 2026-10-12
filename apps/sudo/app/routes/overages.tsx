@@ -194,7 +194,7 @@ function OverageCard({ row, cap, error }: { row: Overage; cap: number; error: { 
       <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4">
           {row.request && (
-            <blockquote className="border-l-2 border-warn/50 pl-3 text-sm break-words whitespace-pre-line text-fg-soft">
+            <blockquote className="border-l-2 border-warn/50 pl-3 text-sm wrap-break-word whitespace-pre-line text-fg-soft">
               “{row.request.reason}” <span className="text-xs text-faint">— {row.request.createdBy}</span>
             </blockquote>
           )}
@@ -215,7 +215,7 @@ function OverageCard({ row, cap, error }: { row: Overage; cap: number; error: { 
                 {row.topEntries.slice(0, 5).map((entry) => (
                   <li key={entry.id} className="flex items-start justify-between gap-3 px-3 py-2">
                     <span className="min-w-0">
-                      <span className="block break-words text-fg-soft">{entry.description}</span>
+                      <span className="block wrap-break-word text-fg-soft">{entry.description}</span>
                       <span className="font-mono text-faint">
                         {[entry.repo && (entry.number != null ? `${entry.repo}#${entry.number}` : entry.repo), entry.task, entry.model].filter(Boolean).join(" · ")}
                       </span>

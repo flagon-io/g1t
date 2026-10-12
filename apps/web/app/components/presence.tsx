@@ -57,7 +57,7 @@ function useMinute(): number {
 const DOT: Record<Exclude<Shown, "offline">, string> = {
   active: "bg-success",
   // Away: a ring, the dot's colour gone out of it.
-  away: "bg-[var(--presence-ring,var(--color-bg))] shadow-[inset_0_0_0_2px_var(--color-faint)]",
+  away: "bg-(--presence-ring,var(--color-bg)) shadow-[inset_0_0_0_2px_var(--color-faint)]",
   // Paused: amber, with a bar across, as a "do not enter" sign.
   dnd: "bg-warn",
 };
@@ -75,7 +75,7 @@ export function PresenceDot({ entry, size = 10, ring = "var(--color-bg)", classN
       className={cn("pointer-events-none flex items-center justify-center rounded-full", DOT[shown], className)}
       style={{ width: size, height: size, boxShadow: `0 0 0 2px ${ring}`, ["--presence-ring" as string]: ring }}
     >
-      {shown === "dnd" && <span className="h-[2px] w-1/2 rounded-full bg-bg" aria-hidden="true" />}
+      {shown === "dnd" && <span className="h-0.5 w-1/2 rounded-full bg-bg" aria-hidden="true" />}
       <span className="sr-only">{SHOWN_LABEL[shown]}</span>
     </span>
   );
@@ -211,7 +211,7 @@ export function PresenceSummary({ person, className }: { person: { id?: string |
         </p>
       )}
       <p className="flex items-center gap-2">
-        <span className="flex size-[13px] items-center justify-center">
+        <span className="flex size-3.25 items-center justify-center">
           {shown === "offline" ? <span className="size-2 rounded-full shadow-[inset_0_0_0_1.5px_var(--color-line-strong)]" /> : <PresenceDot entry={entry} size={9} ring="transparent" />}
         </span>
         {SHOWN_LABEL[shown]}

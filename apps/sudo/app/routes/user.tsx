@@ -254,7 +254,7 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
           <ul className="divide-y divide-line text-sm">
             {user.log.map((event, at) => (
               <li key={`${event.createdAt}:${at}`} className="flex flex-col gap-1 py-2 sm:flex-row sm:justify-between sm:gap-4">
-                <span className="min-w-0 break-words">
+                <span className="min-w-0 wrap-break-word">
                   {securityEventLabel(event)}
                   {event.staff && (
                     <span className="text-muted">
@@ -441,7 +441,7 @@ function AccountSection({
                   <Input name="confirm" required autoComplete="off" spellCheck={false} className="font-mono" />
                 </Field>
                 <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" name="acknowledge" required className="mt-0.5 accent-[var(--g1t-accent)]" />
+                  <input type="checkbox" name="acknowledge" required className="mt-0.5 accent-(--g1t-accent)" />
                   <span>
                     {sole.length === 1 ? (
                       <>

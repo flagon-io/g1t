@@ -133,7 +133,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               <p className="text-sm text-muted">Nothing given yet this month.</p>
             ) : (
               <div className="-mx-4 -my-4 overflow-x-auto sm:-mx-5 sm:-my-5">
-                <table className="w-full min-w-[26rem] text-sm">
+                <table className="w-full min-w-104 text-sm">
                   <thead>
                     <tr className="border-b border-line text-left text-xs text-muted">
                       <th className="px-4 py-2 font-medium sm:pl-5">Source</th>

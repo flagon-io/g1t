@@ -145,7 +145,7 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
               </Field>
             </div>
             <CheckboxOption name="role" value="maintainer" label="Maintainer" className="sm:pt-[2.1rem]" />
-            <div className="sm:pt-[1.625rem]">
+            <div className="sm:pt-6.5">
               <SubmitButton match={{ intent: "add" }} pending="Adding…">
                 Add
               </SubmitButton>

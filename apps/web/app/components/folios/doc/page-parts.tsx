@@ -17,7 +17,7 @@ function DiffBlock({ text, tone }: { text: string; tone: "del" | "add" }) {
   if (!text.trim()) return <p className="text-xs text-faint italic">{tone === "del" ? "Nothing removed" : "Nothing added"}</p>;
   return (
     <pre
-      className={`max-h-56 overflow-auto rounded-md px-2.5 py-2 font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap [scrollbar-width:thin] ${
+      className={`max-h-56 overflow-auto rounded-md px-2.5 py-2 font-sans text-[0.8125rem] leading-relaxed whitespace-pre-wrap scrollbar-thin ${
         tone === "del" ? "bg-danger/8 text-fg-soft line-through decoration-danger/60" : "bg-success/10 text-fg"
       }`}
     >

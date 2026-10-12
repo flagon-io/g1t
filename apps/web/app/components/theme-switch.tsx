@@ -82,7 +82,7 @@ export function ThemeMenuSwitch({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2.5 px-2.5 py-1", className)}>
       <span className="grow text-[0.8125rem] text-fg/90">Appearance</span>
-      <Menu.RadioGroup value={theme} onValueChange={(value) => setTheme(value as ThemeChoice)} aria-label="Appearance" className={cn(TRACK, "w-[7.5rem] shrink-0")}>
+      <Menu.RadioGroup value={theme} onValueChange={(value) => setTheme(value as ThemeChoice)} aria-label="Appearance" className={cn(TRACK, "w-30 shrink-0")}>
         {THEME_CHOICES.map((choice) => (
           <Hint key={choice} label={THEME_LABEL[choice]} side="bottom">
             <Menu.RadioItem

@@ -109,7 +109,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
         <ArrowLeft size={14} /> New project
       </Link>
       <span className="mt-6 flex size-10 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/30">
-        <GithubMark className="size-[18px]" />
+        <GithubMark className="size-4.5" />
       </span>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">Import from GitHub</h1>
       <p className="mt-1.5 text-sm text-muted">

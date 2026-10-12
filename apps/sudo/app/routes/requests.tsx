@@ -164,7 +164,7 @@ function RequestCard({
               </div>
             </dl>
           )}
-          <blockquote className="border-l-2 border-line-strong pl-3 text-sm break-words whitespace-pre-line text-fg-soft">{request.reason}</blockquote>
+          <blockquote className="border-l-2 border-line-strong pl-3 text-sm wrap-break-word whitespace-pre-line text-fg-soft">{request.reason}</blockquote>
           {request.answer && (
             <p className="text-sm text-muted">
               Answer{request.decidedBy ? <> by <span className="font-mono">{request.decidedBy}</span></> : null}: {request.answer}

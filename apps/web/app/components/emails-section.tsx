@@ -209,7 +209,7 @@ export function EmailsSection({
           <input type="hidden" name="intent" value="email-privacy" />
           <SwitchCard name="private" defaultChecked={data.privateEmail} title="Keep my email address private">
             Merges and other commits g1t makes for you on the web, or an agent makes for you, use{" "}
-            <span className="font-mono text-fg [overflow-wrap:anywhere]">{data.noreply}</span> instead of your primary address.
+            <span className="font-mono text-fg wrap-anywhere">{data.noreply}</span> instead of your primary address.
           </SwitchCard>
           <SwitchCard name="block" defaultChecked={data.blockPrivatePushes} title="Block pushes that expose my email">
             While your address is private, a push is refused if a commit in it has one of your confirmed
@@ -217,7 +217,7 @@ export function EmailsSection({
           </SwitchCard>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-faint">
-              Commits g1t makes for you now carry <span className="font-mono [overflow-wrap:anywhere]">{data.commitEmail}</span>.
+              Commits g1t makes for you now carry <span className="font-mono wrap-anywhere">{data.commitEmail}</span>.
             </p>
             <SubmitButton variant="outline" pending="Saving…" match={{ intent: "email-privacy" }}>
               Save
