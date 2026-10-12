@@ -152,6 +152,22 @@
 			],
 			"self_host": "run"
 		},
+		"telemetry": {
+			"path": "services/telemetry",
+			"kind": "ts-worker",
+			"worker": "g1t-telemetry",
+			// No D1: each project's telemetry is kept in its own Durable
+			// Object's SQLite storage. Public at otel.g1t.sh (OTLP), and
+			// every app on g1t.page names it as its Tail Worker.
+			"stage": "core",
+			// CLOUDFLARE_EXPORT_KEY is optional (Cloudflare's own OpenTelemetry
+			// export of the apps), so it is not listed.
+			"secrets": [],
+			"setup": [
+				"Deployed once before the deployments service and the dispatcher, which name it (`node scripts/deploy.mjs deploy --only telemetry`): a binding or Tail Worker that names a Worker not yet there is refused"
+			],
+			"self_host": "run"
+		},
 		"notify": {
 			"path": "services/notify",
 			"kind": "ts-worker",

@@ -37,6 +37,12 @@ declare global {
        * Absent where it is not deployed: pages work without it.
        */
       NOTIFY?: ServiceBinding & { fetch(request: Request): Promise<Response> };
+      /**
+       * Observability (services/telemetry): RPC, and a project's live tail,
+       * forwarded as it is (routes/repo/observability/live.ts). Absent where
+       * it is not deployed: the pages say so.
+       */
+      TELEMETRY?: ServiceBinding & { fetch(request: Request): Promise<Response> };
       /** Production screenshots, from the og service's `Screenshots` entrypoint. */
       SCREENSHOTS?: {
         image(input: { host: string; commit: string; since?: string }): Promise<{

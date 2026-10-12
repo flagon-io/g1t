@@ -84,8 +84,9 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
                     }
                 },
                 // A tool per operation, as the server had before its
-                // resource tools. Still answered, no longer listed.
-                None => match Op::by_name(name) {
+                // resource tools. Still answered, no longer listed; never
+                // one offered over REST alone.
+                None => match Op::by_name(name).filter(|op| !crate::tools::REST_ONLY.contains(op)) {
                     Some(op) => op,
                     None => return Ok(Some(error(id, -32602, "Unknown tool."))),
                 },
@@ -97,7 +98,7 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
                 // In `snake_case`, as the REST API answers; the protocol's
                 // own envelope keeps MCP's spelling.
                 Outcome::Ok(value) => (
-                    serde_json::to_string_pretty(&g1t_kit::wire::snake_case(value))?,
+                    serde_json::to_string_pretty(&g1t_kit::wire::snake_case_keeping(value, op.as_given()))?,
                     false,
                 ),
                 Outcome::Fail(failure) => (failure.message, true),

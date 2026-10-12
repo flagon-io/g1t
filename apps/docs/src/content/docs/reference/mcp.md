@@ -3,9 +3,9 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` exposes 20 tools, one per kind of
+The MCP server at `https://mcp.g1t.sh` exposes 21 tools, one per kind of
 thing on g1t: `search`, `repository`, `issue`, `pull_request`, `agent`,
-`plan`, `memory`, `workflow`, `package`, `secret`, `security`, `webhook`, `access`,
+`plan`, `memory`, `workflow`, `observability`, `package`, `secret`, `security`, `webhook`, `access`,
 `team`, `workspace`, `customize`, `billing`, `notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
@@ -496,6 +496,31 @@ deployments; and the self-hosted runners workflows run on. See
 | [`delete_runner_group`](/reference/api/runners/delete-runner-group/) | Delete a group; its runners join the default. Owners. | `workspace`, `id` | `runners:admin` |
 | [`get_runner_settings`](/reference/api/runners/get-runner-settings-for-workspace/) | Whether agent work runs on self-hosted runners and on which labels, and whether pull requests from forks may use them. | `workspace` or `repo` | `runners:read` |
 | [`update_runner_settings`](/reference/api/runners/update-runner-settings-for-workspace/) | Change them: `agents_on_self_hosted`, `agent_labels`, `fork_pull_requests`, or `inherit` for a repository. | `workspace` or `repo` | `runners:admin` |
+
+## `observability`
+
+What a project's running software did in production, to debug it: its
+requests, logs, traces, grouped errors and metrics, from its apps on
+g1t.page and from OpenTelemetry sent from anywhere. Name the project with
+`workspace` and `project` (its slug). `from` and `to` are RFC 3339 times or
+Unix milliseconds, the last 24 hours unless you say; `environment` and
+`service` narrow any list. Reading needs a role of your own on the
+project's repository, even when it is public. A project's settings, ingest
+tokens, exports and usage are in the [REST API](/reference/api/observability/get-observability-settings/)
+only. See [Observability](/guides/observability/).
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`overview`](/reference/api/observability/get-observability-overview/) | Requests, errors, error rate, latency and CPU percentiles over a period, against the period before; by route, deployment (newest first, so a regression points at the deployment it began with), service and region; `deployment_id`, `step`. | `workspace`, `project` | `observability:read` |
+| [`requests`](/reference/api/observability/list-requests/) | Requests answered, newest first; filter by words in `q`, `status` (`5xx`, `404`, comma-separated), `errors_only`, `route`, `min_duration_ms` and `deployment_id`; page with `cursor` and `limit`. | `workspace`, `project` | `observability:read` |
+| [`request`](/reference/api/observability/get-request/) | One request with every log line it wrote. | `workspace`, `project`, `id` | `observability:read` |
+| [`logs`](/reference/api/observability/list-logs/) | Search a project's logs: words or a phrase in `q`, `level` (`error,warn`), `trace_id`, `request_id`, `deployment_id`; page with `cursor` and `limit`. | `workspace`, `project` | `observability:read` |
+| [`traces`](/reference/api/observability/list-traces/) | Traces, newest first, each its root span, duration, span and error counts; `q`, `errors_only`, `min_duration_ms`. | `workspace`, `project` | `observability:read` |
+| [`trace`](/reference/api/observability/get-trace/) | One trace: every span with its timing, status, attributes and events, and the logs written under it. | `workspace`, `project`, `trace_id` | `observability:read` |
+| [`errors`](/reference/api/observability/list-errors/) | Errors grouped by exception, most recently seen first, each with its count, the deployment that brought it in, its last request and trace, and its `state`; filter by `state`. | `workspace`, `project` | `observability:read` |
+| [`update_error`](/reference/api/observability/update-error/) | Resolve, ignore or reopen an error group (`state`), or link the issue made for it (`issue_number`, null to unlink). Triage role. | `workspace`, `project`, `fingerprint` | `observability:write` |
+| [`metrics`](/reference/api/observability/list-metrics/) | The metrics the project's software sends, with their kind, unit and services. | `workspace`, `project` | `observability:read` |
+| [`metric`](/reference/api/observability/get-metric/) | One metric over time: `aggregate` (`avg`, `sum`, `min`, `max`, `p50`, `p95`, `p99`), `group_by` an attribute, `step`. | `workspace`, `project`, `metric` | `observability:read` |
 
 ## `package`
 

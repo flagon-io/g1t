@@ -25,6 +25,9 @@
 		{ "binding": "ACTIONS", "service": "g1t-actions" },
 		// Builds of deployments report through here.
 		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+		// Observability: a project's requests, logs, traces, errors and
+		// metrics, and OTLP sent to /otlp/v1/{traces,logs,metrics}.
+		{ "binding": "TELEMETRY", "service": "g1t-telemetry" },
 		// The context hub: search_context and get_entity.
 		{ "binding": "CONTEXT", "service": "g1t-context" },
 		{ "binding": "SEARCH", "service": "g1t-search" },

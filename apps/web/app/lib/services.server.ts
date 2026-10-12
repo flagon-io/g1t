@@ -29,6 +29,7 @@ import {
   skillLibraryClient,
   workspaceAgentsClient,
 } from "@g1t/contracts";
+import { telemetryClient } from "@g1t/contracts/telemetry";
 
 import { instrumented } from "./perf.server";
 
@@ -53,6 +54,7 @@ const PACKAGES = instrumented("packages", env.PACKAGES);
 const CHAT = instrumented("chat", env.CHAT);
 const AGENTS = instrumented("agents", env.AGENTS);
 const ARTIFACTS = instrumented("artifacts", env.ARTIFACTS);
+const TELEMETRY = env.TELEMETRY ? instrumented("telemetry", env.TELEMETRY) : null;
 
 export const identity = identityClient(IDENTITY);
 /** A person's email addresses and account security: methods of identity. */
@@ -97,3 +99,9 @@ export const skillLibrary = skillLibraryClient(AGENTS);
 export const docs = docsClient(ARTIFACTS);
 /** Artifacts (folios): docs, and later slides, designs and dashboards, kept by the artifacts service. */
 export const folios = foliosClient(ARTIFACTS);
+
+/**
+ * Observability (services/telemetry): a project's requests, logs, traces,
+ * metrics and errors. Null where it is not deployed; the pages say so.
+ */
+export const telemetry = TELEMETRY ? telemetryClient(TELEMETRY) : null;

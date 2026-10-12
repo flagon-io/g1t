@@ -879,9 +879,9 @@ function RepoMenu({
           </SidebarLink>
         ) : null}
         {shows.has("observability") && (
-          <SidebarSoonLink to={`${base}/soon/logs`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />} about="Logs, errors, uptime and analytics of the project's deployed apps.">
+          <SidebarLink to={`${base}/observability`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />}>
             Observability
-          </SidebarSoonLink>
+          </SidebarLink>
         )}
         {shows.has("security") ? (
           <SidebarLink to={`${base}/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />}>

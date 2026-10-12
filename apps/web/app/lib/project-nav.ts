@@ -75,7 +75,20 @@ export const SECTIONS: Section[] = [
     area: "deployments",
     tabs: [{ label: "Deployments", path: "deployments" }, ...soon("Deployments")],
   },
-  { key: "Observability", area: "deployments", tabs: soon("Observability") },
+  {
+    key: "Observability",
+    area: "deployments",
+    tabs: [
+      { label: "Overview", path: "observability", exact: true, members: true },
+      { label: "Requests", path: "observability/requests", members: true },
+      { label: "Logs", path: "observability/logs", members: true },
+      { label: "Traces", path: "observability/traces", members: true },
+      { label: "Errors", path: "observability/errors", members: true },
+      { label: "Metrics", path: "observability/metrics", members: true },
+      { label: "Settings", path: "observability/settings", members: true, needs: "manage_integrations" },
+      ...soon("Observability"),
+    ],
+  },
   {
     key: "Security",
     area: "security",

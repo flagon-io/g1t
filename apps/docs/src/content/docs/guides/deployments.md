@@ -633,6 +633,17 @@ Under the project's **Settings → Deployments**,
 | Idle days | 7 | 1 to 90. A preview no one visits this long comes down. |
 | Build with a workflow | Off | Build through the deploy workflow g1t manages for the project; see [build with a workflow](#build-with-a-workflow). |
 
+## Logs, traces and errors
+
+Every request an app answers shows under the project's
+[Observability](/guides/observability/) within seconds: its status,
+duration, CPU time and the lines it wrote, with its exceptions grouped into
+errors and its numbers by deployment. Nothing to set up. Each request
+reaches the app with an `x-g1t-request-id` header, its id there, and a
+`traceparent`, and the app is deployed with OpenTelemetry's
+`OTEL_EXPORTER_OTLP_*` variables set, so an OpenTelemetry SDK in it sends
+its spans to the project without configuration.
+
 ## Secrets and variables
 
 Builds and running apps read the project's

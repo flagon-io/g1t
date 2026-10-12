@@ -15,6 +15,7 @@ mod blobs;
 mod checks;
 mod customize;
 mod deployments;
+mod telemetry;
 mod deploy_keys;
 mod limits;
 mod logs;
@@ -879,7 +880,7 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         }
         // A deleted comment has nothing to say, as GitHub's says nothing.
         Outcome::Ok(_) if route.no_content() => Ok(Response::empty()?.with_status(204)),
-        Outcome::Ok(value) => reply(&value),
+        Outcome::Ok(value) => Response::from_json(&wire::snake_case_keeping(value, route.op.as_given())),
         // A token without the scope a call needs is told which one.
         Outcome::Fail(refused) => match (refused.code, audit::missing_scope(route.op, &viewer, &input)) {
             (FailureCode::Forbidden, Some(scope)) => Ok(reply(&json!({
@@ -976,8 +977,56 @@ mod tests {
 
 // The API is called from browsers too: the reference's explorer, and apps
 // built on g1t. It carries no cookies, so any origin may call it.
+/// The signal an OTLP path sends (`/otlp/v1/traces`, `logs` or `metrics`),
+/// if it is one.
+fn otlp_signal(path: &str) -> Option<&'static str> {
+    let path = path.strip_prefix("/v1").filter(|rest| rest.starts_with('/')).unwrap_or(path);
+    match path.trim_end_matches('/') {
+        "/otlp/v1/traces" => Some("traces"),
+        "/otlp/v1/logs" => Some("logs"),
+        "/otlp/v1/metrics" => Some("metrics"),
+        _ => None,
+    }
+}
+
+/// OpenTelemetry sent to the API's own address: a self-hosted install's
+/// only door, and a second one hosted. It goes to the telemetry service as
+/// it came, which checks the project's ingest token itself (not a g1t
+/// token), and its answer comes back as it is, CORS headers included.
+async fn forward_otlp(mut request: Request, env: &Env, signal: &str) -> Result<Response> {
+    let method = request.method();
+    let headers = worker::Headers::new();
+    for name in ["authorization", "x-g1t-token", "content-type", "content-encoding"] {
+        if let Some(value) = request.headers().get(name)? {
+            headers.set(name, &value)?;
+        }
+    }
+    let mut init = worker::RequestInit::new();
+    init.with_method(method.clone()).with_headers(headers);
+    if method == Method::Post {
+        let body = request.bytes().await?;
+        init.with_body(Some(worker::js_sys::Uint8Array::from(body.as_slice()).into()));
+    }
+    let target = format!("https://telemetry/v1/{signal}");
+    let mut answer = env.service("TELEMETRY")?.fetch_request(Request::new_with_init(&target, &init)?).await?;
+    // A fresh response, with the service's headers: a fetched one's cannot
+    // be changed, and nothing should be added to them.
+    let status = answer.status_code();
+    let headers = worker::Headers::new();
+    for (name, value) in answer.headers().entries() {
+        headers.set(&name, &value)?;
+    }
+    let bytes = answer.bytes().await?;
+    let response = if bytes.is_empty() { Response::empty()? } else { Response::from_bytes(bytes)? };
+    Ok(response.with_status(status).with_headers(headers))
+}
+
 #[event(fetch)]
 async fn fetch(request: Request, env: Env, _ctx: Context) -> Result<Response> {
+    // OTLP passes through untouched, before any g1t token is read.
+    if let Some(signal) = otlp_signal(&request.path()) {
+        return forward_otlp(request, &env, signal).await;
+    }
     let mut response = respond(request, &env).await?;
     let headers = response.headers_mut();
     headers.set("access-control-allow-origin", "*")?;

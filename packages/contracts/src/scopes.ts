@@ -21,6 +21,7 @@ export type ScopeResource =
   | "workflow_files"
   | "checks"
   | "deployments"
+  | "observability"
   | "memory"
   | "account"
   | "notifications"
@@ -60,6 +61,8 @@ export const SCOPES = [
   { scope: "checks:write", description: "Report statuses and check runs on commits, and ask for checks to run again" },
   { scope: "deployments:read", description: "See deployments, their statuses and environments" },
   { scope: "deployments:write", description: "Report deployments and their statuses, from any CI" },
+  { scope: "observability:read", description: "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports" },
+  { scope: "observability:write", description: "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports" },
   { scope: "memory:read", description: "Recall memory and search the workspace's context" },
   { scope: "memory:write", description: "Save memory for the next agent" },
   { scope: "account:read", description: "Read your email addresses, invites, invitations, pinned projects and stars" },
@@ -115,6 +118,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "workflow_files", label: "Workflow files", group: "repository" },
   { resource: "checks", label: "Checks and statuses", group: "repository" },
   { resource: "deployments", label: "Deployments", group: "repository" },
+  { resource: "observability", label: "Observability", group: "repository" },
   { resource: "memory", label: "Memory and context", group: "repository" },
   { resource: "account", label: "Your account", group: "account" },
   { resource: "notifications", label: "Notifications", group: "account" },
@@ -232,10 +236,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. No preset gives chat: an application gets it only by asking for it. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read", "artifacts:read",
+    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "models:read", "artifacts:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "checks:read", "deployments:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read", "artifacts:read",
+    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "agents:run", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "models:read", "artifacts:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
@@ -550,6 +554,27 @@ export const OPERATION_SCOPES = [
   ["create_deployment", "deployments:write"],
   ["create_deployment_status", "deployments:write"],
   ["start_deployment_build", "deployments:write"],
+  // Observability: what a project's software did, and how it is collected.
+  ["get_observability_overview", "observability:read"],
+  ["list_requests", "observability:read"],
+  ["get_request", "observability:read"],
+  ["list_logs", "observability:read"],
+  ["list_traces", "observability:read"],
+  ["get_trace", "observability:read"],
+  ["list_errors", "observability:read"],
+  ["list_metrics", "observability:read"],
+  ["get_metric", "observability:read"],
+  ["get_observability_settings", "observability:read"],
+  ["list_ingest_tokens", "observability:read"],
+  ["list_telemetry_exports", "observability:read"],
+  ["get_observability_usage", "observability:read"],
+  ["update_error", "observability:write"],
+  ["update_observability_settings", "observability:write"],
+  ["create_ingest_token", "observability:write"],
+  ["delete_ingest_token", "observability:write"],
+  ["create_telemetry_export", "observability:write"],
+  ["update_telemetry_export", "observability:write"],
+  ["delete_telemetry_export", "observability:write"],
   // What keeps runs safe: the runs environments hold and reviewing them,
   // approving a pull request's run, and a repository's own rules for its
   // environments and tokens, which are an admin's.
@@ -703,6 +728,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write", "workflow_files:write"] },
   { id: "checks", label: "Checks", scopes: ["checks:read", "checks:write"] },
   { id: "deployments", label: "Deployments", scopes: ["deployments:read", "deployments:write"] },
+  { id: "observability", label: "Observability", scopes: ["observability:read", "observability:write"] },
   { id: "memory", label: "Memory & search", scopes: ["memory:read", "memory:write"] },
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
   { id: "notifications", label: "Notifications", scopes: ["notifications:read", "notifications:write"] },

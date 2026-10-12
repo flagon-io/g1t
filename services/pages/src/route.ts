@@ -30,8 +30,17 @@ export function route(rawHost: string): Route {
   return HOST.test(host) && host.length <= 253 ? { kind: "custom", hostname: host } : { kind: "invalid" };
 }
 
-/** What the deployments service writes under a custom hostname. */
-export type DomainEntry = { script: string; redirect: string | null; project?: string };
+/**
+ * What the deployments service notes for an app, under its own hostname,
+ * for observability: each request's line names its project and deployment.
+ */
+export type AppTelemetry = { project: string; deployment: string | null; environment: string | null; service: string; commit: string | null };
+
+/**
+ * What the deployments service writes under a custom hostname, an app's
+ * old hostname (a redirect), or an app's own hostname (its `telemetry`).
+ */
+export type DomainEntry = { script: string; redirect: string | null; telemetry?: AppTelemetry | null };
 
 /** Reads a stored entry, or null if it is not one. */
 export function parseEntry(value: unknown): DomainEntry | null {
@@ -39,7 +48,13 @@ export function parseEntry(value: unknown): DomainEntry | null {
   const entry = value as Record<string, unknown>;
   if (typeof entry.script !== "string" || !LABEL.test(entry.script)) return null;
   const redirect = typeof entry.redirect === "string" && HOST.test(entry.redirect) ? entry.redirect : null;
-  return { script: entry.script, redirect };
+  const t = entry.telemetry as Record<string, unknown> | null | undefined;
+  const text = (v: unknown) => (typeof v === "string" ? v : null);
+  const telemetry =
+    t && typeof t === "object" && typeof t.project === "string"
+      ? { project: t.project, deployment: text(t.deployment), environment: text(t.environment), service: text(t.service) ?? entry.script, commit: text(t.commit) }
+      : null;
+  return { script: entry.script, redirect, telemetry };
 }
 
 /** The same path and query on `target`, over https. */
@@ -59,4 +74,26 @@ export const APP_LIMITS = { cpuMs: 50, subRequests: 50 } as const;
 /** Whether an app's failure was going over `APP_LIMITS`, as the runtime words it. */
 export function overLimits(error: unknown): boolean {
   return /exceeded (its )?cpu|cpu time limit|too many subrequests|subrequest limit/i.test(String(error));
+}
+
+/** The header each app is handed with its request's id, which its logs can name. */
+export const REQUEST_ID_HEADER = "x-g1t-request-id";
+/** The first word of each request's line, which observability reads (services/telemetry). */
+export const REQUEST_MARK = "g1t-request";
+
+function hex(bytes: number): string {
+  return [...crypto.getRandomValues(new Uint8Array(bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * A request's id and trace: the trace the caller's `traceparent` began,
+ * or a new one. The id is the dispatcher's span in it, which the app's
+ * own spans (from an OpenTelemetry SDK that reads `traceparent`) are under.
+ */
+export function traceFor(traceparent: string | null): { id: string; trace: string; traceparent: string; flags: string } {
+  const m = /^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-([0-9a-f]{2})$/.exec((traceparent ?? "").trim().toLowerCase());
+  const trace = m && !/^0+$/.test(m[1]) ? m[1] : hex(16);
+  const flags = m ? m[2] : "01";
+  const id = hex(8);
+  return { id, trace, traceparent: `00-${trace}-${id}-${flags}`, flags };
 }

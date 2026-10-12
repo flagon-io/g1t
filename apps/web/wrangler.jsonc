@@ -53,6 +53,8 @@
 		{ "binding": "AGENTS", "service": "g1t-agents" },
 		// Live notifications, counts and browser push: each tab's feed socket (services/notify).
 		{ "binding": "NOTIFY", "service": "g1t-notify" },
+		// Observability: each project's requests, logs, traces, metrics and errors, and its live tail (services/telemetry).
+		{ "binding": "TELEMETRY", "service": "g1t-telemetry" },
 		// Production screenshots for a project's overview (services/og).
 		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
 	],

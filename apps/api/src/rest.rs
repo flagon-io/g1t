@@ -9,6 +9,7 @@ use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
+use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
@@ -158,6 +159,92 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/projects", Op::ListProjects, &[]),
     route("GET", "/workspaces/:workspace/projects/:project", Op::GetProject, &[]),
     route("PATCH", "/workspaces/:workspace/projects/:project", Op::UpdateProject, &[]),
+    // A project's observability: what its software did, and how it is collected.
+    route(
+        "GET",
+        "/workspaces/:workspace/projects/:project/observability/overview",
+        Op::Telemetry(TelemetryOp::GetOverview),
+        &[("from", "from"), ("to", "to"), ("environment", "environment"), ("service", "service"), ("deployment_id", "deployment_id"), ("step", "step")],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/projects/:project/observability/requests",
+        Op::Telemetry(TelemetryOp::ListRequests),
+        &[
+            ("from", "from"),
+            ("to", "to"),
+            ("q", "q"),
+            ("status", "status"),
+            ("errors_only", "errors_only"),
+            ("route", "route"),
+            ("min_duration_ms", "min_duration_ms"),
+            ("environment", "environment"),
+            ("service", "service"),
+            ("deployment_id", "deployment_id"),
+            ("cursor", "cursor"),
+            ("limit", "limit"),
+        ],
+    ),
+    route("GET", "/workspaces/:workspace/projects/:project/observability/requests/:id", Op::Telemetry(TelemetryOp::GetRequest), &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/projects/:project/observability/logs",
+        Op::Telemetry(TelemetryOp::ListLogs),
+        &[
+            ("from", "from"),
+            ("to", "to"),
+            ("q", "q"),
+            ("level", "level"),
+            ("trace_id", "trace_id"),
+            ("request_id", "request_id"),
+            ("environment", "environment"),
+            ("service", "service"),
+            ("deployment_id", "deployment_id"),
+            ("cursor", "cursor"),
+            ("limit", "limit"),
+        ],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/projects/:project/observability/traces",
+        Op::Telemetry(TelemetryOp::ListTraces),
+        &[
+            ("from", "from"),
+            ("to", "to"),
+            ("q", "q"),
+            ("errors_only", "errors_only"),
+            ("min_duration_ms", "min_duration_ms"),
+            ("environment", "environment"),
+            ("service", "service"),
+            ("cursor", "cursor"),
+            ("limit", "limit"),
+        ],
+    ),
+    route("GET", "/workspaces/:workspace/projects/:project/observability/traces/:trace_id", Op::Telemetry(TelemetryOp::GetTrace), &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/projects/:project/observability/errors",
+        Op::Telemetry(TelemetryOp::ListErrors),
+        &[("state", "state"), ("environment", "environment"), ("service", "service"), ("from", "from"), ("to", "to")],
+    ),
+    route("PATCH", "/workspaces/:workspace/projects/:project/observability/errors/:fingerprint", Op::Telemetry(TelemetryOp::UpdateError), &[]),
+    route("GET", "/workspaces/:workspace/projects/:project/observability/metrics", Op::Telemetry(TelemetryOp::ListMetrics), &[]),
+    route(
+        "GET",
+        "/workspaces/:workspace/projects/:project/observability/metrics/:metric",
+        Op::Telemetry(TelemetryOp::GetMetric),
+        &[("from", "from"), ("to", "to"), ("aggregate", "aggregate"), ("group_by", "group_by"), ("step", "step"), ("service", "service"), ("environment", "environment")],
+    ),
+    route("GET", "/workspaces/:workspace/projects/:project/observability/settings", Op::Telemetry(TelemetryOp::GetSettings), &[]),
+    route("PATCH", "/workspaces/:workspace/projects/:project/observability/settings", Op::Telemetry(TelemetryOp::UpdateSettings), &[]),
+    route("GET", "/workspaces/:workspace/projects/:project/observability/tokens", Op::Telemetry(TelemetryOp::ListTokens), &[]),
+    route("POST", "/workspaces/:workspace/projects/:project/observability/tokens", Op::Telemetry(TelemetryOp::CreateToken), &[]),
+    route("DELETE", "/workspaces/:workspace/projects/:project/observability/tokens/:id", Op::Telemetry(TelemetryOp::DeleteToken), &[]),
+    route("GET", "/workspaces/:workspace/projects/:project/observability/exports", Op::Telemetry(TelemetryOp::ListExports), &[]),
+    route("POST", "/workspaces/:workspace/projects/:project/observability/exports", Op::Telemetry(TelemetryOp::CreateExport), &[]),
+    route("PATCH", "/workspaces/:workspace/projects/:project/observability/exports/:id", Op::Telemetry(TelemetryOp::UpdateExport), &[]),
+    route("DELETE", "/workspaces/:workspace/projects/:project/observability/exports/:id", Op::Telemetry(TelemetryOp::DeleteExport), &[]),
+    route("GET", "/workspaces/:workspace/projects/:project/observability/usage", Op::Telemetry(TelemetryOp::GetUsage), &[]),
     route("PUT", "/workspaces/:workspace/base_permission", Op::SetBasePermission, &[]),
     route(
         "GET",
@@ -1423,6 +1510,22 @@ mod tests {
         assert_eq!(op("POST", "/repos/acme/web/issues/7/comments"), Op::AddComment);
         assert_eq!(op("DELETE", "/repos/acme/web/issues/7/labels"), Op::RemoveIssueLabels);
         assert_eq!(op("DELETE", "/repos/acme/web/issues/7/subscription"), Op::DeleteThreadSubscription);
+    }
+
+    #[test]
+    fn observability_is_addressed_by_workspace_and_project() {
+        let query = [("level".to_owned(), "error,warn".to_owned()), ("q".to_owned(), "timeout".to_owned())];
+        let (route, input) = resolve("GET", "/workspaces/acme/projects/web/observability/logs", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::Telemetry(TelemetryOp::ListLogs));
+        assert_eq!(input, json!({ "level": "error,warn", "q": "timeout", "workspace": "acme", "project": "web" }));
+        let (route, input) =
+            resolve("GET", "/workspaces/acme/projects/web/observability/metrics/http.server.request.duration", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::Telemetry(TelemetryOp::GetMetric));
+        assert_eq!(input["metric"], json!("http.server.request.duration"));
+        let (route, input) =
+            resolve("PATCH", "/workspaces/acme/projects/web/observability/errors/f00d", &[], json!({ "state": "resolved" })).unwrap();
+        assert_eq!(route.op, Op::Telemetry(TelemetryOp::UpdateError));
+        assert_eq!(input, json!({ "state": "resolved", "workspace": "acme", "project": "web", "fingerprint": "f00d" }));
     }
 
     #[test]

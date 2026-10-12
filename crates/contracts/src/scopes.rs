@@ -41,6 +41,9 @@ pub enum Resource {
     WorkflowFiles,
     Checks,
     Deployments,
+    /// Observability: what a project's running software did, as requests,
+    /// logs, traces, errors and metrics, and how they are collected.
+    Observability,
     Memory,
     Access,
     Webhooks,
@@ -54,7 +57,7 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub const ALL: [Resource; 23] = [
+    pub const ALL: [Resource; 24] = [
         Resource::Repo,
         Resource::Code,
         Resource::Security,
@@ -66,6 +69,7 @@ impl Resource {
         Resource::WorkflowFiles,
         Resource::Checks,
         Resource::Deployments,
+        Resource::Observability,
         Resource::Memory,
         Resource::Account,
         Resource::Notifications,
@@ -98,6 +102,7 @@ impl Resource {
             Resource::WorkflowFiles => "workflow_files",
             Resource::Checks => "checks",
             Resource::Deployments => "deployments",
+            Resource::Observability => "observability",
             Resource::Memory => "memory",
             Resource::Access => "access",
             Resource::Webhooks => "webhooks",
@@ -127,6 +132,7 @@ impl Resource {
             Resource::WorkflowFiles => "Workflow files",
             Resource::Checks => "Checks and statuses",
             Resource::Deployments => "Deployments",
+            Resource::Observability => "Observability",
             Resource::Memory => "Memory and context",
             Resource::Access => "Who has access",
             Resource::Webhooks => "Webhooks",
@@ -199,6 +205,8 @@ pub enum Scope {
     ChecksWrite,
     DeploymentsRead,
     DeploymentsWrite,
+    ObservabilityRead,
+    ObservabilityWrite,
     MemoryRead,
     MemoryWrite,
     AccountRead,
@@ -228,7 +236,7 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 47] = [
+    pub const ALL: [Scope; 49] = [
         Scope::RepoRead,
         Scope::RepoWrite,
         Scope::RepoAdmin,
@@ -251,6 +259,8 @@ impl Scope {
         Scope::ChecksWrite,
         Scope::DeploymentsRead,
         Scope::DeploymentsWrite,
+        Scope::ObservabilityRead,
+        Scope::ObservabilityWrite,
         Scope::MemoryRead,
         Scope::MemoryWrite,
         Scope::AccountRead,
@@ -302,6 +312,8 @@ impl Scope {
             Scope::ChecksWrite => "checks:write",
             Scope::DeploymentsRead => "deployments:read",
             Scope::DeploymentsWrite => "deployments:write",
+            Scope::ObservabilityRead => "observability:read",
+            Scope::ObservabilityWrite => "observability:write",
             Scope::MemoryRead => "memory:read",
             Scope::MemoryWrite => "memory:write",
             Scope::AccountRead => "account:read",
@@ -390,6 +402,8 @@ impl Scope {
             Scope::ChecksWrite => "Report statuses and check runs on commits, and ask for checks to run again",
             Scope::DeploymentsRead => "See deployments, their statuses and environments",
             Scope::DeploymentsWrite => "Report deployments and their statuses, from any CI",
+            Scope::ObservabilityRead => "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports",
+            Scope::ObservabilityWrite => "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports",
             Scope::MemoryRead => "Recall memory and search the workspace's context",
             Scope::MemoryWrite => "Save memory for the next agent",
             Scope::AccountRead => "Read your email addresses, invites, invitations, pinned projects and stars",
@@ -1180,6 +1194,27 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("create_deployment", Scope::DeploymentsWrite),
     ("create_deployment_status", Scope::DeploymentsWrite),
     ("start_deployment_build", Scope::DeploymentsWrite),
+    // Observability: what a project's software did, and how it is collected.
+    ("get_observability_overview", Scope::ObservabilityRead),
+    ("list_requests", Scope::ObservabilityRead),
+    ("get_request", Scope::ObservabilityRead),
+    ("list_logs", Scope::ObservabilityRead),
+    ("list_traces", Scope::ObservabilityRead),
+    ("get_trace", Scope::ObservabilityRead),
+    ("list_errors", Scope::ObservabilityRead),
+    ("list_metrics", Scope::ObservabilityRead),
+    ("get_metric", Scope::ObservabilityRead),
+    ("get_observability_settings", Scope::ObservabilityRead),
+    ("list_ingest_tokens", Scope::ObservabilityRead),
+    ("list_telemetry_exports", Scope::ObservabilityRead),
+    ("get_observability_usage", Scope::ObservabilityRead),
+    ("update_error", Scope::ObservabilityWrite),
+    ("update_observability_settings", Scope::ObservabilityWrite),
+    ("create_ingest_token", Scope::ObservabilityWrite),
+    ("delete_ingest_token", Scope::ObservabilityWrite),
+    ("create_telemetry_export", Scope::ObservabilityWrite),
+    ("update_telemetry_export", Scope::ObservabilityWrite),
+    ("delete_telemetry_export", Scope::ObservabilityWrite),
     // What keeps runs safe: the runs environments hold and reviewing them,
     // approving a pull request's run, and a repository's own rules for
     // its environments and tokens, which are an admin's.

@@ -117,6 +117,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Rules(RulesOp::DeleteRepoRuleset | RulesOp::DeleteWorkspaceRuleset) => return as_is,
         // Deployments travel in `snake_case` between services too.
         Op::Deployments(_) => return as_is,
+        // So does telemetry.
+        Op::Telemetry(_) => return as_is,
         // Artifacts are shaped by the API itself, in `snake_case`.
         Op::Artifacts(_) => return as_is,
         // So are archive links.

@@ -25,6 +25,7 @@ use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
+use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
@@ -297,6 +298,24 @@ pub const TOOLS: &[Tool] = &[
             a("delete_runner_group", Op::DeleteRunnerGroup, "Delete a group; its runners join the default"),
             a("get_runner_settings", Op::GetRunnerSettings, "Where agent work runs; whether forks may use runners"),
             a("update_runner_settings", Op::UpdateRunnerSettings, "Change them"),
+        ],
+    },
+    Tool {
+        name: "observability",
+        title: "Observability",
+        description: "What a project's running software did in production, to debug it: its requests, logs, traces, grouped errors and metrics, from its apps on g1t.page and from OpenTelemetry sent from anywhere. Name the project by workspace and project slug. Start with overview (error rate, latency, the routes and the deployment a regression began with) or errors, then follow a request or trace_id to its logs and spans. Times are RFC 3339 or Unix milliseconds; the last 24 hours unless you say. Needs a role of your own on the project's repository; resolving errors, Triage.",
+        default_action: None,
+        actions: &[
+            a("overview", Op::Telemetry(TelemetryOp::GetOverview), "Requests, errors, latency and CPU over a period, by route, deployment, service and region, against the period before"),
+            a("requests", Op::Telemetry(TelemetryOp::ListRequests), "Requests answered, newest first: q, status (5xx, 404), errors_only, route, min_duration_ms"),
+            a("request", Op::Telemetry(TelemetryOp::GetRequest), "One request with every log line it wrote"),
+            a("logs", Op::Telemetry(TelemetryOp::ListLogs), "Search a project's logs: words or a phrase in q, level (error,warn), trace_id, request_id"),
+            a("traces", Op::Telemetry(TelemetryOp::ListTraces), "Traces, newest first: q, errors_only, min_duration_ms"),
+            a("trace", Op::Telemetry(TelemetryOp::GetTrace), "One trace: every span, with its timing, status and attributes, and its logs"),
+            a("errors", Op::Telemetry(TelemetryOp::ListErrors), "Errors grouped by exception, most recent first, with the deployment that brought each in"),
+            a("update_error", Op::Telemetry(TelemetryOp::UpdateError), "Resolve, ignore or reopen an error group, or link the issue made for it"),
+            a("metrics", Op::Telemetry(TelemetryOp::ListMetrics), "The metrics the project's software sends"),
+            a("metric", Op::Telemetry(TelemetryOp::GetMetric), "One metric over time: aggregate (avg, sum, p95), group_by an attribute"),
         ],
     },
     Tool {
@@ -606,6 +625,22 @@ pub const TOOLS: &[Tool] = &[
     },
 ];
 
+/// Operations offered over REST alone, not as an action of any tool: how
+/// a project's telemetry is collected (settings, ingest tokens, exports,
+/// usage) is for people setting it up, not for agents debugging.
+pub const REST_ONLY: &[Op] = &[
+    Op::Telemetry(TelemetryOp::GetSettings),
+    Op::Telemetry(TelemetryOp::UpdateSettings),
+    Op::Telemetry(TelemetryOp::ListTokens),
+    Op::Telemetry(TelemetryOp::CreateToken),
+    Op::Telemetry(TelemetryOp::DeleteToken),
+    Op::Telemetry(TelemetryOp::ListExports),
+    Op::Telemetry(TelemetryOp::CreateExport),
+    Op::Telemetry(TelemetryOp::UpdateExport),
+    Op::Telemetry(TelemetryOp::DeleteExport),
+    Op::Telemetry(TelemetryOp::GetUsage),
+];
+
 /// Operations that cannot be undone, or reach beyond g1t's own records:
 /// clients ask before running a tool that has any of them.
 fn destructive(op: Op) -> bool {
@@ -881,7 +916,8 @@ mod tests {
                 .flat_map(|tool| tool.actions.iter())
                 .filter(|action| action.op == op)
                 .count();
-            assert_eq!(count, 1, "{} is {count} actions", op.name());
+            let expected = usize::from(!REST_ONLY.contains(&op));
+            assert_eq!(count, expected, "{} is {count} actions", op.name());
         }
         for tool in TOOLS {
             let mut names = std::collections::HashSet::new();
@@ -892,7 +928,7 @@ mod tests {
                 assert!(tool.action(default).is_some(), "{}", tool.name);
             }
         }
-        assert!(TOOLS.len() <= 20, "{} tools", TOOLS.len());
+        assert!(TOOLS.len() <= 21, "{} tools", TOOLS.len());
     }
 
     #[test]

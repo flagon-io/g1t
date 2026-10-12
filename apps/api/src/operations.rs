@@ -34,6 +34,7 @@ use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
+use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
@@ -69,6 +70,9 @@ pub struct Services {
     pub projects: Fetcher,
     /// Deployments wherever they run, and environments.
     pub deployments: Fetcher,
+    /// Observability: each project's requests, logs, traces, errors and
+    /// metrics (services/telemetry). It checks no access; telemetry.rs does.
+    pub telemetry: Fetcher,
     /// Packages: their settings, versions, deleting and restoring them.
     pub packages: Fetcher,
     /// The artifacts service (services/artifacts): docs, slides, designs and
@@ -101,6 +105,7 @@ impl Services {
             security: env.service("SECURITY")?,
             projects: env.service("PROJECTS")?,
             deployments: env.service("DEPLOYMENTS")?,
+            telemetry: env.service("TELEMETRY")?,
             packages: env.service("PACKAGES")?,
             artifacts: env.service("ARTIFACTS")?,
             agents: env.service("AGENTS")?,
@@ -323,6 +328,9 @@ pub enum Op {
     About(AboutOp),
     /// Deployments wherever they run, and environments: deployments.rs.
     Deployments(DeploymentsOp),
+    /// A project's observability: requests, logs, traces, errors, metrics,
+    /// and how they are collected: telemetry.rs.
+    Telemetry(TelemetryOp),
     /// Environments' protection rules, approving runs, the token's default
     /// permissions and repository dispatch: protection.rs.
     Protection(ProtectionOp),
@@ -716,7 +724,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 388] = [
+    pub const ALL: [Op; 408] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1003,6 +1011,26 @@ impl Op {
         Op::Deployments(DeploymentsOp::ListEnvironments),
         Op::Deployments(DeploymentsOp::GetEnvironment),
         Op::Deployments(DeploymentsOp::StartDeploymentBuild),
+        Op::Telemetry(TelemetryOp::GetOverview),
+        Op::Telemetry(TelemetryOp::ListRequests),
+        Op::Telemetry(TelemetryOp::GetRequest),
+        Op::Telemetry(TelemetryOp::ListLogs),
+        Op::Telemetry(TelemetryOp::ListTraces),
+        Op::Telemetry(TelemetryOp::GetTrace),
+        Op::Telemetry(TelemetryOp::ListErrors),
+        Op::Telemetry(TelemetryOp::UpdateError),
+        Op::Telemetry(TelemetryOp::ListMetrics),
+        Op::Telemetry(TelemetryOp::GetMetric),
+        Op::Telemetry(TelemetryOp::GetSettings),
+        Op::Telemetry(TelemetryOp::UpdateSettings),
+        Op::Telemetry(TelemetryOp::ListTokens),
+        Op::Telemetry(TelemetryOp::CreateToken),
+        Op::Telemetry(TelemetryOp::DeleteToken),
+        Op::Telemetry(TelemetryOp::ListExports),
+        Op::Telemetry(TelemetryOp::CreateExport),
+        Op::Telemetry(TelemetryOp::UpdateExport),
+        Op::Telemetry(TelemetryOp::DeleteExport),
+        Op::Telemetry(TelemetryOp::GetUsage),
         Op::Artifacts(ArtifactsOp::ListArtifacts),
         Op::Artifacts(ArtifactsOp::ListRunArtifacts),
         Op::Artifacts(ArtifactsOp::GetArtifact),
@@ -1318,6 +1346,7 @@ impl Op {
             Op::Checks(op) => op.name(),
             Op::About(op) => op.name(),
             Op::Deployments(op) => op.name(),
+            Op::Telemetry(op) => op.name(),
             Op::Protection(op) => op.name(),
             Op::Tokens(op) => op.name(),
             Op::Artifacts(op) => op.name(),
@@ -1898,6 +1927,7 @@ impl Op {
             Op::Checks(op) => op.description(),
             Op::About(op) => op.description(),
             Op::Deployments(op) => op.description(),
+            Op::Telemetry(op) => op.description(),
             Op::Protection(op) => op.description(),
             Op::Tokens(op) => op.description(),
             Op::Artifacts(op) => op.description(),
@@ -3421,6 +3451,7 @@ impl Op {
             Op::Checks(op) => op.input(),
             Op::About(op) => op.input(),
             Op::Deployments(op) => op.input(),
+            Op::Telemetry(op) => op.input(),
             Op::Protection(op) => op.input(),
             Op::Tokens(op) => op.input(),
             Op::Artifacts(op) => op.input(),
@@ -3430,6 +3461,15 @@ impl Op {
             Op::Packages(op) => op.input(),
             Op::Folios(op) => op.input(),
             Op::Customize(op) => op.input(),
+        }
+    }
+
+    /// Fields of its answer that are keyed by data and so are sent as they
+    /// are, beside those every answer keeps (`g1t_kit::wire::USER_KEYED`).
+    pub(crate) fn as_given(self) -> &'static [&'static str] {
+        match self {
+            Op::Telemetry(_) => crate::telemetry::AS_GIVEN,
+            _ => &[],
         }
     }
 
@@ -3520,6 +3560,10 @@ impl Op {
         }
         // So does its Customize.
         if let Op::Customize(_) = self {
+            return false;
+        }
+        // A project's observability names the workspace and the project.
+        if let Op::Telemetry(_) = self {
             return false;
         }
         if let Op::About(op) = self {
@@ -5820,6 +5864,9 @@ impl Op {
             Op::Checks(op) => crate::checks::run(op, services, viewer, input).await,
             Op::About(op) => crate::about::run(op, services, viewer, input).await,
             Op::Deployments(op) => crate::deployments::run(op, services, viewer, input).await,
+            // A project's observability: telemetry.rs checks who may see
+            // and change it, as the site does.
+            Op::Telemetry(op) => crate::telemetry::run(op, services, viewer, input).await,
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,

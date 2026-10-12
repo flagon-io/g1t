@@ -19,7 +19,20 @@
  * people sign in to.
  */
 
-import { APP_LIMITS, DOMAIN, FALLBACK, overLimits, parseEntry, redirectTo, route, type DomainEntry } from "./route.ts";
+import {
+  APP_LIMITS,
+  DOMAIN,
+  FALLBACK,
+  REQUEST_ID_HEADER,
+  REQUEST_MARK,
+  overLimits,
+  parseEntry,
+  redirectTo,
+  route,
+  traceFor,
+  type AppTelemetry,
+  type DomainEntry,
+} from "./route.ts";
 
 type Env = {
   APPS: DispatchNamespace;
@@ -73,8 +86,27 @@ async function lookup(env: Env, hostname: string): Promise<DomainEntry | null> {
   return entry;
 }
 
-/** Runs the app `script` for the request; `shown` is the address named in its error pages. */
-async function dispatch(env: Env, request: Request, script: string, shown: string, missing: () => Response): Promise<Response> {
+/**
+ * Runs the app `script` for the request; `shown` is the address named in
+ * its error pages. Each request gets an id and a trace, handed to the app
+ * (`x-g1t-request-id`, `traceparent`), and one line naming them, the app
+ * and its project (`telemetry`), which observability reads from this
+ * Worker's tail events and files with what the app's own tell it.
+ */
+async function dispatch(
+  env: Env,
+  request: Request,
+  script: string,
+  shown: string,
+  missing: () => Response,
+  telemetry: AppTelemetry | null,
+): Promise<Response> {
+  const { id, trace, traceparent } = traceFor(request.headers.get("traceparent"));
+  console.log(REQUEST_MARK, { id, script, trace_id: trace, app: telemetry });
+  const headers = new Headers(request.headers);
+  headers.set(REQUEST_ID_HEADER, id);
+  headers.set("traceparent", traceparent);
+  request = new Request(request, { headers });
   let app: Fetcher;
   try {
     app = env.APPS.get(script, {}, { limits: APP_LIMITS });
@@ -130,9 +162,9 @@ export default {
         // An address the app had before its project moved (its workspace or
         // repository was renamed or transferred) redirects to where it is
         // now, whatever the app it named answers, paused or not.
-        const moved = await appRedirect(request, env, label);
+        const { moved, telemetry } = await appRedirect(request, env, label);
         if (moved) return moved;
-        let response = await dispatch(env, request, label, `${label}.${DOMAIN}`, () => missing(label));
+        let response = await dispatch(env, request, label, `${label}.${DOMAIN}`, () => missing(label), telemetry);
         // Previews are for the people reviewing a change, not search engines.
         if (isPreview(label)) {
           response = new Response(response.body, response);
@@ -150,17 +182,18 @@ export default {
  * else null. A lookup that fails serves the app as it is rather than an
  * error.
  */
-async function appRedirect(request: Request, env: Env, label: string): Promise<Response | null> {
+async function appRedirect(request: Request, env: Env, label: string): Promise<{ moved: Response | null; telemetry: AppTelemetry | null }> {
   const hostname = `${label}.${DOMAIN}`;
   let entry: DomainEntry | null;
   try {
     entry = await lookup(env, hostname);
   } catch (error) {
     console.error("could not read redirect", label, error);
-    return null;
+    return { moved: null, telemetry: null };
   }
-  if (!entry?.redirect || entry.redirect === hostname) return null;
-  return new Response(null, {
+  // Otherwise the entry is the app's own: what its requests are filed under.
+  if (!entry?.redirect || entry.redirect === hostname) return { moved: null, telemetry: entry?.telemetry ?? null };
+  const moved = new Response(null, {
     status: 301,
     headers: {
       location: redirectTo(request.url, entry.redirect),
@@ -168,6 +201,7 @@ async function appRedirect(request: Request, env: Env, label: string): Promise<R
       "cache-control": "public, max-age=3600",
     },
   });
+  return { moved, telemetry: null };
 }
 
 /** A custom domain: its app, or a 308 to the hostname it is paired with. */
@@ -193,13 +227,21 @@ async function custom(request: Request, env: Env, hostname: string): Promise<Res
       headers: { location: redirectTo(request.url, entry.redirect), "cache-control": "public, max-age=300" },
     });
   }
-  return dispatch(env, request, entry.script, hostname, () =>
-    page(
-      404,
-      "Nothing deployed here yet",
-      `<p><code>${escape(hostname)}</code> serves a project's production, and it is not up. Deploying the project brings it here.</p>`,
-      hostname,
-    ),
+  // The app's own entry names its project, for observability.
+  const own = await lookup(env, `${entry.script}.${DOMAIN}`).catch(() => null);
+  return dispatch(
+    env,
+    request,
+    entry.script,
+    hostname,
+    () =>
+      page(
+        404,
+        "Nothing deployed here yet",
+        `<p><code>${escape(hostname)}</code> serves a project's production, and it is not up. Deploying the project brings it here.</p>`,
+        hostname,
+      ),
+    own?.redirect ? null : (own?.telemetry ?? null),
   );
 }
 

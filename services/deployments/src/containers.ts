@@ -26,6 +26,7 @@
  * Pure, with no Workers imports, so it can be tested under Node.
  */
 
+import { TAIL_CONSUMERS } from "./telemetry";
 import {
   APP_INSTANCES,
   CONTAINER_SLEEP_MINUTES,
@@ -139,6 +140,7 @@ export function appWorkerMetadata(
     compatibility_flags: [],
     bindings,
     tags,
+    tail_consumers: TAIL_CONSUMERS,
     // Declared, so uploading it again changes nothing about the class.
     exports: { [APP_CLASS]: { type: "durable-object", storage: "sqlite" } },
     containers: [{ class_name: APP_CLASS }],

@@ -116,7 +116,8 @@ export function projectPages(member: boolean, can?: Partial<Abilities>, mirror?:
     "actions",
     // A public repository's deployments and build logs are for anyone, as its code is.
     "deployments",
-    "observability",
+    // Logs and requests are not: they can hold what only the people running it should read.
+    member && "observability",
     member && "security",
     "insights",
     member && "settings",
@@ -155,7 +156,7 @@ export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: stri
   agents: { label: "Agents", path: "agents", also: ["sessions", "memory"] },
   actions: { label: "Workflows", path: "actions", also: [] },
   deployments: { label: "Deployments", path: "deployments", also: [] },
-  observability: { label: "Observability", path: "soon/logs", also: [], soon: true },
+  observability: { label: "Observability", path: "observability", also: [] },
   security: { label: "Security", path: "security", also: [] },
   insights: { label: "Insights", path: "contributors", also: ["activity", "stargazers"] },
   settings: { label: "Settings", path: "settings", also: [] },

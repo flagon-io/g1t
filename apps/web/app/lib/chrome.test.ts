@@ -127,7 +127,8 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("security/secret-scanning"), "security");
   assert.equal(projectPageAt("stargazers"), "insights");
   assert.equal(projectPageAt("settings/branches"), "settings");
-  assert.equal(projectPageAt("soon/logs", { logs: "observability" }), "observability");
+  assert.equal(projectPageAt("soon/uptime", { uptime: "observability" }), "observability");
+  assert.equal(projectPageAt("observability/logs"), "observability");
   assert.equal(projectPageAt("soon/boards", { boards: "issues" }), "issues");
   assert.equal(projectPageAt("pulse"), null);
 });

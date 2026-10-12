@@ -337,6 +337,18 @@ export default [
     route("actions/workflows/:file/badge.svg", "routes/repo/actions-badge.ts"),
     route("deployments", "routes/repo/deployments.tsx"),
     route("deployments/:id", "routes/repo/deployment.tsx"),
+    // Observability: what the project's running software did (services/telemetry).
+    route("observability", "routes/repo/observability.tsx"),
+    route("observability/requests", "routes/repo/observability-requests.tsx"),
+    route("observability/requests/:id", "routes/repo/observability-request.tsx"),
+    route("observability/logs", "routes/repo/observability-logs.tsx"),
+    route("observability/traces", "routes/repo/observability-traces.tsx"),
+    route("observability/traces/:trace", "routes/repo/observability-trace.tsx"),
+    route("observability/errors", "routes/repo/observability-errors.tsx"),
+    route("observability/metrics", "routes/repo/observability-metrics.tsx"),
+    route("observability/settings", "routes/repo/observability-settings.tsx"),
+    // The live tail's socket, forwarded to the project's store.
+    route("observability/live", "routes/repo/observability-live.ts"),
     // Security: an overview, then a page for each part. Old links to
     // `security?tab=…` are sent on by the overview.
     route("security", "routes/repo/security-overview.tsx"),

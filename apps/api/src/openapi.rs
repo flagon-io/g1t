@@ -14,6 +14,7 @@ use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
 use crate::deployments::DeploymentsOp;
+use crate::telemetry::TelemetryOp;
 use crate::packages::PackagesOp;
 use crate::folios::FoliosOp;
 use crate::protection::ProtectionOp;
@@ -484,6 +485,32 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
+        "Observability",
+        "What a project's running software did: its requests, logs, traces, grouped errors and metrics, from its apps on g1t.page with nothing to set up and from OpenTelemetry (OTLP over HTTP) sent from anywhere with an ingest token. Reading needs a role of your own on the project's repository; resolving errors, Triage; settings, ingest tokens, exports and usage, Admin.",
+        &[
+            Op::Telemetry(TelemetryOp::GetOverview),
+            Op::Telemetry(TelemetryOp::ListRequests),
+            Op::Telemetry(TelemetryOp::GetRequest),
+            Op::Telemetry(TelemetryOp::ListLogs),
+            Op::Telemetry(TelemetryOp::ListTraces),
+            Op::Telemetry(TelemetryOp::GetTrace),
+            Op::Telemetry(TelemetryOp::ListErrors),
+            Op::Telemetry(TelemetryOp::UpdateError),
+            Op::Telemetry(TelemetryOp::ListMetrics),
+            Op::Telemetry(TelemetryOp::GetMetric),
+            Op::Telemetry(TelemetryOp::GetSettings),
+            Op::Telemetry(TelemetryOp::UpdateSettings),
+            Op::Telemetry(TelemetryOp::ListTokens),
+            Op::Telemetry(TelemetryOp::CreateToken),
+            Op::Telemetry(TelemetryOp::DeleteToken),
+            Op::Telemetry(TelemetryOp::ListExports),
+            Op::Telemetry(TelemetryOp::CreateExport),
+            Op::Telemetry(TelemetryOp::UpdateExport),
+            Op::Telemetry(TelemetryOp::DeleteExport),
+            Op::Telemetry(TelemetryOp::GetUsage),
+        ],
+    ),
+    (
         "Run protection",
         "What keeps workflow runs safe: environments' protection rules (required reviewers, a wait timer, which branches may deploy) and the reviews of the jobs they hold, approving a pull request's run from outside, what a job's token gets when its workflow writes no `permissions:`, and repository_dispatch, which a job's own token may send.",
         &[
@@ -840,6 +867,7 @@ fn title(op: Op) -> &'static str {
         Op::Checks(op) => op.title(),
         Op::About(op) => op.title(),
         Op::Deployments(op) => op.title(),
+        Op::Telemetry(op) => op.title(),
         Op::Protection(op) => op.title(),
         Op::Tokens(op) => op.title(),
         Op::Artifacts(op) => op.title(),

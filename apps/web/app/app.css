@@ -122,6 +122,13 @@
   }
 }
 
+/* A row that just arrived on a live page (Observability's logs). */
+@keyframes g1t-fresh {
+  from {
+    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

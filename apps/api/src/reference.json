@@ -14928,5 +14928,663 @@
       "deleted": true
     },
     "notes": "Only an artifact in the trash can be deleted for good: `trash_workspace_artifact` first."
+  },
+  "get_observability_overview": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "query": {
+      "from": "2026-10-12T13:00:00Z",
+      "to": "2026-10-12T14:00:00Z",
+      "environment": "production"
+    },
+    "response": {
+      "from_us": 1791810000000000,
+      "to_us": 1791813600000000,
+      "step_s": 60,
+      "totals": {
+        "requests": 18204,
+        "errors": 41,
+        "error_rate": 0.0023,
+        "latency": {
+          "p50": 38.2,
+          "p75": 71.5,
+          "p95": 212.0,
+          "p99": 640.0
+        },
+        "cpu": {
+          "p50": 4.1,
+          "p75": 6.8,
+          "p95": 14.2,
+          "p99": 29.5
+        }
+      },
+      "previous": {
+        "requests": 17650,
+        "errors": 3,
+        "error_rate": 0.0002,
+        "latency": {
+          "p50": 35.9,
+          "p75": 66.0,
+          "p95": 188.0,
+          "p99": 402.0
+        },
+        "cpu": {
+          "p50": 3.9,
+          "p75": 6.5,
+          "p95": 13.0,
+          "p99": 22.1
+        }
+      },
+      "points": [
+        {
+          "time_us": 1791810000000000,
+          "requests": 302,
+          "errors": 0,
+          "status_2xx": 288,
+          "status_3xx": 9,
+          "status_4xx": 5,
+          "status_5xx": 0,
+          "latency": {
+            "p50": 36.0,
+            "p75": 68.0,
+            "p95": 190.0,
+            "p99": 410.0
+          },
+          "cpu": {
+            "p50": 4.0,
+            "p75": 6.6,
+            "p95": 13.1,
+            "p99": 22.0
+          }
+        }
+      ],
+      "routes": [
+        {
+          "route": "/:workspace/:repo/pulls/:number",
+          "method": "GET",
+          "requests": 2210,
+          "errors": 37,
+          "latency": {
+            "p50": 61.0,
+            "p75": 120.0,
+            "p95": 480.0,
+            "p99": 842.0
+          }
+        }
+      ],
+      "deployments": [
+        {
+          "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+          "environment": "production",
+          "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "first_us": 1791813041000000,
+          "requests": 2904,
+          "errors": 39,
+          "latency": {
+            "p50": 40.1,
+            "p75": 77.0,
+            "p95": 260.0,
+            "p99": 720.0
+          }
+        }
+      ],
+      "services": [
+        {
+          "service": "g1t-web",
+          "source": "cloudflare",
+          "requests": 18204,
+          "errors": 41,
+          "last_us": 1791813599000000
+        }
+      ],
+      "regions": [
+        {
+          "region": "IAD",
+          "requests": 9120
+        },
+        {
+          "region": "AMS",
+          "requests": 4410
+        }
+      ]
+    },
+    "notes": "`totals` is the period and `previous` the period of the same length before it, to compare. Latency and CPU are in milliseconds. `deployments` lists each deployment that answered in the period, newest first: when the error rate or latency rose, the deployment it began with is usually the first one with the higher numbers. Points are one per `step_s` seconds, chosen from the period unless `step` says. See [Observability](/guides/observability/)."
+  },
+  "list_requests": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "query": {
+      "errors_only": "true",
+      "limit": "1"
+    },
+    "response": {
+      "items": [
+        {
+          "id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
+          "time_us": 1791813807418000,
+          "duration_us": 842000,
+          "trigger": "fetch",
+          "method": "GET",
+          "url": "g1t.sh/flagon-io/g1t/pulls/412",
+          "route": "/:workspace/:repo/pulls/:number",
+          "status": 500,
+          "outcome": "exception",
+          "cpu_ms": 31.4,
+          "region": "IAD",
+          "country": "US",
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "log_count": 2,
+          "error": {
+            "name": "TypeError",
+            "message": "Cannot read properties of undefined (reading 'head')"
+          },
+          "service": "g1t-web",
+          "environment": "production",
+          "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+          "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "source": "cloudflare"
+        }
+      ],
+      "next": "eyJ0IjoxNzkxODEzODA3NDE4MDAwfQ"
+    },
+    "notes": "Apps on g1t.page send their requests with nothing to set up; software hosted elsewhere sends them as OpenTelemetry server spans. `route` is the path with ids taken out, which the overview groups by. Pass `next` back as `cursor` for the next page; it is null on the last."
+  },
+  "get_request": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t",
+      "id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x"
+    },
+    "response": {
+      "request": {
+        "id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
+        "time_us": 1791813807418000,
+        "duration_us": 842000,
+        "trigger": "fetch",
+        "method": "GET",
+        "url": "g1t.sh/flagon-io/g1t/pulls/412",
+        "route": "/:workspace/:repo/pulls/:number",
+        "status": 500,
+        "outcome": "exception",
+        "cpu_ms": 31.4,
+        "region": "IAD",
+        "country": "US",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "log_count": 2,
+        "error": {
+          "name": "TypeError",
+          "message": "Cannot read properties of undefined (reading 'head')"
+        },
+        "service": "g1t-web",
+        "environment": "production",
+        "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+        "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+        "source": "cloudflare"
+      },
+      "logs": [
+        {
+          "id": "log_01kq9b7d9f1h3k5m7p9r1t3v5y",
+          "time_us": 1791813808251000,
+          "severity": "error",
+          "severity_number": 17,
+          "body": "loading pull request 412 failed: Cannot read properties of undefined (reading 'head')",
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "span_id": "00f067aa0ba902b7",
+          "request_id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
+          "attributes": {
+            "code.function": "loadPull",
+            "http.route": "/:workspace/:repo/pulls/:number"
+          },
+          "service": "g1t-web",
+          "environment": "production",
+          "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+          "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "source": "cloudflare"
+        }
+      ]
+    },
+    "notes": "`404` when the project has no request with that id, or it is older than the project's retention."
+  },
+  "list_logs": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "query": {
+      "q": "\"failed\"",
+      "level": "error,fatal",
+      "limit": "1"
+    },
+    "response": {
+      "items": [
+        {
+          "id": "log_01kq9b7d9f1h3k5m7p9r1t3v5y",
+          "time_us": 1791813808251000,
+          "severity": "error",
+          "severity_number": 17,
+          "body": "loading pull request 412 failed: Cannot read properties of undefined (reading 'head')",
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "span_id": "00f067aa0ba902b7",
+          "request_id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
+          "attributes": {
+            "code.function": "loadPull",
+            "http.route": "/:workspace/:repo/pulls/:number"
+          },
+          "service": "g1t-web",
+          "environment": "production",
+          "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+          "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "source": "cloudflare"
+        }
+      ],
+      "next": null
+    },
+    "notes": "`q` finds lines holding all of its words, or a phrase in quotes. `level` takes one or more of `trace`, `debug`, `info`, `warn`, `error` and `fatal`. Follow `trace_id` to [the trace](/reference/api/observability/get-trace/) or `request_id` to [the request](/reference/api/observability/get-request/)."
+  },
+  "list_traces": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "query": {
+      "errors_only": "true",
+      "min_duration_ms": "500"
+    },
+    "response": {
+      "items": [
+        {
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "name": "GET /:workspace/:repo/pulls/:number",
+          "start_us": 1791813807418000,
+          "duration_us": 842000,
+          "span_count": 6,
+          "error_count": 1,
+          "services": [
+            "g1t-web",
+            "g1t-work"
+          ],
+          "status": 500,
+          "service": "g1t-web",
+          "environment": "production",
+          "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+          "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "source": "otlp"
+        }
+      ],
+      "next": null
+    },
+    "notes": "Each trace is its root span (or its earliest, when the root has not arrived), with what the rest add up to."
+  },
+  "get_trace": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+    },
+    "response": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "spans": [
+        {
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "span_id": "00f067aa0ba902b7",
+          "parent_span_id": null,
+          "name": "GET /:workspace/:repo/pulls/:number",
+          "kind": "server",
+          "start_us": 1791813807418000,
+          "duration_us": 842000,
+          "status": "error",
+          "status_message": "TypeError",
+          "attributes": {
+            "http.request.method": "GET",
+            "http.response.status_code": 500
+          },
+          "resource": {
+            "service.name": "g1t-web",
+            "deployment.environment.name": "production"
+          },
+          "events": [],
+          "links": [],
+          "service": "g1t-web",
+          "environment": "production",
+          "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+          "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "source": "otlp"
+        }
+      ],
+      "logs": [
+        {
+          "id": "log_01kq9b7d9f1h3k5m7p9r1t3v5y",
+          "time_us": 1791813808251000,
+          "severity": "error",
+          "severity_number": 17,
+          "body": "loading pull request 412 failed: Cannot read properties of undefined (reading 'head')",
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "span_id": "00f067aa0ba902b7",
+          "request_id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
+          "attributes": {
+            "code.function": "loadPull",
+            "http.route": "/:workspace/:repo/pulls/:number"
+          },
+          "service": "g1t-web",
+          "environment": "production",
+          "deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+          "commit_sha": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+          "source": "cloudflare"
+        }
+      ]
+    },
+    "notes": "Spans are in the order they started. `404` when the project has no spans of that trace."
+  },
+  "list_errors": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "query": {
+      "state": "open"
+    },
+    "response": [
+      {
+        "fingerprint": "9f2c41d07ab3e815",
+        "name": "TypeError",
+        "message": "Cannot read properties of undefined (reading 'head')",
+        "stack": "TypeError: Cannot read properties of undefined (reading 'head')\n    at loadPull (app/routes/pulls.ts:88:31)",
+        "service": "g1t-web",
+        "environment": "production",
+        "first_us": 1791813062000000,
+        "last_us": 1791813808000000,
+        "count": 37,
+        "first_deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+        "last_request_id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
+        "last_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "state": "open",
+        "issue_number": null
+      }
+    ],
+    "notes": "The same exception is one group: its name, its message with numbers and ids taken out, and the top frame of its stack. `first_deployment_id` is the deployment it was first seen on, what likely brought it in. At most 200 groups, most recently seen first."
+  },
+  "update_error": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t",
+      "fingerprint": "9f2c41d07ab3e815"
+    },
+    "request": {
+      "state": "resolved",
+      "issue_number": 418
+    },
+    "response": {
+      "fingerprint": "9f2c41d07ab3e815",
+      "name": "TypeError",
+      "message": "Cannot read properties of undefined (reading 'head')",
+      "stack": "TypeError: Cannot read properties of undefined (reading 'head')\n    at loadPull (app/routes/pulls.ts:88:31)",
+      "service": "g1t-web",
+      "environment": "production",
+      "first_us": 1791813062000000,
+      "last_us": 1791813808000000,
+      "count": 37,
+      "first_deployment_id": "dpl_01kq9a2c4e6g8j0m2p4r6t8v0x",
+      "last_request_id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
+      "last_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "state": "resolved",
+      "issue_number": 418
+    },
+    "notes": "A resolved group that happens again opens again. `issue_number` links the issue made for it, so an agent can take it; null unlinks it. Needs the Triage role or higher."
+  },
+  "list_metrics": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "response": [
+      {
+        "name": "http.server.request.duration",
+        "kind": "histogram",
+        "unit": "s",
+        "description": "Duration of HTTP server requests.",
+        "services": [
+          "g1t-api"
+        ],
+        "last_us": 1791813800000000
+      },
+      {
+        "name": "queue.depth",
+        "kind": "gauge",
+        "unit": "{message}",
+        "description": "Messages waiting.",
+        "services": [
+          "g1t-work"
+        ],
+        "last_us": 1791813780000000
+      }
+    ]
+  },
+  "get_metric": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t",
+      "metric": "http.server.request.duration"
+    },
+    "query": {
+      "aggregate": "p95",
+      "group_by": "http.route",
+      "step": "300"
+    },
+    "response": {
+      "name": "http.server.request.duration",
+      "unit": "s",
+      "step_s": 300,
+      "series": [
+        {
+          "group": "/repos/:owner/:name/pulls",
+          "points": [
+            {
+              "time_us": 1791813300000000,
+              "value": 0.212
+            },
+            {
+              "time_us": 1791813600000000,
+              "value": 0.236
+            }
+          ]
+        }
+      ]
+    },
+    "notes": "A metric name with characters outside letters, digits, `.`, `_` and `-` is URL-encoded in the path. Gauges average in each step unless `aggregate` says `min` or `max`; sums add, and a cumulative sum becomes its increase; histograms give their mean, or a percentile from their buckets."
+  },
+  "get_observability_settings": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "response": {
+      "retention_days": 7,
+      "deployments": true
+    },
+    "notes": "Requests, logs and spans are kept for `retention_days`; the overview's charts are kept longer, as per-minute counts. Needs the Admin role."
+  },
+  "update_observability_settings": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "request": {
+      "retention_days": 14
+    },
+    "response": {
+      "retention_days": 14,
+      "deployments": true
+    },
+    "notes": "`retention_days` is 1, 3, 7, 14 or 30. Turning `deployments` off stops the project's apps on g1t.page from sending and keeps its tokens and history. Needs the Admin role."
+  },
+  "list_ingest_tokens": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "response": [
+      {
+        "id": "a1b2c3d4",
+        "name": "Deployments on g1t.page",
+        "hint": "g1to_prj_…2c8e",
+        "created_by": null,
+        "created_us": 1790841600000000,
+        "last_used_us": 1791813809000000,
+        "managed": true
+      },
+      {
+        "id": "k3m9q2x7",
+        "name": "fly.io collector",
+        "hint": "g1to_prj_…9f3a",
+        "created_by": "syntaqx",
+        "created_us": 1791796364000000,
+        "last_used_us": 1791813790000000,
+        "managed": false
+      }
+    ],
+    "notes": "Secrets are never returned: `hint` tells tokens apart. The `managed` one is g1t's own, for the project's apps on g1t.page, and is replaced by g1t, not by people. Needs the Admin role."
+  },
+  "create_ingest_token": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "request": {
+      "name": "fly.io collector"
+    },
+    "response": {
+      "token": {
+        "id": "k3m9q2x7",
+        "name": "fly.io collector",
+        "hint": "g1to_prj_…9f3a",
+        "created_by": "syntaqx",
+        "created_us": 1791796364000000,
+        "last_used_us": null,
+        "managed": false
+      },
+      "secret": "g1to_prj_…"
+    },
+    "notes": "The secret is returned this once. Send it as `Authorization: Bearer <secret>` (or the `x-g1t-token` header) with OTLP over HTTP, in JSON or protobuf, to `https://otel.g1t.sh/v1/traces`, `/v1/logs` and `/v1/metrics`, or to `/otlp/v1/…` on the API's own address. Needs the Admin role."
+  },
+  "delete_ingest_token": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t",
+      "id": "k3m9q2x7"
+    },
+    "response": true,
+    "notes": "What sends with it is refused from then on. `404` for the managed token, which people cannot delete. Needs the Admin role."
+  },
+  "list_telemetry_exports": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "response": [
+      {
+        "id": "x7d2k9m4",
+        "name": "Honeycomb",
+        "endpoint": "https://api.honeycomb.io",
+        "signals": [
+          "traces",
+          "logs"
+        ],
+        "header_names": [
+          "x-honeycomb-team"
+        ],
+        "enabled": true,
+        "last_error": null,
+        "last_sent_us": 1791813809000000
+      }
+    ],
+    "notes": "Header values are secrets: written, never read back, so only `header_names` are shown. `last_error` is what the endpoint answered the last time sending failed. Needs the Admin role."
+  },
+  "create_telemetry_export": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "request": {
+      "name": "Honeycomb",
+      "endpoint": "https://api.honeycomb.io",
+      "signals": [
+        "traces",
+        "logs"
+      ],
+      "headers": {
+        "x-honeycomb-team": "hcaik_…"
+      }
+    },
+    "response": {
+      "id": "x7d2k9m4",
+      "name": "Honeycomb",
+      "endpoint": "https://api.honeycomb.io",
+      "signals": [
+        "traces",
+        "logs"
+      ],
+      "header_names": [
+        "x-honeycomb-team"
+      ],
+      "enabled": true,
+      "last_error": null,
+      "last_sent_us": null
+    },
+    "notes": "`endpoint` is the OTLP/HTTP base address; `/v1/traces`, `/v1/logs` and `/v1/metrics` are added. Requests go as log records. Telemetry is sent on as it arrives, from then on. Needs the Admin role."
+  },
+  "update_telemetry_export": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t",
+      "id": "x7d2k9m4"
+    },
+    "request": {
+      "enabled": false
+    },
+    "response": {
+      "id": "x7d2k9m4",
+      "name": "Honeycomb",
+      "endpoint": "https://api.honeycomb.io",
+      "signals": [
+        "traces",
+        "logs"
+      ],
+      "header_names": [
+        "x-honeycomb-team"
+      ],
+      "enabled": false,
+      "last_error": null,
+      "last_sent_us": 1791813809000000
+    },
+    "notes": "Only what is given changes. A header given is set, a header given as `\"\"` is removed, and the rest are kept. Needs the Admin role."
+  },
+  "delete_telemetry_export": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t",
+      "id": "x7d2k9m4"
+    },
+    "response": true,
+    "notes": "Needs the Admin role."
+  },
+  "get_observability_usage": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "g1t"
+    },
+    "response": {
+      "month": "2026-10",
+      "ingested_bytes": 4831920112,
+      "requests": 1840221,
+      "logs": 6204118,
+      "spans": 9921540,
+      "metric_points": 3120400,
+      "stored_bytes": 1210443776
+    },
+    "notes": "This month so far. `ingested_bytes` is what arrived, after decoding: what ingest is metered by. Needs the Admin role."
   }
 }

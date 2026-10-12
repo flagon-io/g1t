@@ -44,6 +44,7 @@ export * from "./mentions";
 export * from "./mirrors";
 export * from "./names";
 export * from "./notify";
+export * from "./telemetry";
 export * from "./oauth";
 export * from "./og";
 export * from "./packages";

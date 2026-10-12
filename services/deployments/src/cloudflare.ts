@@ -9,6 +9,7 @@
  * else.
  */
 
+import { TAIL_CONSUMERS } from "./telemetry";
 import { APP_CLASS, APP_WORKER, REGISTRY_HOST, applicationName, applicationRequest, pushLoginRequest, rolloutRequest } from "./containers";
 import { redirectScript } from "./redirect";
 
@@ -139,6 +140,8 @@ export class Cloudflare {
         compatibility_flags: worker.compatibilityFlags ?? [],
         bindings,
         tags,
+        // Each request it answers, with its logs, goes to observability (src/telemetry.ts).
+        tail_consumers: TAIL_CONSUMERS,
         ...(completionJwt ? { assets: { jwt: completionJwt, config: assetsConfig } } : {}),
       }),
     );

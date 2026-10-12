@@ -85,6 +85,7 @@ import {
   type ServiceBinding,
   type User,
   type Viewer,
+  telemetryClient,
 } from "@g1t/contracts";
 
 import { NEEDS, repoRef, trustedOutright, type Method } from "./access";
@@ -109,6 +110,7 @@ import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarge
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 import { RepoDeployments, sourceOf } from "./repo-deployments";
+import { telemetryTags, withOtel, type AppTelemetry } from "./telemetry";
 import { NEEDS_WRITE, commitOf, jobEndedMessage, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
 
 type Env = {
@@ -130,6 +132,8 @@ type Env = {
   SITE: string;
   /** Custom domains: hostname to app, read by the dispatcher. */
   DOMAINS?: KVNamespace;
+  /** Observability: each project's deployments token (services/telemetry). */
+  TELEMETRY?: ServiceBinding;
   /** The g1t.page zone, where custom hostnames are added (Cloudflare for SaaS). */
   CUSTOM_HOSTNAMES_ZONE_ID?: string;
   /**
@@ -426,6 +430,21 @@ class Deployments {
    * production or a preview: its build's environment, and the same again as
    * the running app's bindings. Untrusted builds get no secrets.
    */
+  /**
+   * The token the project's apps send OpenTelemetry with, from the
+   * telemetry service; null when it cannot be had, and the app goes up
+   * without it (its requests and logs still arrive as tail events).
+   */
+  private async telemetryToken(projectId: string): Promise<string | null> {
+    if (!this.env.TELEMETRY) return null;
+    try {
+      return (await telemetryClient(this.env.TELEMETRY).deploymentToken({ project_id: projectId })).secret;
+    } catch (error) {
+      console.error("could not get the project's telemetry token", projectId, error);
+      return null;
+    }
+  }
+
   private async resolve(
     project: { id: string; slug: string; repoId: string; repo: RepoPath },
     environment: DeployKind,
@@ -1259,15 +1278,22 @@ class Deployments {
         const seconds = Number(body.buildSeconds) || 0;
         const [namespace, name] = row.repo.split("/") as [string, string];
         const detected = detectedKind(body.detected);
-        const tags = [`workspace:${row.workspace}`, `project:${row.workspace}/${row.slug}`, row.kind];
+        const tags = [`workspace:${row.workspace}`, `project:${row.workspace}/${row.slug}`, row.kind, ...telemetryTags(row.project_id, id)];
+        const app: AppTelemetry = { project: row.project_id, deployment: id, environment: row.kind, service: row.slug, commit: row.commit_sha };
         let container: { appId: string; instanceType: string; meterHash: string; image: string } | null = null;
         try {
           // Running apps' secrets and variables are bound here, by g1t:
           // they never pass through the build's sandbox.
-          const runtime = await this.resolve(
-            { id: row.project_id, slug: row.slug, repoId: row.repo_id, repo: { namespace, name } },
-            row.kind,
-            !!row.trusted,
+          // OpenTelemetry's variables point the app's own SDK at the
+          // project (src/telemetry.ts); an untrusted build's app gets no token.
+          const runtime = withOtel(
+            await this.resolve(
+              { id: row.project_id, slug: row.slug, repoId: row.repo_id, repo: { namespace, name } },
+              row.kind,
+              !!row.trusted,
+            ),
+            app,
+            row.trusted ? await this.telemetryToken(row.project_id) : null,
           );
           const before = await this.db.prepare("SELECT runtime, container_app_id FROM apps WHERE script = ?").bind(row.script).first<AppRow>();
           if (detected === "container") {
@@ -1311,10 +1337,10 @@ class Deployments {
           this.db
             .prepare(
               `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at,
-                 runtime, container_app_id, instance_type, meter_hash)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11, ?12, ?13)
+                 runtime, container_app_id, instance_type, meter_hash, deployment_id)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11, ?12, ?13, ?14)
                ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9, paused_at = NULL,
-                 runtime = ?10, container_app_id = ?11, instance_type = ?12, meter_hash = ?13`,
+                 runtime = ?10, container_app_id = ?11, instance_type = ?12, meter_hash = ?13, deployment_id = ?14`,
             )
             .bind(
               row.script,
@@ -1330,13 +1356,16 @@ class Deployments {
               container?.appId ?? null,
               container?.instanceType ?? null,
               container?.meterHash ?? null,
+              id,
             ),
           // A name that redirected elsewhere (a move undone) is an app again.
           this.db.prepare("DELETE FROM redirects WHERE script = ?").bind(row.script),
         ]);
-        if (wasRedirect) {
-          await this.env.DOMAINS?.delete(appHost(row.script)).catch((error) => console.error("could not drop redirect", row.script, error));
-        }
+        // Under its own hostname, what the dispatcher files each request
+        // under (src/telemetry.ts); this also replaces a redirect the name
+        // held while it was not an app.
+        await this.env.DOMAINS?.put(appHost(row.script), JSON.stringify({ script: row.script, redirect: null, telemetry: app }))
+          .catch((error) => console.error(wasRedirect ? "could not drop redirect" : "could not note the app's project", row.script, error));
         // The same app at an older name (its project moved) now redirects
         // here; it stays up as it was if the redirect cannot be put.
         await this.supersede(cloudflare, row, row.script);

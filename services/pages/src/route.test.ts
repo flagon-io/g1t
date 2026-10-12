@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { APP_LIMITS, overLimits, parseEntry, redirectTo, route } from "./route.ts";
+import { APP_LIMITS, overLimits, parseEntry, redirectTo, route, traceFor } from "./route.ts";
 import worker from "./index.ts";
 
 test("hosts on g1t.page are the home page, the fallback origin, or an app", () => {
@@ -21,8 +21,8 @@ test("any other host is a custom domain", () => {
 });
 
 test("entries are read only when they are well formed", () => {
-  assert.deepEqual(parseEntry({ script: "web-acme", redirect: null }), { script: "web-acme", redirect: null });
-  assert.deepEqual(parseEntry({ script: "web-acme", redirect: "example.com" }), { script: "web-acme", redirect: "example.com" });
+  assert.deepEqual(parseEntry({ script: "web-acme", redirect: null }), { script: "web-acme", redirect: null, telemetry: null });
+  assert.deepEqual(parseEntry({ script: "web-acme", redirect: "example.com" }), { script: "web-acme", redirect: "example.com", telemetry: null });
   assert.equal(parseEntry({ script: "../x" }), null);
   assert.equal(parseEntry(null), null);
   assert.equal(parseEntry("web-acme"), null);
@@ -145,4 +145,21 @@ test("every app runs within the limits, and one that goes over them says so", as
   assert.match(await response.text(), /went over its limits/);
   assert.ok(overLimits(new Error("Too many subrequests.")));
   assert.ok(!overLimits(new Error("TypeError: x is undefined")));
+});
+
+test("each request gets an id and continues the caller's trace, or starts one", () => {
+  const fresh = traceFor(null);
+  assert.match(fresh.id, /^[0-9a-f]{16}$/);
+  assert.match(fresh.trace, /^[0-9a-f]{32}$/);
+  assert.equal(fresh.traceparent, `00-${fresh.trace}-${fresh.id}-01`);
+  const continued = traceFor("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00");
+  assert.equal(continued.trace, "4bf92f3577b34da6a3ce929d0e0e4736");
+  assert.equal(continued.traceparent, `00-4bf92f3577b34da6a3ce929d0e0e4736-${continued.id}-00`);
+  assert.notEqual(traceFor("00-00000000000000000000000000000000-00f067aa0ba902b7-01").trace, "00000000000000000000000000000000");
+});
+
+test("an app's own entry carries what its requests are filed under", () => {
+  const entry = parseEntry({ script: "web-acme", redirect: null, telemetry: { project: "prj_1", deployment: "dep_1", environment: "production", service: "web", commit: "abc" } });
+  assert.deepEqual(entry?.telemetry, { project: "prj_1", deployment: "dep_1", environment: "production", service: "web", commit: "abc" });
+  assert.equal(parseEntry({ script: "web-acme", redirect: null })?.telemetry, null);
 });
