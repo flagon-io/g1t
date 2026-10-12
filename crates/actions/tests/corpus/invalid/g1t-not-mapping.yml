@@ -1,0 +1,8 @@
+# error: `g1t` is a mapping of g1t's own settings
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    g1t: true
+    steps:
+      - run: echo hi

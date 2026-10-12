@@ -1,0 +1,19 @@
+name: 'Quoting: every style'
+'on':
+  "push":
+    'branches':
+      - "main"
+jobs:
+  "quoted-job":
+    'runs-on': "ubuntu-latest"
+    steps:
+      - name: Folded
+        run: >
+          echo one
+          two three
+      - name: Literal keep
+        run: |+
+          echo kept
+
+      - name: Flow
+        run: "echo \"quoted\" && echo 'single'"

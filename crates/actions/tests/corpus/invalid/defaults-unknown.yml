@@ -1,0 +1,9 @@
+# error: Unexpected `shell` in `defaults`
+on: push
+defaults:
+  shell: bash
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

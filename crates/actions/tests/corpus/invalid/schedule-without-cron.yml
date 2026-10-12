@@ -1,0 +1,9 @@
+# error: Each entry of `on.schedule` needs `cron`
+on:
+  schedule:
+    - timezone: Europe/Paris
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

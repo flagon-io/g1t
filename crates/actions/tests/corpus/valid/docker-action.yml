@@ -1,0 +1,14 @@
+name: Docker actions
+on: push
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker://alpine:3.20
+        with:
+          entrypoint: /bin/echo
+          args: hello from alpine
+      - uses: ./.github/actions/local-action
+        with:
+          who-to-greet: Mona
+      - uses: actions/aws/ec2@main

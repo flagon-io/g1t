@@ -1,0 +1,26 @@
+name: Dynamic matrix
+on: push
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: echo 'matrix={"include":[{"project":"foo","config":"Debug"},{"project":"bar","config":"Release"}]}' >> "$GITHUB_OUTPUT"
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - run: echo "${{ matrix.project }} ${{ matrix.config }}"
+  whole-strategy:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: ${{ github.event_name == 'push' }}
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix).include }}
+    steps:
+      - run: echo ok

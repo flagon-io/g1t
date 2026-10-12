@@ -1,0 +1,16 @@
+name: Described
+description: A workflow with a description, which GitHub's schema allows.
+on:
+  push:
+env:
+  GLOBAL: one
+  NUMBER: 2
+  FLAG: true
+  FROM_VAR: ${{ vars.SOMETHING }}
+jobs:
+  print:
+    runs-on: ubuntu-latest
+    env:
+      JOB_LEVEL: ${{ env.GLOBAL }}-job
+    steps:
+      - run: env | sort

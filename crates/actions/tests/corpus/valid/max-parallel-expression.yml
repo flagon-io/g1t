@@ -1,0 +1,20 @@
+name: Bounded matrix
+on: push
+jobs:
+  shard:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 2
+      fail-fast: true
+      matrix:
+        shard: [1, 2, 3, 4]
+        flavour: [a, b]
+        exclude:
+          - shard: 4
+            flavour: b
+        include:
+          - shard: 5
+            flavour: c
+            extra: true
+    steps:
+      - run: echo "${{ matrix.shard }}/${{ matrix.flavour }}"

@@ -1,0 +1,10 @@
+# error: Job `build`, step 2: another step of job `build` has the id `STEP1`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - id: step1
+        run: echo hi
+      - id: STEP1
+        run: echo hi

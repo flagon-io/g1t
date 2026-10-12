@@ -1,0 +1,19 @@
+name: Anchors and aliases
+on:
+  push:
+    branches: &branches [main, 'release/**']
+  pull_request:
+    branches: *branches
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env: &env
+      CI: "true"
+      LANG: C.UTF-8
+    steps: &steps
+      - uses: actions/checkout@v4
+      - run: make test
+  test-again:
+    runs-on: ubuntu-latest
+    env: *env
+    steps: *steps

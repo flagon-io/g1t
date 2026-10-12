@@ -1,0 +1,9 @@
+# error: `background` is one of GitHub's background steps
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - id: server
+        run: npm start
+        background: true

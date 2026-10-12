@@ -1,0 +1,20 @@
+name: Concurrency
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    concurrency: lint-${{ github.ref }}
+    steps:
+      - run: echo lint
+  deploy-preview:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: preview-${{ github.head_ref }}
+      cancel-in-progress: ${{ github.event.action != 'closed' }}
+    steps:
+      - run: echo preview

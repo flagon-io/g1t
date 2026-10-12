@@ -1,0 +1,9 @@
+# error: Unexpected `unknown_value` in `on.workflow_dispatch`
+on:
+  workflow_dispatch:
+    unknown_value: test
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1,0 +1,30 @@
+name: In a container
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/example/builder:1.4
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        NODE_ENV: development
+      ports:
+        - 80
+      volumes:
+        - my_docker_volume:/volume_mount
+      options: --cpus 1
+    services:
+      cache:
+        image: memcached:1.6
+        command: ["memcached", "-m", "64"]
+        entrypoint: /usr/local/bin/docker-entrypoint.sh
+    steps:
+      - uses: actions/checkout@v4
+      - run: make
+  short-container:
+    runs-on: ubuntu-latest
+    container: node:22-bookworm
+    steps:
+      - run: node --version

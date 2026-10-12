@@ -1,0 +1,11 @@
+# error: Output `artifact` of `on.workflow_call` needs `value`
+on:
+  workflow_call:
+    outputs:
+      artifact:
+        description: no value
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

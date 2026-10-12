@@ -1,0 +1,11 @@
+# error: Unexpected `another_unknown_value` in input `name` of `on.workflow_dispatch`
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        another_unknown_value: 123
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

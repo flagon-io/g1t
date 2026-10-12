@@ -1,0 +1,10 @@
+# error: `on.push` has both `branches` and `branches-ignore`
+on:
+  push:
+    branches: [main]
+    branches-ignore: [dev]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

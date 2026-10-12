@@ -1,0 +1,7 @@
+# error: `my.job` is not a job id GitHub accepts
+on: push
+jobs:
+  my.job:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

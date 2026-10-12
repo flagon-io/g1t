@@ -1,0 +1,7 @@
+# error: unexpected `env` in a job that calls a reusable workflow
+on: push
+jobs:
+  call:
+    uses: ./.github/workflows/foo.yml
+    env:
+      A: b

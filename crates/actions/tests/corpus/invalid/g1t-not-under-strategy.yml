@@ -1,0 +1,9 @@
+# error: unexpected `g1t` in `strategy`
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      g1t: {}
+    steps:
+      - run: echo hi

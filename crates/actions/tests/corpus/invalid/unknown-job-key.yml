@@ -1,0 +1,8 @@
+# error: Job `build`: unexpected `run-on` in a job
+on: push
+jobs:
+  build:
+    run-on: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

@@ -1,0 +1,9 @@
+# error: `on.create` takes no settings
+on:
+  create:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

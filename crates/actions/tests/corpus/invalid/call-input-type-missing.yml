@@ -1,0 +1,11 @@
+# error: Input `username` of `on.workflow_call` needs `type`
+on:
+  workflow_call:
+    inputs:
+      username:
+        default: john-doe
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

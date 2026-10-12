@@ -1,0 +1,9 @@
+# error: Unexpected `job` in the workflow
+on: push
+job:
+  build: {}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

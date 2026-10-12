@@ -1,0 +1,7 @@
+# error: `__internal` is not a job id GitHub accepts
+on: push
+jobs:
+  __internal:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi

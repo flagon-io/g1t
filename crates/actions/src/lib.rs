@@ -17,4 +17,5 @@ pub mod managed;
 pub mod mask;
 pub mod matrix;
 pub mod permissions;
+pub mod syntax;
 pub mod workflow;
