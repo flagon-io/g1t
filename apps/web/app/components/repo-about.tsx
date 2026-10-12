@@ -28,7 +28,7 @@ import type { PackageSummary, Repo, RepoAbout } from "@g1t/contracts";
 
 import { compact, count, languageBar, licenseLabel } from "../lib/about";
 import { contributorPerson, profileHref, shownName } from "../lib/commit-people";
-import { CommitAvatar } from "./commit-person";
+import { CommitAvatar, CommitName } from "./commit-person";
 import { UserCard } from "./user-card";
 import { PackageIcon as EcosystemIcon } from "./package-icon";
 import { Topics } from "./topics";
@@ -39,6 +39,8 @@ import { SkeletonLine } from "./ui/skeleton";
 
 /** How many contributors' avatars the About shows. */
 const AVATARS = 14;
+/** Up to this many contributors are listed by name, one a row; more are shown as avatars. */
+const LISTED = 5;
 /** How often, and how many times, it asks again while the default branch is first read. */
 const RETRY_MS = 3_000;
 const RETRIES = 6;
@@ -144,8 +146,16 @@ function Reading() {
   return <p className="text-xs text-faint">Reading the default branch…</p>;
 }
 
-function Releases({ base, about, canPush }: { base: string; about: RepoAbout; canPush: boolean }) {
+function Releases({ base, about, canPush, tags }: { base: string; about: RepoAbout; canPush: boolean; tags: number | null }) {
   const latest = about.latestRelease;
+  // Tags, when no release names them yet: what is there to release from.
+  const tagLine =
+    tags && about.releases === 0 ? (
+      <Link to={`${base}/tags`} className="flex items-center gap-1.5 text-sm font-medium text-fg hover:text-accent">
+        <TagIcon size={14} className="text-muted" />
+        {count(tags, "tag")}
+      </Link>
+    ) : null;
   return (
     <Section title="Releases" count={about.releases} to={`${base}/releases`}>
       {latest ? (
@@ -172,7 +182,7 @@ function Releases({ base, about, canPush }: { base: string; about: RepoAbout; ca
         </Link>
       ) : (
         <div className="text-sm text-muted">
-          <p>No releases published</p>
+          {tagLine ?? <p>No releases published</p>}
           {canPush && (
             <Link to={`${base}/releases/new`} className="mt-1 inline-flex items-center gap-1 text-accent hover:underline">
               <Plus size={13} />
@@ -221,6 +231,20 @@ function Contributors({ base, about }: { base: string; about: RepoAbout }) {
         <Reading />
       ) : shown.length === 0 ? (
         <p className="text-sm text-muted">No commits yet</p>
+      ) : about.contributors <= LISTED ? (
+        // A few people: each by name, as a row, with how much they did.
+        <ul className="space-y-2">
+          {shown.map((contributor) => {
+            const person = contributorPerson(contributor);
+            return (
+              <li key={`${contributor.kind}:${contributor.username ?? contributor.name}`} className="flex min-w-0 items-center gap-2.5 text-sm">
+                <CommitAvatar person={person} size={28} />
+                <CommitName person={person} className="truncate font-medium text-fg" />
+                <span className="ml-auto shrink-0 text-xs text-faint tabular-nums">{count(contributor.commits, "commit")}</span>
+              </li>
+            );
+          })}
+        </ul>
       ) : (
         <>
           <ul className="flex flex-wrap gap-1.5">
@@ -327,18 +351,24 @@ function LoadedSections({
   first,
   canPush,
   packages,
+  tags,
   deployments,
 }: {
   base: string;
   first: RepoAbout;
   canPush: boolean;
   packages: Promise<PackageSummary[] | null> | PackageSummary[] | null;
+  tags: Promise<number | null> | number | null;
   deployments: ReactNode;
 }) {
   const about = useLive(base, first);
   return (
     <>
-      <Releases base={base} about={about} canPush={canPush} />
+      <Suspense fallback={<Releases base={base} about={about} canPush={canPush} tags={null} />}>
+        <Await resolve={tags} errorElement={<Releases base={base} about={about} canPush={canPush} tags={null} />}>
+          {(found) => <Releases base={base} about={about} canPush={canPush} tags={found} />}
+        </Await>
+      </Suspense>
       <Suspense fallback={<SectionSkeleton title="Packages" />}>
         <Await resolve={packages} errorElement={<Packages packages={null} />}>
           {(found) => <Packages packages={found} />}
@@ -369,6 +399,8 @@ export type AboutData = {
   watchers: Promise<number | null> | number | null;
   /** Packages published from it; null when they could not be read. */
   packages: Promise<PackageSummary[] | null> | PackageSummary[] | null;
+  /** How many tags it has; null when they could not be counted. */
+  tags?: Promise<number | null> | number | null;
 };
 
 export function RepoAboutPanel({
@@ -443,7 +475,7 @@ export function RepoAboutPanel({
         <Await resolve={data.about} errorElement={<>{deployments}</>}>
           {(about) =>
             about ? (
-              <LoadedSections base={base} first={about} canPush={canPush} packages={data.packages} deployments={deployments} />
+              <LoadedSections base={base} first={about} canPush={canPush} packages={data.packages} tags={data.tags ?? null} deployments={deployments} />
             ) : (
               <>{deployments}</>
             )

@@ -67,7 +67,11 @@ jobs:
     needs: version
     # The larger machine: linking Tauri on the small one dies with a bus error.
     runs-on: g1t-4core
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 60  # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
@@ -114,7 +118,11 @@ jobs:
     needs: version
     if: vars.DESKTOP_WINDOWS_RUNNER == 'true'
     runs-on: [self-hosted, windows]
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
@@ -147,7 +155,11 @@ jobs:
     needs: version
     if: vars.DESKTOP_WINDOWS_FROM_LINUX == 'true' && vars.DESKTOP_WINDOWS_RUNNER != 'true'
     runs-on: g1t-4core
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 60  # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
@@ -194,7 +206,11 @@ jobs:
     needs: version
     if: vars.DESKTOP_MACOS_RUNNER == 'true'
     runs-on: [self-hosted, macos]
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
@@ -226,7 +242,11 @@ jobs:
       && contains(fromJSON('["success","skipped"]'), needs.windows_cross.result)
       && contains(fromJSON('["success","skipped"]'), needs.macos.result)
     runs-on: ubuntu-latest
-    environment: production
+    # Production's secrets, without a deployment: a release is not a deploy of
+    # g1t.sh, and would otherwise show on its card as one in progress.
+    environment:
+      name: production
+      deployment: false
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5

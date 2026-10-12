@@ -19,15 +19,22 @@ test("counts read as words", () => {
   assert.equal(count(3, "watching", "watching"), "3 watching");
 });
 
-test("small languages are gathered as Other", () => {
+test("every language down to a tenth of a percent is listed, at most eight; the rest are Other", () => {
   const rust = { name: "Rust", color: "#dea584", bytes: 900, percent: 90 };
   const shell = { name: "Shell", color: "#89e051", bytes: 95, percent: 9.5 };
-  const nix = { name: "Nix", color: "#7e7eff", bytes: 5, percent: 0.5 };
+  const nix = { name: "Nix", color: "#7e7eff", bytes: 5, percent: 0.05 };
+  const css = { name: "CSS", color: "#663399", bytes: 3, percent: 0.3 };
+  assert.deepEqual(languageBar([rust, css, shell]).map((l) => l.name), ["Rust", "Shell", "CSS"], "sorted, and a 0.3% language is shown");
+  const many = Array.from({ length: 10 }, (_, i) => ({ name: `L${i}`, color: null, bytes: 10 - i, percent: 10 - i }));
+  const capped = languageBar(many);
+  assert.equal(capped.length, 9);
+  assert.equal(capped[8]!.name, "Other");
+  assert.equal(capped[8]!.percent, 3);
   assert.deepEqual(languageBar([rust, shell]), [rust, shell]);
   const bar = languageBar([rust, shell, nix]);
   assert.equal(bar.length, 3);
   assert.equal(bar[2].name, "Other");
-  assert.equal(bar[2].percent, 0.5);
+  assert.equal(bar[2].percent, 0.1);
   assert.deepEqual(languageBar([rust, { ...nix, percent: 0 }]), [rust], "nothing to show for nothing");
   assert.deepEqual(languageBar([]), []);
 });

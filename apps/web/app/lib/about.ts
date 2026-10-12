@@ -31,9 +31,11 @@ export function count(n: number, one: string, many = `${one}s`): string {
 }
 
 /** The language bar's pieces: the largest, then the rest under 1% as Other. */
-export function languageBar(languages: LanguageShare[], least = 1): LanguageShare[] {
-  const shown = languages.filter((language) => language.percent >= least);
-  const rest = languages.filter((language) => language.percent < least);
+export function languageBar(languages: LanguageShare[], least = 0.1, most = 8): LanguageShare[] {
+  // Every language down to a tenth of a percent, the largest `most` of them; the rest as Other.
+  const sorted = [...languages].sort((a, b) => b.percent - a.percent);
+  const shown = sorted.filter((language, index) => language.percent >= least && index < most);
+  const rest = sorted.filter((language) => !shown.includes(language));
   if (rest.length === 0) return shown;
   const bytes = rest.reduce((sum, language) => sum + language.bytes, 0);
   const percent = Math.round(rest.reduce((sum, language) => sum + language.percent, 0) * 10) / 10;

@@ -22,9 +22,9 @@ the way most code hosts lay it out. On a phone it comes after the files.
 | **Security policy** | A link to `SECURITY.md` at the root, or in `.g1t`, `.github` or `docs`. |
 | **Activity** | The repository's [activity](#activity): pushes, merges, new branches and tags. |
 | **Stars**, **watching** | How many people [starred](#stars) it, and how many watch all or some of its activity from the [Watch menu](/guides/notifications/). |
-| **Releases** | How many [releases](/guides/releases/) it has and the latest, or **Create a new release** for people who can push. |
+| **Releases** | How many [releases](/guides/releases/) it has and the latest. With none published, how many tags it has, linked to its tags, and **Create a new release** for people who can push. |
 | **Packages** | [Packages](/guides/packages/) linked to it, or how to publish the first. |
-| **Contributors** | How many people and agents made it, and the most active. See [contributors](#contributors). |
+| **Contributors** | How many people and agents made it. Up to five are listed by name with how many commits each made; more show as the most active's avatars. Each opens their card. See [contributors](#contributors). |
 | **Languages** | The languages it is written in, by bytes. See [languages](#languages). |
 
 The license, security policy, languages and contributors are read from the
@@ -36,7 +36,9 @@ shows **Reading the default branch…** for a few seconds.
 
 The bar counts the bytes of each language's files on the default branch.
 Programming and markup languages count; data such as JSON and YAML, and
-prose such as Markdown, do not. Neither do:
+prose such as Markdown, do not. TSX counts as TypeScript and JSX as
+JavaScript. The sidebar lists every language down to a tenth of a percent,
+the largest eight, and gathers the rest as **Other**. Neither do these count:
 
 | Files | Such as |
 | --- | --- |

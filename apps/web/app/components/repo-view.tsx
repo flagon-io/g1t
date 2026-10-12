@@ -414,7 +414,7 @@ export function TreeView({
           repo={repo}
           gitRef={ref}
           readme={Boolean(readme)}
-          data={about ?? { about: null, watchers: null, packages: null }}
+          data={about ?? { about: null, watchers: null, packages: null, tags: null }}
           canPush={canPush}
           homepage={homepage}
           deployments={<DeploymentsPanel base={base} summary={deployments} className="border-t border-line pt-4" />}
