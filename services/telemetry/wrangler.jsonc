@@ -24,6 +24,10 @@
 	// Secret, optional: CLOUDFLARE_EXPORT_KEY, which a Workers
 	// Observability destination on the account sends as x-g1t-export-key
 	// to https://otel.g1t.sh/cloudflare/v1/{traces,logs}.
+	// OTLP requests per client address, counted before the body is read or a
+	// project's store is woken (src/index.ts). Id and limit: RATE_LIMITS in
+	// packages/contracts.
+	"ratelimits": [{ "name": "TELEMETRY_INGEST_LIMIT", "namespace_id": "4701", "simple": { "limit": 600, "period": 60 } }],
 	// Its own logs: few, as every request to an app is a tail event here.
 	"observability": { "enabled": true, "head_sampling_rate": 0.05 }
 }

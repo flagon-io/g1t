@@ -24,6 +24,7 @@ client can sometimes get a few more through before it is limited.
 | Pages on g1t.sh, signed out | Client IP address | 600 |
 | Archive downloads, workflow run pages, log downloads and search, signed out | Client IP address | 30 |
 | [Raw files](/guides/git/#raw-files) on g1tusercontent.com | Client IP address, together with pages signed out | 600 |
+| [OpenTelemetry ingest](/guides/observability/) at otel.g1t.sh | Client IP address | 600 |
 | Container and package registries | See [storage and pull limits](/guides/containers/#storage-and-pull-limits) | |
 
 The REST API and the MCP server count apart: calls to one do not use up
@@ -31,6 +32,9 @@ the other's limit. A request with a token that is not valid counts against
 its IP address, as a request without a token does. On g1t.sh, every
 request from one IP address, signed in or not, also counts toward 3,000 a
 minute.
+
+Signing up with a password is limited to 5 accounts an hour from one
+network; see [too many attempts](/guides/authentication/#too-many-attempts).
 
 A running job's live log, which its run's page asks for about once a
 second, counts as a page, not as a log download.

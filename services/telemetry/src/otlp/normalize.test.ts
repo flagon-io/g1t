@@ -128,7 +128,11 @@ test("metrics of each kind become points", () => {
 });
 
 test("a token names its project", () => {
-  assert.equal(projectOfToken("g1to_prj_01J9ZK3_abcdef0123"), "prj_01J9ZK3");
+  assert.equal(projectOfToken("g1to_prj_01jb2k7x9hfq0b3zj0f5s2m8ra_abcdef0123"), "prj_01jb2k7x9hfq0b3zj0f5s2m8ra");
+  // Only a project id as g1t makes them: anything else never reaches a store.
+  assert.equal(projectOfToken("g1to_prj_01J9ZK3_abcdef0123"), null);
+  assert.equal(projectOfToken("g1to_anything-at-all_abcdef0123"), null);
+  assert.equal(projectOfToken("g1to_prj_01jb2k7x9hfq0b3zj0f5s2m8rax_abcdef0123"), null);
   assert.equal(projectOfToken("g1t_prj_x_y"), null);
   assert.equal(projectOfToken("g1to_nounderscore"), null);
 });

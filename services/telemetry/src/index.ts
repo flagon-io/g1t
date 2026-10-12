@@ -22,6 +22,7 @@
  * called once they have checked the viewer may read (or manage) the
  * project; and `GET /live?project_id=…`, a project's live tail.
  */
+import { type RateLimitBinding, clientAddress, isLimited } from "@g1t/contracts/rate-limits";
 import { TELEMETRY_TOKEN_PREFIX, type ErrorGroup } from "@g1t/contracts/telemetry";
 
 import { emptyBatch, type Batch } from "./batch.ts";
@@ -38,6 +39,8 @@ type Env = {
   DOMAINS?: KVNamespace;
   /** The secret Cloudflare's OpenTelemetry export sends, as `x-g1t-export-key`. */
   CLOUDFLARE_EXPORT_KEY?: string;
+  /** OTLP requests per client address (RATE_LIMITS in packages/contracts). Fails open without it. */
+  TELEMETRY_INGEST_LIMIT?: RateLimitBinding;
 };
 
 const DEPLOYMENTS_DOMAIN = "g1t.page";
@@ -135,6 +138,11 @@ async function otlp(request: Request, env: Env, signal: Signal): Promise<Respons
   if (!token) return refused(401, `No token: send the project's ingest token as "Authorization: Bearer ${TELEMETRY_TOKEN_PREFIX}…". Make one under the project's Observability settings.`);
   const project = projectOfToken(token);
   if (!project) return refused(401, "That is not a g1t ingest token.");
+  // Counted before the body is read or the project's store is woken, so a
+  // flood of requests (with made-up tokens or real ones) costs little.
+  if (await isLimited(env.TELEMETRY_INGEST_LIMIT, `ip:${clientAddress(request)}`)) {
+    return refused(429, "Too many requests from this address. Batch more per request, and wait a minute: https://docs.g1t.sh/reference/rate-limits/");
+  }
   let read: { batch: Batch; protobuf: boolean };
   try {
     read = await readOtlp(request, signal, OTLP_DOOR);
