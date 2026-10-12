@@ -69,7 +69,7 @@ pub fn run(filter: &str, input: &Value) -> Result<Vec<Value>> {
 pub fn line(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
-        other => serde_json::to_string(other).expect("json"),
+        other => serde_json::to_string(&crate::output::sorted(other)).expect("json"),
     }
 }
 

@@ -2029,20 +2029,6 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[],
     },
     Operation {
-        id: "create_invite",
-        method: "POST",
-        path: "/user/invites",
-        tag: "Invites",
-        summary: "Create an invite",
-        scope: Some("account:write"),
-        params: &[],
-        body: &[
-            Field { name: "charge_workspace", kind: "string", required: false, values: &[] },
-            Field { name: "email", kind: "string", required: false, values: &[] },
-            Field { name: "workspace", kind: "string", required: false, values: &[] },
-        ],
-    },
-    Operation {
         id: "decline_invitation",
         method: "POST",
         path: "/user/invitations/{id}/decline",
@@ -2081,16 +2067,6 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[],
     },
     Operation {
-        id: "list_invites",
-        method: "GET",
-        path: "/user/invites",
-        tag: "Invites",
-        summary: "List your invites",
-        scope: Some("account:read"),
-        params: &[],
-        body: &[],
-    },
-    Operation {
         id: "list_workspace_invites",
         method: "GET",
         path: "/workspaces/{workspace}/invitations",
@@ -2099,18 +2075,6 @@ pub static OPERATIONS: &[Operation] = &[
         scope: Some("workspace:read"),
         params: &[
             Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
-        ],
-        body: &[],
-    },
-    Operation {
-        id: "revoke_invite",
-        method: "DELETE",
-        path: "/user/invites/{id}",
-        tag: "Invites",
-        summary: "Revoke an invite",
-        scope: Some("account:write"),
-        params: &[
-            Param { name: "id", location: In::Path, kind: "string", required: true, values: &[] },
         ],
         body: &[],
     },
