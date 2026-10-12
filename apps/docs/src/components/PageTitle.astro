@@ -1,17 +1,22 @@
 ---
-// A page's title, what it is about beneath it, and a way to take the page
+// A page's title, the section it is in above it, what it is about beneath
+// it, and a way to take the page
 // to an AI assistant: copied as Markdown, read as Markdown, or opened in
 // Claude or ChatGPT.
 import { ArrowUpRight, ChevronDown, Copy, FileText, MessageSquare } from '@lucide/astro';
 
+import { NAV } from '../route-data';
+
 const { entry, id } = Astro.locals.starlightRoute;
 const { title, description } = entry.data;
+const section = NAV.get(Astro.locals.starlightRoute)?.section;
 const markdown = `/${id === '' || id === 'index' ? 'index' : id}.md`;
 const absolute = new URL(markdown, Astro.site).href;
 const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it.`);
 ---
 
 <div class="g1t-page-title">
+	{section && <p class="g1t-eyebrow">{section}</p>}
 	<div class="g1t-page-title-row">
 		<h1 id="_top">{title}</h1>
 		<div class="g1t-copy not-content" data-pagefind-ignore>
@@ -77,20 +82,29 @@ const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it
 		justify-content: space-between;
 		gap: 1.5rem;
 	}
+	/* The section, in the accent: where in the docs this page is. In its own
+	   case, never capitals, since the product's name stays lowercase. */
+	.g1t-eyebrow {
+		margin: 0 0 0.6rem;
+		font-family: var(--g1t-font-mono);
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--g1t-accent);
+	}
 	h1 {
 		margin: 0;
 		font-family: var(--g1t-font-display);
 		font-optical-sizing: auto;
-		font-size: 2rem;
+		font-size: 2.75rem;
 		font-weight: 600;
-		letter-spacing: -0.015em;
-		line-height: 1.2;
+		letter-spacing: -0.03em;
+		line-height: 1.08;
 		color: var(--g1t-fg);
 	}
 	.g1t-description {
-		margin-top: 0.6rem;
+		margin-top: 0.9rem;
 		max-width: 42rem;
-		font-size: 1.125rem;
+		font-size: 1.1875rem;
 		line-height: 1.55;
 		color: var(--g1t-muted);
 	}
@@ -233,7 +247,7 @@ const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it
 		}
 		h1 {
 			min-width: 0;
-			font-size: 1.75rem;
+			font-size: 2rem;
 			overflow-wrap: anywhere;
 		}
 		.g1t-copy {

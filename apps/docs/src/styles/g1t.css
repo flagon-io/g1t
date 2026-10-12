@@ -45,8 +45,8 @@
 	--sl-menu-button-size: 2.5rem;
 }
 
-/* Starlight's theme select (Auto, Light, Dark): in the header's links, and
-   at the foot of the phone menu. Drawn like the links beside it. */
+/* Starlight's theme select (Auto, Light, Dark), at the foot of the phone
+   menu; the header has its own button (components/ThemeToggle.astro). */
 starlight-theme-select label {
 	color: var(--g1t-muted);
 	font-size: 0.85rem;
@@ -60,14 +60,6 @@ starlight-theme-select select {
 starlight-theme-select option {
 	background: var(--g1t-surface);
 	color: var(--g1t-fg);
-}
-/* A narrow desktop: in the header, only the select's icon and caret; the
-   choice is still its accessible name and in the list it opens. */
-@media (min-width: 50rem) and (max-width: 63.99rem) {
-	.g1t-header-theme starlight-theme-select select {
-		width: 3.625rem;
-		color: transparent;
-	}
 }
 
 /* --- Header --------------------------------------------------------------- */
@@ -161,7 +153,7 @@ site-search button[data-open-modal]:hover {
 /* --- Sidebar -------------------------------------------------------------- */
 
 .sidebar-content {
-	padding-top: 1.25rem;
+	padding-top: 1.5rem;
 }
 /* Groups always show their pages: no caret, no folding. */
 .sidebar-content details > summary {
@@ -172,16 +164,18 @@ site-search button[data-open-modal]:hover {
 	display: none;
 }
 .sidebar-content .top-level > li + li {
-	margin-top: 1rem;
+	margin-top: 1.75rem;
 }
-/* Group labels: small and quiet, like section names, not links. */
+/* Group labels: headings over their pages, in the page's own ink. */
 .sidebar-content details > summary .group-label .large,
 .sidebar-content .top-level > li > details > summary {
-	font-size: 0.75rem;
+	font-size: 0.875rem;
 	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--g1t-faint);
+	color: var(--g1t-fg);
+}
+.sidebar-content .top-level > li > details > summary {
+	padding-inline: 0.75rem;
+	margin-bottom: 0.35rem;
 }
 .sidebar-content ul ul,
 .sidebar-content ul ul li {
@@ -190,30 +184,28 @@ site-search button[data-open-modal]:hover {
 	padding-inline-start: 0;
 }
 .sidebar-content a {
-	border-radius: 0.375rem;
-	padding: 0.32rem 0.6rem;
+	border-radius: 0.5rem;
+	padding: 0.4rem 0.75rem;
 	font-size: 0.875rem;
 	color: var(--g1t-muted);
+	transition: background 0.15s, color 0.15s;
 }
 .sidebar-content a:hover {
 	background: var(--g1t-surface);
 	color: var(--g1t-fg);
 }
-/* The current page: brighter text and a lavender mark, not a filled bar.
-   Square on the mark's side, so the mark is a straight line. */
+/* The current page: a lavender pill. */
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover {
-	border-radius: 0 0.375rem 0.375rem 0;
-	background: var(--g1t-surface);
-	color: var(--g1t-fg);
-	font-weight: 500;
-	box-shadow: inset 2px 0 0 var(--g1t-accent);
+	background: var(--g1t-accent-low);
+	color: var(--g1t-docs-accent-high);
+	font-weight: 600;
 }
 
 /* --- Content -------------------------------------------------------------- */
 
 .content-panel {
-	padding-top: 2rem;
+	padding-top: 2.75rem;
 }
 /* The title and the page read as one, without a rule between them. */
 .content-panel + .content-panel {
@@ -234,12 +226,13 @@ site-search button[data-open-modal]:hover {
 }
 /* Sections open with space, not rules. */
 .sl-markdown-content .sl-heading-wrapper.level-h2 {
-	margin-top: 3rem;
+	margin-top: 3.5rem;
 }
 .sl-markdown-content h2 {
-	font-size: 1.5rem;
+	font-size: 1.75rem;
 	font-weight: 600;
-	letter-spacing: -0.01em;
+	letter-spacing: -0.02em;
+	line-height: 1.2;
 	color: var(--g1t-fg);
 }
 .sl-markdown-content h3 {
@@ -253,12 +246,17 @@ site-search button[data-open-modal]:hover {
 .sl-markdown-content li {
 	color: var(--g1t-fg-soft);
 }
+/* Links: the text's own ink, a little heavier, on a lavender underline. */
 .sl-markdown-content a:not(.card, .sl-link-button, .sl-link-card) {
-	color: var(--g1t-docs-link);
-	text-decoration-color: color-mix(in srgb, var(--g1t-accent) 45%, transparent);
-	text-underline-offset: 0.2em;
+	color: var(--g1t-fg);
+	font-weight: 500;
+	text-decoration-color: color-mix(in srgb, var(--g1t-accent) 55%, transparent);
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 0.25em;
+	transition: text-decoration-color 0.15s, color 0.15s;
 }
 .sl-markdown-content a:not(.card, .sl-link-button, .sl-link-card):hover {
+	color: var(--g1t-docs-link);
 	text-decoration-color: var(--g1t-accent);
 }
 .sl-markdown-content :not(pre) > code {
@@ -347,22 +345,34 @@ site-search button[data-open-modal]:hover {
 
 /* --- On this page --------------------------------------------------------- */
 
+.right-sidebar-panel {
+	padding-top: 2.75rem;
+}
 .right-sidebar-panel h2 {
-	font-size: 0.75rem;
+	font-size: 0.875rem;
 	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--g1t-faint);
+	color: var(--g1t-fg);
+}
+/* The headings on a rail; the one being read is marked on it. */
+.right-sidebar-panel starlight-toc > nav > ul {
+	border-inline-start: 1px solid var(--g1t-line);
 }
 .right-sidebar-panel a {
+	margin-inline-start: -1px;
+	border-inline-start: 1px solid transparent;
+	border-radius: 0;
+	padding-inline-start: calc(0.75rem + var(--depth) * 0.75rem);
 	font-size: 0.8125rem;
 	color: var(--g1t-muted);
+	transition: color 0.15s, border-color 0.15s;
 }
 .right-sidebar-panel a:hover {
 	color: var(--g1t-fg);
 }
 .right-sidebar-panel a[aria-current='true'] {
+	border-color: var(--g1t-accent);
 	color: var(--g1t-docs-link);
+	font-weight: 500;
 }
 
 /* --- Cards and buttons ---------------------------------------------------- */
@@ -372,11 +382,15 @@ site-search button[data-open-modal]:hover {
 	border-radius: 1rem;
 	background: var(--g1t-surface);
 	border: 1px solid var(--g1t-line);
-	transition: border-color 0.15s;
+	transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
+/* A link card lifts toward the accent under the pointer. */
 .sl-link-card:hover {
-	border-color: var(--g1t-line-strong);
-	background: var(--g1t-surface);
+	border-color: color-mix(in srgb, var(--g1t-accent) 45%, var(--g1t-line));
+	background: color-mix(in srgb, var(--g1t-accent) 4%, var(--g1t-surface));
+}
+.sl-link-card:hover .icon {
+	color: var(--g1t-accent);
 }
 .sl-link-button {
 	border-radius: 0.5rem;

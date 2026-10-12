@@ -1,0 +1,105 @@
+---
+// The header's theme button: one icon, for Auto (the system's), Light or
+// Dark, and a click moves to the next. The same choice, kept in the same
+// place, as Starlight's theme select at the foot of the phone menu, so
+// the two stay in step.
+import { Monitor, Moon, Sun } from '@lucide/astro';
+---
+
+<button type="button" class="g1t-theme" data-g1t-theme aria-label="Theme: Auto">
+	<Monitor class="g1t-theme-auto" />
+	<Sun class="g1t-theme-light" />
+	<Moon class="g1t-theme-dark" />
+</button>
+
+<script is:inline>
+	// Before the first paint, so the button never shows the wrong icon.
+	(() => {
+		let stored = null;
+		try {
+			stored = localStorage.getItem('starlight-theme');
+		} catch {}
+		const choice = stored === 'light' || stored === 'dark' ? stored : 'auto';
+		for (const button of document.querySelectorAll('[data-g1t-theme]')) button.dataset.choice = choice;
+	})();
+</script>
+
+<script>
+	type Theme = 'auto' | 'light' | 'dark';
+	const NEXT: Record<Theme, Theme> = { auto: 'light', light: 'dark', dark: 'auto' };
+	const NAMES: Record<Theme, string> = { auto: 'Auto', light: 'Light', dark: 'Dark' };
+	const KEY = 'starlight-theme';
+
+	const load = (): Theme => {
+		try {
+			const stored = localStorage.getItem(KEY);
+			return stored === 'light' || stored === 'dark' ? stored : 'auto';
+		} catch {
+			return 'auto';
+		}
+	};
+
+	function show(theme: Theme) {
+		document.querySelectorAll<HTMLButtonElement>('[data-g1t-theme]').forEach((button) => {
+			button.dataset.choice = theme;
+			button.setAttribute('aria-label', `Theme: ${NAMES[theme]}`);
+		});
+	}
+
+	function choose(theme: Theme) {
+		const system = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+		document.documentElement.dataset.theme = theme === 'auto' ? system : theme;
+		try {
+			localStorage.setItem(KEY, theme === 'auto' ? '' : theme);
+		} catch {}
+		// Starlight's own select, in the phone menu, shows the same choice.
+		(window as { StarlightThemeProvider?: { updatePickers(theme: Theme): void } }).StarlightThemeProvider?.updatePickers(
+			theme,
+		);
+		show(theme);
+	}
+
+	show(load());
+	document.querySelectorAll<HTMLButtonElement>('[data-g1t-theme]').forEach((button) => {
+		button.addEventListener('click', () => choose(NEXT[load()]));
+	});
+	// A choice made in the phone menu's select.
+	document.addEventListener('change', (event) => {
+		if ((event.target as Element).closest('starlight-theme-select')) show(load());
+	});
+</script>
+
+<style>
+	.g1t-theme {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border: 0;
+		border-radius: 0.5rem;
+		padding: 0;
+		background: transparent;
+		color: var(--g1t-muted);
+		cursor: pointer;
+		transition: color 0.15s, background 0.15s;
+	}
+	.g1t-theme:hover {
+		background: var(--g1t-raised);
+		color: var(--g1t-fg);
+	}
+	.g1t-theme:focus-visible {
+		outline: 2px solid var(--g1t-accent);
+		outline-offset: 1px;
+	}
+	.g1t-theme :global(svg) {
+		display: none;
+		width: 1rem;
+		height: 1rem;
+	}
+	.g1t-theme[data-choice='auto'] :global(.g1t-theme-auto),
+	.g1t-theme[data-choice='light'] :global(.g1t-theme-light),
+	.g1t-theme[data-choice='dark'] :global(.g1t-theme-dark) {
+		display: block;
+	}
+</style>
