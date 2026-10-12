@@ -602,9 +602,9 @@ test("units are picked by short name, folder or Worker name", () => {
 
 test("a CI job installs only what its units need", () => {
   const npm = npmWorkspace();
-  assert.deepEqual(npmCiArgs([unit("events"), unit("repos")], npm), ["ci", "--no-audit", "--no-fund", "--workspaces=false"]);
+  assert.deepEqual(npmCiArgs([unit("events"), unit("repos")], npm), ["ci", "--prefer-offline", "--no-audit", "--no-fund", "--workspaces=false"]);
   assert.deepEqual(npmCiArgs([unit("events"), unit("status")], npm), [
-    "ci", "--no-audit", "--no-fund", "--include-workspace-root",
+    "ci", "--prefer-offline", "--no-audit", "--no-fund", "--include-workspace-root",
     "-w", "@g1t/contracts", "-w", "@g1t/status", "-w", "@g1t/theme",
   ]);
 });

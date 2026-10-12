@@ -489,6 +489,9 @@ export function outsideImports(root, unit) {
  * npm ci of only what the units need: Wrangler alone for Rust workers,
  * and each npm-built unit's workspace with the packages it uses. A CI job
  * that deploys three Rust workers does not install the site's toolchain.
+ * --prefer-offline reads npm's cache first, which the deploy's jobs keep
+ * between runs, so a registry connection dropped mid-install rarely
+ * fails a stage.
  */
 export function npmCiArgs(units, npm) {
   const workspaces = new Set();
@@ -502,7 +505,7 @@ export function npmCiArgs(units, npm) {
       stack.push(...(npm.get(name)?.deps ?? []));
     }
   }
-  const base = ["ci", "--no-audit", "--no-fund"];
+  const base = ["ci", "--prefer-offline", "--no-audit", "--no-fund"];
   if (!workspaces.size) return [...base, "--workspaces=false"];
   return [...base, "--include-workspace-root", ...[...workspaces].sort().flatMap((name) => ["-w", name])];
 }

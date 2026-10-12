@@ -246,6 +246,16 @@ jobs:
       - name: sccache
         if: ${{ matrix.rust || matrix.image }}
         run: bash scripts/sccache.sh install
+      # npm's downloads, kept between runs as the check and migrate jobs
+      # keep them: the install reads them first (--prefer-offline, in
+      # scripts/deploy/stack.mjs) and asks the registry only for what
+      # changed, so a connection it drops mid-install rarely stops a stage.
+      - name: Cache npm's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - name: Install
         run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
       - name: Deploy ${{ matrix.units }}
