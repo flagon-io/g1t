@@ -306,7 +306,7 @@ fn g1ts_own_actions_are_published_when_they_change() {
     assert!(release.trigger("workflow_dispatch").is_some());
     let source = std::fs::read_to_string(workflows_dir().join("actions-release.yml")).unwrap();
     assert!(source.contains("actions/**"));
-    assert!(source.contains("secrets.G1T_ACTIONS_PUBLISH_TOKEN"));
+    assert!(source.contains("secrets.ACTIONS_PUBLISH_TOKEN"));
     // Every action is a composite one with its README, and the copies of
     // the script that finds g1t-runner are the same file.
     let actions = workflows_dir().join("../../actions");
@@ -348,4 +348,25 @@ fn the_conformance_workflow_is_the_same_on_github_and_on_g1t() {
     let workflow = read("conformance.yml");
     assert_eq!(workflow.triggers.iter().map(|t| t.event.as_str()).collect::<Vec<_>>(), ["workflow_dispatch"]);
     assert!(!ours.contains("secrets."));
+}
+
+/// No workflow of g1t's asks for a secret no one can set. Secret names
+/// starting with G1T_ or GITHUB_ are g1t's own and refused when saved, so a
+/// workflow reading one gets nothing: the Actions release asked for
+/// G1T_ACTIONS_PUBLISH_TOKEN, which could never exist. G1T_TOKEN, the job's
+/// own token, is the one g1t gives every job.
+#[test]
+fn workflows_read_only_secrets_that_can_be_set() {
+    for entry in std::fs::read_dir(workflows_dir()).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|ext| ext != "yml") {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path).unwrap();
+        for (at, _) in source.match_indices("secrets.") {
+            let name: String = source[at + "secrets.".len()..].chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+            let reserved = name.starts_with("G1T_") || name.starts_with("GITHUB_");
+            assert!(!reserved || name == "G1T_TOKEN" || name == "GITHUB_TOKEN", "{} reads secrets.{name}, a name g1t keeps for its own", path.display());
+        }
+    }
 }

@@ -22,7 +22,7 @@
 #
 # Runs on a push to main that changes actions/ or workflows/, and by hand.
 #
-# Needs the repository secret G1T_ACTIONS_PUBLISH_TOKEN: an access token of
+# Needs the repository secret ACTIONS_PUBLISH_TOKEN: an access token of
 # the workspace g1t leads to (flagon-io), with the scopes repo:write (to
 # create a missing repository) and code:write (to push and move tags).
 # A token without repo:write still publishes to repositories
@@ -61,13 +61,13 @@ jobs:
           fetch-depth: 0
       - name: Push each action and move its major tag
         env:
-          PUBLISH_TOKEN: ${{ secrets.G1T_ACTIONS_PUBLISH_TOKEN }}
+          PUBLISH_TOKEN: ${{ secrets.ACTIONS_PUBLISH_TOKEN }}
           SERVER: ${{ github.server_url }}
           API: ${{ github.api_url }}
         run: |
           set -euo pipefail
           if [ -z "${PUBLISH_TOKEN}" ]; then
-            echo "::error::Set the repository secret G1T_ACTIONS_PUBLISH_TOKEN (this workflow's header says what it needs)."
+            echo "::error::Set the repository secret ACTIONS_PUBLISH_TOKEN (this workflow's header says what it needs)."
             exit 1
           fi
           echo "::add-mask::${PUBLISH_TOKEN}"
@@ -101,7 +101,7 @@ jobs:
               | curl -sS -o "${found}" -w '%{http_code}' -X POST -H "${bearer}" -H "Content-Type: application/json" \
                   --data-binary @- "${API}/repos")"
             if [ "${status}" != "201" ] && [ "${status}" != "200" ]; then
-              echo "::error::Creating ${NAMESPACE}/${name} answered ${status}: $(cat "${found}"). Give G1T_ACTIONS_PUBLISH_TOKEN the repo:write scope, or create ${NAMESPACE}/${name} once by hand, public."
+              echo "::error::Creating ${NAMESPACE}/${name} answered ${status}: $(cat "${found}"). Give ACTIONS_PUBLISH_TOKEN the repo:write scope, or create ${NAMESPACE}/${name} once by hand, public."
               exit 1
             fi
             echo "- Created \`$(jq -r '.namespace + "/" + .name' "${found}")\` for \`${NAMESPACE}/${name}\`" >> "${GITHUB_STEP_SUMMARY}"
