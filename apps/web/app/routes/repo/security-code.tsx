@@ -16,6 +16,8 @@ import { getViewer, managesSecurity, requireUser, unwrap } from "../../lib/sessi
 import { requireInsider } from "../../lib/access.server";
 import { planPrice } from "../../lib/security-suite.server";
 import { codeFilters, countStates, keepCode } from "../../lib/security-suite";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Code scanning · ${params.owner}/${params.repo} · g1t` });
@@ -39,6 +41,8 @@ const SEVERITY_OPTIONS: [string, string][] = [
 
 export default function CodeScanning({ loaderData, params }: Route.ComponentProps) {
   const { scanning, price, can, owner } = loaderData;
+  // Alerts opening, fixed and dismissed show as it happens.
+  useRepoLive({ match: repoPages.security() });
   const base = `/${params.owner}/${params.repo}`;
   const [search, setSearch] = useSearchParams();
   const navigation = useNavigation();

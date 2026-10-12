@@ -22,11 +22,18 @@
  * - agents and the site: `workspace_presence`, how a workspace's people
  *   show now (away, in Do Not Disturb, offline, and their statuses);
  * - integrations, later: `set_presence` with a status of `source`
- *   `calendar` or `integration`, for the person they act for.
+ *   `calendar` or `integration`, for the person they act for;
+ * - events and actions: `repo_changed`, what changed in repositories,
+ *   told to whoever watches their pages; and the site `watch_repo`, for a
+ *   tab on a repository page whose person it checked may read it.
  *
  * Presence: each feed works out its person's from their tabs and tells
  * one room per workspace (src/room.ts), which tells everyone there who is
  * online. See docs.g1t.sh/guides/chat/, "Presence and status".
+ *
+ * Live repository pages: one topic per repository (src/topic.ts) keeps
+ * who is watching it, and hands each change to their feeds. See
+ * docs.g1t.sh/guides/notifications/, "Pages that update live".
  */
 import {
   NOTIFY_VIEWER_HEADER,
@@ -39,9 +46,11 @@ import {
 import { FEED_USERNAME_HEADER, FEED_USER_ID_HEADER, Feed, type FeedEnv } from "./feed.ts";
 import { onlyPeople } from "./presence.ts";
 import { visitWorkspace } from "./visits.ts";
+import { byRepo, cleanRepoId, cleanRepoPath } from "./watch.ts";
 
 export { Feed } from "./feed.ts";
 export { Room } from "./room.ts";
+export { Topic } from "./topic.ts";
 
 type Env = FeedEnv & {
   IDENTITY: ServiceBinding;
@@ -75,6 +84,15 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
     if (!slug || !env.ROOMS) return Response.json([]);
     const everyone = await env.ROOMS.get(env.ROOMS.idFromName(slug)).people();
     return Response.json(onlyPeople(everyone, Array.isArray(args.user_ids) ? args.user_ids : null));
+  }
+  if (method === "repo_changed") {
+    // For services: each repository's changes to its topic, which tells its watchers.
+    const topics = env.TOPICS;
+    if (!topics) return Response.json({ ok: true });
+    const grouped = byRepo(args?.changes);
+    const results = await Promise.allSettled([...grouped].map(([id, changes]) => topics.get(topics.idFromName(id)).changed(id, changes)));
+    for (const result of results) if (result.status === "rejected") console.error("notify: a repository's change was not told", result.reason);
+    return Response.json({ ok: true });
   }
   if (method === "deliver") {
     const items = (Array.isArray(args?.items) ? args.items : []).slice(0, MAX_DELIVERIES) as FeedDelivery[];
@@ -112,6 +130,12 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
       const workspace = visitWorkspace(args.workspace);
       if (!workspace) return Response.json({ seen_at: null });
       return Response.json(method === "last_visit" ? await stub.lastVisit(workspace) : await stub.markVisit(workspace, args.at));
+    }
+    case "watch_repo": {
+      const repoId = cleanRepoId(args.repo_id);
+      const repo = cleanRepoPath(args.repo);
+      if (!repoId || !repo) return Response.json({ ok: false, until: null });
+      return Response.json(await stub.watchRepo(userId, repoId, repo));
     }
     case "test":
       return Response.json(await stub.test(typeof args.username === "string" ? args.username : ""));

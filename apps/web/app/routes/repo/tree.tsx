@@ -11,6 +11,8 @@ import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { projectHomepage } from "../../lib/about";
 import { useProject } from "./layout";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const path = params["*"] ? `${params["*"]} · ` : "";
@@ -43,6 +45,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 export default function Tree({ loaderData }: Route.ComponentProps) {
   const project = useProject();
+  // The files and latest commit follow pushes; checks update as they report.
+  useRepoLive({ match: repoPages.files() });
   return (
     <TreeView
       tree={loaderData.tree}

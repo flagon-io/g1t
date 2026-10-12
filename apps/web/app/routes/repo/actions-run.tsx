@@ -58,6 +58,8 @@ import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../
 import { accessTo, refusal } from "../../lib/access.server";
 import { useRefreshWhile } from "../../lib/refresh";
 import { type GraphJob, type Unit, groupJobs, jobsOf, unitStanding } from "../../lib/run-graph";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const run = loaderData?.detail.run;
@@ -1233,8 +1235,12 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   // A mirror standing by runs nothing; in CI failover it runs them again.
   const rerunBlocked = useWorkflowReason();
   const logsUrl = `${base}/actions/runs/${run.id}/logs.zip${latest ? "" : `?attempt=${run.attempt}`}`;
-  // Waiting on a person needs no quick refresh; a running job does.
-  useRefreshWhile(live, run.status === "action_required" || run.status === "waiting" ? 8000 : 2500);
+  // Its jobs starting and finishing, and its end, arrive live; the steps
+  // inside a job are read again every 10 s with the live socket (its log
+  // streams on its own), every few seconds without it. Waiting on a person
+  // needs no quick refresh.
+  const { live: heard } = useRepoLive({ match: repoPages.run(run.id, run.sha) });
+  useRefreshWhile(live, run.status === "action_required" || run.status === "waiting" ? 8000 : heard ? 10_000 : 2500);
 
   // The job asked for; none is the run's summary.
   const selected = jobs.find((job) => job.id === search.get("job")) ?? null;

@@ -16,6 +16,8 @@ import { colorsOf, listFilters, withFilter } from "../../lib/labels";
 import { accessTo, repoFor } from "../../lib/access.server";
 import { agents, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Pull requests · ${params.owner}/${params.repo} · g1t` });
@@ -56,6 +58,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
 export default function Pulls({ loaderData, params }: Route.ComponentProps) {
   const { pulls, state, active, labels, milestones, label, milestone, defaultBranch } = loaderData;
+  // Pull requests opened, updated, reviewed, checked, merged and closed show as it happens.
+  useRepoLive({ match: repoPages.pulls() });
   const base = `/${params.owner}/${params.repo}`;
   const list = `${base}/pulls`;
   // Which pull requests an agent is working on this minute, and at what.

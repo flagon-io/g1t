@@ -167,6 +167,44 @@ To change how you watch a repository:
 A repository you create is watched the way you choose in
 [your settings](#settings): **All activity** unless you change it.
 
+## Pages that update live
+
+A repository's pages keep up with it while you are on them, without a
+reload and whatever you watch: new commits, pull requests, checks, runs
+and comments appear as they happen.
+
+| Page | Updates when |
+| --- | --- |
+| **Overview** and **Files** | A branch or tag is pushed, created or deleted, a check or run reports on a commit, a release is published, or a deployment moves. |
+| **Commits** | Commits are pushed to the branch. They wait under a **3 new commits · Show** bar at the top instead of moving the list while you read; checks on the commits shown update in place. |
+| **Tags** | A tag is pushed or deleted, or a release is published. |
+| **Pull requests** and **Issues** | One is opened, updated, reviewed, commented on, checked, merged or closed. |
+| A **pull request** | Commits are pushed to it, its checks report, someone reviews or comments, or it is merged or closed. New items join its timeline where you are reading; if you are at the end of the page, it follows them down. |
+| An **issue** | Someone comments on it or changes it, or a pull request linked to it moves. |
+| **Actions** and a **run** | A run starts, one of its jobs starts or finishes, or the run finishes. A running job's log streams on its own. |
+| **Security** | An alert is opened, fixed, dismissed or reopened. |
+
+A page refreshes a second after the last change it shows, so a burst of
+them is one refresh. It never refreshes while you are typing in it or have
+a dialog open: the change waits until you leave the field or close the
+dialog. A tab you are not looking at refreshes at most once a minute, and
+as soon as you come back to it.
+
+How it works: each signed-in tab keeps one live connection to g1t (the
+same one that brings notifications and chat counts). Opening a
+repository's page asks to follow that repository, and g1t first checks you
+can read it. From then on, every push, pull request, issue, comment,
+review, check, run, release and security alert there sends that tab a
+short note naming only what kind of thing changed and where: a branch, a
+number, a commit. Never a title, a message or code. The page then reads
+itself again, with your access as it is now. Following lasts fifteen
+minutes and is renewed while the page stays open, so someone who loses
+access stops hearing of the repository within that time.
+
+Signed out, on a public repository, or while the live connection is down,
+pages fall back to checking for themselves: when you come back to the tab
+(at most every 30 seconds), and once a minute while it is in view.
+
 ## Security
 
 Security alerts are told the way they can be lived with. A scan that finds

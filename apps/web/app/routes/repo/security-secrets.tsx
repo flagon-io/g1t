@@ -14,6 +14,8 @@ import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } fro
 import { refusal, requireInsider } from "../../lib/access.server";
 import { planPrice } from "../../lib/security-suite.server";
 import { countStates, keepSecret, secretFilters, secretTypes } from "../../lib/security-suite";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Secret scanning · ${params.owner}/${params.repo} · g1t` });
@@ -64,6 +66,8 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 
 export default function SecretScanning({ loaderData, params }: Route.ComponentProps) {
   const { overview, patterns, price, can, owner } = loaderData;
+  // Alerts opening, fixed and dismissed show as it happens.
+  useRepoLive({ match: repoPages.security() });
   const base = `/${params.owner}/${params.repo}`;
   const [search, setSearch] = useSearchParams();
   const filters = secretFilters(search);

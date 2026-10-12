@@ -25,6 +25,8 @@ import { useRepoMirror } from "../../components/mirror";
 import { updatesWaitReason } from "../../lib/mirror";
 import { alertCapability, countByState, parseAlertState } from "../../lib/security-alerts";
 import { severityCounts } from "../../lib/security-suite";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Vulnerabilities · ${params.owner}/${params.repo} · g1t` });
@@ -119,6 +121,8 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 
 export default function ProjectSecurity({ loaderData, params }: Route.ComponentProps) {
   const { overview, fixes, pulls, can } = loaderData;
+  // Alerts opening, fixed and dismissed show as it happens.
+  useRepoLive({ match: repoPages.security() });
   const base = `/${params.owner}/${params.repo}`;
   const action = `${base}/security/vulnerabilities`;
   const [search, setSearch] = useSearchParams();

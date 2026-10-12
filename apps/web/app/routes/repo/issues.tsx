@@ -25,6 +25,8 @@ import { isWaitingMessage } from "../../lib/compute";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { accessTo, refusal, requireWritableRepo } from "../../lib/access.server";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 /** As many sandboxes as one request may start. */
 const MAX_ASSIGNED_AT_ONCE = 10;
@@ -97,6 +99,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function Issues({ loaderData, actionData, params }: Route.ComponentProps) {
   const { issues, labels, milestones, state, label, milestone, agentsEnabled } = loaderData;
+  // Issues opened, commented on and closed show as it happens.
+  useRepoLive({ match: repoPages.issues() });
   const repo = `/${params.owner}/${params.repo}`;
   const base = `${repo}/issues`;
   const assignable = agentsEnabled && state === "open" && issues.length > 0;

@@ -44,6 +44,8 @@ import { useMirrorReason } from "../../components/mirror";
 import { Hint } from "../../components/ui/hint";
 import { useRefreshWhile } from "../../lib/refresh";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
@@ -294,6 +296,8 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         (pull.status === "draft" || pull.status === "open"),
     );
   useRefreshWhile(Boolean(running || assigned));
+  // Comments, changes and its pull requests, as they happen; one reading at its end follows them.
+  useRepoLive({ match: repoPages.issue(issue.number, pulls.map((pull) => pull.number)), followBottom: true });
 
   // A refusal to start g1t shows by its button; every other error below the discussion.
   const runError = actionData && "action" in actionData && actionData.action === "run-hosted";

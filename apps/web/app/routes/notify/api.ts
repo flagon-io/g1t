@@ -5,6 +5,7 @@ import { notifyClient, type NotifyPreferencesChange, type PresenceChange, type P
 import type { SoundSettingsChange } from "@g1t/contracts/sounds";
 
 import type { Route } from "./+types/api";
+import { repoFor } from "../../lib/access.server";
 import { identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
@@ -19,8 +20,11 @@ function client() {
  * many phones do), `POST` a change: `subscribe`, `unsubscribe`,
  * `register_device` and `unregister_device` (the phone app, with its Expo
  * push token), `preferences`, `test`, `presence` (your status, being away,
- * Do Not Disturb), or `sounds` (what you hear when chat moves, kept with
- * the account by identity).
+ * Do Not Disturb), `sounds` (what you hear when chat moves, kept with
+ * the account by identity), or `watch_repo`, for a repository page that
+ * updates live: its tabs then hear what changes there (`repo`, its
+ * `owner/name`), once the person is found to be able to read it
+ * (lib/repo-live.ts).
  *
  * The phone app calls this with its access token and no `Origin`, which
  * the same-origin check lets through (lib/same-origin.ts).
@@ -40,6 +44,7 @@ type Sent = {
   token?: string;
   preferences?: NotifyPreferencesChange;
   change?: PresenceChange | SoundSettingsChange;
+  repo?: string;
 };
 
 export async function action({ context, request }: Route.ActionArgs) {
@@ -80,6 +85,16 @@ export async function action({ context, request }: Route.ActionArgs) {
       const change = (sent.change ?? {}) as PresenceChange;
       const status = change.status ? { ...change.status, source: "manual" as const } : change.status;
       return Response.json(await notify.setPresence(user, { ...change, ...("status" in change ? { status } : {}) }));
+    }
+    case "watch_repo": {
+      // Only a repository they can read: the same lookup its pages make.
+      const [owner, name, ...rest] = String(sent.repo ?? "").split("/");
+      if (!owner || !name || rest.length) return Response.json({ ok: false }, { status: 400 });
+      const found = await repoFor(context, { owner, repo: name });
+      if (!found.ok) return Response.json({ ok: false }, { status: 404 });
+      const repo = found.value;
+      const watched = await notify.watchRepo(user, repo.id, `${repo.namespace}/${repo.name}`);
+      return Response.json({ ...watched, repo_id: repo.id });
     }
     default:
       return Response.json({ ok: false }, { status: 400 });

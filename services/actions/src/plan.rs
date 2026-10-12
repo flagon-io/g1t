@@ -1678,6 +1678,7 @@ impl Actions {
             .first::<JobRow>(None)
             .await?;
         let Some(job) = finished else { return Ok(()) };
+        self.tell_live(&job.repo_id, &job.run_id, None, None).await;
         // Its G1T_TOKEN stops working with it.
         self.revoke_job_tokens(&job.id).await;
         // A job that deploys failed: so did its run's deployment, now.
@@ -1909,10 +1910,32 @@ impl Actions {
             return Ok(());
         };
         let Some(run) = self.run_row(&job.run_id).await? else { return Ok(()) };
+        self.tell_live(&run.repo_id, &run.id, Some(&run.sha), run.pull).await;
         if let Some(env) = deploys_to(&run, &job) {
             self.report_deployment(&run, &env, "in_progress", false).await;
         }
         Ok(())
+    }
+
+    /// Pages open on the repository hear that a run's job started or
+    /// finished, which is no event (`g1t_contracts::live`). Logged and left
+    /// when notify cannot be reached: the pages catch up by themselves.
+    pub(crate) async fn tell_live(&self, repo_id: &str, run_id: &str, sha: Option<&str>, pull: Option<u32>) {
+        let Some(notify) = &self.notify else { return };
+        let change = g1t_contracts::live::RepoChange {
+            repo_id: repo_id.to_owned(),
+            kind: g1t_contracts::live::RUN_UPDATED.to_owned(),
+            run: Some(run_id.to_owned()),
+            sha: sha.map(str::to_owned),
+            number: pull,
+            at: now(),
+            ..Default::default()
+        };
+        let args = g1t_contracts::live::RepoChangedArgs { changes: vec![change] };
+        let told: Result<Value> = g1t_kit::call(notify, g1t_contracts::live::REPO_CHANGED, &args).await;
+        if let Err(error) = told {
+            worker::console_error!("actions: live pages not told of run {run_id}: {error}");
+        }
     }
 
     /// The run is over: each environment its jobs deployed to takes the

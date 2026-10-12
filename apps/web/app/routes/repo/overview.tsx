@@ -110,6 +110,8 @@ import { commitChecksFor } from "../../lib/commit-checks.server";
 import { showCommits } from "../../lib/commit-people.server";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { CommitChecksBadge } from "../../components/commit-checks";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 const MAX_LANDED = 6;
 /** Branches read for the Active branches list, and shown. */
@@ -827,6 +829,8 @@ function Overview({
   const source = project?.source.kind === "hosted" ? project.source : null;
   const moving = agentsLive.length > 0 || columns.working.length + columns.checking.length > 0;
   useLiveRefresh(moving);
+  // Pushes, checks, releases and deployments show as they happen.
+  useRepoLive({ match: repoPages.files() });
   const ages = health.ages;
   const oldest = ages ? Math.max(1, ...ages.map((a) => a.count)) : 1;
 
