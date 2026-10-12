@@ -32,6 +32,15 @@ use worker::wasm_bindgen::JsValue;
 use crate::plan::JobRow;
 use crate::{Actions, Count, SILENT_MS, check, fail, optional};
 
+/// What one poll has learned while it looks for work, so its looks again
+/// do not ask again: each repository's visibility, and the jobs it already
+/// said wait for a sandboxed runner.
+#[derive(Default)]
+struct Looked {
+    visibilities: std::collections::HashMap<String, Option<String>>,
+    noted: std::collections::HashSet<String>,
+}
+
 /// How often a poll looks again for work while it waits.
 const POLL_EVERY_MS: u64 = 2_500;
 /// A runner that has been offline this long is removed, as on GitHub.
@@ -69,6 +78,10 @@ pub struct RunnerRow {
     pub last_seen_at: Option<String>,
     pub created_at: String,
     pub created_by: Option<String>,
+    /// `nested-container`, `container` or `host` (migration 0015); none
+    /// for a runner that never said.
+    #[serde(default)]
+    pub isolation: Option<String>,
 }
 
 impl RunnerRow {
@@ -210,10 +223,10 @@ fn entry(actor: AuditActor, action: &str, workspace: &str, repo: Option<String>,
 impl Actions {
     // --- Shared ------------------------------------------------------------
 
-    async fn audit(&self, entries: Vec<NewAuditEntry>) {
+    pub(crate) async fn audit(&self, entries: Vec<NewAuditEntry>) {
         let recorded: Result<u32> = g1t_kit::call(&self.events, "audit_record", &RecordAuditArgs { entries }).await;
         if let Err(error) = recorded {
-            worker::console_error!("actions: runner audit entries not recorded: {error}");
+            worker::console_error!("actions: audit entries not recorded: {error}");
         }
     }
 
@@ -953,14 +966,33 @@ impl Actions {
         let version: String = if a.version.is_empty() { row.version.clone() } else { a.version.chars().take(40).collect() };
         let work_id = active.as_ref().map(|(id, _)| id.as_str());
         let work_kind = active.as_ref().map(|(_, kind)| *kind);
-        let changed = version != row.version || work_id != row.work_id.as_deref() || work_kind != row.work_kind.as_deref();
+        // How it is isolated, as it says now: a runner re-registered or
+        // restarted with or without Docker says so on its next poll.
+        let isolation = a
+            .isolation
+            .as_deref()
+            .filter(|level| model::ISOLATIONS.contains(level))
+            .map(str::to_owned)
+            .or_else(|| row.isolation.clone());
+        let changed = version != row.version
+            || work_id != row.work_id.as_deref()
+            || work_kind != row.work_kind.as_deref()
+            || isolation != row.isolation;
         if changed || seen_is_stale(row.last_seen_at.as_deref(), at) {
             self.db
-                .prepare("UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ? WHERE id = ?")
-                .bind(&[seen.as_str().into(), version.into(), optional(work_id), optional(work_kind), row.id.as_str().into()])?
+                .prepare("UPDATE runners SET last_seen_at = ?, version = ?, work_id = ?, work_kind = ?, isolation = ? WHERE id = ?")
+                .bind(&[
+                    seen.as_str().into(),
+                    version.into(),
+                    optional(work_id),
+                    optional(work_kind),
+                    optional(isolation.as_deref()),
+                    row.id.as_str().into(),
+                ])?
                 .run()
                 .await?;
         }
+        let row = RunnerRow { isolation, ..row };
         let mut poll = Poll { assignment: None, cancel, credential, removed: false };
         // Busy, or an ephemeral runner that has had its one job.
         if active.is_some() || !a.running.is_empty() {
@@ -974,8 +1006,9 @@ impl Actions {
         let groups = self.group_rows(&row.workspace).await?;
         let group = row.group_id.as_ref().and_then(|id| groups.iter().find(|g| &g.id == id)).cloned();
         let deadline = at + a.wait_ms.min(model::MAX_POLL_WAIT_MS);
+        let mut looked = Looked::default();
         loop {
-            if let Some(assignment) = self.claim(&row, group.as_ref()).await? {
+            if let Some(assignment) = self.claim(&row, group.as_ref(), &mut looked).await? {
                 poll.assignment = Some(assignment);
                 return Ok(Outcome::Ok(poll));
             }
@@ -987,7 +1020,7 @@ impl Actions {
     }
 
     /// Takes the oldest work this runner can do, if there is any.
-    async fn claim(&self, runner: &RunnerRow, group: Option<&GroupRow>) -> Result<Option<Assignment>> {
+    async fn claim(&self, runner: &RunnerRow, group: Option<&GroupRow>, looked: &mut Looked) -> Result<Option<Assignment>> {
         let labels = runner.labels();
         let group_name = group.map(|g| g.name.clone());
         // Workflow jobs.
@@ -1020,6 +1053,17 @@ impl Actions {
             }
             if runner.repo_id.is_none() && !group.is_none_or(|g| g.allows(&run_repo)) {
                 continue;
+            }
+            // A host-mode runner takes no public repository's job: it waits
+            // for a sandboxed runner, and says so when none could take it.
+            if runner.isolation.as_deref() == Some("host") {
+                let visibility = self.visibility_once(looked, &job.repo_id).await;
+                if !model::isolation_allows(runner.isolation.as_deref(), visibility.as_deref()) {
+                    if looked.noted.insert(job.id.clone()) {
+                        self.wait_for_sandbox(&job, &run_repo, &wanted).await?;
+                    }
+                    continue;
+                }
             }
             if let Some(max) = job.max_parallel {
                 let siblings = self
@@ -1103,6 +1147,15 @@ impl Actions {
             if !wanted.matches(&labels, None) {
                 continue;
             }
+            // Nor a public repository's agent work.
+            if runner.isolation.as_deref() == Some("host")
+                && let Some(repo_id) = &task.repo_id
+            {
+                let visibility = self.visibility_once(looked, repo_id).await;
+                if !model::isolation_allows(runner.isolation.as_deref(), visibility.as_deref()) {
+                    continue;
+                }
+            }
             if let Some(repo_id) = &runner.repo_id
                 && task.repo_id.as_deref() != Some(repo_id.as_str())
             {
@@ -1166,6 +1219,36 @@ impl Actions {
             }));
         }
         Ok(None)
+    }
+
+    /// [`Self::visibility`], asked once per repository in a poll.
+    async fn visibility_once(&self, looked: &mut Looked, repo_id: &str) -> Option<String> {
+        if let Some(known) = looked.visibilities.get(repo_id) {
+            return known.clone();
+        }
+        let found = self.visibility(repo_id).await;
+        looked.visibilities.insert(repo_id.to_owned(), found.clone());
+        found
+    }
+
+    /// A public repository's job that a host-mode runner passed over: when
+    /// no online runner that may take it could (its labels, group,
+    /// repository, and isolation), its page says it waits for a sandboxed
+    /// one. Written only when that changes what it says.
+    async fn wait_for_sandbox(&self, job: &JobRow, run_repo: &str, wanted: &Wanted) -> Result<()> {
+        let at = now_ms();
+        let groups = self.group_rows(&job.namespace.to_lowercase()).await?;
+        let runners = self.runner_rows(&job.namespace.to_lowercase()).await?;
+        let sandboxed = runners.iter().any(|other| takes_public_job(other, &groups, &job.repo_id, run_repo, wanted, at));
+        if sandboxed {
+            return Ok(());
+        }
+        self.db
+            .prepare("UPDATE jobs SET reason = ? WHERE id = ? AND status = 'queued' AND reason IS NOT ?")
+            .bind(&[model::WAITING_FOR_SANDBOX.into(), job.id.as_str().into(), model::WAITING_FOR_SANDBOX.into()])?
+            .run()
+            .await?;
+        Ok(())
     }
 
     /// A repository's visibility for a runner, `public` or `private`; none
@@ -1492,11 +1575,12 @@ impl Actions {
                 labels: String,
                 queued_at: Option<String>,
                 repo: String,
+                repo_id: String,
             }
             let waiting = self
                 .db
                 .prepare(
-                    "SELECT jobs.id, jobs.name, jobs.run_id, jobs.labels, jobs.queued_at, runs.repo FROM jobs JOIN runs ON runs.id = jobs.run_id
+                    "SELECT jobs.id, jobs.name, jobs.run_id, jobs.labels, jobs.queued_at, runs.repo, jobs.repo_id FROM jobs JOIN runs ON runs.id = jobs.run_id
                      WHERE jobs.status = 'queued' AND jobs.labels IS NOT NULL AND lower(jobs.namespace) = ? AND jobs.queued_at < ?
                      ORDER BY jobs.rowid LIMIT 20",
                 )
@@ -1509,11 +1593,17 @@ impl Actions {
             }
             let groups = self.group_rows(&workspace).await?;
             let online: Vec<RunnerRow> = self.runner_rows(&workspace).await?.into_iter().filter(|r| r.online(at)).collect();
+            // A repository's visibility is asked only when a host-mode runner
+            // is online, since only those pass over a public repository's jobs.
+            let any_host = online.iter().any(|runner| runner.isolation.as_deref() == Some("host"));
+            let mut looked = Looked::default();
             for job in waiting {
                 let wanted = Wanted::from_stored(&serde_json::from_str::<Vec<String>>(&job.labels).unwrap_or_default());
+                let visibility = if any_host { self.visibility_once(&mut looked, &job.repo_id).await } else { None };
                 let served = online.iter().any(|runner| {
                     let group = runner.group_id.as_ref().and_then(|id| groups.iter().find(|g| &g.id == id));
                     wanted.matches(&runner.labels(), group.map(|g| g.name.as_str()))
+                        && model::isolation_allows(runner.isolation.as_deref(), visibility.as_deref())
                 });
                 if !served {
                     out.push(StuckJob {
@@ -1605,6 +1695,17 @@ struct IdRow {
     id: String,
 }
 
+/// Whether `runner` is online and could take a public repository's job:
+/// not host-mode, and its repository, group and labels let it.
+fn takes_public_job(runner: &RunnerRow, groups: &[GroupRow], repo_id: &str, run_repo: &str, wanted: &Wanted, at: u64) -> bool {
+    let group = runner.group_id.as_ref().and_then(|id| groups.iter().find(|g| &g.id == id));
+    runner.online(at)
+        && model::isolation_allows(runner.isolation.as_deref(), Some("public"))
+        && runner.repo_id.as_deref().is_none_or(|repo| repo == repo_id)
+        && (runner.repo_id.is_some() || group.is_none_or(|g| g.allows(run_repo)))
+        && wanted.matches(&runner.labels(), group.map(|g| g.name.as_str()))
+}
+
 fn group_view(group: &GroupRow, runners: &[RunnerRow]) -> RunnerGroup {
     RunnerGroup {
         id: group.id.clone(),
@@ -1661,6 +1762,43 @@ mod tests {
     }
 
     #[test]
+    fn only_a_sandboxed_runner_that_could_take_it_serves_a_public_job() {
+        let at = 1_000_000_000;
+        let runner = |isolation: Option<&str>| RunnerRow {
+            id: "rnr_1".into(),
+            workspace: "acme".into(),
+            repo_id: None,
+            repo: None,
+            group_id: None,
+            name: "a".into(),
+            labels: r#"["self-hosted","linux","x64"]"#.into(),
+            os: "linux".into(),
+            arch: "x64".into(),
+            version: String::new(),
+            ephemeral: 0,
+            credential_hash: String::new(),
+            previous_hash: None,
+            rotated_at: String::new(),
+            work_id: None,
+            work_kind: None,
+            spent: 0,
+            last_seen_at: Some(rfc3339(at)),
+            created_at: String::new(),
+            created_by: None,
+            isolation: isolation.map(str::to_owned),
+        };
+        let wanted = Wanted::of(&["self-hosted".to_owned(), "linux".to_owned()], None);
+        let takes = |row: &RunnerRow| takes_public_job(row, &[], "rep_1", "acme/web", &wanted, at);
+        assert!(!takes(&runner(Some("host"))));
+        assert!(takes(&runner(Some("container"))));
+        assert!(takes(&runner(Some("nested-container"))));
+        assert!(takes(&runner(None)), "an older runner, which refuses for itself");
+        assert!(!takes(&RunnerRow { repo_id: Some("rep_2".into()), ..runner(None) }), "another repository's");
+        assert!(!takes(&RunnerRow { labels: r#"["self-hosted","macos"]"#.into(), ..runner(None) }));
+        assert!(!takes(&RunnerRow { last_seen_at: None, ..runner(None) }), "offline");
+    }
+
+    #[test]
     fn online_means_seen_in_the_last_ninety_seconds() {
         let row = RunnerRow {
             id: "rnr_1".into(),
@@ -1683,6 +1821,7 @@ mod tests {
             last_seen_at: Some(rfc3339(1_000_000_000)),
             created_at: String::new(),
             created_by: None,
+            isolation: None,
         };
         assert!(row.online(1_000_000_000 + 60_000));
         assert!(!row.online(1_000_000_000 + 120_000));

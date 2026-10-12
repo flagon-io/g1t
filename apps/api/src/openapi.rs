@@ -9,6 +9,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
@@ -114,11 +115,13 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Repositories",
-        "A repository, how it handles pull requests, and its timeline: renaming, archiving, moving and deleting it.",
+        "A repository, how it handles pull requests, and its timeline: renaming, archiving, moving and deleting it; and its files at a branch, tag or commit as a tarball or zipball.",
         &[
             Op::ListRepos,
             Op::CreateRepo,
             Op::GetRepo,
+            Op::Archives(ArchiveOp::DownloadTarball),
+            Op::Archives(ArchiveOp::DownloadZipball),
             Op::UpdateRepo,
             Op::RenameRepo,
             Op::RenameBranch,
@@ -498,6 +501,10 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Protection(ProtectionOp::CreateRepositoryDispatch),
             Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
             Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
+            Op::Protection(ProtectionOp::ListWorkspaceManagedWorkflows),
+            Op::Protection(ProtectionOp::CreateWorkspaceManagedWorkflow),
+            Op::Protection(ProtectionOp::UpdateWorkspaceManagedWorkflow),
+            Op::Protection(ProtectionOp::DeleteWorkspaceManagedWorkflow),
         ],
     ),
     (
@@ -836,6 +843,7 @@ fn title(op: Op) -> &'static str {
         Op::Protection(op) => op.title(),
         Op::Tokens(op) => op.title(),
         Op::Artifacts(op) => op.title(),
+        Op::Archives(op) => op.title(),
         Op::DeployKeys(op) => op.title(),
         Op::Mirrors(op) => op.title(),
         Op::Packages(op) => op.title(),

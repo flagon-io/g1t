@@ -47,13 +47,146 @@ export type DeploySettings = {
   primaryDomain: string | null;
   /**
    * What the last finished build found the project to be: a Workers
-   * project (it has a Workers config), a static site its build wrote, or
-   * plain HTML served as it is. Null until a build has finished. Read-only.
+   * project (it has a Workers config), a static site its build wrote,
+   * plain HTML served as it is, or a container. Null until a build has
+   * finished. Read-only.
    */
   detected: DetectedKind | null;
+  /**
+   * What the last finished build found it built with: a framework's id
+   * (`astro`…), or for a container `dockerfile` or the server g1t wrote a
+   * Dockerfile for (`flask`…). See `FRAMEWORK_NAMES`. Read-only.
+   */
+  framework?: string | null;
+  /** What it is built as: found from its files (`auto`), or as the project says. */
+  buildAs?: BuildAs;
+  /** Its Dockerfile, relative to the project, when not `Dockerfile` or `Containerfile`. */
+  dockerfile?: string | null;
+  /** The size its container runs at (`APP_INSTANCES`), when it is one. */
+  instanceType?: string;
+  /** Whether g1t.page runs containers here yet, and what each size costs. Read-only. */
+  containers?: ContainerOffer;
 };
 
-export type DetectedKind = "workers" | "static" | "html";
+export type DetectedKind = "workers" | "static" | "html" | "container";
+
+/**
+ * What a project is built as. `auto` finds it from its files: a Wrangler
+ * config is Workers, a framework that builds a static site or a Worker is
+ * that, a framework that needs a server or a project with a Dockerfile
+ * (or a server g1t can write one for) is a container.
+ */
+export type BuildAs = "auto" | "static" | "workers" | "docker";
+
+export const BUILD_AS: readonly BuildAs[] = ["auto", "static", "workers", "docker"];
+
+/**
+ * A size a container app runs at: one of Cloudflare Containers' instance
+ * types. Memory and disk are paid for while it is awake, CPU as it is
+ * used, and its image can be as large as its disk.
+ */
+export type AppInstance = { type: string; vcpu: number; memoryGib: number; diskGb: number };
+
+/** Cloudflare Containers' instance types, smallest first. */
+export const APP_INSTANCES: readonly AppInstance[] = [
+  { type: "lite", vcpu: 1 / 16, memoryGib: 0.25, diskGb: 2 },
+  { type: "basic", vcpu: 1 / 4, memoryGib: 1, diskGb: 4 },
+  { type: "standard-1", vcpu: 1 / 2, memoryGib: 4, diskGb: 8 },
+  { type: "standard-2", vcpu: 1, memoryGib: 6, diskGb: 12 },
+  { type: "standard-3", vcpu: 2, memoryGib: 8, diskGb: 16 },
+  { type: "standard-4", vcpu: 4, memoryGib: 12, diskGb: 20 },
+];
+
+/** What a container app runs at unless its project says: the smallest. */
+export const DEFAULT_APP_INSTANCE = "lite";
+
+/** A container app sleeps after this long with no request, and costs nothing while asleep. */
+export const CONTAINER_SLEEP_MINUTES = 5;
+
+/** An instance type by name; the default one for anything else. */
+export function appInstance(type: string | null | undefined): AppInstance {
+  return APP_INSTANCES.find((instance) => instance.type === type) ?? APP_INSTANCES[0];
+}
+
+/** What container apps cost g1t, in millionths of a dollar, from the price book. */
+export type ContainerCosts = {
+  vcpuSecond: number;
+  memoryGibSecond: number;
+  diskGbSecond: number;
+  /** The Durable Object in front of each instance, billed while the instance runs. */
+  instanceSecond: number;
+  egressGb: number;
+};
+
+/**
+ * What one second awake of `instance` costs g1t at most: its memory, disk
+ * and Durable Object, and every vCPU busy. Cloudflare bills CPU as it is
+ * used, so an app that is mostly waiting costs g1t less; g1t charges the
+ * whole vCPU while it is awake, so it never sells below cost.
+ */
+export function containerSecondMicros(instance: AppInstance, costs: ContainerCosts): number {
+  return (
+    instance.vcpu * costs.vcpuSecond +
+    instance.memoryGib * costs.memoryGibSecond +
+    instance.diskGb * costs.diskGbSecond +
+    costs.instanceSecond
+  );
+}
+
+/** One size as Settings, Deployments shows it: what an hour awake is charged, the margin included. */
+export type ContainerPrice = AppInstance & { hourlyMicros: number };
+
+export type ContainerOffer = {
+  /** False until Docker deployments are switched on for g1t.page. */
+  available: boolean;
+  prices: ContainerPrice[];
+  /** What one GB a container sends is charged, the margin included. */
+  egressGbMicros: number;
+  sleepMinutes: number;
+};
+
+/**
+ * What a build found a project built with, by the id `g1t-runner detect`
+ * prints as `framework`, for people.
+ */
+export const FRAMEWORK_NAMES: Record<string, string> = {
+  vite: "Vite",
+  "vite-react": "React (Vite)",
+  "vite-vue": "Vue (Vite)",
+  "vite-svelte": "Svelte (Vite)",
+  "vite-solid": "Solid (Vite)",
+  "vite-preact": "Preact (Vite)",
+  astro: "Astro",
+  nextjs: "Next.js",
+  sveltekit: "SvelteKit",
+  nuxt: "Nuxt",
+  "react-router": "React Router",
+  remix: "Remix",
+  gatsby: "Gatsby",
+  docusaurus: "Docusaurus",
+  eleventy: "Eleventy",
+  angular: "Angular",
+  "create-react-app": "Create React App",
+  hugo: "Hugo",
+  jekyll: "Jekyll",
+  mdbook: "mdBook",
+  dockerfile: "Dockerfile",
+  node: "Node.js",
+  django: "Django",
+  flask: "Flask",
+  fastapi: "FastAPI",
+  python: "Python",
+  go: "Go",
+  rails: "Rails",
+  rack: "Rack",
+  laravel: "Laravel",
+  php: "PHP",
+};
+
+/** A framework id a build reported, if it is one g1t knows. */
+export function frameworkId(value: unknown): string | null {
+  return typeof value === "string" && Object.hasOwn(FRAMEWORK_NAMES, value) ? value : null;
+}
 
 export type DeployKind = "preview" | "production";
 
@@ -88,6 +221,9 @@ export type Deployment = {
   warnings: string[];
   /** How long the build ran, in seconds; charged at the container price. */
   buildSeconds: number | null;
+  /** What the build found it to be and built with, once it has finished (see `DeploySettings`). */
+  detected?: DetectedKind | null;
+  framework?: string | null;
   createdBy: string;
   /** RFC 3339. */
   createdAt: string;
@@ -127,6 +263,9 @@ export type DeployUsage = {
   buildSeconds: number;
   /** Charged so far this month for builds, in millionths of a dollar. */
   buildMicros: number;
+  /** Seconds container apps have been awake this month, and what that has cost g1t so far (charged when the month closes). */
+  containerSeconds?: number;
+  containerMicros?: number;
   /** RFC 3339: when requests and CPU time last went up. */
   countedAt: string | null;
 };

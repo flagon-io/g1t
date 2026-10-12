@@ -9,6 +9,7 @@ import { page } from "../../lib/meta";
 import { Duration, Notes, StatusIcon, shortRef } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import { ComputeNote, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo, usePending } from "../../components/ui";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { useWorkflowReason } from "../../components/mirror";
@@ -311,10 +312,7 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
         <div className="min-w-0">
           <h3 className="text-lg font-semibold tracking-tight">{workflow.name}</h3>
           {isManagedWorkflow(workflow.path) ? (
-            <span className="inline-flex items-center gap-1 text-xs text-faint">
-              <BadgeCheck size={12} />
-              Managed by g1t: it runs here without a file in the repository. A workflow named {workflow.name} in .g1t/workflows/ takes its place.
-            </span>
+            <ManagedLine workflow={workflow} />
           ) : (
             <Link to={`${base}/blob/HEAD/${workflow.path}`} className="inline-flex items-center gap-1 font-mono text-xs text-faint hover:text-fg">
               <FileCode2 size={12} />
@@ -329,7 +327,7 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge workflow={workflow} repo={base.slice(1)} />
             {member && workflow.dispatch && workflow.state === "active" && <RunWorkflow workflow={workflow} />}
-            {member && manage && <Form method="post">
+            {member && manage && workflow.managedBy?.mode !== "required" && <Form method="post">
               <input type="hidden" name="intent" value="toggle" />
               <input type="hidden" name="workflow" value={workflow.id} />
               <input type="hidden" name="enabled" value={workflow.state === "active" ? "false" : "true"} />
@@ -350,6 +348,29 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
       )}
       <Notes notes={workflow.notes} />
     </div>
+  );
+}
+
+/** Who manages a managed workflow, and what a file of its name does. */
+function ManagedLine({ workflow }: { workflow: Workflow }) {
+  const by = workflow.managedBy;
+  const origin = by?.origin ?? "g1t";
+  const what =
+    origin === "g1t"
+      ? `it runs here without a file in the repository. A workflow named ${workflow.name} in .g1t/workflows/ takes its place.`
+      : by?.mode === "required"
+        ? `required in this repository by ${origin}'s owners. It runs here without a file in the repository; a workflow named ${workflow.name} in .g1t/workflows/ does not run while it is required, and it cannot be turned off here.`
+        : `it runs here without a file in the repository. A workflow named ${workflow.name} in .g1t/workflows/ takes its place, and an admin can turn it off here.`;
+  return (
+    <span className="block text-xs text-faint">
+      <span className="inline-flex items-center gap-1">
+        <BadgeCheck size={12} className="shrink-0" />
+        <span>
+          Managed by {origin}: {what}
+        </span>
+      </span>
+      {by?.source && <span className="mt-0.5 block font-mono">From {by.source}</span>}
+    </span>
   );
 }
 
@@ -441,6 +462,11 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
                     <span className="block truncate font-mono text-[0.6875rem] text-faint">{w.path}</span>
                   )}
                 </span>
+                {w.managedBy && w.managedBy.origin !== "g1t" && (
+                  <Badge tone={w.managedBy.mode === "required" ? "accent" : "neutral"} className="ml-auto">
+                    {w.managedBy.origin}
+                  </Badge>
+                )}
                 {w.error && <AlertTriangle size={12} className="shrink-0 text-danger" aria-label="Its file has a problem" />}
                 {w.state === "disabled" && <span className="ml-auto shrink-0 text-xs text-faint">off</span>}
               </Link>

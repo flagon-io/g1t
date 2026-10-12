@@ -12,6 +12,7 @@ use worker::js_sys::Uint8Array;
 use worker::wasm_bindgen::JsValue;
 use worker::{Fetch, Fetcher, Headers, Method, Request, RequestInit, Response, Result, Url};
 
+use crate::hidden_refs;
 use crate::meters;
 use crate::pack_limits::{PackSizer, Violation};
 use crate::push_checks::{Checks, Verdict};
@@ -350,7 +351,7 @@ pub(crate) fn pack_bytes(body: &[u8]) -> u64 {
     0
 }
 
-fn pkt_line(payload: &[u8]) -> Vec<u8> {
+pub(crate) fn pkt_line(payload: &[u8]) -> Vec<u8> {
     let mut line = format!("{:04x}", payload.len() + 4).into_bytes();
     line.extend_from_slice(payload);
     line
@@ -409,7 +410,7 @@ pub(crate) fn refusal(body: &[u8], protected: &str) -> Option<Vec<u8>> {
 /// A report-status as git expects it: inside channel 1 when the client
 /// asked for side-band, after `messages` on channel 2, which git prints as
 /// `remote:` lines. Without side-band the messages cannot be shown.
-fn framed(report: Vec<u8>, capabilities: &str, messages: &[String]) -> Vec<u8> {
+pub(crate) fn framed(report: Vec<u8>, capabilities: &str, messages: &[String]) -> Vec<u8> {
     let sideband = capabilities
         .split(' ')
         .any(|capability| capability.starts_with("side-band"));
@@ -679,13 +680,13 @@ async fn drain(stream: &mut worker::ByteStream) -> Result<u64> {
 /// One packet of a pkt-line stream: data, or a flush (`0000`), delimiter
 /// (`0001`) or response-end (`0002`) packet, kept as its four bytes.
 #[derive(Debug, PartialEq, Eq)]
-enum Packet {
+pub(crate) enum Packet {
     Data(Vec<u8>),
     Special([u8; 4]),
 }
 
 /// The packets in `bytes`, or `None` if it is not a whole pkt-line stream.
-fn packets(bytes: &[u8]) -> Option<Vec<Packet>> {
+pub(crate) fn packets(bytes: &[u8]) -> Option<Vec<Packet>> {
     let mut out = Vec::new();
     let mut position = 0;
     while position < bytes.len() {
@@ -702,7 +703,7 @@ fn packets(bytes: &[u8]) -> Option<Vec<Packet>> {
     Some(out)
 }
 
-fn encode(packets: &[Packet]) -> Vec<u8> {
+pub(crate) fn encode(packets: &[Packet]) -> Vec<u8> {
     let mut out = Vec::new();
     for packet in packets {
         match packet {
@@ -1032,6 +1033,8 @@ pub async fn forward(
         headers.delete("content-length")?;
         let body = response.bytes().await?;
         let body = with_no_thin(&body).unwrap_or(body);
+        // Without the refs g1t keeps, as GitHub hides them from a push.
+        let body = hidden_refs::advertisement_without_hidden(&body).unwrap_or(body);
         response = Response::from_bytes(body)?.with_headers(headers);
     }
     if git.endpoint == "git-upload-pack"
@@ -1084,6 +1087,22 @@ async fn push(
         }
     }
     timing.mark("recv");
+    // Commands to the refs g1t keeps for itself (`refs/pull/*`) are taken
+    // out and refused ref by ref once the store has answered for the rest
+    // (hidden_refs.rs). One that leaves nothing to send is answered here.
+    let hidden = match hidden_refs::split(&head) {
+        hidden_refs::Split::Untouched => Vec::new(),
+        hidden_refs::Split::Without { body, hidden } => {
+            head = body;
+            hidden
+        }
+        hidden_refs::Split::Refused { report, .. } => {
+            if !ended {
+                drain(&mut stream).await?;
+            }
+            return Ok(Push::Declined(report_response(report)?, hidden_refs::HIDDEN_REASON.to_owned()));
+        }
+    };
     // The workflow gate and the rules of the branches and tags it changes,
     // with push protection alongside for a push read whole that is within
     // the size limits (push_checks.rs). What the rules refuse is refused
@@ -1132,6 +1151,8 @@ async fn push(
     }
     let pushed = pushed_branches(&head);
     let deleted = deleted_refs(&head);
+    // The commands as sent, for framing the refusals of hidden refs.
+    let reported_head: Vec<u8> = if hidden.is_empty() { Vec::new() } else { head.iter().take(64 * 1024).copied().collect() };
     let mut init = RequestInit::new();
     init.with_method(Method::Post).with_headers(headers);
     let started = g1t_kit::now_ms();
@@ -1194,7 +1215,7 @@ async fn push(
         ms,
     );
     // A push is never tried again: the store may have taken it.
-    let response = match (answered, failure) {
+    let mut response = match (answered, failure) {
         (Ok(response), None) => response,
         (Ok(response), Some(Failure::RateLimited)) => {
             drop(response);
@@ -1206,6 +1227,14 @@ async fn push(
             busy_response(Busy { rate_limited: false, retry_after: 5, read_only: false })?
         }
     };
+    if !hidden.is_empty() && response.status_code() == 200 {
+        let sideband = commands(&reported_head).1.split(' ').any(|capability| capability.starts_with("side-band"));
+        let headers = response.headers().clone();
+        headers.delete("content-length")?;
+        let answer = response.bytes().await?;
+        let answer = hidden_refs::with_refused(&answer, &hidden, sideband).unwrap_or(answer);
+        response = Response::from_bytes(answer)?.with_headers(headers);
+    }
     Ok(Push::Forwarded(Forwarded {
         response,
         pushed,

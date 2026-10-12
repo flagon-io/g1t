@@ -416,7 +416,8 @@ export function reposClient(service: ServiceBinding): ReposApi {
     createRelease: (actor, path, release) => call("create_release", { path, actor, ...release }),
     updateRelease: (actor, path, id, change) => call("update_release", { path, actor, id, ...change }),
     deleteRelease: (actor, path, id) => call("delete_release", { path, actor, id }),
-    listFiles: (repoId, ref, limit) => call("list_files", { repoId, ref, skipDirs: [], limit }),
+    listFiles: (repoId, ref, limit, options) => call("list_files", { repoId, ref, skipDirs: [], limit, links: options?.links ?? false }),
+    openArchiveToken: (path, token) => call("open_archive_token", { path, token }),
     rawBlobs: (repoId, hashes, maxBytes) => call("raw_blobs", { repoId, hashes, maxBytes }),
     rawFile: (repoId, ref, path, maxBytes) => call("raw_file", { repoId, ref, path, maxBytes }),
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
@@ -836,6 +837,11 @@ export function actionsClient(service: ServiceBinding): ActionsApi {
     workspaceActionsSettings: (workspace, viewer) => call("workspace_actions_settings", { workspace, viewer }),
     setWorkspaceActionsSettings: (actor, workspace, change) =>
       call("set_workspace_actions_settings", { actor, workspace, ...change }),
+    workspaceManagedWorkflows: (workspace, viewer) => call("workspace_managed_workflows", { workspace, viewer }),
+    setWorkspaceManagedWorkflow: (actor, workspace, name, change, create = false) =>
+      call("set_workspace_managed_workflow", { actor, workspace, name, create, ...change }),
+    removeWorkspaceManagedWorkflow: (actor, workspace, name) =>
+      call("remove_workspace_managed_workflow", { actor, workspace, name }),
     environments: (repo, viewer) => call("environments", { repo, viewer }),
     setEnvironment: (actor, repo, name, change) => call("set_environment", { actor, repo, name, ...change }),
     deleteEnvironment: (actor, repo, name) => call("delete_environment", { actor, repo, name }),

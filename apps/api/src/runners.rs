@@ -70,6 +70,7 @@ pub async fn handle(request: &mut Request, services: &Services, path: &str) -> R
             args["version"] = json!(body["version"].as_str().unwrap_or_default());
             args["running"] = json!(body["running"].as_array().cloned().unwrap_or_default());
             args["wait_ms"] = json!(body["wait_ms"].as_u64().unwrap_or(0));
+            args["isolation"] = json!(body["isolation"].as_str());
             "runner_poll"
         }
         "finished" => {

@@ -1055,6 +1055,10 @@ pub struct FileEntry {
     pub path: String,
     /// The blob it holds now; null when the change deleted it.
     pub hash: Option<String>,
+    /// `blob`, `exec` (executable) or `symlink` (the blob is where it
+    /// points); absent for a deleted file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<EntryKind>,
 }
 
 /// Files, and whether there were more than were listed.
@@ -1063,6 +1067,10 @@ pub struct FileEntry {
 pub struct FileList {
     /// The commit the files were read at; null for an empty repository.
     pub commit: Option<String>,
+    /// When that commit was made (RFC 3339), what an archive dates its
+    /// files by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
     pub files: Vec<FileEntry>,
     pub truncated: bool,
 }
@@ -1081,6 +1089,10 @@ pub struct ListFilesArgs {
     pub skip_dirs: Vec<String>,
     /// At most this many files; capped at [`MAX_LISTED_FILES`].
     pub limit: u32,
+    /// Symlinks too, for an archive: by default only files whose text can
+    /// be read are listed.
+    #[serde(default)]
+    pub links: bool,
 }
 
 /// `changed_files`: the files that differ between two commits, as
@@ -1096,6 +1108,57 @@ pub struct ChangedFilesArgs {
     #[serde(default)]
     pub skip_dirs: Vec<String>,
     pub limit: u32,
+}
+
+/// `archive_link`: a link to download a branch, tag or commit as an
+/// archive, for someone who can read the repository: the site's
+/// `/<owner>/<repo>/archive/<commit>.tar.gz` (or `.zip`) with `?token=`,
+/// good for [`ARCHIVE_LINK_SECONDS`] without a session or an access token.
+/// The default branch when `ref` is absent. Returns `Outcome<ArchiveLink>`;
+/// refused as `invalid` where the repos service has no `REPOS_KEY`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveLinkArgs {
+    pub path: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
+}
+
+/// How long an archive link lasts.
+pub const ARCHIVE_LINK_SECONDS: u64 = 10 * 60;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveLink {
+    pub repo: Repo,
+    /// The commit the ref named, which the link downloads.
+    pub commit: String,
+    /// What the link carries as `?token=`.
+    pub token: String,
+    /// RFC 3339.
+    pub expires_at: String,
+}
+
+/// `open_archive_token`: what an archive link's token lets anyone holding
+/// it download, when it is for the repository at `path` and has not
+/// expired. Returns `Option<ArchiveGrant>`. No viewer: the token is the
+/// permission.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenArchiveTokenArgs {
+    pub path: RepoPath,
+    pub token: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveGrant {
+    pub repo_id: String,
+    /// The repository's workspace and name as they are now.
+    pub namespace: String,
+    pub name: String,
+    pub commit: String,
 }
 
 /// The most files one `list_files` or `changed_files` call lists.

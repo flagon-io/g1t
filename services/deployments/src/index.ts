@@ -33,8 +33,11 @@
  */
 
 import {
+  BUILD_AS,
   CUSTOM_DOMAIN_TARGET,
+  DEFAULT_APP_INSTANCE,
   DEPLOYMENT_COSTS,
+  frameworkId,
   SLUG_HOLD_DAYS,
   ComputeGate,
   actionsClient,
@@ -60,6 +63,8 @@ import {
   staleMovedPaths,
   staleSlugs,
   workClient,
+  type BuildAs,
+  type ContainerCosts,
   type DeployKind,
   type DeploySettings,
   type DetectedKind,
@@ -84,6 +89,19 @@ import {
 
 import { NEEDS, repoRef, trustedOutright, type Method } from "./access";
 import { Cloudflare, type BuiltWorker, type Manifest } from "./cloudflare";
+import {
+  REGISTRY_HOST,
+  appWorkerMetadata,
+  containerCost,
+  containerOffer,
+  instanceTypeOf,
+  maxImageBytes,
+  meterReport,
+  pushedImage,
+  repositoryFor,
+  type AppWorkerSettings,
+  type ContainerMeter,
+} from "./containers";
 import { CustomHostnames } from "./custom-hostnames";
 import { Domains, NOT_ENABLED_NOTICE, toDomain } from "./domains";
 import { monthCost, movesMeter } from "./metering";
@@ -91,7 +109,7 @@ import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarge
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 import { RepoDeployments, sourceOf } from "./repo-deployments";
-import { NEEDS_WRITE, commitOf, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
+import { NEEDS_WRITE, commitOf, jobEndedMessage, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
 
 type Env = {
   DB: D1Database;
@@ -114,6 +132,16 @@ type Env = {
   DOMAINS?: KVNamespace;
   /** The g1t.page zone, where custom hostnames are added (Cloudflare for SaaS). */
   CUSTOM_HOSTNAMES_ZONE_ID?: string;
+  /**
+   * `on` runs container apps (Docker deployments, src/containers.ts); off
+   * until Cloudflare's container APIs are checked against g1t's account.
+   * While off, a container build is refused at its `registry` step with
+   * `not_enabled`, and a project with a site besides its Dockerfile is
+   * built as that site.
+   */
+  CONTAINERS?: string;
+  /** Where container apps' Workers report their running time: the API. */
+  G1T_API?: string;
   /** The og service's `Screenshots`: production's screenshot, taken once per deploy. */
   SCREENSHOTS?: { capture(input: { host: string; commit: string }): Promise<boolean> };
 };
@@ -141,7 +169,19 @@ const MOVE_RETRY_MS = 60 * 60 * 1000;
 
 /** A build's report of what it found the project to be, if it is one g1t knows. */
 export function detectedKind(value: unknown): DetectedKind | null {
-  return value === "workers" || value === "static" || value === "html" ? value : null;
+  return value === "workers" || value === "static" || value === "html" || value === "container" ? value : null;
+}
+
+/** What a project is built as, as it is kept. */
+export function buildAsOf(value: unknown): BuildAs {
+  return BUILD_AS.includes(value as BuildAs) ? (value as BuildAs) : "auto";
+}
+
+/** A Dockerfile's path as a project may set it: inside the project, or none. */
+export function dockerfileOf(value: unknown): string | null {
+  const path = typeof value === "string" ? value.trim().replace(/^\.\//, "") : "";
+  if (!path || path.startsWith("/") || path.split("/").includes("..") || path.length > 300) return null;
+  return path;
 }
 
 const now = () => new Date().toISOString();
@@ -204,6 +244,10 @@ type SettingsRow = {
   repo_deleted_at: string | null;
   /** Set while its workspace is deleted (restorable); see `workspaceDeleting`. */
   workspace_deleted_at?: string | null;
+  /** What it is built as, its Dockerfile, and its container's size (migration 0014). */
+  build_as?: string | null;
+  dockerfile?: string | null;
+  instance_type?: string | null;
 };
 
 type DeploymentRow = {
@@ -231,6 +275,10 @@ type DeploymentRow = {
   /** Set for a build a g1t Actions job runs (migration 0011): the job pays for its time. */
   run_id?: string | null;
   job_id?: string | null;
+  detected?: string | null;
+  /** What it was built with, and a container's image by digest (migration 0014). */
+  framework?: string | null;
+  image?: string | null;
 };
 
 /** What opening any build takes; see `open`. */
@@ -279,6 +327,10 @@ type AppRow = {
   last_request_at: string | null;
   /** Set while its workspace is over its limit; see `holdToLimits`. */
   paused_at: string | null;
+  /** `container` for a container app (migration 0014), with its Container application and size. */
+  runtime?: string | null;
+  container_app_id?: string | null;
+  instance_type?: string | null;
 };
 
 function toDeployment(row: DeploymentRow): Deployment {
@@ -293,6 +345,8 @@ function toDeployment(row: DeploymentRow): Deployment {
     error: row.error,
     warnings: JSON.parse(row.warnings || "[]") as string[],
     buildSeconds: row.build_seconds,
+    detected: detectedKind(row.detected),
+    framework: frameworkId(row.framework),
     createdBy: row.created_by,
     createdAt: row.created_at,
     finishedAt: row.finished_at,
@@ -440,20 +494,35 @@ class Deployments {
       viaWorkflow: !!row?.via_workflow,
       productionUrl: appUrl(await this.scriptFor(project, null)),
       primaryDomain: await this.domains.primary(project.id).catch(() => null),
-      detected: await this.lastDetected(project.id),
+      ...(await this.lastDetected(project.id)),
+      buildAs: buildAsOf(row?.build_as),
+      dockerfile: row?.dockerfile ?? null,
+      instanceType: instanceTypeOf(row?.instance_type ?? DEFAULT_APP_INSTANCE),
+      containers: await this.containerOffer(),
     };
   }
 
-  /** What the project's last finished build found it to be; null before one has. */
-  private async lastDetected(projectId: string): Promise<DetectedKind | null> {
+  /** What the project's last finished build found it to be, and built with; null before one has. */
+  private async lastDetected(projectId: string): Promise<{ detected: DetectedKind | null; framework: string | null }> {
     const row = await this.db
       .prepare(
-        "SELECT detected FROM deployments WHERE project_id = ? AND detected IS NOT NULL ORDER BY finished_at DESC LIMIT 1",
+        "SELECT detected, framework FROM deployments WHERE project_id = ? AND detected IS NOT NULL ORDER BY finished_at DESC LIMIT 1",
       )
       .bind(projectId)
-      .first<{ detected: string }>()
+      .first<{ detected: string; framework: string | null }>()
       .catch(() => null);
-    return detectedKind(row?.detected);
+    return { detected: detectedKind(row?.detected), framework: frameworkId(row?.framework) };
+  }
+
+  /** Whether container apps run here. */
+  private get containersOn(): boolean {
+    return this.env.CONTAINERS?.trim().toLowerCase() === "on";
+  }
+
+  /** What each container size is charged an hour awake, for Settings, Deployments. */
+  private async containerOffer() {
+    const costs = await this.costs();
+    return containerOffer(costs.container, costs.marginPercent, this.containersOn);
   }
 
   /**
@@ -500,14 +569,17 @@ class Deployments {
     }
     const idleDays = Math.min(90, Math.max(1, Math.trunc(Number(next.idleDays) || 7)));
     const clip = (text: string | null | undefined) => (text?.trim() ? text.trim().slice(0, 500) : null);
+    if (a.changes.dockerfile && !dockerfileOf(a.changes.dockerfile)) {
+      return fail("invalid", "The Dockerfile's path must be inside the project, such as `Dockerfile` or `deploy/web.Dockerfile`.");
+    }
     await this.db
       .prepare(
         `INSERT INTO settings (project_id, workspace, slug, repo_id, enabled, previews, production, build_command,
-           output_dir, idle_days, updated_by, updated_at, via_workflow)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+           output_dir, idle_days, updated_by, updated_at, via_workflow, build_as, dockerfile, instance_type)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
          ON CONFLICT (project_id) DO UPDATE SET workspace = ?2, slug = ?3, repo_id = ?4, enabled = ?5, previews = ?6,
            production = ?7, build_command = ?8, output_dir = ?9, idle_days = ?10, updated_by = ?11, updated_at = ?12,
-           via_workflow = ?13`,
+           via_workflow = ?13, build_as = ?14, dockerfile = ?15, instance_type = ?16`,
       )
       .bind(
         project.id,
@@ -523,6 +595,9 @@ class Deployments {
         a.actor.username,
         now(),
         next.viaWorkflow ? 1 : 0,
+        buildAsOf(next.buildAs),
+        dockerfileOf(next.dockerfile),
+        instanceTypeOf(next.instanceType),
       )
       .run();
     // The managed deploy workflow follows the settings: installed while the
@@ -691,8 +766,11 @@ class Deployments {
         }>(),
       this.db.prepare("SELECT COUNT(*) AS n FROM apps WHERE workspace = ?").bind(slug).first<{ n: number }>(),
     ]);
+    const container = (await this.containerMonth(month())).get(slug);
     return ok({
       month: month(),
+      containerSeconds: container?.seconds ?? 0,
+      containerMicros: container?.micros ?? 0,
       requests: meter?.requests ?? 0,
       cpuMs: meter?.cpu_ms ?? 0,
       apps: apps?.n ?? 0,
@@ -810,6 +888,8 @@ class Deployments {
         rootDir: project.source.rootDir,
         buildCommand: input.settings.build_command,
         outputDir: input.settings.output_dir,
+        buildAs: buildAsOf(input.settings.build_as),
+        dockerfile: input.settings.dockerfile ?? null,
         buildEnv: build.variables,
         buildSecrets: build.secrets,
       }),
@@ -1025,9 +1105,28 @@ class Deployments {
       root_dir: project.source.rootDir ?? "",
       build_command: settings.build_command,
       output_dir: settings.output_dir,
+      build_as: buildAsOf(settings.build_as),
+      dockerfile: settings.dockerfile ?? null,
       build_env: opened.build.variables,
       build_secrets: opened.build.secrets,
     });
+  }
+
+  /**
+   * For the actions service, when a workflow job ends (`finish_job`), with
+   * any conclusion: a build the job opened and did not finish or fail is
+   * failed now, saying how the job ended, rather than left building until
+   * the sweep's 45 minutes. A build the job finished is left as it is.
+   */
+  async workflowJobEnded(a: { jobId?: unknown; conclusion?: unknown }): Promise<Result<number>> {
+    if (typeof a.jobId !== "string" || !a.jobId) return fail("invalid", "No job.");
+    const open = await this.db
+      .prepare("SELECT id FROM deployments WHERE job_id = ? AND status IN ('queued', 'building')")
+      .bind(a.jobId)
+      .all<{ id: string }>();
+    const message = jobEndedMessage(typeof a.conclusion === "string" ? a.conclusion : "");
+    for (const { id } of open.results) await this.finishFailed(id, message, null, null);
+    return ok(open.results.length);
   }
 
   private async deployProduction(project: Project, commit: string | null, createdBy: string): Promise<Result<Deployment> | null> {
@@ -1126,6 +1225,29 @@ class Deployments {
           .run();
         await this.buildChanged(id);
         return Response.json(ok(true));
+      case "registry": {
+        // Where a container build pushes its image: its app's repository,
+        // with a login that can push and nothing else, for minutes.
+        if (!this.containersOn) {
+          // Its own code, which the build reads to build the site the
+          // project is without its Dockerfile, when it is one.
+          const error = { code: "not_enabled", message: "Docker deployments are not switched on for g1t.page yet." };
+          return Response.json({ ok: false, error }, { status: 409 });
+        }
+        const instanceType = instanceTypeOf((await this.settingsRow(row.project_id))?.instance_type);
+        const login = await cloudflare.registryLogin();
+        return Response.json(
+          ok({
+            registry: REGISTRY_HOST,
+            repository: repositoryFor(this.env.CLOUDFLARE_ACCOUNT_ID, row.script),
+            tag: row.id,
+            username: login.username,
+            password: login.password,
+            maxImageBytes: maxImageBytes(instanceType),
+            instanceType,
+          }),
+        );
+      }
       case "session": {
         const manifest = body.manifest as Manifest | undefined;
         if (!manifest || typeof manifest !== "object") return Response.json(fail("invalid", "No manifest."), { status: 400 });
@@ -1136,6 +1258,9 @@ class Deployments {
         const worker = (body.worker ?? {}) as BuiltWorker;
         const seconds = Number(body.buildSeconds) || 0;
         const [namespace, name] = row.repo.split("/") as [string, string];
+        const detected = detectedKind(body.detected);
+        const tags = [`workspace:${row.workspace}`, `project:${row.workspace}/${row.slug}`, row.kind];
+        let container: { appId: string; instanceType: string; meterHash: string; image: string } | null = null;
         try {
           // Running apps' secrets and variables are bound here, by g1t:
           // they never pass through the build's sandbox.
@@ -1144,13 +1269,18 @@ class Deployments {
             row.kind,
             !!row.trusted,
           );
-          await cloudflare.putScript(
-            row.script,
-            worker,
-            typeof body.completionJwt === "string" ? body.completionJwt : null,
-            [`workspace:${row.workspace}`, `project:${row.workspace}/${row.slug}`, row.kind],
-            runtime,
-          );
+          const before = await this.db.prepare("SELECT runtime, container_app_id FROM apps WHERE script = ?").bind(row.script).first<AppRow>();
+          if (detected === "container") {
+            container = await this.runContainer(cloudflare, row, body.container, runtime, tags);
+          } else {
+            // A container app that is now a site: its container goes first,
+            // and its Worker, whose class the site's does not have.
+            if (before?.runtime === "container") {
+              await cloudflare.deleteContainer(row.script, before.container_app_id);
+              await cloudflare.deleteScript(row.script);
+            }
+            await cloudflare.putScript(row.script, worker, typeof body.completionJwt === "string" ? body.completionJwt : null, tags, runtime);
+          }
         } catch (error) {
           await this.finishFailed(id, `Cloudflare did not take the app: ${String(error).replace(/^Error: /, "")}`, String(body.log ?? ""), seconds);
           return Response.json(ok(false));
@@ -1160,7 +1290,8 @@ class Deployments {
         await this.db.batch([
           this.db
             .prepare(
-              `UPDATE deployments SET status = 'ready', warnings = ?, log = ?, build_seconds = ?, finished_at = ?, detected = ?
+              `UPDATE deployments SET status = 'ready', warnings = ?, log = ?, build_seconds = ?, finished_at = ?, detected = ?,
+                 framework = ?, image = ?
                WHERE id = ?`,
             )
             .bind(
@@ -1168,7 +1299,9 @@ class Deployments {
               String(body.log ?? ""),
               seconds,
               at,
-              detectedKind(body.detected),
+              detected,
+              frameworkId(body.framework),
+              container?.image ?? null,
               id,
             ),
           // The build it replaces is no longer what the app serves.
@@ -1177,11 +1310,27 @@ class Deployments {
             .bind(row.script, id),
           this.db
             .prepare(
-              `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
-               ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9, paused_at = NULL`,
+              `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at,
+                 runtime, container_app_id, instance_type, meter_hash)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11, ?12, ?13)
+               ON CONFLICT (script) DO UPDATE SET commit_sha = ?8, number = ?7, deployed_at = ?9, paused_at = NULL,
+                 runtime = ?10, container_app_id = ?11, instance_type = ?12, meter_hash = ?13`,
             )
-            .bind(row.script, row.project_id, row.workspace, row.slug, row.kind, row.branch, row.number, row.commit_sha, at),
+            .bind(
+              row.script,
+              row.project_id,
+              row.workspace,
+              row.slug,
+              row.kind,
+              row.branch,
+              row.number,
+              row.commit_sha,
+              at,
+              container ? "container" : "worker",
+              container?.appId ?? null,
+              container?.instanceType ?? null,
+              container?.meterHash ?? null,
+            ),
           // A name that redirected elsewhere (a move undone) is an app again.
           this.db.prepare("DELETE FROM redirects WHERE script = ?").bind(row.script),
         ]);
@@ -1217,6 +1366,104 @@ class Deployments {
   }
 
   /**
+   * Runs a container build's image as its app: checks it is an image in
+   * the app's own repository, by digest, that the registry has; puts the
+   * app's Worker (g1t's, `APP_WORKER`) in the namespace with the project's
+   * entries and a new token to report its running time with; then makes
+   * or rolls out its Container application at the project's size.
+   */
+  private async runContainer(
+    cloudflare: Cloudflare,
+    row: DeploymentRow,
+    report: unknown,
+    runtime: { secrets: Record<string, string>; variables: Record<string, string> },
+    tags: string[],
+  ): Promise<{ appId: string; instanceType: string; meterHash: string; image: string }> {
+    if (!this.containersOn) throw new Error("Docker deployments are not switched on for g1t.page yet.");
+    const repository = repositoryFor(this.env.CLOUDFLARE_ACCOUNT_ID, row.script);
+    const pushed = pushedImage(report, repository);
+    if (!pushed) throw new Error(`the build did not report an image by digest in ${REGISTRY_HOST}/${repository}.`);
+    if (!(await cloudflare.hasImage(repository, pushed.digest))) throw new Error(`${pushed.image} is not in the registry.`);
+    const instanceType = instanceTypeOf((await this.settingsRow(row.project_id))?.instance_type);
+    const meterToken = randomToken();
+    const settings: AppWorkerSettings = { mode: "serve", port: pushed.port, instanceType, meterUrl: this.meterUrl(row.script), meterToken };
+    await cloudflare.putContainerWorker(row.script, appWorkerMetadata(settings, runtime, [...tags, "container"]));
+    const appId = await cloudflare.runContainer(row.script, pushed.image, instanceType, `${row.id}: ${row.commit_sha.slice(0, 7)}`);
+    return { appId, instanceType, meterHash: await sha256(meterToken), image: pushed.image };
+  }
+
+  /** Where a container app's Worker reports its running time: the API, which forwards it here. */
+  private meterUrl(script: string): string {
+    return `${(this.env.G1T_API ?? "https://api.g1t.sh").replace(/\/+$/, "")}/deployments/apps/${script}/meter`;
+  }
+
+  /**
+   * A container app held as it is, without serving: paused (its
+   * workspace's limit), or redirecting to where its project moved. Its
+   * Worker keeps its class, so its container stays attached and stops.
+   */
+  private async holdContainer(cloudflare: Cloudflare, script: string, mode: "paused" | "redirect", redirect?: string): Promise<void> {
+    const app = await this.db.prepare("SELECT instance_type FROM apps WHERE script = ?").bind(script).first<{ instance_type: string | null }>();
+    const meterToken = randomToken();
+    const settings: AppWorkerSettings = {
+      mode,
+      redirect,
+      port: 8080,
+      instanceType: instanceTypeOf(app?.instance_type),
+      meterUrl: this.meterUrl(script),
+      meterToken,
+    };
+    await cloudflare.putContainerWorker(script, appWorkerMetadata(settings, { secrets: {}, variables: {} }, [mode, "container"]));
+    await this.db.prepare("UPDATE apps SET meter_hash = ? WHERE script = ?").bind(await sha256(meterToken), script).run();
+  }
+
+  /** Whether `script` is a container app. */
+  private async isContainer(script: string): Promise<boolean> {
+    const app = await this.db.prepare("SELECT runtime FROM apps WHERE script = ?").bind(script).first<{ runtime: string | null }>();
+    return app?.runtime === "container";
+  }
+
+  /**
+   * A container app's Worker reporting how long its container has run this
+   * month and what it sent (`POST /deployments/apps/<script>/meter`), with
+   * the token it was deployed with. Each counter is only ever raised.
+   */
+  async meter(script: string, body: unknown): Promise<Response> {
+    const report = meterReport(body);
+    if (!report) return Response.json(fail("invalid", "Not a report."), { status: 400 });
+    const app = await this.db
+      .prepare("SELECT workspace, meter_hash FROM apps WHERE script = ? AND runtime = 'container'")
+      .bind(script)
+      .first<{ workspace: string; meter_hash: string | null }>();
+    if (!app?.meter_hash || app.meter_hash !== (await sha256(report.token))) {
+      return Response.json(fail("not_found", "No such app."), { status: 404 });
+    }
+    await this.db
+      .prepare(
+        `INSERT INTO container_meters (script, epoch, month, workspace, instance_type, awake_seconds, egress_bytes, reported_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT (script, epoch, month) DO UPDATE SET
+           awake_seconds = MAX(awake_seconds, ?6), egress_bytes = MAX(egress_bytes, ?7), reported_at = ?8`,
+      )
+      .bind(script, report.epoch, report.month, app.workspace, report.instanceType, report.awakeSeconds, report.egressBytes, now())
+      .run();
+    return Response.json(ok(true));
+  }
+
+  /** What each workspace's containers ran in `month`, and what that cost g1t. */
+  private async containerMonth(month: string): Promise<Map<string, { micros: number; seconds: number; detail: string | null }>> {
+    const costs = (await this.costs()).container;
+    const rows = await this.db
+      .prepare("SELECT workspace, instance_type, awake_seconds, egress_bytes FROM container_meters WHERE month = ?")
+      .bind(month)
+      .all<ContainerMeter & { workspace: string }>()
+      .catch(() => ({ results: [] as (ContainerMeter & { workspace: string })[] }));
+    const by = new Map<string, ContainerMeter[]>();
+    for (const row of rows.results) by.set(row.workspace, [...(by.get(row.workspace) ?? []), row]);
+    return new Map([...by].map(([workspace, own]) => [workspace, containerCost(own, costs)]));
+  }
+
+  /**
    * Older names of the app `script`, now up: one project's production, or
    * its preview of one branch, has one name, so any other app row for the
    * same is the app under a name it had before its project moved (its
@@ -1241,7 +1488,8 @@ class Deployments {
     const done: string[] = [];
     for (const { script: old } of older.results) {
       try {
-        await cloudflare.redirectScript(old, target);
+        if (await this.isContainer(old)) await this.holdContainer(cloudflare, old, "redirect", target);
+        else await cloudflare.redirectScript(old, target);
       } catch (error) {
         console.error("could not redirect", old, "to", script, error);
         continue;
@@ -1378,12 +1626,17 @@ class Deployments {
     domainMonth: number;
     /** What one custom domain is charged a month: the cost plus the margin. */
     domainMonthPrice: number;
+    /** Container apps' parts, from the price book's `app_container_*` meters. */
+    container: ContainerCosts;
+    /** The margin container apps are sold at, in percent: the price book's. */
+    marginPercent: number;
   }> {
     const a = DEPLOYMENT_COSTS;
     const book = await billingClient(this.env.BILLING)
       .prices()
       .catch(() => null);
     const cost = (meter: string, fallback: number) => book?.prices.find((p) => p.meter === meter)?.costMicros ?? fallback;
+    const vcpu = book?.prices.find((p) => p.meter === "app_container_vcpu_second");
     return {
       buildSecond: cost("build_second", a.microsPerBuildSecond),
       millionRequests: cost("app_requests", a.microsPerMillionRequests),
@@ -1391,6 +1644,15 @@ class Deployments {
       domainMonth: cost("custom_domain_month", a.microsPerDomainMonth),
       domainMonthPrice:
         book?.prices.find((p) => p.meter === "custom_domain_month")?.priceMicros ?? Math.ceil(a.microsPerDomainMonth * 1.2),
+      container: {
+        vcpuSecond: cost("app_container_vcpu_second", a.container.vcpuSecond),
+        memoryGibSecond: cost("app_container_memory_gib_second", a.container.memoryGibSecond),
+        diskGbSecond: cost("app_container_disk_gb_second", a.container.diskGbSecond),
+        instanceSecond: cost("app_container_second", a.container.instanceSecond),
+        egressGb: cost("app_container_egress_gb", a.container.egressGb),
+      },
+      marginPercent:
+        vcpu?.priceMicros && vcpu.costMicros ? Math.round((vcpu.priceMicros / vcpu.costMicros - 1) * 100) : 20,
     };
   }
 
@@ -1438,6 +1700,12 @@ class Deployments {
   // ---- Taking apps down ----------------------------------------------
 
   private async removeApp(script: string): Promise<void> {
+    const app = await this.db
+      .prepare("SELECT runtime, container_app_id FROM apps WHERE script = ?")
+      .bind(script)
+      .first<{ runtime: string | null; container_app_id: string | null }>();
+    // A container app's container goes first, with any instance it has up.
+    if (app?.runtime === "container") await this.cloudflare?.deleteContainer(script, app.container_app_id);
     await this.cloudflare?.deleteScript(script);
     await this.db.batch([
       this.db.prepare("DELETE FROM apps WHERE script = ?").bind(script),
@@ -2244,7 +2512,9 @@ class Deployments {
       const theirs = apps.filter((app) => ownerOf(app, owners) === workspace);
       if (limit.value.state === "stopped") {
         for (const app of theirs.filter((a) => !a.paused_at)) {
-          await cloudflare.pauseScript(app.script);
+          // A container app stops its container and starts none until it is resumed.
+          if (app.runtime === "container") await this.holdContainer(cloudflare, app.script, "paused");
+          else await cloudflare.pauseScript(app.script);
           await this.db.prepare("UPDATE apps SET paused_at = ? WHERE script = ?").bind(now(), app.script).run();
         }
         continue;
@@ -2292,7 +2562,12 @@ class Deployments {
     for (const row of building.results) held.add(row.script);
     const cutoff = Date.now() - ORPHAN_AFTER_MS;
     for (const script of await cloudflare.listScripts()) {
-      if (!held.has(script.id) && Date.parse(script.modified_on) < cutoff) await cloudflare.deleteScript(script.id);
+      if (!held.has(script.id) && Date.parse(script.modified_on) < cutoff) {
+        // A container app's old name (a redirect that expired) has its
+        // Container application still: it goes too.
+        await cloudflare.deleteContainer(script.id).catch((error) => console.error("could not remove container", script.id, error));
+        await cloudflare.deleteScript(script.id);
+      }
     }
   }
 
@@ -2359,10 +2634,19 @@ class Deployments {
       .prepare("SELECT namespace, requests, cpu_ms, peak_domains FROM meters WHERE month = ?")
       .bind(month())
       .all<{ namespace: string; requests: number; cpu_ms: number; peak_domains: number | null }>();
-    for (const meter of meters.results) {
+    // Container time is the same feature's, noted with its traffic.
+    const containers = await this.containerMonth(month());
+    const seen = new Set(meters.results.map((meter) => meter.namespace));
+    const rows = [
+      ...meters.results,
+      ...[...containers.keys()].filter((w) => !seen.has(w)).map((namespace) => ({ namespace, requests: 0, cpu_ms: 0, peak_domains: 0 })),
+    ];
+    for (const meter of rows) {
       const cost = monthCost(meter, costs);
+      const container = containers.get(meter.namespace);
+      const detail = [cost.traffic.detail, container?.detail].filter(Boolean).join("; ") || null;
       await billing
-        .notePending(meter.namespace, "deployments", cost.traffic.micros, cost.traffic.detail)
+        .notePending(meter.namespace, "deployments", cost.traffic.micros + (container?.micros ?? 0), detail)
         .catch((error) => console.error("could not note pending usage", error));
       if ((meter.peak_domains ?? 0) > 0) {
         await billing
@@ -2384,21 +2668,38 @@ class Deployments {
     for (const { script } of idle.results) await this.removeApp(script);
   }
 
-  /** Charges each month that is over for its requests, CPU time and custom domains, from the first, once. */
+  /**
+   * Charges each month that is over for its requests, CPU time, custom
+   * domains and container time, from the first, once.
+   */
   private async chargeMonths(): Promise<void> {
+    // A workspace whose only usage was container time has a meter row too.
+    await this.db
+      .prepare(
+        `INSERT OR IGNORE INTO meters (namespace, month)
+         SELECT DISTINCT workspace, month FROM container_meters WHERE month < ?`,
+      )
+      .bind(month())
+      .run()
+      .catch((error) => console.error("could not note container months", error));
     const due = await this.db
       .prepare("SELECT * FROM meters WHERE month < ? AND charged_at IS NULL")
       .bind(month())
       .all<{ namespace: string; month: string; requests: number; cpu_ms: number; peak_domains: number | null }>();
     const costs = await this.costs();
+    const containers = new Map<string, Map<string, { micros: number; seconds: number; detail: string | null }>>();
     for (const meter of due.results) {
+      if (!containers.has(meter.month)) containers.set(meter.month, await this.containerMonth(meter.month));
       const cost = monthCost(meter, costs);
-      if (cost.micros > 0) {
+      const container = containers.get(meter.month)?.get(meter.namespace);
+      const micros = cost.micros + (container?.micros ?? 0);
+      const description = [cost.description, container?.detail].filter(Boolean).join(", ");
+      if (micros > 0) {
         const charged = await billingClient(this.env.BILLING).chargeFeature({
           workspace: meter.namespace,
           feature: "deployments",
-          costMicros: cost.micros,
-          description: `Deployments in ${meter.month}: ${cost.description}`,
+          costMicros: micros,
+          description: `Deployments in ${meter.month}: ${description}`,
           reference: `deployments/${meter.namespace}/${meter.month}`,
         });
         if (!charged.ok) continue;
@@ -2429,6 +2730,9 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
     // For the API: a g1t Actions job opening a build it runs itself.
     case "start_from_workflow":
       return service.startFromWorkflow(args);
+    // For the actions service: a job ended, so its open builds end too.
+    case "workflow_job_ended":
+      return service.workflowJobEnded(args);
     case "take_down":
       return service.takeDown(args);
     case "overview":
@@ -2481,8 +2785,11 @@ export default {
     }
     const service = new Deployments(env);
     // A build's reports, forwarded by the API.
-    const jobMatch = pathname.match(/^\/jobs\/([a-z0-9_]+)\/(started|session|finish|fail)$/);
+    const jobMatch = pathname.match(/^\/jobs\/([a-z0-9_]+)\/(started|registry|session|finish|fail)$/);
     if (jobMatch) return service.job(jobMatch[1], jobMatch[2], body);
+    // A container app's Worker reporting its running time, forwarded by the API.
+    const meterMatch = pathname.match(/^\/apps\/([a-z0-9-]{1,63})\/meter$/);
+    if (meterMatch) return service.meter(meterMatch[1], body);
     return new Response("Not found\n", { status: 404 });
   },
 

@@ -69,6 +69,9 @@ fn fake_api() -> (String, Arc<Mutex<Vec<(String, Value)>>>) {
             let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
             let answer = if path.ends_with("/session") {
                 json!({ "ok": true, "value": { "jwt": "complete-me", "buckets": [], "upload_url": "http://127.0.0.1:9/never" } })
+            } else if path.ends_with("/registry") {
+                // As the deployments service answers while it runs no containers.
+                json!({ "ok": false, "error": { "code": "not_enabled", "message": "Docker deployments are not on." } })
             } else {
                 json!({ "ok": true, "value": true })
             };
@@ -149,4 +152,40 @@ fn deploy_needs_its_build() {
     let output = runner().arg("deploy").env_remove("DEPLOY_ID").env_remove("DEPLOY_TOKEN").output().unwrap();
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("DEPLOY_ID"));
+}
+
+#[test]
+fn a_container_is_built_as_its_site_while_g1t_page_runs_none() {
+    let (api, seen) = fake_api();
+    let dir = checkout("container-site", &[("index.html", "<h1>hello</h1>"), ("Dockerfile", "FROM nginx")]);
+    let output = deploy(&dir, &api, &[]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}
+{}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("as a plain HTML site instead"), "{stdout}");
+    let seen = seen.lock().unwrap();
+    let steps: Vec<&str> = seen.iter().map(|(path, _)| path.as_str()).collect();
+    assert_eq!(steps[1], "/deployments/jobs/dpl_1/registry");
+    assert_eq!(seen.last().unwrap().1["detected"], "html");
+    // A server with nothing else to serve fails, saying so.
+    drop(seen);
+    let server = checkout("container-only", &[("package.json", r#"{ "scripts": { "start": "node index.js" }, "dependencies": { "express": "5" } }"#)]);
+    let output = deploy(&server, &api, &[]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Docker deployments are not switched on"));
+    // Build as Static site skips the Dockerfile altogether.
+    let output = deploy(&dir, &api, &[("BUILD_AS", "static")]);
+    assert!(output.status.success());
+    let detect = runner().arg("detect").current_dir(&server).env_remove("GIT_REMOTE").output().unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&detect.stdout),
+        "kind=container
+install=
+build=docker build -f Dockerfile (written by g1t) .
+output-dir=
+framework=node
+dockerfile=
+port=8080
+"
+    );
 }

@@ -273,15 +273,20 @@ including the runner's credential.
   register with `--no-job-docker`.
 - **Status.** Not scheduled.
 
-### `actions/checkout` without git, or with Git LFS
+### `actions/checkout` with Git LFS, or without git on a large repository
 
-`actions/checkout` is the action itself. In a job container whose image
-has no git, it downloads the repository as a tarball from
-`GET /repos/{owner}/{repo}/tarball/{ref}`, which g1t does not serve yet,
-and fails. With `lfs: true`, it finds no LFS files: g1t keeps none.
+`actions/checkout` is the action itself. With `lfs: true`, it finds no
+LFS files: g1t keeps none. In a job container whose image has no git, it
+downloads the commit as a tarball from
+`GET /repos/{owner}/{repo}/tarball/{ref}`, as on GitHub. g1t makes that
+tarball when it is asked, of up to 10,000 files and 24 MB, so the
+checkout of a larger repository fails there.
 
-- **Instead.** Use an image with git, or install git in a step before the
-  checkout. Keep large files out of Git LFS for now.
+- **Why.** The tarball is made in a Worker, which holds the files and the
+  archive in memory at once.
+- **Instead.** Keep large files out of Git LFS for now. For a large
+  repository, use an image with git, or install git in a step before the
+  checkout.
 - **Status.** Planned.
 
 ### No `gh` command in jobs
@@ -359,16 +364,39 @@ A workflow on g1t can't publish to npm with trusted publishing, or with
 
 ## Deployments
 
-### Static sites and Workers only
+### Containers are not switched on yet
 
-Deployments run static sites and Workers projects. You can't deploy a
-long-running server, a container, or an app that needs a process that stays
-up.
+[Docker deployments](/guides/deployments/#docker-deployments) are built,
+but off on g1t.page: a project that runs as a container fails to deploy,
+saying so, and one with a site besides its `Dockerfile` is built as that
+site.
 
-- **Why.** Apps run on Cloudflare Workers, which run only while they answer a
-  request. That is why an app nobody visits costs nothing.
-- **Instead.** Deploy the server from a workflow to wherever it runs today,
-  with its credentials in [secrets](/guides/secrets-and-variables/).
+- **Why.** Cloudflare's container APIs (applications in a Workers for
+  Platforms namespace, registry logins) have to be checked against g1t's
+  own account first.
+- **Instead.** Build a framework app as a static export or with its
+  Cloudflare adapter, as [Frameworks](/guides/deployments/#frameworks)
+  lists, or set **Build as** to Static site. Or deploy the server from a
+  workflow to wherever it runs today, with its credentials in
+  [secrets](/guides/secrets-and-variables/).
+
+### A container is one instance, and keeps nothing
+
+A container app runs one instance at a time, sleeps after five minutes
+without a request, and starts from its image each time it wakes.
+
+- **Why.** Each app's container is one Durable Object's, and Cloudflare
+  Containers' disks last only as long as the container runs.
+- **Instead.** Keep data in a database or a bucket the app reaches over
+  the network. A larger **Container size** gives one instance more room.
+
+### What a container sends out is not counted
+
+The data a container sends back to visitors is metered; what it sends to
+other hosts on the internet (a database elsewhere, an API) is not.
+
+- **Why.** It leaves the container without passing through g1t.
+- **Instead.** Nothing to do: it is not charged.
 - **Status.** A runtime for servers is planned.
 
 ### Some Workers bindings are not provisioned

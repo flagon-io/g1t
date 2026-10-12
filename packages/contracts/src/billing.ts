@@ -883,6 +883,22 @@ export const DEPLOYMENT_COSTS = {
   microsPerBuildSecond: 15,
   /** One custom domain for a month. */
   microsPerDomainMonth: 100_000,
+  /**
+   * Container apps, at Cloudflare Containers' list prices: a vCPU-second
+   * $0.00002, a GiB-second of memory $0.0000025, a GB-second of disk
+   * $0.00000007, the Durable Object in front of each instance while it
+   * runs (128 MB at $12.50 per million GB-seconds), and a GB of egress
+   * at $0.05, the most Cloudflare charges for one anywhere (Oceania, Korea
+   * and Taiwan; $0.025 in North America and Europe), since g1t cannot
+   * tell where a container's traffic went.
+   */
+  container: {
+    vcpuSecond: 20,
+    memoryGibSecond: 2.5,
+    diskGbSecond: 0.07,
+    instanceSecond: 1.5625,
+    egressGb: 50_000,
+  },
 } as const;
 
 export type FeaturePlan = {

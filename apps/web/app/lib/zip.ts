@@ -2,7 +2,9 @@
  * A zip archive of files, made in memory: each file deflated when that makes
  * it smaller, stored otherwise, with UTF-8 names. Enough for downloading a
  * commit; no zip64, so the archive and each file stay under 4 GB (the caller
- * caps them far below that).
+ * caps them far below that). Each file's Unix mode is kept, so an
+ * executable stays one and a symlink (its target as its bytes) unzips as
+ * a link.
  */
 
 const CRC_TABLE = (() => {
@@ -26,8 +28,11 @@ async function deflate(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** The archive of `files`, in the order given. */
-export async function zip(files: { path: string; data: Uint8Array }[]): Promise<Uint8Array<ArrayBuffer>> {
+/** A file's Unix mode in a zip: a plain file, an executable, a symlink. */
+export const ZIP_MODES = { blob: 0o100644, exec: 0o100755, symlink: 0o120777 } as const;
+
+/** The archive of `files`, in the order given; `mode` is a plain file's unless given. */
+export async function zip(files: { path: string; data: Uint8Array; mode?: number }[]): Promise<Uint8Array<ArrayBuffer>> {
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
   const central: Uint8Array[] = [];
@@ -76,7 +81,7 @@ export async function zip(files: { path: string; data: Uint8Array }[]): Promise<
         u16(0); // comment
         u16(0); // disk
         u16(0); // internal attributes
-        u32(0o100644 << 16);
+        u32((file.mode ?? ZIP_MODES.blob) * 0x10000);
         u32(offset);
       }
       out.set(name, at);

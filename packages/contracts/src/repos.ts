@@ -311,9 +311,19 @@ export interface ReposApi {
 
   /**
    * Every file at `ref` (the default branch when null), at most `limit`
-   * (10,000 at most). No viewer: check access first.
+   * (10,000 at most); symlinks too with `links`, for an archive. No viewer:
+   * check access first.
    */
-  listFiles(repoId: string, ref: string | null, limit: number): Promise<FileList>;
+  listFiles(repoId: string, ref: string | null, limit: number, options?: { links?: boolean }): Promise<FileList>;
+
+  /**
+   * What an archive link's `token` (made by the API's tarball and zipball
+   * routes) lets anyone holding it download from the repository at
+   * `path`: one commit, for ten minutes. Null when it is not for this
+   * repository, has ended or does not open. No viewer: the token is the
+   * permission.
+   */
+  openArchiveToken(path: RepoPath, token: string): Promise<ArchiveGrant | null>;
 
   /** Blobs' bytes as standard base64, at most 100; `data` is null for one missing or over `maxBytes`. No viewer. */
   rawBlobs(repoId: string, hashes: string[], maxBytes: number): Promise<RawBlob[]>;
@@ -422,7 +432,17 @@ export type BranchDrifts = {
 export type Tag = { name: string; commit: Commit | null };
 
 /** Files at a commit, and whether there were more than were listed. */
-export type FileList = { commit: string | null; files: { path: string; hash: string | null }[]; truncated: boolean };
+export type FileList = {
+  commit: string | null;
+  /** When the commit was made (RFC 3339). */
+  date?: string;
+  /** `kind`: `exec` for an executable file, `symlink` for a link (its blob is where it points). */
+  files: { path: string; hash: string | null; kind?: "blob" | "exec" | "symlink" }[];
+  truncated: boolean;
+};
+
+/** One commit of a repository an archive link lets its holder download. */
+export type ArchiveGrant = { repoId: string; namespace: string; name: string; commit: string };
 
 /** One blob's bytes, standard base64; null when missing or too large. */
 export type RawBlob = { hash: string; size: number; data: string | null };

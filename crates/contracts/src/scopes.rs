@@ -990,6 +990,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
+    // A repository's files, as clone and fetch need.
+    ("download_tarball_archive", Scope::CodeRead),
+    ("download_zipball_archive", Scope::CodeRead),
     // Projects follow their repositories.
     ("list_projects", Scope::RepoRead),
     ("get_project", Scope::RepoRead),
@@ -1196,6 +1199,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // A workspace's policy for its repositories' tokens.
     ("get_workspace_workflow_permissions", Scope::WorkspaceRead),
     ("set_workspace_workflow_permissions", Scope::WorkspaceAdmin),
+    // The workflows a workspace runs in its repositories: its owners'.
+    ("list_workspace_managed_workflows", Scope::WorkspaceRead),
+    ("create_workspace_managed_workflow", Scope::WorkspaceAdmin),
+    ("update_workspace_managed_workflow", Scope::WorkspaceAdmin),
+    ("delete_workspace_managed_workflow", Scope::WorkspaceAdmin),
     // A workspace's rules for personal access tokens, and the members'
     // tokens that reach it: who has access.
     ("get_token_policy", Scope::WorkspaceRead),

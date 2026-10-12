@@ -144,10 +144,19 @@ folder of its own. It will be removed. Until then:
   jobs directly on this machine (--no-docker), unsandboxed.*
 - Every job's log starts with a warning: *This job ran on the host,
   unsandboxed …*
-- It refuses a public repository's work, which anyone can propose code
-  to: *acme/web is public, and this self-hosted runner runs jobs directly
-  on its machine (--no-docker), unsandboxed, so it does not take a public
-  repository's work.* The job fails with that message.
+- It is not given a public repository's work, which anyone can propose
+  code to. The runner says how it is isolated when it registers and on
+  every poll, and g1t hands a public repository's jobs and agent work
+  only to runners that are not in host mode. A job no other online runner
+  could take waits, and its page says *Waiting for a sandboxed runner:
+  this repository is public, and host-mode runners don't run public
+  repositories' jobs.* It starts once a sandboxed runner with its labels
+  comes online.
+- A runner from before this, which does not say how it is isolated, may
+  still be given such a job and refuses it itself: *acme/web is public,
+  and this self-hosted runner runs jobs directly on its machine
+  (--no-docker), unsandboxed, so it does not take a public repository's
+  work.* The job fails with that message. Update the runner.
 
 Move a Linux runner to [the container](#run-it-as-a-container). A macOS
 or Windows runner stays in host mode until sandboxes for them are built.
@@ -550,7 +559,8 @@ The [Agent preset](/guides/authentication/#scopes) does not include
 | `run` says *g1t no longer knows this runner* | It was removed, or its credential was. Register it again. |
 | *this runner is not sandboxed from its machine, so it will not take work* | The runner's container can reach the machine: it lists why. Remove the machine's Docker socket and `--privileged`, and run it with `--runtime=sysbox-runc`. See [run it as a container](#run-it-as-a-container). |
 | *the runner's own Docker Engine could not start* | The container is not running under Sysbox. Add `--runtime=sysbox-runc`, and check that Sysbox is installed (`docker info` lists `sysbox-runc` under runtimes). |
-| *… is public, and this self-hosted runner runs jobs directly on its machine* | A runner in host mode does not take public repositories' work. Run the runner's image under Sysbox. |
+| The job says *Waiting for a sandboxed runner: this repository is public …* | Every online runner with the job's labels is in host mode, which never runs a public repository's jobs. Run a runner's image under Sysbox, or register one without `--no-docker`. |
+| *… is public, and this self-hosted runner runs jobs directly on its machine* | An older runner in host mode refused a public repository's job. Update it, so g1t gives the job to a sandboxed runner instead, and run the runner's image under Sysbox. |
 | A step's `sudo` fails | Job containers have `no-new-privileges`. Steps run as the image's user, root in most CI images, so drop the `sudo`. |
 | *could not run docker* | Install Docker and start it, and give the runner's user access to it. |
 | Agent work fails at once | Give the runner `--agent-image`. |

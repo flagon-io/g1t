@@ -66,7 +66,7 @@ gives their values out, so they cannot be copied across.
 | JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
 | Composite actions | The same. |
 | Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
-| `actions/checkout` | The action itself, at the version the step names, fetching from g1t with the job's token: every input and output, its post step that removes the credential, and a pull request's [test merge commit](#what-a-pull-requests-run-builds), which g1t keeps in the repository. `lfs` finds no Git LFS files: g1t keeps none. |
+| `actions/checkout` | The action itself, at the version the step names, fetching from g1t with the job's token: every input and output, its post step that removes the credential, and a pull request's [test merge commit](#what-a-pull-requests-run-builds), which g1t keeps in the repository. In a job container without git it downloads the commit as a tarball from [`GET /repos/{owner}/{repo}/tarball/{ref}`](/reference/api/repositories/download-tarball-archive/), as on GitHub, up to 10,000 files and 24 MB. `lfs` finds no Git LFS files: g1t keeps none. |
 | `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
 | `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on` | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden. |
 | Problem matchers (`::add-matcher::`, `::remove-matcher::`) | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers). |
@@ -105,9 +105,6 @@ anything in it that runs differently.
   the `pull_request` types `unassigned`, `locked` and `unlocked`, `edited`
   for a new title or description, or the `issues` types `unassigned`,
   `locked`, `unlocked`, `pinned` and `unpinned`.
-- **`actions/checkout` in a job container without git.** The action
-  then downloads a tarball through the API, which g1t does not serve yet.
-  Use an image with git, or install it in an earlier step.
 - **Background steps.** A step with `background: true`, or a `wait`,
   `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
   them yet.
@@ -182,6 +179,74 @@ managed by g1t.
 
 A workflow of the same `name:` in `.g1t/workflows/` runs in its place, so
 to change one, commit your own version of it.
+
+## Workflows a workspace manages
+
+A workspace's owners can run a workflow in the workspace's repositories
+without committing it to each one, as GitHub's required workflows do. It
+runs in each repository it targets as that repository's own workflow: on
+the repository's events, with the repository's job token, secrets and
+variables, and reporting the repository's checks. Its path is
+`managed/<name>.yml`, and the repository's **Actions** page lists it as
+managed by the workspace, with the file it came from.
+
+To add one:
+
+1. Commit the workflow to one of the workspace's repositories, such as
+   `acme/policies/.g1t/workflows/scan.yml`.
+2. Open **Workspace → Code → Actions**, `g1t.sh/<workspace>/-/actions`, and
+   under **Workflows this workspace manages** choose **Add workflow**.
+3. Give it a name, its source as `owner/repo/path@ref` (for example
+   `acme/policies/.g1t/workflows/scan.yml@main`), a mode, and the
+   repositories it runs in, then choose **Add workflow**.
+
+| Setting | Options |
+| --- | --- |
+| Mode | **Required**: it runs in every repository it targets. A workflow of the same `name:` in the repository does not run while it is required, and nobody in the repository can turn it off. **Default**: it runs where the repository has no workflow of the same `name:`, which runs in its place, and the repository's admins can turn it off on its Actions page. |
+| Repositories | **All repositories**, or names and patterns, one per line: `*` matches any characters, and `!name` leaves out what an earlier line took in. The last line that matches decides, without regard to case; only `!` lines means every repository but those. |
+| Visibility | Public and private repositories, public only, or private only. |
+
+g1t copies the source file when you save, at the commit its ref names
+then, and that copy runs until you copy it again with **Copy again** (or
+save it with another source). So someone who can push to the source
+repository cannot change what runs with every repository's secrets: only
+an owner can, by copying it. The workflows list shows the commit each was
+copied at.
+
+- The source must be a workflow file in one of the workspace's own
+  repositories.
+- A source in a private repository runs in private repositories only, as a
+  public repository's workflows cannot use a private repository's: choose
+  **Private repositories only**, or g1t refuses it. A repository made
+  public later stops running it.
+- `uses: ./…` in the copy names the repository it runs in, as it would in a
+  file committed there. To call a reusable workflow of the source
+  repository, name it in full:
+  `uses: acme/policies/.g1t/workflows/build.yml@main`, which follows the
+  [rules for other repositories](#actions-and-workflows-from-other-repositories).
+- A required workflow runs for pull requests from forks and in the
+  [merge queue](/guides/merge-queue/) too, whatever the fork's files say.
+- When it changes, up to 20 repositories' workflow lists are brought up to
+  date at once. In a larger workspace the rest follow within minutes, or
+  as soon as someone opens their Actions page; their runs read the
+  workflows as they are meanwhile.
+
+To make a pull request wait for a required workflow, require its check in
+a [ruleset](/guides/rules/): its `name:` as the context, with
+`integration: actions`. A failure of the workflow fails the check whatever
+else reports a check of that name.
+
+Through the API and MCP:
+
+| Route | MCP | |
+| --- | --- | --- |
+| [`GET /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/list-workspace-managed-workflows/) | `workflow` `list_managed_workflows` | Each with its source, the commit it was copied at, its mode, repositories, visibility and the copy that runs. |
+| [`POST /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/create-workspace-managed-workflow/) | `workflow` `add_managed_workflow` | `name`, `source`, `mode` (`required` or `default`), `repositories`, `visibility` (`all`, `public` or `private`). |
+| [`PATCH /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/update-workspace-managed-workflow/) | `workflow` `update_managed_workflow` | Any of those; `refresh: true` copies the source again. |
+| [`DELETE /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/delete-workspace-managed-workflow/) | `workflow` `remove_managed_workflow` | Its runs stay. |
+
+Only owners can see and change them; a token needs `workspace:read` to
+list them and `workspace:admin` to change them.
 
 ## Schedules
 
@@ -268,7 +333,7 @@ The `g1t` workspace on g1t.sh holds g1t's own actions, public, with a
 | Action | What it does |
 | --- | --- |
 | [`g1t/deploy@v1`](https://g1t.sh/g1t/deploy) | Builds the checkout and puts it on [g1t.page](/guides/deployments/): production from the project's production branch, a preview from a pull request or another branch. The job needs `deployments: write`. See [deploying from a workflow](/guides/deployments/#deploying-from-a-workflow). |
-| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`) without building anything. |
+| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`, `framework`) without building anything. |
 
 Both are composite actions around `g1t-runner`, which g1t's machines
 have; on a [self-hosted runner](/guides/self-hosted-runners/) they use
@@ -1492,7 +1557,13 @@ payload GitHub would send for the event, with the same keys and types.
   is true when the commit before the push is not in the new commit's
   history. g1t reads the 20 latest commits to tell, so a forced push onto
   a longer history says `false`. `head_commit` is the commit pushed and
-  `commits` lists at most 20, oldest first.
+  `commits` lists at most 20, oldest first. `pusher.email` is the
+  pusher's noreply address (`<id>+<username>@users.noreply.g1t.sh`), or
+  `g1t@users.noreply.g1t.sh` for g1t.
+- **A commit's `added`, `removed` and `modified`** list the paths the
+  push changed when it pushed one commit and a workflow on `push` has a
+  `paths` or `paths-ignore` filter, which makes g1t compare the push.
+  Otherwise, and for a push of several commits, they are empty lists.
 - **On pull request events,** `pull_request.base.sha` is the tip of the
   branch it merges into when the event happened, and
   `pull_request.merge_commit_sha` is set only once it is merged, to the
@@ -1500,11 +1571,15 @@ payload GitHub would send for the event, with the same keys and types.
 - **On `workflow_run`,** `workflow_run` has the followed run's `name`,
   `path`, `event`, `status`, `conclusion`, `head_branch`, `head_sha`,
   `head_commit`, `run_number`, `run_attempt`, `actor`, `created_at`,
-  `updated_at`, `html_url`, `repository` and `pull_requests` (each with
-  its `number` and `url`).
+  `updated_at`, `html_url`, `repository` and `pull_requests`. Each pull
+  request there has its `id`, `number`, `url`, and `head` and `base`
+  with their `ref`, `sha` and `repo` (`id`, `url`, `name`). As on
+  GitHub, a pull request from a fork is not listed.
 
-Labels on `issue` and `pull_request` have their `id` and `name` but no
-`color`; a `labeled` event's own `label` has its color.
+Labels on `issue`, `pull_request` and a `labeled` event's `label` have
+their `id`, `name`, `color` and `description` as the repository has
+them, and `default`, which is true for the labels a repository starts
+with.
 
 ## Checks
 

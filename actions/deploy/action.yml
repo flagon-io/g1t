@@ -12,11 +12,19 @@ inputs:
     required: false
     default: ""
   build-command:
-    description: What builds it. The project's own setting, else what the build finds (a Workers config, or the package's build script).
+    description: What builds it. The project's own setting, else what the build finds (a Workers config, the package's build script, or the framework's own command).
     required: false
     default: ""
   output-dir:
-    description: The folder a static build writes. The project's own setting, else the first of dist, build, out, public, _site or .output/public.
+    description: The folder a static build writes. The project's own setting, else the folder the framework writes, else the first of dist, build, out, public, _site or .output/public.
+    required: false
+    default: ""
+  build-as:
+    description: What it is built as, auto, static, workers or docker. The project's own setting unless you say; auto finds it from the project's files.
+    required: false
+    default: ""
+  dockerfile:
+    description: The Dockerfile a container is built from, relative to the project. The project's setting, else Dockerfile or Containerfile.
     required: false
     default: ""
   sha:
@@ -49,6 +57,8 @@ runs:
         INPUT_ROOT_DIR: ${{ inputs.root-dir }}
         INPUT_BUILD_COMMAND: ${{ inputs.build-command }}
         INPUT_OUTPUT_DIR: ${{ inputs.output-dir }}
+        INPUT_BUILD_AS: ${{ inputs.build-as }}
+        INPUT_DOCKERFILE: ${{ inputs.dockerfile }}
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_TOKEN: ${{ inputs.token }}
       run: bash "$GITHUB_ACTION_PATH/deploy.sh"

@@ -81,6 +81,9 @@
 			"worker": "g1t-repos",
 			"d1": { "database": "g1t-repos", "migrations": "migrations" },
 			"stage": "core",
+			// REPOS_KEY seals what its isolates share (src/shared.rs) and the
+			// API's tarball and zipball links (src/archive_links.rs), which
+			// fail without it.
 			"secrets": ["REPOS_KEY"],
 			"setup": [
 				"The Artifacts namespace `g1t` (the ARTIFACTS binding)",

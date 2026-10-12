@@ -311,6 +311,9 @@ test("builds reach registries and git hosts, and no mining pool", () => {
     assert.ok(BUILD_HOSTS.includes(host), host);
   }
   assert.ok(buildHosts("deploy").includes("api.cloudflare.com"));
+  // A container build pushes its image to Cloudflare's registry, from a sandbox or a job.
+  assert.ok(buildHosts("deploy").includes("registry.cloudflare.com"));
+  assert.ok(buildHosts("actions").includes("registry.cloudflare.com"));
   assert.ok(!buildHosts("actions").includes("api.cloudflare.com"));
   for (const host of buildHosts("deploy")) {
     assert.doesNotMatch(host, /pool|xmr|monero|nicehash|^\*/, host);

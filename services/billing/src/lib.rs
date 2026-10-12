@@ -1610,6 +1610,7 @@ mod tests {
         include_str!("../migrations/0052_cloudflare_cycle.sql"),
         include_str!("../migrations/0053_models_at_cost.sql"),
         include_str!("../migrations/0054_agent_attribution.sql"),
+        include_str!("../migrations/0055_app_containers.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

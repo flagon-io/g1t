@@ -9,6 +9,8 @@ pub const STATEMENTS: &[&str] = &[
     "UPDATE cache_days SET namespace = ?1 WHERE namespace = ?2",
     "UPDATE artifacts SET namespace = ?1 WHERE namespace = ?2",
     "UPDATE workspace_actions_settings SET namespace = ?1 WHERE namespace = ?2",
+    "UPDATE workspace_managed_workflows SET namespace = ?1 WHERE namespace = ?2",
+    "UPDATE workspace_managed_workflows SET source_ref = ?1 || substr(source_ref, length(?2) + 1) WHERE substr(source_ref, 1, length(?2) + 1) = ?2 || '/'",
     "UPDATE workflows SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
     "UPDATE runs SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
 ];
@@ -56,6 +58,7 @@ pub const PURGED: &[&str] = &[
 pub const DELETED: &[&str] = &[
     "DELETE FROM settings WHERE scope = 'workspace' AND owner = ?1",
     "DELETE FROM workspace_actions_settings WHERE namespace = ?1",
+    "DELETE FROM workspace_managed_workflows WHERE namespace = ?1",
 ];
 
 #[cfg(test)]

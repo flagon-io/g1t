@@ -159,6 +159,7 @@ mod tests {
         let file = |path: &str, name: &str| crate::sync::WorkflowFile {
             path: path.into(),
             source: format!("name: {name}\non: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - run: echo\n"),
+            required: false,
         };
         let kept = prefer_g1t(vec![
             file(".g1t/workflows/ci.yml", "CI"),

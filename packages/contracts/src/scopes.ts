@@ -370,6 +370,8 @@ export const OPERATION_SCOPES = [
   ["buy_ai_credit", "billing:write"],
   ["list_repos", "repo:read"],
   ["get_repo", "repo:read"],
+  ["download_tarball_archive", "code:read"],
+  ["download_zipball_archive", "code:read"],
   // Projects follow their repositories.
   ["list_projects", "repo:read"],
   ["get_project", "repo:read"],
@@ -567,6 +569,10 @@ export const OPERATION_SCOPES = [
   // A workspace's policy for its repositories' tokens.
   ["get_workspace_workflow_permissions", "workspace:read"],
   ["set_workspace_workflow_permissions", "workspace:admin"],
+  ["list_workspace_managed_workflows", "workspace:read"],
+  ["create_workspace_managed_workflow", "workspace:admin"],
+  ["update_workspace_managed_workflow", "workspace:admin"],
+  ["delete_workspace_managed_workflow", "workspace:admin"],
   // A workspace's rules for personal access tokens, and its members' tokens.
   ["get_token_policy", "workspace:read"],
   ["set_token_policy", "workspace:admin"],

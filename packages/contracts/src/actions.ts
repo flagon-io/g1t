@@ -61,6 +61,52 @@ export type Workflow = {
   notes: WorkflowNote[];
   dispatch: Record<string, DispatchInput> | null;
   lastRun: WorkflowRun | null;
+  /** For a managed workflow (`managed/<name>.yml`): what installed it. */
+  managedBy?: ManagedBy | null;
+};
+
+/** What installed a managed workflow in a repository. */
+export type ManagedBy = {
+  /** `g1t` for one g1t's services installed, or the workspace's name. */
+  origin: string;
+  /** A workspace's: `required` or `default`; empty for g1t's. */
+  mode: "required" | "default" | "";
+  /** A workspace's: the file it was copied from, `owner/repo/path@ref`. */
+  source: string | null;
+};
+
+/**
+ * A workflow a workspace's owners added to its repositories: it runs in
+ * each repository it targets as that repository's own, under
+ * `managed/<name>.yml`, from a copy of its source taken when it was saved.
+ */
+export type WorkspaceManagedWorkflow = {
+  name: string;
+  path: string;
+  /** Its `name:`, as repositories list it. */
+  workflowName: string;
+  /** `owner/repo/.g1t/workflows/file.yml@ref`. */
+  source: string;
+  sourceSha: string | null;
+  /** A private source runs in private repositories only. */
+  sourcePrivate: boolean;
+  mode: "required" | "default";
+  /** Names and patterns; empty is every repository. */
+  repositories: string[];
+  visibility: "all" | "public" | "private";
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+export type WorkspaceManagedWorkflowChange = {
+  source?: string;
+  mode?: "required" | "default";
+  repositories?: string[];
+  visibility?: "all" | "public" | "private";
+  /** Copy the source again. */
+  refresh?: boolean;
 };
 
 export type StepState = {
@@ -386,6 +432,18 @@ export interface ActionsApi {
     workspace: string,
     change: Partial<WorkspaceActionsSettings>,
   ): Promise<Result<WorkspaceActionsSettings>>;
+  /** Owners. */
+  workspaceManagedWorkflows(workspace: string, viewer: Viewer): Promise<Result<WorkspaceManagedWorkflow[]>>;
+  /** Owners. `create` adds one, which needs `source` and `mode`; otherwise left out is unchanged. */
+  setWorkspaceManagedWorkflow(
+    actor: User,
+    workspace: string,
+    name: string,
+    change: WorkspaceManagedWorkflowChange,
+    create?: boolean,
+  ): Promise<Result<WorkspaceManagedWorkflow>>;
+  /** Owners. */
+  removeWorkspaceManagedWorkflow(actor: User, workspace: string, name: string): Promise<Result<boolean>>;
   /** Every environment the repository's rules, secrets, workflows or jobs name. */
   environments(repo: RepoPath, viewer: Viewer): Promise<Result<Environment[]>>;
   /** Admin role. */

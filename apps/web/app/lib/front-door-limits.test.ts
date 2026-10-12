@@ -11,7 +11,7 @@ import {
   secretKey,
 } from "@g1t/contracts/rate-limits";
 
-import { gitLimited, heavy, pageLimited, sessionCookie, unlimited, usercontentLimited } from "./front-door-limits.ts";
+import { archiveLink, gitLimited, heavy, pageLimited, sessionCookie, unlimited, usercontentLimited } from "./front-door-limits.ts";
 
 /** A binding that lets `allow` requests through per key, recording each key it was asked. */
 function binding(allow: number): RateLimitBinding & { keys: string[] } {
@@ -203,4 +203,11 @@ test("repository files on the usercontent origin count per address; avatars do n
   const image = "/production-images/" + "b".repeat(64);
   assert.equal(await usercontentLimited(env, request(image), image), null);
   assert.deepEqual(env.WEB_ANONYMOUS_LIMIT.keys, ["ip:203.0.113.9", "ip:203.0.113.9"]);
+});
+
+test("a signed archive link is known by its token, and only on an archive", () => {
+  assert.equal(archiveLink("/acme/web/archive/abc.tar.gz", "https://g1t.sh/acme/web/archive/abc.tar.gz?token=t1"), "t1");
+  assert.equal(archiveLink("/acme/web/archive/main.zip", "https://g1t.sh/acme/web/archive/main.zip?token=t2"), "t2");
+  assert.equal(archiveLink("/acme/web/archive/main.zip", "https://g1t.sh/acme/web/archive/main.zip"), null);
+  assert.equal(archiveLink("/acme/web/issues", "https://g1t.sh/acme/web/issues?token=t3"), null);
 });

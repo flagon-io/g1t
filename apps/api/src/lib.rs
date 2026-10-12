@@ -6,6 +6,7 @@
 
 mod about;
 mod run_artifacts;
+mod archives;
 mod addresses;
 mod alerts;
 mod audit;
@@ -548,12 +549,16 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         }
 
     // A sandbox building a deployment, reporting with its build's token,
-    // which is not a g1t token. The body goes through as it is: it can
-    // carry a Worker's bundled code.
+    // which is not a g1t token, or a container app's Worker reporting how
+    // long its container ran, with its own token. The body goes through as
+    // it is: it can carry a Worker's bundled code.
     if method == "POST" && !on_mcp
-        && let Some(rest) = path.strip_prefix("/deployments/jobs/")
+        && let Some(rest) = path
+            .strip_prefix("/deployments/jobs/")
+            .map(|rest| format!("jobs/{rest}"))
+            .or_else(|| path.strip_prefix("/deployments/apps/").filter(|rest| rest.ends_with("/meter")).map(|rest| format!("apps/{rest}")))
     {
-        let target = format!("https://deployments/jobs/{rest}");
+        let target = format!("https://deployments/{rest}");
         let body = request.bytes().await?;
         let headers = worker::Headers::new();
         headers.set("content-type", "application/json")?;
@@ -864,8 +869,9 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
         return fail(FailureCode::NotFound, "No such endpoint.");
     };
     match audit::run(route.op, &services, &viewer, &input).await? {
-        // A download is a redirect to its signed link, as GitHub's is.
-        Outcome::Ok(value) if route.op == operations::Op::Artifacts(run_artifacts::ArtifactsOp::DownloadArtifact) => {
+        // A download is a redirect to its signed link, as GitHub's is: an
+        // artifact's, and a repository's tarball and zipball.
+        Outcome::Ok(value) if route.op.redirects() => {
             match value["url"].as_str().and_then(|url| worker::Url::parse(url).ok()) {
                 Some(url) => Response::redirect_with_status(url, 302),
                 None => reply(&value),

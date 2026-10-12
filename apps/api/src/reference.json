@@ -11889,6 +11889,8 @@
       "root_dir": "",
       "build_command": null,
       "output_dir": null,
+      "build_as": "auto",
+      "dockerfile": null,
       "build_env": {
         "PUBLIC_API_URL": "https://api.example.com"
       },
@@ -12250,6 +12252,104 @@
       "can_approve_pull_request_reviews": false
     },
     "notes": "A maximum of read holds every repository's default to read-only, and makes the workspace's default read too."
+  },
+  "list_workspace_managed_workflows": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "total_count": 1,
+      "managed_workflows": [
+        {
+          "name": "security-scan",
+          "path": "managed/security-scan.yml",
+          "workflow_name": "Security scan",
+          "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+          "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+          "source_private": false,
+          "mode": "required",
+          "repositories": [
+            "*",
+            "!sandbox-*"
+          ],
+          "visibility": "all",
+          "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+          "created_at": "2026-10-12T09:30:00Z",
+          "updated_at": "2026-10-12T09:30:00Z",
+          "updated_by": "ada"
+        }
+      ]
+    }
+  },
+  "create_workspace_managed_workflow": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "name": "security-scan",
+      "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+      "mode": "required",
+      "repositories": [
+        "*",
+        "!sandbox-*"
+      ]
+    },
+    "response": {
+      "name": "security-scan",
+      "path": "managed/security-scan.yml",
+      "workflow_name": "Security scan",
+      "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+      "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+      "source_private": false,
+      "mode": "required",
+      "repositories": [
+        "*",
+        "!sandbox-*"
+      ],
+      "visibility": "all",
+      "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+      "created_at": "2026-10-12T09:30:00Z",
+      "updated_at": "2026-10-12T09:30:00Z",
+      "updated_by": "ada"
+    },
+    "notes": "g1t copies the source when you save it, and that copy runs in each repository the workflow targets, as the repository's own workflow, with its token and secrets. A source in a private repository runs in private repositories only: give visibility private."
+  },
+  "update_workspace_managed_workflow": {
+    "params": {
+      "workspace": "flagon-io",
+      "workflow": "security-scan"
+    },
+    "request": {
+      "refresh": true
+    },
+    "response": {
+      "name": "security-scan",
+      "path": "managed/security-scan.yml",
+      "workflow_name": "Security scan",
+      "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
+      "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
+      "source_private": false,
+      "mode": "required",
+      "repositories": [
+        "*",
+        "!sandbox-*"
+      ],
+      "visibility": "all",
+      "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
+      "created_at": "2026-10-12T09:30:00Z",
+      "updated_at": "2026-10-12T09:30:00Z",
+      "updated_by": "ada"
+    },
+    "notes": "refresh copies the source again at the commit its ref names now. Fields left out stay as they are."
+  },
+  "delete_workspace_managed_workflow": {
+    "params": {
+      "workspace": "flagon-io",
+      "workflow": "security-scan"
+    },
+    "response": {
+      "deleted": true
+    }
   },
   "get_token_policy": {
     "params": {
@@ -13233,6 +13333,32 @@
       }
     },
     "notes": "Over REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -o web-dist.zip …/zip` saves the file; the body above is what the MCP `workflow` tool's `download_artifact` returns. The link needs no token and stops working after 10 minutes."
+  },
+  "download_tarball_archive": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "main"
+    },
+    "response": {
+      "url": "https://g1t.sh/flagon-io/hello/archive/7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7.tar.gz?token=…",
+      "commit": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+      "expires_at": "2026-10-12T15:13:00.000Z"
+    },
+    "notes": "Over REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -H \"Authorization: Bearer g1t_…\" -o hello.tar.gz https://api.g1t.sh/repos/flagon-io/hello/tarball/main` saves the file and `tar -xzf hello.tar.gz` makes one folder, `flagon-io-hello-7c1e9a4/`; the body above is what the MCP `repository` tool's `tarball` returns. The link is for the commit the ref named when you asked, needs no token and stops working after 10 minutes. `actions/checkout` uses this route in a job container without git."
+  },
+  "download_zipball_archive": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "ref": "v1.2.0"
+    },
+    "response": {
+      "url": "https://g1t.sh/flagon-io/hello/archive/7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7.zip?token=…",
+      "commit": "7c1e9a4b2d6f80135ac9e2b7d4f6a8c0e1b3d5f7",
+      "expires_at": "2026-10-12T15:13:00.000Z"
+    },
+    "notes": "Over REST the answer is `302 Found` with the link in `Location`, as GitHub's is, so `curl -L -o hello.zip …/zipball/v1.2.0` saves the file, with one folder, `flagon-io-hello-7c1e9a4/`; the body above is what the MCP `repository` tool's `zipball` returns. The link needs no token and stops working after 10 minutes."
   },
   "delete_artifact": {
     "params": {

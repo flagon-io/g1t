@@ -103,6 +103,23 @@ export function commitOf(given: unknown, run: Pick<RunFacts, "sha">): string | {
 }
 
 /**
+ * Why a build its workflow job left open failed, from how the job ended
+ * (its conclusion: `cancelled`, `failure`, `success`, …).
+ */
+export function jobEndedMessage(conclusion: string): string {
+  switch (conclusion) {
+    case "cancelled":
+      return "The workflow job was cancelled before the build finished.";
+    case "failure":
+      return "The workflow job failed before the build finished.";
+    case "timed_out":
+      return "The workflow job timed out before the build finished.";
+    default:
+      return "The workflow job ended without finishing the build.";
+  }
+}
+
+/**
  * The project to build: the one named, or the repository's one project
  * with Deployments on when none is named.
  */
@@ -143,6 +160,9 @@ export type WorkflowBuild = {
   root_dir: string;
   build_command: string | null;
   output_dir: string | null;
+  /** What it is built as (`auto`, `static`, `workers` or `docker`), and its Dockerfile's path when set. */
+  build_as: string;
+  dockerfile: string | null;
   /** The variables builds of this kind get. */
   build_env: Record<string, string>;
   /** The secrets builds of this kind get; empty for an untrusted run. */

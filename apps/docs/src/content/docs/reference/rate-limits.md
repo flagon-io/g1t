@@ -34,6 +34,11 @@ minute.
 
 A running job's live log, which its run's page asks for about once a
 second, counts as a page, not as a log download.
+A signed archive link, the address
+`GET /repos/{owner}/{repo}/tarball/{ref}` and `/zipball/{ref}` send you to,
+counts by the link, at the token rate, rather than by address: jobs that
+share an address, as g1t's own machines do, each download their tarball
+without using up each other's limit.
 
 Agents' sandboxes and workflow jobs report to g1t with their own
 credentials. Those reports are not rate limited.

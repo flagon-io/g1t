@@ -61,6 +61,16 @@ export function heavy(pathname: string): boolean {
   return HEAVY.test(pathname);
 }
 
+/** The signed token of an archive download link (`archive/<ref>.zip|.tar.gz?token=`), or null. */
+export function archiveLink(pathname: string, url: string): string | null {
+  if (!/^\/[^/]+\/[^/]+\/archive\/.+\.(?:zip|tar\.gz)$/.test(pathname)) return null;
+  try {
+    return new URL(url).searchParams.get("token") || null;
+  } catch {
+    return null;
+  }
+}
+
 /** The session cookie's value, or null when signed out. */
 export function sessionCookie(cookie: string | null): string | null {
   const match = /(?:^|;\s*)g1t_session=([^;]+)/.exec(cookie ?? "");
@@ -107,6 +117,11 @@ export async function pageLimited(env: FrontDoorLimits, request: Request, pathna
     checks.push(secretKey("token", token).then((key) => checkLimit(env.WEB_TOKEN_LIMIT, key)));
   } else if (session) {
     checks.push(secretKey("session", session).then((key) => checkLimit(env.WEB_SESSION_LIMIT, key)));
+  } else if (archiveLink(pathname, request.url)) {
+    // A signed archive link (`GET /repos/{owner}/{repo}/tarball/{ref}` made
+    // it for one commit, for 10 minutes) counts per link, as a token does:
+    // many jobs behind one address fall back to tarballs at once.
+    checks.push(secretKey("archive", archiveLink(pathname, request.url)!).then((key) => checkLimit(env.WEB_TOKEN_LIMIT, key)));
   } else {
     checks.push(checkLimit(env.WEB_ANONYMOUS_LIMIT, address));
     if (heavy(pathname)) checks.push(checkLimit(env.WEB_HEAVY_LIMIT, address));

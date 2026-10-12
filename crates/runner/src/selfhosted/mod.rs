@@ -499,7 +499,7 @@ fn run(folder: &Path, once: bool) -> Result<()> {
         }
         let running: Vec<String> = current.iter().map(|r| r.id.clone()).collect();
         let wait = if current.is_some() { 0 } else { IDLE_WAIT_MS };
-        let poll = match api.poll(&running, wait) {
+        let poll = match api.poll(&running, wait, isolation.as_str()) {
             Ok(poll) => {
                 backoff = Duration::from_secs(2);
                 poll

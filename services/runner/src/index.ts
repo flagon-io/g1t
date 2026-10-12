@@ -414,6 +414,9 @@ type DeployJob = {
   rootDir?: string;
   buildCommand?: string | null;
   outputDir?: string | null;
+  /** What it is built as (`auto`, `static`, `workers` or `docker`), and its Dockerfile's path when set. */
+  buildAs?: string | null;
+  dockerfile?: string | null;
   /** The repository's variables for deploy builds. */
   buildEnv?: Record<string, string>;
   /** Its secrets for deploy builds: set like variables, and redacted from the log. */
@@ -1857,6 +1860,11 @@ export default class RunnerService
           ROOT_DIR: job.rootDir ?? "",
           BUILD_COMMAND: job.buildCommand ?? "",
           OUTPUT_DIR: job.outputDir ?? "",
+          BUILD_AS: job.buildAs ?? "auto",
+          DOCKERFILE: job.dockerfile ?? "",
+          // A container build's own Docker Engine (crates/runner docker/),
+          // started only if the project is built as one.
+          G1T_DOCKER: dockerFor(this.env.DOCKER),
           BUILD_ENV: JSON.stringify(job.buildEnv ?? {}),
           BUILD_SECRETS: JSON.stringify(job.buildSecrets ?? {}),
         },

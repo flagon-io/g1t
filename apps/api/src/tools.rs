@@ -20,6 +20,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::archives::ArchiveOp;
 use crate::customize::CustomizeOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::mirrors::MirrorsOp;
@@ -75,6 +76,8 @@ pub const TOOLS: &[Tool] = &[
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
             a("get", Op::GetRepo, "One repository"),
+            a("tarball", Op::Archives(ArchiveOp::DownloadTarball), "A 10-minute link to a branch, tag or commit as a .tar.gz"),
+            a("zipball", Op::Archives(ArchiveOp::DownloadZipball), "A 10-minute link to a branch, tag or commit as a .zip"),
             a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
             a("update", Op::UpdateRepo, "Change description, website, topics, default branch, protection"),
             a("get_settings", Op::GetRepoSettings, "How pull requests merge, and the default branch's protection as its rules stack"),
@@ -229,7 +232,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workflow",
         title: "Workflows",
-        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions and repository dispatch. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
+        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions, repository dispatch, and the workflows a workspace runs in its repositories without a file in them. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), their groups, and where agent work runs.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
@@ -281,6 +284,10 @@ pub const TOOLS: &[Tool] = &[
             a("repository_dispatch", Op::Protection(ProtectionOp::CreateRepositoryDispatch), "Start repository_dispatch workflows with an event"),
             a("get_workspace_permissions", Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions), "A workspace's default and maximum token permissions"),
             a("set_workspace_permissions", Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions), "Set them, and whether jobs may open pull requests"),
+            a("list_managed_workflows", Op::Protection(ProtectionOp::ListWorkspaceManagedWorkflows), "The workflows a workspace runs in its repositories"),
+            a("add_managed_workflow", Op::Protection(ProtectionOp::CreateWorkspaceManagedWorkflow), "Run a workflow in the workspace's repositories, required or default"),
+            a("update_managed_workflow", Op::Protection(ProtectionOp::UpdateWorkspaceManagedWorkflow), "Change one's repositories or mode, or copy its source again"),
+            a("remove_managed_workflow", Op::Protection(ProtectionOp::DeleteWorkspaceManagedWorkflow), "Take one out of the workspace's repositories"),
             a("list_runners", Op::ListRunners, "Self-hosted runners, with status, labels and what each is doing"),
             a("create_runner_token", Op::CreateRunnerRegistrationToken, "A one-hour token for g1t-runner register"),
             a("remove_runner", Op::RemoveRunner, "Remove a self-hosted runner"),
