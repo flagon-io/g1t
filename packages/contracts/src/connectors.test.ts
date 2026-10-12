@@ -37,6 +37,22 @@ test("every integration provider is an available connector", () => {
   }
 });
 
+test("only what g1t sets up end to end is available; the docs' Available today lists the same", () => {
+  const available = (scope: "workspace" | "personal") =>
+    connectorsFor(scope)
+      .filter((view) => view.status === "available")
+      .map((view) => view.id)
+      .sort();
+  const models = Object.entries(PROVIDERS)
+    .filter(([, provider]) => provider.kind === "models")
+    .map(([id]) => id.replace(/_/g, "-"));
+  assert.deepEqual(available("workspace"), ["alerts-webhook", "datadog", "github", "jira", "linear", "sentry", "webhooks", ...models].sort());
+  assert.deepEqual(available("personal"), ["github", "mcp"]);
+  for (const connector of CONNECTORS) {
+    if (connector.mcp) assert.equal(connector.status, "soon", `${connector.id}: nothing connects to MCP servers yet`);
+  }
+});
+
 test("a connector shows its personal side to you", () => {
   const github = CONNECTORS.find((c) => c.id === "github")!;
   const mine = connectorView(github, "personal")!;

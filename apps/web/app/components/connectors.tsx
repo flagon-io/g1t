@@ -25,6 +25,7 @@ import { type Provider, PROVIDERS } from "@g1t/contracts";
 import { type ConnectorScope, type ConnectorView, connectorPath } from "@g1t/contracts/connectors";
 
 import { AI_PROVIDERS } from "../lib/ai-providers";
+import { type BrandIcon, brandIcon } from "../lib/brand-icons";
 import { CONTACT } from "../lib/legal";
 import {
   type CategoryFilter,
@@ -42,8 +43,9 @@ import {
 import { cn } from "../lib/cn";
 import { integrationsSection } from "../lib/integration-sections";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
-import { Input } from "./ui";
+import { Input, InputAddon, InputGroup } from "./ui/input";
 import { Card } from "./ui/card";
 
 const CATEGORY_ICONS: Record<CategoryFilter, ReactNode> = {
@@ -71,18 +73,13 @@ const PROVIDER_COLORS: Partial<Record<Provider, string>> = {
   linear: "#8b8ff0",
 };
 
-/** A provider's mark: its initials in its colour, or an icon for the generic ones. */
-export function ProviderMark({ provider, size = 32 }: { provider: Provider; size?: number }) {
-  const entry = AI_PROVIDERS[provider];
-  const color = entry?.color ?? PROVIDER_COLORS[provider] ?? "#a1a1aa";
-  const content =
-    provider === "webhook" ? (
-      <Webhook size={size * 0.5} />
-    ) : provider.endsWith("_endpoint") ? (
-      <Bot size={size * 0.5} />
-    ) : (
-      entry?.mark || PROVIDERS[provider].label[0]
-    );
+/**
+ * A mark's tile: a brand's icon, or letters or an icon, on a wash of
+ * `color`. With no colour (a brand drawn in black) it is drawn in the text
+ * colour on a neutral wash, so it reads in both themes.
+ */
+function MarkTile({ color, size, children }: { color: string | null; size: number; children: ReactNode }) {
+  const tint = color ?? "var(--color-fg)";
   return (
     <span
       aria-hidden="true"
@@ -91,15 +88,50 @@ export function ProviderMark({ provider, size = 32 }: { provider: Provider; size
         width: size,
         height: size,
         borderRadius: size * 0.28,
-        fontSize: size * (String(content).length > 1 ? 0.34 : 0.42),
-        background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        // Toward the text colour, so the letters read on the tile in both themes.
-        color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
-        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
+        fontSize: size * (typeof children === "string" && children.length > 1 ? 0.34 : 0.42),
+        background: `color-mix(in srgb, ${tint} ${color ? 16 : 8}%, transparent)`,
+        // Toward the text colour, so the mark reads on the tile in both themes.
+        color: color ? `color-mix(in srgb, ${color} 60%, var(--color-fg))` : "var(--color-fg)",
+        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${tint} ${color ? 30 : 14}%, transparent)`,
       }}
     >
-      {content}
+      {children}
     </span>
+  );
+}
+
+/** A brand's icon, from Simple Icons, in the tile's colour. */
+function BrandGlyph({ icon, size }: { icon: BrandIcon; size: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size * 0.5} height={size * 0.5} fill="currentColor">
+      <path d={icon.path} />
+    </svg>
+  );
+}
+
+/** A provider's mark: its brand's icon, an icon for the generic ones, or its initials in its colour. */
+export function ProviderMark({ provider, size = 32 }: { provider: Provider; size?: number }) {
+  const brand = provider === "webhook" ? null : brandIcon(provider.replace(/_/g, "-"));
+  if (brand) {
+    return (
+      <MarkTile color={brand.color} size={size}>
+        <BrandGlyph icon={brand} size={size} />
+      </MarkTile>
+    );
+  }
+  const entry = AI_PROVIDERS[provider];
+  const content =
+    provider === "webhook" ? (
+      <Webhook size={size * 0.5} />
+    ) : provider.endsWith("_endpoint") ? (
+      <Bot size={size * 0.5} />
+    ) : (
+      entry?.mark || monogram(PROVIDERS[provider].label)
+    );
+  return (
+    <MarkTile color={entry?.color ?? PROVIDER_COLORS[provider] ?? "#a1a1aa"} size={size}>
+      {content}
+    </MarkTile>
   );
 }
 
@@ -140,28 +172,23 @@ export function ProviderTiles({
   );
 }
 
-/** A connector's tile: its provider's mark, or its letters on a steady colour. No logos. */
+/** A connector's tile: its brand's icon, its provider's mark, or its letters on a steady colour. */
 export function ConnectorMark({ view, size = 36 }: { view: Pick<ConnectorView, "id" | "name" | "provider">; size?: number }) {
+  const brand = brandIcon(view.id);
+  if (brand) {
+    return (
+      <MarkTile color={brand.color} size={size}>
+        <BrandGlyph icon={brand} size={size} />
+      </MarkTile>
+    );
+  }
   if (view.provider) return <ProviderMark provider={view.provider} size={size} />;
-  const color = tileColor(view.id);
-  const letters = monogram(view.name);
+  // Outgoing webhooks have no brand: the same webhook mark as incoming ones.
+  if (view.id === "webhooks") return <ProviderMark provider="webhook" size={size} />;
   return (
-    <span
-      aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center font-semibold tracking-tight"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.28,
-        fontSize: size * (letters.length > 1 ? 0.34 : 0.42),
-        background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        // Toward the text colour, so the letters read in both themes.
-        color: `color-mix(in srgb, ${color} 60%, var(--color-fg))`,
-        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
-      }}
-    >
-      {letters}
-    </span>
+    <MarkTile color={tileColor(view.id)} size={size}>
+      {monogram(view.name)}
+    </MarkTile>
   );
 }
 
@@ -258,17 +285,18 @@ export function ConnectorDirectory({ scope, views, connected, workspace, canMana
       </nav>
 
       <div className="mt-5 min-w-0 md:mt-0">
-        <div className="relative">
-          <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
+        <InputGroup>
+          <InputAddon className="pr-0">
+            <Search size={15} />
+          </InputAddon>
           <Input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={category === "all" ? "Search integrations" : `Search all integrations, not just ${categoryTitle(category)}`}
             aria-label="Search integrations"
-            className="pl-9"
           />
-        </div>
+        </InputGroup>
 
         {empty && (
           <Card asChild tone="plain" className="mt-8 border-dashed px-4 py-8 text-center text-sm text-muted">
@@ -423,12 +451,9 @@ function ConnectorCard({
       <div className="mt-auto flex items-end justify-between gap-3 pt-3">
         <p className="text-[0.6875rem] text-faint">{also}</p>
         {soon ? (
-          <a
-            href={askHref({ connector: view, scope, workspace, address: CONTACT.support })}
-            className="relative z-10 shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-fg/80 hover:border-line-strong hover:bg-raised hover:text-fg"
-          >
-            Ask for this
-          </a>
+          <Button asChild variant="outline" size="xs" className="relative z-10">
+            <a href={askHref({ connector: view, scope, workspace, address: CONTACT.support })}>Ask for this</a>
+          </Button>
         ) : to ? (
           <span className="flex shrink-0 items-center gap-0.5 text-xs font-medium text-accent">
             {state ? (canManage ? "Manage" : "View") : canManage ? "Set up" : "View"}

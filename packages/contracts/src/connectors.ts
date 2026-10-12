@@ -73,10 +73,9 @@ export type Connector = {
   /** More words search should find it by. */
   keywords?: string[];
   /**
-   * The remote MCP server behind it, when the tool publishes one: g1t
-   * connects to it (docs.g1t.sh/guides/customize/, "Connectors"), signs in
-   * the way it asks (`oauth`: the browser; `header`: a key an owner
-   * pastes; `none`), lists its tools, and gives them to agents.
+   * The remote MCP server behind it, when the tool publishes one, and how
+   * it signs in (`oauth`: the browser; `header`: a key an owner pastes;
+   * `none`). Its connector is soon: see `mcp()` below.
    */
   mcp?: {
     url: string;
@@ -142,12 +141,11 @@ function model(provider: Provider, name: string, description: string, keywords: 
   };
 }
 
-/** Where an MCP-backed connector is connected: Customize's Connectors page, with the directory entry chosen. */
-export const MCP_CONNECT_PATH = "/:workspace/-/customize/connectors/new?directory=";
-
 /**
- * A tool with a remote MCP server: available now, connected from Customize
- * (an owner signs in or pastes a key), its tools then given to agents.
+ * A tool with a remote MCP server. Soon: Customize, where an owner
+ * connected one, was retired with g1t's hosted agents, so nothing in g1t
+ * connects to these servers today. The server is kept for when something
+ * does; until then each person's own harness connects to it directly.
  */
 function mcp(
   id: string,
@@ -158,7 +156,7 @@ function mcp(
   capabilities: ConnectorCapability[] = ["Agents can read", "Agents can act"],
   keywords: string[] = [],
 ): Connector {
-  return { id, name, category, description, scopes: W, status: "available", href: { workspace: `${MCP_CONNECT_PATH}${id}` }, capabilities, keywords: ["mcp", ...keywords], mcp: server };
+  return { id, name, category, description, scopes: W, status: "soon", capabilities, keywords: ["mcp", ...keywords], mcp: server };
 }
 
 /** A planned connector. */

@@ -101,9 +101,13 @@ export function groupByCategory(views: ConnectorView[]): { id: ConnectorCategory
   })).filter((group) => group.views.length > 0);
 }
 
-/** The letters on a connector's tile: two words' initials, or a name's capitals ("PagerDuty" → "PD"). */
+/**
+ * The letters on a connector's tile: two words' initials, or a name's
+ * capitals ("PagerDuty" → "PD"). Only letters and digits count, so
+ * "GitHub (MCP)" is "GM", never "G(".
+ */
 export function monogram(name: string): string {
-  const words = name.split(/[\s.\-/]+/).filter((word) => /[A-Za-z0-9]/.test(word));
+  const words = name.split(/[^A-Za-z0-9]+/).filter(Boolean);
   if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
   const word = words[0] ?? name;
   const capitals = word.slice(1).match(/[A-Z0-9]/);
