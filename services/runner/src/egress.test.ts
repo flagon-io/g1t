@@ -50,9 +50,13 @@ test("a refusal says why and how to allow it", async () => {
   const response = refusal("Evil.com:443");
   assert.equal(response.status, 403);
   assert.equal(response.headers.get("x-g1t-guardrails"), "blocked");
+  assert.equal(response.headers.get("x-g1t-blocked-host"), "evil.com");
+  // Tools that print only the status line still name the host.
+  assert.equal(response.statusText, "Forbidden by g1t guardrails: evil.com is not an allowed domain");
   const text = await response.text();
-  assert.match(text, /evil\.com is not on this project's allowed domains/);
-  assert.match(text, /Settings, Guardrails/);
+  assert.match(text, /^g1t guardrails refused evil\.com: it is not on this project's allowed domains/);
+  assert.match(text, /Settings, Guardrails: under Allowed domains/);
+  assert.match(text, /Workflow-only domains/);
   assert.equal(blockedStep("Evil.com"), "Blocked: evil.com (not an allowed domain)");
 });
 

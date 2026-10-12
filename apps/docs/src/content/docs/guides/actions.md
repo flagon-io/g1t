@@ -606,8 +606,10 @@ GitHub, where `uses:` actions and the setup actions' downloads come from,
 the toolchains' download sites (`nodejs.org`, `go.dev`,
 `static.rust-lang.org`), and the public container registries (Docker Hub,
 GitHub's, Quay, and `mirror.gcr.io`, the mirror of Docker Hub that a job's
-Engine asks first). A request anywhere else gets `403` with
-the reason. To reach another host, someone with the Maintain [role](/guides/access-and-roles/) or
+Engine asks first). A request anywhere else gets `403`, and its status
+line names the host (`403 Forbidden by g1t guardrails: example.com is not
+an allowed domain`), so even a tool that reports only the status says which
+host to allow. To reach another host, someone with the Maintain [role](/guides/access-and-roles/) or
 higher adds it to the project's
 allowed domains under **Settings → Guardrails**; a project whose guardrails
 turn the network restriction off runs its jobs with an open network.
