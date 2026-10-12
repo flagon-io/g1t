@@ -77,8 +77,14 @@ function More({ to, children }: { to: string; children: ReactNode }) {
   );
 }
 
-/** A point in a list: a check, or a "Coming soon" tag for what is not built yet. */
-type Point = string | { text: string; soon: true };
+/**
+ * A point in a list: a check, a check whose words link somewhere, or a
+ * "Coming soon" tag for what is not built yet.
+ */
+type Point =
+  | string
+  | { text: string; link: { to: string; label: string } }
+  | { text: string; soon: true };
 
 function Points({
   points,
@@ -87,23 +93,38 @@ function Points({
   points: Point[];
   columns?: boolean;
 }) {
-  const now = points.filter(
-    (point): point is string => typeof point === "string",
-  );
+  const now = points.filter((point) => typeof point === "string" || !("soon" in point));
   const later = points
-    .filter((point) => typeof point !== "string")
+    .filter((point) => typeof point !== "string" && "soon" in point)
     .map((point) => (point as { text: string }).text);
   return (
     <>
       <ul
         className={`mt-6 grid gap-2.5 text-sm ${columns ? "sm:grid-cols-2" : ""}`}
       >
-        {now.map((text) => (
-          <li key={text} className="flex gap-2.5 text-fg-soft">
-            <Check size={15} className="mt-0.5 shrink-0 text-accent" />
-            <span>{text}</span>
-          </li>
-        ))}
+        {now.map((point) =>
+          typeof point === "string" ? (
+            <li key={point} className="flex gap-2.5 text-fg-soft">
+              <Check size={15} className="mt-0.5 shrink-0 text-accent" />
+              <span>{point}</span>
+            </li>
+          ) : (
+            "link" in point && (
+              <li key={point.text} className="flex gap-2.5 text-fg-soft">
+                <Check size={15} className="mt-0.5 shrink-0 text-accent" />
+                <span>
+                  {point.text}{" "}
+                  <Link
+                    to={point.link.to}
+                    className="text-fg underline underline-offset-4 hover:text-accent"
+                  >
+                    {point.link.label}
+                  </Link>
+                </span>
+              </li>
+            )
+          ),
+        )}
       </ul>
       {later.length > 0 && (
         <div className="mt-5 rounded-xl border border-dashed border-line-strong px-4 py-3.5">
@@ -601,9 +622,10 @@ export function Landing() {
               },
               { text: "Chat mentions in Notifications", soon: true },
               {
-                text: "A phone app with notifications, Android first, for g1t.sh or your own g1t",
-                soon: true,
+                text: "An Android app with notifications: scan the QR code on",
+                link: { to: "/download", label: "Download" },
               },
+              { text: "The phone app on iPhone", soon: true },
             ]}
           />
           <More to={`${DOCS}/guides/chat/`}>How Chat works</More>
