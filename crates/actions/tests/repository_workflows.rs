@@ -28,7 +28,8 @@ fn every_workflow_asks_for_only_what_its_token_does() {
         job.permissions(&workflow, TokenDefault::Restricted)
     };
     // CI and Deploy only read: nothing they do writes with the token.
-    for (name, id) in [("ci.yml", "rust"), ("deploy.yml", "core"), ("runner-release.yml", "binaries")] {
+    // The actions release pushes with its own secret, never the job's token.
+    for (name, id) in [("ci.yml", "rust"), ("deploy.yml", "core"), ("runner-release.yml", "binaries"), ("actions-release.yml", "publish")] {
         let permissions = job(name, id);
         assert!(permissions.listed().iter().all(|(_, access)| *access <= Access::Read), "{name} {id}");
     }
@@ -294,6 +295,37 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     assert!(script.contains("sha256sum -c"));
     assert!(script.contains("RUSTC_WRAPPER="));
     assert!(script.contains("GITHUB_STEP_SUMMARY"));
+}
+
+#[test]
+fn g1ts_own_actions_are_published_when_they_change() {
+    let release = read("actions-release.yml");
+    let push = release.trigger("push").unwrap();
+    assert!(push.branches.allows("main"));
+    assert!(!push.branches.allows("feature"));
+    assert!(release.trigger("workflow_dispatch").is_some());
+    let source = std::fs::read_to_string(workflows_dir().join("actions-release.yml")).unwrap();
+    assert!(source.contains("actions/**"));
+    assert!(source.contains("secrets.G1T_ACTIONS_PUBLISH_TOKEN"));
+    // Every action is a composite one with its README, and the copies of
+    // the script that finds g1t-runner are the same file.
+    let actions = workflows_dir().join("../../actions");
+    let mut finders = Vec::new();
+    for entry in std::fs::read_dir(&actions).unwrap() {
+        let dir = entry.unwrap().path();
+        let manifest = std::fs::read_to_string(dir.join("action.yml")).unwrap_or_else(|_| panic!("{} has no action.yml", dir.display()));
+        let manifest: serde_yaml::Value = serde_yaml::from_str(&manifest).unwrap();
+        assert_eq!(manifest["runs"]["using"].as_str(), Some("composite"), "{}", dir.display());
+        assert!(dir.join("README.md").exists(), "{}", dir.display());
+        finders.push(std::fs::read_to_string(dir.join("runner.sh")).unwrap());
+    }
+    assert!(finders.len() >= 2);
+    assert!(finders.windows(2).all(|pair| pair[0] == pair[1]), "actions/*/runner.sh differ");
+    let deploy: serde_yaml::Value = serde_yaml::from_str(&std::fs::read_to_string(actions.join("deploy/action.yml")).unwrap()).unwrap();
+    assert_eq!(deploy["inputs"]["token"]["default"].as_str(), Some("${{ github.token }}"));
+    for output in ["url", "deployment-id"] {
+        assert!(deploy["outputs"][output]["value"].is_string(), "{output}");
+    }
 }
 
 #[test]
