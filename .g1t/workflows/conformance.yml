@@ -1,0 +1,118 @@
+# The same workflow on GitHub and on g1t: this file and
+# .github/workflows/conformance.yml are kept identical (a test says so).
+# Run it by hand on both, then compare what each job saw with
+# `node scripts/conformance-diff.mjs github.json g1t.json`; see
+# CONTRIBUTING.md, "Checking g1t against GitHub". It changes nothing,
+# reads no secrets and never runs on its own.
+name: Conformance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  first:
+    name: First
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      value: ${{ steps.out.outputs.value }}
+    steps:
+      - id: out
+        run: echo "value=hello" >> "$GITHUB_OUTPUT"
+      - name: Something to cache and to pass on
+        run: |
+          mkdir -p conformance-cache conformance-artifact
+          echo "cached" > conformance-cache/file.txt
+          echo "passed on" > conformance-artifact/file.txt
+      - uses: actions/cache/save@v4
+        with:
+          path: conformance-cache
+          key: conformance-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conformance-artifact
+          path: conformance-artifact
+          retention-days: 1
+
+  report:
+    name: Report (${{ matrix.n }})
+    needs: first
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        n: [1]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Environment and path for later steps
+        run: |
+          echo "FROM_ENV=set" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/conformance-bin"
+          printf '#!/bin/sh\necho on-path\n' > "$RUNNER_TEMP/conformance-bin/conformance-tool"
+          chmod +x "$RUNNER_TEMP/conformance-bin/conformance-tool"
+          echo "$RUNNER_TEMP/conformance-bin" >> "$GITHUB_PATH"
+      - id: later
+        name: What a later step sees
+        run: |
+          echo "tool=$(conformance-tool)" >> "$GITHUB_OUTPUT"
+          {
+            echo "text<<CONFORMANCE_EOF"
+            echo "line one"
+            echo "line two"
+            echo "CONFORMANCE_EOF"
+          } >> "$GITHUB_OUTPUT"
+      - id: folder
+        working-directory: conformance
+        run: echo "name=$(basename "$PWD")" >> "$GITHUB_OUTPUT"
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: conformance-cache
+          key: conformance-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: conformance-artifact
+          path: downloaded
+      - id: files
+        run: |
+          echo "cached=$(cat conformance-cache/file.txt 2>/dev/null)" >> "$GITHUB_OUTPUT"
+          echo "artifact=$(cat downloaded/file.txt 2>/dev/null)" >> "$GITHUB_OUTPUT"
+      - name: Report
+        env:
+          CTX_GITHUB: ${{ toJSON(github) }}
+          CTX_RUNNER: ${{ toJSON(runner) }}
+          CTX_JOB: ${{ toJSON(job) }}
+          CTX_STRATEGY: ${{ toJSON(strategy) }}
+          CTX_MATRIX: ${{ toJSON(matrix) }}
+          CTX_STEPS: ${{ toJSON(steps) }}
+          CTX_NEEDS: ${{ toJSON(needs) }}
+          CHECK_NEEDS_OUTPUT: ${{ needs.first.outputs.value }}
+          CHECK_ENV_FROM_FILE: ${{ env.FROM_ENV }}
+          CHECK_PATH_FROM_FILE: ${{ steps.later.outputs.tool }}
+          CHECK_MULTILINE_OUTPUT: ${{ steps.later.outputs.text }}
+          CHECK_WORKING_DIRECTORY: ${{ steps.folder.outputs.name }}
+          CHECK_CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CHECK_CACHE_CONTENT: ${{ steps.files.outputs.cached }}
+          CHECK_ARTIFACT_CONTENT: ${{ steps.files.outputs.artifact }}
+          CHECK_FORMAT: ${{ format('{0}-{1}-{{2}}', 'a', 1) }}
+          CHECK_CONTAINS: ${{ contains(fromJSON('["a","b"]'), 'b') }}
+          CHECK_STARTS_WITH: ${{ startsWith('Hello', 'he') }}
+          CHECK_JOIN: ${{ join(fromJSON('["a","b","c"]'), '+') }}
+          CHECK_TO_JSON: ${{ toJSON(fromJSON('{"a":[1,2],"b":null}')) }}
+          CHECK_EQUALITY: ${{ 1 == '1' }} ${{ 'A' == 'a' }} ${{ null == '' }}
+          CHECK_FALSY_OR: ${{ '' || 'fallback' }}
+          CHECK_HASH_FILES: ${{ hashFiles('conformance/report.mjs') }}
+          CHECK_SUCCESS: ${{ success() }}
+          CHECK_MATRIX: ${{ matrix.n }}
+          CHECK_JOB_TOTAL: ${{ strategy.job-total }}
+          CHECK_EVENT_NAME: ${{ github.event_name }}
+          CHECK_RUNNER_OS: ${{ runner.os }}
+        run: node conformance/report.mjs conformance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report
+          path: conformance.json
+          retention-days: 7
