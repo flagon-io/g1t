@@ -1022,6 +1022,9 @@ fn container_build(reporter: &Reporter, log: &mut Log, secrets: &[String], dir: 
     // A sandbox's own Docker Engine, started for the build; in a workflow
     // step, the job's.
     if clones() {
+        if std::env::var("G1T_DOCKER").as_deref() != Ok("on") {
+            bail!("Docker is turned off for g1t's sandboxes here, so a container cannot be built.");
+        }
         crate::docker::engine::enable(crate::docker::engine::Options::default())
             .map_err(|problem| anyhow::anyhow!("Docker is not available in this sandbox: {problem}"))?;
         let started = crate::docker::engine::ensure_started();

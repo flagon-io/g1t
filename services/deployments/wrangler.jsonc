@@ -47,14 +47,23 @@
 		"SITE": "https://g1t.sh",
 		// The g1t.page zone: custom domains are Cloudflare for SaaS custom
 		// hostnames on it (see src/domains.ts).
-		"CUSTOM_HOSTNAMES_ZONE_ID": "45d1c969bdd9d593756e70d5f45c2cbb"
+		"CUSTOM_HOSTNAMES_ZONE_ID": "45d1c969bdd9d593756e70d5f45c2cbb",
+		// Docker deployments (src/containers.ts): "on" runs container apps.
+		// Off until Cloudflare's container APIs are checked live against this
+		// account ("Docker deployments" in docs.g1t.sh/guides/deploy-to-cloudflare/);
+		// while off, a container build is refused at its registry step.
+		"CONTAINERS": "off",
+		// Where container apps' Workers report how long they ran.
+		"G1T_API": "https://api.g1t.sh"
 	},
 	// Custom domains: hostname to app, written here and read by the
 	// dispatcher (services/pages). Made by scripts/setup-custom-domains.sh.
 	"kv_namespaces": [{ "binding": "DOMAINS", "id": "14bc5c233d4c46a5bbf23b5367cce5fd" }],
 	// Secret: CLOUDFLARE_API_TOKEN, scoped to Workers Scripts (edit) and
 	// Account Analytics (read), and, for custom domains, SSL and
-	// Certificates (edit) on the g1t.page zone. Without it nothing deploys.
+	// Certificates (edit) on the g1t.page zone; for Docker deployments, also
+	// Containers (edit), for applications and registry logins. Without it
+	// nothing deploys.
 	// Every log kept: few requests, and a failed deploy must be traceable.
 	"observability": { "enabled": true, "head_sampling_rate": 1 }
 }

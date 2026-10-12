@@ -1,13 +1,16 @@
 import { Form, Link } from "react-router";
 
-import type { DetectedKind } from "@g1t/contracts";
+import { DEFAULT_APP_INSTANCE, FRAMEWORK_NAMES, type ContainerOffer, type DetectedKind } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings-deployments";
 import { page } from "../../lib/meta";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Card } from "../../components/ui/card";
+import { SelectField } from "../../components/ui/select";
 import { SwitchCard } from "../../components/ui/switch";
+import { BUILD_AS_OPTIONS, KIND_COSTS, detectedLabel, sizeLabel } from "../../lib/deploy-kind";
+import { money } from "../../lib/money";
 import { neverDeploys } from "../../lib/project-kind";
 import { deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
@@ -51,6 +54,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     outputDir: String(form.get("outputDir") ?? ""),
     idleDays: Number(form.get("idleDays")),
     viaWorkflow: on("viaWorkflow"),
+    buildAs: String(form.get("buildAs") ?? "auto") as "auto",
+    dockerfile: String(form.get("dockerfile") ?? ""),
+    instanceType: String(form.get("instanceType") ?? DEFAULT_APP_INSTANCE),
   });
   return saved.ok ? { notice: "Saved." } : { error: saved.error.message };
 }
@@ -63,39 +69,50 @@ function Check({ name, on, title, children }: { name: string; on: boolean; title
   );
 }
 
-/** What each kind of project is called, and what running it costs, in a line. */
-const DETECTED: Record<DetectedKind, { label: string; cost: string }> = {
-  static: {
-    label: "Static site",
-    cost: "Serving its files runs no code, so it adds no requests or CPU time. Builds are metered.",
-  },
-  html: {
-    label: "Plain HTML",
-    cost: "Its files are served as they are and run no code, so serving adds no requests or CPU time. Builds are metered.",
-  },
-  workers: {
-    label: "Workers project",
-    cost: "Its code runs on every request: requests and CPU time are metered, and so are builds.",
-  },
-};
-
-/** What g1t found the project to be at its last build, and what that costs. */
-function Detected({ kind }: { kind: DetectedKind | null }) {
-  const found = kind ? DETECTED[kind] : null;
+/** What g1t found the project to be at its last build, with what it was built with, and what that costs. */
+function Detected({ kind, framework }: { kind: DetectedKind | null; framework: string | null }) {
   return (
     <Card asChild className="mb-6 p-5">
       <section>
         <h2 className="text-sm font-medium">What g1t detected</h2>
         <p className="mt-1 text-sm">
-          {found ? found.label : <span className="text-muted">Detected at the first build</span>}
+          {kind ? detectedLabel(kind, framework, FRAMEWORK_NAMES) : <span className="text-muted">Detected at the first build</span>}
         </p>
         <p className="mt-1 text-xs text-muted">
-          {found
-            ? found.cost
-            : "A static site's files cost nothing to serve; a Workers project's requests and CPU time are metered. Builds are metered either way."}
+          {kind
+            ? KIND_COSTS[kind]
+            : "A static site's files cost nothing to serve; a Workers project's requests and CPU time are metered; a container is metered while it is awake. Builds are metered either way."}
         </p>
       </section>
     </Card>
+  );
+}
+
+/** Each container size with what an hour awake costs, for choosing one. */
+function ContainerSizes({ offer, chosen }: { offer: ContainerOffer; chosen: string }) {
+  return (
+    <div className="space-y-3">
+      <Field
+        label="Container size"
+        hint={`For a container: what it runs at, and how large its image can be. It sleeps after ${offer.sleepMinutes} minutes without a request and costs nothing asleep.`}
+      >
+        <SelectField
+          name="instanceType"
+          defaultValue={chosen}
+          aria-label="Container size"
+          options={offer.prices.map((size) => ({
+            value: size.type,
+            label: `${size.type}: ${sizeLabel(size)}`,
+            description: `${money(size.hourlyMicros, { precise: true })} an hour awake, at most`,
+          }))}
+        />
+      </Field>
+      <p className="text-xs text-muted">
+        Charged by the minute while awake, at what Cloudflare charges g1t plus 20%, with every vCPU counted as busy; data a
+        container sends is {money(offer.egressGbMicros, { precise: true })} a GB.
+        {!offer.available && " Docker deployments are not switched on for g1t.page yet: until they are, a container build fails, or builds the site the project is without its Dockerfile."}
+      </p>
+    </div>
   );
 }
 
@@ -110,7 +127,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
         <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
       </div>
 
-      <Detected kind={settings.detected ?? null} />
+      <Detected kind={settings.detected ?? null} framework={settings.framework ?? null} />
 
       {!settings.enabled ? (
         <Card asChild className="p-5">
@@ -154,6 +171,15 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
             <Check name="viaWorkflow" on={settings.viaWorkflow ?? false} title="Build with a workflow">
               Build through a workflow g1t manages for this project, listed under Actions with its runs and logs. It runs on g1t's machines like any workflow, and a workflow named g1t in .g1t/workflows takes its place.
             </Check>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Build as" hint="Auto finds it from the project's files: a Wrangler config is Workers, a framework that builds a static site stays one, and a Dockerfile or a server makes it a container.">
+                <SelectField name="buildAs" defaultValue={settings.buildAs ?? "auto"} aria-label="Build as" options={BUILD_AS_OPTIONS} />
+              </Field>
+              <Field label="Dockerfile" hint="For a container; Dockerfile or Containerfile is found by itself when empty.">
+                <Input name="dockerfile" defaultValue={settings.dockerfile ?? ""} placeholder="Dockerfile" />
+              </Field>
+            </div>
+            {settings.containers && <ContainerSizes offer={settings.containers} chosen={settings.instanceType ?? DEFAULT_APP_INSTANCE} />}
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Build command" hint="Instead of the project's own build script.">
                 <Input name="buildCommand" defaultValue={settings.buildCommand ?? ""} placeholder="npm run build" />

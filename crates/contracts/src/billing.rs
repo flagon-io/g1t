@@ -1069,6 +1069,16 @@ pub mod deployment_costs {
     /// What one custom hostname costs g1t a month (Cloudflare for SaaS):
     /// $0.10.
     pub const MICROS_PER_DOMAIN_MONTH: i64 = 100_000;
+    /// Container apps (Docker deployments), at Cloudflare Containers' list
+    /// prices: a vCPU-second, a GiB-second of memory and a GB-second of
+    /// disk while awake, the Durable Object in front of each instance a
+    /// second while it runs, and a GB sent at the most Cloudflare charges
+    /// for one anywhere. The price book's `app_container_*` meters.
+    pub const MICROS_PER_CONTAINER_VCPU_SECOND: f64 = 20.0;
+    pub const MICROS_PER_CONTAINER_GIB_SECOND: f64 = 2.5;
+    pub const MICROS_PER_CONTAINER_DISK_GB_SECOND: f64 = 0.07;
+    pub const MICROS_PER_CONTAINER_SECOND: f64 = 1.5625;
+    pub const MICROS_PER_CONTAINER_EGRESS_GB: i64 = 50_000;
 }
 
 /// `record_sandbox`: how long one sandbox ran for a workspace, reported by

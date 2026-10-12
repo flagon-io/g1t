@@ -15,10 +15,18 @@ inputs:
     description: An output folder of your own, as g1t/deploy takes it.
     required: false
     default: ""
+  build-as:
+    description: What it is built as, auto, static, workers or docker, as g1t/deploy takes it.
+    required: false
+    default: ""
+  dockerfile:
+    description: A Dockerfile's path of your own, as g1t/deploy takes it.
+    required: false
+    default: ""
 
 outputs:
   kind:
-    description: workers (a Wrangler config, or a framework's Cloudflare adapter), static (a site a build writes), html (the files as they are) or none (nothing to serve, or a framework set up to need a server).
+    description: workers (a Wrangler config, or a framework's Cloudflare adapter), static (a site a build writes), html (the files as they are), container (a Dockerfile, a framework set up to need a server, or a server g1t writes a Dockerfile for) or none (nothing to serve).
     value: ${{ steps.detect.outputs.kind }}
   install:
     description: How its dependencies are installed, such as npm ci. Empty without a package.json.
@@ -30,8 +38,14 @@ outputs:
     description: The folder that is served, relative to the project (. for the project itself). Empty when a build has yet to write it.
     value: ${{ steps.detect.outputs.output-dir }}
   framework:
-    description: The framework it is built with, such as vite, astro, nextjs, sveltekit or hugo. Empty when there is none.
+    description: The framework it is built with, such as vite, astro, nextjs, sveltekit or hugo; for a container without one, dockerfile or the server g1t writes a Dockerfile for (node, flask, rails…). Empty when there is none.
     value: ${{ steps.detect.outputs.framework }}
+  dockerfile:
+    description: A container's own Dockerfile, relative to the project. Empty when g1t writes one, or for anything else.
+    value: ${{ steps.detect.outputs.dockerfile }}
+  port:
+    description: The port a container listens on, its Dockerfile's EXPOSE or 8080. Empty for anything else.
+    value: ${{ steps.detect.outputs.port }}
 
 runs:
   using: composite
@@ -42,6 +56,8 @@ runs:
         ROOT_DIR: ${{ inputs.root-dir }}
         BUILD_COMMAND: ${{ inputs.build-command }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
+        BUILD_AS: ${{ inputs.build-as }}
+        DOCKERFILE: ${{ inputs.dockerfile }}
       run: |
         set -euo pipefail
         runner="$(bash "$GITHUB_ACTION_PATH/runner.sh")"

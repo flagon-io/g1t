@@ -93,6 +93,8 @@ export G1T_API="${api}"
 export ROOT_DIR="$(pick "${INPUT_ROOT_DIR:-}" root_dir)"
 export BUILD_COMMAND="$(pick "${INPUT_BUILD_COMMAND:-}" build_command)"
 export OUTPUT_DIR="$(pick "${INPUT_OUTPUT_DIR:-}" output_dir)"
+export BUILD_AS="$(pick "${INPUT_BUILD_AS:-}" build_as)"
+export DOCKERFILE="$(pick "${INPUT_DOCKERFILE:-}" dockerfile)"
 export BUILD_ENV="$(field build_env <<<"${answer}")"
 export BUILD_SECRETS="$(field build_secrets <<<"${answer}")"
 unset GIT_REMOTE

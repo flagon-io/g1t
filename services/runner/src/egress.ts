@@ -240,6 +240,9 @@ export const BUILD_HOSTS: readonly string[] = [
   "cdn03.quay.io",
   // Docker's own packages (apt), for images that install the CLI.
   "download.docker.com",
+  // Cloudflare's container registry, which a g1t.page container build
+  // pushes its image to with the push-only login it is given.
+  "registry.cloudflare.com",
 ];
 
 /**
