@@ -64,7 +64,8 @@
 		{ "name": "WEB_ADDRESS_LIMIT", "namespace_id": "4204", "simple": { "limit": 3000, "period": 60 } },
 		{ "name": "GIT_ANONYMOUS_LIMIT", "namespace_id": "4205", "simple": { "limit": 120, "period": 60 } },
 		{ "name": "GIT_SIGNED_LIMIT", "namespace_id": "4206", "simple": { "limit": 1200, "period": 60 } },
-		{ "name": "WEB_TOKEN_LIMIT", "namespace_id": "4207", "simple": { "limit": 1000, "period": 60 } }
+		{ "name": "WEB_TOKEN_LIMIT", "namespace_id": "4207", "simple": { "limit": 1000, "period": 60 } },
+		{ "name": "WEB_ASK_LIMIT", "namespace_id": "4208", "simple": { "limit": 20, "period": 60 } }
 	],
 	// Logs of a tenth of requests: every page view is one, too many to keep all.
 	// Cloudflare Turnstile on email sign-up (app/lib/turnstile.ts): the

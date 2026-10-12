@@ -139,6 +139,9 @@ export default [
     // provider connection: models, alerts, trackers (lib/integration-sections).
     route("-/integrations", "routes/workspace/integrations-directory.tsx"),
     route("-/integrations/:section", "routes/workspace/integrations.tsx"),
+    // Ask g1t, from the top bar: what it answers with, and each answer,
+    // streamed (components/ask-composer).
+    route("-/ask", "routes/workspace/ask.ts"),
     route("-/webhooks", "routes/workspace/webhooks.tsx"),
     // The workspace's own emoji, for chat (components/emoji).
     route("-/emoji", "routes/workspace/emoji.tsx"),
