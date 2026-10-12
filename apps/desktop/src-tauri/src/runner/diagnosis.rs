@@ -836,8 +836,10 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
         State::Running => match &capability.job {
             Some(job) => {
                 said(&mut line, KindState::Busy, Tone::Working, None, None, vec![]);
-                let page = if job.kind == "agent" { "agents" } else { "actions" };
-                let link = (!job.repo.is_empty() && !facts.site.is_empty()).then(|| format!("{}/{}/{page}", facts.site.trim_end_matches('/'), job.repo));
+                // Every job a runner takes is on the repository's Actions page:
+                // workflow jobs, and the queue, merge check and checks tasks
+                // the runner's wire still calls `agent` work.
+                let link = (!job.repo.is_empty() && !facts.site.is_empty()).then(|| format!("{}/{}/actions", facts.site.trim_end_matches('/'), job.repo));
                 line.job = Some(JobLine { kind: job.kind.clone(), name: job.name.clone(), repo: job.repo.clone(), link });
             }
             None => said(&mut line, KindState::Idle, Tone::Ok, None, None, vec![]),

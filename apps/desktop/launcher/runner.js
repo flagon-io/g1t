@@ -199,7 +199,7 @@
   // What it is running, with where to see it on g1t.
   function jobRow(job) {
     var row = element("div", "kind-job");
-    row.appendChild(element("span", "kind-job-label", job.kind === "agent" ? "Agent work" : "Running"));
+    row.appendChild(element("span", "kind-job-label", "Running"));
     var what = element("span", "kind-job-what");
     if (job.link) {
       var link = element("a", null, job.name);

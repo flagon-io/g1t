@@ -213,7 +213,7 @@ function KindRow({ kind, runner, fail }: { kind: DesktopRunnerCapability; runner
       </div>
       {kind.job && (
         <p className="truncate pl-9.5 text-xs text-muted">
-          {kind.job.kind === "agent" ? "Agent work: " : "Running "}
+          Running{" "}
           {href ? (
             <Link to={href} className="font-medium text-fg underline-offset-4 hover:underline">
               {kind.job.name}
