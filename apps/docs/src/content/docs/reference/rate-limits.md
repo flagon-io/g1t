@@ -22,6 +22,7 @@ client can sometimes get a few more through before it is limited.
 | Pages on g1t.sh, signed in | Session | 1,200 |
 | Pages on g1t.sh, [with a token](/guides/authentication/#use-a-token-on-the-website) | Token | 1,000 |
 | Pages on g1t.sh, signed out | Client IP address | 600 |
+| [Ask g1t](/guides/ask/) questions | Person | 20 |
 | Archive downloads, workflow run pages, log downloads and search, signed out | Client IP address | 30 |
 | [Raw files](/guides/git/#raw-files) on g1tusercontent.com | Client IP address, together with pages signed out | 600 |
 | [OpenTelemetry ingest](/guides/observability/) at otel.g1t.sh | Client IP address | 600 |

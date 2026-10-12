@@ -2,7 +2,7 @@
 //! so each provider decides what a refusal means.
 
 use serde_json::Value;
-use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
+use worker::{Fetch, Headers, Method, Request, RequestInit, Response, Result};
 
 pub struct Answer {
     pub status: u16,
@@ -39,6 +39,16 @@ impl Answer {
 }
 
 pub async fn send(method: Method, url: &str, headers: &[(&str, &str)], body: Option<String>) -> Result<Answer> {
+    let mut response = open(method, url, headers, body).await?;
+    Ok(Answer {
+        status: response.status_code(),
+        body: response.text().await.unwrap_or_default(),
+    })
+}
+
+/// Sends a request and hands back the response as it starts, for a body
+/// read as it streams.
+pub async fn open(method: Method, url: &str, headers: &[(&str, &str)], body: Option<String>) -> Result<Response> {
     let sent = Headers::new();
     sent.set("user-agent", "g1t (+https://g1t.sh)")?;
     sent.set("accept", "application/json")?;
@@ -53,11 +63,7 @@ pub async fn send(method: Method, url: &str, headers: &[(&str, &str)], body: Opt
     if let Some(body) = body {
         init.with_body(Some(body.into()));
     }
-    let mut response = Fetch::Request(Request::new_with_init(url, &init)?).send().await?;
-    Ok(Answer {
-        status: response.status_code(),
-        body: response.text().await.unwrap_or_default(),
-    })
+    Fetch::Request(Request::new_with_init(url, &init)?).send().await
 }
 
 /// `text`, cut to `max` characters at a line break where one is near.

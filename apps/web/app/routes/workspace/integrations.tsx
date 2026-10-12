@@ -8,10 +8,11 @@ import {
   Ticket,
   X,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 
 import {
+  type AskSetup,
   type Connection,
   type ConnectionConfig,
   type Delivery,
@@ -30,6 +31,7 @@ import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { Combobox } from "../../components/ui/combobox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -47,7 +49,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const kind = sectionKind(params.section);
   if (!role || !kind) throw new Response(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [connections, listed] = await Promise.all([integrations.list(slug, viewer), repos.list(viewer, { namespace: slug })]);
+  const [connections, listed, ask] = await Promise.all([
+    integrations.list(slug, viewer),
+    repos.list(viewer, { namespace: slug }),
+    // What Ask g1t answers with, on the AI providers' page.
+    kind === "models" ? integrations.askSettings(slug, viewer) : null,
+  ]);
   const all = unwrap(connections);
   // What each alert source has sent lately, to see it is wired up.
   const deliveries: Record<string, Delivery[]> = {};
@@ -68,6 +75,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     deliveries,
     repos: listed.map((repo) => `${repo.namespace}/${repo.name}`),
     adding: isProvider(adding) ? adding : null,
+    ask: ask?.ok ? ask.value : null,
   };
 }
 
@@ -114,6 +122,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       secret: text(form, "secret"),
     });
     return updated.ok ? { updated: id } : { error: updated.error.message };
+  }
+  if (intent === "ask") {
+    // Which provider and model Ask g1t answers with; none turns it off.
+    const connection = text(form, "connection");
+    const chosen = await integrations.setAskSettings(user, slug, connection ?? null, connection ? (text(form, "model") ?? null) : null);
+    return chosen.ok ? { asked: true } : { error: chosen.error.message, ask: true };
   }
   if (intent === "provider") {
     // An AI provider's model and address, and a new key if one was given:
@@ -170,12 +184,14 @@ const PROVIDER_BLURB: Partial<Record<Provider, string>> = {
 };
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, kind, connections, deliveries, repos: repoNames, adding } = loaderData;
+  const { slug, role, kind, connections, deliveries, repos: repoNames, adding, ask } = loaderData;
   const owner = role === "owner";
   const justConnected = actionData && "connected" in actionData ? actionData.connected : null;
   const tested = (actionData && "tested" in actionData ? actionData.tested : null) ?? null;
   const error = (actionData && "error" in actionData ? actionData.error : null) ?? null;
   const updated = (actionData && "updated" in actionData ? actionData.updated : null) ?? null;
+  const asked = actionData != null && "asked" in actionData;
+  const askError = actionData && "ask" in actionData ? error : null;
 
   return (
     <div>
@@ -184,7 +200,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
       </Link>
       {justConnected && <Connected connected={justConnected} />}
       <div className="mt-4">
-        <ErrorText>{error}</ErrorText>
+        <ErrorText>{actionData && "ask" in actionData ? null : error}</ErrorText>
       </div>
 
       {/* AI providers -------------------------------------------------------- */}
@@ -200,6 +216,13 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
         <p className="mb-4 text-xs text-faint">
           Keys are sealed when saved and never shown again. Only an owner of {slug} can add, test, change or remove them.
         </p>
+        <AskSetting
+          connections={connections.filter((c) => c.kind === "models")}
+          setup={ask}
+          owner={owner}
+          saved={asked}
+          error={askError}
+        />
         {owner && <ModelCatalog slug={slug} adding={adding} />}
         {adding && PROVIDERS[adding].kind === "models" && owner && (
           <AddForm
@@ -433,6 +456,116 @@ function ConnectionRow({
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * Ask g1t's provider and model: one of the workspace's AI providers, and
+ * one of the models it offered when last checked (or any name, for one
+ * that lists none). Owners choose; members see what it is.
+ */
+function AskSetting({
+  connections,
+  setup,
+  owner,
+  saved,
+  error,
+}: {
+  connections: Connection[];
+  setup: AskSetup | null;
+  owner: boolean;
+  saved: boolean;
+  error: string | null;
+}) {
+  const current = connections.find((c) => c.id === setup?.connection_id) ?? null;
+  const [chosen, setChosen] = useState(current?.id ?? connections[0]?.id ?? "");
+  const connection = connections.find((c) => c.id === chosen) ?? null;
+  const azure = connection?.provider === "azure_openai";
+  const defaultModel =
+    connection && connection.id === current?.id ? (setup?.model ?? "") : (connection?.config.model ?? connection?.models[0] ?? "");
+  return (
+    <Card asChild className="mb-6 scroll-mt-20 p-4">
+      <section id="ask" aria-labelledby="ask-heading">
+        <h2 id="ask-heading" className="text-sm font-medium">
+          Ask g1t
+        </h2>
+        <p className="mt-1 text-xs text-muted">
+          The top bar's Ask answers with this provider and model, on your workspace's own key. g1t hosts no model for it and
+          bills nothing for it: what it costs is on your provider's bill.
+        </p>
+        {setup?.connection_id && !setup.problem && (
+          <p className="mt-3 text-sm">
+            Answers with <span className="font-medium">{setup.connection_name}</span> ·{" "}
+            <span className="font-mono text-[0.8125rem]">{setup.model}</span>
+          </p>
+        )}
+        {setup?.problem && <p className="mt-3 text-sm text-warn">{setup.problem}</p>}
+        {connections.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">
+            {owner ? "Connect an AI provider below, then choose it here." : `An owner of the workspace can connect one and choose it here.`}
+          </p>
+        ) : (
+          owner && (
+            <Form method="post" className="mt-4 grid max-w-2xl gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <input type="hidden" name="intent" value="ask" />
+              <Field label="Provider">
+                <Select name="connection" value={chosen} onValueChange={setChosen}>
+                  <SelectTrigger aria-label="Provider">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connections.map((c) => (
+                      <SelectItem key={c.id} value={c.id} description={PROVIDERS[c.provider].label}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label={azure ? "Deployment" : "Model"}>
+                {connection && connection.models.length > 0 && !azure ? (
+                  <Combobox
+                    key={connection.id}
+                    name="model"
+                    defaultValue={connection.models.includes(defaultModel) ? defaultModel : (connection.models[0] ?? "")}
+                    aria-label="Model"
+                    searchPlaceholder="Find a model"
+                    emptyText="It offers no model by that name."
+                    options={connection.models.map((model) => ({ value: model, label: model }))}
+                    className="font-mono text-[0.8125rem]"
+                  />
+                ) : (
+                  <Input
+                    key={connection?.id}
+                    name="model"
+                    required
+                    defaultValue={defaultModel}
+                    placeholder={azure ? "The deployment's name" : "The model's name"}
+                    className="font-mono text-[0.8125rem]"
+                    autoComplete="off"
+                  />
+                )}
+              </Field>
+              <div className="flex items-center gap-2">
+                <SubmitButton variant="outline" match={{ intent: "ask" }} pending="Saving…">
+                  Use for Ask
+                </SubmitButton>
+              </div>
+            </Form>
+          )
+        )}
+        {owner && setup?.connection_id && (
+          <Form method="post" className="mt-2">
+            <input type="hidden" name="intent" value="ask" />
+            <SubmitButton variant="link" size="inline" match={{ intent: "ask" }} className="text-xs text-muted">
+              Turn Ask off
+            </SubmitButton>
+          </Form>
+        )}
+        {saved && !error && <p className="mt-2 text-sm text-success">Saved.</p>}
+        <ErrorText>{error}</ErrorText>
+      </section>
+    </Card>
   );
 }
 

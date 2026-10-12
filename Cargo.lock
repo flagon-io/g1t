@@ -1454,6 +1454,7 @@ name = "g1t-integrations"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
  "g1t-contracts",
  "g1t-kit",
  "g1t-secrets",
