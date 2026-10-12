@@ -132,9 +132,27 @@ pub fn is_server(app: &AppHandle, url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https") && origin(url) == origin(&server(app))
 }
 
+/// Where the bundled pages are served under `tauri dev`: with no `devUrl`
+/// in tauri.conf.json, the Tauri CLI serves `launcher/` itself, from
+/// localhost, and the window starts there. Unset in a release build, which
+/// serves them from inside the app.
+static DEV_SERVER: std::sync::OnceLock<Option<Url>> = std::sync::OnceLock::new();
+
+/// Notes the dev server, once, as the app starts.
+pub fn note_dev_server(app: &AppHandle) {
+    let dev = if cfg!(debug_assertions) { app.config().build.dev_url.clone() } else { None };
+    let _ = DEV_SERVER.set(dev);
+}
+
+pub fn dev_server() -> Option<&'static Url> {
+    DEV_SERVER.get().and_then(Option::as_ref)
+}
+
 /// Whether a page is the launcher, bundled with the app.
 pub fn is_launcher(url: &Url) -> bool {
-    url.scheme() == "tauri" || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"))
+    url.scheme() == "tauri"
+        || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"))
+        || dev_server().is_some_and(|dev| origin(dev) == origin(url))
 }
 
 /// What the server's pages may call: the bridge's commands (bridge.rs).

@@ -96,7 +96,7 @@ pub fn hide(app: &AppHandle) {
 /// The address of the launcher page bundled with the app.
 pub fn launcher_url(query: &str) -> url::Url {
     let base = if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" };
-    let mut url = url::Url::parse(base).expect("the launcher's address is a URL");
+    let mut url = config::dev_server().cloned().unwrap_or_else(|| url::Url::parse(base).expect("the launcher's address is a URL"));
     url.set_path("/index.html");
     if !query.is_empty() {
         url.set_query(Some(query));
