@@ -588,6 +588,15 @@ higher adds it to the project's
 allowed domains under **Settings → Guardrails**; a project whose guardrails
 turn the network restriction off runs its jobs with an open network.
 
+A request to an allowed host that fails on the way is handled for the job.
+A `GET` or `HEAD` with no body is sent again, twice, after a short wait; one
+that still fails gets `502` with `x-g1t-egress: upstream-failed` and a body
+naming the host and the error, which npm, pip and most tools retry. A
+request with a body is never sent twice. An answer up to 8 MB that breaks
+off partway is fetched again whole, and a larger one, such as a 50 MB
+package tarball, is resumed from where it stopped with a `Range` request
+when its host takes ranges, so the job receives one unbroken answer.
+
 A host only workflows should reach, such as the API a deploy uploads to,
 goes in **Workflow-only domains** instead, limited to the workflows and
 environments that need it: `api.cloudflare.com | deploy.yml | production`
