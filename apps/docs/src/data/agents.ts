@@ -6,6 +6,9 @@
 
 export const MCP_URL = 'https://mcp.g1t.sh';
 
+/** Installs g1t's Claude Code plugin, which adds the MCP server (as `plugin:g1t:g1t`) and records sessions. */
+export const PLUGIN_INSTALL = 'claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git\nclaude plugin install g1t@g1t';
+
 export type AgentSetup = {
 	label: string;
 	/** The file the snippet goes in, or null for a terminal command. */
@@ -20,11 +23,12 @@ const json = (value: unknown) => JSON.stringify(value, null, 2);
 
 export const AGENTS: AgentSetup[] = [
 	{
+		// g1t's plugin adds the MCP server itself, and records sessions.
 		label: 'Claude Code',
 		file: null,
 		lang: 'sh',
-		code: `claude mcp add --transport http g1t ${MCP_URL}`,
-		then: 'Then run `/mcp` in Claude Code and choose g1t to sign in through your browser.',
+		code: PLUGIN_INSTALL,
+		then: `g1t's Claude Code plugin adds g1t's MCP server, and records your sessions on g1t. Start Claude Code again, run \`/mcp\` and choose \`plugin:g1t:g1t\` to sign in through your browser. With the plugin installed, skip \`claude mcp add\`: adding the server again lists every g1t tool twice. Without the plugin, \`claude mcp add --transport http g1t ${MCP_URL}\` adds the server alone.`,
 	},
 	{
 		label: 'Codex',
@@ -59,7 +63,7 @@ export const AGENTS_WITH_TOKEN: AgentSetup[] = [
 		file: null,
 		lang: 'sh',
 		code: `claude mcp add --transport http g1t ${MCP_URL} \\\n  --header "Authorization: Bearer $G1T_TOKEN"`,
-		then: '',
+		then: "This adds the server without g1t's plugin. With the plugin installed, which adds it too, disable the plugin's (`plugin:g1t:g1t` in `/mcp`) or skip this, so g1t's tools are not listed twice.",
 	},
 	{
 		label: 'Codex',

@@ -265,7 +265,7 @@ g1t issue close [OPTIONS] <NUMBER>
 | Argument or flag | |
 | --- | --- |
 | `<NUMBER>` |  |
-| `-r, --reason <REASON>` | One of `completed`, `not-planned`. |
+| `-r, --reason <REASON>` | One of `completed`, `not_planned`. |
 | `-c, --comment <COMMENT>` | Leave a comment as it closes. |
 
 Calls [`close_issue`](/reference/api/issues/close-issue/), [`add_comment`](/reference/api/issues/add-comment/).
@@ -936,7 +936,7 @@ g1t session log [OPTIONS] <TEXT>
 | Argument or flag | |
 | --- | --- |
 | `<TEXT>` | What to record; - reads it from stdin. |
-| `-k, --kind <KIND>` | One of `note`, `prompt`, `message`, `tool-call`, `skill`. Default: `note`. |
+| `-k, --kind <KIND>` | One of `note`, `prompt`, `message`, `tool_call`, `skill`. Default: `note`. |
 | `--tool <TOOL>` | The tool, for a tool_call. |
 | `--key <KEY>` | A key that makes recording it again do nothing. |
 

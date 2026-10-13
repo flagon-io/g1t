@@ -20,8 +20,11 @@ coordination; nothing about how Claude Code runs changes.
 
 ## Install
 
-You need Claude Code, Node 18 or later (Claude Code runs on it) and the
-[g1t CLI](/guides/cli/), which the plugin's hooks use.
+You need Claude Code, the [g1t CLI](/guides/cli/) 0.3.2 or later, which
+the plugin's hooks use, and Node 18 or later on your `PATH`, which runs
+them. Claude Code's native installer does not bring Node with it: run
+`node --version` to check, and install it from
+[nodejs.org](https://nodejs.org) if it is missing or older.
 
 1. Install the g1t CLI and sign in, if you have not:
 
@@ -41,8 +44,12 @@ You need Claude Code, Node 18 or later (Claude Code runs on it) and the
 
    Or run `/plugin` inside Claude Code and choose the marketplace there.
 
-3. Start Claude Code again, run `/mcp` and choose **g1t** to sign g1t's
-   MCP server in through your browser.
+3. Start Claude Code again, run `/mcp` and choose **plugin:g1t:g1t** to
+   sign g1t's MCP server in through your browser.
+
+The plugin adds g1t's MCP server itself. If you added it before with
+`claude mcp add … g1t https://mcp.g1t.sh`, remove that one
+(`claude mcp remove g1t`), or Claude sees every g1t tool twice.
 
 `curl -fsSL https://g1t.sh/install/claude.sh | sh` prints the same
 commands; add `-s -- --cli` to have it install the CLI too.
@@ -61,7 +68,7 @@ recorded as yours and is as visible as the repository it is in.
 | A session starts or resumes | `g1t session start --harness claude_code --harness-session-id ID` | A session for this Claude Code session. Starting the same session again, as a resume does, finds it rather than making another. |
 | You send a prompt | `g1t session log --kind prompt TEXT` | Your prompt's first 2,000 characters. |
 | Claude uses a tool | `g1t session log --kind tool_call TEXT` | The tool's name and one line on what it was called with: the command, file, pattern or address, up to 200 characters, with anything that looks like a token or password replaced by `…`. |
-| Claude uses a skill | `g1t session log --kind skill NAME` | The skill's name, nothing more. |
+| Claude uses a skill, or you run one (`/g1t:work-on-issue 42`) | `g1t session log --kind skill NAME` | The skill's name, nothing more, once in a turn. A plugin's skill or command you type as `/plugin:name` is recorded even with prompts kept back. |
 | Claude writes a file, makes a branch or a commit, or claims an issue | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--issue`) | What it touched: the path from the repository's root, the branch, the commit, the issue. g1t ties the session to the pull requests and issues these lead to, and tells two sessions that touch the same file. |
 | A `git push` reaches the remote | `g1t api update_session -f id=ID -f head_commit=SHA` and `g1t session touch --commit SHA --branch BRANCH` | The commit you pushed and its branch, so the session's entries line up with the code and it is tied to the branch's pull request. |
 | Claude starts a subagent | `g1t session start --parent SESSION --agent-type TYPE --task TASK --prompt PROMPT` | A session of its own for the subagent, under this one, with its kind and the task it was given (its prompt's first 4,000 characters). See [Subagents](#subagents). |
@@ -73,7 +80,8 @@ It never records:
 
 - what a tool returned: command output, file contents, search results and
   web pages are never sent (an Agent call's answer is the one thing read,
-  for its subagent's final message and id);
+  for its subagent's final message and id), nor the turns Claude Code
+  starts itself to hand Claude a background task's output;
 - Claude's replies or reasoning;
 - your files, environment or transcript.
 
@@ -83,6 +91,16 @@ claimed.
 
 The hooks return at once: the CLI calls run in a background process, so a
 slow network never holds Claude up.
+
+Shell commands are read the same way from the Bash tool and, on Windows,
+the PowerShell tool: a `git commit`, a `git push`, a branch made or a
+`g1t work claim` in either is recorded.
+
+Once the session has started, the plugin sets `G1T_SESSION` for the
+commands Claude runs (through Claude Code's session environment), so
+Claude's own `g1t` commands act in this session even when another session
+works in the same working copy. A command run before the session's id
+arrives, in its first second, uses the working copy's session.
 
 ## The context Claude starts with
 
@@ -125,6 +143,17 @@ twelve subagents, g1t shows twelve sessions and they see each other.
   its claims. Each subagent's claim is its own, so siblings see each
   other's, and when two touch the same file both are told
   (`overlap.detected`).
+
+  A subagent shares its parent's shell environment, so the plugin sets
+  its session on each of its commands that runs `g1t` or names
+  `G1T_SESSION`, as Claude Code lets a `PreToolUse` hook do: the command
+  runs with `export G1T_SESSION=ses_…;` before it in Bash, or
+  `$env:G1T_SESSION='ses_…';` in PowerShell. The plugin makes no
+  permission decision: Claude Code checks your permission rules against
+  the command as it runs, with that prefix, so a rule such as
+  `Bash(g1t work claim:*)` may no longer match it and Claude Code asks
+  instead. Other commands are left as Claude wrote them, and the session
+  records each command as Claude wrote it.
 - **When it finishes** (`SubagentStop`), its session ends with its final
   message as its result. A background subagent's, or a late hook's, order
   does not matter: starting a subagent again finds the same session, and
@@ -156,11 +185,28 @@ Claude uses a skill when the task matches it, or you can run one by name.
 A claim says you are working on an issue. It is never a lock: a second
 claim is allowed, and whoever makes it is told about the first.
 
-## When the CLI is missing or signed out
+## When the CLI is missing, signed out or out of date
 
-If `g1t` is not installed, or not signed in, the hooks record nothing and
+If `g1t` is not installed, not signed in, or older than 0.3.2 (the oldest
+that takes every command the hooks run), the hooks record nothing and
 Claude Code says so once. The plugin never installs anything itself.
 Install the CLI or run `g1t auth login`, and the next session is recorded.
+
+To update the CLI, run its installer again:
+
+```sh
+curl -fsSL https://g1t.sh/install | sh
+```
+
+On Windows, `irm https://g1t.sh/install.ps1 | iex`. `g1t --version` says
+which you have. A CLI that refuses a command the hooks send is taken as
+out of date, and said the same way.
+
+The hooks run on Node. Without Node 18 or later they record nothing:
+with an older Node, Claude Code says so once; with no `node` on your
+`PATH` at all, Claude Code shows each hook's failure (`node: command not
+found`) as a hook error. Install Node, or turn the plugin off until you
+do.
 
 ## Opt out
 

@@ -26,7 +26,10 @@ the issues and pull requests, the checks and the record of what happened.
 ## Connect your coding agent
 
 Choose your agent. Every block on these pages follows the choice, and it is
-remembered for your next visit.
+remembered for your next visit. For Claude Code, install g1t's
+[Claude Code plugin](/guides/claude-code-plugin/): it adds the MCP server
+and records your sessions, so `claude mcp add` is only for Claude Code
+without it.
 
 <AgentSetup />
 
@@ -290,7 +293,7 @@ requests as the repository and a `number`.
 | `repository` | Repositories, their settings, rulesets, branches, labels, milestones and releases |
 | `issue` | Issues, labels and comments; an issue's whole context, and claims |
 | `pull_request` | Pull requests: create, record and read sessions, review, merge, the merge queue |
-| `session` | Your harness's session: start, heartbeat, record, end; who else is working |
+| `session` | Your harness's session: start, update, record, end, get, list; dispatch work on an issue; who else is working |
 | `memory` | `recall` and `remember` |
 | `workflow` | Workflow runs and logs, checks, deployments, environments and runners |
 | `observability` | A project's requests, logs, traces, errors and metrics in production |

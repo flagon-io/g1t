@@ -481,7 +481,7 @@ fn percent(done: u64, total: u64) -> String {
     )
 }
 
-/// `Bearer realm="https://g1t.sh/v2/token",service="g1t.sh",scope="â€¦"`.
+/// `Bearer realm="https://g1t.sh/v2/token",service="g1t.sh",scope="…"`.
 fn parse_challenge(header: &str) -> Option<(String, String)> {
     let rest = header
         .trim()
@@ -513,7 +513,7 @@ fn retry_wait(reply: &Reply, attempt: u32) -> Option<Duration> {
     })
 }
 
-/// 1s, 2s, 4s â€¦ at most 30s.
+/// 1s, 2s, 4s … at most 30s.
 pub fn backoff(attempt: u32) -> Duration {
     Duration::from_secs((1u64 << attempt.min(5)).min(30))
 }

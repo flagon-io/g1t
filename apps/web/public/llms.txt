@@ -69,6 +69,10 @@ are created and approved only in their browser.
      --header "Authorization: Bearer $G1T_TOKEN"
    ```
 
+   Skip this if g1t's Claude Code plugin is installed (`g1t@g1t`): it adds
+   the server itself, as `plugin:g1t:g1t`, and adding it again lists every
+   tool twice.
+
    Codex, in `~/.codex/config.toml`:
 
    ```toml
@@ -93,7 +97,7 @@ are created and approved only in their browser.
 
    Without the header, a client that supports MCP authorization signs the
    person in through their browser instead (Claude Code: `/mcp`, then
-   choose g1t; Codex: `codex mcp login g1t`; OpenCode: `opencode mcp auth
+   choose g1t, or `plugin:g1t:g1t` with g1t's plugin; Codex: `codex mcp login g1t`; OpenCode: `opencode mcp auth
    g1t`; Cursor: when it first connects). The MCP server always needs one
    or the other.
 

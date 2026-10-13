@@ -14,6 +14,10 @@ import {
   branchFromCommand,
   g1tTool,
   hook,
+  MIN_CLI,
+  oldNode,
+  older,
+  typedSkill,
   isG1tRemote,
   isGitCommit,
   isGitPush,
@@ -26,6 +30,8 @@ import {
   summarizeTool,
   work,
 } from "../hooks/g1t.mjs";
+
+import { CONTRACT, refusal } from "./fake-g1t.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRIPT = join(HERE, "..", "hooks", "g1t.mjs");
@@ -47,6 +53,12 @@ describe("plan", () => {
     assert.deepEqual(args.slice(0, 5), ["session", "log", "--kind", "prompt", "--"]);
     assert.equal(args[5].length, PROMPT_LIMIT);
     assert.ok(args[5].endsWith("…"));
+  });
+
+  test("a turn Claude Code starts itself for a background task is not a prompt", () => {
+    const notification = "<task-notification>\n<task-id>a1</task-id>\n<result>SECRET OUTPUT</result>\n</task-notification>";
+    assert.equal(plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: notification }, {}), null);
+    assert.equal(plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: "﻿hi" }, {}).steps[0].args.at(-1), "hi");
   });
 
   test("G1T_RECORD_PROMPTS=0 keeps prompts back, and G1T_RECORD=0 everything", () => {
@@ -168,9 +180,12 @@ describe("subagents", () => {
   test("SubagentStop ends it with its final message, cut to the limit", () => {
     const job = plan(fixtures.subagentStop, {});
     assert.deepEqual(job.agent, { id: "def456", type: "Explore" });
-    assert.deepEqual(job.steps, [{ args: ["session", "end", "--reason", "done", "--result", "Analysis complete. Found 3 potential issues..."] }]);
+    assert.deepEqual(job.steps, [{ args: ["session", "end", "--reason", "done", "--result=Analysis complete. Found 3 potential issues..."] }]);
     const long = plan({ ...fixtures.subagentStop, last_assistant_message: "z".repeat(RESULT_LIMIT * 2) }, {});
-    assert.equal(long.steps[0].args.at(-1).length, RESULT_LIMIT);
+    assert.equal(long.steps[0].args.at(-1).length, "--result=".length + RESULT_LIMIT);
+    const dash = plan({ ...fixtures.subagentStop, last_assistant_message: "- Found 3 issues" }, {});
+    assert.equal(dash.steps[0].args.at(-1), "--result=- Found 3 issues", "a message that starts with a dash is still a value");
+    assert.equal(refusal(dash.steps[0].args), null);
   });
 
   test("an Agent call gives its subagent the task, and once finished its final message, and nothing else of its answer", () => {
@@ -197,13 +212,13 @@ describe("subagents", () => {
     assert.deepEqual(job.agent, { id: "agent-def456", type: "Explore" });
     assert.deepEqual(job.steps, [
       { args: ["session", "log", "--kind", "tool_call", "--", "Edit: src/api/routes.ts"] },
-      { args: ["session", "touch", "--file", "src/api/routes.ts"] },
+      { args: ["session", "touch", "--file=src/api/routes.ts"] },
     ]);
     assert.ok(!JSON.stringify(job).includes("SECRET PATCH"));
   });
 
   test("a skill is its name only", () => {
-    assert.deepEqual(plan(fixtures.skill, {}).steps, [{ args: ["session", "log", "--kind", "skill", "--", "work-on-issue"] }]);
+    assert.deepEqual(plan(fixtures.skill, {}).steps, [{ args: ["session", "log", "--kind", "skill", "--", "work-on-issue"], skill: "work-on-issue" }]);
   });
 
   test("branches made, commits, claims and g1t's MCP tools are touched", () => {
@@ -280,7 +295,7 @@ describe("with a working copy", () => {
   let dir, env, log;
 
   const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
-  const calls = () =>
+  const allCalls = () =>
     existsSync(log)
       ? readFileSync(log, "utf8")
           .trim()
@@ -288,6 +303,8 @@ describe("with a working copy", () => {
           .filter(Boolean)
           .map((l) => JSON.parse(l))
       : [];
+  // The calls that do something: not the version check before them.
+  const calls = () => allCalls().filter((c) => c.args[0] !== "--version");
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "g1t-hook-"));
@@ -296,7 +313,12 @@ describe("with a working copy", () => {
     git("remote", "add", "origin", "https://g1t.sh/acme/app.git");
     env = { PATH: process.env.PATH, G1T_BIN: FAKE, FAKE_G1T_LOG: log, CLAUDE_PLUGIN_DATA: join(dir, ".data") };
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }));
+  afterEach(() => {
+    // Every call the hooks made is one the real CLI takes (the stand-in refuses the rest).
+    const refused = allCalls().filter((c) => refusal(c.args));
+    rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    assert.deepEqual(refused, [], "the CLI refuses these calls");
+  });
 
   test("SessionStart gives Claude the branch's issue's work context", () => {
     const { output, job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart", source: "startup" }, env);
@@ -373,14 +395,14 @@ describe("with a working copy", () => {
     const first = childStarts[0].args;
     assert.deepEqual(first.slice(0, 8), ["session", "start", "--harness", "claude_code", "--harness-session-id", "abc-123/agent/def456", "--parent", "ses_fake01"]);
     assert.ok(first.includes("--no-remember"));
-    assert.equal(first[first.indexOf("--agent-type") + 1], "Explore");
-    assert.equal(first[first.indexOf("--task") + 1], "Find API endpoints");
+    assert.ok(first.includes("--agent-type=Explore"));
+    assert.ok(first.includes("--task=Find API endpoints"));
     const edit = log.find((c) => c.args[2] === "--kind" && c.args.at(-1) === "Edit: src/api/routes.ts");
     assert.equal(edit.session, "ses_sub_def456");
     const touched = log.find((c) => c.args[1] === "touch");
-    assert.deepEqual(touched, { args: ["session", "touch", "--file", "src/api/routes.ts"], session: "ses_sub_def456" });
+    assert.deepEqual(touched, { args: ["session", "touch", "--file=src/api/routes.ts"], session: "ses_sub_def456" });
     const ended = log.find((c) => c.args[1] === "end");
-    assert.deepEqual(ended, { args: ["session", "end", "--reason", "done", "--result", "Analysis complete. Found 3 potential issues..."], session: "ses_sub_def456" });
+    assert.deepEqual(ended, { args: ["session", "end", "--reason", "done", "--result=Analysis complete. Found 3 potential issues..."], session: "ses_sub_def456" });
   });
 
   test("a subagent whose stop arrives first is started, then ended", () => {
@@ -398,7 +420,7 @@ describe("with a working copy", () => {
     const log = calls().filter((c) => c.args[0] === "session");
     assert.equal(log.find((c) => c.args[1] === "log").session, "ses_fake01", "the Agent call is the parent's");
     const end = log.find((c) => c.args[1] === "end");
-    assert.deepEqual(end, { args: ["session", "end", "--reason", "done", "--result", "Found 12 endpoints in src/api."], session: "ses_sub_a4d2c8f1e0b3a297" });
+    assert.deepEqual(end, { args: ["session", "end", "--reason", "done", "--result=Found 12 endpoints in src/api."], session: "ses_sub_a4d2c8f1e0b3a297" });
   });
 
   test("a hand-off names its issue at the start", () => {
@@ -469,5 +491,115 @@ describe("with a working copy", () => {
     const bad = spawnSync(process.execPath, [SCRIPT], { input: "not json", encoding: "utf8", env: { ...process.env, ...env } });
     assert.equal(bad.status, 0);
     assert.equal(bad.stdout, "");
+  });
+
+  test("a CLI older than the plugin needs records nothing and says so once, with how to update it", () => {
+    const old = { ...env, FAKE_G1T_VERSION: "0.3.1" };
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, old);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, old);
+    work(plan({ ...base, cwd: dir, hook_event_name: "Stop" }, old), old);
+    // SessionStart still asks it for the issue's context, which every CLI gives.
+    assert.deepEqual(calls().map((c) => c.args.join(" ")), ["work context 42"], "nothing is recorded with it");
+    assert.equal(allCalls().filter((c) => c.args[0] === "--version").length, 1, "the version is asked once for each build of the CLI");
+    const first = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hi" }, old);
+    assert.match(first.output.systemMessage, /g1t CLI is 0\.3\.1, and the plugin needs 0\.3\.2 or later/);
+    assert.match(first.output.systemMessage, /curl -fsSL https:\/\/g1t\.sh\/install \| sh/);
+    assert.match(first.output.systemMessage, /irm https:\/\/g1t\.sh\/install\.ps1 \| iex/);
+    assert.equal(hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hi" }, old).output, null);
+    assert.equal(older("0.3.1", MIN_CLI), true);
+    assert.equal(older("0.3.2", MIN_CLI), false);
+    assert.equal(older("0.10.0", MIN_CLI), false);
+    assert.equal(older("1.0.0", MIN_CLI), false);
+  });
+
+  test("a CLI that refuses a command (exit 2) is said once, as one to update", () => {
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, { ...env, FAKE_G1T_EXIT: "2" });
+    const first = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hi" }, env);
+    assert.match(first.output.systemMessage, /refused `g1t session start`/);
+    assert.match(first.output.systemMessage, /installer again/);
+    assert.equal(hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hi" }, env).output, null);
+  });
+
+  test("the stand-in CLI refuses what the real one refuses", () => {
+    assert.equal(CONTRACT.minimum_version, MIN_CLI, "the hooks ask for the CLI the contract needs");
+    assert.match(refusal(["session", "log", "--kind", "tool-calls", "--", "x"]), /takes prompt, tool_call, skill/);
+    assert.match(refusal(["session", "log", "--kind", "note", "--", "x"]), /not note/, "the hooks never send a note");
+    assert.match(refusal(["session", "end", "--result", "- a list"]), /unexpected argument/);
+    assert.equal(refusal(["session", "end", "--result=- a list"]), null);
+    assert.match(refusal(["session", "touch"]), /needs one of/);
+    assert.match(refusal(["session", "heartbeat", "--now"]), /takes no --now/);
+    assert.match(refusal(["session", "start", "--harness", "claude-managed-agents", "--harness-session-id", "x"]), /takes claude_code/);
+    assert.match(refusal(["work", "context", "abc"]), /not abc/);
+    assert.match(refusal(["session", "pause"]), /takes 0 argument/);
+    assert.equal(refusal(["api", "update_session", "-f", "id=ses_1", "-f", "head_commit=abc", "--silent"]), null);
+  });
+
+  test("PowerShell commands are read as Bash ones are, and a subagent's act as its session", () => {
+    const ps = (command, extra = {}) => ({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "PowerShell", tool_input: { command }, ...extra });
+    assert.equal(plan(ps("g1t work claim 42"), env).issue, 42);
+    assert.deepEqual(plan(ps("git checkout -b 42-fix; git status"), env).steps.at(-1), { args: ["session", "touch", "--branch", "42-fix"] });
+    assert.deepEqual(plan(ps("git commit -m x"), env).steps.at(-1), { touchHead: true });
+    assert.deepEqual(plan(ps("git push origin 42-fix"), env).steps.at(-1), { headCommit: true });
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
+    work(hook({ ...fixtures.subagentStart, cwd: dir }, env).job, env);
+    const pre = (tool_name, command) =>
+      hook({ ...base, cwd: dir, hook_event_name: "PreToolUse", agent_id: "agent-def456", agent_type: "Explore", tool_name, tool_input: { command } }, env).output;
+    assert.equal(pre("PowerShell", "g1t work claim 42").hookSpecificOutput.updatedInput.command, "$env:G1T_SESSION='ses_sub_def456'; g1t work claim 42");
+    assert.equal(pre("PowerShell", "g1t.exe session view").hookSpecificOutput.updatedInput.command, "$env:G1T_SESSION='ses_sub_def456'; g1t.exe session view");
+    assert.equal(pre("Bash", "echo $G1T_SESSION").hookSpecificOutput.updatedInput.command, "export G1T_SESSION=ses_sub_def456; echo $G1T_SESSION");
+    assert.equal(pre("PowerShell", "$env:G1T_SESSION='ses_other'; g1t work claim 42"), null, "a session the command sets itself is kept");
+    assert.equal(pre("PowerShell", "Get-ChildItem"), null, "other commands are left alone");
+    // The tool call is recorded as Claude wrote it.
+    const after = plan(ps("$env:G1T_SESSION='ses_sub_def456'; g1t work claim 42", { agent_id: "agent-def456" }), env);
+    assert.deepEqual(after.steps[0].args.at(-1), "PowerShell: g1t work claim 42");
+    assert.equal(summarizeTool("Bash", { command: "export G1T_SESSION=ses_1; g1t pr view" }), "Bash: g1t pr view");
+  });
+
+  test("a skill typed as /plugin:name is recorded once in its turn, however Claude Code then runs it", () => {
+    assert.equal(typedSkill("/g1t:work-on-issue 42"), "g1t:work-on-issue");
+    assert.equal(typedSkill("﻿/g1t:status"), "g1t:status");
+    assert.equal(typedSkill("/clear"), null, "Claude Code's own commands are not skills");
+    assert.equal(typedSkill("look at /g1t:status"), null);
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
+    const typed = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:work-on-issue 42" }, env).job;
+    assert.deepEqual(typed.steps.map((s) => s.args.slice(0, 4)), [["session", "log", "--kind", "prompt"], ["session", "log", "--kind", "skill"]]);
+    work(typed, env);
+    const tool = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-issue", args: "42" } }, env).job;
+    work(tool, env);
+    const skills = calls().filter((c) => c.args.includes("skill"));
+    assert.equal(skills.length, 2);
+    assert.deepEqual(skills[0].args, ["session", "log", "--kind", "skill", "--key=skill:work-on-issue:1", "--", "g1t:work-on-issue"]);
+    assert.equal(skills[1].args[4], "--key=skill:work-on-issue:1", "the same key: g1t keeps the first");
+    // Another skill in the turn has a key of its own; the next prompt is another turn.
+    const next = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:coordinate" } }, env).job;
+    assert.equal(next.steps[0].key, "skill:coordinate:1");
+    hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "go on" }, { ...env, G1T_RECORD_PROMPTS: "0" });
+    const later = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-issue" } }, env).job;
+    assert.equal(later.steps[0].key, "skill:work-on-issue:2", "a turn whose prompt is not sent is still a turn");
+    // Prompts kept back: the typed skill's name is still recorded, the prompt is not.
+    const quiet = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:status" }, { ...env, G1T_RECORD_PROMPTS: "0" }).job;
+    assert.deepEqual(quiet.steps.map((s) => s.args.at(-1)), ["g1t:status"]);
+  });
+
+  test("Claude's own commands get the session's id once it has started", () => {
+    const envFile = join(dir, "env.sh");
+    const { job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, { ...env, CLAUDE_ENV_FILE: envFile });
+    assert.ok(!existsSync(envFile), "nothing is written before the session's id is known");
+    work(job, env);
+    // A plain assignment: Claude Code gives it to PowerShell commands too.
+    assert.equal(readFileSync(envFile, "utf8"), "export G1T_SESSION=ses_fake01\n");
+  });
+
+  test("on a Node older than 18 nothing is recorded, and that is said once", () => {
+    const at = (hook_event_name) => ({ ...base, cwd: dir, hook_event_name });
+    assert.equal(oldNode(at("SessionStart"), env, "18.0.0"), undefined);
+    const first = oldNode(at("SessionStart"), env, "16.20.2");
+    assert.match(first.systemMessage, /need Node 18 or later, and `node` is v16\.20\.2/);
+    assert.equal(oldNode(at("UserPromptSubmit"), env, "16.20.2"), null);
+    assert.equal(oldNode(at("PostToolUse"), env, "16.20.2"), null);
+    assert.deepEqual(calls(), []);
   });
 });

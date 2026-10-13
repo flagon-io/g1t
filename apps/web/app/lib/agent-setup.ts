@@ -14,6 +14,9 @@
 /** g1t.sh's MCP server, the same as HOSTED_ADDRESSES.mcp in ./addresses. */
 export const MCP_URL = "https://mcp.g1t.sh";
 
+/** Installs g1t's Claude Code plugin, which adds g1t.sh's MCP server and records sessions. */
+export const PLUGIN_INSTALL = "claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git\nclaude plugin install g1t@g1t";
+
 export const AGENT_IDS = ["claude-code", "codex", "opencode", "cursor"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 export const DEFAULT_AGENT: AgentId = "claude-code";
@@ -38,15 +41,29 @@ const json = (value: unknown) => JSON.stringify(value, null, 2);
 /** How each agent adds the MCP server at `mcp`. */
 export function agentsFor(mcp: string = MCP_URL): Record<AgentId, AgentSetup> {
   return {
-    "claude-code": {
-      id: "claude-code",
-      label: "Claude Code",
-      file: null,
-      lang: "sh",
-      code: `claude mcp add --transport http g1t ${mcp}`,
-      then: "Then run `/mcp` in Claude Code and choose g1t to sign in through your browser.",
-      instructions: "CLAUDE.md",
-    },
+    // On g1t.sh, g1t's plugin: it adds the MCP server itself (as
+    // plugin:g1t:g1t) and records sessions. A self-hosted g1t's server is
+    // added on its own.
+    "claude-code":
+      mcp === MCP_URL
+        ? {
+            id: "claude-code",
+            label: "Claude Code",
+            file: null,
+            lang: "sh",
+            code: PLUGIN_INSTALL,
+            then: "The plugin adds g1t's MCP server and records your sessions. Start Claude Code again, run `/mcp` and choose `plugin:g1t:g1t` to sign in through your browser. Skip `claude mcp add` with the plugin installed, or every g1t tool is listed twice.",
+            instructions: "CLAUDE.md",
+          }
+        : {
+            id: "claude-code",
+            label: "Claude Code",
+            file: null,
+            lang: "sh",
+            code: `claude mcp add --transport http g1t ${mcp}`,
+            then: "Then run `/mcp` in Claude Code and choose g1t to sign in through your browser.",
+            instructions: "CLAUDE.md",
+          },
     codex: {
       id: "codex",
       label: "Codex",

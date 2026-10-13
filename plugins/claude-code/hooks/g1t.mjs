@@ -8,9 +8,11 @@
 //                     and, when the branch, G1T_ISSUE or the session names an
 //                     issue, g1t work context N, given to Claude as context
 //   UserPromptSubmit  g1t session log --kind prompt TEXT     (first 2,000 characters)
+//                     and, for a plugin's skill typed as /plugin:name,
+//                     g1t session log --kind skill NAME
 //   PreToolUse        Agent: the task it is given, kept until its subagent starts.
 //                     Inside a subagent, its own g1t session for the g1t
-//                     commands and g1t MCP claims it makes.
+//                     commands (Bash or PowerShell) and g1t MCP claims it makes.
 //   PostToolUse       g1t session log --kind tool_call "Tool: what it was called with"
 //                     (a Skill: g1t session log --kind skill NAME), and
 //                     g1t session touch for the files it wrote, the commits
@@ -32,8 +34,13 @@
 //
 // Every hook returns at once: the CLI calls run in a detached process of
 // their own, so a slow network never holds Claude up. If `g1t` is not
-// installed or not signed in, nothing is recorded and Claude Code says so
-// once. Nothing is ever installed. No dependencies; Node 18 or later.
+// installed, not signed in or older than MIN_CLI (or refuses a command,
+// as an old CLI does), nothing is recorded and Claude Code says so once.
+// Nothing is ever installed. No dependencies; Node 18 or later, and on an
+// older Node it says so once and does nothing.
+//
+// Every CLI call is in test/cli-contract.json, which the tests hold this
+// file and the CLI's own parser (crates/g1t) to.
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -57,6 +64,16 @@ export const RESULT_LIMIT = 8000;
 const CONTEXT_WAIT_MS = 900;
 /** Exit code the g1t CLI gives when signing in is needed. */
 const EXIT_AUTH = 4;
+/** Exit code the g1t CLI gives for a command it does not take, as a CLI older than the plugin does. */
+const EXIT_USAGE = 2;
+/** The oldest g1t CLI that takes every command the hooks run (test/cli-contract.json's minimum_version). */
+export const MIN_CLI = "0.3.2";
+/** The oldest Node the hooks run on. */
+export const MIN_NODE = 18;
+/** How to update the CLI: its installer, run again. */
+const INSTALL = "`curl -fsSL https://g1t.sh/install | sh` (on Windows, `irm https://g1t.sh/install.ps1 | iex`)";
+/** The tools that run shell commands. */
+const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
 /** The tool that starts subagents (Task before Claude Code renamed it). */
 const AGENT_TOOLS = new Set(["Agent", "Task"]);
 /** Tools that write a file, and where they say which. */
@@ -91,6 +108,13 @@ export function repoPath(path, cwd) {
   return rel.replaceAll("\\", "/");
 }
 
+/** What a subagent's shell command starts with to act as its session (see preToolUse), in Bash or PowerShell. */
+export function sessionPrefix(tool, session) {
+  return tool === "PowerShell" ? `$env:G1T_SESSION='${session}'; ` : `export G1T_SESSION=${session}; `;
+}
+
+const PREFIX = /^(?:export G1T_SESSION=[A-Za-z0-9_]+; |\$env:G1T_SESSION='[A-Za-z0-9_]+'; )/;
+
 /** One line on what a tool was called with: never what it returned. */
 export function summarizeTool(name, input, cwd) {
   const i = input && typeof input === "object" ? input : {};
@@ -99,7 +123,11 @@ export function summarizeTool(name, input, cwd) {
     return repoPath(p, cwd) ?? p;
   };
   let what = "";
-  if (typeof i.command === "string") what = i.command.split("\n")[0] + (i.command.includes("\n") ? " …" : "");
+  if (typeof i.command === "string") {
+    // Without the session the plugin gave a subagent's command.
+    const command = i.command.replace(PREFIX, "");
+    what = command.split("\n")[0] + (command.includes("\n") ? " …" : "");
+  }
   else if (i.file_path || i.notebook_path) what = path(i.file_path ?? i.notebook_path);
   else if (typeof i.pattern === "string") what = `${i.pattern}${i.path ? ` in ${path(i.path)}` : ""}`;
   else if (typeof i.url === "string") what = i.url;
@@ -167,6 +195,22 @@ export function agentResult(response) {
     .trim();
 }
 
+/** The plugin skill a prompt runs when it is typed as one: `g1t:work-on-issue` for `/g1t:work-on-issue 42`. */
+export function typedSkill(prompt) {
+  const text = String(prompt ?? "").replace(/^﻿/, "");
+  const match = /^\s*\/([A-Za-z0-9][\w.-]*:[A-Za-z0-9][\w.-]*)(?=\s|$)/.exec(text);
+  return match ? match[1] : null;
+}
+
+/**
+ * A skill's step: its name only. `skill` keys it (see hook), so a skill
+ * typed as /g1t:name, which Claude Code may then also run as a Skill tool
+ * call, is recorded once in the turn.
+ */
+function skillStep(name) {
+  return { args: ["session", "log", "--kind", "skill", "--", clip(name, 100)], skill: name.replace(/^.*:/, "") };
+}
+
 /** The g1t MCP tool a call is to, by name: `issue` for mcp__plugin_g1t_g1t__issue or mcp__g1t__issue. */
 export function g1tTool(name) {
   const match = /^mcp__(?:plugin_g1t_)?g1t__([a-z_]+)$/.exec(String(name ?? ""));
@@ -194,10 +238,17 @@ export function plan(event, env = process.env) {
       if (issue > 0) job.issue = issue;
       return job;
     }
-    case "UserPromptSubmit":
-      if (env.G1T_RECORD_PROMPTS === "0" || typeof event.prompt !== "string" || !event.prompt.trim()) return null;
-      job.steps.push({ args: ["session", "log", "--kind", "prompt", "--", clip(event.prompt, PROMPT_LIMIT)] });
-      return job;
+    case "UserPromptSubmit": {
+      const prompt = typeof event.prompt === "string" ? event.prompt.replace(/^﻿/, "") : "";
+      // A turn Claude Code starts itself for a background task carries that
+      // task's output, which is never sent: it is not a prompt of yours.
+      if (!prompt.trim() || /^\s*<task-notification>/.test(prompt)) return null;
+      if (env.G1T_RECORD_PROMPTS !== "0") job.steps.push({ args: ["session", "log", "--kind", "prompt", "--", clip(prompt, PROMPT_LIMIT)] });
+      // A skill typed as /plugin:name is a skill used (its name), whether or not prompts are sent.
+      const skill = typedSkill(prompt);
+      if (skill) job.steps.push(skillStep(skill));
+      return job.steps.length ? job : null;
+    }
     case "SubagentStart":
       if (!job.agent) return null;
       job.agent.start = true;
@@ -206,7 +257,8 @@ export function plan(event, env = process.env) {
       if (!job.agent) return null;
       const args = ["session", "end", "--reason", "done"];
       const result = typeof event.last_assistant_message === "string" ? event.last_assistant_message.trim() : "";
-      if (result) args.push("--result", clip(result, RESULT_LIMIT));
+      // --flag=VALUE throughout for text: one that starts with a dash ("- Found …") is still a value.
+      if (result) args.push(`--result=${clip(result, RESULT_LIMIT)}`);
       job.steps.push({ args });
       return job;
     }
@@ -218,14 +270,14 @@ export function plan(event, env = process.env) {
         const skill = typeof input.skill === "string" ? input.skill.trim() : "";
         if (!skill) return null;
         // Its name, nothing more.
-        job.steps.push({ args: ["session", "log", "--kind", "skill", "--", clip(skill, 100)] });
+        job.steps.push(skillStep(skill));
         return job;
       }
       job.steps.push({ args: ["session", "log", "--kind", "tool_call", "--", summarizeTool(tool, input, cwd)] });
       const touch = [];
       if (WRITERS.has(tool)) {
         const file = repoPath(input.file_path ?? input.notebook_path, cwd);
-        if (file) touch.push("--file", file);
+        if (file) touch.push(`--file=${file}`);
       }
       if (AGENT_TOOLS.has(tool) && !job.agent) {
         const response = event.tool_response ?? {};
@@ -241,7 +293,7 @@ export function plan(event, env = process.env) {
           };
         }
       }
-      if (tool === "Bash") {
+      if (SHELL_TOOLS.has(tool)) {
         const issue = issueFromCommand(input.command);
         if (issue) {
           job.issue = issue;
@@ -349,6 +401,7 @@ export function sessionFiles(sid, env = process.env) {
     marker: join(dir, `${safe}.json`),
     id: join(dir, `${safe}.id`),
     issue: join(dir, `${safe}.issue`),
+    turn: join(dir, `${safe}.turn`),
     pending: join(dir, `${safe}.pending.json`),
     agent: (agentId) => join(dir, `${safe}.agent.${safeName(String(agentId).replace(/^agent-/, ""))}.id`),
   };
@@ -392,19 +445,25 @@ export function takeTask(files, type) {
 
 // --- saying so once ----------------------------------------------------
 
+const NOT_RECORDED = "g1t: this session is not being recorded on g1t, because";
+
 const MESSAGES = {
-  missing:
-    "g1t: this session is not being recorded on g1t, because the g1t CLI is not installed. Install it (https://docs.g1t.sh/guides/cli/) and run `g1t auth login`. This is said once.",
-  signed_out:
-    "g1t: this session is not being recorded on g1t, because the g1t CLI is not signed in. Run `g1t auth login`. This is said once.",
+  missing: () => `${NOT_RECORDED} the g1t CLI is not installed. Install it (https://docs.g1t.sh/guides/cli/) and run \`g1t auth login\`. This is said once.`,
+  signed_out: () => `${NOT_RECORDED} the g1t CLI is not signed in. Run \`g1t auth login\`. This is said once.`,
+  outdated: (version) =>
+    `${NOT_RECORDED} the g1t CLI is ${version}, and the plugin needs ${MIN_CLI} or later. Update it by running the installer again: ${INSTALL}. This is said once.`,
+  refused: (command) =>
+    `${NOT_RECORDED} the g1t CLI refused \`g1t ${command}\`: it is older than the plugin, which needs ${MIN_CLI} or later. Update it by running the installer again: ${INSTALL}. This is said once.`,
+  old_node: (version) =>
+    `${NOT_RECORDED} its hooks need Node ${MIN_NODE} or later, and \`node\` is ${version}. Install a current Node (https://nodejs.org) and start Claude Code again. This is said once.`,
 };
 
-/** Remembers a problem (missing, signed_out), or that there is none (null). */
-export function setProblem(env, problem) {
+/** Remembers a problem (missing, signed_out, outdated, refused, old_node) and what it was about, or that there is none (null). */
+export function setProblem(env, problem, detail = null) {
   const path = join(dataDir(env), "notice.json");
   const notice = readJson(path, {});
-  if ((notice.problem ?? null) === problem) return;
-  write(path, JSON.stringify({ problem, shown: false }));
+  if ((notice.problem ?? null) === problem && (notice.detail ?? null) === detail) return;
+  write(path, JSON.stringify({ problem, detail, shown: false }));
 }
 
 /** The message for a problem not shown yet, marking it shown. */
@@ -413,7 +472,37 @@ export function takeNotice(env) {
   const notice = readJson(path, {});
   if (!notice.problem || notice.shown || !MESSAGES[notice.problem]) return null;
   write(path, JSON.stringify({ ...notice, shown: true }));
-  return MESSAGES[notice.problem];
+  return MESSAGES[notice.problem](notice.detail);
+}
+
+/** Whether version a (1.2.3) is older than b. */
+export function older(a, b) {
+  const pa = String(a).split(".").map(Number);
+  const pb = String(b).split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) < (pb[i] || 0);
+  return false;
+}
+
+/**
+ * The CLI's version, from `g1t --version`, asked once for each build of
+ * it: kept with the file's size and time, so updating it asks again.
+ * Null when it cannot be told.
+ */
+export function cliVersion(bin, env = process.env) {
+  let stamp;
+  try {
+    const stat = statSync(bin);
+    stamp = `${bin}|${stat.size}|${stat.mtimeMs}`;
+  } catch {
+    return null;
+  }
+  const path = join(dataDir(env), "cli.json");
+  const kept = readJson(path, {});
+  if (kept.stamp === stamp) return kept.version ?? null;
+  const out = cli(bin, ["--version"], { timeout: 5000, env });
+  const version = out.status === 0 ? (/\b(\d+\.\d+\.\d+)\b/.exec(out.stdout ?? "")?.[1] ?? null) : null;
+  write(path, JSON.stringify({ stamp, version }));
+  return version;
 }
 
 /** Whether a working copy's remotes are on g1t (g1t.sh, or G1T_HOST's host). */
@@ -466,13 +555,14 @@ function startSubagent(bin, job, files, agent, parentId, opts) {
     parentId,
     "--no-remember",
   ];
-  if (agent.type) args.push("--agent-type", String(agent.type));
-  if (agent.task) args.push("--task", agent.task);
-  if (agent.prompt) args.push("--prompt", agent.prompt);
-  if (agent.model) args.push("--model", String(agent.model));
+  if (agent.type) args.push(`--agent-type=${agent.type}`);
+  if (agent.task) args.push(`--task=${agent.task}`);
+  if (agent.prompt) args.push(`--prompt=${agent.prompt}`);
+  if (agent.model) args.push(`--model=${agent.model}`);
   args.push("--json");
   const out = cli(bin, args, { ...opts, env: { ...opts.env, G1T_SESSION: parentId } });
   if (out.status === EXIT_AUTH) return { auth: true };
+  if (out.status === EXIT_USAGE) return { refused: "session start" };
   const id = out.status === 0 ? startedId(out) : null;
   if (id) write(files.agent(agent.id), id);
   return { id };
@@ -482,6 +572,9 @@ function startSubagent(bin, job, files, agent, parentId, opts) {
 export function work(job, env = process.env) {
   const bin = findCli(env);
   if (!bin) return setProblem(env, "missing");
+  // An older CLI refuses some of what the hooks send: nothing is sent to it.
+  const version = cliVersion(bin, env);
+  if (version && older(version, MIN_CLI)) return setProblem(env, "outdated", version);
   const files = sessionFiles(job.sid, env);
   if (job.issue && !job.agent) write(files.issue, String(job.issue));
   const opts = { cwd: job.cwd, timeout: 20000, env: { ...env } };
@@ -493,11 +586,22 @@ export function work(job, env = process.env) {
     args.push("--json");
     const out = cli(bin, args, opts);
     if (out.status === EXIT_AUTH) return setProblem(env, "signed_out");
+    if (out.status === EXIT_USAGE) return setProblem(env, "refused", "session start");
     if (out.status !== 0) return;
     setProblem(env, null);
     id = startedId(out);
     if (!id) return;
     write(files.id, id);
+    if (job.envFile && /^[A-Za-z0-9_]+$/.test(id)) {
+      // Claude's own g1t commands act in this session, not another one in
+      // the same working copy. A plain assignment, which Claude Code gives
+      // PowerShell commands too; it reads the file at the session's first
+      // command, so a command before this (rare: it is the first second)
+      // uses the working copy's remembered session.
+      try {
+        writeFileSync(job.envFile, `export G1T_SESSION=${id}\n`, { flag: "a" });
+      } catch {}
+    }
   }
   // A subagent's events go to its own session, started first if need be.
   let session = id;
@@ -506,6 +610,7 @@ export function work(job, env = process.env) {
     if (job.agent.start || !child) {
       const started = startSubagent(bin, job, files, job.agent, id, opts);
       if (started.auth) return setProblem(env, "signed_out");
+      if (started.refused) return setProblem(env, "refused", started.refused);
       child = started.id ?? child;
     }
     if (!child) return;
@@ -514,8 +619,10 @@ export function work(job, env = process.env) {
   opts.env.G1T_SESSION = session;
   for (const step of job.steps) {
     if (step.args) {
-      const out = cli(bin, step.args, opts);
+      const args = step.key ? [...step.args.slice(0, -2), `--key=${step.key}`, ...step.args.slice(-2)] : step.args;
+      const out = cli(bin, args, opts);
       if (out.status === EXIT_AUTH) return setProblem(env, "signed_out");
+      if (out.status === EXIT_USAGE) return setProblem(env, "refused", step.args.slice(0, 2).join(" "));
     } else if (step.headCommit) {
       // Only once the push reached the remote: HEAD is on a remote branch.
       const head = git(job.cwd, ["rev-parse", "HEAD"]);
@@ -537,7 +644,7 @@ export function work(job, env = process.env) {
   if (job.subagent) {
     const started = startSubagent(bin, job, files, job.subagent, id, opts);
     if (started.id && job.subagent.result) {
-      cli(bin, ["session", "end", "--reason", "done", "--result", job.subagent.result], { ...opts, env: { ...opts.env, G1T_SESSION: started.id } });
+      cli(bin, ["session", "end", "--reason", "done", `--result=${job.subagent.result}`], { ...opts, env: { ...opts.env, G1T_SESSION: started.id } });
     }
   }
   if (job.end) {
@@ -575,16 +682,6 @@ export function sessionStart(event, env = process.env, bin = findCli(env)) {
   const notice = takeNotice(env);
   if (notice) output.systemMessage = notice;
   if (!bin) return output;
-
-  if (env.CLAUDE_ENV_FILE) {
-    // Claude's own `g1t` commands then act in this session, not in another
-    // one in the same working copy. Read as each command runs, since the
-    // session's id arrives after this hook has returned.
-    const p = files.id.replaceAll("\\", "/");
-    try {
-      writeFileSync(env.CLAUDE_ENV_FILE, `[ -f "${p}" ] && export G1T_SESSION="$(cat "${p}")"\n`, { flag: "a" });
-    } catch {}
-  }
 
   const remembered = Number(readText(files.issue)) || null;
   const handedOff = Number(env.G1T_ISSUE) || null;
@@ -635,9 +732,13 @@ export function preToolUse(event, env = process.env) {
   if (!session) return null;
   let updated = null;
   const command = typeof input.command === "string" ? input.command : "";
-  const namesG1t = /\bg1t\s/.test(command) || /\$\{?G1T_SESSION\b/.test(command);
-  if (tool === "Bash" && event.agent_id && namesG1t && !command.includes("G1T_SESSION=")) {
-    updated = { ...input, command: `export G1T_SESSION=${session}; ${input.command}` };
+  const namesG1t = /\bg1t(?:\.exe)?\s/.test(command) || /G1T_SESSION\b/.test(command);
+  const setsIt = /G1T_SESSION\s*=/.test(command);
+  // A subagent's g1t commands act as its own session. Only these commands
+  // are changed. Claude Code checks its permission rules against the
+  // changed command; no permission decision is made here.
+  if (SHELL_TOOLS.has(tool) && event.agent_id && namesG1t && !setsIt && /^[A-Za-z0-9_]+$/.test(session)) {
+    updated = { ...input, command: `${sessionPrefix(tool, session)}${input.command}` };
   }
   const g1t = g1tTool(tool);
   if (g1t === "issue" && ["claim", "release", "handoff"].includes(input.action) && !input.session_id) {
@@ -654,17 +755,22 @@ export function hook(event, env = process.env) {
     if (!event.session_id || !existsSync(sessionFiles(event.session_id, env).marker)) return { output: null, job: null };
     return { output: preToolUse(event, env), job: null };
   }
+  // Each prompt is a turn; a skill is recorded once in a turn, however it was run.
+  const files = event?.session_id ? sessionFiles(event.session_id, env) : null;
+  let turn = files ? Number(readText(files.turn)) || 0 : 0;
+  if (name === "UserPromptSubmit" && files && existsSync(files.marker)) write(files.turn, String(++turn));
   const job = plan(event, env);
   if (!job) return { output: null, job: null };
   if (name === "SessionStart") {
     const bin = findCli(env);
     const output = sessionStart(event, env, bin);
     if (!output) return { output: null, job: null };
+    if (env.CLAUDE_ENV_FILE) job.envFile = env.CLAUDE_ENV_FILE;
     return { output: Object.keys(output).length ? output : null, job: bin ? job : null };
   }
   // Only sessions SessionStart found in a g1t working copy are recorded.
-  const files = sessionFiles(event.session_id, env);
   if (!existsSync(files.marker) || !findCli(env)) return { output: null, job: null };
+  for (const step of job.steps) if (step.skill) step.key = `skill:${safeName(step.skill)}:${turn}`;
   if (name === "SubagentStart") {
     const task = takeTask(files, job.agent.type);
     if (task) Object.assign(job.agent, { task: task.task, prompt: env.G1T_RECORD_PROMPTS === "0" ? null : task.prompt });
@@ -675,6 +781,19 @@ export function hook(event, env = process.env) {
   return { output: notice ? { systemMessage: notice } : null, job };
 }
 
+/**
+ * On a Node older than MIN_NODE, nothing is recorded: what to print (the
+ * notice, once, at a session's start or a prompt), or null. Undefined on a
+ * current Node.
+ */
+export function oldNode(event, env = process.env, version = process.versions.node) {
+  if (Number(String(version).split(".")[0]) >= MIN_NODE) return undefined;
+  if (env.G1T_RECORD === "0" || !["SessionStart", "UserPromptSubmit"].includes(event?.hook_event_name)) return null;
+  setProblem(env, "old_node", `v${version}`);
+  const notice = takeNotice(env);
+  return notice ? { systemMessage: notice } : null;
+}
+
 async function main() {
   if (process.argv[2] === "--worker") {
     work(JSON.parse(Buffer.from(process.argv[3], "base64url").toString("utf8")));
@@ -682,7 +801,13 @@ async function main() {
   }
   let raw = "";
   for await (const chunk of process.stdin) raw += chunk;
-  const { output, job } = hook(JSON.parse(raw || "{}"));
+  const event = JSON.parse(raw || "{}");
+  const old = oldNode(event);
+  if (old !== undefined) {
+    if (old) process.stdout.write(JSON.stringify(old));
+    return;
+  }
+  const { output, job } = hook(event);
   if (output) process.stdout.write(JSON.stringify(output));
   if (job) background(job);
 }

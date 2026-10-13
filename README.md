@@ -99,8 +99,10 @@ yourself. It runs on Cloudflare Workers, and the core runs in Docker.
 ```sh
 # 1. Create an account and a workspace at https://g1t.sh/register (you need an invite).
 
-# 2. Connect Claude Code, then run /mcp in it to sign in through your browser.
-claude mcp add --transport http g1t https://mcp.g1t.sh
+# 2. Install g1t's Claude Code plugin (it adds g1t's MCP server and records
+#    your sessions), then run /mcp in Claude Code and sign plugin:g1t:g1t in.
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin install g1t@g1t
 
 # 3. Ask it to open a pull request for an open issue.
 ```
