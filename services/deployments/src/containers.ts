@@ -306,10 +306,16 @@ export class ${APP_CLASS} extends DurableObject {
       this.listening = false;
       // How it ended, if it ends: said on the page of a request it never answered.
       this.exited = null;
+      this.why = null;
       if (typeof container.monitor === "function") {
         container.monitor().then(
           () => { this.exited = "0"; },
-          (error) => { this.exited = error && error.exitCode !== undefined ? String(error.exitCode) : "unknown"; },
+          (error) => {
+            this.exited = error && error.exitCode !== undefined ? String(error.exitCode) : "unknown";
+            // Why it ended, when Cloudflare says: in the app's logs and on its page.
+            this.why = error && error.message ? String(error.message).slice(0, 300) : null;
+            console.error("g1t-container-ended", JSON.stringify({ exitCode: error?.exitCode ?? null, message: this.why }));
+          },
         );
       }
       await this.tick();
@@ -317,7 +323,7 @@ export class ${APP_CLASS} extends DurableObject {
     // A backstop: g1t stops it itself once it has slept long enough.
     await container.setInactivityTimeout((Number(env.G1T_SLEEP_MS) || 300000) + 2 * TICK_MS).catch(() => undefined);
     if (!(await this.ready(container, port))) {
-      const ended = this.exited === null || this.exited === undefined ? "It is not answering on port " + port + "." : "It stopped (exit code " + this.exited + ") before it answered on port " + port + ".";
+      const ended = (this.exited === null || this.exited === undefined ? "It is not answering on port " + port + "." : "It stopped (exit code " + this.exited + ") before it answered on port " + port + ".") + (this.why ? " Cloudflare said: " + this.why : "");
       return page(503, "The app did not start", ended + " It must listen on 0.0.0.0 at the port in the PORT environment variable (the one its Dockerfile exposes, else 8080).");
     }
     let response;
