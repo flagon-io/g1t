@@ -140,8 +140,10 @@ function Header({ project, isPrivate, archived, namespace, name, large, actions 
 /**
  * The views of the section the page is in (Files, Commits and the rest
  * under Code, and so on), at the top of the page's content: a secondary
- * row that belongs to what is under it, not a second header. Soon tabs
- * open their roadmap page, under the same tabs.
+ * row that belongs to what is under it, not a second header. It runs the
+ * content's width on a rule of its own, so it heads everything below it
+ * and outweighs the filters there. Soon tabs open their roadmap page,
+ * under the same tabs.
  */
 function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const { pathname } = useLocation();
@@ -149,7 +151,8 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const current = (tab: PageTab) =>
     [tab.path, ...(tab.also ?? [])].some((path) => rest === path || (!tab.exact && rest.startsWith(`${path}/`)));
   return (
-    <NavTabs label="Views" variant="pill" className="mb-6">
+    <div className="mb-6 border-b border-line pb-3">
+      <NavTabs label="Views" variant="pill">
       {tabs.map((tab) => (
         <Hint key={tab.path} label={tab.about}>
           <NavTab variant="pill" to={`${base}/${tab.path}`} current={current(tab)} soon={tab.soon}>
@@ -157,7 +160,8 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
           </NavTab>
         </Hint>
       ))}
-    </NavTabs>
+      </NavTabs>
+    </div>
   );
 }
 

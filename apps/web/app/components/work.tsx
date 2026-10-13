@@ -170,8 +170,9 @@ export function StateTabs({
   const tab = (value: State, label: string) => (
     <Link
       to={link(value)}
+      aria-current={state === value ? "page" : undefined}
       className={
-        "rounded-md px-3 py-1.5 text-sm transition-colors " +
+        "inline-flex h-full items-center rounded-[5px] px-2.5 text-sm transition-colors " +
         (state === value ? "bg-raised font-medium text-fg" : "text-muted hover:text-fg")
       }
     >
@@ -180,7 +181,9 @@ export function StateTabs({
   );
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <Card tone="plain" radius="lg" className="flex gap-1 p-1">
+      {/* A filter, the height of the filters beside it: the section's views above it outweigh it. */}
+      <Card tone="plain" radius="lg" className="flex h-8 gap-0.5 rounded-md p-0.5">
+
         {tab("open", "Open")}
         {tab("closed", "Closed")}
       </Card>

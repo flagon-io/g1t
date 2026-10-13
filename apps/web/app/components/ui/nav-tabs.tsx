@@ -36,7 +36,7 @@ export const navTabVariants = cva(
     variants: {
       variant: {
         line: "h-11 border-b-2 border-transparent px-1 hover:border-line-strong aria-[current=page]:border-accent",
-        pill: "h-8 rounded-md px-3 hover:bg-raised/60 aria-[current=page]:bg-raised",
+        pill: "h-9 rounded-md px-3.5 font-medium hover:bg-raised/60 aria-[current=page]:bg-raised",
       },
       soon: {
         true: "text-faint hover:text-muted",
