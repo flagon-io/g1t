@@ -368,7 +368,9 @@ declines.
 
 Anyone can make a g1t account without an invite, so to bring someone in
 you invite them to the workspace; someone without an account signs up from
-the invitation.
+the invitation. To tell a friend about g1t without adding them to a
+workspace, use [Invite a friend](/guides/authentication/#invite-a-friend)
+in your account menu instead.
 
 On the workspace's **Members** page, `g1t.sh/<workspace>/-/members`
 (**Workspace → Access → Members** in the sidebar), or on **Invitations**

@@ -383,6 +383,121 @@
     },
     "notes": "Only the fields given change. `primary` and `backup` need `password`; `private_email` and `block_private_pushes` do not."
   },
+  "list_invites": {
+    "response": {
+      "allowance": {
+        "limit": 20,
+        "used": 2,
+        "remaining": 18
+      },
+      "invites": [
+        {
+          "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+          "code": "g1t-k7m2-q9xd-4hpw-…",
+          "hint": "g1t-k7m2",
+          "email": "ada@example.com",
+          "kind": "account",
+          "workspace": null,
+          "status": "pending",
+          "charged_to": "user",
+          "invited_by": "syntaqx",
+          "redeemed_by": null,
+          "created_at": "2026-10-05T17:00:00.000Z",
+          "expires_at": "2026-11-04T17:00:00.000Z",
+          "redeemed_at": null,
+          "revoked_at": null,
+          "invitee": null,
+          "role": null
+        },
+        {
+          "id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
+          "code": null,
+          "hint": "g1t-p3rt",
+          "email": "grace@example.com",
+          "kind": "account",
+          "workspace": null,
+          "status": "redeemed",
+          "charged_to": "user",
+          "invited_by": "syntaqx",
+          "redeemed_by": "grace",
+          "created_at": "2026-10-02T09:12:40.000Z",
+          "expires_at": "2026-11-01T09:12:40.000Z",
+          "redeemed_at": "2026-10-02T11:30:05.000Z",
+          "revoked_at": null,
+          "invitee": "grace",
+          "role": null
+        }
+      ]
+    },
+    "notes": "Anyone can sign up for g1t without an invite. A revoked or expired invite that was never used is not counted, so it comes back; a used one stays spent. `status` is `pending`, `awaiting_confirmation`, `awaiting_answer` (the account it made has yet to accept or decline the workspace in `workspace`), `redeemed` (they joined, as `redeemed_by`), `declined`, `expired` or `revoked`. See [Invite a friend](/guides/authentication/#invite-a-friend)."
+  },
+  "create_invite": {
+    "request": {
+      "email": "ada@example.com",
+      "message": "This is where we keep the compiler now. Come and look."
+    },
+    "response": {
+      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+      "code": "g1t-k7m2-q9xd-4hpw-…",
+      "hint": "g1t-k7m2",
+      "email": "ada@example.com",
+      "kind": "account",
+      "workspace": null,
+      "status": "pending",
+      "charged_to": "user",
+      "invited_by": "syntaqx",
+      "redeemed_by": null,
+      "created_at": "2026-10-05T17:00:00.000Z",
+      "expires_at": "2026-11-04T17:00:00.000Z",
+      "redeemed_at": null,
+      "revoked_at": null,
+      "invitee": null,
+      "role": null
+    },
+    "notes": "The code is returned in full; the email g1t sends carries a link to `https://g1t.sh/invite/<code>` that opens sign-up with the address filled in and confirmed. Add `workspace` (and `role`) to also invite them to a workspace you own on a paid plan: once their account is confirmed they accept or decline it, and no workspace of their own is made. A free workspace is refused with `402` (`payment_required`). Refused with `409` when the address already has a g1t account or you already have a pending invite for it, neither of which uses an invite; with `402` (`limit`) when you have none left; and with `403` for an agent's or a workspace's token, or before your own address is confirmed."
+  },
+  "revoke_invite": {
+    "response": {
+      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+      "code": null,
+      "hint": "g1t-k7m2",
+      "email": "ada@example.com",
+      "kind": "account",
+      "workspace": null,
+      "status": "revoked",
+      "charged_to": "user",
+      "invited_by": "syntaqx",
+      "redeemed_by": null,
+      "created_at": "2026-10-05T17:00:00.000Z",
+      "expires_at": "2026-11-04T17:00:00.000Z",
+      "redeemed_at": null,
+      "revoked_at": "2026-10-06T08:00:00.000Z",
+      "invitee": null,
+      "role": null
+    },
+    "notes": "The invite comes back to you. One already used to make an account cannot be revoked and stays spent."
+  },
+  "resend_invite": {
+    "response": {
+      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+      "code": "g1t-k7m2-q9xd-4hpw-…",
+      "hint": "g1t-k7m2",
+      "email": "ada@example.com",
+      "kind": "account",
+      "workspace": null,
+      "status": "pending",
+      "charged_to": "user",
+      "invited_by": "syntaqx",
+      "redeemed_by": null,
+      "created_at": "2026-10-05T17:00:00.000Z",
+      "expires_at": "2026-11-04T17:00:00.000Z",
+      "redeemed_at": null,
+      "revoked_at": null,
+      "invitee": null,
+      "role": null
+    },
+    "notes": "Sends the same email again, with the same link; when it stops working does not change. Refused with `409` unless it is pending."
+  },
   "list_workspace_invites": {
     "response": [
       {
@@ -393,6 +508,7 @@
         "kind": "account",
         "workspace": "acme-labs",
         "status": "pending",
+        "charged_to": "none",
         "invited_by": "syntaqx",
         "redeemed_by": null,
         "created_at": "2026-10-05T17:00:00.000Z",
@@ -410,6 +526,7 @@
         "kind": "workspace",
         "workspace": "acme-labs",
         "status": "pending",
+        "charged_to": "none",
         "invited_by": "syntaqx",
         "redeemed_by": null,
         "created_at": "2026-10-05T17:00:00.000Z",
@@ -434,6 +551,7 @@
       "kind": "workspace",
       "workspace": "acme-labs",
       "status": "pending",
+      "charged_to": "none",
       "invited_by": "syntaqx",
       "redeemed_by": null,
       "created_at": "2026-10-05T17:00:00.000Z",
@@ -454,6 +572,7 @@
       "kind": "account",
       "workspace": "acme-labs",
       "status": "revoked",
+      "charged_to": "none",
       "invited_by": "syntaqx",
       "redeemed_by": null,
       "created_at": "2026-10-05T17:00:00.000Z",

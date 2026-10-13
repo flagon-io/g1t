@@ -216,7 +216,8 @@ fn sample(op: Op, example: &Value) -> Value {
             through::<g1t_contracts::accounts::AccountEmails>(op, sent)
         }
         Op::ConfirmEmail => through::<g1t_contracts::accounts::EmailConfirmed>(op, sent),
-        Op::InviteMember | Op::RevokeWorkspaceInvite => {
+        Op::ListInvites => through::<g1t_contracts::identity::InvitesOverview>(op, sent),
+        Op::CreateInvite | Op::RevokeInvite | Op::ResendInvite | Op::InviteMember | Op::RevokeWorkspaceInvite => {
             through::<g1t_contracts::identity::Invite>(op, sent)
         }
         Op::ListWorkspaceInvites => through::<Vec<g1t_contracts::identity::Invite>>(op, sent),

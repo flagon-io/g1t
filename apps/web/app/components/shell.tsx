@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -33,6 +33,7 @@ import { Logo } from "./logo";
 import { SoonPill } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Skeleton } from "./ui/skeleton";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./ui/breadcrumb";
@@ -70,6 +71,7 @@ import { type PinnableApp, sidebarCookie } from "../lib/apps";
 import { REASON_FILTERS, inboxReason, inboxView } from "../lib/inbox";
 import { GithubMark } from "./github";
 import { STATUS_URL, statusTitle } from "../lib/status";
+import { G1T_INVITES, leftBadge } from "../lib/invites";
 import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
 import type { AccountMenuData } from "../routes/settings-menu-json";
 import { useLiveBadges } from "../lib/notify-client";
@@ -420,6 +422,19 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
             <Link to={FIRST_SETTINGS_PAGE}>
               <Settings />
               Your settings
+            </Link>
+          </DropdownMenuItem>
+          {/* Invite a friend to g1t: word of mouth, never needed to sign up (routes/settings/invites.tsx). */}
+          <DropdownMenuItem asChild className={MENU_ROW}>
+            <Link to="/settings/invites?new">
+              <UserPlus />
+              {G1T_INVITES.action}
+              {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
+              {leftBadge(me?.invites_left) && (
+                <Badge size="sm" className="ml-auto tabular-nums">
+                  {leftBadge(me?.invites_left)}
+                </Badge>
+              )}
             </Link>
           </DropdownMenuItem>
           {/* The app's own: starting with the computer, closing to the tray, the badge (apps/desktop). */}
@@ -973,6 +988,7 @@ function AccountSettingsMenu({ username }: { username: string }) {
       <NavRows className="mt-2">
         {link("profile", <CircleUserRound size={15} />)}
         {link("emails", <Mail size={15} />)}
+        {link("invites", <Ticket size={15} />)}
       </NavRows>
       <Rule />
       <NavRows>

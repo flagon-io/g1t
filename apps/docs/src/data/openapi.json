@@ -108,8 +108,12 @@
     },
     {
       "name": "Invites",
-      "description": "Inviting people into a workspace by username or email, and answering the invitations to workspaces sent to you.",
+      "description": "Inviting a friend to g1t by email, inviting people into a workspace by username or email, and answering the invitations to workspaces sent to you. Anyone can sign up for g1t without an invite.",
       "x-tools": [
+        "list_invites",
+        "create_invite",
+        "revoke_invite",
+        "resend_invite",
         "list_workspace_invites",
         "invite_member",
         "revoke_workspace_invite",
@@ -2052,6 +2056,480 @@
         }
       }
     },
+    "/user/invites": {
+      "get": {
+        "operationId": "list_invites",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "List your invites to g1t",
+        "description": "Your invites to g1t, newest first, and how many you have left. Anyone can sign up for g1t without an invite; an invite is a note from you with a link that opens sign-up with your friend's address filled in and confirmed. You have 20 for good (`allowance.limit`, more if g1t granted them): pending and used ones count, and one revoked or expired before it was used comes back. A pending invite's `code` is shown to you; the link is https://g1t.sh/invite/<code>. `status` is `pending`; `awaiting_confirmation` (used to make an account that has not confirmed its address yet); `awaiting_answer` (used to make an account that has yet to accept or decline the workspace it was also invited to); `redeemed` (they joined: `redeemed_by` is their username); `declined`; `expired`; or `revoked`. People only.\n\nAnyone can sign up for g1t without an invite. A revoked or expired invite that was never used is not counted, so it comes back; a used one stays spent. `status` is `pending`, `awaiting_confirmation`, `awaiting_answer` (the account it made has yet to accept or decline the workspace in `workspace`), `redeemed` (they joined, as `redeemed_by`), `declined`, `expired` or `revoked`. See [Invite a friend](/guides/authentication/#invite-a-friend).",
+        "x-operation": "list_invites",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "list_invites",
+        "x-scope": "account:read",
+        "security": [
+          {
+            "token": [
+              "account:read"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "allowance": {
+                    "limit": 20,
+                    "used": 2,
+                    "remaining": 18
+                  },
+                  "invites": [
+                    {
+                      "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+                      "code": "g1t-k7m2-q9xd-4hpw-…",
+                      "hint": "g1t-k7m2",
+                      "email": "ada@example.com",
+                      "kind": "account",
+                      "workspace": null,
+                      "status": "pending",
+                      "charged_to": "user",
+                      "invited_by": "syntaqx",
+                      "redeemed_by": null,
+                      "created_at": "2026-10-05T17:00:00.000Z",
+                      "expires_at": "2026-11-04T17:00:00.000Z",
+                      "redeemed_at": null,
+                      "revoked_at": null,
+                      "invitee": null,
+                      "role": null
+                    },
+                    {
+                      "id": "inv_01kp1v3c4d5e6f7g8h9j0k1m2n",
+                      "code": null,
+                      "hint": "g1t-p3rt",
+                      "email": "grace@example.com",
+                      "kind": "account",
+                      "workspace": null,
+                      "status": "redeemed",
+                      "charged_to": "user",
+                      "invited_by": "syntaqx",
+                      "redeemed_by": "grace",
+                      "created_at": "2026-10-02T09:12:40.000Z",
+                      "expires_at": "2026-11-01T09:12:40.000Z",
+                      "redeemed_at": "2026-10-02T11:30:05.000Z",
+                      "revoked_at": null,
+                      "invitee": "grace",
+                      "role": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_invite",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Invite a friend to g1t",
+        "description": "Invite a friend to g1t by `email`. They get an email from you, with your `message` if you write one, and a link that opens sign-up with their address filled in and confirmed. Their account starts with a workspace of its own. It works for 30 days and uses one of your 20 invites; revoking it before it is used gives it back. Refused with `409` when the address already has a g1t account or you already have a pending invite for it (neither uses one), and `limit` when you have none left. With `workspace`, a workspace you own on a paid plan, they are also invited to it as `role` (`member` unless you give `owner`): once their account is confirmed they accept or decline, and no workspace of their own is made; a free workspace is refused with `payment_required` (402). Returns the invite with its `code`. People only, once your own address is confirmed: an agent's or a workspace's token cannot invite anyone to g1t.\n\nThe code is returned in full; the email g1t sends carries a link to `https://g1t.sh/invite/<code>` that opens sign-up with the address filled in and confirmed. Add `workspace` (and `role`) to also invite them to a workspace you own on a paid plan: once their account is confirmed they accept or decline it, and no workspace of their own is made. A free workspace is refused with `402` (`payment_required`). Refused with `409` when the address already has a g1t account or you already have a pending invite for it, neither of which uses an invite; with `402` (`limit`) when you have none left; and with `403` for an agent's or a workspace's token, or before your own address is confirmed.",
+        "x-operation": "create_invite",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "create_invite",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+                  "code": "g1t-k7m2-q9xd-4hpw-…",
+                  "hint": "g1t-k7m2",
+                  "email": "ada@example.com",
+                  "kind": "account",
+                  "workspace": null,
+                  "status": "pending",
+                  "charged_to": "user",
+                  "invited_by": "syntaqx",
+                  "redeemed_by": null,
+                  "created_at": "2026-10-05T17:00:00.000Z",
+                  "expires_at": "2026-11-04T17:00:00.000Z",
+                  "redeemed_at": null,
+                  "revoked_at": null,
+                  "invitee": null,
+                  "role": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "description": "Your friend's email address. The invite is sent there, and only that address can use it."
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "A note for the email, quoted under your name. Up to 500 characters."
+                  },
+                  "workspace": {
+                    "type": "string",
+                    "description": "Also invite them to this workspace, by slug: one you own on a paid plan. Left out, the invite is to g1t only."
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "member",
+                      "owner"
+                    ],
+                    "description": "The role they join workspace with when they accept. member when left out."
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              },
+              "example": {
+                "email": "ada@example.com",
+                "message": "This is where we keep the compiler now. Come and look."
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/invites/{id}": {
+      "delete": {
+        "operationId": "revoke_invite",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Revoke an invite to g1t",
+        "description": "Revoke a pending invite to g1t you made. It stops working at once, and the invite comes back to you. One already used to make an account stays used.\n\nThe invite comes back to you. One already used to make an account cannot be revoked and stays spent.",
+        "x-operation": "revoke_invite",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "revoke_invite",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The invite's id, such as inv_01k…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+                  "code": null,
+                  "hint": "g1t-k7m2",
+                  "email": "ada@example.com",
+                  "kind": "account",
+                  "workspace": null,
+                  "status": "revoked",
+                  "charged_to": "user",
+                  "invited_by": "syntaqx",
+                  "redeemed_by": null,
+                  "created_at": "2026-10-05T17:00:00.000Z",
+                  "expires_at": "2026-11-04T17:00:00.000Z",
+                  "redeemed_at": null,
+                  "revoked_at": "2026-10-06T08:00:00.000Z",
+                  "invitee": null,
+                  "role": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/invites/{id}/resend": {
+      "post": {
+        "operationId": "resend_invite",
+        "tags": [
+          "Invites"
+        ],
+        "summary": "Send an invite to g1t again",
+        "description": "Send a pending invite to g1t again: the same email, with the same link, to the same address. Refused with `409` when it is no longer pending.\n\nSends the same email again, with the same link; when it stops working does not change. Refused with `409` unless it is pending.",
+        "x-operation": "resend_invite",
+        "x-mcp-tool": "account",
+        "x-mcp-action": "resend_invite",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The invite's id, such as inv_01k…"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "inv_01kp2x7m8n9q0r1s2t3v4w5x6y",
+                  "code": "g1t-k7m2-q9xd-4hpw-…",
+                  "hint": "g1t-k7m2",
+                  "email": "ada@example.com",
+                  "kind": "account",
+                  "workspace": null,
+                  "status": "pending",
+                  "charged_to": "user",
+                  "invited_by": "syntaqx",
+                  "redeemed_by": null,
+                  "created_at": "2026-10-05T17:00:00.000Z",
+                  "expires_at": "2026-11-04T17:00:00.000Z",
+                  "redeemed_at": null,
+                  "revoked_at": null,
+                  "invitee": null,
+                  "role": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/user/invitations": {
       "get": {
         "operationId": "list_invitations",
@@ -2382,6 +2860,7 @@
                     "kind": "account",
                     "workspace": "acme-labs",
                     "status": "pending",
+                    "charged_to": "none",
                     "invited_by": "syntaqx",
                     "redeemed_by": null,
                     "created_at": "2026-10-05T17:00:00.000Z",
@@ -2399,6 +2878,7 @@
                     "kind": "workspace",
                     "workspace": "acme-labs",
                     "status": "pending",
+                    "charged_to": "none",
                     "invited_by": "syntaqx",
                     "redeemed_by": null,
                     "created_at": "2026-10-05T17:00:00.000Z",
@@ -2497,6 +2977,7 @@
                   "kind": "workspace",
                   "workspace": "acme-labs",
                   "status": "pending",
+                  "charged_to": "none",
                   "invited_by": "syntaqx",
                   "redeemed_by": null,
                   "created_at": "2026-10-05T17:00:00.000Z",
@@ -3396,6 +3877,7 @@
                   "kind": "account",
                   "workspace": "acme-labs",
                   "status": "revoked",
+                  "charged_to": "none",
                   "invited_by": "syntaqx",
                   "redeemed_by": null,
                   "created_at": "2026-10-05T17:00:00.000Z",

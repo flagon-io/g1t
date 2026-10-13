@@ -173,7 +173,7 @@ export function invitePageCopy(
     before: `${from} invited you to g1t`,
     place: null,
     after: "",
-    about: `${g1t}: repositories, pull requests and checks that hold, a merge queue and deployments, with chat for the team. This invite lets you make an account. It does not add you to anyone's workspace: your account starts with a workspace of its own.`,
+    about: `${g1t}: repositories, pull requests and checks that hold, a merge queue and deployments, with chat for the team. Sign up from this invite and your address is filled in for you. It does not add you to anyone's workspace: your account starts with a workspace of its own.`,
   };
 }
 
@@ -266,6 +266,106 @@ export function inviteKind(invite: { workspace: string | null }): { kind: "g1t" 
   return invite.workspace
     ? { kind: "workspace", label: `Invite to join ${invite.workspace}` }
     : { kind: "g1t", label: "Invite to g1t" };
+}
+
+// --- Invite a friend ----------------------------------------------------------
+//
+// Settings → Invites to g1t (`/settings/invites`): any person invites a friend
+// to g1t by email. Anyone can sign up without one; the invite is a note from
+// someone they know, with a link that opens sign-up with their address filled
+// in and confirmed. Twenty each, for good: a revoked or expired one that was
+// never used comes back.
+
+/** The words for Invite a friend. Never says sign-up is held or needs an invite. */
+export const G1T_INVITES = {
+  /** Its name in the settings menu. */
+  nav: "Invites to g1t",
+  /** The page's heading. */
+  heading: "Invite friends to g1t",
+  about:
+    "Anyone can sign up for g1t. An invite is a note from you: your friend gets an email with a link that opens sign-up with their address filled in and confirmed, and you see when they join.",
+  /** The account menu's entry and the page's button. */
+  action: "Invite a friend",
+  /** The dialog's description. */
+  dialog:
+    "They get an email from you with a link to sign up. Their account starts with a workspace of its own, and the invite works for 30 days.",
+  /** Under the count. */
+  comesBack: "A revoked invite that was never used comes back to you.",
+  /** The off-by-default box that also invites the person to a workspace. */
+  alsoJoin: "Also invite them to a workspace",
+  alsoJoinHint:
+    "Once their account is made, they get an invitation to the workspace to accept or decline. Left off, the invite is to g1t only.",
+  /** When none are left: on the disabled button. */
+  out: "You have used all your invites. Your friends can still sign up at g1t.sh without one.",
+  /** When none are left: under the count, which says so already. */
+  outNote: "Your friends can still sign up at g1t.sh without one.",
+} as const;
+
+type Membership = { slug: string; name?: string | null; role: "owner" | "member" };
+
+/** One workspace an invite to g1t can also invite its person to. */
+export type BringInto = { slug: string; name: string };
+
+/**
+ * The workspaces Invite a friend can also invite the person to, when "Also
+ * invite them to a workspace" is ticked: the ones the viewer owns that are
+ * on a paid plan. A free workspace invites no one, so it is not offered, and
+ * with none to offer the box is not shown at all.
+ */
+export function bringIntoChoices(memberships: readonly Membership[], free: readonly string[]): BringInto[] {
+  const isFree = new Set(free.map((slug) => slug.toLowerCase()));
+  return memberships
+    .filter((m) => m.role === "owner" && !isFree.has(m.slug.toLowerCase()))
+    .map((m) => ({ slug: m.slug.toLowerCase(), name: m.name?.trim() || m.slug }));
+}
+
+/**
+ * What the Invite a friend form sends to identity. The workspace goes with
+ * it only when "Also invite them to a workspace" (`also_join`) is ticked and
+ * it is one of `offered`: unticked, the invite is to g1t alone, whatever
+ * else the form held.
+ */
+export function inviteDraft(
+  form: { get(name: string): unknown },
+  offered: readonly BringInto[] = [],
+): { email: string; message: string | null; join?: string; joinRole?: "owner" | "member" } {
+  const text = (name: string) => {
+    const value = form.get(name);
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const draft: ReturnType<typeof inviteDraft> = { email: text("email"), message: text("message") || null };
+  const join = text("join").toLowerCase();
+  if (text("also_join") === "on" && join && offered.some((workspace) => workspace.slug === join)) {
+    draft.join = join;
+    draft.joinRole = text("join_role") === "owner" ? "owner" : "member";
+  }
+  return draft;
+}
+
+/** How many invites are left, in words: "18 of 20 invites left". */
+export function remainingLine(allowance: { limit: number; remaining: number }): string {
+  if (allowance.limit === 0) return "Invites to g1t are turned off on this installation";
+  if (allowance.remaining === 0) return `You have used all ${allowance.limit} of your invites`;
+  return `${allowance.remaining} of ${allowance.limit} invite${allowance.limit === 1 ? "" : "s"} left`;
+}
+
+/** The account menu's badge: "18 left", or nothing when the count is not known. */
+export function leftBadge(left: number | null | undefined): string | null {
+  return left == null ? null : `${left} left`;
+}
+
+/** Which of a person's invites to g1t can be revoked, sent again, or copied. */
+export function inviteActions(invite: { status: Listed["status"]; code: string | null }): {
+  revoke: boolean;
+  resend: boolean;
+  copy: boolean;
+} {
+  const pending = invite.status === "pending";
+  return {
+    revoke: pending || invite.status === "awaiting_confirmation" || invite.status === "awaiting_answer",
+    resend: pending,
+    copy: pending && invite.code != null,
+  };
 }
 
 /** The words for a workspace's People page, the invitation to join it. */

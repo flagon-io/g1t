@@ -127,6 +127,10 @@ pub enum Op {
     ConfirmEmail,
     RemoveEmail,
     UpdateEmailSettings,
+    ListInvites,
+    CreateInvite,
+    RevokeInvite,
+    ResendInvite,
     ListWorkspaceInvites,
     InviteMember,
     RevokeWorkspaceInvite,
@@ -700,7 +704,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 376] = [
+    pub const ALL: [Op; 380] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -716,6 +720,10 @@ impl Op {
         Op::ConfirmEmail,
         Op::RemoveEmail,
         Op::UpdateEmailSettings,
+        Op::ListInvites,
+        Op::CreateInvite,
+        Op::RevokeInvite,
+        Op::ResendInvite,
         Op::ListWorkspaceInvites,
         Op::InviteMember,
         Op::RevokeWorkspaceInvite,
@@ -1101,6 +1109,10 @@ impl Op {
             Op::ConfirmEmail => "confirm_email",
             Op::RemoveEmail => "remove_email",
             Op::UpdateEmailSettings => "update_email_settings",
+            Op::ListInvites => "list_invites",
+            Op::CreateInvite => "create_invite",
+            Op::RevokeInvite => "revoke_invite",
+            Op::ResendInvite => "resend_invite",
             Op::ListWorkspaceInvites => "list_workspace_invites",
             Op::InviteMember => "invite_member",
             Op::RevokeWorkspaceInvite => "revoke_workspace_invite",
@@ -1309,6 +1321,18 @@ impl Op {
             }
             Op::UpdateEmailSettings => {
                 "Change what your addresses do; only the fields given change. `primary` is a confirmed address to make primary: account mail and password resets go there. `backup` is a confirmed address that also gets security notices, or an empty string for the primary only. Changing either needs your account `password`, and every confirmed address is told. `private_email` keeps your address off commits g1t makes for you (merges and changes made on the web, and agents' commits for you), which use your noreply address instead; `block_private_pushes` refuses pushes whose commits carry one of your addresses while it is private. People only."
+            }
+            Op::ListInvites => {
+                "Your invites to g1t, newest first, and how many you have left. Anyone can sign up for g1t without an invite; an invite is a note from you with a link that opens sign-up with your friend's address filled in and confirmed. You have 20 for good (`allowance.limit`, more if g1t granted them): pending and used ones count, and one revoked or expired before it was used comes back. A pending invite's `code` is shown to you; the link is https://g1t.sh/invite/<code>. `status` is `pending`; `awaiting_confirmation` (used to make an account that has not confirmed its address yet); `awaiting_answer` (used to make an account that has yet to accept or decline the workspace it was also invited to); `redeemed` (they joined: `redeemed_by` is their username); `declined`; `expired`; or `revoked`. People only."
+            }
+            Op::CreateInvite => {
+                "Invite a friend to g1t by `email`. They get an email from you, with your `message` if you write one, and a link that opens sign-up with their address filled in and confirmed. Their account starts with a workspace of its own. It works for 30 days and uses one of your 20 invites; revoking it before it is used gives it back. Refused with `409` when the address already has a g1t account or you already have a pending invite for it (neither uses one), and `limit` when you have none left. With `workspace`, a workspace you own on a paid plan, they are also invited to it as `role` (`member` unless you give `owner`): once their account is confirmed they accept or decline, and no workspace of their own is made; a free workspace is refused with `payment_required` (402). Returns the invite with its `code`. People only, once your own address is confirmed: an agent's or a workspace's token cannot invite anyone to g1t."
+            }
+            Op::RevokeInvite => {
+                "Revoke a pending invite to g1t you made. It stops working at once, and the invite comes back to you. One already used to make an account stays used."
+            }
+            Op::ResendInvite => {
+                "Send a pending invite to g1t again: the same email, with the same link, to the same address. Refused with `409` when it is no longer pending."
             }
             Op::ListWorkspaceInvites => {
                 "The invites made for a workspace, newest first, with each pending one's `code`. Owners only."
@@ -1880,6 +1904,30 @@ impl Op {
                     },
                 }),
                 &[],
+            ),
+            Op::ListInvites => object(json!({}), &[]),
+            Op::CreateInvite => object(
+                json!({
+                    "email": { "type": "string", "description": "Your friend's email address. The invite is sent there, and only that address can use it." },
+                    "message": {
+                        "type": "string",
+                        "description": "A note for the email, quoted under your name. Up to 500 characters.",
+                    },
+                    "workspace": {
+                        "type": "string",
+                        "description": "Also invite them to this workspace, by slug: one you own on a paid plan. Left out, the invite is to g1t only.",
+                    },
+                    "role": {
+                        "type": "string",
+                        "enum": ["member", "owner"],
+                        "description": "The role they join workspace with when they accept. member when left out.",
+                    },
+                }),
+                &["email"],
+            ),
+            Op::RevokeInvite | Op::ResendInvite => object(
+                json!({ "id": { "type": "string", "description": "The invite's id, such as inv_01k…" } }),
+                &["id"],
             ),
             Op::ListWorkspaceInvites => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::InviteMember => object(
@@ -3339,6 +3387,10 @@ impl Op {
                 | Op::ConfirmEmail
                 | Op::RemoveEmail
                 | Op::UpdateEmailSettings
+                | Op::ListInvites
+                | Op::CreateInvite
+                | Op::RevokeInvite
+                | Op::ResendInvite
                 | Op::ListWorkspaceInvites
                 | Op::InviteMember
                 | Op::RevokeWorkspaceInvite
@@ -3640,6 +3692,36 @@ impl Op {
                     }),
                 )
                 .await
+            }
+            // Invites to g1t from Invite a friend: identity refuses anyone
+            // but a person with a confirmed address.
+            Op::ListInvites => {
+                let overview: g1t_contracts::identity::InvitesOverview =
+                    g1t_kit::call(identity, "list_invites", &json!({ "user": actor() })).await?;
+                ok(&overview)
+            }
+            Op::CreateInvite => {
+                let role = optional_text(input, "role");
+                if role.as_deref().is_some_and(|role| role != "member" && role != "owner") {
+                    return failed(FailureCode::Invalid, "role is member or owner.");
+                }
+                pass(
+                    identity,
+                    "create_invite",
+                    &json!({
+                        "user": actor(),
+                        "email": text(input, "email"),
+                        "message": optional_text(input, "message"),
+                        "join": optional_text(input, "workspace"),
+                        "join_role": role,
+                        "surface": services.audit.surface,
+                    }),
+                )
+                .await
+            }
+            Op::RevokeInvite | Op::ResendInvite => {
+                let method = if self == Op::RevokeInvite { "revoke_invite" } else { "resend_invite" };
+                pass(identity, method, &json!({ "user": actor(), "id": text(input, "id") })).await
             }
             Op::ListWorkspaceInvites => {
                 pass(identity, "workspace_invites", &json!({ "slug": workspace(), "viewer": viewer })).await

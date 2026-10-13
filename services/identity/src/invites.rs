@@ -18,7 +18,11 @@
 //! ([`REGISTRATIONS_PER_HOUR`]); new accounts confirm their address before
 //! they can invite anyone.
 //!
-//! Vars: INVITE_TTL_DAYS.
+//! A person may also invite a friend to g1t by email, from an allowance of
+//! their own (friends.rs). That invite is a note from someone they know,
+//! never a gate: the link opens sign-up with the address filled in.
+//!
+//! Vars: INVITE_TTL_DAYS, INVITES_PER_USER (friends.rs).
 
 use g1t_contracts::audit::{AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
 use g1t_contracts::events::{InviteCreated, InviteRedeemed, JoinedHow};
@@ -33,6 +37,7 @@ use worker::wasm_bindgen::JsValue;
 
 use crate::{Identity, crypto};
 
+mod friends;
 mod invitations;
 
 /// Crockford base32, as ids use: no i, l, o or u.
@@ -41,6 +46,7 @@ const ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
 const CODE_LENGTH: usize = 32;
 const GROUP: usize = 4;
 
+pub(crate) const BAD_EMAIL: &str = "Enter a valid email address.";
 pub const INVALID: &str =
     "That invite code is not valid. It may have been used, revoked or expired; ask whoever invited you for a new one.";
 pub const WRONG_EMAIL: &str = "This invite is for a different email address. Use the address it was sent to.";
@@ -61,6 +67,36 @@ const ANONYMOUS_REGISTRATIONS_PER_HOUR: u32 = 100;
 /// The most invites a workspace's list shows.
 const LIST_LIMIT: u32 = 200;
 const TOO_MANY_SIGN_UPS: &str = "Too many accounts were made from your network in the last hour. Try again later.";
+
+/// Spends an account invite for the account `?1` about to be made with it
+/// (`?2` the invite): only while it is pending, so a second use finds it
+/// gone. Run in one batch with [`INSERT_USER_WITH_CODE`]. The time is
+/// `SQL_NOW`, written out so the statement can be tested as it is
+/// (scripts/deploy/friend-invites.test.mjs).
+pub(crate) const SPEND_CODE: &str = r#"UPDATE invites SET redeemed_by = ?1, invitee_id = ?1, redeemed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), sealed_code = NULL
+ WHERE id = ?2 AND kind = 'account' AND redeemed_at IS NULL AND revoked_at IS NULL
+   AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"#;
+
+/// Makes the account `?1` (username, email, password hash, and `?5` 1 when
+/// its address starts confirmed) only if [`SPEND_CODE`] spent the invite
+/// `?6` for it: the invite's `redeemed_by` is who invited whom.
+pub(crate) const INSERT_USER_WITH_CODE: &str = r#"INSERT INTO users (id, username, email, password_hash, email_verified_at)
+ SELECT ?1, ?2, ?3, ?4, CASE WHEN ?5 = 1 THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') END
+ WHERE EXISTS (SELECT 1 FROM invites WHERE id = ?6 AND redeemed_by = ?1)"#;
+
+/// Revokes the invite `?2` for the person `?1`: one they made, or one made
+/// for a workspace they own, while it can still be stopped (pending, used
+/// by an account still confirming its address, or a workspace invitation
+/// not yet answered). An invite to g1t revoked before it was used no
+/// longer counts against its maker's allowance (friends.rs).
+pub(crate) const REVOKE: &str = r#"UPDATE invites SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), sealed_code = NULL
+ WHERE id = ?2 AND revoked_at IS NULL AND declined_at IS NULL
+   AND (redeemed_at IS NULL OR applied_at IS NULL
+     -- A workspace invitation not yet answered.
+     OR (workspace_id IS NOT NULL AND accepted_at IS NULL))
+   AND (inviter_id = ?1
+     OR workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = ?1 AND role = 'owner'))
+ RETURNING id"#;
 
 // --- Codes ------------------------------------------------------------------
 
@@ -335,7 +371,7 @@ pub fn bucket(now_ms: u64, window_ms: u64) -> u64 {
 // --- Rows ---------------------------------------------------------------------
 
 const COLUMNS: &str = "i.id, i.hint, i.sealed_code, i.email, i.kind, i.workspace_id, w.slug AS workspace,
-  i.inviter_id, iu.username AS inviter, i.staff, i.created_at, i.expires_at,
+  i.inviter_id, iu.username AS inviter, i.staff, i.charged_to, i.created_at, i.expires_at,
   i.revoked_at, i.redeemed_by, ru.username AS redeemer, i.redeemed_at, i.applied_at,
   i.invitee_id, vu.username AS invitee, i.role, i.accepted_at, i.declined_at
   FROM invites i
@@ -356,6 +392,9 @@ pub struct InviteRow {
     pub inviter_id: Option<String>,
     pub inviter: Option<String>,
     pub staff: Option<String>,
+    /// `user`, `workspace` or `none`: whose invites it used.
+    #[serde(default)]
+    pub charged_to: Option<String>,
     pub created_at: String,
     pub expires_at: String,
     pub revoked_at: Option<String>,
@@ -414,6 +453,14 @@ fn kind_of(kind: &str) -> InviteKind {
     if kind == "workspace" { InviteKind::Workspace } else { InviteKind::Account }
 }
 
+pub(crate) fn charge_of(charged_to: Option<&str>) -> InviteCharge {
+    match charged_to {
+        Some("user") => InviteCharge::User,
+        Some("workspace") => InviteCharge::Workspace,
+        _ => InviteCharge::None,
+    }
+}
+
 #[derive(Deserialize)]
 struct Count {
     n: f64,
@@ -456,6 +503,10 @@ struct Draft<'a> {
     invitee_id: Option<&'a str>,
     /// The role joining `workspace_id` gives: `member` or `owner`.
     role: Option<&'a str>,
+    /// `user` for an invite to g1t from the inviter's allowance, with its
+    /// `limit`; `none` for everything else.
+    charged_to: &'a str,
+    limit: Option<u32>,
 }
 
 impl Identity {
@@ -591,6 +642,7 @@ impl Identity {
             kind: kind_of(&row.kind),
             workspace: row.workspace,
             status,
+            charged_to: charge_of(row.charged_to.as_deref()),
             invited_by: row.inviter,
             redeemed_by: row.redeemer,
             created_at: row.created_at,
@@ -694,23 +746,11 @@ impl Identity {
             // spent it: one transaction, so a second use finds it gone.
             Some(row) => {
                 let mut insert = values.to_vec();
-                insert.extend([JsValue::from(row.id.as_str()), user.id.as_str().into()]);
+                insert.extend([JsValue::from(if verified { 1 } else { 0 }), row.id.as_str().into()]);
                 self.db
                     .batch(vec![
-                        self.db
-                            .prepare(format!(
-                                "UPDATE invites SET redeemed_by = ?1, invitee_id = ?1, redeemed_at = {SQL_NOW}, sealed_code = NULL
-                                 WHERE id = ?2 AND kind = 'account' AND redeemed_at IS NULL AND revoked_at IS NULL
-                                   AND expires_at > {SQL_NOW}"
-                            ))
-                            .bind(&[user.id.as_str().into(), row.id.as_str().into()])?,
-                        self.db
-                            .prepare(format!(
-                                "INSERT INTO users (id, username, email, password_hash, email_verified_at)
-                                 SELECT ?, ?, ?, ?, {verified_at}
-                                 WHERE EXISTS (SELECT 1 FROM invites WHERE id = ? AND redeemed_by = ?)"
-                            ))
-                            .bind(&insert)?,
+                        self.db.prepare(SPEND_CODE).bind(&[user.id.as_str().into(), row.id.as_str().into()])?,
+                        self.db.prepare(INSERT_USER_WITH_CODE).bind(&insert)?,
                     ])
                     .await
                     .map(|_| ())
@@ -966,7 +1006,8 @@ impl Identity {
         None
     }
 
-    /// Stores a new invite and returns it with its code.
+    /// Stores a new invite and returns it with its code, or None when the
+    /// inviter's allowance ran out between reading it and writing.
     async fn insert_invite(&self, draft: Draft<'_>) -> Result<Option<Invite>> {
         let body = new_code_body();
         let code = format_code(&body);
@@ -976,7 +1017,7 @@ impl Identity {
         let expires_at = rfc3339(now + self.invite_ttl_days() * 24 * HOUR_MS);
         let created_at = rfc3339(now);
         let opt = |value: Option<&str>| value.map_or(JsValue::NULL, JsValue::from);
-        let binds = vec![
+        let mut binds = vec![
             JsValue::from(id.as_str()),
             code_hash(&body).into(),
             code_hint(&body).into(),
@@ -986,19 +1027,24 @@ impl Identity {
             opt(draft.workspace_id),
             opt(draft.inviter.map(|user| user.id.as_str())),
             opt(draft.staff),
+            draft.charged_to.into(),
             created_at.as_str().into(),
             expires_at.as_str().into(),
             opt(draft.invitee_id),
             opt(draft.role),
         ];
+        // The allowance is checked in the insert itself, so two invites made
+        // at once cannot both take the last one (friends.rs).
+        let sql = match (draft.charged_to, draft.limit, draft.inviter) {
+            ("user", Some(limit), Some(inviter)) => {
+                binds.extend([JsValue::from(inviter.id.as_str()), f64::from(limit).into()]);
+                friends::INSERT_WITHIN_ALLOWANCE
+            }
+            _ => friends::INSERT,
+        };
         let inserted = self
             .db
-            .prepare(format!(
-                "INSERT INTO invites (id, code_hash, hint, sealed_code, email, kind, workspace_id, inviter_id,
-                   staff, charged_to, created_at, expires_at, invitee_id, role)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'none', ?, ?, ?, ?)
-                 RETURNING id"
-            ))
+            .prepare(sql)
             .bind(&binds)?
             .first::<Id>(None)
             .await?;
@@ -1098,23 +1144,16 @@ impl Identity {
     /// Revokes a pending invite the person made, or one made for a
     /// workspace they own. An invite used to sign up whose
     /// account has not confirmed its address yet can be revoked too: the
-    /// account stays, and joins nothing when it confirms.
-    async fn revoke_invite(&self, a: RemoveArgs) -> Result<Outcome<Invite>> {
+    /// account stays, and joins nothing when it confirms. An invite to g1t
+    /// revoked before it was used comes back to its maker's allowance
+    /// (friends.rs).
+    pub async fn revoke_invite(&self, a: RemoveArgs) -> Result<Outcome<Invite>> {
         if a.user.kind != PrincipalKind::User || a.user.acting.is_some() {
             return Ok(Outcome::fail(FailureCode::Forbidden, PEOPLE_ONLY));
         }
         let revoked = self
             .db
-            .prepare(format!(
-                "UPDATE invites SET revoked_at = {SQL_NOW}, sealed_code = NULL
-                 WHERE id = ?2 AND revoked_at IS NULL AND declined_at IS NULL
-                   AND (redeemed_at IS NULL OR applied_at IS NULL
-                     -- A workspace invitation not yet answered.
-                     OR (workspace_id IS NOT NULL AND accepted_at IS NULL))
-                   AND (inviter_id = ?1
-                     OR workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = ?1 AND role = 'owner'))
-                 RETURNING id"
-            ))
+            .prepare(REVOKE)
             .bind(&[a.user.id.as_str().into(), a.id.as_str().into()])?
             .first::<Id>(None)
             .await?;
@@ -1376,6 +1415,8 @@ impl Identity {
                 staff: None,
                 invitee_id: invitee.as_deref(),
                 role: Some(role_name),
+                charged_to: "none",
+                limit: None,
             }
         } else {
             Draft {
@@ -1386,6 +1427,8 @@ impl Identity {
                 staff: None,
                 invitee_id: None,
                 role: Some(role_name),
+                charged_to: "none",
+                limit: None,
             }
         };
         let Some(invite) = self.insert_invite(draft).await? else {
@@ -1427,6 +1470,8 @@ impl Identity {
             staff: None,
             invitee_id: None,
             role: None,
+            charged_to: "none",
+            limit: None,
         };
         Ok(match self.insert_invite(draft).await? {
             Some(invite) => Outcome::Ok(invite),
@@ -1535,8 +1580,10 @@ impl Identity {
 
     pub async fn admin_invites(&self, a: AdminInvitesArgs) -> Result<Vec<Invite>> {
         let query = a.query.as_deref().map(str::trim).filter(|query| !query.is_empty());
+        // Only invites to g1t from Invite a friend, when asked.
+        let friends = if a.to_g1t { " AND i.charged_to = 'user'" } else { "" };
         let rows = match query {
-            None => self.rows("", &[], ADMIN_INVITES_LIMIT as u32).await?,
+            None => self.rows(&format!("WHERE 1 = 1{friends}"), &[], ADMIN_INVITES_LIMIT as u32).await?,
             Some(query) => {
                 // A code, or its start: matched by its hint.
                 let prefix = query.to_lowercase();
@@ -1551,6 +1598,7 @@ impl Identity {
                     binds.push(hint.into());
                 }
                 filter.push(')');
+                filter.push_str(friends);
                 self.rows(&filter, &binds, ADMIN_INVITES_LIMIT as u32).await?
             }
         };
@@ -1739,6 +1787,7 @@ mod tests {
             inviter_id: Some("usr_owner".into()),
             inviter: Some("bo".into()),
             staff: None,
+            charged_to: None,
             created_at: EARLIER.into(),
             expires_at: expires_at.into(),
             revoked_at: revoked.then(|| NOW.to_owned()),

@@ -146,6 +146,18 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     revokeMemberToken: (actor, slug, id, reason) =>
       call("revoke_member_token", { actor, slug, id, reason: reason ?? null, surface: "web" }),
     userForSession: (sessionToken) => call("user_for_session", { sessionToken }),
+    listInvites: (user) => call("list_invites", { user }),
+    createInvite: (user, invite) =>
+      call("create_invite", {
+        user,
+        email: invite.email,
+        message: invite.message ?? null,
+        join: invite.join ?? null,
+        join_role: invite.join ? (invite.joinRole ?? null) : null,
+        surface: "web",
+      }),
+    revokeInvite: (user, id) => call("revoke_invite", { user, id }),
+    resendInvite: (user, id) => call("resend_invite", { user, id }),
     checkInvite: (code, client, options = {}) =>
       call("check_invite", {
         code,
@@ -321,7 +333,8 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
   return {
     workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
     workspace: (slug) => call("admin_workspace", { slug }),
-    invites: (query) => call("admin_invites", { query: query ?? null }),
+    invites: (query, options = {}) => call("admin_invites", { query: query ?? null, to_g1t: options.toG1t ?? false }),
+    grantInvites: (username, amount, note, staff) => call("admin_grant_invites", { username, amount, note, staff }),
     revokeInvite: (id, staff) => call("admin_revoke_invite", { id, staff }),
     suspendUser: (name, suspend, reason, staff) => call("admin_suspend_user", { name, suspend, reason, staff }),
     suspendWorkspace: (name, suspend, reason, staff) => call("admin_suspend_workspace", { name, suspend, reason, staff }),

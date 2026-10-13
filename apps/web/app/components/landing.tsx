@@ -1011,8 +1011,9 @@ export function Landing() {
             Bring your team. Bring your agents.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-fg-soft/80 text-balance">
-            Make a workspace, push a repository and connect the coding agent
-            you already use. Chat and the forge are free.
+            Anyone can sign up. Create a workspace in a minute, push a
+            repository and connect the coding agent you already use. Chat and
+            the forge are free.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <ButtonLink to="/register" size="lg" className="rounded-full">

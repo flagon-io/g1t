@@ -1046,6 +1046,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "revoke_ask_token" => reply(&identity.revoke_ask_token(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove_access_token(args(body)?).await?),
         // Invites; see invites.rs.
+        // Invites to g1t from Invite a friend; see invites/friends.rs.
+        "list_invites" => reply(&identity.list_invites(args(body)?).await?),
+        "create_invite" => reply(&identity.create_invite(args(body)?).await?),
+        "revoke_invite" => reply(&identity.revoke_invite(args(body)?).await?),
+        "resend_invite" => reply(&identity.resend_invite(args(body)?).await?),
         "check_invite" => reply(&identity.check_invite(args(body)?).await?),
         "accept_invite" => reply(&identity.accept_invite(args(body)?).await?),
         "invite_member" => reply(&identity.invite_member(args(body)?).await?),
@@ -1103,6 +1108,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
         "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),
         "admin_revoke_invite" => reply(&identity.admin_revoke_invite(args(body)?).await?),
+        "admin_grant_invites" => reply(&identity.admin_grant_invites(args(body)?).await?),
         // Suspending accounts and workspaces, blocking email domains; see suspension.rs.
         "admin_suspend_user" => reply(&identity.admin_suspend_user(args(body)?).await?),
         "admin_suspend_workspace" => reply(&identity.admin_suspend_workspace(args(body)?).await?),

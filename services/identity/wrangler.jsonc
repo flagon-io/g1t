@@ -45,7 +45,9 @@
 	// Invites (src/invites.rs): anyone may register. An invitation sent to
 	// an address without an account carries an invite code, working
 	// INVITE_TTL_DAYS. IDENTITY_KEY also seals invite codes so their makers
-	// can copy them again.
+	// can copy them again. Each person may invite INVITES_PER_USER friends
+	// to g1t by email (src/invites/friends.rs); that invite is never needed
+	// to sign up.
 	//
 	// PROTECTED_WORKSPACES: workspaces nobody can ever delete, by owner,
 	// token or staff, as comma-separated slugs or workspace ids. flagon-io
@@ -58,7 +60,8 @@
 		"PROTECTED_WORKSPACES": "flagon-io",
 		"PROTECTED_ACCOUNTS": "",
 		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
-		"INVITE_TTL_DAYS": "30"
+		"INVITE_TTL_DAYS": "30",
+		"INVITES_PER_USER": "20"
 	},
 	// Every log kept: sign-ins and tokens, where every failure matters.
 	"observability": { "enabled": true, "head_sampling_rate": 1 }

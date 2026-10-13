@@ -99,7 +99,7 @@ export const NAV: NavGroup[] = [
         label: "Invites",
         to: "/invites",
         icon: "invites",
-        about: "Every invitation sent to an address, to find and revoke one.",
+        about: "Every invite, invites to g1t from Invite a friend, and more of those for a person.",
       },
       {
         label: "Aliases",

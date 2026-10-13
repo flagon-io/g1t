@@ -45,6 +45,7 @@ under **Your settings**; the sidebar then lists every page.
 | Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone. |
 | Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
 | Notifications | [`/settings/notifications`](https://g1t.sh/settings/notifications) | [Sounds and do not disturb](/guides/chat/#sounds-and-do-not-disturb), [pop-ups and browser notifications](/guides/chat/#notifications), and [what you are emailed for and how you watch repositories](/guides/notifications/#settings). |
+| Invites to g1t | [`/settings/invites`](https://g1t.sh/settings/invites) | [Invite a friend](#invite-a-friend): the invites you sent, who joined, and how many you have left. |
 | SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
 | Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): their permissions, where they reach, and when they expire. |
 | Integrations | [`/settings/integrations`](https://g1t.sh/settings/integrations) | [Your own integrations](/guides/integrations/#workspace-and-personal): what you have connected for yourself, in every workspace, and what is coming. |
@@ -63,8 +64,9 @@ your GitHub account, and makes a g1t account the first time. Link or
 unlink GitHub in [Settings → GitHub](https://g1t.sh/settings/github). See
 [GitHub](/guides/github/#sign-in-with-github).
 
-Making an account with GitHub needs an invite too: start from your invite
-link, or enter the code when g1t asks for it after GitHub.
+Making an account with GitHub needs no invite. If a friend invited you,
+you can still start from the link in their email: when GitHub has
+confirmed the same address, the account is made with it.
 
 With [two-factor authentication](#two-factor-authentication) on, signing in
 with GitHub asks for a code from your app as well.
@@ -132,6 +134,8 @@ Passkeys are not supported yet; they are next.
 Anyone can sign up without an invite. Invites are how people already on
 g1t bring someone in:
 
+- [Invite a friend](#invite-a-friend): anyone on g1t invites someone to
+  g1t by email address, with no workspace attached;
 - an owner's [invitation into a workspace](#inviting-someone-into-a-workspace),
   by username or by email address;
 - an [invitation to collaborate on a repository](/guides/access-and-roles/),
@@ -197,10 +201,61 @@ An expired, revoked or used invite says which, and who sent it, so you
 can ask them for a new one; or [sign up](https://g1t.sh/register) without
 it.
 
+### Invite a friend
+
+Anyone on g1t can invite a friend, by email, from **Invite a friend** in
+the account menu at the bottom of the sidebar, or from
+[Settings → Invites to g1t](https://g1t.sh/settings/invites). It is word
+of mouth, not a key: your friend could sign up at
+[g1t.sh/register](https://g1t.sh/register) without it. What the invite
+adds:
+
+- an email from you, with your name and, if you write one, your message;
+- a link that opens sign-up with their address filled in and, because they
+  came from that email, already confirmed (see
+  [invites from your inbox](#invites-from-your-inbox));
+- on your Invites to g1t page, the invite's status: **Pending**,
+  **@ada is confirming their email**, then **Joined as @ada**.
+
+Their account starts with a workspace of its own, on the free plan, the
+same as any other. An invite to g1t adds them to no workspace of yours.
+
+Each person has **20 invites to g1t**, for good. A pending invite counts
+until it is used, revoked or expires (after 30 days); revoking one that
+was never used, or letting it expire, gives it back. One that was used
+to make an account stays spent. The page shows how many you have left,
+and the account menu shows the same number beside **Invite a friend**. If
+you run out, your friends can still sign up without one; g1t staff can
+grant more.
+
+Some invites are refused, and cost nothing:
+
+- to an address that already has a g1t account: to work with them,
+  [invite them into a workspace](#inviting-someone-into-a-workspace) by
+  username instead;
+- to an address you already have a pending invite for: send that one
+  again from its **⋯** menu, or revoke it first.
+
+From the **⋯** menu beside each pending invite you can copy its link,
+send the email again, or revoke it. Only people can invite friends, once
+their own address is confirmed: an agent's or a workspace's token cannot.
+
+**Also invite them to a workspace** appears in the dialog only when you
+own a workspace on a paid plan. Ticked, your friend also gets a
+[workspace invitation](#workspace-invitations) to that workspace, with
+the role you choose, to accept or decline once their account is
+confirmed; they then get no workspace of their own. A workspace on the
+free plan cannot invite anyone, so it is never offered. An invitation
+into a workspace never uses one of your 20 invites.
+
+On a self-hosted installation, identity's `INVITES_PER_USER` sets the
+number (20 when unset; 0 turns Invite a friend off).
+
 ### Invites from your inbox
 
-When g1t emails an invite to an address (an owner's invitation into a
-workspace, or an invitation onto a repository), the link in that email carries a
+When g1t emails an invite to an address (a friend's invite to g1t, an
+owner's invitation into a workspace, or an invitation onto a repository),
+the link in that email carries a
 `proof` that only the email has: `g1t.sh/invite/<code>?proof=…`. Opening
 the link shows that you can read that inbox, so:
 
@@ -252,7 +307,8 @@ Everything on g1t lives in a workspace, so every new account gets one:
 - An account whose invite brings it into a workspace gets the invitation
   to it, and no workspace of its own.
 - Every other account (signed up with a password or with GitHub, or with
-  an invite that names no workspace, such as one onto a repository) gets a
+  an invite that names no workspace, such as a friend's invite to g1t or
+  one onto a repository) gets a
   workspace of its own, named for its username, on the free plan. Rename it or start the plan on it whenever you like.
 
 Signed in without any workspace (you declined an invitation, or left the
@@ -265,6 +321,10 @@ ask one of its owners to invite you by your username.
 
 | Route | MCP tool and action | What it does |
 | --- | --- | --- |
+| [`GET /user/invites`](/reference/api/invites/list-invites/) | `account` `list_invites` | Your invites to g1t, newest first, and `allowance` (`limit`, `used`, `remaining`) |
+| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Invite a friend to g1t by `email`, with an optional `message`; optionally also to a paid `workspace` you own, as `role` |
+| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite; it comes back to you |
+| [`POST /user/invites/{id}/resend`](/reference/api/invites/resend-invite/) | `account` `resend_invite` | Send a pending invite's email again |
 | [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite a `username` or an `email` into a workspace, with a `role`. Owners only. |
 | [`GET /user/invitations`](/reference/api/invites/list-invitations/) | `account` `list_workspace_invitations` | The workspace invitations waiting for your answer |
 | [`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/) | `account` `accept_workspace_invitation` | Join the invitation's workspace with its role |
