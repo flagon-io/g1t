@@ -1,4 +1,4 @@
-import { Check, ChevronDown, CircleUserRound, LayoutGrid, Plus, Settings } from "lucide-react";
+import { Check, ChevronDown, CircleUserRound, Compass, LayoutGrid, Plus, Settings } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useLocation, useNavigation } from "react-router";
 
@@ -267,6 +267,8 @@ export function Rail({
               badge={item.badge}
             />
           ))}
+          {/* Public repositories across g1t, beyond this workspace. */}
+          <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={at("/explore")} />
         </SidebarMenu>
         {/* Your pinned apps: as many as you like, scrolling under a fade at either end. */}
         {shown.length > 0 && (
