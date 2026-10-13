@@ -108,6 +108,9 @@ export function cueFor(arrival: Arrival, ctx: SoundContext): SoundCue | null {
   if (arrival.source === "chat") {
     const { message } = arrival;
     if (message.deleted_at) return null;
+    // g1t's answer arrives empty, thinking, the moment a question is asked:
+    // it pings once, when it is written (over the feed), not as it starts.
+    if (message.answer && message.answer.state !== "done") return null;
     if (ctx.me && mentionsMe(message.body, ctx.me.username)) cue = "mention";
     else cue = arrival.channelKind === "dm" ? "direct" : "message";
   } else {

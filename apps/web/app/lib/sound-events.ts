@@ -10,11 +10,16 @@
  * a person asked for under Desktop notifications: for a message to them
  * while the window is not in front, from the open tab itself, with no
  * service worker and no push involved.
+ *
+ * Every open tab hears the same arrival, so one of them pings: a sound and
+ * a toast are played only by the tab that claims the arrival first across
+ * the browser (lib/one-tab.ts), the one in front when there is one.
  */
 import type { ChatMessage, FeedNotification } from "@g1t/contracts";
 import { type SoundCue, cueOn } from "@g1t/contracts/sounds";
 
 import { type Arrival, type FocusState, SoundGate, arrivalKey, cueFor, wantsDesktopToast } from "./chat-sounds";
+import { claimPing } from "./one-tab";
 import { play, soundSettings } from "./sounds";
 
 let me: { id: string; username: string } | null = null;
@@ -51,14 +56,25 @@ export function focusState(): FocusState {
   };
 }
 
+/** The cue this arrival earns in this tab, through the tab's own gate; nothing is played yet. */
 function sound(arrival: Arrival, dnd: boolean, mutedHere?: boolean): SoundCue | null {
   const all = mutedHere ? new Set([...muted, arrival.source === "chat" ? arrival.message.channel_id : (arrival.notification.channel_id ?? "")]) : muted;
   const cue = cueFor(arrival, { me, focus: focusState(), muted: all, dnd, settings: soundSettings() });
   // Heard of either way, so the same message over the other door stays quiet.
   const allowed = gate.allow(arrivalKey(arrival), Date.now());
-  if (!cue || !allowed) return null;
-  play(cue);
-  return cue;
+  return cue && allowed ? cue : null;
+}
+
+/** Pings once across the browser: the tab that claims the arrival plays the sound and shows the toast. */
+function ping(arrival: Arrival, cue: SoundCue | null, toast: (() => void) | null): void {
+  if (!cue && !toast) return;
+  const key = arrivalKey(arrival) ?? `${arrival.source}:${Date.now()}`;
+  const focus = focusState();
+  void claimPing(key, focus.visible && focus.focused).then((mine) => {
+    if (!mine) return;
+    if (cue) play(cue);
+    toast?.();
+  });
 }
 
 /**
@@ -67,7 +83,10 @@ function sound(arrival: Arrival, dnd: boolean, mutedHere?: boolean): SoundCue | 
  * Returns what played, for the harness.
  */
 export function chatMessageArrived(message: ChatMessage, channelKind: "channel" | "dm", options: { dnd: boolean; muted?: boolean }): SoundCue | null {
-  return sound({ source: "chat", message, channelKind }, options.dnd, options.muted);
+  const arrival: Arrival = { source: "chat", message, channelKind };
+  const cue = sound(arrival, options.dnd, options.muted);
+  ping(arrival, cue, null);
+  return cue;
 }
 
 /**
@@ -85,7 +104,8 @@ export function notificationArrived(
     open: (href: string) => void;
   },
 ): { cue: SoundCue | null; desktopToast: boolean } {
-  const cue = sound({ source: "feed", notification }, options.dnd);
+  const arrival: Arrival = { source: "feed", notification };
+  const cue = sound(arrival, options.dnd);
   const desktopToast = wantsDesktopToast({
     notification,
     toast: options.toast,
@@ -93,7 +113,7 @@ export function notificationArrived(
     permission: options.permission,
     pushOn: options.pushOn,
   });
-  if (desktopToast) showDesktopToast(notification, options.open);
+  ping(arrival, cue, desktopToast ? () => showDesktopToast(notification, options.open) : null);
   return { cue, desktopToast };
 }
 

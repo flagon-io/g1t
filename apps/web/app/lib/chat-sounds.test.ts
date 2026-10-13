@@ -210,3 +210,11 @@ test("a desktop notification shows only when wanted, allowed, out of front, and 
   assert.ok(wantsDesktopToast({ ...base, ctx: { ...base.ctx, focus: { visible: false, focused: false, viewingChannel: null } } }));
   assert.ok(!wantsDesktopToast({ ...base, notification: { kind: "inbox" } }));
 });
+
+test("g1t's answer is silent while it thinks and streams, and pings once it is written", () => {
+  const away = ctx({ focus: { visible: true, focused: false, viewingChannel: "chn_general" } });
+  const answer = (state: "thinking" | "streaming" | "done") => chat(message({ author: { kind: "system", id: "g1t", name: "g1t", display_name: "g1t", avatar: null, role: null }, answer: { state } }), "dm");
+  assert.equal(cueFor(answer("thinking"), away), null);
+  assert.equal(cueFor(answer("streaming"), away), null);
+  assert.equal(cueFor(answer("done"), away), "direct");
+});
