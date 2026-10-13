@@ -41,7 +41,7 @@ export const VARIANTS = [
 
 /**
  * The Workers that read D1 or call services that do, by config: what
- * `apply` sets the placement of. The rest (pages, models, og, runner,
+ * `apply` sets the placement of. The rest (pages, og, runner,
  * status, docs) serve from the edge or have no data of their own.
  */
 export const PLACED = [
@@ -50,7 +50,6 @@ export const PLACED = [
   "apps/sudo/wrangler.jsonc",
   "services/actions/wrangler.jsonc",
   "services/billing/wrangler.jsonc",
-  "services/context/wrangler.jsonc",
   "services/deployments/wrangler.jsonc",
   "services/events/wrangler.jsonc",
   "services/identity/wrangler.jsonc",

@@ -2724,9 +2724,8 @@ class Deployments {
   /**
    * Previews of a branch that is gone. A pull request's preview comes down
    * when it closes or merges; a branch's preview (built by a project's
-   * deploy workflow, or by the preview stacks projects' dependencies once
-   * built) has no pull request, so it comes down once its branch is
-   * deleted, here for any whose deletion was missed. A deleted
+   * deploy workflow) has no pull request, so it comes down once its branch
+   * is deleted, here for any whose deletion was missed. A deleted
    * workspace's stay paused for a restore.
    */
   private async takeDownUnheld(): Promise<void> {
