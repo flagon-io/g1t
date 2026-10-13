@@ -9,7 +9,6 @@ import { page } from "../../lib/meta";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
-import { Hint } from "../../components/ui/hint";
 import { DeployLink, host } from "../../components/deploy";
 import { DeploymentStateBadge, DeploymentStateIcon, STATE_TONE, sourceLabel } from "../../components/deployments-panel";
 import { deployments } from "../../lib/services.server";
@@ -223,11 +222,7 @@ function StatusItem({ status, last, over }: { status: DeploymentStatus; last: bo
           <span className={`font-medium ${over && status.state === "in_progress" ? "text-muted" : STATE_TONE[status.state]}`}>{STATE_WORD[status.state]}</span>
           <span className="text-xs text-faint">
             {status.creator} ·{" "}
-            <Hint label={new Date(status.created_at).toUTCString()}>
-              <span tabIndex={0}>
-                <TimeAgo at={status.created_at} />
-              </span>
-            </Hint>
+            <TimeAgo at={status.created_at} />
           </span>
         </p>
         {status.description && <p className="mt-0.5 text-sm text-muted wrap-anywhere">{status.description}</p>}

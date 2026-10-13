@@ -5,7 +5,9 @@ import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react
 import { cn } from "../../lib/cn";
 import { linkPaths } from "../../lib/compute";
 import { type Submission, isPending } from "../../lib/pending";
+import { exactTime, timeAgo } from "../../lib/time-ago";
 import { Button, type ButtonSize, type ButtonVariant, buttonVariants } from "./button";
+import { Hint } from "./hint";
 
 export function Field({
   label,
@@ -298,23 +300,21 @@ export function CopyLine({
   );
 }
 
-const UNITS: [string, number][] = [
-  ["d", 86_400_000],
-  ["h", 3_600_000],
-  ["m", 60_000],
-];
-
-/** Compact relative time such as "5m ago". */
+/**
+ * Compact relative time such as "5m ago", or the date once it is weeks
+ * old (lib/time-ago.ts), with the moment in full on hover.
+ */
 export function TimeAgo({ at }: { at: string | number }) {
   // Timestamps are RFC 3339 strings; a few older ones are still numbers.
-  const elapsed = Date.now() - new Date(at).getTime();
-  const unit = UNITS.find(([, size]) => elapsed >= size);
-  const label = unit ? `${Math.floor(elapsed / unit[1])}${unit[0]} ago` : "just now";
+  const time = new Date(at);
+  if (Number.isNaN(time.getTime())) return null;
   return (
-    // The server and the browser render at slightly different times.
-    <time dateTime={new Date(at).toISOString()} suppressHydrationWarning>
-      {label}
-    </time>
+    <Hint label={<span suppressHydrationWarning>{exactTime(at)}</span>}>
+      {/* The server and the browser render at slightly different times, and zones. */}
+      <time dateTime={time.toISOString()} suppressHydrationWarning>
+        {timeAgo(at)}
+      </time>
+    </Hint>
   );
 }
 
