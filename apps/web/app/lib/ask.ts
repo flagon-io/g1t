@@ -26,6 +26,15 @@ export function askPage(pathname: string): AskPage {
   return page;
 }
 
+/** The browser's time zone, sent with a question so "today" is the asker's today. */
+export function browserTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
 /** What the composer says about where the question is asked from. */
 export function askWhere(page: AskPage): string | null {
   if (page.issue) return `On issue #${page.issue}`;

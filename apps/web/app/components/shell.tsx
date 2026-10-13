@@ -6,7 +6,7 @@ import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Membershi
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
-import { AskButton } from "./ask-composer";
+import { AskButton } from "./ask-button";
 import { NotificationsBell } from "./inbox";
 import { desktopBridge, useDesktopApp, useTitleBarSearch } from "../lib/notify-client";
 import { PinButton } from "./pin-button";

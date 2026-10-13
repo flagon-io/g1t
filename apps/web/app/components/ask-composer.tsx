@@ -4,7 +4,7 @@ import { Link, useLocation } from "react-router";
 
 import { type AskSetup, type ChatLiveEvent, type ChatMessage, type Result } from "@g1t/contracts";
 
-import { askPage, askWhere } from "../lib/ask";
+import { askPage, askWhere, browserTimeZone } from "../lib/ask";
 import { anyAnswering, applyLive, fromG1t, suggestions } from "../lib/g1t-chat";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "./ai-elements/conversation";
 import { Message, MessageContent } from "./ai-elements/message";
@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import { Kbd } from "./ui/kbd";
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Skeleton } from "./ui/skeleton";
 import { Textarea } from "./ui/textarea";
 
@@ -159,7 +159,7 @@ function useG1tConversation(slug: string, open: boolean) {
         pending: true,
       };
       setMessages((now) => [...now, pending]);
-      const saved = await chatApi<ChatMessage>(slug, { intent: "post", channel_id: id, body, page: askPage(pathname) });
+      const saved = await chatApi<ChatMessage>(slug, { intent: "post", channel_id: id, body, page: { ...askPage(pathname), time_zone: browserTimeZone() } });
       setMessages((now) => (saved.ok ? byId([...now.filter((m) => m.id !== pendingId), saved.value]) : now.map((m) => (m.id === pendingId ? { ...m, failed: true } : m))));
       // The answer arrives over the socket; should it have opened late, ask once more.
       if (saved.ok) setTimeout(() => void load(), 1_500);
@@ -183,34 +183,27 @@ function useG1tConversation(slug: string, open: boolean) {
 
 type G1tConversation = ReturnType<typeof useG1tConversation>;
 
-/** The top bar's Ask: the lavender pixel 1 beside its words. Opens the conversation beside the page. */
-export function AskButton({ slug }: { slug: string }) {
-  const [open, setOpen] = useState(false);
+/**
+ * The Ask panel's sheet (components/ask-button.tsx loads it the first time
+ * the top bar's Ask opens, so pages don't carry it until then): the
+ * conversation, kept while the panel is closed.
+ */
+export function AskSheet({ slug, open }: { slug: string; open: boolean }) {
   const conversation = useG1tConversation(slug, open);
   const busy = anyAnswering(conversation.messages);
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <Hint label="Ask g1t about your work">
-        <SheetTrigger asChild>
-          <Button variant="soft" size="bar" aria-label="Ask g1t" className="gap-2 max-md:ring-0 lg:px-3">
-            <MarkGlyph className="h-3.5" />
-            <span className="max-lg:hidden">Ask</span>
-          </Button>
-        </SheetTrigger>
-      </Hint>
-      <SheetContent
-        side="right"
-        className="sm:max-w-xl"
-        // Esc stops an answer still coming first; pressed again, it closes the panel.
-        onEscapeKeyDown={(event) => {
-          if (!busy) return;
-          event.preventDefault();
-          void conversation.act("g1t_stop");
-        }}
-      >
-        <AskPanel slug={slug} open={open} conversation={conversation} />
-      </SheetContent>
-    </Sheet>
+    <SheetContent
+      side="right"
+      className="sm:max-w-xl"
+      // Esc stops an answer still coming first; pressed again, it closes the panel.
+      onEscapeKeyDown={(event) => {
+        if (!busy) return;
+        event.preventDefault();
+        void conversation.act("g1t_stop");
+      }}
+    >
+      <AskPanel slug={slug} open={open} conversation={conversation} />
+    </SheetContent>
   );
 }
 
