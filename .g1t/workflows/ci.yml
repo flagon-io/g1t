@@ -82,7 +82,7 @@ jobs:
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund
       - name: Type checks
         run: npm run typecheck
       - name: Tests
@@ -115,7 +115,7 @@ jobs:
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund
       - name: The site, sudo and the docs
         run: node scripts/deploy.mjs build --only web,sudo,docs
 

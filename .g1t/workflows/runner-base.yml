@@ -67,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install Wrangler
-        run: npm ci --workspaces=false --no-audit --no-fund
+        run: node scripts/deploy/npm-ci.mjs --workspaces=false --no-audit --no-fund
       - name: Build and push
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -64,7 +64,7 @@ jobs:
           restore-keys: npm-full-${{ runner.os }}-
       # EAS reads app.config.ts through the app's own `expo`.
       - name: Install the app's dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund -w @g1t/mobile
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund -w @g1t/mobile
       - name: Build on EAS
         working-directory: apps/mobile
         env:

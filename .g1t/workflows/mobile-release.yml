@@ -72,7 +72,7 @@ jobs:
       # Wrangler, from the root, and the app's own (EAS reads app.config.ts
       # through its `expo`).
       - name: Install Wrangler and the app
-        run: npm ci --prefer-offline --no-audit --no-fund -w @g1t/mobile --include-workspace-root
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund -w @g1t/mobile --include-workspace-root
       - name: Build on EAS
         if: ${{ !inputs.build }}
         env:

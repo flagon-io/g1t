@@ -80,7 +80,7 @@ jobs:
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install Wrangler
-        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --workspaces=false --no-audit --no-fund
       - name: Publish to g1t.sh/downloads/cli
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

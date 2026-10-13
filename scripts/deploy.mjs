@@ -479,7 +479,8 @@ async function install(stack, opts) {
   const units = selected(stack, opts);
   const args = npmCiArgs(units, npmWorkspace());
   log(`npm ${args.join(" ")}`);
-  const done = await exec(`npm ${args.join(" ")}`, [], { cwd: ROOT, shell: true, onLine: (line) => log(line) });
+  // Through npm-ci.mjs, which runs it again when a connection drops.
+  const done = await exec(`node scripts/deploy/npm-ci.mjs ${args.slice(1).join(" ")}`, [], { cwd: ROOT, shell: true, onLine: (line) => log(line) });
   return done.code === 0;
 }
 

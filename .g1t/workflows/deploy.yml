@@ -82,7 +82,7 @@ jobs:
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install Wrangler
-        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --workspaces=false --no-audit --no-fund
       - name: The manifest matches every wrangler.jsonc
         run: node scripts/deploy.mjs manifest --check
       - name: The deploy tool's tests
@@ -119,7 +119,7 @@ jobs:
         id: download
         if: ${{ steps.saved.outputs.cache-hit != 'true' }}
         continue-on-error: true
-        run: npm ci --prefer-offline --ignore-scripts --no-audit --no-fund
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --ignore-scripts --no-audit --no-fund
       - name: Save them
         if: ${{ steps.saved.outputs.cache-hit != 'true' && steps.download.outcome == 'success' }}
         uses: actions/cache/save@v4
@@ -185,7 +185,7 @@ jobs:
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install Wrangler
-        run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --workspaces=false --no-audit --no-fund
       - name: Apply pending migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
