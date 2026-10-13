@@ -1,4 +1,4 @@
-//! A repository's settings for how g1t's agents handle its pull requests,
+//! A repository's settings for how its pull requests are handled,
 //! and the branch protection settings that are now its "Default branch
 //! protection" ruleset (rulesets.rs).
 //!
@@ -57,8 +57,8 @@ impl From<SettingsRow> for RepoSettings {
 }
 
 impl Work {
-    /// A repository's stored settings, by its id: how g1t's agents handle
-    /// its pull requests. Defaults if none were set. Branch protection is
+    /// A repository's stored settings, by its id: how its pull requests are
+    /// handled. Defaults if none were set. Branch protection is
     /// its rules': see `settings_on`.
     pub(crate) async fn settings(&self, repo_id: &str) -> Result<RepoSettings> {
         if let Some(found) = self.prefetched_repo(repo_id) {
@@ -84,7 +84,7 @@ impl Work {
         Ok(Outcome::Ok(self.timing.db(3, self.default_branch_settings(&repo)).await?))
     }
 
-    /// Replaces a repository's settings: how g1t's agents work, kept here,
+    /// Replaces a repository's settings: how pull requests are handled, kept here,
     /// and the branch protection ones, written to its "Default branch
     /// protection" ruleset (made when it has none and they protect
     /// anything). Rules that only rulesets have stay as they are.

@@ -469,13 +469,11 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("add_comment", { actor, repo, number, ...comment }),
     editComment: (actor, repo, commentId, body) => call("edit_comment", { actor, repo, commentId, body }),
     deleteComment: (actor, repo, commentId) => call("delete_comment", { actor, repo, commentId }),
-    startChecks: (pullId) => call("start_checks", { pullId }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
     startMergecheck: (pullId) => call("start_mergecheck", { pullId }),
     failMergecheck: (pullId, token, error) => call("report_mergecheck", { pullId, token, error }),
     advance: (pullId) => call("advance", { pullId }),
-    stall: (pullId, reason) => call("stall", { pullId, reason }),
     managedPulls: (repoId) => call("managed_pulls", { repoId }),
     queue: (repo, viewer) => call("queue", { repo, viewer }),
     queueBuild: (repoId) => call("queue_build", { repoId }),
@@ -520,7 +518,6 @@ export function workClient(service: ServiceBinding): WorkApi {
     listActivePulls: (viewer) => call("list_active_pulls", { viewer }),
     byAuthor: (username, viewer, filter = {}) => call("by_author", { username, viewer, ...filter }),
     contributions: (username, viewer) => call("contributions", { username, viewer }),
-    listAssignedIssues: (viewer) => call("list_assigned_issues", { viewer }),
     appendSession: (actor, repo, number, entries) =>
       call("append_session", { actor, repo, number, entries }),
     readSession: (repo, number, viewer, afterSeq = 0) =>

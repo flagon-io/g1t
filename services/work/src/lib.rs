@@ -514,7 +514,7 @@ impl Work {
         let id = new_id("iss", now);
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
-        let (author, requested_by) = authorship(&a.actor, false);
+        let (author, requested_by) = authorship(&a.actor);
         self.db
             .prepare(
                 "INSERT INTO issues
@@ -787,27 +787,6 @@ impl Work {
             assignees.push(name);
         }
         Ok(Outcome::Ok(assignees))
-    }
-
-    /// Open issues assigned to the viewer, in every repository. Callers
-    /// show only those in repositories the viewer can still see.
-    async fn list_assigned_issues(&self, a: ViewerArgs) -> Result<Vec<Issue>> {
-        let Some(viewer) = a.viewer else {
-            return Ok(Vec::new());
-        };
-        let rows = self
-            .db
-            .prepare(format!(
-                "SELECT {ISSUE_COLUMNS} FROM issues
-                 WHERE state = 'open' AND EXISTS (
-                   SELECT 1 FROM json_each(issues.assignees) WHERE json_each.value = ?)
-                 ORDER BY updated_at DESC LIMIT 50"
-            ))
-            .bind(&[viewer.username.into()])?
-            .all()
-            .await?
-            .results::<IssueRow>()?;
-        Ok(rows.into_iter().map(Issue::from).collect())
     }
 
     async fn close_issue(&self, a: IssueActionArgs) -> Result<Outcome<Issue>> {
@@ -1311,7 +1290,7 @@ impl Work {
 
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
-        let (author, requested_by) = authorship(&a.actor, false);
+        let (author, requested_by) = authorship(&a.actor);
         self.db
             .prepare(
                 "INSERT INTO pulls
@@ -2735,7 +2714,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "edit_comment" => reply(&work.edit_comment(args(body)?).await?),
         "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
-        "start_checks" => reply(&work.start_checks(args(body)?).await?),
         "seen_checks" => reply(&work.seen_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
         "set_commit_status" => reply(&work.set_commit_status(args(body)?).await?),
@@ -2754,7 +2732,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "request_check_action" => reply(&work.request_check_action(args(body)?).await?),
         "commit_checks" => reply(&work.commit_checks(args(body)?).await?),
         "advance" => reply(&work.advance(args(body)?).await?),
-        "stall" => reply(&work.stall(args(body)?).await?),
         "managed_pulls" => reply(&work.managed_pulls(args(body)?).await?),
         "queue" => reply(&work.queue(args(body)?).await?),
         "queue_build" => reply(&work.queue_build(args(body)?).await?),
@@ -2779,7 +2756,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
         "by_author" => reply(&work.by_author(args(body)?).await?),
         "contributions" => reply(&work.contributions(args(body)?).await?),
-        "list_assigned_issues" => reply(&work.list_assigned_issues(args(body)?).await?),
         "append_session" => reply(&work.append_session(args(body)?).await?),
         "read_session" => reply(&work.read_session(args(body)?).await?),
         // Decision records (decisions.rs).

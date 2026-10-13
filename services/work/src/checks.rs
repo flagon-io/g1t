@@ -112,15 +112,6 @@ impl Work {
             .collect())
     }
 
-    /// Commands written on issues are no longer run: a pull request's
-    /// checks are the workflows run on it, and the default branch's
-    /// protection says which must pass. Refused, for a runner from before.
-    pub(crate) async fn start_checks(&self, _: StartChecksArgs) -> Result<Outcome<CheckJob>> {
-        Ok(refused(
-            "Checks are the workflows run on a pull request; there are no commands to run.",
-        ))
-    }
-
     /// Records what a sandbox reports for its run: that it has started, its
     /// results, that it could not run, or that the run should be forgotten.
     /// The run's token is the only credential, and a finished run accepts
