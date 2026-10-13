@@ -49,6 +49,7 @@ import {
   findWranglerConfigs,
   loadStack,
   npmCiArgs,
+  containersRollout,
   npmWorkspace,
   outsideImports,
   parseJsonc,
@@ -859,4 +860,13 @@ test("Cloudflare failing is tried again; a mistake in what is deployed is not", 
   assert.equal(retryableDeploy("✘ [ERROR] Build failed with 1 error:\n  src/index.ts:3:7: ERROR: Could not resolve \"./nope\""), false);
   assert.equal(retryableDeploy("✘ [ERROR] Processing wrangler.jsonc configuration:\n  - \"main\" is not a valid path"), false);
   assert.equal(retryableDeploy("fetch failed: ECONNRESET"), true);
+});
+
+test("sandboxes roll over at once when their image or container settings changed, and not otherwise", () => {
+  const unit = { id: "runner", path: "services/runner" };
+  assert.equal(containersRollout(unit, { image: true, files: [] }), "immediate");
+  assert.equal(containersRollout(unit, { image: false, files: ["services/runner/wrangler.jsonc"] }), "immediate");
+  assert.equal(containersRollout(unit, { image: false, files: ["services/runner/src/egress.ts"] }), "none");
+  assert.equal(containersRollout(unit, { image: false, files: ["services/runnerx/wrangler.jsonc"] }), "none");
+  assert.equal(containersRollout(unit, { image: false, files: [] }, { rebuildImage: true }), "immediate");
 });

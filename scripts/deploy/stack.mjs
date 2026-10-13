@@ -486,6 +486,21 @@ export function outsideImports(root, unit) {
 }
 
 /**
+ * How a unit with a Containers image rolls its sandboxes over: `immediate`
+ * when what they run changed (the image, or the container settings in its
+ * wrangler.jsonc, such as the instance type), else `none`. Cloudflare's
+ * default rollout goes in steps over wall-clock time, so with deploys
+ * often apart a new version never reached every sandbox; `immediate`
+ * replaces the idle ones at once, and `rollout_active_grace_period` still
+ * keeps a sandbox in the middle of a job from being stopped.
+ */
+export function containersRollout(unit, decision, { rebuildImage = false, rebuildBase = false } = {}) {
+  const config = (file) => file.startsWith(`${unit.path}/`) && /wrangler\.jsonc?$/.test(file);
+  const changed = rebuildImage || rebuildBase || decision.image || (decision.files ?? []).some(config);
+  return changed ? "immediate" : "none";
+}
+
+/**
  * npm ci of only what the units need: Wrangler alone for Rust workers,
  * and each npm-built unit's workspace with the packages it uses. A CI job
  * that deploys three Rust workers does not install the site's toolchain.

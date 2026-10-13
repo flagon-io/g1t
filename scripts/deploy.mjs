@@ -66,7 +66,7 @@ import {
 } from "./deploy/image.mjs";
 import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { reportDeployment } from "./deploy/report.mjs";
-import { ROOT, byStage, codeStages, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack, waves } from "./deploy/stack.mjs";
+import { ROOT, byStage, codeStages, containersRollout, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack, waves } from "./deploy/stack.mjs";
 import { withDeployWindow } from "./deploy/status-window.mjs";
 
 const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
@@ -361,9 +361,7 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
       // Wrangler is given the image by reference, so it builds nothing.
       const image = await runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, out);
       args.push("--config", writeDeployConfig(unit, image.ref));
-      // Nothing the image is built from changed: the running sandboxes
-      // keep going, and new ones start from the same image.
-      if (!rebuildImage && !rebuildBase && !decision.image) args.push("--containers-rollout", "none");
+      args.push("--containers-rollout", containersRollout(unit, decision, { rebuildImage, rebuildBase }));
       result.note = image.note;
     }
     // Tried again after a wait when Cloudflare, not what is deployed, is
