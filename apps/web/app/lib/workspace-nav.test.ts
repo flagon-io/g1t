@@ -160,3 +160,40 @@ test("a member without Code access is sent around Code's pages", async () => {
   assert.equal(codeGate("/other/web", "", none, "acme"), null);
   assert.equal(codeGate("/acme/web", "", [], "acme"), null);
 });
+
+test("g1t beyond your workspaces is browsed, and whose it is", async () => {
+  const { browsingOf, shellMode } = await import("./workspace-nav.ts");
+  const viewer = { slug: "acme", memberships: ["acme", "Side-Co"], shared: [{ namespace: "friend", name: "notes" }], username: "ada" };
+  // Explore and search are nobody's.
+  assert.deepEqual(browsingOf("/explore", viewer), { owner: null });
+  assert.deepEqual(browsingOf("/explore.data", viewer), { owner: null });
+  assert.deepEqual(browsingOf("/search", viewer), { owner: null });
+  // Someone's profile is theirs; your own is no one's being browsed.
+  assert.deepEqual(browsingOf("/u/grace", viewer), { owner: { kind: "person", name: "grace" } });
+  assert.deepEqual(browsingOf("/u/Ada", viewer), { owner: null });
+  // Another workspace, its pages and its projects.
+  assert.deepEqual(browsingOf("/other", viewer), { owner: { kind: "workspace", name: "other", repo: null } });
+  assert.deepEqual(browsingOf("/other/-/projects", viewer), { owner: { kind: "workspace", name: "other", repo: null } });
+  assert.deepEqual(browsingOf("/other/site/pulls/3", viewer), { owner: { kind: "workspace", name: "other", repo: "site" } });
+  // Your workspaces are never browsed, the one you are in or another (the shell switches to it).
+  assert.equal(browsingOf("/acme/web", viewer), null);
+  assert.equal(browsingOf("/acme/-/projects", viewer), null);
+  assert.equal(browsingOf("/side-co/api", viewer), null);
+  // A project shared with you is Code's; the rest of its workspace is browsed.
+  assert.equal(browsingOf("/friend/notes/issues", viewer), null);
+  assert.deepEqual(browsingOf("/friend/other", viewer), { owner: { kind: "workspace", name: "friend", repo: "other" } });
+  // g1t's own pages and files are no one's.
+  for (const path of ["/", "/settings/emails", "/notifications", "/new", "/policies/terms", "/workspaces/new", "/invitations", "/robots.txt", "/.well-known/g1t.json", "/u"]) {
+    assert.equal(browsingOf(path, viewer), null, path);
+  }
+  // Without a workspace there is no rail, and nothing is browsed.
+  assert.equal(browsingOf("/explore", { slug: null, memberships: [] }), null);
+  // The shell's mode: browse beyond your workspaces, the address's mode otherwise.
+  assert.equal(shellMode("/explore", viewer), "browse");
+  assert.equal(shellMode("/u/grace", viewer), "browse");
+  assert.equal(shellMode("/other/site", viewer), "browse");
+  assert.equal(shellMode("/acme/web", viewer), "code");
+  assert.equal(shellMode("/friend/notes", viewer), "code");
+  assert.equal(shellMode("/acme/-/chat", viewer), "chat");
+  assert.equal(shellMode("/policies", viewer), "site");
+});

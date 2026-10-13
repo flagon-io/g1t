@@ -248,9 +248,12 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
  * its settings area: who has access, money, policies and how each part is
  * set up; Apps is everything installed that you
  * can use. `account` is your own settings, under the avatar. `site` is
- * g1t's own public pages (a profile, Explore, Search): no workspace's, so
- * no mode is lit and no mode's sidebar sits beside them. Each mode has a
- * sidebar of its own, or none, and which one is lit follows the address.
+ * g1t's own pages (policies, support, a new workspace): no workspace's, so
+ * no mode is lit and no mode's sidebar sits beside them. `browse` is g1t
+ * beyond your workspaces (Explore, search, a profile, another workspace
+ * and its public projects): the rail lights Explore, and Explore's sidebar
+ * sits beside them (`browsingOf`). Each mode has a sidebar of its own, or
+ * none, and which one is lit follows the address.
  */
 export type ModeKey =
   | "home"
@@ -262,7 +265,8 @@ export type ModeKey =
   | "workspace"
   | "apps"
   | "account"
-  | "site";
+  | "site"
+  | "browse";
 
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
@@ -340,8 +344,70 @@ export function modeHome(mode: ModeKey, slug: string): string {
     case "account":
       return "/settings";
     case "site":
+    case "browse":
       return "/explore";
   }
+}
+
+/** First segments that are g1t's own pages and never anyone's name (packages/contracts names.ts). */
+const NOT_AN_OWNER = new Set([
+  "-", "api", "mcp", "login", "logout", "register", "new", "settings", "search", "admin", "auth", "integrations",
+  "pulls", "issues", "verify", "confirm-email", "forgot", "reset", "device", "workspaces", "u", "oauth", "assets",
+  "avatars", "docs", "explore", "about", "pricing", "policies", "security", "support", "status", "terms", "privacy",
+  "help", "blog", "invite", "invites", "waitlist", "invitations", "v2", "inbox", "notifications", "download",
+  "downloads", "install",
+]);
+
+/**
+ * Whose g1t a browsed page is: a workspace (its overview, its pages, or
+ * one of its projects, `repo`) or a person (their profile).
+ */
+export type BrowsedOwner = { kind: "workspace"; name: string; repo: string | null } | { kind: "person"; name: string };
+
+/** What the shell knows of the viewer, to tell their own pages from the rest of g1t. */
+export type Viewer = {
+  /** The workspace the shell is about. */
+  slug: string | null;
+  /** Every workspace they belong to, by slug. */
+  memberships: readonly string[];
+  /** Repositories shared with them in workspaces they do not belong to: Code lists them as theirs. */
+  shared?: readonly { namespace: string; name: string }[];
+  /** Their own username: their profile is theirs, not someone's being browsed. */
+  username?: string | null;
+};
+
+/**
+ * Whether `pathname` is g1t beyond the viewer's own workspaces, and whose
+ * (`owner`, null for Explore, search and their own profile). Null for
+ * anything of theirs. A workspace they belong to is never browsed, even
+ * when it is not the one they are in: its pages and projects switch the
+ * shell to it (lib/workspace-choice.ts `workspaceFor`), so they are that
+ * workspace's modes. A project shared with them is Code's, whose sidebar
+ * lists it. Without a workspace there is no rail, and nothing is browsed.
+ */
+export function browsingOf(pathname: string, viewer: Viewer): { owner: BrowsedOwner | null } | null {
+  if (!viewer.slug) return null;
+  const parts = pagePath(pathname).split("/").filter(Boolean);
+  const first = parts[0]?.toLowerCase();
+  if (!first) return null;
+  if (first === "explore" || first === "search") return { owner: null };
+  if (first === "u") {
+    const name = parts[1];
+    if (!name) return null;
+    const own = viewer.username != null && name.toLowerCase() === viewer.username.toLowerCase();
+    return { owner: own ? null : { kind: "person", name } };
+  }
+  // g1t's own pages, and files such as robots.txt.
+  if (NOT_AN_OWNER.has(first) || first.includes(".")) return null;
+  if (first === viewer.slug.toLowerCase() || viewer.memberships.some((slug) => slug.toLowerCase() === first)) return null;
+  const repo = parts[1] && parts[1] !== "-" ? parts[1] : null;
+  if (repo && (viewer.shared ?? []).some((r) => r.namespace.toLowerCase() === first && r.name.toLowerCase() === repo.toLowerCase())) return null;
+  return { owner: { kind: "workspace", name: parts[0]!, repo } };
+}
+
+/** The mode a path is in for this viewer: `browse` beyond their workspaces (`browsingOf`), else `modeOf`'s. */
+export function shellMode(pathname: string, viewer: Viewer): ModeKey {
+  return browsingOf(pathname, viewer) ? "browse" : modeOf(pathname, viewer.slug);
 }
 
 /** A workspace's front page: Home. */

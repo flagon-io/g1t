@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, House, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, TrendingUp, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -46,7 +46,17 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { type RoadmapItem, roadmapIn, roadmapItem } from "../lib/roadmap";
-import { type ModeKey, WORKSPACE_SETTINGS_GROUPS, type WorkspaceSettingsPage, homePagePath, modeOf, workspaceSettingsPage } from "../lib/workspace-nav";
+import {
+  type BrowsedOwner,
+  type ModeKey,
+  WORKSPACE_SETTINGS_GROUPS,
+  type WorkspaceSettingsPage,
+  browsingOf,
+  homePagePath,
+  modeOf,
+  pagePath,
+  workspaceSettingsPage,
+} from "../lib/workspace-nav";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
 import { Rail, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./rail";
@@ -773,8 +783,8 @@ function RepoMenu({
 }: {
   repo: MenuRepo;
   isPrivate: boolean;
-  /** Where the way back leads: the workspace's projects, mission control, or Explore. */
-  back: { to: string; label: string };
+  /** Where the way back leads: the workspace's projects, mission control, or the projects of the workspace being browsed. */
+  back: { to: string; label: string; context?: string };
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
   // What a member sees, and what everyone who can see the project does
@@ -783,7 +793,7 @@ function RepoMenu({
   const { current: atOverview, pending: toOverview } = useRowState(base, { end: true });
   return (
     <nav aria-label={`${repo.namespace}/${repo.name}`} className={PANEL}>
-      <BackRow to={back.to} label={back.label} />
+      <BackRow to={back.to} label={back.label} context={back.context} />
       <NavRows className="mt-1">
         <SidebarMenuItem>
           <Hint label="Overview" side="right">
@@ -1015,11 +1025,14 @@ function CodeSidebar({
   user,
   shell,
   missing = false,
+  browsing = null,
 }: {
   user: User;
   shell: ShellData;
   /** The page is a 404: the address names nothing the viewer can see. */
   missing?: boolean;
+  /** g1t beyond the viewer's workspaces (lib/workspace-nav.ts `browsingOf`): Explore's list in place of Code's. */
+  browsing?: { owner: BrowsedOwner | null } | null;
 }) {
   const ws = shell.workspace;
   const { pathname } = useLocation();
@@ -1064,13 +1077,19 @@ function CodeSidebar({
       ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
       : guessed;
 
-  // The way from Code's list to the one shown.
-  const trail: Level[] = [{ key: "main", node: ws ? <CodeMenu shell={shell} slug={ws.slug} /> : null }];
+  // The way from Code's list (or Explore's, browsing) to the one shown.
+  const main = browsing ? <BrowseMenu user={user} owner={browsing.owner} /> : ws ? <CodeMenu shell={shell} slug={ws.slug} /> : null;
+  const trail: Level[] = [{ key: browsing ? "browse" : "main", node: main }];
   if (menuRepo) {
     const key = `repo:${menuRepo.namespace}/${menuRepo.name}`.toLowerCase();
-    // Out of a project: to its workspace's projects when they are yours.
+    // Out of a project: to its workspace's projects when they are yours, or
+    // when browsing, to the projects of the workspace it is in.
     const home = (user.workspaces ?? []).find((m) => m.slug === menuRepo.namespace.toLowerCase());
-    const back = home ? { to: `/${home.slug}/-/projects`, label: "All projects" } : { to: ws ? `/${ws.slug}/-/overview` : "/explore", label: "Code" };
+    const back = home
+      ? { to: `/${home.slug}/-/projects`, label: "All projects" }
+      : browsing
+        ? { to: `/${menuRepo.namespace}/-/projects`, label: "Projects", context: menuRepo.namespace }
+        : { to: ws ? `/${ws.slug}/-/overview` : "/explore", label: "Code" };
     trail.push({
       key,
       node: (
@@ -1086,9 +1105,127 @@ function CodeSidebar({
 
   return (
     <div className="flex h-full flex-col">
-      <ModeHeader title="Code" />
+      {browsing && ws && (
+        <>
+          <BackToWorkspace workspace={ws} />
+          <Rule />
+        </>
+      )}
+      <ModeHeader title={browsing ? "Explore" : "Code"} />
       <Drill trail={trail} />
     </div>
+  );
+}
+
+/**
+ * Browsing, the way back to the workspace you are in: its Home, at the top
+ * of Explore's sidebar, at every level of it.
+ */
+function BackToWorkspace({ workspace }: { workspace: Membership }) {
+  const name = displayName(workspace);
+  return (
+    <NavRows className="pt-0">
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild className="gap-2 pl-1 font-medium text-fg">
+          <Link to={homePagePath(workspace.slug)} prefetch="intent" aria-label={`Back to ${name}: Home`}>
+            <ChevronLeft className="text-faint transition-transform group-hover/menu-button:-translate-x-0.5 group-hover/menu-button:text-muted" />
+            <Avatar name={workspace.slug} image={workspace.avatar} size={18} square />
+            <span className="min-w-0 truncate">Back to {name}</span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </NavRows>
+  );
+}
+
+/** Whose page is being browsed, as the page itself names them once it has loaded: a workspace's or a person's. */
+function useBrowsedOwner(owner: BrowsedOwner | null): { name: string; avatar: string | null } | null {
+  const workspace = useRouteLoaderData("routes/workspace/layout") as { workspace?: { slug: string; name?: string | null; avatar?: string | null } } | undefined;
+  const person = useRouteLoaderData("routes/user") as { profile?: { username: string; displayUsername?: string | null; avatar: string | null } } | undefined;
+  if (!owner) return null;
+  if (owner.kind === "person") {
+    const profile = person?.profile?.username.toLowerCase() === owner.name.toLowerCase() ? person.profile : null;
+    return { name: `@${profile ? shownUsername(profile) : owner.name}`, avatar: profile?.avatar ?? null };
+  }
+  const page = workspace?.workspace?.slug.toLowerCase() === owner.name.toLowerCase() ? workspace.workspace : null;
+  return { name: page?.name?.trim() || owner.name, avatar: page?.avatar ?? null };
+}
+
+/**
+ * Explore's list, beside g1t beyond your workspaces (lib/workspace-nav.ts
+ * `browsingOf`): public projects across g1t, recently active and new,
+ * search, and what you starred; then whose page this is, with their own
+ * pages. A project of theirs drills into its own list, as in Code.
+ */
+function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null }) {
+  const location = useLocation();
+  const going = useNavigation().location;
+  const path = pagePath((going ?? location).pathname);
+  const query = new URLSearchParams((going ?? location).search);
+  const atExplore = path === "/explore";
+  const fresh = atExplore && query.get("sort") === "new";
+  const mine = `/u/${user.username}`;
+  const atMine = path.toLowerCase() === mine.toLowerCase();
+  const stars = atMine && query.get("tab") === "stars";
+  const shown = useBrowsedOwner(owner);
+  const profileTab = query.get("tab");
+  return (
+    <nav aria-label="Explore" className={PANEL}>
+      <NavRows>
+        <SidebarLink to="/explore" icon={<Compass size={15} />} current={atExplore && !fresh}>
+          Recently active
+        </SidebarLink>
+        <SidebarLink to="/explore?sort=new" icon={<Sparkles size={15} />} current={fresh}>
+          New projects
+        </SidebarLink>
+        <SidebarLink to="/search" icon={<Search size={15} />} current={path === "/search"}>
+          Search
+        </SidebarLink>
+      </NavRows>
+      <Rule />
+      <NavRows>
+        <SidebarLink to={`${mine}?tab=stars`} icon={<Star size={15} />} current={stars}>
+          Your stars
+        </SidebarLink>
+        <SidebarLink to={mine} icon={<CircleUserRound size={15} />} current={atMine && !stars}>
+          Your profile
+        </SidebarLink>
+      </NavRows>
+      {owner && shown && (
+        <>
+          <Rule />
+          <NavGroup title="You are viewing">
+            {owner.kind === "workspace" ? (
+              <>
+                <SidebarLink
+                  to={`/${owner.name}`}
+                  icon={<Avatar name={owner.name} image={shown.avatar} size={16} square />}
+                  current={path.toLowerCase() === `/${owner.name}`.toLowerCase()}
+                >
+                  {shown.name}
+                </SidebarLink>
+                <SidebarLink to={`/${owner.name}/-/projects`} icon={<LayoutGrid size={15} />}>
+                  Projects
+                </SidebarLink>
+              </>
+            ) : (
+              <>
+                <SidebarLink
+                  to={`/u/${owner.name}`}
+                  icon={<Avatar name={owner.name} image={shown.avatar} size={16} />}
+                  current={profileTab !== "stars"}
+                >
+                  {shown.name}
+                </SidebarLink>
+                <SidebarLink to={`/u/${owner.name}?tab=stars`} icon={<Star size={15} />} current={profileTab === "stars"}>
+                  Stars
+                </SidebarLink>
+              </>
+            )}
+          </NavGroup>
+        </>
+      )}
+    </nav>
   );
 }
 
@@ -1744,9 +1881,10 @@ export function Progress() {
 
 /**
  * Which sidebar sits beside the page: each mode's own, or none. Home and
- * Apps are pages at full width, and so are g1t's public pages, such as a
- * profile, which are no workspace's. Without a workspace, only your own
- * settings and Notifications have one.
+ * Apps are pages at full width, and so are g1t's own pages, such as its
+ * policies, which are no workspace's. g1t beyond your workspaces (Explore,
+ * a profile, another workspace's projects) has Explore's. Without a
+ * workspace, only your own settings and Notifications have one.
  */
 function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
   if (!workspace) return mode === "account" || mode === "notifications" ? mode : null;
@@ -1755,10 +1893,11 @@ function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
 }
 
 /** The sidebars that sit beside the page, one per mode that has one. */
-type Panel = "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account";
+type Panel = "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account" | "browse";
 
 /** Each sidebar's name, for the button that opens it on a phone. */
 const MODE_MENU: Record<Panel, string> = {
+  browse: "Explore",
   chat: "Chat",
   artifacts: "Artifacts",
   code: "Code",
@@ -1871,7 +2010,15 @@ export function AppShell({
   useVisualViewport();
   const going = useNavigation().location?.pathname;
   const ws = shell.workspace;
-  const mode = modeOf(going ?? pathname, ws?.slug ?? null);
+  // Beyond your workspaces (Explore, a profile, another workspace's
+  // projects), the shell is Explore's; anything of yours is its mode's.
+  const browsing = browsingOf(going ?? pathname, {
+    slug: ws?.slug ?? null,
+    memberships: (user.workspaces ?? []).map((membership) => membership.slug),
+    shared: shell.shared,
+    username: user.username,
+  });
+  const mode: ModeKey = browsing ? "browse" : modeOf(going ?? pathname, ws?.slug ?? null);
   const panel = sidebarFor(mode, ws != null);
   const { sidebar: chatSidebar } = useChatSidebar();
   // Notify: the feed socket's live counts (lib/notify-client.ts) once it has them; the page's until then.
@@ -1906,6 +2053,8 @@ export function AppShell({
     switch (panel) {
       case "code":
         return <CodeSidebar user={user} shell={shell} missing={missing} />;
+      case "browse":
+        return <CodeSidebar user={user} shell={shell} missing={missing} browsing={browsing} />;
       case "chat":
         return <ChatSidebar slug={ws.slug} />;
       case "artifacts":
@@ -1959,7 +2108,7 @@ export function AppShell({
       <Progress />
       {ws && (
         <div className="fixed top-(--frame-top) bottom-0 left-0 z-40 hidden md:block">
-          <Rail workspace={ws} pins={shell.pins ?? []} unread={unread} account={<AccountMenu user={user} />} />
+          <Rail workspace={ws} mode={mode} pins={shell.pins ?? []} unread={unread} account={<AccountMenu user={user} />} />
         </div>
       )}
       {panel && (
@@ -2030,7 +2179,7 @@ export function AppShell({
           </main>
         </div>
       </div>
-      {ws && <BottomBar user={user} workspace={ws} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
+      {ws && <BottomBar user={user} workspace={ws} mode={mode} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null} />
     </SidebarProvider>
   );
