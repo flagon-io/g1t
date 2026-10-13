@@ -381,9 +381,13 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         );
       }
       const harness = guard && !build ? harnessEnv(guard, vars) : {};
-      // Its HTTPS is re-signed as it passes the Worker, so it trusts that
-      // certificate.
-      const trust = brokering ? EGRESS_ENV : {};
+      // Once any of its traffic is intercepted, Cloudflare passes all of it
+      // through this Worker, and HTTPS is re-signed on the way
+      // (`interceptHttps`); so a sandbox with either handler trusts that
+      // certificate, or every HTTPS request it makes fails
+      // (SELF_SIGNED_CERT_IN_CHAIN, as on 2026-10-13).
+      const intercepted = brokering || this.env.EGRESS?.trim().toLowerCase() !== "off";
+      const trust = intercepted ? EGRESS_ENV : {};
       const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
       await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: true });
       // A backup has no guardrails, but still a time cap.
