@@ -70,21 +70,62 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      # npm's downloads, kept between runs: an install reads them first
-      # and asks the registry only for what changed, so a dropped
-      # connection to it rarely stops the job.
+      # npm's downloads for the whole lockfile, which the npm-cache job
+      # keeps: an install reads them first and asks the registry only for
+      # what changed, so a dropped connection to it rarely stops the job.
+      # Only restored: a job that installs part of the lockfile never
+      # saves, or its part would stand in for the whole under that key.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       - name: Install Wrangler
         run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: The manifest matches every wrangler.jsonc
         run: node scripts/deploy.mjs manifest --check
       - name: The deploy tool's tests
         run: npm run test:deploy
+
+  # npm's downloads for the whole lockfile, saved once for each lockfile
+  # on main, which every install of this and the other workflows starts
+  # from. Before, every job saved its own part under one key, and the
+  # first to finish (Wrangler alone, 73 MB) stood in for the rest: each
+  # stage then downloaded hundreds of MB through the runner's egress,
+  # 50 MB tarballs among them. Nothing waits for this job, and a failed
+  # download only leaves the cache as it was.
+  npm-cache:
+    name: npm's downloads
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Look for this lockfile's downloads
+        id: saved
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          lookup-only: true
+      - name: Start from the last lockfile's
+        if: ${{ steps.saved.outputs.cache-hit != 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      - name: Download every package
+        id: download
+        if: ${{ steps.saved.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        run: npm ci --prefer-offline --ignore-scripts --no-audit --no-fund
+      - name: Save them
+        if: ${{ steps.saved.outputs.cache-hit != 'true' && steps.download.outcome == 'success' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
   # Runs beside check: nothing deploys until both have succeeded.
   plan:
@@ -138,11 +179,11 @@ jobs:
       # and asks the registry only for what changed, so a dropped
       # connection to it rarely stops the job.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       - name: Install Wrangler
         run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: Apply pending migrations
@@ -246,16 +287,16 @@ jobs:
       - name: sccache
         if: ${{ matrix.rust || matrix.image }}
         run: bash scripts/sccache.sh install
-      # npm's downloads, kept between runs as the check and migrate jobs
-      # keep them: the install reads them first (--prefer-offline, in
+      # npm's downloads for the whole lockfile, only restored, as the
+      # check job restores them: the install reads them first (--prefer-offline, in
       # scripts/deploy/stack.mjs) and asks the registry only for what
       # changed, so a connection it drops mid-install rarely stops a stage.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       - name: Install
         run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
       - name: Deploy ${{ matrix.units }}

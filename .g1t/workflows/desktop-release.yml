@@ -97,8 +97,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       - name: Install
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Build and sign
@@ -212,8 +212,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       - name: Install
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Build and sign
@@ -288,11 +288,11 @@ jobs:
       # and asks the registry only for what changed, so a dropped
       # connection to it rarely stops the job.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       - name: Install Wrangler
         run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: The manifest
