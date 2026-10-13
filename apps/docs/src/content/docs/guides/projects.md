@@ -47,9 +47,15 @@ project has the repository's name.
 
 ## The overview
 
-A project's overview is the first page you see. People with a
-[role](/guides/access-and-roles/) on its repository see all of it; anyone
-else sees what the project shares publicly.
+A project's overview is the first page you see. It says what the project
+is, whether it is running and healthy, and who is working on it right now.
+Its files, branches and commits are on **Code**; its pull requests and the
+merge queue on **Pull requests** and **Work**. The overview links to them
+rather than repeating them.
+
+People with a [role](/guides/access-and-roles/) on its repository see all
+of it; anyone else sees what the project shares publicly: production, its
+checks, who is working on it, its deployments and About.
 
 | Part | What it shows |
 | --- | --- |
@@ -57,12 +63,15 @@ else sees what the project shares publicly.
 | **Production** | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [deployed on g1t](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app deployed elsewhere: production's address and **Visit**, with its latest reported production deployment or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
 | **Packages** | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
 | **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage. |
-| **Right now** | Open pull requests moving from working to landed. |
-| **Needs you** | What is waiting on a person: a failed production build, a pull request to merge or review, a stuck run. |
-| **Active branches** | Branches other than the default, newest first. See [active branches](#active-branches). |
-| **Recent changes**, **Latest on main**, **Activity**, **Previews** | What landed, the default branch's latest commits, what happened (pull requests opened, readied and merged, issues opened and closed, checks, reviews, comments, pushes to the default branch and production deploys), and the previews that are up. |
+| **Facts** | Under production: its latest release (or, where the card does not already say it, production's state), how often checks pass, and either how many changes pass on the first try and what is open, or, for people with a role when [Observability](/guides/observability/) has data, requests and the error rate over the last day with how many errors are open. |
+| **Code** | One line to the repository: its name, default branch and when it was last pushed to, linking to **Code**. |
+| **Needs you** | For someone signed in: what is waiting on them, such as a failed production build or a pull request to merge or review. |
+| **Live now** | The people and coding agents working on it: each issue with its [claims and sessions](/guides/sessions/), the harness each came from and who it acts for, and sessions on no issue yet. **Work** has everything. With nobody working, people with a role see how to [connect a coding agent](/guides/bring-your-own-agent/). |
+| **Previews** | For people with a role: the pull requests' previews that are up. |
+| **Deployments** | Each environment's latest deployment and when. |
+| **Observability** | For people with a role, when there is data: the last day's requests, an hour a bar, latency, and the newest open errors. |
 | **About** | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here. |
-| **Health**, **Clone** | How often checks pass (on pull requests, or the project's workflow runs when it ships without them), recent builds and open issues by age; the clone address. |
+| **Health** | For people with a role, its recent builds; and its open issues by age. |
 
 ### Production's picture
 
@@ -188,21 +197,6 @@ cannot be turned on. Turning Deployments on for an app deployed elsewhere
 makes it an app deployed on g1t.
 
 Changing what it is needs the role that changes the project's settings.
-
-### Active branches
-
-Up to five branches other than the default, the most recently changed
-first. Each shows its last commit and who made it, how many commits it is
-ahead of the default branch and behind it, and its open pull request,
-with its checks, and preview, if it has them. A branch with no pull
-request links to opening one, unless it has nothing the default branch
-lacks, which says **Nothing to merge**.
-
-Ahead and behind are exact, merges included. g1t reads up to 1,000
-commits of each history to find where the two meet; a branch that left
-the default branch further back than that shows no counts. Ten branches
-are read, those with open pull requests first; a project with more says
-how many it has.
 
 ## Links
 

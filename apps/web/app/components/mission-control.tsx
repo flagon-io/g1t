@@ -479,7 +479,6 @@ const VERB: Record<Verb, string> = {
   commented: "commented on",
   deployed: "deployed production",
   deploy_failed: "production build failed",
-  pushed: "pushed to the default branch",
 };
 
 /** One line of the feed: who, what, and the one thing it was about, by name. */

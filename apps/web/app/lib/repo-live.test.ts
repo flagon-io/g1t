@@ -35,7 +35,25 @@ test("refs name their branch or tag", () => {
   assert.equal(tagOf(null), null);
 });
 
-test("the files and overview pages follow refs, checks, releases and deployments", () => {
+test("a project's overview follows what it runs, who is working on it and what may need someone, not every push", () => {
+  const overview = repoPages.overview();
+  for (const c of [
+    change("deployment_status.created"),
+    change("status.created", { sha: "abc" }),
+    change("release.published"),
+    change("work.claimed", { number: 3 }),
+    change("session.started"),
+    change("session.progressed"),
+    change("pull.ready", { number: 4 }),
+    change("review.completed", { number: 4 }),
+  ]) {
+    assert.equal(overview(c), true, c.kind);
+  }
+  assert.equal(overview(push("feature")), false);
+  assert.equal(overview(change("comment.created", { number: 3 })), false);
+});
+
+test("the files page follows refs, checks, releases and deployments", () => {
   const files = repoPages.files();
   for (const c of [push("main"), push("other"), change("git.deleted", { ref: "refs/heads/old" }), change("status.created", { sha: "abc" }), change("release.published"), change("deployment_status.created")]) {
     assert.equal(files(c), true, c.kind);

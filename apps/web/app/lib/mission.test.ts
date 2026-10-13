@@ -7,11 +7,7 @@ import {
   type ActivityItem,
   type Need,
   DELETED_USER,
-  FEED_EVENT_TYPES,
-  PROJECT_FEED_EVENT_TYPES,
   eventItem,
-  projectFeed,
-  pushItem,
   actorIds,
   ageBuckets,
   dailyBuckets,
@@ -24,8 +20,6 @@ import {
   median,
   nameActor,
   nextSeen,
-  pipelineStage,
-  queuedNumbers,
   runHealth,
   rankNeeds,
   readCookie,
@@ -195,20 +189,6 @@ test("sparkline points span the box, zero on the floor", () => {
   assert.deepEqual(sparkPoints([3], 10, 10, 1), [[5, 1]]);
 });
 
-test("a pull request's place in the pipeline", () => {
-  const queued = queuedNumbers([
-    { number: 9, state: "waiting" },
-    { number: 8, state: "landed" },
-  ]);
-  assert.equal(pipelineStage({ status: "merged", checkStatus: null, number: 1 }, undefined, queued), "landed");
-  assert.equal(pipelineStage({ status: "open", checkStatus: "passed", number: 9 }, undefined, queued), "queue");
-  assert.equal(pipelineStage({ status: "draft", checkStatus: null, number: 2 }, undefined, queued), "working");
-  assert.equal(pipelineStage({ status: "open", checkStatus: "running", number: 3 }, undefined, queued), "checking");
-  assert.equal(pipelineStage({ status: "open", checkStatus: "passed", number: 4 }, { kind: "revise" }, queued), "working");
-  assert.equal(pipelineStage({ status: "open", checkStatus: "passed", number: 5 }, { kind: "review" }, queued), "reviewing");
-  assert.equal(pipelineStage({ status: "open", checkStatus: "failed", number: 6 }, undefined, queued), "reviewing");
-});
-
 test("open issues by age", () => {
   const buckets = ageBuckets(
     [new Date(NOW - HOUR).toISOString(), new Date(NOW - 3 * DAY).toISOString(), new Date(NOW - 90 * DAY).toISOString()],
@@ -246,7 +226,7 @@ test("waits read in the largest whole unit", () => {
   assert.equal(waitedFor(3 * 24 * 60 - 1), "2 d");
 });
 
-// --- A project's feed -----------------------------------------------------------
+// --- The feed ------------------------------------------------------------------
 
 const REPO = { namespace: "flagon-io", name: "g1t" };
 const event = (type: string, data: Record<string, unknown>, id = `evt_${type}`, actor: string | null = "usr_ada"): G1tEvent =>
@@ -258,16 +238,6 @@ const deployment = (state: string, production = true) =>
     deploymentStatus: { state },
   });
 
-test("the feed asks the log only for the kinds it shows, and pushes for one project", () => {
-  for (const type of ["session.appended", "queue.changed", "pull.updated", "pull.mergecheck", "workflow.completed"]) {
-    assert.ok(!(PROJECT_FEED_EVENT_TYPES as readonly string[]).includes(type), type);
-  }
-  assert.ok((PROJECT_FEED_EVENT_TYPES as readonly string[]).includes("git.push"));
-  assert.ok(!(FEED_EVENT_TYPES as readonly string[]).includes("git.push"));
-  // Every kind asked for makes a line of some events.
-  for (const type of FEED_EVENT_TYPES) assert.ok(type.includes("."), type);
-});
-
 test("a production deploy that finished is a line, linked to it on the current path", () => {
   const up = eventItem(deployment("success"), REPO);
   assert.equal(up?.verb, "deployed");
@@ -275,24 +245,4 @@ test("a production deploy that finished is a line, linked to it on the current p
   assert.equal(eventItem(deployment("failure"), REPO)?.verb, "deploy_failed");
   assert.equal(eventItem(deployment("in_progress"), REPO), null);
   assert.equal(eventItem(deployment("success", false), REPO), null);
-});
-
-test("a project's feed has its pushes to the default branch, but not the ones that only landed a pull request", () => {
-  const events = [
-    event("pull.merged", { pullId: "pul_1", repoId: "rep_1", number: 5, commit: "aaaaaaa1111" }, "evt_1"),
-    event("git.push", { repoId: "rep_1", ref: "refs/heads/main", after: "aaaaaaa1111", defaultBranch: true }, "evt_2"),
-    event("git.push", { repoId: "rep_1", ref: "refs/heads/main", after: "bbbbbbb2222", defaultBranch: true }, "evt_3"),
-    event("git.push", { repoId: "rep_1", ref: "refs/heads/topic", after: "ccccccc3333", defaultBranch: false }, "evt_4"),
-    event("session.appended", { repoId: "rep_1", number: 5 }, "evt_5"),
-  ];
-  const feed = projectFeed(events, REPO);
-  assert.deepEqual(
-    feed.map((item) => [item.verb, item.text ?? item.number]),
-    [
-      ["landed", 5],
-      ["pushed", "bbbbbbb"],
-    ],
-  );
-  assert.equal(feed[1]?.to, "/flagon-io/g1t/commit/bbbbbbb2222");
-  assert.equal(pushItem(events[4]!, REPO, new Set()), null);
 });

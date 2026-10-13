@@ -1,8 +1,7 @@
 /**
  * A repository's branches as its pages show them: each one's head commit,
  * how far it has moved from the default branch, the pull request open on
- * it with its checks, and its preview. The overview shows the newest few;
- * the Branches page shows them all.
+ * it with its checks, and its preview, as the Branches page shows them.
  */
 import type { Branch, BranchDrifts, Commit, Pull, RepoPath, Viewer } from "@g1t/contracts";
 

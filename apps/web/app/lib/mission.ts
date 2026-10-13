@@ -1,11 +1,10 @@
 /**
  * The arithmetic behind mission control and a project's overview: when the
  * viewer was last here, what moved since, how a burst of one person's work
- * reads as one line, the week's pulse, and where each pull request stands
- * in its way to landing. Pure, so it is tested on its own; it imports only
- * types.
+ * reads as one line, the week's pulse, and how healthy a project is. Pure,
+ * so it is tested on its own; it imports only types.
  */
-import type { G1tEvent, Pull, QueueEntry, RepoPath } from "@g1t/contracts";
+import type { G1tEvent, RepoPath } from "@g1t/contracts";
 
 /** A run as the arithmetic here reads it: its kind, status and times. */
 type RunLike = { kind: string; status: string; updatedAt: string };
@@ -90,8 +89,7 @@ export type Verb =
   | "changes_requested"
   | "commented"
   | "deployed"
-  | "deploy_failed"
-  | "pushed";
+  | "deploy_failed";
 
 /**
  * The event types `eventItem` makes a line of. Ask the log for these only:
@@ -110,9 +108,6 @@ export const FEED_EVENT_TYPES = [
   "comment.created",
   "deployment_status.created",
 ] as const satisfies readonly G1tEvent["type"][];
-
-/** With pushes to the default branch too, for one project's feed. */
-export const PROJECT_FEED_EVENT_TYPES = [...FEED_EVENT_TYPES, "git.push"] as const satisfies readonly G1tEvent["type"][];
 
 /** One thing that moved, as the feed shows it. */
 export type ActivityItem = {
@@ -175,33 +170,6 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
     default:
       return null;
   }
-}
-
-/**
- * A push to the default branch as a feed line, or null for any other push
- * and for one that only landed a pull request (`merged`: the commits pull
- * requests' merges made), which already has its own line.
- */
-export function pushItem(event: G1tEvent, repo: RepoPath, merged: ReadonlySet<string>): ActivityItem | null {
-  if (event.type !== "git.push" || !event.data.defaultBranch || !event.data.ref.startsWith("refs/heads/")) return null;
-  const after = event.data.after;
-  if (!after || /^0+$/.test(after) || merged.has(after)) return null;
-  return {
-    id: event.id,
-    at: Date.parse(event.time),
-    repo,
-    actor: event.actor,
-    verb: "pushed",
-    number: null,
-    text: after.slice(0, 7),
-    to: `/${repo.namespace}/${repo.name}/commit/${after}`,
-  };
-}
-
-/** One project's events as its feed: every line `eventItem` makes, and its people's pushes. */
-export function projectFeed(events: G1tEvent[], repo: RepoPath): ActivityItem[] {
-  const merged = new Set(events.flatMap((event) => (event.type === "pull.merged" ? [event.data.commit] : [])));
-  return events.flatMap((event) => eventItem(event, repo) ?? pushItem(event, repo, merged) ?? []);
 }
 
 /** Accounts that act for g1t itself, named in the log by fixed ids. */
@@ -438,48 +406,6 @@ export function sparkPoints(values: number[], width: number, height: number, pad
     const y = max > 0 ? height - pad - (Math.max(0, value) / max) * (height - pad * 2) : height - pad;
     return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
   });
-}
-
-// --- A project's pipeline ---------------------------------------------------
-
-export type PipelineStage = "working" | "checking" | "reviewing" | "queue" | "landed";
-
-export const PIPELINE: { stage: PipelineStage; label: string }[] = [
-  { stage: "working", label: "Working" },
-  { stage: "checking", label: "Checking" },
-  { stage: "reviewing", label: "Reviewing" },
-  { stage: "queue", label: "Queue" },
-  { stage: "landed", label: "Landed" },
-];
-
-/**
- * Where a pull request stands on its way to landing, from what a list of
- * pull requests says about it, the run at work on it, the merge queue, and
- * for one g1t sees through, its lifecycle (waiting on its checks).
- */
-export function pipelineStage(
-  pull: Pick<Pull, "status" | "checkStatus" | "number">,
-  run: Pick<RunLike, "kind"> | undefined,
-  queued: Set<number>,
-  lifecycle?: { stage: string } | null,
-): PipelineStage {
-  if (pull.status === "merged") return "landed";
-  if (queued.has(pull.number)) return "queue";
-  if (run) {
-    if (run.kind === "checks") return "checking";
-    if (run.kind === "review") return "reviewing";
-    if (run.kind === "queue") return "queue";
-    return "working";
-  }
-  if (pull.status === "draft") return "working";
-  if (lifecycle?.stage === "checking") return "checking";
-  if (pull.checkStatus === "queued" || pull.checkStatus === "running") return "checking";
-  return "reviewing";
-}
-
-/** The numbers of the pull requests waiting or being tested in a merge queue. */
-export function queuedNumbers(entries: Pick<QueueEntry, "number" | "state">[]): Set<number> {
-  return new Set(entries.filter((e) => e.state === "waiting" || e.state === "testing" || e.state === "passed").map((e) => e.number));
 }
 
 /** Open issues by how long they have been open. */

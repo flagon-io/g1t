@@ -76,12 +76,23 @@ const ALERTS = ["secret_scanning_alert", "code_scanning_alert", "vulnerability_a
 /** What each kind of repository page shows. */
 export const repoPages = {
   /**
-   * Files, the overview and a folder: any ref moving (the files and latest
+   * Files and a folder: any ref moving (the files and latest
    * commit, the branch menu, recent pushes), checks on commits, releases
    * and deployments.
    */
   files(): RepoMatch {
     return (change) => isRefChange(change) || isCheck(change) || ["release", "deployment", "deployment_status"].includes(family(change));
+  },
+  /**
+   * A project's overview: what it runs and how it is doing (deployments,
+   * checks, releases), who is working on it (claims and sessions), and the
+   * pull requests that may need someone (opened, readied, reviewed, merged).
+   */
+  overview(): RepoMatch {
+    return (change) =>
+      isCheck(change) ||
+      ["release", "deployment", "deployment_status", "work", "pull", "review"].includes(family(change)) ||
+      SESSION_KINDS.includes(change.kind);
   },
   /** Commits: pushes to the branch shown, and checks on commits. */
   commits(branch: string | null): RepoMatch {

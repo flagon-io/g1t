@@ -1,7 +1,8 @@
 /**
  * Coordinating work, drawn: claims, harness sessions, dependencies,
  * integration failures and decision records, as the issue page, the pull
- * request page, the Work page and the why panel show them. What each says
+ * request page, the Work page, a project's overview and the why panel
+ * show them. What each says
  * is worked out in lib/coordination.ts.
  */
 import {
@@ -53,11 +54,13 @@ import {
   evidenceOf,
   expiresIn,
   harnessName,
+  type LiveIssue,
+  liveByIssue,
   mergeSessions,
   numberedParts,
   sessionTree,
 } from "../lib/coordination";
-import { Input, SubmitButton, TimeAgo } from "./ui";
+import { CopyLine, EmptyState, Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
@@ -748,5 +751,102 @@ function BlockedByEditor({ current }: { current: number[] }) {
         </Form>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** One issue being worked on: its title, then each claim and session on it. */
+export function LiveIssueCard({ group, title, base, now }: { group: LiveIssue; title: string | undefined; base: string; now: number }) {
+  return (
+    <Card asChild divided>
+      <li>
+        <div className="flex items-start gap-2.5 px-4 py-3">
+          <span className="mt-1">
+            <IssueIcon issue={{ state: "open", reason: null }} />
+          </span>
+          <Link to={`${base}/issues/${group.issue}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
+            {title ?? `Issue #${group.issue}`} <span className="font-normal text-faint">#{group.issue}</span>
+          </Link>
+          {group.claims.length > 1 && <Badge tone="warn">{group.claims.length} claims</Badge>}
+        </div>
+        {group.claims.map((claim) => (
+          <div key={claim.id} className="px-4 py-3">
+            <ClaimLine claim={claim} now={now} base={base} />
+          </div>
+        ))}
+        {group.sessions.map((session) => (
+          <div key={session.id} className="px-4 py-3">
+            <SessionLine session={session} base={base} />
+          </div>
+        ))}
+      </li>
+    </Card>
+  );
+}
+
+/**
+ * Who is working right now: each issue with its claims and sessions, the
+ * most recently active first, then sessions on no issue yet. `limit` caps
+ * the issues shown, for a page that links to the rest.
+ */
+export function LiveNowList({
+  claims,
+  sessions,
+  titles,
+  base,
+  now,
+  limit,
+}: {
+  claims: Claim[];
+  sessions: WorkSession[];
+  titles: Record<number, string>;
+  base: string;
+  now: number;
+  limit?: number;
+}) {
+  const live = liveByIssue(claims, sessions);
+  const issues = limit == null ? live.issues : live.issues.slice(0, limit);
+  return (
+    <ol className="space-y-3">
+      {issues.map((group) => (
+        <LiveIssueCard key={group.issue} group={group} title={titles[group.issue]} base={base} now={now} />
+      ))}
+      {live.loose.length > 0 && (
+        <Card asChild divided>
+          <li>
+            <p className="px-4 py-3 text-sm text-muted">Not on an issue yet</p>
+            {live.loose.map((session) => (
+              <div key={session.id} className="px-4 py-3">
+                <SessionLine session={session} base={base} />
+              </div>
+            ))}
+          </li>
+        </Card>
+      )}
+    </ol>
+  );
+}
+
+/** What to do when nobody is working on a project: bring your own harness. */
+export function StartHere({ title }: { title: string }) {
+  return (
+    <EmptyState title={title}>
+      <div className="mx-auto mt-3 max-w-lg space-y-3 text-left">
+        <p>Install the g1t plugin in Claude Code, and each session shows here as it works:</p>
+        <CopyLine text="claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git" prompt />
+        <CopyLine text="claude plugin install g1t@g1t" prompt />
+        <p>From any other harness, or by hand, claim an issue with the g1t CLI:</p>
+        <CopyLine text="g1t work claim 12" prompt />
+        <p>
+          <a href="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-fg underline underline-offset-4">
+            Connect a coding agent
+          </a>{" "}
+          sets up Codex, Cursor and any MCP client;{" "}
+          <a href="https://docs.g1t.sh/guides/sessions/" className="text-fg underline underline-offset-4">
+            Sessions, claims and dependencies
+          </a>{" "}
+          says how it works.
+        </p>
+      </div>
+    </EmptyState>
   );
 }

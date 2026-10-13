@@ -1,43 +1,20 @@
 /**
  * The pieces mission control and a project's overview are made of: panels
- * with a "View all", what needs the viewer, the activity feed with its
- * filters, the week's pulse with its sparklines, a project's pipeline and
- * its deploy history.
+ * with a "View all", what needs the viewer, the week's pulse with its
+ * sparklines, and a project's deploy history.
  */
-import {
-  ArrowRight,
-  CircleCheck,
-  CircleDot,
-  CircleSlash,
-  Eye,
-  GitCommitHorizontal,
-  GitMerge,
-  GitPullRequest,
-  Hand,
-  MessageSquare,
-  Play,
-  Rocket,
-  Swords,
-  Terminal,
-  TimerOff,
-  TriangleAlert,
-  UserPlus,
-} from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { ArrowRight, Eye, GitMerge, Hand, Rocket, Swords, Terminal, TimerOff, TriangleAlert, UserPlus } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
 import type { DeployStatus } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
-import { type ActivityGroup, type Need, type NeedKind, type Verb, isAgent, sparkPoints } from "../lib/mission";
+import { type Need, type NeedKind, sparkPoints } from "../lib/mission";
 import { TimeAgo } from "./ui";
-import { Avatar } from "./ui/avatar";
-import { UserAvatar } from "./user-card";
-import { PersonLink } from "./work";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 // --- Panels -------------------------------------------------------------------
 
@@ -169,199 +146,6 @@ export function NeedsList({ needs, limit = 8 }: { needs: Need[]; limit?: number 
         </Button>
       )}
     </>
-  );
-}
-
-// --- Activity -----------------------------------------------------------------
-
-const VERB: Record<Verb, { icon: ReactNode; tone: string; text: (n: string) => string }> = {
-  landed: { icon: <GitMerge size={14} />, tone: "text-merged", text: (n) => `landed ${n}` },
-  opened_issue: { icon: <CircleDot size={14} />, tone: "text-success", text: (n) => `opened ${n}` },
-  closed_issue: { icon: <CircleSlash size={14} />, tone: "text-faint", text: (n) => `closed ${n}` },
-  started: { icon: <Play size={14} />, tone: "text-accent", text: (n) => `started on ${n}` },
-  ready: { icon: <GitPullRequest size={14} />, tone: "text-info", text: (n) => `marked ${n} ready for review` },
-  checks_passed: { icon: <Terminal size={14} />, tone: "text-success", text: (n) => `checks passed on ${n}` },
-  checks_failed: { icon: <Terminal size={14} />, tone: "text-danger", text: (n) => `checks failed on ${n}` },
-  approved: { icon: <CircleCheck size={14} />, tone: "text-success", text: (n) => `approved ${n}` },
-  changes_requested: { icon: <CircleSlash size={14} />, tone: "text-warn", text: (n) => `asked for changes on ${n}` },
-  commented: { icon: <MessageSquare size={14} />, tone: "text-muted", text: (n) => `commented on ${n}` },
-  deployed: { icon: <Rocket size={14} />, tone: "text-success", text: () => "deployed production" },
-  deploy_failed: { icon: <Rocket size={14} />, tone: "text-danger", text: () => "production build failed" },
-  pushed: { icon: <GitCommitHorizontal size={14} />, tone: "text-muted", text: () => "pushed to the default branch" },
-};
-
-function Refs({ numbers, base }: { numbers: number[]; base: string }) {
-  const shown = numbers.slice(0, 4);
-  return (
-    <>
-      {shown.map((number, index) => (
-        <span key={number}>
-          {index > 0 && (index === shown.length - 1 && numbers.length <= 4 ? " and " : ", ")}
-          <Link to={`${base}/issues/${number}`} prefetch="intent" className="font-medium text-fg hover:underline">
-            #{number}
-          </Link>
-        </span>
-      ))}
-      {numbers.length > 4 && ` and ${numbers.length - 4} more`}
-    </>
-  );
-}
-
-/** One group as a sentence: "landed #4 and #3; started on #5". */
-function GroupLine({ group }: { group: ActivityGroup }) {
-  const base = `/${group.repo.namespace}/${group.repo.name}`;
-  return (
-    <>
-      {group.parts.map((part, index) => {
-        const look = VERB[part.verb];
-        const [before, after] = look.text("\u0000").split("\u0000");
-        return (
-          <span key={part.verb}>
-            {index > 0 && "; "}
-            {part.numbers.length > 0 ? (
-              <>
-                {before}
-                <Refs numbers={part.numbers} base={base} />
-                {after}
-              </>
-            ) : part.to ? (
-              <Link to={part.to} className="hover:text-fg">
-                {look.text("")}
-              </Link>
-            ) : (
-              look.text("")
-            )}
-          </span>
-        );
-      })}
-    </>
-  );
-}
-
-/**
- * What moved across projects, newest first, a burst of one actor's work
- * as one line, filterable by project and by who did it.
- */
-export function ActivityFeed({
-  groups,
-  showRepo = true,
-  limit = 14,
-  empty,
-}: {
-  groups: ActivityGroup[];
-  showRepo?: boolean;
-  limit?: number;
-  empty: ReactNode;
-}) {
-  const [project, setProject] = useState("all");
-  const [person, setPerson] = useState("all");
-  const [more, setMore] = useState(false);
-  const projects = useMemo(
-    () => [...new Set(groups.map((g) => `${g.repo.namespace}/${g.repo.name}`))].sort(),
-    [groups],
-  );
-  const people = useMemo(
-    () => [...new Set(groups.map((g) => g.actor).filter((a): a is string => a != null))].sort(),
-    [groups],
-  );
-  const filtered = groups.filter(
-    (g) =>
-      (project === "all" || `${g.repo.namespace}/${g.repo.name}` === project) &&
-      (person === "all" || g.actor === person),
-  );
-  const shown = more ? filtered : filtered.slice(0, limit);
-  return (
-    <div>
-      {((showRepo && projects.length > 1) || people.length > 1) && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {showRepo && projects.length > 1 && (
-            <Select value={project} onValueChange={setProject}>
-              <SelectTrigger size="sm" className="w-auto max-w-56" aria-label="Project">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All projects</SelectItem>
-                {projects.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name.split("/")[1]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {people.length > 1 && (
-            <Select value={person} onValueChange={setPerson}>
-              <SelectTrigger size="sm" className="w-auto max-w-48" aria-label="Who">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Anyone</SelectItem>
-                {people.map((name) => (
-                  <SelectItem key={name} value={name} icon={<Avatar name={name} image={isAgent(name) ? null : undefined} size={16} />}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-      )}
-      {shown.length === 0 ? (
-        <Quiet>{groups.length === 0 ? empty : "Nothing matches these filters."}</Quiet>
-      ) : (
-        <ol className="relative space-y-0.5 before:absolute before:top-3 before:bottom-3 before:left-3.75 before:w-px before:bg-line">
-          {shown.map((group) => {
-            const look = VERB[group.parts[0].verb];
-            const agent = group.actor == null || isAgent(group.actor);
-            return (
-              <li key={group.id} className="relative flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm">
-                <span
-                  className={cn(
-                    "relative z-10 mt-0.5 flex size-5.5 shrink-0 items-center justify-center rounded-full bg-bg ring-1 ring-line",
-                    look.tone,
-                  )}
-                >
-                  {look.icon}
-                </span>
-                <span className="min-w-0 grow leading-6 text-muted">
-                  <span className={cn("mr-1.5 inline-flex items-center gap-1.5 align-middle font-medium", agent ? "text-accent" : "text-fg")}>
-                    {agent ? (
-                      <>
-                        <Avatar name={group.actor ?? "g1t"} image={null} size={16} />
-                        {group.actor ?? "g1t"}
-                      </>
-                    ) : (
-                      <>
-                        <UserAvatar username={group.actor!} size={16} />
-                        <PersonLink name={group.actor!} className="hover:text-accent" />
-                      </>
-                    )}
-                  </span>
-                  <GroupLine group={group} />
-                  {showRepo && (
-                    <Link
-                      to={`/${group.repo.namespace}/${group.repo.name}`}
-                      className="ml-1.5 font-mono text-xs text-faint hover:text-muted"
-                    >
-                      {group.repo.name}
-                    </Link>
-                  )}
-                  {group.count > 2 && <span className="ml-1.5 text-xs text-faint">· {group.count} events</span>}
-                </span>
-                <span className="shrink-0 pt-0.5 text-xs text-faint">
-                  <TimeAgo at={group.at} />
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      {filtered.length > limit && (
-        <Button type="button" onClick={() => setMore(!more)} variant="link" size="inline" className="mt-2 text-xs text-muted hover:text-fg font-normal">
-          {more ? "Show fewer" : `Show ${filtered.length - limit} more`}
-        </Button>
-      )}
-    </div>
   );
 }
 
