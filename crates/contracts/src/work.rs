@@ -561,6 +561,7 @@ impl Pull {
             base: self.merge_base.clone(),
             head,
             base_branch: self.base.clone().filter(|base| !base.is_empty()),
+            paths: None,
         }
     }
 }

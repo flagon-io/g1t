@@ -45,8 +45,8 @@ function defer(work: Promise<unknown>) {
 /**
  * About 8 MB of highlighted lines per isolate (two bytes a character); one
  * file up to a quarter of that, which a 1,800-line file fits. A pull
- * request's first screens are at most 40,000 characters of text, about
- * ten times that highlighted.
+ * request's first screens are at most 16,000 characters of text, about
+ * four times that highlighted.
  */
 const linesCache = contentCache<string[]>({
   name: "highlight-lines",
@@ -89,8 +89,11 @@ export async function highlightLines(path: string, text: string): Promise<string
  * How much of a change is highlighted before the page is sent: its first
  * screens. The rest is highlighted in the browser as it comes near
  * (components/diff-view.tsx), so a large change never holds the page up.
+ * Highlighted HTML is about four times its text, and is sent twice (drawn,
+ * and in the data the page hydrates from), so this is kept to a few
+ * screens: about 400 lines.
  */
-const FIRST_SCREENS_CHARS = 40_000;
+const FIRST_SCREENS_CHARS = 16_000;
 
 /** A file's diff highlighted, from the cache when the same lines were highlighted before. */
 async function highlightFileCached(file: Comparison["files"][number]): Promise<HighlightedFile | null> {
@@ -110,10 +113,15 @@ async function highlightFileCached(file: Comparison["files"][number]): Promise<H
  * the budget runs out, so what is on screen when the page arrives already
  * has its colours.
  */
-export async function highlightFirstFiles(comparison: Comparison): Promise<HighlightedComparison> {
+export async function highlightFirstFiles(comparison: Comparison | HighlightedComparison): Promise<HighlightedComparison> {
   let budget = FIRST_SCREENS_CHARS;
   const files: HighlightedFile[] = [];
   for (const file of comparison.files) {
+    // Sent without its lines (lib/diff.ts firstScreens): nothing to colour.
+    if (file.hunks.length === 0) {
+      files.push(file);
+      continue;
+    }
     const size = file.hunks.reduce((sum, hunk) => sum + hunk.lines.reduce((n, line) => n + line.text.length + 1, 0), 0);
     if (budget <= 0 || size > budget || file.binary) {
       // Past the first screens: everything after it waits for the browser.

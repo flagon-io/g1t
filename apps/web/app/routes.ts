@@ -220,6 +220,8 @@ export default [
   ]),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
+  // Files of a large change with their lines, fetched as the diff view reaches them.
+  route(":owner/:repo/diff-files.json", "routes/repo/diff-files.ts"),
   // Its branch names, for changing the branch a pull request merges into.
   route(":owner/:repo/branches.json", "routes/repo/branch-names.ts"),
   // An invitation to a repository, answered by someone who cannot see it yet.

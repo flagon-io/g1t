@@ -82,6 +82,8 @@ export type ApiChanges = {
     additions: number;
     deletions: number;
     binary: boolean;
+    /** Past what one answer reads: listed without its lines or counts. */
+    omitted?: boolean;
     hunks?: { lines: { kind: "context" | "add" | "delete"; old: number | null; new: number | null; text: string }[] }[];
   }[];
 };

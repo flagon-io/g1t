@@ -1021,7 +1021,7 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/repos/:owner/:name/pulls/:number/changes",
         Op::GetPullRequestChanges,
-        &[],
+        &[("paths", "paths")],
     ),
     route(
         "POST",

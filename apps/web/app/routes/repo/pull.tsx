@@ -41,6 +41,7 @@ import {
 } from "@g1t/contracts";
 
 import type { Route } from "./+types/pull";
+import { firstScreens } from "../../lib/diff";
 import { highlightFirstFiles } from "../../lib/highlight.server";
 import { excerpt, page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
@@ -194,11 +195,22 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     (found.value.statuses ?? []).length === 0 &&
     (found.value.requiredChecks ?? []).length === 0;
   const [comparison, noChecks] = await Promise.all([
-    // The first screens of it highlighted here, so their colours do not pop in.
+    // Its first screens sent with their lines, and files with comments on
+    // their lines; the rest load as the reader reaches them. What is sent is
+    // highlighted here, so its colours do not pop in.
     tab === "changes"
       ? repos
           .compare(range.repoId, viewer, range.base, range.head, range.baseBranch)
-          .then(async (found) => (found.ok ? { ok: true as const, value: await highlightFirstFiles(found.value) } : found))
+          .then(async (compared) =>
+            compared.ok
+              ? {
+                  ok: true as const,
+                  value: await highlightFirstFiles(
+                    firstScreens(compared.value, { eager: found.value.comments.flatMap((comment) => (comment.path ? [comment.path] : [])) }),
+                  ),
+                }
+              : compared,
+          )
       : null,
     unchecked
       ? actions
@@ -938,6 +950,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             {comparison ? (
               <DiffView
                 comparison={comparison}
+                repo={base}
                 review={{
                   comments: comments.filter((comment) => comment.path),
                   canComment: Boolean(viewer),

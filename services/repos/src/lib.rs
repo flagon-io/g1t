@@ -79,6 +79,8 @@ pub(crate) const PULLS_NAMESPACE: &str = "pulls";
 const MAX_TEXT_BYTES: usize = 512 * 1024;
 /// How far back a pull request may have forked and still be landed.
 const MAX_ANCESTRY: u32 = 1000;
+/// The most files one `compare` asked for by path reads.
+const MAX_COMPARED_PATHS: usize = 50;
 /// The most tags a repository's Tags page reads and lists.
 const MAX_TAGS_READ: usize = 100;
 /// Branch heads measured in one `branch_drift` call.
@@ -1719,8 +1721,11 @@ impl<S: GitStore> Repos<S> {
                 .map(|commit| commit.tree_hash),
             None => None,
         };
+        // Only a few files of it, when asked: how the files a large
+        // comparison lists without their lines are read, as a page reaches them.
+        let only = a.paths.as_deref().map(|paths| &paths[..paths.len().min(MAX_COMPARED_PATHS)]);
         let (files, truncated) =
-            diff::compare_trees(&git, base_tree.as_deref(), &head.tree_hash).await?;
+            diff::compare_trees(&git, base_tree.as_deref(), &head.tree_hash, only).await?;
         Ok(Outcome::Ok(Comparison {
             base,
             head: head.hash.clone(),
