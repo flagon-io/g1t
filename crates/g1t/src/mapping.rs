@@ -187,6 +187,18 @@ pub static COMMANDS: &[Mapping] = &[
         ],
     },
     Mapping {
+        command: "cache list",
+        ops: &["list_caches"],
+    },
+    Mapping {
+        command: "cache usage",
+        ops: &["get_cache_usage"],
+    },
+    Mapping {
+        command: "cache delete",
+        ops: &["delete_cache", "delete_caches_by_key"],
+    },
+    Mapping {
         command: "deploy list",
         ops: &["list_deployments"],
     },
@@ -336,6 +348,7 @@ mod tests {
             ("pr", include_str!("commands/pr.rs")),
             ("run", include_str!("commands/run.rs")),
             ("secret", include_str!("commands/secret.rs")),
+            ("cache", include_str!("commands/cache.rs")),
             ("deploy", include_str!("commands/deploy.rs")),
             ("logs", include_str!("commands/logs.rs")),
             ("status", include_str!("commands/status.rs")),

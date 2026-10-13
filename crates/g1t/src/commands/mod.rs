@@ -4,6 +4,7 @@ pub mod alias;
 pub mod api;
 pub mod auth;
 pub mod browse;
+pub mod cache;
 pub mod deploy;
 pub mod issue;
 pub mod logs;
@@ -40,6 +41,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Pr(command) => pr::run(&Ctx::new(cli.global)?, command),
         Command::Run(command) => run::run(&Ctx::new(cli.global)?, command),
         Command::Secret(command) => secret::run(&Ctx::new(cli.global)?, command),
+        Command::Cache(command) => cache::run(&Ctx::new(cli.global)?, command),
         Command::Deploy(command) => deploy::run(&Ctx::new(cli.global)?, command),
         Command::Logs(args) => logs::run(&Ctx::new(cli.global)?, args),
         Command::Status(_) => status::run(&Ctx::new(cli.global)?),

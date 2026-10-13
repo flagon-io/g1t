@@ -122,6 +122,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Telemetry(_) => return as_is,
         // Artifacts are shaped by the API itself, in `snake_case`.
         Op::Artifacts(_) => return as_is,
+        // The cache's entries travel in `snake_case` from the actions service.
+        Op::Caches(_) => return as_is,
         // So are archive links.
         Op::Archives(_) => return as_is,
         // Deploy keys travel in `snake_case` from identity.

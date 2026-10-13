@@ -24,6 +24,10 @@
 //!   are in the same bucket), and reports this month's storage to billing
 //!   (`note_pending`, source `cache`) at R2's price.
 //!
+//! - People list a repository's entries and what they hold together
+//!   (`caches`, `cache_usage`), and delete them (`delete_caches`), through
+//!   the API's `/repos/{owner}/{repo}/actions/caches`, as on GitHub.
+//!
 //! The API calls these with the job's token, or its runtime token for the
 //! toolkit's protocols (runtime.rs), which is checked here. An entry the
 //! toolkit saves has the toolkit's version, and is found only by the same
@@ -31,9 +35,11 @@
 
 use g1t_contracts::FailureCode;
 use g1t_contracts::Outcome;
+use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
     CACHE_MAX_AGE_DAYS, CACHE_MAX_ENTRY_BYTES, CACHE_MICROS_PER_GB_MONTH, CACHE_REPO_QUOTA_BYTES, CACHE_UNUSED_DAYS,
-    CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheHit, CacheLookupArgs, CacheReservation, CacheReserveArgs, CacheUploadArgs,
+    CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheEntry, CacheHit, CacheList, CacheLookupArgs, CacheReservation,
+    CacheReserveArgs, CacheUploadArgs, CacheUsage, CacheUsageArgs, CachesArgs, DeleteCachesArgs,
 };
 use g1t_contracts::billing::NotePendingArgs;
 use g1t_contracts::new_id;
@@ -42,6 +48,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use serde_json::Value;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::{Actions, check, fail};
 
@@ -116,6 +123,54 @@ pub(crate) fn prefixes<'a>(key: &'a str, restore: &'a [String]) -> Vec<&'a str> 
     }
     out
 }
+
+/// The `ORDER BY` of a list of entries, from GitHub's `sort`
+/// (`last_accessed_at` by default) and `direction` (`desc` by default);
+/// `None` for a name it does not have. Ties go by when each was saved.
+pub(crate) fn cache_order(sort: Option<&str>, direction: Option<&str>) -> Option<String> {
+    let column = match sort.map(str::trim).filter(|s| !s.is_empty()).unwrap_or("last_accessed_at") {
+        "last_accessed_at" => "last_used_at",
+        "created_at" => "created_at",
+        "size_in_bytes" => "size",
+        _ => return None,
+    };
+    let direction = match direction.map(str::trim).filter(|d| !d.is_empty()).unwrap_or("desc") {
+        "asc" => "ASC",
+        "desc" => "DESC",
+        _ => return None,
+    };
+    Some(format!("{column} {direction}, rowid {direction}"))
+}
+
+/// A saved entry, as `caches` lists it.
+#[derive(Debug, Deserialize)]
+struct ListedRow {
+    id: String,
+    number: f64,
+    key: String,
+    scope: String,
+    version: String,
+    object: String,
+    size: f64,
+    created_at: String,
+    last_used_at: String,
+}
+
+impl ListedRow {
+    fn view(&self) -> CacheEntry {
+        CacheEntry {
+            id: self.number as u64,
+            key: self.key.clone(),
+            git_ref: self.scope.clone(),
+            version: self.version.clone(),
+            size_in_bytes: self.size as u64,
+            created_at: self.created_at.clone(),
+            last_accessed_at: self.last_used_at.clone(),
+        }
+    }
+}
+
+const LISTED: &str = "SELECT id, rowid AS number, key, scope, version, object, size, created_at, last_used_at FROM cache_entries";
 
 /// Where a job's cache entries are found and saved: its repository, and in
 /// it the refs it restores from, in order, and the one it saves to.
@@ -406,6 +461,123 @@ impl Actions {
         Ok(Outcome::Ok(true))
     }
 
+    /// `caches`.
+    pub async fn caches(&self, a: CachesArgs) -> Result<Outcome<CacheList>> {
+        let Some(repo) = self.visible_repo(&a.repo, &a.viewer).await? else {
+            return Ok(fail(FailureCode::NotFound, "There is no such repository."));
+        };
+        let Some(order) = cache_order(a.sort.as_deref(), a.direction.as_deref()) else {
+            return Ok(fail(FailureCode::Invalid, "sort is last_accessed_at, created_at or size_in_bytes, and direction asc or desc."));
+        };
+        let mut filter = "repo_id = ? AND status = 'ready'".to_owned();
+        let mut values: Vec<JsValue> = vec![repo.id.as_str().into()];
+        if let Some(key) = a.key.as_deref().filter(|k| !k.is_empty()) {
+            filter.push_str(" AND substr(key, 1, length(?)) = ?");
+            values.push(key.into());
+            values.push(key.into());
+        }
+        if let Some(git_ref) = a.git_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+            filter.push_str(" AND scope = ?");
+            values.push(git_ref.into());
+        }
+        #[derive(Deserialize)]
+        struct Count {
+            n: f64,
+        }
+        let total = self
+            .db
+            .prepare(format!("SELECT COUNT(*) AS n FROM cache_entries WHERE {filter}"))
+            .bind(&values)?
+            .first::<Count>(None)
+            .await?
+            .map_or(0, |c| c.n as u64);
+        let per_page = a.per_page.unwrap_or(30).clamp(1, 100);
+        let page = a.page.unwrap_or(1).max(1);
+        let mut paged = values.clone();
+        paged.push(f64::from(per_page).into());
+        paged.push(((f64::from(page) - 1.0) * f64::from(per_page)).into());
+        let rows = self
+            .db
+            .prepare(format!("{LISTED} WHERE {filter} ORDER BY {order} LIMIT ? OFFSET ?"))
+            .bind(&paged)?
+            .all()
+            .await?
+            .results::<ListedRow>()?;
+        Ok(Outcome::Ok(CacheList { total_count: total, actions_caches: rows.iter().map(ListedRow::view).collect() }))
+    }
+
+    /// `cache_usage`: what the entries `cache_commit` counts against the
+    /// quota hold.
+    pub async fn cache_usage(&self, a: CacheUsageArgs) -> Result<Outcome<CacheUsage>> {
+        let Some(repo) = self.visible_repo(&a.repo, &a.viewer).await? else {
+            return Ok(fail(FailureCode::NotFound, "There is no such repository."));
+        };
+        #[derive(Deserialize)]
+        struct Held {
+            bytes: Option<f64>,
+            n: f64,
+        }
+        let held = self
+            .db
+            .prepare("SELECT SUM(size) AS bytes, COUNT(*) AS n FROM cache_entries WHERE repo_id = ? AND status = 'ready'")
+            .bind(&[repo.id.as_str().into()])?
+            .first::<Held>(None)
+            .await?;
+        let (bytes, count) = held.map_or((0, 0), |h| (h.bytes.unwrap_or(0.0) as u64, h.n as u64));
+        Ok(Outcome::Ok(CacheUsage { active_caches_size_in_bytes: bytes, active_caches_count: count, quota_bytes: CACHE_REPO_QUOTA_BYTES }))
+    }
+
+    /// `delete_caches`: the entries go from restores at once, and their
+    /// bytes with them (or at the next sweep, if the bucket refuses).
+    pub async fn delete_caches(&self, a: DeleteCachesArgs) -> Result<Outcome<CacheList>> {
+        let repo = check!(self.may(&a.actor, &a.repo, Capability::Run).await?);
+        let rows = match (a.id, a.key.as_deref().filter(|k| !k.is_empty())) {
+            (Some(id), _) => {
+                self.db
+                    .prepare(format!("{LISTED} WHERE rowid = ? AND repo_id = ? AND status = 'ready'"))
+                    .bind(&[(id as f64).into(), repo.id.as_str().into()])?
+                    .all()
+                    .await?
+                    .results::<ListedRow>()?
+            }
+            (None, Some(key)) => {
+                let mut filter = "key = ? AND repo_id = ? AND status = 'ready'".to_owned();
+                let mut values: Vec<JsValue> = vec![key.into(), repo.id.as_str().into()];
+                if let Some(git_ref) = a.git_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+                    filter.push_str(" AND scope = ?");
+                    values.push(git_ref.into());
+                }
+                self.db.prepare(format!("{LISTED} WHERE {filter} ORDER BY created_at DESC")).bind(&values)?.all().await?.results::<ListedRow>()?
+            }
+            (None, None) => return Ok(fail(FailureCode::Invalid, "Name the cache entry by its id, or the entries to delete by their key.")),
+        };
+        if rows.is_empty() {
+            return Ok(fail(FailureCode::NotFound, "No cache entry matches."));
+        }
+        for row in &rows {
+            self.db.prepare("UPDATE cache_entries SET status = 'expired' WHERE id = ?").bind(&[row.id.as_str().into()])?.run().await?;
+        }
+        let gone: Vec<(String, String)> = rows.iter().map(|r| (r.id.clone(), r.object.clone())).collect();
+        self.forget_cache(&gone).await?;
+        Ok(Outcome::Ok(CacheList { total_count: rows.len() as u64, actions_caches: rows.iter().map(ListedRow::view).collect() }))
+    }
+
+    /// Deletes expired entries' objects, then their rows: whether it could.
+    /// If the bucket refuses, the rows stay expired for the next sweep.
+    async fn forget_cache(&self, gone: &[(String, String)]) -> Result<bool> {
+        let Some(bucket) = &self.cache else { return Ok(false) };
+        for chunk in gone.chunks(100) {
+            if let Err(error) = bucket.delete_multiple(chunk.iter().map(|(_, object)| object.as_str()).collect()).await {
+                worker::console_error!("actions: cache objects not deleted: {error}");
+                return Ok(false);
+            }
+            for (id, _) in chunk {
+                self.db.prepare("DELETE FROM cache_entries WHERE id = ?").bind(&[id.as_str().into()])?.run().await?;
+            }
+        }
+        Ok(true)
+    }
+
     /// Hourly: deletes entries unused for a week, saved too long ago, or
     /// left unfinished, and their objects; then what each workspace's
     /// cache holds today, and this month's storage, for billing.
@@ -430,16 +602,9 @@ impl Actions {
             .all()
             .await?
             .results::<Gone>()?;
-        if let Some(bucket) = &self.cache {
-            for chunk in gone.chunks(100) {
-                if let Err(error) = bucket.delete_multiple(chunk.iter().map(|g| g.object.as_str()).collect()).await {
-                    worker::console_error!("actions: cache objects not deleted: {error}");
-                    return Ok(());
-                }
-                for entry in chunk {
-                    self.db.prepare("DELETE FROM cache_entries WHERE id = ?").bind(&[entry.id.as_str().into()])?.run().await?;
-                }
-            }
+        let gone: Vec<(String, String)> = gone.into_iter().map(|g| (g.id, g.object)).collect();
+        if self.cache.is_some() && !self.forget_cache(&gone).await? {
+            return Ok(());
         }
         self.measure_cache(now).await
     }
@@ -567,6 +732,37 @@ mod tests {
         let restore = vec!["cargo-Linux-1.99.0-".to_owned(), " ".to_owned(), "cargo-".to_owned(), "cargo-".to_owned()];
         assert_eq!(prefixes("cargo-Linux-1.99.0-abc", &restore), ["cargo-Linux-1.99.0-abc", "cargo-Linux-1.99.0-", "cargo-"]);
         assert_eq!(prefixes("k", &[]), ["k"]);
+    }
+
+    #[test]
+    fn entries_are_listed_in_github_s_orders() {
+        assert_eq!(cache_order(None, None).unwrap(), "last_used_at DESC, rowid DESC");
+        assert_eq!(cache_order(Some("created_at"), Some("asc")).unwrap(), "created_at ASC, rowid ASC");
+        assert_eq!(cache_order(Some("size_in_bytes"), Some(" ")).unwrap(), "size DESC, rowid DESC");
+        // Anything else is refused rather than put into the query.
+        assert_eq!(cache_order(Some("size; DROP TABLE cache_entries"), None), None);
+        assert_eq!(cache_order(Some("created_at"), Some("sideways")), None);
+    }
+
+    #[test]
+    fn a_listed_entry_is_shown_as_github_shows_one() {
+        let row = ListedRow {
+            id: "cache_1".into(),
+            number: 42.0,
+            key: "cargo-test-Linux-1.99.0-abc".into(),
+            scope: "refs/heads/main".into(),
+            version: String::new(),
+            object: "c/repo_1/cache_1".into(),
+            size: 1_687_000_000.0,
+            created_at: "2026-10-12T10:00:00.000Z".into(),
+            last_used_at: "2026-10-12T11:00:00.000Z".into(),
+        };
+        let shown = serde_json::to_value(row.view()).unwrap();
+        assert_eq!(shown["id"], 42);
+        assert_eq!(shown["ref"], "refs/heads/main");
+        assert_eq!(shown["size_in_bytes"], 1_687_000_000u64);
+        assert_eq!(shown["last_accessed_at"], "2026-10-12T11:00:00.000Z");
+        assert!(shown.get("object").is_none(), "where its bytes are is not shown");
     }
 
     #[test]

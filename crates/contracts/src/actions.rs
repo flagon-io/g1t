@@ -1212,6 +1212,88 @@ pub struct CacheAbortArgs {
     pub id: String,
 }
 
+/// A cache entry as people see it, in GitHub's shape: `id` is a number,
+/// `git_ref` the ref whose run saved it (sent as `ref`; a pull request from
+/// outside the repository saves under `untrusted:<ref>`), `version` the
+/// hash of its paths and compression (empty for one g1t's own
+/// `actions/cache` saved).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CacheEntry {
+    pub id: u64,
+    pub key: String,
+    #[serde(rename = "ref")]
+    pub git_ref: String,
+    pub version: String,
+    pub size_in_bytes: u64,
+    pub created_at: String,
+    pub last_accessed_at: String,
+}
+
+/// A page of cache entries, in GitHub's shape.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CacheList {
+    pub total_count: u64,
+    pub actions_caches: Vec<CacheEntry>,
+}
+
+/// How a list of cache entries is ordered: GitHub's `sort` names.
+pub const CACHE_SORTS: [&str; 3] = ["last_accessed_at", "created_at", "size_in_bytes"];
+
+/// `caches`: a repository's saved cache entries, narrowed to keys starting
+/// with `key` and to one `git_ref`, ordered by `sort` (one of
+/// `CACHE_SORTS`, `last_accessed_at` by default) in `direction` (`asc` or
+/// `desc`, the default), a page at a time (30 by default, at most 100).
+/// Anyone who can see the repository. Returns `Outcome<CacheList>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CachesArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub git_ref: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub per_page: Option<u32>,
+}
+
+/// `cache_usage`: what a repository's saved entries hold together, against
+/// `CACHE_REPO_QUOTA_BYTES`. Anyone who can see the repository. Returns
+/// `Outcome<CacheUsage>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheUsageArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+}
+
+/// GitHub's shape, with the most the repository may hold.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CacheUsage {
+    pub active_caches_size_in_bytes: u64,
+    pub active_caches_count: u64,
+    pub quota_bytes: u64,
+}
+
+/// `delete_caches`: deletes one entry by `id`, or every entry whose key is
+/// exactly `key` (only `git_ref`'s, when given). Needs the Write role.
+/// Returns the entries deleted: `Outcome<CacheList>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteCachesArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    #[serde(default)]
+    pub id: Option<u64>,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub git_ref: Option<String>,
+}
+
 // ── Artifacts (actions/upload-artifact) ───────────────────────────────────
 //
 // Kept in R2 by the API (the ACTIONS_CACHE bucket, under `a/`) and listed

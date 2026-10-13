@@ -29,6 +29,7 @@ use crate::alerts::{AlertKind, SecurityAlert};
 use crate::checks::ChecksOp;
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::caches::CachesOp;
 use crate::archives::ArchiveOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
@@ -311,6 +312,8 @@ pub enum Op {
     Tokens(TokenOp),
     /// Workflow run artifacts, and how long they are kept: run_artifacts.rs.
     Artifacts(ArtifactsOp),
+    /// A repository's actions/cache entries: caches.rs.
+    Caches(CachesOp),
     /// A branch, tag or commit as a tarball or zipball: archives.rs.
     Archives(ArchiveOp),
     /// A repository's deploy keys: deploy_keys.rs.
@@ -693,7 +696,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 367] = [
+    pub const ALL: [Op; 371] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -986,6 +989,10 @@ impl Op {
         Op::Artifacts(ArtifactsOp::DeleteArtifact),
         Op::Artifacts(ArtifactsOp::GetArtifactRetention),
         Op::Artifacts(ArtifactsOp::SetArtifactRetention),
+        Op::Caches(CachesOp::ListCaches),
+        Op::Caches(CachesOp::GetCacheUsage),
+        Op::Caches(CachesOp::DeleteCachesByKey),
+        Op::Caches(CachesOp::DeleteCache),
         Op::Archives(ArchiveOp::DownloadTarball),
         Op::Archives(ArchiveOp::DownloadZipball),
         Op::DeployKeys(DeployKeysOp::ListDeployKeys),
@@ -1258,6 +1265,7 @@ impl Op {
             Op::Protection(op) => op.name(),
             Op::Tokens(op) => op.name(),
             Op::Artifacts(op) => op.name(),
+            Op::Caches(op) => op.name(),
             Op::Archives(op) => op.name(),
             Op::DeployKeys(op) => op.name(),
             Op::Packages(op) => op.name(),
@@ -1778,6 +1786,7 @@ impl Op {
             Op::Protection(op) => op.description(),
             Op::Tokens(op) => op.description(),
             Op::Artifacts(op) => op.description(),
+            Op::Caches(op) => op.description(),
             Op::Archives(op) => op.description(),
             Op::DeployKeys(op) => op.description(),
             Op::Packages(op) => op.description(),
@@ -3155,6 +3164,7 @@ impl Op {
             Op::Protection(op) => op.input(),
             Op::Tokens(op) => op.input(),
             Op::Artifacts(op) => op.input(),
+            Op::Caches(op) => op.input(),
             Op::Archives(op) => op.input(),
             Op::DeployKeys(op) => op.input(),
             Op::Packages(op) => op.input(),
@@ -5386,6 +5396,7 @@ impl Op {
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
+            Op::Caches(op) => crate::caches::run(op, services, viewer, input).await,
             Op::Archives(op) => crate::archives::run(op, services, viewer, input).await,
             Op::DeployKeys(op) => crate::deploy_keys::run(op, services, viewer, input).await,
             Op::Packages(op) => crate::packages::run(op, services, viewer, input).await,

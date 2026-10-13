@@ -12124,6 +12124,87 @@
     },
     "notes": "Only artifacts uploaded afterwards are kept the new number of days. A workflow's `retention-days` asks for fewer, never more."
   },
+  "list_caches": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "query": {
+      "key": "cargo-test-",
+      "sort": "size_in_bytes",
+      "per_page": "2"
+    },
+    "response": {
+      "total_count": 3,
+      "actions_caches": [
+        {
+          "id": 9184,
+          "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+          "ref": "refs/heads/main",
+          "version": "",
+          "size_in_bytes": 1687203840,
+          "created_at": "2026-10-12T09:14:02.511Z",
+          "last_accessed_at": "2026-10-12T15:40:19.087Z"
+        },
+        {
+          "id": 9102,
+          "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+          "ref": "refs/pull/412/merge",
+          "version": "",
+          "size_in_bytes": 702545920,
+          "created_at": "2026-10-12T11:02:44.930Z",
+          "last_accessed_at": "2026-10-12T11:02:44.930Z"
+        }
+      ]
+    },
+    "notes": "`key` matches keys that start with it. Entries past their 28 days, or unused for 7, are swept within the hour and are not listed once they are."
+  },
+  "get_cache_usage": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "response": {
+      "full_name": "flagon-io/g1t",
+      "active_caches_size_in_bytes": 8813275136,
+      "active_caches_count": 41,
+      "quota_bytes": 10737418240
+    },
+    "notes": "Saving past `quota_bytes` evicts the entries restored longest ago."
+  },
+  "delete_caches_by_key": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "query": {
+      "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+      "ref": "refs/pull/412/merge"
+    },
+    "response": {
+      "total_count": 1,
+      "actions_caches": [
+        {
+          "id": 9102,
+          "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+          "ref": "refs/pull/412/merge",
+          "version": "",
+          "size_in_bytes": 702545920,
+          "created_at": "2026-10-12T11:02:44.930Z",
+          "last_accessed_at": "2026-10-12T11:02:44.930Z"
+        }
+      ]
+    },
+    "notes": "The key is matched exactly. Without `ref`, the key's entries on every ref are deleted."
+  },
+  "delete_cache": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t",
+      "id": "9102"
+    },
+    "notes": "Answers `204` with no body."
+  },
   "list_packages": {
     "params": {
       "workspace": "acme"

@@ -20,6 +20,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::caches::CachesOp;
 use crate::archives::ArchiveOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
@@ -213,7 +214,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workflow",
         title: "Workflows",
-        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions, repository dispatch, and the workflows a workspace runs in its repositories without a file in them. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), and their groups.",
+        description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. The repository's actions/cache entries: listing them, what they hold against its 10 GiB, and deleting them. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions, repository dispatch, and the workflows a workspace runs in its repositories without a file in them. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), and their groups.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
@@ -231,6 +232,10 @@ pub const TOOLS: &[Tool] = &[
             a("delete_artifact", Op::Artifacts(ArtifactsOp::DeleteArtifact), "Delete an artifact before it expires"),
             a("artifact_retention", Op::Artifacts(ArtifactsOp::GetArtifactRetention), "Days the repository keeps artifacts"),
             a("set_artifact_retention", Op::Artifacts(ArtifactsOp::SetArtifactRetention), "Change the days the repository keeps artifacts"),
+            a("list_caches", Op::Caches(CachesOp::ListCaches), "The repository's actions/cache entries: by key prefix or ref, largest or least used first"),
+            a("cache_usage", Op::Caches(CachesOp::GetCacheUsage), "What the repository's cache entries hold, against its 10 GiB"),
+            a("delete_caches", Op::Caches(CachesOp::DeleteCachesByKey), "Delete the cache entries with a key, on every ref or one"),
+            a("delete_cache", Op::Caches(CachesOp::DeleteCache), "Delete one cache entry by its id"),
             a("combined_status", Op::Checks(ChecksOp::GetCombinedStatus), "A commit's statuses and the state they add up to"),
             a("list_statuses", Op::Checks(ChecksOp::ListCommitStatuses), "A commit's statuses, newest first"),
             a("set_status", Op::Checks(ChecksOp::CreateCommitStatus), "Set a status on a commit"),

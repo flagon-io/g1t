@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::caches::CachesOp;
 use crate::archives::ArchiveOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
@@ -861,6 +862,15 @@ pub const ROUTES: &[Route] = &[
     route("PUT", "/repos/:owner/:name/actions/permissions/artifact-and-log-retention", Op::Artifacts(ArtifactsOp::SetArtifactRetention), &[]),
     route(
         "GET",
+        "/repos/:owner/:name/actions/caches",
+        Op::Caches(CachesOp::ListCaches),
+        &[("key", "key"), ("ref", "ref"), ("sort", "sort"), ("direction", "direction"), ("page", "page"), ("per_page", "per_page")],
+    ),
+    route("GET", "/repos/:owner/:name/actions/cache/usage", Op::Caches(CachesOp::GetCacheUsage), &[]),
+    route("DELETE", "/repos/:owner/:name/actions/caches", Op::Caches(CachesOp::DeleteCachesByKey), &[("key", "key"), ("ref", "ref")]),
+    route("DELETE", "/repos/:owner/:name/actions/caches/:id", Op::Caches(CachesOp::DeleteCache), &[]),
+    route(
+        "GET",
         "/repos/:owner/:name/actions/secrets",
         Op::ListActionsSecrets,
         &[],
@@ -1079,7 +1089,7 @@ impl Route {
     pub fn no_content(&self) -> bool {
         matches!(
             self.op,
-            Op::DeleteComment
+            Op::DeleteComment | Op::Caches(CachesOp::DeleteCache)
         )
     }
 
@@ -1535,6 +1545,28 @@ mod tests {
         assert!(!Op::GetRepo.redirects());
         // Anyone may ask for a public repository's.
         assert!(!route.op.needs_user());
+    }
+
+    #[test]
+    fn caches_are_at_githubs_addresses() {
+        let query = [("key".to_owned(), "cargo-".to_owned()), ("ref".to_owned(), "refs/heads/main".to_owned()), ("sort".to_owned(), "size_in_bytes".to_owned())];
+        let (route, input) = resolve("GET", "/repos/acme/web/actions/caches", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::Caches(CachesOp::ListCaches));
+        assert_eq!(input, json!({ "key": "cargo-", "ref": "refs/heads/main", "sort": "size_in_bytes", "repo": "acme/web" }));
+        let (route, _) = resolve("GET", "/repos/acme/web/actions/cache/usage", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::Caches(CachesOp::GetCacheUsage));
+        // Deleting by key takes it from the query, as GitHub's does.
+        let query = [("key".to_owned(), "npm-full-Linux-abc".to_owned())];
+        let (route, input) = resolve("DELETE", "/repos/acme/web/actions/caches", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::Caches(CachesOp::DeleteCachesByKey));
+        assert_eq!(input, json!({ "key": "npm-full-Linux-abc", "repo": "acme/web" }));
+        assert!(!route.no_content());
+        let (route, input) = resolve("DELETE", "/repos/acme/web/actions/caches/42", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::Caches(CachesOp::DeleteCache));
+        assert_eq!(input, json!({ "id": "42", "repo": "acme/web" }));
+        assert!(route.no_content());
+        // Only someone signed in sees a repository's cache keys.
+        assert!(Op::Caches(CachesOp::ListCaches).needs_user());
     }
 
     #[test]

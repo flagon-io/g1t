@@ -1152,6 +1152,10 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_artifact_retention", Scope::WorkflowsRead),
     ("delete_artifact", Scope::WorkflowsWrite),
     ("set_artifact_retention", Scope::WorkflowsWrite),
+    ("list_caches", Scope::WorkflowsRead),
+    ("get_cache_usage", Scope::WorkflowsRead),
+    ("delete_caches_by_key", Scope::WorkflowsWrite),
+    ("delete_cache", Scope::WorkflowsWrite),
     // Checks: statuses, check runs and check suites on commits.
     ("list_commit_statuses", Scope::ChecksRead),
     ("get_combined_status", Scope::ChecksRead),
