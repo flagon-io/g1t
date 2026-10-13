@@ -19,7 +19,6 @@ export type Targets = {
   DOCS_URL: string;
   /** Where deployed apps live: `https://g1t.page`. */
   PAGES_URL: string;
-  MODELS_URL: string;
   /** A public repository that always exists, `owner/name`, to fetch refs of. */
   PROBE_REPO: string;
   /** The site as browsers reach it, when the checks reach it another way. */
@@ -91,7 +90,6 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
   const mcp = trim(vars.MCP_URL);
   const docs = trim(vars.DOCS_URL);
   const pages = trim(vars.PAGES_URL);
-  const models = trim(vars.MODELS_URL);
   const repo = (vars.PROBE_REPO ?? "").trim();
   // What the page shows as the site's address: where people reach it.
   const shown = host(trim(vars.PUBLIC_SITE_URL) || site);
@@ -186,21 +184,11 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
           check: { kind: "http", steps: [{ url: `${pages}/` }] },
         }
       : null,
-    models
-      ? {
-          key: "agents",
-          name: "Agents' model proxy",
-          address: host(models),
-          checks: "The proxy agents reach their model through. The model providers behind it are not checked.",
-          core: false,
-          check: { kind: "http", steps: [{ url: `${models}/` }] },
-        }
-      : null,
-    models
+    pages
       ? {
           key: "sandboxes",
           name: "Sandboxes",
-          address: "Agents, checks, workflows and builds",
+          address: "Checks, workflows and builds",
           checks: "Starting a sandbox costs money and takes seconds, so it is not checked from here yet.",
           core: false,
           check: { kind: "none" },

@@ -108,19 +108,18 @@ export function sessionFor(service: string, bookmarks: Bookmarks, writing: boole
  */
 const READS = new Set(
   (
-    "account active_agents all_ids get list queue pulls_for_repos blame blob branches by_author by_repo contributions catalog check_invite check_limit " +
-    "check_workspace_deletion check_workspace_rename collaborator_permission compare counts deleted deliveries " +
-    "domains entitlements entity explore features git_access has_feature invoices ledger limit " +
-    "limit_requests links log logs managed_pulls my_repo_invitations " +
-    "outside_collaborators overview path_by_id prices profile profile_workspaces public_namespaces read_session " +
-    "readable ready_issues references registration repo_access resolve resolve_branch resolve_path resolve_slug " +
-    "routes run run_context run_cost runner_activity runner_groups runner_settings runners runs scorecards search usage_report " +
-    "settings statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
-    "user_for_session user_for_access_token usernames waiting_workspaces workflows workspace workspace_invites github_enabled " +
-    "stars about public_links branch_drift tags last_commits languages contributors license releases release " +
-    "stargazers starred commit_checks shortcuts spend person_budgets usage_report templates install_requests " +
-    "marketplaces discover plugin plugin_installs plugin_agents connectors connector agent_connectors customize_bundle " +
-    "people_directory team_agents team_context team_members github_visible_installations skill_library skill agent_skills last_visit team_agent_index " +
+    "account all_ids get list queue pulls_for_repos blame blob branches by_author by_repo contributions " +
+    "check_invite check_limit check_workspace_deletion check_workspace_rename collaborator_permission " +
+    "compare counts deleted deliveries domains entitlements explore features git_access has_feature " +
+    "invoices ledger limit limit_requests links log logs managed_pulls my_repo_invitations " +
+    "outside_collaborators overview path_by_id prices profile profile_workspaces public_namespaces " +
+    "read_session readable repo_access resolve resolve_branch resolve_path resolve_slug " +
+    "routes run runner_activity runner_groups runner_settings runners runs search usage_report settings " +
+    "statement statement_entries status status_by_id suggest tree usage usage_meters user_by_username " +
+    "user_for_session user_for_access_token usernames workflows workspace workspace_invites " +
+    "github_enabled stars about public_links branch_drift tags last_commits languages contributors " +
+    "license releases release stargazers starred commit_checks shortcuts spend usage_report templates " +
+    "people_directory team_members github_visible_installations last_visit " +
     "activity_digest activity"
   ).split(" "),
 );

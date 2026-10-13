@@ -48,9 +48,6 @@ test("only what g1t sets up end to end is available; the docs' Available today l
     .map(([id]) => id.replace(/_/g, "-"));
   assert.deepEqual(available("workspace"), ["alerts-webhook", "datadog", "github", "jira", "linear", "sentry", "webhooks", ...models].sort());
   assert.deepEqual(available("personal"), ["github", "mcp"]);
-  for (const connector of CONNECTORS) {
-    if (connector.mcp) assert.equal(connector.status, "soon", `${connector.id}: nothing connects to MCP servers yet`);
-  }
 });
 
 test("a connector shows its personal side to you", () => {

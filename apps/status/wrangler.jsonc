@@ -53,7 +53,6 @@
 		"MCP_URL": "https://mcp.g1t.sh",
 		"DOCS_URL": "https://docs.g1t.sh",
 		"PAGES_URL": "https://g1t.page",
-		"MODELS_URL": "https://models.g1t.sh",
 		// A public repository that always exists, whose branches are listed
 		// as a clone would.
 		"PROBE_REPO": "flagon-io/g1t",

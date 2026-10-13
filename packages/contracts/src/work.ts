@@ -650,8 +650,8 @@ export type OpenPullInput = {
   /** The branch to merge into: the default branch when left out. */
   base?: string;
   /**
-   * Opened from a branch as a draft, still being worked on: it can't merge,
-   * and agents' review routines wait, until it is marked ready.
+   * Opened from a branch as a draft, still being worked on: it can't merge
+   * until it is marked ready.
    */
   draft?: boolean;
 };

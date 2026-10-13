@@ -18,7 +18,14 @@ import type { User } from "./identity";
  * push, a vulnerability report), shown like a mention; the rest of the
  * security items are ordinary `inbox` ones.
  */
-export type NotificationKind = "dm" | "mention" | "thread_reply" | "inbox" | "approval" | "security";
+export type NotificationKind =
+  | "dm"
+  | "mention"
+  | "thread_reply"
+  | "inbox"
+  /** Retired with g1t's own agents (a session at its cap); kept so stored items and preferences still read. */
+  | "approval"
+  | "security";
 
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = ["dm", "mention", "thread_reply", "inbox", "approval", "security"];
 
@@ -51,9 +58,8 @@ export type FeedNotification = {
   /** The thread it is in, for a reply: quick replies go there. */
   thread_root?: string | null;
   /**
-   * The chat card it is about, when that card has something to press: a
-   * session at its cap (Approve more, Stop, Open), a draft issue (File
-   * issue, Discard). The toast and the notifications panel show these
+   * The chat card it is about, when that card has something to press,
+   * such as a draft issue (File issue, Discard). The toast and the notifications panel show these
    * actions, and pressing one goes to the site's `card_action`, exactly as
    * on the card itself.
    */

@@ -14,7 +14,7 @@ docs in the same pull request:
 | --- | --- |
 | Something a person does on g1t.sh | The guide for it in `apps/docs/src/content/docs/guides/` |
 | An API route, a field, or an MCP tool | `apps/api/src/operations.rs` descriptions (they feed the OpenAPI document and the API reference), the example and notes for it in `apps/api/src/reference.json`, `reference/mcp.md`, and any guide that shows the call. Then refresh the docs' copy of the OpenAPI document with `G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi`; `cargo test` fails until you do. |
-| How agents behave | `guides/working-with-g1t.md`, and `apps/web/public/llms.txt` |
+| What coding agents are told about g1t | `guides/bring-your-own-agent.mdx`, `guides/claude-code-plugin.md`, the plugin's skills in `plugins/claude-code/`, and `apps/web/public/llms.txt` |
 | Settings, limits or prices | The page that names them, and the table it is in |
 | A new feature | A section in the guide that owns it, linked from the docs home if it is a new task |
 | How g1t is put together: a service, a binding, a store, an event route, the path of a request | Its page in the docs' Architecture section (`apps/docs/src/content/docs/architecture/`), and its diagram in `apps/docs/src/diagrams/architecture.ts`. [How g1t ships](https://docs.g1t.sh/architecture/shipping/#keeping-this-section-true) says which page covers what. |
@@ -61,14 +61,12 @@ cd apps/docs && npm run build
 - Hover hints use the `Tooltip` component, never `title=`. Native
   `<select>`, file inputs, checkboxes and radios use their `ui`
   components.
-- **Every avatar is `Avatar`** (`ui/avatar.tsx`), and every agent's is
-  `Avatar` with `agent` set, or `AgentAvatar` (`components/agent-avatar.tsx`),
-  which wraps it. That draws the agent's bot face (`AgentFace`,
-  `components/agent-face.tsx`) from its `look` or its `avatar_seed`, puts
-  the agent marker in its corner and names it "…, agent" to a screen
-  reader. Never hand-draw an agent's face, a sparkle, a letter on a tile or
-  the marker at a call site: a place that shows an agent differently is a
-  bug.
+- **Every avatar is `Avatar`** (`ui/avatar.tsx`), and @g1t's is `Avatar`
+  with `agent` set, or `AgentAvatar` (`components/agent-avatar.tsx`), which
+  wraps it: g1t's pixel 1 with the agent marker in its corner, named
+  "…, agent" to a screen reader. Never hand-draw a sparkle, a letter on a
+  tile or the marker at a call site: a place that shows @g1t differently is
+  a bug.
 - Look at every page you change, in light and dark, on a desktop and a
   phone, before calling it done.
 
@@ -337,6 +335,6 @@ For Flagon staff.
   Worker's secret `GIT_FALLBACK_NAMESPACES`) and open an incident. To
   switch back, `reconcile` anything the fallback took, then delete the
   secret. The script's header has every step.
-- **Costs and margin**, model prices, credits and the platform pause are
+- **Costs and margin**, credits and the platform pause are
   in sudo, under **Costs & margin**. The code is in `services/billing/src`
   (`costs.rs`, `margin.rs`, `pricing.rs`, `budget.rs`, `platform.rs`).

@@ -234,7 +234,7 @@ pub struct JobLine {
     pub kind: String,
     pub name: String,
     pub repo: String,
-    /// The repository's Actions (or Agents) page, where its run is.
+    /// The repository's Actions page, where its run is.
     pub link: Option<String>,
 }
 

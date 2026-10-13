@@ -25,6 +25,13 @@ harnesses keep their own memory, and shared knowledge belongs in
 left in work's D1, no longer read or written; read the memory parts below
 as history.
 
+**Removed the same week:** GitHub mirroring (a repository comes across
+from GitHub by importing it once; `services/repos/src/mirror.rs` is gone),
+Boards and Roadmap, the org chart and reporting lines, get-started
+checklists, preview stacks and project dependencies, and invite-only
+registration. Wherever this review leans on mirroring as a live bridge to
+GitHub, or on any of these, read it as history.
+
 Labels used throughout:
 
 | Label | Meaning |

@@ -25,7 +25,6 @@ const VARS = {
   MCP_URL: "https://mcp.g1t.sh",
   DOCS_URL: "https://docs.g1t.sh",
   PAGES_URL: "https://g1t.page",
-  MODELS_URL: "https://models.g1t.sh",
   PROBE_REPO: "flagon-io/g1t",
 };
 
@@ -188,7 +187,7 @@ test("components: an installation without a host leaves that part off", () => {
   const all = components(VARS, true);
   assert.deepEqual(
     all.map((c) => c.key),
-    ["site", "api", "git", "speed", "mcp", "docs", "deployments", "agents", "sandboxes", "billing"],
+    ["site", "api", "git", "speed", "mcp", "docs", "deployments", "sandboxes", "billing"],
   );
   const speed = all.find((c) => c.key === "speed")!;
   assert.deepEqual(speed.check, { kind: "http", steps: [{ url: "https://g1t.sh/flagon-io/g1t", browser: true }, { url: "https://g1t.sh/explore", browser: true }] });

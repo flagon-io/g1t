@@ -28,7 +28,7 @@ const parts = components(
     SITE_URL: "https://g1t.sh",
     API_URL: "https://api.g1t.sh",
     DOCS_URL: "https://docs.g1t.sh",
-    MODELS_URL: "https://models.g1t.sh",
+    PAGES_URL: "https://g1t.page",
     PROBE_REPO: "flagon-io/g1t",
   },
   false,
@@ -75,7 +75,7 @@ test("escape covers HTML's specials", () => {
 });
 
 test("the page: banner, every part with its bar, and no incidents", () => {
-  const html = renderPage(page({ site: "up", api: "up", git: "up", docs: "up", agents: "up" }), OPTIONS);
+  const html = renderPage(page({ site: "up", api: "up", git: "up", docs: "up", deployments: "up" }), OPTIONS);
   assert.match(html, /<h1>All systems normal<\/h1>/);
   for (const name of ["Website and sign-in", "API", "Git and repositories", "Documentation", "Sandboxes"]) assert.ok(html.includes(name), name);
   assert.equal((html.match(/<ol class="bar"/g) ?? []).length, 5, "Sandboxes has no bar");
@@ -89,7 +89,7 @@ test("the page: banner, every part with its bar, and no incidents", () => {
 
 test("an outage and an open incident are said at the top, escaped", () => {
   const html = renderPage(
-    page({ site: "down", api: "up", git: "up", docs: "up", agents: "up" }, [
+    page({ site: "down", api: "up", git: "up", docs: "up" }, [
       INCIDENT,
     ]),
     OPTIONS,

@@ -1454,7 +1454,6 @@ pub struct UpdateIssueArgs {
     #[serde(default)]
     pub labels: Option<Vec<String>>,
     /// Usernames of the people it is assigned to; replaces the whole set.
-    /// Assigning it to g1t is the runner's `run`, not this.
     #[serde(default)]
     pub assignees: Option<Vec<String>>,
     /// The number of the milestone to put it in; 0 takes it out of its

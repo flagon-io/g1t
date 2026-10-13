@@ -390,7 +390,6 @@ writeFileSync(join(out, "schedules.json"), `${JSON.stringify(schedules, null, 2)
       MCP_URL: "",
       DOCS_URL: "",
       PAGES_URL: "",
-      MODELS_URL: "",
       PROBE_REPO: process.env.STATUS_PROBE_REPO ?? "",
       SUPPORT_URL: `${PUBLIC_URL}/support`,
       OG_IMAGE: "",

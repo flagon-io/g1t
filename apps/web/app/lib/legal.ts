@@ -97,10 +97,15 @@ export const POLICIES: Policy[] = [
 export const POLICIES_DRAFT = true;
 
 /** When any policy last changed, `YYYY-MM-DD`. */
-export const POLICIES_UPDATED = "2026-10-09";
+export const POLICIES_UPDATED = "2026-10-13";
 
 /** Every change to the policies, newest first. */
 export const POLICY_HISTORY: { date: string; change: string }[] = [
+  {
+    date: "2026-10-13",
+    change:
+      "Terms of Service and Privacy Policy: g1t no longer runs agents of its own. Section 6 of the terms covers the coding agents you connect and Ask g1t, which answers with your workspace's own AI provider; agents are no longer billed compute. Subprocessors: your workspace's AI provider listed among the integrations you choose.",
+  },
   {
     date: "2026-10-09",
     change:

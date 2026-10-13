@@ -43,14 +43,14 @@ test("all shows everything once", () => {
 });
 
 test("search finds by name, description, tag and keyword, across every category", () => {
-  const found = arrange(workspace, { category: "design", query: "sentry", connected: none });
+  const found = arrange(workspace, { category: "design", query: "resolve", connected: none });
   assert.deepEqual(found.available.map((view) => view.id), ["sentry"], "a search is not held to the category");
-  assert.deepEqual(found.soon.map((view) => view.id), ["sentry-mcp"], "what is coming sorts after what works");
+  assert.deepEqual(found.soon.map((view) => view.id), ["pagerduty"], "what is coming sorts after what works");
   assert.ok(matchesQuery(personal.find((view) => view.id === "google-calendar")!, "in a meeting"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "anthropic")!, "claude"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "incident-io")!, "incidentio"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "pagerduty")!, "opens ISSUES"));
-  assert.ok(!matchesQuery(workspace.find((view) => view.id === "figma")!, "kubernetes"));
+  assert.ok(!matchesQuery(workspace.find((view) => view.id === "miro")!, "kubernetes"));
 });
 
 test("the navigation counts each category and leaves out empty ones", () => {

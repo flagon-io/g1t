@@ -190,7 +190,7 @@ export const NAV: NavGroup[] = [
         label: "Usage explorer",
         to: "/usage",
         icon: "usage",
-        about: "What customers used, sliced by meter, model, repository and day.",
+        about: "What customers used, sliced by meter, repository and day.",
         soon: {
           summary: [
             "What customers used, across every workspace, sliced any way: by meter, repository and day. It answers the questions that come up in a sales call or a cost review: who uses the most sandbox time, and what a customer spends per pull request.",
@@ -198,7 +198,7 @@ export const NAV: NavGroup[] = [
           ],
           plans: [
             "Charged, cost and margin over any range, for everyone or one customer",
-            "Group by meter, model, task, repository or workspace; compare two periods",
+            "Group by meter, repository or workspace; compare two periods",
             "The heaviest workspaces this month, and how fast each is growing",
             "Export to CSV",
           ],

@@ -84,7 +84,7 @@ export function age(createdAt: string | null | undefined, now = new Date()): str
 /**
  * What g1t absorbs of real cost on a goodwill credit: whatever is past its
  * margin on the overage. The margin is money g1t never had; the rest it
- * paid Cloudflare and model providers for.
+ * paid Cloudflare for.
  */
 export function absorbedMicros(amountMicros: number, marginMicros: number): number {
   return Math.max(0, amountMicros - Math.max(0, marginMicros));

@@ -2,13 +2,13 @@ We'd rather you pay for what you use and feel good about it than argue over a bi
 
 ## What is charged, and why
 
-The forge is free. What costs money is compute (agents, sandboxes, checks, workflows, the merge queue, deployments, and storage and git traffic past what is included) at what it costs us plus 20%, and the g1t plan, $20 a month per workspace with $10 of usage included. Because usage is charged at close to what it costs us, most of it can't be given back once it has run: we've already paid for it.
+The forge is free. What costs money is compute (sandboxes, checks, workflows, the merge queue, deployments, and storage and git traffic past what is included) at what it costs us plus 20%, and the g1t plan, $20 a month per workspace with $10 of usage included. Because usage is charged at close to what it costs us, most of it can't be given back once it has run: we've already paid for it.
 
 That's why g1t works hard to keep spending from surprising you: a $5 trial that never turns into a charge, a spend limit you set, caps per run and per issue, alerts at 50%, 75%, 90% and 100%, and a pause when spending suddenly spikes until an owner says to keep going.
 
 ## Spent more than you meant to
 
-If a month went well past what you meant to spend (a runaway job, an agent that kept going, a loop you didn't notice), tell us. On the workspace's **Billing** page, an owner chooses **Spent more than you meant to? Tell us.**, says what happened, and sends it.
+If a month went well past what you meant to spend (a runaway job, a workflow that kept going, a loop you didn't notice), tell us. On the workspace's **Billing** page, an owner chooses **Spent more than you meant to? Tell us.**, says what happened, and sends it.
 
 - **Once every 12 months per workspace**, g1t can credit the overage above your usual month.
 - **The 20% we added to that overage always comes back to you.** We don't keep a margin on a mistake.

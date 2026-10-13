@@ -773,6 +773,7 @@ export type PriceChange = {
 export type PriceBook = {
   prices: Price[];
   changes: PriceChange[];
+  /** Retired with the models g1t no longer runs; still sent. */
   modelMarginPercent: number;
   /** Every plan, as sold now. */
   plans?: FeaturePlan[];
@@ -1462,7 +1463,7 @@ export type SpendCaps = {
   todayMicros: number;
   /** `PLATFORM_DAILY_SPEND_CAP_MICROS`; 0: no breaker. */
   dailyCapMicros: number;
-  /** New hosted-model agent runs g1t would pay for are paused. */
+  /** New workflows, checks and merge queue runs g1t would pay for are paused. */
   tripped: boolean;
   trippedAt: string | null;
   liftedBy: string | null;

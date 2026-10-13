@@ -186,9 +186,8 @@ export function Badge({ label, tone = "neutral" }: { label: string; tone?: Badge
 
 /**
  * A person's or an agent's picture: the uploaded one when there is one,
- * else their initial. Agents carry a marker, as everywhere on g1t. The
- * site draws an agent's own bot face (components/agent-face.tsx); bringing
- * that here is to come.
+ * else their initial. Agents (@g1t, and authors of old messages from
+ * retired agents) carry a marker, as everywhere on g1t.
  */
 export function Avatar({ name, uri, agent, size = 32 }: { name: string; uri?: string | null; agent?: boolean; size?: number }) {
   const colors = useColors();

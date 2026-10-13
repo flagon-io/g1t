@@ -4,7 +4,7 @@ These are the companies that process information for g1t on our behalf, what eac
 
 | Company | What they do for g1t | What they receive | Where |
 | --- | --- | --- | --- |
-| **Cloudflare, Inc.** | Hosting and the network g1t runs on (Workers), databases (D1), storage for repositories, avatars and screenshots (Artifacts, KV and R2), queues, the sandboxes agents and checks run in (Containers), sending email (Email Service), search embeddings (Workers AI and Vectorize), and screenshots of deployed apps (Browser Rendering) | Everything stored on g1t, and every request to it | Global |
+| **Cloudflare, Inc.** | Hosting and the network g1t runs on (Workers), databases (D1), storage for repositories, avatars and screenshots (Artifacts, KV and R2), queues, the sandboxes checks, workflows and builds run in (Containers), sending email (Email Service), search embeddings (Workers AI and Vectorize), and screenshots of deployed apps (Browser Rendering) | Everything stored on g1t, and every request to it | Global |
 | **Stripe, Inc.** | Payments, cards, invoices and receipts | Workspace owners' billing details, card details (entered on Stripe's page, never on g1t), and what each invoice charges | United States |
 | **HeyCatch, Inc.** | Product analytics on g1t.sh: page views and clicks. Visitors in the EU, EEA, UK and Switzerland are asked first | The page's address (names replaced outside the public pages), the text of what is clicked on the public pages, browser and device type, IP address, the referring site, an analytics id, and a signed-in person's internal account id. Never repository content, chat, page titles inside the app, what you type, or recordings of your session | United States |
 
@@ -18,7 +18,7 @@ These are the companies that process information for g1t on our behalf, what eac
 
 When you connect these, your information goes to them because you asked, under your own agreement with them. They are not g1t's subprocessors:
 
-- **Integrations**, such as GitHub, Linear, Jira, Sentry and Datadog.
+- **Integrations**, such as your workspace's AI provider, GitHub, Linear, Jira, Sentry and Datadog.
 - **Webhooks** you add, which send events to the addresses you choose.
 - **Hosts your sandboxes reach**, such as package registries and anything your jobs and builds fetch from or send to.
 - **Custom domains** you point at your deployments.
