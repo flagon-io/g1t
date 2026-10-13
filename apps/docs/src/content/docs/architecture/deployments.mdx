@@ -21,14 +21,27 @@ Every push to the default branch makes a production deployment, and every
 open pull request gets a preview. `deployments` reads pushes from its
 event queue and asks `runner` for a sandbox in `deploy` mode
 ([Actions, runners and sandboxes](/architecture/compute/#other-work-in-sandboxes)).
-The sandbox works out what the app is, in this order:
+The sandbox works out what the app is, preferring what runs nothing while
+no one visits, in this order
+([What a project is built as](/guides/deployments/#what-a-project-is-built-as)):
 
 1. a Workers project, from `wrangler deploy --dry-run`;
-2. a framework it knows, such as Vite, Astro, Next.js or SvelteKit;
-3. a container: a `Dockerfile` that runs a server, even beside a site, or a
-   server it recognises, for which it writes one
-   ([Docker deployments](/guides/deployments/#docker-deployments));
-4. a static site.
+2. a framework it knows, such as Vite, Astro, Next.js or SvelteKit, as
+   the site it builds, even beside a `Dockerfile`;
+3. a Node.js server with no `Dockerfile` (Express, Koa, Hono…), as a
+   Worker: the sandbox writes an entry that serves the app's own server
+   with `httpServerHandler` from `cloudflare:node`, bundles it with
+   wrangler and starts it once with `wrangler dev` before deploying it
+   ([Node.js servers as Workers](/guides/deployments/#nodejs-servers-as-workers));
+4. any other server it recognises, as a container, from its `Dockerfile`
+   or one it writes ([Docker deployments](/guides/deployments/#docker-deployments));
+5. a `build` script's site or an `index.html`, even beside a
+   `Dockerfile`;
+6. a `Dockerfile` with nothing else to serve, as a container.
+
+A container is the fallback: a Node.js server that cannot run as a Worker
+(a native addon, say), or whose Worker does not bundle or start, is
+deployed as a container instead.
 
 A container's image is pushed to Cloudflare's registry with a push-only
 login `deployments` mints for the build, and runs on Cloudflare

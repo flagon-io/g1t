@@ -115,58 +115,6 @@ pub(crate) fn exposed_port(dockerfile: &str) -> Option<u16> {
     })
 }
 
-/// Images that serve a folder of files and nothing else, as the base of a
-/// Dockerfile that only copies a site into them.
-const FILE_SERVERS: [&str; 8] = [
-    "nginx",
-    "nginxinc/nginx-unprivileged",
-    "httpd",
-    "caddy",
-    "lighttpd",
-    "joseluisq/static-web-server",
-    "pierrezemb/gostatic",
-    "busybox",
-];
-
-/// What a Dockerfile's last stage is: whether it runs a server of the
-/// project's own, and in words, why, for the build's log.
-///
-/// It does when that stage says how it starts (`CMD` or `ENTRYPOINT`), or
-/// says it listens (`EXPOSE`) on an image that is not only a file server
-/// (nginx, httpd, Caddy…). A Dockerfile that only copies a built site into
-/// such an image, or says neither, is taken to serve files, which g1t
-/// serves itself, for nothing while no one visits.
-pub(crate) fn runs_server(dockerfile: &str) -> (bool, String) {
-    let stage = last_stage(dockerfile);
-    let has = |word: &str| stage.iter().any(|(w, _)| w == word);
-    // `FROM [--platform=…] image[:tag|@digest] [AS name]`
-    let base = stage
-        .first()
-        .filter(|(word, _)| word == "FROM")
-        .and_then(|(_, rest)| rest.split_whitespace().find(|w| !w.starts_with("--")))
-        .map(|image| {
-            let image = image.split('@').next().unwrap_or(image);
-            // A tag is after the last `/`, so a registry's port is kept.
-            let name = match image.rsplit_once(':') {
-                Some((name, tag)) if !tag.contains('/') => name,
-                _ => image,
-            };
-            name.trim_start_matches("docker.io/").trim_start_matches("library/").to_ascii_lowercase()
-        })
-        .unwrap_or_default();
-    let starts = ["CMD", "ENTRYPOINT"].into_iter().find(|word| has(word));
-    if let Some(word) = starts {
-        return (true, format!("its Dockerfile starts a server of its own (`{word}`)"));
-    }
-    if has("EXPOSE") {
-        if FILE_SERVERS.contains(&base.as_str()) {
-            return (false, format!("its Dockerfile only serves files with `{base}`"));
-        }
-        return (true, "its Dockerfile runs a server (`EXPOSE`)".to_owned());
-    }
-    (false, "its Dockerfile neither starts a server (`CMD`, `ENTRYPOINT`) nor listens on a port (`EXPOSE`)".to_owned())
-}
-
 /// A server g1t can write a Dockerfile for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Server {
@@ -200,13 +148,14 @@ fn has_dependency(package: &Value, name: &str) -> bool {
 }
 
 /// Packages that make a Node.js project a server of its own.
-const NODE_SERVERS: [&str; 14] = [
+const NODE_SERVERS: [&str; 15] = [
     "express",
     "fastify",
     "koa",
     "@hapi/hapi",
     "@nestjs/core",
     "@hono/node-server",
+    "hono",
     "restify",
     "polka",
     "@adonisjs/core",
@@ -383,7 +332,7 @@ fn rust(dir: &Path) -> Option<Server> {
 
 /// A Node.js server: a `start` script, with a server package or nothing
 /// that looks like a static site (no `build` script and no `index.html`).
-fn node_server(dir: &Path) -> Option<Server> {
+pub(crate) fn node_server(dir: &Path) -> Option<Server> {
     let package = package(dir)?;
     let scripts = &package["scripts"];
     let server_package = NODE_SERVERS.iter().any(|name| has_dependency(&package, name));
@@ -632,33 +581,12 @@ mod tests {
     }
 
     #[test]
-    fn a_dockerfile_runs_a_server_unless_it_only_serves_files() {
-        let (server, why) = runs_server("FROM node:22-slim\nCOPY . .\nCMD [\"node\", \"server.js\"]\n");
-        assert!(server);
-        assert_eq!(why, "its Dockerfile starts a server of its own (`CMD`)");
-        assert!(runs_server("FROM golang AS build\nRUN go build\nFROM scratch\nENTRYPOINT [\"/app\"]").0);
-        assert!(runs_server("FROM python:3.12\nEXPOSE 5000").0);
-        // A site copied into a file server, by any of its names.
-        for base in ["nginx", "nginx:1.27-alpine", "docker.io/library/nginx:latest", "httpd@sha256:abc", "--platform=linux/amd64 caddy:2"] {
-            let (server, why) = runs_server(&format!("FROM node AS build\nCMD x\nFROM {base}\nCOPY --from=build /app/dist /srv\nEXPOSE 80\n"));
-            assert!(!server, "{base}");
-            assert!(why.contains("only serves files"), "{why}");
-        }
-        // nginx with a start of its own is the project's to say.
-        assert!(runs_server("FROM nginx\nCOPY . .\nCMD [\"nginx\", \"-g\", \"daemon off;\"]").0);
-        assert!(!runs_server("FROM node\nCOPY . .").0);
-        // A registry with a port is not a tag.
-        assert!(runs_server("FROM registry.local:5000/nginx\nEXPOSE 80").0);
-    }
-
-    #[test]
     fn rust_servers_are_recognised() {
         let axum = project("axum", &[("Cargo.toml", "[package]\nname = \"todo-api\"\n\n[dependencies]\naxum = \"0.8\"\n"), ("src/main.rs", "fn main() {}")]);
         let found = server(&axum).unwrap();
         assert_eq!((found.id, found.name), ("rust", "Rust"));
         assert!(found.dockerfile.contains("--bin todo-api"));
         assert!(found.dockerfile.contains("ENTRYPOINT [\"/app\"]"));
-        assert!(runs_server(&found.dockerfile).0);
         let lib = project("rust-lib", &[("Cargo.toml", "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\n"), ("src/main.rs", "")]);
         assert_eq!(server(&lib), None, "not a web server");
         let two = project("rust-two", &[("Cargo.toml", "[package]\nname = \"x\"\n[dependencies]\naxum = \"0.8\"\n[[bin]]\nname = \"a\"\n[[bin]]\nname = \"b\"\n")]);
@@ -666,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn every_dockerfile_g1t_writes_runs_a_server_on_its_port() {
+    fn every_dockerfile_g1t_writes_listens_on_its_port() {
         let projects = [
             project("w-node", &[("package.json", r#"{ "scripts": { "start": "node i.js" }, "dependencies": { "express": "5" } }"#)]),
             project("w-flask", &[("requirements.txt", "flask\n"), ("app.py", "")]),
@@ -677,8 +605,6 @@ mod tests {
         for dir in &projects {
             let found = server(dir).unwrap();
             assert_eq!(exposed_port(&found.dockerfile), Some(DEFAULT_PORT), "{}", found.id);
-            // PHP's Apache image starts itself: it has no `CMD` of the file's own.
-            assert!(runs_server(&found.dockerfile).0, "{}", found.id);
         }
     }
 

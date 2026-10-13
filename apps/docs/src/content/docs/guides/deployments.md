@@ -9,9 +9,11 @@ with a pull request gets its own live preview, linked on the pull request,
 and the default branch goes to production on every push. Reviewers
 click through the change instead of reading a diff.
 
-Apps run on Cloudflare Workers, on `g1t.page`, and a project with a
-`Dockerfile` (or a server g1t can write one for) runs as a container on
-Cloudflare Containers behind one; see [Docker deployments](#docker-deployments):
+Apps run on Cloudflare Workers, on `g1t.page`: sites, Workers projects,
+and Node.js servers such as Express apps. A server that cannot run as a
+Worker runs as a container on Cloudflare Containers behind one; see
+[What a project is built as](#what-a-project-is-built-as) and
+[Docker deployments](#docker-deployments):
 
 | | Address |
 | --- | --- |
@@ -97,14 +99,48 @@ You do not configure anything for the common cases.
 | The project has | g1t |
 | --- | --- |
 | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
-| A framework from the table below | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**. |
+| A framework from the table below, even beside a `Dockerfile` | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**. |
 | A framework set up to need a server (Next.js without a static export, Astro's `@astrojs/node`, SvelteKit's `adapter-node`, a server-rendered React Router or Remix app) | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it. |
-| A `Dockerfile` or `Containerfile` that runs a server (`CMD`, `ENTRYPOINT` or `EXPOSE`), even beside a site or a framework above | Builds the image and runs it as a **container**. |
+| A Node.js server (Express, Koa, Hono, `node:http` and others) with no `Dockerfile` | Runs it as a **Workers project**: wraps its server in a Worker, bundles it, and checks that it starts. One that cannot run as a Worker runs as a **container** instead, and the build's log says why. See [Node.js servers as Workers](#nodejs-servers-as-workers). |
+| A Python, Go, Ruby, PHP or Rust server, or a Node.js server with a `Dockerfile` | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it and shows in the build's log. See [Docker deployments](#docker-deployments). |
+| A `build` script in `package.json`, even beside a `Dockerfile` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
+| An `index.html` and nothing to build, even beside a `Dockerfile` | Serves it as it is. |
 | A `Dockerfile` and nothing else to serve | Builds the image and runs it as a **container**. |
-| A Node.js, Python, Go, Ruby, PHP or Rust server, with no `Dockerfile` | Writes a Dockerfile for it, shows it in the build's log, and runs it as a **container**. See [Docker deployments](#docker-deployments). |
-| A `build` script in `package.json` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
-| An `index.html` and nothing to build | Serves it as it is. |
-| Nothing g1t recognises | Fails, saying to add a `Dockerfile`. |
+| Nothing g1t recognises | Fails, saying to add a `Dockerfile`, a `build` script or an `index.html`. |
+
+### What a project is built as
+
+A site or a Worker is always preferred: it runs nothing while no one
+visits, so it costs nothing then, and it wakes in milliseconds. A
+container is the fallback. With **Build as** on **Auto** (the default),
+the first of these that fits is what the project is built as:
+
+1. **A Workers project**: a Wrangler config (`wrangler.jsonc`,
+   `wrangler.json` or `wrangler.toml`), or a framework's Cloudflare
+   adapter, even beside a `Dockerfile`.
+2. **A framework's site**: a framework from the [table below](#frameworks)
+   that builds a site, even beside a `Dockerfile`. A framework set up to
+   need a server is a container, from its `Dockerfile` or one g1t writes.
+3. **A Node.js server as a Worker**: a Node.js server with no
+   `Dockerfile` ([Node.js servers as Workers](#nodejs-servers-as-workers)).
+   One that cannot run as a Worker is a container, from a Dockerfile g1t
+   writes.
+4. **A container for any other server g1t recognises**: Python, Go, Ruby,
+   PHP or Rust, or a Node.js server with a `Dockerfile` of its own; from
+   that `Dockerfile`, or one g1t writes.
+5. **A site**: a `build` script's output, or an `index.html`, even beside
+   a `Dockerfile`.
+6. **A container from its `Dockerfile`** (or `Containerfile`, or the path
+   set as its **Dockerfile**), when there is nothing else to serve.
+7. Otherwise the build fails, saying what to add.
+
+When a site is built beside a `Dockerfile`, the build's log says the
+`Dockerfile` is not used, near its top: "Built as a Vite site; Dockerfile
+is not used (a container is only the fallback; choose **Build as**:
+Container to use it)." To run the project's `Dockerfile` instead, set
+**Build as** to **Container** under **Settings → Deployments**. **Build
+as** set to **Static site**, **Workers** or **Container** is what the
+project is built as, whatever else it has.
 
 **Settings → Deployments** shows what g1t detected at the project's last
 finished build and what it was built with, such as **Static site ·
@@ -204,6 +240,66 @@ exists after the build: `dist`, `build`, `out`, `public`, `_site`,
   lists each one it left out. Code that needs them should check that the
   binding is there.
 
+### Node.js servers as Workers
+
+A Node.js server with no `Dockerfile` runs as a Worker, not a container:
+an Express, Koa, Hono, Polka, Restify or hapi app, or one on `node:http`
+alone. Workers run Node.js HTTP servers with the `nodejs_compat`
+compatibility flag, through
+[`httpServerHandler`](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/)
+from `cloudflare:node`, so the app's code runs as written. g1t knows a
+Node.js server by a server package in `package.json`, or by a `start`
+script with no `build` script or `index.html` beside it.
+
+1. **It finds the file that starts the app**: the file its `start` script
+   runs with `node`, `tsx` or `ts-node` (`node server.js`,
+   `NODE_ENV=production node dist/index.js`), else `main` in
+   `package.json`, else `server.js`, `index.js`, `app.js` or the like.
+2. **It installs and builds** as for any project: the lockfile's install,
+   then `npm run build` when there is a `build` script (a TypeScript app
+   compiled to `dist`, say).
+3. **It writes a Worker entry** that imports that file, keeps the server
+   it starts, and answers each request with `httpServerHandler`. An app
+   whose default export has a `fetch` method (a Hono app) is answered by
+   that `fetch` directly. `listen` may name any port and address: on
+   Workers the port only names the server. `PORT` is `8080` unless the
+   project's variables set it. The entry is printed whole in the build's
+   log.
+4. **It bundles the Worker** with `wrangler deploy --dry-run`, with the
+   compatibility date `2026-09-26` and `nodejs_compat`.
+5. **It starts the Worker once** with `wrangler dev`, with the project's
+   [variables and secrets](#secrets-and-variables), and asks it for `/`. A
+   Worker that fails as it starts (a top-level `await` that never settles,
+   a module that cannot load, a server that never calls `listen`) is not
+   deployed.
+
+A folder the app serves with `app.use(express.static("public"))`, with
+no path before it, is uploaded as the Worker's static files: they are
+served without running the app, and count toward none of its requests or
+CPU time.
+
+What is known not to run as a Worker is found before anything is built,
+and the app runs as a container instead, from a Dockerfile g1t writes,
+with the reason in the build's log:
+
+| The app | Why |
+| --- | --- |
+| Depends on a native addon: `better-sqlite3`, `sqlite3`, `bcrypt`, `sharp`, `canvas`, `argon2`, `puppeteer`, `playwright`, `node-pty`, `ssh2` and others | A Worker cannot load native code. |
+| Is a Fastify, NestJS or Sails app | They start on timers or read their modules from disk as they start, which a Worker cannot do before its first request. |
+| Accepts WebSocket connections with `socket.io`, `express-ws`, `WebSocketServer` or an `upgrade` handler | Workers do not support Node's `upgrade` event. |
+| Uses `child_process`, `cluster` or `worker_threads` | A Worker cannot start processes or threads. |
+| Reads or writes files while it runs: `readFile`, `writeFile`, `createReadStream`, `sendFile`, `res.render` and a view engine, `multer`'s disk storage | A Worker has no disk with the project's files. |
+| Serves files from disk under a path (`app.use("/static", express.static("public"))`), from a folder that does not exist, or from more than one folder | g1t can serve one folder, at the top, for it. |
+| Has a `start` script g1t cannot read (`nest start`, `pm2-runtime …`) | g1t cannot tell which file starts it. |
+
+g1t looks for these in the app's own JavaScript and TypeScript, not in
+`node_modules`, tests, `scripts`, `public` or a build's output. A Worker
+that does not bundle, or does not start, also runs as a container, saying
+"Could not run as a Worker: …; deploying as a container." With a
+`Dockerfile` of its own, a Node.js server is built from that `Dockerfile`
+as a container. To run one as a Worker whatever g1t finds, set **Build
+as** to **Workers**; to run it as a container, **Container**.
+
 ### Docker deployments
 
 Any app that runs in a container deploys as one, whatever its framework or
@@ -212,38 +308,20 @@ age: give it a `Dockerfile`, or let g1t write one. It runs on
 behind the app's Worker, at the same addresses, custom domains and
 previews as any other app.
 
-There is nothing to set: push a project with a `Dockerfile`, or a server
-g1t recognises, and it deploys as a container. What a project is built as
-is decided in this order:
+A container is the fallback, for what cannot be served as a site or run
+as a Worker ([What a project is built as](#what-a-project-is-built-as)):
+a Python, Go, Ruby, PHP or Rust server, a Node.js server with a
+`Dockerfile` of its own or one that cannot run as a Worker, a framework
+set up to need a server, or a `Dockerfile` with nothing else to serve.
+There is nothing to set for those. A site or a Node.js server is built
+without its `Dockerfile`; to deploy its container instead, set **Build
+as** to **Container** under **Settings → Deployments**.
 
-1. **Build as**, under **Settings → Deployments**: **Static site**,
-   **Workers** or **Docker** is what it is built as, whatever else it has.
-2. **Auto** (the default) finds it from its files:
-   1. A Wrangler config, or a framework's Cloudflare adapter, is a
-      Workers project.
-   2. A site (a framework that builds one, a `build` script, or an
-      `index.html`) beside a `Dockerfile` is a container when the
-      Dockerfile runs a server: its last stage has `CMD` or `ENTRYPOINT`,
-      or `EXPOSE` on an image that is not only a file server. A
-      Dockerfile that only copies the site into `nginx`, `httpd`, `caddy`,
-      `lighttpd`, `busybox` or another file server, or says none of those,
-      leaves it a site, which g1t serves itself for nothing while no one
-      visits.
-   3. A framework that builds a static site, with no such Dockerfile, is
-      that site.
-   4. A framework set up to need a server is a container, from its
-      `Dockerfile`, or one g1t writes for it.
-   5. A project with no framework g1t knows is a container when it has a
-      `Dockerfile` (or `Containerfile`, or the path set as its
-      **Dockerfile**), or is a server g1t recognises.
-   6. Otherwise a static site or plain HTML, as above; with nothing to
-      serve, the build fails, saying to add a `Dockerfile`.
-
-When a project could be either, the build's log says which it chose and
-why, near its top: for example, "Building it as a container from
-Dockerfile, not as the static site it also has: its Dockerfile starts a
-server of its own (`CMD`). Set **Build as** to Static site to serve the
-site instead."
+The build's log says which it chose and why, near its top: for example,
+"Built as a static site; Dockerfile is not used (a container is only the
+fallback; choose **Build as**: Container to use it)", or "Could not run as
+a Worker: it depends on `better-sqlite3`, which builds native code a
+Worker cannot load; deploying as a container."
 
 g1t writes a Dockerfile for these, when there is none:
 
@@ -451,9 +529,10 @@ as the job ends, saying how it ended, rather than staying **Building**.
   runs on Linux and macOS, with `curl` and `jq` or `python3`.
 
 `g1t/detect` says what a build of the checkout would find, without
-building anything: its outputs are `kind` (`workers`, `static`, `html` or
-`none`), `install`, `build`, `output-dir` and `framework` (such as
-`astro` or `nextjs`, empty when there is none). A framework set up to
+building anything: its outputs are `kind` (`workers`, `static`, `html`, `container` or
+`none`), `install`, `build`, `output-dir`, `framework` (such as
+`astro`, `nextjs` or `node`, empty when there is none), `dockerfile` and
+`port` for a container, and `entry` for a Node.js server run as a Worker. A framework set up to
 need a server is `none`, and the step's log says what to change. Use
 them to cache, or to fail early:
 
@@ -635,7 +714,7 @@ Under the project's **Settings → Deployments**,
 | --- | --- | --- |
 | Production | On | Deploy the default branch on every push. |
 | Previews | On | A preview for every branch with an open pull request. |
-| Build as | Auto | **Auto** (found from its files), **Static site**, **Workers** or **Docker**; see [Docker deployments](#docker-deployments). |
+| Build as | Auto | **Auto** (found from its files, a site or a Worker before a container), **Static site**, **Workers** or **Container**; see [What a project is built as](#what-a-project-is-built-as). |
 | Dockerfile | `Dockerfile` or `Containerfile` | For a container: its Dockerfile's path, inside the project. |
 | Container size | `lite` | For a container: the instance it runs at, with its price an hour awake. |
 | Build command | The project's own | Runs instead of `npm run build`, or before bundling a Workers project. Not used for a container. |
@@ -878,9 +957,11 @@ own code (October 2026):
 | "Deployments come with the g1t plan … and `<workspace>` does not have it" | An owner starts the g1t plan under Billing. |
 | A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing. |
 | "Stopped: unusual CPU use" | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining). |
-| "found nothing to serve" | Add a `Dockerfile`, a `build` script, an `index.html`, or a Workers config; or set **Output directory**. |
+| "found nothing to serve" | Add a `build` script, an `index.html`, a Workers config or a `Dockerfile`; or set **Output directory**. |
 | "Docker deployments are switched off on this g1t" | The project is a container, and this g1t (a self-hosted one) runs none. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments). |
-| "**Build as** is Docker, but this project has no Dockerfile" | Add a `Dockerfile`, or set **Dockerfile** to its path. |
+| "**Build as** is Container, but this project has no Dockerfile" | Add a `Dockerfile`, or set **Dockerfile** to its path. |
+| "Could not run as a Worker: …; deploying as a container" | The Node.js server cannot run as a Worker, for the reason given; it deploys as a container. See [Node.js servers as Workers](#nodejs-servers-as-workers) for what to change, or set **Build as** to **Container** to skip the attempt. |
+| "Built as a … site; Dockerfile is not used" | A site is preferred to a container. Set **Build as** to **Container** to deploy the `Dockerfile` instead. |
 | "The image is 2.4 GB, more than the 2.0 GB an app of its size (lite) can hold" | Make the image smaller (a slim base image, a multi-stage build), or choose a larger **Container size**. |
 | A container app says "The app did not start" | It did not answer on its port within 90 seconds. Make it listen on `0.0.0.0` at `PORT`, or `EXPOSE` the port it uses in its Dockerfile. Its output is in the build's log only while it builds; run the image locally with `docker run -e PORT=8080 -p 8080:8080` to see it start. |
 | "the output directory `x` does not exist after the build" | The build wrote elsewhere: check its log, then fix **Output directory**. |
