@@ -619,6 +619,97 @@ g1t run cancel [OPTIONS] [RUN]
 
 Calls [`cancel_workflow_run`](/reference/api/actions/cancel-workflow-run/).
 
+## g1t workflow
+
+Workflows in .g1t/workflows: list, view, run, enable, disable.
+
+### g1t workflow list
+
+List the workflows in .g1t/workflows, with whether each is on.
+
+```text
+g1t workflow list [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-a, --all` | Include the workflows that are turned off. |
+| `-L, --limit <LIMIT>` | Default: `50`. |
+
+Calls [`list_workflows`](/reference/api/actions/list-workflows/).
+
+### g1t workflow view
+
+Show a workflow and its latest runs; --yaml prints its file.
+
+```text
+g1t workflow view [OPTIONS] [WORKFLOW]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[WORKFLOW]` | Its file name (ci.yml), id (wfl_…) or name; asked for at a terminal when left out. |
+| `-y, --yaml` | Print the workflow's file. |
+| `-g, --ref <REF>` | The branch or tag to read the file on, with --yaml; the default branch when left out. |
+| `-w, --web` | Open it in the browser. |
+
+Calls [`list_workflows`](/reference/api/actions/list-workflows/), [`get_workflow`](/reference/api/actions/get-workflow/), [`list_workflow_runs`](/reference/api/actions/list-workflow-runs/).
+
+### g1t workflow run
+
+Run a workflow that has `on: workflow_dispatch`, and print its run's address.
+
+```text
+g1t workflow run [OPTIONS] [WORKFLOW]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[WORKFLOW]` | Its file name (ci.yml), id (wfl_…) or name; asked for at a terminal when left out. |
+| `-g, --ref <REF>` | The branch or tag to run it on; the default branch when left out. |
+| `-f, --raw-field <KEY=VALUE>` | An input, key=value; repeat for more. |
+| `-F, --field <KEY=VALUE>` | An input, key=value, where @FILE reads the value from a file (@- from stdin). |
+
+```text
+Inputs are given with -f (or -F, where @FILE reads a file), or as a JSON object on
+stdin with --json. At a terminal, with none given, g1t asks for each input.
+
+Examples:
+  g1t workflow run release.yml
+  g1t workflow run release.yml --ref v1.4.0 -f channel=stable -f dry_run=true
+  echo '{"channel":"stable"}' | g1t workflow run Release --json
+```
+
+Calls [`list_workflows`](/reference/api/actions/list-workflows/), [`dispatch_workflow`](/reference/api/actions/dispatch-workflow/), [`list_workflow_runs`](/reference/api/actions/list-workflow-runs/).
+
+### g1t workflow enable
+
+Turn a workflow on again.
+
+```text
+g1t workflow enable [OPTIONS] [WORKFLOW]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[WORKFLOW]` | Its file name (ci.yml), id (wfl_…) or name; asked for at a terminal when left out. |
+
+Calls [`list_workflows`](/reference/api/actions/list-workflows/), [`enable_workflow`](/reference/api/actions/enable-workflow/).
+
+### g1t workflow disable
+
+Turn a workflow off: its file stays, and nothing starts it until it is turned on.
+
+```text
+g1t workflow disable [OPTIONS] [WORKFLOW]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[WORKFLOW]` | Its file name (ci.yml), id (wfl_…) or name; asked for at a terminal when left out. |
+
+Calls [`list_workflows`](/reference/api/actions/list-workflows/), [`disable_workflow`](/reference/api/actions/disable-workflow/).
+
 ## g1t secret
 
 Secrets for workflows and deployments, a repository's or a workspace's.

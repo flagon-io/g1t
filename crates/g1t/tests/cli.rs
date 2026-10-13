@@ -1133,3 +1133,291 @@ fn cache_delete_takes_an_id_or_a_key() {
     assert_eq!(seen[1].method, "DELETE");
     assert!(seen[1].target.starts_with("/repos/acme/web/actions/caches?key=npm-full-Linux-abc&ref=refs"), "{}", seen[1].target);
 }
+
+fn workflows_mock(dispatched: Value) -> Mock {
+    Mock::start(move |r| match (r.method.as_str(), r.path()) {
+        ("GET", "/repos/acme/web/actions/workflows") => (
+            200,
+            json!([
+                { "id": "wfl_1", "path": ".g1t/workflows/ci.yml", "name": "CI", "events": ["push", "pull_request"],
+                  "state": "active", "error": null, "notes": [], "dispatch": null, "last_run": null },
+                { "id": "wfl_2", "path": ".g1t/workflows/release.yml", "name": "Release", "events": ["workflow_dispatch"],
+                  "state": "active", "error": null, "notes": [],
+                  "dispatch": { "channel": { "type": "choice", "options": ["beta", "stable"], "default": "beta" } }, "last_run": null },
+                { "id": "wfl_3", "path": ".g1t/workflows/nightly.yml", "name": "Nightly", "events": ["schedule"],
+                  "state": "disabled", "error": null, "notes": [], "dispatch": null, "last_run": null }
+            ]),
+        ),
+        ("GET", "/repos/acme/web/actions/workflows/wfl_2") => (
+            200,
+            json!({ "id": "wfl_2", "path": ".g1t/workflows/release.yml", "name": "Release", "state": "active",
+                    "ref": "v1.4.0", "source": "name: Release\non: workflow_dispatch\n" }),
+        ),
+        ("GET", "/repos/acme/web/actions/runs") => (
+            200,
+            json!([{ "id": "run_9", "workflow_id": "wfl_2", "name": "Release", "title": "Release run by ana", "number": 4,
+                     "event": "workflow_dispatch", "ref": "refs/heads/main", "status": "queued", "conclusion": null,
+                     "created_at": "2999-01-01T00:00:00Z" }]),
+        ),
+        ("POST", "/repos/acme/web/actions/workflows/wfl_2/dispatches") => (200, dispatched.clone()),
+        ("PUT", p) if p.ends_with("/enable") || p.ends_with("/disable") => (
+            200,
+            json!({ "id": "wfl_3", "path": ".g1t/workflows/nightly.yml", "name": "Nightly",
+                    "state": if p.ends_with("/enable") { "active" } else { "disabled" } }),
+        ),
+        _ => (404, json!({ "error": { "message": "No such endpoint." } })),
+    })
+}
+
+fn release_run() -> Value {
+    json!({ "id": "run_9", "workflow_id": "wfl_2", "name": "Release", "number": 4, "event": "workflow_dispatch",
+            "ref": "refs/tags/v1.4.0", "status": "queued" })
+}
+
+#[test]
+fn workflow_list_shows_those_turned_on_unless_all() {
+    let mock = workflows_mock(json!({}));
+    let out = run(&mock, &["workflow", "list", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let names: Vec<&str> = out
+        .stdout
+        .lines()
+        .map(|l| l.split('\t').next().unwrap())
+        .collect();
+    assert_eq!(names, ["CI", "Release"]);
+    assert_eq!(
+        out.stdout.lines().next().unwrap(),
+        "CI\tactive\tci.yml\tpush, pull_request\twfl_1"
+    );
+    let out = run(
+        &mock,
+        &[
+            "workflow", "list", "--all", "-R", "acme/web", "--jq", ".[].path",
+        ],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout.lines().count(), 3);
+}
+
+#[test]
+fn workflow_view_takes_a_name_and_shows_its_latest_runs() {
+    let mock = workflows_mock(json!({}));
+    let out = run(
+        &mock,
+        &[
+            "workflow",
+            "view",
+            "release",
+            "-R",
+            "acme/web",
+            "--json",
+            "id,runs,url",
+        ],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let shown: Value = serde_json::from_str(&out.stdout).unwrap();
+    assert_eq!(shown["id"], "wfl_2");
+    assert_eq!(shown["runs"][0]["id"], "run_9");
+    assert_eq!(
+        shown["url"],
+        "https://g1t.sh/acme/web/actions?workflow=wfl_2"
+    );
+    let runs = mock
+        .requests()
+        .into_iter()
+        .find(|r| r.path() == "/repos/acme/web/actions/runs")
+        .unwrap();
+    assert_eq!(
+        runs.target,
+        "/repos/acme/web/actions/runs?workflow=wfl_2&per_page=5"
+    );
+    // Its file, on a tag: only the file when piped.
+    let out = run(
+        &mock,
+        &[
+            "workflow",
+            "view",
+            "release.yml",
+            "--yaml",
+            "--ref",
+            "v1.4.0",
+            "-R",
+            "acme/web",
+        ],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout, "name: Release\non: workflow_dispatch\n");
+    assert!(
+        mock.requests()
+            .iter()
+            .any(|r| r.target == "/repos/acme/web/actions/workflows/wfl_2?ref=v1.4.0")
+    );
+    // --ref is for --yaml.
+    let out = run(
+        &mock,
+        &[
+            "workflow", "view", "ci.yml", "--ref", "main", "-R", "acme/web",
+        ],
+    );
+    assert_eq!(out.code, 2);
+}
+
+#[test]
+fn workflow_run_sends_the_ref_and_inputs_and_prints_the_run() {
+    let mock = workflows_mock(release_run());
+    let out = run(
+        &mock,
+        &[
+            "workflow",
+            "run",
+            "Release",
+            "--ref",
+            "v1.4.0",
+            "-f",
+            "channel=stable",
+            "-R",
+            "acme/web",
+        ],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(
+        out.stdout.trim(),
+        "https://g1t.sh/acme/web/actions/runs/run_9"
+    );
+    assert!(
+        out.stderr
+            .contains("Started Release (release.yml) #4 on v1.4.0"),
+        "{}",
+        out.stderr
+    );
+    let sent = mock
+        .requests()
+        .into_iter()
+        .find(|r| r.method == "POST")
+        .unwrap();
+    assert_eq!(
+        sent.json(),
+        json!({ "ref": "v1.4.0", "inputs": { "channel": "stable" } })
+    );
+}
+
+#[test]
+fn workflow_run_json_reads_the_inputs_from_stdin() {
+    let mock = workflows_mock(release_run());
+    let dir = temp_dir("dispatch");
+    let out = g1t(
+        &mock,
+        &dir,
+        &["workflow", "run", "release.yml", "--json", "-R", "acme/web"],
+        Some("{\"channel\":\"beta\",\"dry_run\":true}"),
+        Some("g1t_test"),
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(
+        out.stdout.trim(),
+        "https://g1t.sh/acme/web/actions/runs/run_9"
+    );
+    let sent = mock
+        .requests()
+        .into_iter()
+        .find(|r| r.method == "POST")
+        .unwrap();
+    assert_eq!(
+        sent.json(),
+        json!({ "inputs": { "channel": "beta", "dry_run": true } })
+    );
+    // Not an object, or with -f as well, is using it wrongly.
+    let out = g1t(
+        &mock,
+        &dir,
+        &["workflow", "run", "release.yml", "--json", "-R", "acme/web"],
+        Some("[1]"),
+        Some("g1t_test"),
+    );
+    assert_eq!(out.code, 2);
+    let out = g1t(
+        &mock,
+        &dir,
+        &[
+            "workflow",
+            "run",
+            "release.yml",
+            "--json",
+            "-f",
+            "a=b",
+            "-R",
+            "acme/web",
+        ],
+        Some("{}"),
+        Some("g1t_test"),
+    );
+    assert_eq!(out.code, 2);
+}
+
+#[test]
+fn workflow_run_looks_for_the_run_when_the_answer_lacks_it() {
+    let mock = workflows_mock(json!({}));
+    let out = run(
+        &mock,
+        &["workflow", "run", "wfl_2", "-R", "acme/web", "--jq", ".id"],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout, "run_9\n");
+    assert!(mock.requests().iter().any(|r| r.target
+        == "/repos/acme/web/actions/runs?workflow=wfl_2&event=workflow_dispatch&per_page=1"));
+}
+
+#[test]
+fn workflow_enable_and_disable_put_its_state() {
+    let mock = workflows_mock(json!({}));
+    let out = run(
+        &mock,
+        &["workflow", "enable", "nightly.yml", "-R", "acme/web"],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(
+        out.stderr.contains("Turned Nightly (nightly.yml) on"),
+        "{}",
+        out.stderr
+    );
+    let out = run(
+        &mock,
+        &[
+            "workflow", "disable", "Nightly", "-R", "acme/web", "--json", "state",
+        ],
+    );
+    assert_eq!(out.stdout, "{\"state\":\"disabled\"}\n");
+    let puts: Vec<String> = mock
+        .requests()
+        .into_iter()
+        .filter(|r| r.method == "PUT")
+        .map(|r| r.path().to_owned())
+        .collect();
+    assert_eq!(
+        puts,
+        [
+            "/repos/acme/web/actions/workflows/wfl_3/enable",
+            "/repos/acme/web/actions/workflows/wfl_3/disable"
+        ]
+    );
+}
+
+#[test]
+fn a_workflow_that_is_not_there_or_not_named_fails_without_asking() {
+    let mock = workflows_mock(json!({}));
+    let out = run(&mock, &["workflow", "view", "deploy.yml", "-R", "acme/web"]);
+    assert_eq!(out.code, 1);
+    assert!(
+        out.stderr
+            .contains("There is no workflow deploy.yml in acme/web"),
+        "{}",
+        out.stderr
+    );
+    let out = run(&mock, &["workflow", "run", "-R", "acme/web"]);
+    assert_eq!(out.code, 2);
+    assert!(
+        out.stderr.contains("The workflow is needed"),
+        "{}",
+        out.stderr
+    );
+}

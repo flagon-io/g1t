@@ -3055,6 +3055,39 @@
     ],
     "notes": "`state` is `active` or `disabled`. `dispatch` holds the `workflow_dispatch` inputs, or is `null` when the workflow cannot be run by hand. See [GitHub Actions](/guides/actions/)."
   },
+  "get_workflow": {
+    "params": {
+      "workflow": "release.yml"
+    },
+    "query": {
+      "ref": "main"
+    },
+    "response": {
+      "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nr",
+      "path": ".g1t/workflows/release.yml",
+      "name": "Release",
+      "events": [
+        "workflow_dispatch"
+      ],
+      "state": "active",
+      "error": null,
+      "notes": [],
+      "dispatch": {
+        "channel": {
+          "type": "choice",
+          "options": [
+            "beta",
+            "stable"
+          ],
+          "default": "beta"
+        }
+      },
+      "last_run": null,
+      "ref": "main",
+      "source": "name: Release\non:\n  workflow_dispatch:\n    inputs:\n      channel:\n        type: choice\n        options: [beta, stable]\n        default: beta\njobs:\n  release:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/release.sh ${{ inputs.channel }}\n"
+    },
+    "notes": "`workflow` is the workflow's id, file name, path or name. `source` is its file as written on `ref`; `404` when the file is not on that branch or tag."
+  },
   "list_workflow_runs": {
     "query": {
       "workflow": "ci.yml",

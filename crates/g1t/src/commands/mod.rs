@@ -16,6 +16,7 @@ pub mod session;
 pub mod status;
 pub mod why;
 pub mod work;
+pub mod workflow;
 
 use clap::CommandFactory;
 
@@ -40,6 +41,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Issue(command) => issue::run(&Ctx::new(cli.global)?, command),
         Command::Pr(command) => pr::run(&Ctx::new(cli.global)?, command),
         Command::Run(command) => run::run(&Ctx::new(cli.global)?, command),
+        Command::Workflow(command) => workflow::run(&Ctx::new(cli.global)?, command),
         Command::Secret(command) => secret::run(&Ctx::new(cli.global)?, command),
         Command::Cache(command) => cache::run(&Ctx::new(cli.global)?, command),
         Command::Deploy(command) => deploy::run(&Ctx::new(cli.global)?, command),

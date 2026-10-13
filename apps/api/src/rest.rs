@@ -750,6 +750,12 @@ pub const ROUTES: &[Route] = &[
     ),
     route(
         "GET",
+        "/repos/:owner/:name/actions/workflows/:workflow",
+        Op::GetWorkflow,
+        &[("ref", "ref")],
+    ),
+    route(
+        "GET",
         "/repos/:owner/:name/actions/workflows/:workflow/runs",
         Op::ListWorkflowRuns,
         &[("branch", "branch"), ("event", "event"), ("per_page", "limit")],

@@ -1,6 +1,6 @@
 ---
 title: The g1t CLI
-description: Install the g1t command line, sign in, and work with repositories, issues, pull requests, runs, deployments, secrets and logs from a terminal, a script or an agent.
+description: Install the g1t command line, sign in, and work with repositories, issues, pull requests, runs, workflows, deployments, secrets and logs from a terminal, a script or an agent.
 ---
 
 `g1t` is the command line for g1t. It does the work you would otherwise do on
@@ -248,6 +248,42 @@ steps that failed, each with its last 60 lines (`-n` for more or fewer):
 what you need to see why, without the rest of the log. `g1t run watch`
 exits `1` if the run fails.
 
+### Workflows
+
+`g1t workflow` works with the workflows in `.g1t/workflows`, as the
+repository's **Actions** page does.
+
+```sh
+g1t workflow list                      # those turned on; --all for every one
+g1t workflow view ci.yml               # its triggers, inputs and latest runs
+g1t workflow view release.yml --yaml --ref v1.4.0
+g1t workflow run release.yml -f channel=stable
+g1t workflow disable Nightly
+g1t workflow enable nightly.yml
+```
+
+A workflow is named by its file name (`ci.yml`), its id (`wfl_…`) or its
+name (`CI`, in any case). When more than one has that name, name it by its
+file. Left out at a terminal, g1t asks which; in a script it is an error
+that names what to pass.
+
+`g1t workflow run` runs a workflow that has `on: workflow_dispatch`, on the
+default branch or the branch or tag `--ref` names, and prints its run's
+address once the run is there, so `g1t run watch` can follow it. Give its
+inputs with `-f key=value` (or `-F key=@file` to read a value from a file),
+or as one JSON object on stdin with `--json`:
+
+```sh
+echo '{"channel":"stable","dry_run":true}' | g1t workflow run release.yml --json
+```
+
+At a terminal with no inputs given, g1t asks for each, offering its
+default. Only the inputs the workflow declares are taken, as on the
+[Actions page](/guides/actions/#runs-and-logs). `g1t workflow view --yaml`
+prints the workflow's file as it is on the default branch, or on `--ref`.
+Turning a workflow off keeps its file: nothing starts it until it is
+turned on again, and a workflow the workspace requires stays on.
+
 ### Deployments, logs and secrets
 
 ```sh
@@ -402,7 +438,8 @@ older than the CLI, a command it cannot do yet fails saying so.
 ## Scripting with JSON
 
 Every command takes `--json`. Alone, it prints every field the API returns;
-with a comma-separated list, only those:
+with a comma-separated list, only those (`g1t workflow run` is the one
+exception: there, `--json` alone reads the inputs from stdin):
 
 ```sh
 g1t pr list --json number,title,check_status
@@ -504,6 +541,7 @@ checks and runs; add `--json` to read results, and see `g1t <command> --help`.
 - Open a pull request: `g1t pr create --fill --issue <n>`
 - Wait for checks: `g1t pr checks --watch --fail-fast` (exit 0 passed, 1 failed)
 - See why a run failed: `g1t run logs --failed`
+- Run a workflow by hand: `g1t workflow run <file> -f key=value`
 - Anything else: `g1t api --list <word>`, then `g1t api <operation>`
 ```
 

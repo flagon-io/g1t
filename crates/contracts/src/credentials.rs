@@ -284,6 +284,7 @@ pub const READ_OPERATIONS: &[&str] = &[
     "get_context",
     "search",
     "list_workflows",
+    "get_workflow",
     "list_workflow_runs",
     "get_workflow_run",
     "get_job_logs",

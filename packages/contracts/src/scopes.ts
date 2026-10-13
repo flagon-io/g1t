@@ -503,6 +503,7 @@ export const OPERATION_SCOPES = [
   ["end_session", "pull_requests:write"],
   ["record_session_entries", "pull_requests:write"],
   ["list_workflows", "workflows:read"],
+  ["get_workflow", "workflows:read"],
   ["list_workflow_runs", "workflows:read"],
   ["get_workflow_run", "workflows:read"],
   ["get_job_logs", "workflows:read"],

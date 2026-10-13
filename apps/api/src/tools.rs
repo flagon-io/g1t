@@ -218,6 +218,7 @@ pub const TOOLS: &[Tool] = &[
         default_action: None,
         actions: &[
             a("list", Op::ListWorkflows, "Workflows on the default branch"),
+            a("get", Op::GetWorkflow, "One workflow by id, file or name, with its file on a branch or tag"),
             a("list_runs", Op::ListWorkflowRuns, "Runs, newest first"),
             a("get_run", Op::GetWorkflowRun, "One run with its jobs and steps; an earlier attempt with attempt"),
             a("job_logs", Op::GetJobLogs, "A job's log after a sequence number"),

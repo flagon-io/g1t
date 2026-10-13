@@ -1300,7 +1300,8 @@ See [What g1t can't do yet](/about/limitations/#no-npm-trusted-publishing-or-pro
 
 Open a repository's **Actions** page, in its sidebar. Pick a workflow to
 see its runs, run it by hand if it has `workflow_dispatch`, or turn it off
-without touching its file.
+without touching its file. From a terminal, [`g1t workflow`](/guides/cli/#workflows)
+does the same.
 
 A run's page opens on its **Summary**. Its sidebar lists **All jobs**;
 pick one to see its steps and their logs as they are written. Groups
@@ -2019,6 +2020,7 @@ usually work once they point at `https://api.g1t.sh`.
 | `workflow` action | Route |
 | --- | --- |
 | `list` | `GET /repos/{owner}/{repo}/actions/workflows` |
+| `get` | `GET /repos/{owner}/{repo}/actions/workflows/{workflow}`, with `ref`: the workflow, with `source`, its file on that branch or tag |
 | `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha` |
 | `get_run` | `GET /repos/{owner}/{repo}/actions/runs/{id}` |
 | `job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=`, or `?format=text` for the whole log as plain text |

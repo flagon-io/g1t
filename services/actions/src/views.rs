@@ -6,7 +6,8 @@ use g1t_contracts::access::Capability;
 use g1t_contracts::checks::{ActionsChecksArgs, MAX_COMMITS};
 use g1t_contracts::actions::{
     Annotation, Job, JobLog, JobLogText, JobLogTextArgs, JobSummary, LogChunk, LogsArgs, MAX_RUN_LOG_BYTES, RunArgs, RunAttempt, RunDetail,
-    RunLogsArgs, RunsArgs, SetWorkflowEnabledArgs, StepState, StepSummary, SummariesArgs, Workflow, WorkflowNote, WorkflowRun, WorkflowsArgs,
+    RunLogsArgs, RunsArgs, SetWorkflowEnabledArgs, StepState, StepSummary, SummariesArgs, Workflow, WorkflowArgs, WorkflowDetail, WorkflowNote, WorkflowRun,
+    WorkflowsArgs,
 };
 use g1t_contracts::{FailureCode, Outcome};
 use serde::Deserialize;
@@ -125,6 +126,18 @@ fn job_view(row: JobRow) -> Job {
     }
 }
 
+/// The workflow `wanted` names: its id, its path, its file name, or its
+/// name (any case), in that order of preference.
+fn pick_workflow<'a>(rows: &'a [WorkflowRow], wanted: &str) -> Option<&'a WorkflowRow> {
+    let wanted = wanted.trim();
+    let file = wanted.trim_start_matches(".g1t/workflows/");
+    rows.iter()
+        .find(|row| row.id == wanted || row.path == wanted)
+        .or_else(|| rows.iter().find(|row| row.path == format!("{}/{file}", workflow::FOLDER)))
+        .or_else(|| rows.iter().find(|row| row.path.rsplit('/').next() == Some(file)))
+        .or_else(|| rows.iter().find(|row| row.name.eq_ignore_ascii_case(wanted)))
+}
+
 impl Actions {
     async fn summary(&self, row: &WorkflowRow) -> Result<Workflow> {
         let last_run = self
@@ -192,6 +205,49 @@ impl Actions {
             out.push(self.summary(row).await?);
         }
         Ok(Outcome::Ok(out))
+    }
+
+    /// `workflow`: one workflow, by its id, file name, path or name, with its
+    /// file as of a branch or tag.
+    pub async fn workflow(&self, a: WorkflowArgs) -> Result<Outcome<WorkflowDetail>> {
+        let Some(repo) = self.visible_repo(&a.repo, &a.viewer).await? else {
+            return Ok(fail(FailureCode::NotFound, "There is no such repository."));
+        };
+        let ws = self.workspace_actor(&repo.namespace).await?;
+        if !self.synced(&repo.id).await?
+            && let Some(ws) = &ws
+        {
+            self.sync(&repo, ws).await?;
+        }
+        let rows = self
+            .db
+            .prepare("SELECT * FROM workflows WHERE repo_id = ? ORDER BY name")
+            .bind(&[repo.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<WorkflowRow>()?;
+        let Some(row) = pick_workflow(&rows, &a.workflow) else {
+            return Ok(fail(FailureCode::NotFound, format!("There is no workflow {} in {}/{}.", a.workflow.trim(), repo.namespace, repo.name)));
+        };
+        let workflow = self.summary(row).await?;
+        let (git_ref, source) = match a.git_ref.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+            None => (repo.default_branch.clone(), row.source.clone()),
+            Some(wanted) => {
+                let Some(ws) = &ws else {
+                    return Ok(fail(FailureCode::NotFound, "There is no such workspace."));
+                };
+                let short = wanted.trim_start_matches("refs/heads/").trim_start_matches("refs/tags/");
+                let read = self.read_for(&repo, ws, Some(short)).await?;
+                if read.head.is_none() {
+                    return Ok(fail(FailureCode::NotFound, format!("There is no branch or tag called {short}.")));
+                }
+                let Some(file) = read.files.into_iter().find(|file| file.path == row.path) else {
+                    return Ok(fail(FailureCode::NotFound, format!("{} is not on {short}.", row.path)));
+                };
+                (short.to_owned(), file.source)
+            }
+        };
+        Ok(Outcome::Ok(WorkflowDetail { workflow, git_ref, source }))
     }
 
     pub async fn runs(&self, a: RunsArgs) -> Result<Outcome<Vec<WorkflowRun>>> {

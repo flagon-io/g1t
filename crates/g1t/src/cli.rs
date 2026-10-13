@@ -12,6 +12,7 @@ Examples:
   g1t pr create --fill
   g1t pr checks --watch --fail-fast
   g1t run logs --failed
+  g1t workflow run release.yml -f channel=stable
   g1t api list_issues --jq '.[].title'
 
 Environment:
@@ -91,6 +92,9 @@ pub enum Command {
     /// Workflow runs: list, view, watch, logs, rerun, cancel.
     #[command(subcommand)]
     Run(RunCommand),
+    /// Workflows in .g1t/workflows: list, view, run, enable, disable.
+    #[command(subcommand)]
+    Workflow(WorkflowCommand),
     /// Secrets for workflows and deployments, a repository's or a workspace's.
     #[command(subcommand)]
     Secret(SecretCommand),
@@ -677,6 +681,75 @@ pub struct RunRerunArgs {
     /// With debug logging.
     #[arg(short, long)]
     pub debug: bool,
+}
+
+// --- workflow ---------------------------------------------------------
+
+#[derive(Debug, Subcommand)]
+pub enum WorkflowCommand {
+    /// List the workflows in .g1t/workflows, with whether each is on.
+    List(WorkflowListArgs),
+    /// Show a workflow and its latest runs; --yaml prints its file.
+    View(WorkflowViewArgs),
+    /// Run a workflow that has `on: workflow_dispatch`, and print its run's address.
+    #[command(after_help = "\
+Inputs are given with -f (or -F, where @FILE reads a file), or as a JSON object on
+stdin with --json. At a terminal, with none given, g1t asks for each input.
+
+Examples:
+  g1t workflow run release.yml
+  g1t workflow run release.yml --ref v1.4.0 -f channel=stable -f dry_run=true
+  echo '{\"channel\":\"stable\"}' | g1t workflow run Release --json")]
+    Run(WorkflowRunArgs),
+    /// Turn a workflow on again.
+    Enable(WorkflowSelect),
+    /// Turn a workflow off: its file stays, and nothing starts it until it is turned on.
+    Disable(WorkflowSelect),
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowSelect {
+    /// Its file name (ci.yml), id (wfl_…) or name; asked for at a terminal when left out.
+    pub workflow: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowListArgs {
+    /// Include the workflows that are turned off.
+    #[arg(short, long)]
+    pub all: bool,
+    #[arg(short = 'L', long, default_value_t = 50)]
+    pub limit: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowViewArgs {
+    /// Its file name (ci.yml), id (wfl_…) or name; asked for at a terminal when left out.
+    pub workflow: Option<String>,
+    /// Print the workflow's file.
+    #[arg(short, long)]
+    pub yaml: bool,
+    /// The branch or tag to read the file on, with --yaml; the default branch when left out.
+    #[arg(short, long = "ref", value_name = "REF", requires = "yaml")]
+    pub git_ref: Option<String>,
+    /// Open it in the browser.
+    #[arg(short, long, conflicts_with = "yaml")]
+    pub web: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkflowRunArgs {
+    /// Its file name (ci.yml), id (wfl_…) or name; asked for at a terminal when left out.
+    pub workflow: Option<String>,
+    /// The branch or tag to run it on; the default branch when left out.
+    #[arg(short, long = "ref", value_name = "REF")]
+    pub git_ref: Option<String>,
+    /// An input, key=value; repeat for more.
+    #[arg(short = 'f', long = "raw-field", value_name = "KEY=VALUE")]
+    pub raw_field: Vec<String>,
+    /// An input, key=value, where @FILE reads the value from a file (@- from stdin).
+    #[arg(short = 'F', long = "field", value_name = "KEY=VALUE")]
+    pub field: Vec<String>,
 }
 
 // --- secret -----------------------------------------------------------

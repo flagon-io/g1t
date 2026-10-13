@@ -1138,6 +1138,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("record_session_entries", Scope::PullRequestsWrite),
     // Workflows.
     ("list_workflows", Scope::WorkflowsRead),
+    ("get_workflow", Scope::WorkflowsRead),
     ("list_workflow_runs", Scope::WorkflowsRead),
     ("get_workflow_run", Scope::WorkflowsRead),
     ("get_job_logs", Scope::WorkflowsRead),
