@@ -79,7 +79,9 @@ export function resumeFrom(request: Request, response: Response): { validator: s
 
 /** Whether a `206` carries exactly the rest of the file from `offset`. */
 function restFrom(response: Response, offset: number, length: number): boolean {
-  if (response.status !== 206 || response.body === null) return false;
+  // The rest is joined on byte for byte, so it must come as it is, like the start did.
+  const encoding = (response.headers.get("content-encoding") ?? "identity").toLowerCase();
+  if (response.status !== 206 || response.body === null || encoding !== "identity") return false;
   const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec((response.headers.get("content-range") ?? "").trim());
   return range !== null && Number(range[1]) === offset && Number(range[2]) === length - 1 && Number(range[3]) === length;
 }

@@ -126,7 +126,7 @@ function breaking(bytes: Uint8Array, cut: number | null): ReadableStream<Uint8Ar
  * file's ETag gets a `206` with the rest, as registry.npmjs.org answers
  * one, unless `ranges` is false.
  */
-function rangedUpstream(cuts: (number | null)[], options: { ranges?: boolean } = {}) {
+function rangedUpstream(cuts: (number | null)[], options: { ranges?: boolean; encodedRest?: boolean } = {}) {
   const requests: Request[] = [];
   const send = async (request: Request) => {
     requests.push(request);
@@ -137,7 +137,7 @@ function rangedUpstream(cuts: (number | null)[], options: { ranges?: boolean } =
       const rest = file.slice(start);
       return new Response(breaking(rest, cut === null ? null : cut - start), {
         status: 206,
-        headers: { "content-length": String(rest.length), "content-range": `bytes ${start}-${LARGE - 1}/${LARGE}`, "accept-ranges": "bytes", etag: ETAG },
+        headers: { "content-length": String(rest.length), "content-range": `bytes ${start}-${LARGE - 1}/${LARGE}`, "accept-ranges": "bytes", etag: ETAG, ...(options.encodedRest ? { "content-encoding": "gzip" } : {}) },
       });
     }
     return new Response(breaking(file, cut), {
@@ -166,6 +166,13 @@ test("a large tarball that breaks off midway is resumed from where it stopped, a
   assert.equal(requests[1].headers.get("if-range"), ETAG);
   assert.equal(requests[2].headers.get("user-agent"), "npm/11");
   assert.deepEqual(waits, [...RETRY_WAITS_MS]);
+});
+
+test("a rest that comes compressed is never joined on to a body that came as it is", async () => {
+  const { requests, send } = rangedUpstream([3_000_000, null], { encodedRest: true });
+  const response = await forward(tarball(), send, sleep);
+  await assert.rejects(response.arrayBuffer());
+  assert.equal(requests.length, 2);
 });
 
 test("a large tarball sent whole streams as it is, asked for once", async () => {
