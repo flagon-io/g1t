@@ -1,12 +1,12 @@
 import { Search } from "lucide-react";
-import { data, redirect, useLocation } from "react-router";
+import { Link, data, redirect, useLocation } from "react-router";
 
 import type { Invite } from "@g1t/contracts";
 
 import type { Route } from "./+types/invites";
-import { Badge, Button, EmptyState, Input, Notice, PageHeader, When } from "~/components/ui";
+import { Badge, Button, EmptyState, Field, Input, Notice, PageHeader, Section, Textarea, When } from "~/components/ui";
 import { text } from "~/lib/forms";
-import { doneMessage } from "~/lib/invites";
+import { type InvitesTab, doneMessage, invitesHref, invitesTab, parseGrant } from "~/lib/invites";
 import { identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
@@ -17,24 +17,42 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   requireStaff(context);
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.trim() ?? "";
-  const invites = await settle(identity.invites(query || null));
+  const tab = invitesTab(url.searchParams.get("tab"));
+  const invites = await settle(identity.invites(query || null, { toG1t: tab === "g1t" }));
+  const granted = url.searchParams.get("left");
   return {
     query,
+    tab,
     invites: invites.ok ? invites.value : [],
     error: invites.ok ? null : invites.error,
     done: doneMessage(url.searchParams.get("done")),
+    granted: granted && url.searchParams.get("who") ? { who: url.searchParams.get("who")!, left: granted } : null,
   };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
   const form = await request.formData();
-  if (text(form, "intent") !== "revoke") return data({ error: "Unknown action.", id: "" }, { status: 400 });
-  const result = await identity.revokeInvite(text(form, "id"), staff.email);
-  if (!result.ok) return data({ error: result.error.message, id: text(form, "id") }, { status: 422 });
   const url = new URL(request.url);
-  url.searchParams.set("done", "revoked");
-  throw redirect(`${url.pathname}${url.search}`);
+  switch (text(form, "intent")) {
+    case "revoke": {
+      const result = await identity.revokeInvite(text(form, "id"), staff.email);
+      if (!result.ok) return data({ error: result.error.message, id: text(form, "id") }, { status: 422 });
+      url.searchParams.set("done", "revoked");
+      throw redirect(`${url.pathname}${url.search}`);
+    }
+    case "grant": {
+      const grant = parseGrant(form);
+      if (!grant.ok) return data({ error: grant.error, id: "grant" }, { status: 422 });
+      const { username, amount, note } = grant.value;
+      const result = await identity.grantInvites(username, amount, note, staff.email);
+      if (!result.ok) return data({ error: result.error.message, id: "grant" }, { status: 422 });
+      throw redirect(
+        invitesHref({ tab: "g1t", q: username, done: "granted", who: username, left: `${result.value.remaining} of ${result.value.limit}` }),
+      );
+    }
+  }
+  return data({ error: "Unknown action.", id: "" }, { status: 400 });
 }
 
 type ActionData = Route.ComponentProps["actionData"];
@@ -48,7 +66,7 @@ function statusBadge(invite: Invite) {
     case "awaiting_answer":
       return <Badge tone="lavender">Waiting for an answer</Badge>;
     case "redeemed":
-      return <Badge tone="mint">Used{invite.redeemedBy ? ` by ${invite.redeemedBy}` : ""}</Badge>;
+      return <Badge tone="mint">{invite.chargedTo === "user" ? "Joined" : "Used"}{invite.redeemedBy ? ` as ${invite.redeemedBy}` : ""}</Badge>;
     case "declined":
       return <Badge>Declined</Badge>;
     case "expired":
@@ -56,6 +74,12 @@ function statusBadge(invite: Invite) {
     case "revoked":
       return <Badge tone="danger">Revoked</Badge>;
   }
+}
+
+/** What an invite is: an invite to g1t from Invite a friend, or an invitation into a workspace or onto a repository. */
+function kindOf(invite: Invite): string {
+  if (invite.chargedTo === "user") return invite.workspace ? `To g1t and ${invite.workspace}` : "To g1t";
+  return invite.workspace ? `Joins ${invite.workspace}` : "Repository or staff";
 }
 
 function InviteTable({ invites, actionData }: { invites: Invite[]; actionData: ActionData }) {
@@ -84,11 +108,13 @@ function InviteTable({ invites, actionData }: { invites: Invite[]; actionData: A
                   <span className="break-all">
                     {invite.email ?? (invite.invitee ? `@${invite.invitee}` : <span className="text-faint">anyone</span>)}
                   </span>
-                  {invite.workspace && <span className="block text-xs text-faint">joins {invite.workspace}</span>}
+                  <span className="block text-xs text-faint">{kindOf(invite)}</span>
                 </td>
                 <td className="px-4 py-2">
                   {invite.invitedBy ? (
-                    <span className="font-mono">{invite.invitedBy}</span>
+                    <Link to={`/users/${invite.invitedBy}`} className="font-mono hover:text-accent">
+                      {invite.invitedBy}
+                    </Link>
                   ) : (
                     <span className="text-xs text-muted">staff{invite.staff ? ` · ${invite.staff}` : ""}</span>
                   )}
@@ -119,20 +145,74 @@ function InviteTable({ invites, actionData }: { invites: Invite[]; actionData: A
   );
 }
 
+/** More invites to g1t for one person, or fewer. */
+function Grant({ actionData }: { actionData: ActionData }) {
+  const error = actionData && "id" in actionData && actionData.id === "grant" ? actionData.error : null;
+  return (
+    <Section title="Grant invites to g1t" description="Everyone has 20. Give a person more, or take some back with a negative number; kept with why and who granted them.">
+      <form method="post" className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+        <input type="hidden" name="intent" value="grant" />
+        <Field label="Username">
+          <Input name="username" required maxLength={40} placeholder="ada" />
+        </Field>
+        <Field label="Invites" hint="Up to 1000.">
+          <Input name="amount" required inputMode="numeric" placeholder="10" />
+        </Field>
+        <Field label="Why" className="sm:col-span-2">
+          <Textarea name="note" rows={2} maxLength={500} required placeholder="e.g. Bringing her whole meetup." />
+        </Field>
+        {error && (
+          <div className="sm:col-span-2">
+            <Notice tone="error">{error}</Notice>
+          </div>
+        )}
+        <div className="flex justify-end sm:col-span-2">
+          <Button type="submit" variant="lavender">
+            Grant
+          </Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+const TABS: { value: InvitesTab; label: string }[] = [
+  { value: "all", label: "Every invite" },
+  { value: "g1t", label: "Invites to g1t" },
+];
+
 export default function Invites({ loaderData, actionData }: Route.ComponentProps) {
-  const { query, invites, error, done } = loaderData;
+  const { query, tab, invites, error, done, granted } = loaderData;
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Invites"
-        description="Every invitation into a workspace or onto a repository sent to an address, newest first. Anyone may register; find an invitation here to revoke it, for instance one sent to an address that did not ask for it."
+        description="Every invite, newest first: invitations into a workspace or onto a repository, and invites to g1t that people send their friends with Invite a friend. Anyone may register; an invite is never needed. Find one here to revoke it, for instance one sent to an address that did not ask for it."
       />
       <div className="mt-5 space-y-3 empty:hidden">
-        {done && <Notice tone="ok">{done}</Notice>}
+        {done && <Notice tone="ok">{granted ? `${done} @${granted.who} has ${granted.left} invites left.` : done}</Notice>}
         {error && <Notice tone="warn">Identity did not answer: {error}</Notice>}
       </div>
-      <div className="mt-5 space-y-4">
+      <nav aria-label="Which invites" className="mt-6 flex gap-1 overflow-x-auto border-b border-line">
+        {TABS.map((entry) => {
+          const current = tab === entry.value;
+          return (
+            <Link
+              key={entry.value}
+              to={invitesHref({ tab: entry.value === "all" ? null : entry.value, q: query })}
+              aria-current={current ? "page" : undefined}
+              className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm whitespace-nowrap ${
+                current ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg"
+              }`}
+            >
+              {entry.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="mt-4 space-y-4">
         <form method="get" className="flex flex-wrap items-end gap-2">
+          {tab !== "all" && <input type="hidden" name="tab" value={tab} />}
           <div className="min-w-0 grow basis-60">
             <Input name="q" defaultValue={query} placeholder="A code's start (g1t-k7m2), an email, or a username" aria-label="Search" />
           </div>
@@ -142,6 +222,7 @@ export default function Invites({ loaderData, actionData }: Route.ComponentProps
           </Button>
         </form>
         <InviteTable invites={invites} actionData={actionData} />
+        {tab === "g1t" && <Grant actionData={actionData} />}
       </div>
     </main>
   );

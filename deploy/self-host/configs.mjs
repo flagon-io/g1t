@@ -210,6 +210,9 @@ function selfHosted(service) {
   // Self-hosted g1t charges nothing: billing records usage at cost and never
   // stops work for it.
   if (hosted.name === "g1t-billing") config.vars.FREE_WHILE_BUILDING = "true";
+  // How many friends each person may invite to g1t by email (20 unless
+  // set; 0 turns Invite a friend off). Never needed to sign up.
+  if (hosted.name === "g1t-identity" && process.env.INVITES_PER_USER) config.vars.INVITES_PER_USER = process.env.INVITES_PER_USER;
   // Packages' files go to the compose file's RustFS (or any S3-compatible
   // store) instead of R2, with no request size limit, and package
   // addresses start with this installation's host.

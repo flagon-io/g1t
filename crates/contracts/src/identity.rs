@@ -1285,10 +1285,20 @@ pub struct DirectoryPage {
 // without an account, carries an invite code: registering with it applies
 // the invitation once the address is confirmed. Anyone may register
 // without one. See services/identity/src/invites.rs.
+//
+// Any person may also invite a friend to g1t by email ("Invite a friend",
+// `create_invite`): word of mouth, never a gate. Each person has
+// `INVITES_PER_USER` of those for good; one revoked or expired before it
+// was used comes back, one used is spent. See
+// services/identity/src/invites/friends.rs.
 
 /// How long an invite works, unless identity's `INVITE_TTL_DAYS` var says
 /// otherwise.
 pub const INVITE_TTL_DAYS: u64 = 30;
+
+/// How many friends one person may invite to g1t, unless identity's
+/// `INVITES_PER_USER` var says otherwise. Staff may grant more.
+pub const INVITES_PER_USER: u32 = 20;
 
 /// Where an invite stands. Only a pending invite can be used. A pending
 /// invite can be revoked, and so can one awaiting confirmation.
@@ -1321,6 +1331,21 @@ pub enum InviteKind {
     Workspace,
 }
 
+/// Whose invites an invite used.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InviteCharge {
+    /// Its inviter's own: an invite to g1t made with Invite a friend.
+    User,
+    /// A workspace's, granted by staff before registration opened. Read
+    /// only: none are made any more.
+    Workspace,
+    /// Nobody's: an invitation into a workspace or onto a repository, or
+    /// one staff made.
+    #[default]
+    None,
+}
+
 /// One invite, as the person who made it sees it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1339,6 +1364,10 @@ pub struct Invite {
     /// The workspace it joins, by slug.
     pub workspace: Option<String>,
     pub status: InviteStatus,
+    /// Whose invites it used: `user` for an invite to g1t from Invite a
+    /// friend, which counts against its inviter's.
+    #[serde(default)]
+    pub charged_to: InviteCharge,
     /// Who made it, by username. Null when g1t staff did.
     pub invited_by: Option<String>,
     /// The account that used it, by username.
@@ -1361,6 +1390,74 @@ pub struct Invite {
     /// The staff member who minted it. Only in staff views.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staff: Option<String>,
+}
+
+/// How many friends a person may invite to g1t, and how many they have.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Allowance {
+    /// [`INVITES_PER_USER`] (or identity's var) plus what staff granted.
+    pub limit: u32,
+    /// Pending and used invites; revoked and expired ones never used are
+    /// not counted.
+    pub used: u32,
+    pub remaining: u32,
+}
+
+impl Allowance {
+    pub fn new(limit: u32, used: u32) -> Allowance {
+        Allowance { limit, used, remaining: limit.saturating_sub(used) }
+    }
+
+    pub fn exhausted(&self) -> bool {
+        self.remaining == 0
+    }
+}
+
+/// `list_invites` (takes `UserArgs`): the invites to g1t a person made,
+/// newest first, and how many they have left. Returns `InvitesOverview`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InvitesOverview {
+    pub allowance: Allowance,
+    pub invites: Vec<Invite>,
+}
+
+/// `create_invite`: a person invites a friend to g1t by email. Anyone may
+/// sign up without one; the invite is a note from a friend, with a link
+/// that opens sign-up with the address filled in and, from the email,
+/// confirmed. People only, never an agent or a workspace's token, and not
+/// before their own address is confirmed. Uses one of the person's
+/// invites. Refused with `Conflict` when the address has a g1t account or
+/// the person already has a pending invite for it (neither costs one), and
+/// `Limit` when none are left. Returns `Outcome<Invite>`, with the code.
+///
+/// `revoke_invite` (takes `RemoveArgs`): its maker revokes a pending
+/// invite (or a workspace's owner one made for the workspace); one that
+/// was not used comes back. Returns `Outcome<Invite>`.
+///
+/// `resend_invite` (takes `RemoveArgs`): its maker sends a pending invite
+/// to g1t again, the same email to the same address. Returns
+/// `Outcome<Invite>`; one that is not pending answers `Conflict`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateInviteArgs {
+    pub user: User,
+    pub email: String,
+    /// A note from whoever invites, quoted in the email. Up to
+    /// [`MAX_INVITE_MESSAGE`] characters; longer is cut, blank is none.
+    #[serde(default)]
+    pub message: Option<String>,
+    /// Also invite them to this workspace, by slug: one the person owns,
+    /// on a paid plan (a free one is refused with `PaymentRequired`). Once
+    /// the account is confirmed it gets a workspace invitation to accept or
+    /// decline, and no workspace of its own is made for it.
+    #[serde(default)]
+    pub join: Option<String>,
+    /// The role `join` invites them with; member when absent. Ignored
+    /// without `join`.
+    #[serde(default)]
+    pub join_role: Option<crate::Role>,
+    /// Where the request came in, for the audit log; g1t.sh when absent.
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
 }
 
 /// `check_invite`: what an invite code is for, before using it. Returns
@@ -1547,13 +1644,31 @@ pub const ADMIN_INVITES_LIMIT: usize = 500;
 
 /// `admin_invites`: every invite, newest first, at most
 /// [`ADMIN_INVITES_LIMIT`], optionally only those whose code starts with
-/// `query`, or whose email, inviter or redeemer contains it. Returns
+/// `query`, or whose email, inviter or redeemer contains it, and with
+/// `to_g1t` only invites to g1t from Invite a friend. Returns
 /// `Vec<Invite>`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AdminInvitesArgs {
     #[serde(default)]
     pub query: Option<String>,
+    #[serde(default)]
+    pub to_g1t: bool,
 }
+
+/// `admin_grant_invites`: gives a person (by username) `amount` more
+/// invites to g1t; a negative amount takes some back. Kept with `note` and
+/// the staff member. Returns `Outcome<Allowance>`: theirs afterwards.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminGrantInvitesArgs {
+    pub username: String,
+    pub amount: i32,
+    #[serde(default)]
+    pub note: String,
+    pub staff: String,
+}
+
+/// The most invites one grant gives or takes back.
+pub const MAX_INVITE_GRANT: i32 = 1000;
 
 /// `admin_revoke_invite`: revokes any pending invite. Returns
 /// `Outcome<Invite>`.

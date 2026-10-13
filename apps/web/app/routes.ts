@@ -33,6 +33,8 @@ export default [
     route("profile", "routes/settings/profile.tsx"),
     route("emails", "routes/settings/emails.tsx"),
     route("notifications", "routes/settings/notifications.tsx"),
+    // Invite a friend: your invites to g1t.
+    route("invites", "routes/settings/invites.tsx"),
     route("keys", "routes/settings/keys.tsx"),
     // Your access tokens: the list, a new one, and each one's page.
     route("tokens", "routes/settings/tokens.tsx"),
@@ -45,7 +47,7 @@ export default [
     route("security-log", "routes/settings/security-log.tsx"),
     route("account", "routes/settings/account.tsx"),
   ]),
-  // The account menu's header: name and primary email.
+  // The account menu's header: name, primary email and invites left.
   route("settings/menu.json", "routes/settings-menu-json.ts"),
   // People, apart from workspaces: `u` is a reserved name.
   route("u/:username", "routes/user.tsx"),

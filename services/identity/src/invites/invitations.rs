@@ -218,6 +218,8 @@ impl Identity {
             staff: None,
             invitee_id: Some(&person.id),
             role: Some(if role == Role::Owner { "owner" } else { "member" }),
+            charged_to: "none",
+            limit: None,
         };
         let Some(invite) = self.insert_invite(draft).await? else {
             return Ok(Outcome::fail(FailureCode::Conflict, "The invitation could not be made. Try again."));
@@ -569,6 +571,7 @@ mod tests {
             inviter_id: Some("usr_owner".into()),
             inviter: Some("syntaqx".into()),
             staff: None,
+            charged_to: None,
             created_at: EARLIER.into(),
             expires_at: LATER.into(),
             revoked_at: None,

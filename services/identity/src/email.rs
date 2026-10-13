@@ -313,7 +313,9 @@ pub fn invite_letter(invite: &InviteEmail, site: &str) -> (String, Letter) {
     let (subject, intro) = invite_wording(invite.from, invite.workspace, invite.joins_existing_account);
     let action = match invite.workspace {
         Some(workspace) if invite.joins_existing_account => format!("Join {workspace}"),
-        _ => "Accept invite".to_owned(),
+        Some(_) => "Accept invite".to_owned(),
+        // An invite to g1t from a friend: the link opens sign-up.
+        None => "Sign up for g1t".to_owned(),
     };
     let quotes = match invite.note.map(str::trim).filter(|note| !note.is_empty()) {
         Some(note) => vec![(
@@ -450,7 +452,7 @@ pub fn invite_wording(from: Option<&str>, workspace: Option<&str>, joins_existin
                 Some(from) => format!("{from} invited you to g1t"),
                 None => "Your invite to g1t".to_owned(),
             },
-            format!("{who} invited you to g1t, where people and agents ship software together. Make your account from this invite. It does not add you to anyone's workspace: your account starts with a workspace of its own."),
+            format!("{who} invited you to g1t, where people and agents ship software together. The link opens sign-up with this address filled in and confirmed, so you can start in a minute. It does not add you to anyone's workspace: your account starts with a workspace of its own."),
         ),
     }
 }
@@ -492,6 +494,12 @@ mod tests {
         assert_eq!(subject, "ada invited you to g1t");
         assert!(intro.starts_with("ada invited you to g1t"));
         assert!(intro.contains("does not add you to anyone's workspace"));
+        // Never a gate: the link opens sign-up with the address confirmed.
+        assert!(intro.contains("filled in and confirmed"));
+        assert!(!intro.to_lowercase().contains("invite-only"));
+        let friend = InviteEmail { workspace: None, ..invite(None, Some("ada")) };
+        let (_, letter) = invite_letter(&friend, SITE);
+        assert_eq!(letter.action.unwrap().0, "Sign up for g1t");
         let (subject, _) = invite_wording(None, None, false);
         assert_eq!(subject, "Your invite to g1t");
         let (subject, intro) = invite_wording(Some("ada"), Some("acme"), true);

@@ -216,9 +216,9 @@ What happens depends on who they are:
 | Someone else on g1t | They are sent an [invitation](#invitations) to accept. Typing the confirmed email address of someone on g1t does the same. |
 | An email address with no g1t account | g1t emails an invite code that only that address can use. Signing up with it makes their account and accepts the invitation in one step. |
 
-An invite code to someone without an account uses one of the workspace's
-granted invites, or else one of yours (see
-[invites](/guides/authentication/#invites)), and works for 30 days.
+An invite code to someone without an account costs nothing (it never
+uses one of your [invites to g1t](/guides/authentication/#invite-a-friend))
+and works for 30 days.
 
 On a free workspace, only the first row works: its members can be given a
 role, but nobody else can be invited until the workspace starts the g1t

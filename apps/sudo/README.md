@@ -149,12 +149,15 @@ roadmap.
   (`account_restored`, `account_purged`), naming the staff member. There
   is no API route for deleting an account; only the site and sudo can.
 - **Invites** (`/invites`): anyone may register on g1t.sh, so there is
-  no waitlist, allowance or shared link to manage. The page lists every
-  invite code sent with an invitation into a workspace or onto a
-  repository, searchable by a code's start, an email or a username, and
-  revokes a pending one (`admin_invites`, `admin_revoke_invite`). The
-  old waitlist, grants and shared links stay in identity's database,
-  untouched.
+  no waitlist or shared link to manage, and an invite is never needed.
+  The page lists every invite code: those sent with an invitation into a
+  workspace or onto a repository, and invites to g1t that people send
+  their friends with Invite a friend (20 each), on their own tab.
+  Searchable by a code's start, an email or a username; a pending one can
+  be revoked (`admin_invites`, `admin_revoke_invite`). The Invites to g1t
+  tab also grants a person more of them, or takes some back, with why
+  (`admin_grant_invites`, kept in `invite_grants`). The old waitlist and
+  shared links stay in identity's database, untouched.
 - **Aliases** (`/aliases`, under Customers): names that lead to a
   workspace, set by staff only; there is no way for a customer to make
   one, and nothing user-facing mentions them. `g1t`, the product's name,

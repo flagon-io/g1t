@@ -50,6 +50,9 @@ services:
       GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
       GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
+      # How many friends each person may invite by email (20 when empty;
+      # 0 turns it off). Anyone may register with or without one.
+      INVITES_PER_USER: ${INVITES_PER_USER:-}
       # Packages' files (container images and the rest), in RustFS below or
       # any S3-compatible store. S3_PUBLIC_ENDPOINT, when clients can reach
       # the store, sends large downloads there directly.

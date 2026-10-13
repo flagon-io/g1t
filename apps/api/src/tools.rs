@@ -533,7 +533,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "account",
         title: "Your account",
-        description: "Who this token acts as and its workspaces (`whoami`), your email addresses, and invitations to workspaces and repositories waiting for you.",
+        description: "Who this token acts as and its workspaces (`whoami`), your email addresses, your invites to g1t, and invitations to workspaces and repositories waiting for you.",
         default_action: Some("whoami"),
         actions: &[
             a("whoami", Op::Whoami, "Who the token acts as, and its workspaces"),
@@ -542,6 +542,10 @@ pub const TOOLS: &[Tool] = &[
             a("confirm_email", Op::ConfirmEmail, "Confirm an address with the code from its email"),
             a("remove_email", Op::RemoveEmail, "Remove an address"),
             a("update_email_settings", Op::UpdateEmailSettings, "Primary, backup and privacy"),
+            a("list_invites", Op::ListInvites, "Your invites to g1t, and how many are left"),
+            a("create_invite", Op::CreateInvite, "Invite a friend to g1t by email"),
+            a("revoke_invite", Op::RevokeInvite, "Revoke one; it comes back"),
+            a("resend_invite", Op::ResendInvite, "Send a pending one again"),
             a("list_workspace_invitations", Op::ListInvitations, "Invitations to workspaces for you"),
             a("accept_workspace_invitation", Op::AcceptInvitation, "Accept one and join"),
             a("decline_workspace_invitation", Op::DeclineInvitation, "Decline one"),

@@ -767,11 +767,12 @@ cannot. Name an issue or pull request by a thread's `id`, or by `repo` and
 
 ## `account`
 
-Who the token acts as and its workspaces, your email addresses, and
+Who the token acts as and its workspaces, your email addresses, your
+[invites to g1t](/guides/authentication/#invite-a-friend), and
 [invitations](/guides/authentication/#invites) to workspaces and
 repositories waiting for you. `whoami` is the default
 action, and needs no scope. A workspace's token cannot
-use the email and invitation actions. An account that has not confirmed its
+use the email, invite and invitation actions. An account that has not confirmed its
 email address gets `403` from every tool until it does; see
 [until you confirm](/guides/authentication/#until-you-confirm).
 
@@ -783,6 +784,10 @@ email address gets `403` from every tool until it does; see
 | [`confirm_email`](/reference/api/accounts/confirm-email/) | Confirm an address with the six-digit code from its email. See [confirming your email address](/guides/authentication/#confirming-your-email-address). | `code` | `account:write` |
 | [`remove_email`](/reference/api/accounts/remove-email/) | Remove an address; never the primary or the last confirmed one. | `email`, `password` | `account:write` |
 | [`update_email_settings`](/reference/api/accounts/update-email-settings/) | Change `primary` or `backup` (with `password`), `private_email` or `block_private_pushes`. See [email addresses](/guides/authentication/#email-addresses). | None | `account:write` |
+| [`list_invites`](/reference/api/invites/list-invites/) | Your invites to g1t, with who joined, and how many of your 20 are left. | None | `account:read` |
+| [`create_invite`](/reference/api/invites/create-invite/) | Invite a friend to g1t by email, with an optional `message`. With `workspace` (one you own on a paid plan) and `role`, also invite them to it. Uses one of your invites; refused with `409` when the address has an account or you already have a pending invite for it. | `email` | `account:write` |
+| [`revoke_invite`](/reference/api/invites/revoke-invite/) | Revoke a pending invite to g1t; it comes back to you. | `id` | `account:write` |
+| [`resend_invite`](/reference/api/invites/resend-invite/) | Send a pending invite to g1t again. | `id` | `account:write` |
 | [`list_workspace_invitations`](/reference/api/invites/list-invitations/) | The invitations to workspaces waiting for your answer, each with its `workspace`, the `role` it gives and who sent it. | None | `account:read` |
 | [`accept_workspace_invitation`](/reference/api/invites/accept-invitation/) | Accept one; you join the workspace at once with its role. | `id` | `account:write` |
 | [`decline_workspace_invitation`](/reference/api/invites/decline-invitation/) | Decline one; whoever sent it is told. | `id` | `account:write` |

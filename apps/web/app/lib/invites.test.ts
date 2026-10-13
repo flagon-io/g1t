@@ -9,6 +9,12 @@ import {
   invitationFilterOf,
   invitationTone,
   inviteKind,
+  G1T_INVITES,
+  bringIntoChoices,
+  inviteActions,
+  inviteDraft,
+  leftBadge,
+  remainingLine,
   memberFilters,
   invitePageCopy,
   workspaceInviteCopy,
@@ -203,7 +209,7 @@ test("an invite's page names the invite it is", () => {
   const base = { kind: "account" as const, invitedBy: { username: "syntaqx" }, workspace: null, repository: null, hasAccount: false };
   const g1t = invitePageCopy(base, false);
   assert.equal(`${g1t.before}${g1t.place ?? ""}${g1t.after}`, "@syntaqx invited you to g1t");
-  assert.match(g1t.about, /lets you make an account\. It does not add you to anyone's workspace/);
+  assert.match(g1t.about, /Sign up from this invite and your address is filled in for you\. It does not add you to anyone's workspace/);
   const join = invitePageCopy({ ...base, workspace: { name: "Flagon, Inc." } }, false);
   assert.equal(`${join.before}${join.place}${join.after}`, "@syntaqx invited you to join Flagon, Inc. on g1t");
   assert.equal(join.place, "Flagon, Inc.");
@@ -212,4 +218,58 @@ test("an invite's page names the invite it is", () => {
   // Someone with an account, or signed in, just accepts.
   assert.match(invitePageCopy({ ...base, kind: "workspace", workspace: { name: "Flagon, Inc." }, hasAccount: true }, false).about, /Accepting joins you to Flagon, Inc\./);
   assert.equal(invitePageCopy({ ...base, invitedBy: null }, false).before, "The g1t team invited you to g1t");
+});
+
+test("Invite a friend never reads as a gate on signing up", () => {
+  for (const words of Object.values(G1T_INVITES)) {
+    assert.doesNotMatch(words, /invite-only|waitlist|request access|need an invite|held for/i, words);
+  }
+  assert.match(G1T_INVITES.about, /Anyone can sign up for g1t/);
+  assert.match(G1T_INVITES.out, /can still sign up/);
+});
+
+test("a friend can also be invited only to a paid workspace the person owns", () => {
+  const memberships = [
+    { slug: "Acme", name: "Acme Labs", role: "owner" as const },
+    { slug: "hobby", name: null, role: "owner" as const },
+    { slug: "flagon-io", name: "Flagon, Inc.", role: "member" as const },
+  ];
+  assert.deepEqual(bringIntoChoices(memberships, ["hobby"]), [{ slug: "acme", name: "Acme Labs" }]);
+  // Nothing paid that they own: no box at all.
+  assert.deepEqual(bringIntoChoices(memberships, ["acme", "hobby"]), []);
+});
+
+test("the form sends a workspace only when its box is ticked and it was offered", () => {
+  const form = (fields: Record<string, string>) => new Map(Object.entries(fields));
+  const offered = [{ slug: "acme", name: "Acme Labs" }];
+  assert.deepEqual(inviteDraft(form({ email: " ada@example.com ", message: "  " }), offered), { email: "ada@example.com", message: null });
+  assert.deepEqual(inviteDraft(form({ email: "ada@example.com", join: "acme", join_role: "owner" }), offered), { email: "ada@example.com", message: null });
+  assert.deepEqual(inviteDraft(form({ email: "ada@example.com", message: "Come build", also_join: "on", join: "acme", join_role: "owner" }), offered), {
+    email: "ada@example.com",
+    message: "Come build",
+    join: "acme",
+    joinRole: "owner",
+  });
+  // A workspace not offered (free, or not theirs) is dropped.
+  assert.deepEqual(inviteDraft(form({ email: "ada@example.com", also_join: "on", join: "hobby" }), offered), { email: "ada@example.com", message: null });
+});
+
+test("how many invites are left reads plainly, and the menu shows the count", () => {
+  assert.equal(remainingLine({ limit: 20, remaining: 18 }), "18 of 20 invites left");
+  assert.equal(remainingLine({ limit: 20, remaining: 0 }), "You have used all 20 of your invites");
+  assert.equal(remainingLine({ limit: 1, remaining: 1 }), "1 of 1 invite left");
+  assert.equal(remainingLine({ limit: 0, remaining: 0 }), "Invites to g1t are turned off on this installation");
+  assert.equal(leftBadge(18), "18 left");
+  assert.equal(leftBadge(0), "0 left");
+  assert.equal(leftBadge(null), null);
+  assert.equal(leftBadge(undefined), null);
+});
+
+test("only a pending invite is sent again or copied; one waiting on its friend can still be revoked", () => {
+  assert.deepEqual(inviteActions({ status: "pending", code: "g1t-abcd" }), { revoke: true, resend: true, copy: true });
+  assert.deepEqual(inviteActions({ status: "pending", code: null }), { revoke: true, resend: true, copy: false });
+  assert.deepEqual(inviteActions({ status: "awaiting_confirmation", code: null }), { revoke: true, resend: false, copy: false });
+  for (const status of ["redeemed", "expired", "revoked", "declined"] as const) {
+    assert.deepEqual(inviteActions({ status, code: null }), { revoke: false, resend: false, copy: false }, status);
+  }
 });

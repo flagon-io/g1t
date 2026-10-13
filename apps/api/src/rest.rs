@@ -52,6 +52,11 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/user/emails/confirm", Op::ConfirmEmail, &[]),
     route("DELETE", "/user/emails/:email", Op::RemoveEmail, &[]),
     route("PATCH", "/user/email-settings", Op::UpdateEmailSettings, &[]),
+    // Your invites to g1t (Invite a friend).
+    route("GET", "/user/invites", Op::ListInvites, &[]),
+    route("POST", "/user/invites", Op::CreateInvite, &[]),
+    route("DELETE", "/user/invites/:id", Op::RevokeInvite, &[]),
+    route("POST", "/user/invites/:id/resend", Op::ResendInvite, &[]),
     // Invitations to workspaces waiting for your answer.
     route("GET", "/user/invitations", Op::ListInvitations, &[]),
     route("POST", "/user/invitations/:id/accept", Op::AcceptInvitation, &[]),

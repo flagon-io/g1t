@@ -222,6 +222,12 @@ export const ADMIN_WORKSPACES_LIMIT = 500;
 
 /** How long an invite works, unless identity's `INVITE_TTL_DAYS` says otherwise. */
 export const INVITE_TTL_DAYS = 30;
+/**
+ * How many friends one person may invite to g1t (Invite a friend), unless
+ * identity's `INVITES_PER_USER` says otherwise; staff may grant more. Never
+ * needed to sign up.
+ */
+export const INVITES_PER_USER = 20;
 /** The most characters an invitation's note keeps (`invite_member`'s `message`). */
 export const MAX_INVITE_MESSAGE = 500;
 
@@ -258,6 +264,12 @@ export type Invite = {
   /** The workspace using it joins. */
   workspace: string | null;
   status: InviteStatus;
+  /**
+   * Whose invites it used: `user` for an invite to g1t from Invite a friend,
+   * counted against its maker's; `none` for an invitation into a workspace or
+   * onto a repository; `workspace` only on invites from before sign-ups opened.
+   */
+  chargedTo: "user" | "workspace" | "none";
   /** Its maker's username; null when g1t staff made it. */
   invitedBy: string | null;
   /** The account that used it. */
@@ -289,6 +301,21 @@ export type WorkspaceInvitation = {
   invitedBy: { username: string; name: string | null; avatar: string | null } | null;
   createdAt: string;
   expiresAt: string;
+};
+
+/** How many friends a person may invite to g1t, and how many they have. */
+export type Allowance = { limit: number; used: number; remaining: number };
+
+/** A person's invites to g1t, newest first, and what they have left. */
+export type InvitesOverview = { allowance: Allowance; invites: Invite[] };
+
+/** What Invite a friend sends: the address, a note, and optionally a paid workspace the person owns. */
+export type NewInvite = {
+  email: string;
+  message?: string | null;
+  /** Also invite them to this workspace, by slug: one the person owns, on a paid plan. */
+  join?: string | null;
+  joinRole?: "owner" | "member" | null;
 };
 
 /** Someone to invite, as `findPeople` finds them: never an email address. */
@@ -350,8 +377,10 @@ export interface IdentityAdminApi {
   workspace(slug: string): Promise<AdminWorkspaceDetail | null>;
 
   /** Invites, newest first; `query` is a code's start, or part of an email, inviter or redeemer. */
-  invites(query?: string | null): Promise<Invite[]>;
+  invites(query?: string | null, options?: { toG1t?: boolean }): Promise<Invite[]>;
   revokeInvite(id: string, staff: string): Promise<Result<Invite>>;
+  /** More invites to g1t for a person (or fewer, with a negative amount), with why. Their allowance afterwards. */
+  grantInvites(username: string, amount: number, note: string, staff: string): Promise<Result<Allowance>>;
 
   /**
    * Suspends an account (by username): it cannot sign in, and its sessions
@@ -834,6 +863,18 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
 
   userForSession(sessionToken: string): Promise<Viewer>;
 
+  /** A person's invites to g1t (Invite a friend) and how many are left. */
+  listInvites(user: User): Promise<InvitesOverview>;
+  /**
+   * A person invites a friend to g1t by email: an email from them with a link
+   * that opens sign-up with the address filled in and confirmed. Uses one of
+   * their invites. People only, once their address is confirmed.
+   */
+  createInvite(user: User, invite: NewInvite): Promise<Result<Invite>>;
+  /** Its maker revokes a pending invite; one never used comes back. */
+  revokeInvite(user: User, id: string): Promise<Result<Invite>>;
+  /** Its maker sends a pending invite to g1t again: the same email and link. */
+  resendInvite(user: User, id: string): Promise<Result<Invite>>;
   /**
    * What a code is for. Unknown, used, revoked and expired codes all get the
    * same answer, unless `anyStatus`: then a real code that is spent is

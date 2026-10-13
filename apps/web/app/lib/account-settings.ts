@@ -3,10 +3,13 @@
  * docs, emails and messages can link to exactly the one they mean.
  */
 
+import { G1T_INVITES } from "./invites.ts";
+
 export type AccountSettingsPage =
   | "profile"
   | "emails"
   | "notifications"
+  | "invites"
   | "keys"
   | "tokens"
   | "integrations"
@@ -27,6 +30,12 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
   notifications: {
     title: "Notifications",
     about: "What you are also emailed for, and how you watch repositories. Everything comes to your notifications either way.",
+  },
+  // Invite a friend: an invite to g1t, not a workspace's invitation (lib/invites.ts, G1T_INVITES).
+  invites: {
+    title: G1T_INVITES.nav,
+    heading: G1T_INVITES.heading,
+    about: G1T_INVITES.about,
   },
   keys: { title: "SSH keys", about: "Keys that let git on your computers reach g1t as you." },
   tokens: {
@@ -78,6 +87,7 @@ const OLD_ANCHORS: Record<string, AccountSettingsPage> = {
   profile: "profile",
   emails: "emails",
   github: "github",
+  invites: "invites",
   "ssh-keys": "keys",
   tokens: "tokens",
   applications: "applications",
