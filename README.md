@@ -1,114 +1,106 @@
 # g1t
 
-g1t is where a company's people and agents work together. People and agents
-are members of the same workspace: they talk in channels and direct
-messages and sit on the same teams. You hand an agent work, it does it, and
-it comes back with something you can act on: a pull request to merge, a
-document, a reply to approve. Home says where you are needed and what
-happened while you were away. Code and Deployments are built in, because what agents make has to
-be reviewed, tested and shipped. Everything specific to your business will
-come from extensions and integrations.
+**Git tracks changes. g1t coordinates change.**
 
-g1t is MIT-licensed. Use it on [g1t.sh](https://g1t.sh), or run it
-yourself. It runs on Cloudflare Workers, and the core runs in Docker.
+g1t is a git platform built for teams whose code is written by people and
+their coding agents at the same time. You keep your own harness (Claude
+Code, Codex, Cursor, Copilot or anything that speaks MCP); g1t is the
+place they all work through. It hosts the repositories, shows who and what
+is working on each project right now, keeps parallel work from colliding,
+tests changes together before they land, deploys them, and remembers why
+each change was made.
 
-**g1t is in alpha.** Accounts are by invite. Each feature below is marked:
-
-- **Live**: works on g1t.sh for every workspace.
-- **Preview**: works on g1t.sh, but is limited to some workspaces or
-  unfinished.
-- **Coming**: planned, not built.
-
-## Where things are
+g1t is MIT-licensed and in alpha. Use it on [g1t.sh](https://g1t.sh) (anyone
+can sign up), or run it yourself. It runs on Cloudflare Workers, with
+repositories in Cloudflare Artifacts, and the core runs in Docker.
 
 - Site: <https://g1t.sh>
 - Docs: <https://docs.g1t.sh>
 - API: <https://api.g1t.sh> · MCP: <https://mcp.g1t.sh>
 - Limits you can hit today: [docs.g1t.sh/about/limitations](https://docs.g1t.sh/about/limitations/)
 
-## What's in it
-
-### The workspace
-
-| Feature | Status |
-| --- | --- |
-| The dock: Home, Chat, Notifications, Agents, Code, Artifacts and your pinned apps, with People, Workspace and your account at its foot; a bottom bar on phones | Live |
-| Home: where you're needed now, what happened since you were last here (agent work and how much was accepted the first time, what landed, deploys, decisions, spend), what is running, and where to start | Preview |
-| Chat: channels, direct messages and threads, live, with people and agents as members | Live |
-| Notifications: mentions, reviews, approvals and alerts, with browser push | Live |
-| People and teams: members, roles, nested teams, invites | Live |
-| A directory of people and agents, profiles, teams with agent members | Coming |
-| Artifacts: documents written together, live, by people and agents | Live |
-| Slides, designs and dashboards as artifacts | Coming |
-| Scratchpads: tools, reports and agents anyone can build on a copy of the data, promoted after review | Coming |
-| Desktop app for Windows, macOS and Linux (Tauri): the site in a window of its own, notifications from the system, a badge, g1t:// links, updates that install themselves | Preview |
-| A runner inside the desktop app | Coming |
-| A phone app for Android and iOS (Expo, in `apps/mobile`): Chat in full, live, with notifications on the phone; Code and Customize; signed in with OAuth, to g1t.sh or your own g1t. Android first, in testing; not in the stores yet | Preview |
-
-### Agents
-
-| Feature | Status |
-| --- | --- |
-| Agents hired into roles from templates, each with responsibilities, a voice, model limits and a budget | Live |
-| `@g1t`, the orchestrator every workspace has, which hands work to the right agent with `hand_off` | Live |
-| Your own model providers' keys (14 providers), and the AI Gateway | Live |
-| g1t's hosted models (open to invited workspaces during the alpha) | Preview |
-| Budgets per workspace, person, agent and task; guardrails; agents act with the asker's access | Live |
-| Spend: where the money went by agent, person, channel, model and product, every budget, a receipt for each task, and your spend in the top bar | Preview |
-| Spend by extension | Coming |
-| Memory, sessions with live steps and cost, routines on a schedule | Live |
-| Agent templates in Agents: starting points for a new agent, configured once started | Live |
-| Foundational skills in every agent: PDFs, Word documents and spreadsheets, reports with sources, charts, code review, thread summaries; owners turn them off per agent | Live |
-| A skill library in the open SKILL.md format: write, import, save from a session, attach to agents, teams or every agent at a pinned version, optionally kept in a repository | Live |
-| More specialist templates; web research; skills from the Marketplace; skill scripts on an agent's own computer | Coming |
-| Agents on runners anywhere (g1t's, yours, your desktop), with sessions that persist between tasks | Coming |
-| Agents answering in Slack and Teams | Coming |
-
-### Code and Deployments
-
-| Feature | Status |
-| --- | --- |
-| Public and private repositories, git over HTTPS, creating a repository by pushing to it | Live |
-| Issues, pull requests, line comments, reviews from people and agents | Live |
-| Required checks, rulesets, CODEOWNERS, the merge queue | Live |
-| Workflows from `.g1t/workflows` on g1t's runners or self-hosted ones (`crates/runner`) | Live |
-| Assign an issue to g1t: a pull request, checks, a review and revisions until it passes (invited workspaces) | Preview |
-| Any coding agent over MCP, recording its session onto its pull requests; why-blame | Live |
-| Packages: npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules, container images | Live |
-| Secret push protection, history scanning, dependency upgrade pull requests | Live |
-| A preview of every pull request on `g1t.page`, production on merge, custom domains | Live |
-| GitHub import: every branch and tag, and issues | Live |
-| A copy of the data for every preview, instant rollback, container apps kept warm | Coming |
-| Git over SSH (waits on inbound TCP on Workers; use HTTPS) | Coming |
-
-### Extend and run
-
-| Feature | Status |
-| --- | --- |
-| Integrations: the GitHub App, Sentry, Datadog, Jira, Linear, alerts | Live |
-| REST API, OpenAPI, MCP server, webhooks, an event bus | Live |
-| Usage billing with no seats, a public price book, spend limits, itemised invoices | Live |
-| The Marketplace: extensions and integrations, added by owners, with install requests from members | Live |
-| Extensions shared from public repositories (Mail, Support, CRM, Recruiting, On-call and helpdesk, CRM and ERP bridges are listed); Drive, Gmail, Calendar and Slack integrations | Coming |
-| Single sign-on (SAML, OIDC) and SCIM per workspace | Coming |
-| Storage: databases and buckets per team, with copies of production for anything unreviewed | Coming |
-| Self-hosting: the core forge in Docker Compose (agents, deployments and context search off) | Preview |
-
 ## Try it
 
 ```sh
-# 1. Create an account and a workspace at https://g1t.sh/register (you need an invite).
+# 1. Sign up and make a workspace at https://g1t.sh/register.
 
-# 2. Install g1t's Claude Code plugin (it adds g1t's MCP server and records
-#    your sessions), then run /mcp in Claude Code and sign plugin:g1t:g1t in.
+# 2. Install the g1t CLI (Windows: irm https://g1t.sh/install.ps1 | iex).
+curl -fsSL https://g1t.sh/install | sh
+g1t auth login
+
+# 3. Install g1t's Claude Code plugin. It adds g1t's MCP server and records
+#    your sessions; run /mcp in Claude Code and sign plugin:g1t:g1t in.
 claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
 claude plugin install g1t@g1t
-
-# 3. Ask it to open a pull request for an open issue.
 ```
 
-[Getting started](https://docs.g1t.sh/quickstart/) walks through this in
-full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
+Then work as you always do in a g1t repository: the session shows on the
+project's page as it runs. [Getting started](https://docs.g1t.sh/quickstart/)
+walks through it in full, and [Connect a coding agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
+sets up other harnesses. An assistant can do it for you from
+<https://g1t.sh/llms.txt>.
+
+## What's in it
+
+### Coordinating agents
+
+- **Sessions.** Every run of a coding agent is recorded as it works: its
+  prompts, tool calls, subagents, branches, commits and pull requests. Work
+  that is not an issue yet is a session titled by what it is for. The
+  [Claude Code plugin](https://docs.g1t.sh/guides/claude-code-plugin/) does
+  it with no setup; any harness can with the CLI or MCP.
+- **Live now.** A project's page shows who is working on it right now and
+  with which harness, grouped by issue, pull request or branch.
+- **Claims.** Advisory, expiring claims on issues, so two agents don't do the
+  same work, with hand-offs between sessions and coordination events
+  (`g1t work events --follow`, or over MCP) when work overlaps.
+- **Integration.** The merge queue tests changes together before they land,
+  finds which change broke a combination by bisecting, and sends the failure
+  to the session responsible.
+- **Why-blame and decisions.** `g1t why file:line` answers why code is as it
+  is: its commit, pull request, issue, the decisions recorded along the way,
+  and the sessions behind it.
+- **Memory.** Short notes about a project or workspace that your team and
+  your agents read before they start and add to as they learn.
+- **Ask g1t.** Ask about your work from any page, or by messaging @g1t. It
+  answers with your workspace's own AI provider and reads g1t as you.
+
+### Code
+
+- Public and private repositories, git over HTTPS, creating a repository by
+  pushing to it, GitHub import (every branch and tag, and issues).
+- Issues, milestones, labels, pull requests, line comments and reviews.
+- Required checks, rulesets, CODEOWNERS and the merge queue.
+- Workflows from `.g1t/workflows` in GitHub Actions syntax, on g1t's Linux
+  runners or self-hosted ones on Linux, macOS and Windows, with caches,
+  secrets and variables.
+- Packages: npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules and
+  container images.
+- Secret push protection, history scanning and dependency update pull
+  requests.
+
+### Deployments and observability
+
+- A preview of every pull request on `g1t.page`, production on merge, custom
+  domains. Static sites, Workers and containers, chosen from the project.
+- Logs, traces, metrics and errors from your apps over OpenTelemetry.
+
+### The workspace
+
+- Chat: channels, direct messages and threads, live.
+- Artifacts: docs written together, live, with comments, suggestions and
+  history.
+- Home, notifications with browser push, people and teams, roles, invites.
+- A desktop app for Windows and Linux that can also be a runner for your
+  workspace, and an Android app in testing ([g1t.sh/download](https://g1t.sh/download)).
+
+### Extend
+
+- REST API, OpenAPI, an MCP server, webhooks and the `g1t` CLI, all from one
+  set of operations.
+- Integrations: your own AI providers, Sentry, Datadog and webhook alerts,
+  Jira and Linear.
+- Usage billing with no seats and a public price book.
 
 ## Layout
 
@@ -117,50 +109,50 @@ full. An assistant can do it for you from <https://g1t.sh/llms.txt>.
 | `apps/web` | The site: server-rendered React on a Worker. Holds no data. | TypeScript |
 | `apps/docs` | The documentation site, with the API explorer. | TypeScript |
 | `apps/api` | REST API and MCP server. | Rust |
-| `services/identity` | Accounts, workspaces, sessions, keys and tokens. | Rust |
+| `apps/desktop` | The desktop app (Tauri), with a runner inside. | Rust, TypeScript |
+| `apps/mobile` | The phone app (Expo). | TypeScript |
+| `apps/status` | The status page at `status.g1t.sh`. | TypeScript |
+| `apps/sudo` | g1t's own staff console. | TypeScript |
+| `services/identity` | Accounts, workspaces, sessions, keys, tokens and invites. | Rust |
 | `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. | Rust |
-| `services/work` | Issues, pull requests, reviews, check runs and sessions. | Rust |
+| `services/work` | Issues, pull requests, reviews, check runs, agent sessions, claims and the merge queue. | Rust |
 | `services/events` | The event bus and its log. | Rust |
 | `services/search` | Site-wide search and Explore. | Rust |
 | `services/billing` | Usage, the price book, limits, invoices and payments. | Rust |
-| `services/actions` | GitHub Actions workflows, runs, caches and self-hosted runners. | Rust |
-| `services/security` | Push protection findings, history scanning and dependency upkeep. | Rust |
-| `services/integrations` | Model providers, alerts, trackers and the GitHub App. | Rust |
+| `services/actions` | Workflows, runs, caches and self-hosted runners. | Rust |
+| `services/security` | Push protection findings, history scanning and dependency updates. | Rust |
+| `services/integrations` | AI providers, Ask, alerts, trackers and the GitHub App. | Rust |
 | `services/webhooks` | Webhook deliveries. | Rust |
-| `services/runner` | Starts sandboxes: for g1t agents, workflow jobs and the merge queue. | TypeScript |
+| `services/packages` | The package registries and container images. | Rust |
+| `services/runner` | Starts sandboxes for workflow jobs, builds and the merge queue. | TypeScript |
 | `services/projects` | Projects: what a workspace builds and runs, and where its code lives. | TypeScript |
 | `services/deployments` | Builds, previews and production on `g1t.page`. | TypeScript |
 | `services/pages` | Serves every app deployed on `g1t.page`, and custom domains. | TypeScript |
-| `services/models` | The model proxy at `models.g1t.sh`. | TypeScript |
-| `services/context` | The context hub: catalog, search and scorecards. | TypeScript |
+| `services/telemetry` | Observability: OpenTelemetry ingest, logs, traces, metrics and errors. | TypeScript |
 | `services/chat` | Channels, direct messages, threads and their live sockets. | TypeScript |
-| `services/agents` | The workspace's agents: definitions, templates, desks, memory and runs. | TypeScript |
-| `services/artifacts` | Artifacts: docs and the other kinds to come, their spaces, sharing and live editing. | TypeScript |
+| `services/artifacts` | Docs: their spaces, sharing and live editing. | TypeScript |
 | `services/notify` | Notifications: each person's feed, live counts and browser push. | TypeScript |
-| `services/packages` | The package registries and container images. | Rust |
 | `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. | TypeScript |
-| `apps/status` | The status page at `status.g1t.sh`. | TypeScript |
-| `apps/sudo` | g1t's own staff console. | TypeScript |
-| `crates/runner` | The program inside a sandbox: runs an agent, a workflow job or a merge queue build, and reports back. | Rust |
+| `crates/g1t` | The `g1t` command line. | Rust |
+| `crates/runner` | The program inside a sandbox, and the self-hosted runner: runs a workflow job or a build and reports back. | Rust |
 | `crates/contracts` | Types and service interfaces for the Rust services. | Rust |
 | `crates/kit` | Plumbing shared by Rust services on Workers. | Rust |
-| `crates/g1t` | The `g1t` command line. | Rust |
 | `crates/rules` | The rules engine for rulesets on branches and tags. | Rust |
 | `crates/blobstore` | Object storage: R2 on Cloudflare, any S3-compatible store self-hosted. | Rust |
 | `crates/actions` | Reads workflows and evaluates their expressions. | Rust |
 | `crates/scan` | Secret and lockfile scanning, shared by services. | Rust |
 | `crates/secrets` | Secrets at rest and signatures. | Rust |
-| `crates/sshd` | Git over SSH, bridged to Cloudflare Artifacts. Not deployed yet. | Rust |
+| `crates/sshd` | Git over SSH, bridged to Cloudflare Artifacts. Not deployed. | Rust |
 | `packages/contracts` | The same interfaces for TypeScript callers. | TypeScript |
 | `packages/theme` | Design tokens and the logo, shared by the site and the docs. | CSS |
+| `plugins/claude-code` | g1t's Claude Code plugin: hooks, skills and commands. | JavaScript |
+| `plugins/other-harnesses` | The AGENTS.md snippet for Codex, Cursor and other harnesses. | Markdown |
 | `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. | JSON, Docker Compose |
 
 Each service is its own Worker, and each one that keeps data has its own
 database. They call each other through service bindings and react to each
-other through events. The core services (accounts, repositories, work,
-events, billing, Actions, security and the API) are written in Rust; the
-web apps and the rest of the Workers in TypeScript. The Language column
-says which, part by part.
+other through events. The core services are written in Rust; the web apps
+and the rest of the Workers in TypeScript.
 
 ## Run your own
 
@@ -172,12 +164,13 @@ The core forge runs in Docker, with no Cloudflare account:
 docker compose -f deploy/self-host/docker-compose.yml up --build
 ```
 
-Then open http://localhost:8787 and sign up. The confirmation mail is in
-Mailpit at http://localhost:8025. Repositories, push and clone, issues,
-pull requests and code browsing work, and the API and MCP server answer at
-http://localhost:8789; packages and container images are kept in the
-bundled S3-compatible store, RustFS. Agents, deployments and context search
-are off in this version.
+Then open <http://localhost:8787> and sign up. The confirmation mail is in
+Mailpit at <http://localhost:8025>. Repositories, push and clone, issues,
+pull requests, code browsing, search, webhooks and observability work, and
+the API and MCP server answer at <http://localhost:8789>; packages and
+container images are kept in the bundled S3-compatible store, RustFS.
+Deployments and billing are off, and the merge queue can't test or land
+pull requests without g1t's runner.
 [Run g1t yourself](https://docs.g1t.sh/guides/self-hosting/) says what works,
 and [how a self-hosted g1t runs](https://docs.g1t.sh/guides/self-hosting-architecture/)
 what runs inside it.
@@ -185,9 +178,9 @@ what runs inside it.
 ### On Cloudflare
 
 You need a Cloudflare account on the Workers Paid plan (Cloudflare
-Artifacts, where repositories are stored, requires it), Node 24 (`.nvmrc`, and `engines` in `package.json`), Rust with the
-`wasm32-unknown-unknown` target, and
-Docker to build the sandbox image.
+Artifacts, where repositories are stored, requires it), Node 24 (`.nvmrc`,
+and `engines` in `package.json`), Rust with the `wasm32-unknown-unknown`
+target, and Docker to build the sandbox image.
 
 ```sh
 npm install
