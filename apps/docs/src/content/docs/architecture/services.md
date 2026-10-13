@@ -33,7 +33,7 @@ and fails if this table and the bindings disagree.
 | `services/security` | Rust | core | Secret scanning, dependency alerts and updates, code scanning, the supply chain | D1 `g1t-security` | `actions`, `billing`, `events`, `identity`, `repos`, `runner`, `work` |
 | `services/search` | Rust | core | Site search over repositories, issues, pull requests, people and code | D1 `g1t-search`, its jobs queue | `billing`, `identity`, `repos`, `work` |
 | `services/projects` | TypeScript | core | Projects and what they depend on | D1 `g1t-projects` | `deployments`, `identity`, `og`, `packages`, `repos` |
-| `services/chat` | TypeScript | core | Channels, direct messages and threads, live | D1 `g1t-chat`, a Durable Object per channel | `identity`, `notify` |
+| `services/chat` | TypeScript | core | Channels, direct messages and threads, live | D1 `g1t-chat`, a Durable Object per channel | `identity`, `integrations`, `notify` |
 | `services/artifacts` | TypeScript | core | Docs written together, live, with their spaces, sharing and search | D1 `g1t-docs`, its files bucket, two Vectorize indexes, a Durable Object per open doc | `billing`, `events`, `identity`, `notify`, `repos`, `work` |
 | `services/notify` | TypeScript | core | Notifications, live pages, presence, browser and phone push | A Durable Object per person, per workspace and per repository | `identity` |
 | `services/telemetry` | TypeScript | core | Logs, traces, metrics and errors for projects, at `otel.g1t.sh` | A Durable Object per project | `billing` |
