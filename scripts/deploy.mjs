@@ -409,8 +409,7 @@ async function reportContainers(unit, cwd, out) {
   } catch (error) {
     out.line(`could not read the container applications as JSON (${error.message ?? error}); wrangler said:`);
     const said = await wrangler(["containers", "list"], { cwd }).catch(() => ({ out: "" }));
-    for (const line of said.out.split("
-").filter((l) => l.trim()).slice(0, 40)) out.line(`  ${line}`);
+    for (const line of said.out.split("\n").filter((l) => l.trim()).slice(0, 40)) out.line(`  ${line}`);
   }
 }
 

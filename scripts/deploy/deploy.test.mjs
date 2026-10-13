@@ -870,3 +870,7 @@ test("sandboxes roll over at once when their image or container settings changed
   assert.equal(containersRollout(unit, { image: false, files: ["services/runnerx/wrangler.jsonc"] }), "none");
   assert.equal(containersRollout(unit, { image: false, files: [] }, { rebuildImage: true }), "immediate");
 });
+
+test("the deploy tool itself parses: a test that never imports it would not notice", () => {
+  execFileSync(process.execPath, ["--check", join(import.meta.dirname, "..", "deploy.mjs")]);
+});
