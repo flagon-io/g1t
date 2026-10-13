@@ -1,4 +1,4 @@
-import { Code2, MessagesSquare, Rocket, Shapes, UsersRound } from "lucide-react";
+import { Code2, MessagesSquare, UsersRound } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, Link, data, useNavigation } from "react-router";
 
@@ -17,7 +17,6 @@ import {
 import type { Route } from "./+types/permissions";
 import { page } from "../../lib/meta";
 import { ErrorText, SubmitButton } from "../../components/ui";
-import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -32,9 +31,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 /**
  * Permissions: who may do what in the workspace, in one place, a section
  * for each part of g1t. What exists today saves through the service that
- * owns it (identity for repositories and teams, chat for channels); what
- * does not yet is shown as it will be, marked
- * Soon, with the rule that holds today. Owners only.
+ * owns it (identity for repositories and teams, chat for channels).
+ * Owners only.
  */
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -160,13 +158,10 @@ function Part({ icon, title, about, children }: { icon: ReactNode; title: string
 }
 
 /** A setting's heading inside a part, and a line on what it decides. */
-function Setting({ title, about, soon, children }: { title: string; about: ReactNode; soon?: boolean; children: ReactNode }) {
+function Setting({ title, about, children }: { title: string; about: ReactNode; children: ReactNode }) {
   return (
     <div>
-      <h3 className="flex items-center gap-2 text-sm font-medium">
-        {title}
-        {soon && <Badge>Soon</Badge>}
-      </h3>
+      <h3 className="text-sm font-medium">{title}</h3>
       <p className="mt-1 text-xs leading-relaxed text-faint">{about}</p>
       <div className="mt-3">{children}</div>
     </div>
@@ -192,39 +187,6 @@ function SaveRow({ intent, changed, answer }: { intent: string; changed: boolean
   );
 }
 
-/**
- * A setting g1t will have but does not yet: the control as it will be,
- * off, with the rule that holds today, so nobody looks for it elsewhere.
- */
-function Stub({ title, about, today, control }: { title: string; about: string; today: string; control: ReactNode }) {
-  return (
-    <Setting title={title} about={about} soon>
-      <div aria-disabled="true" className="opacity-70">
-        {control}
-      </div>
-      <p className="mt-2 text-xs text-muted">
-        <span className="font-medium text-fg-soft">Not configurable yet; today:</span> {today}
-      </p>
-    </Setting>
-  );
-}
-
-/** A who-can choice as a stub shows it: the rule that holds, chosen and locked. */
-function LockedChoice({ name, options, value }: { name: string; options: { value: string; label: string; description?: string }[]; value: string }) {
-  return (
-    <RadioGroup name={name} value={value} disabled aria-label={name.replace(/_/g, " ")} className="grid gap-2 sm:grid-cols-2">
-      {options.map((option) => (
-        <RadioOption key={option.value} value={option.value} label={option.label} description={option.description} disabled />
-      ))}
-    </RadioGroup>
-  );
-}
-
-const MEMBERS_OR_OWNERS = [
-  { value: "members", label: "Any member", description: "The default." },
-  { value: "owners", label: "Owners only" },
-];
-
 export default function WorkspacePermissions({ loaderData, actionData, params }: Route.ComponentProps) {
   const { slug, base, privileges, teamCreation, channels } = loaderData;
   return (
@@ -232,12 +194,6 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
       <Part icon={<Code2 />} title="Code" about="What members may do with the workspace's repositories, beyond the role each repository gives them. Owners always can do all of it.">
         <BasePermissionSetting key={base} base={base} slug={params.owner} answer={actionData} />
         <PrivilegesSetting key={JSON.stringify(privileges)} privileges={privileges} answer={actionData} />
-        <Stub
-          title="Members can fork private repositories"
-          about="Whether a member may make a fork of a private repository under their own name."
-          today="g1t has no personal forks, so nothing is forked; work happens on branches of the repository itself."
-          control={<SwitchCard title="Members can fork private repositories" checked={false} disabled />}
-        />
       </Part>
 
       <Part icon={<UsersRound />} title="People and teams" about="Who may shape the workspace's teams.">
@@ -252,45 +208,6 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
             <p className="text-sm text-muted">Chat didn't answer. Reload to try again.</p>
           </Setting>
         )}
-      </Part>
-
-      <Part icon={<Shapes />} title="Artifacts" about="Who may make the places documents live, and how a new one is shared.">
-        <Stub
-          title="Who can create spaces"
-          about="Who may add a space beside the ones the workspace has."
-          today="any member can create a space, from + beside Spaces in the Artifacts sidebar."
-          control={<LockedChoice name="create_spaces" options={MEMBERS_OR_OWNERS} value="members" />}
-        />
-        <Stub
-          title="Default sharing"
-          about="Who a new artifact is shared with before its author chooses."
-          today="a new artifact is its author's, shared with the people and teams they add, or opened to the workspace from its Share menu."
-          control={
-            <LockedChoice
-              name="default_sharing"
-              options={[
-                { value: "author", label: "Its author", description: "Shared only with whom they add." },
-                { value: "workspace", label: "Everyone in the workspace" },
-              ]}
-              value="author"
-            />
-          }
-        />
-      </Part>
-
-      <Part icon={<Rocket />} title="Deployments and packages" about="Who may put code in front of people, and publish what others install.">
-        <Stub
-          title="Who can deploy to production"
-          about="Who may deploy a project's production environment, and redeploy or take it down."
-          today="anyone with Write on the project's repository redeploys or takes an app down; turning deployments on for a project takes Admin."
-          control={<LockedChoice name="deploy_production" options={[{ value: "write", label: "Write on the repository", description: "The rule today." }, { value: "admin", label: "Admin on the repository" }, { value: "owners", label: "Owners only" }]} value="write" />}
-        />
-        <Stub
-          title="Who can publish packages"
-          about="Who may publish a new version of one of the workspace's packages."
-          today="anyone with Write on the package's repository, or a token given write on packages, publishes new versions and tags."
-          control={<LockedChoice name="publish_packages" options={[{ value: "write", label: "Write on the repository", description: "The rule today." }, { value: "admin", label: "Admin on the repository" }, { value: "owners", label: "Owners only" }]} value="write" />}
-        />
       </Part>
 
       <p className="text-xs text-faint">

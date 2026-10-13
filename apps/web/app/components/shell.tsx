@@ -202,27 +202,6 @@ function SidebarLink({
 }
 
 /**
- * Something a project will have, shown where it will live so people can
- * see where g1t is going. Not a link: nothing is behind it yet.
- */
-function SidebarSoon({ icon, children, about }: { icon: ReactNode; children: ReactNode; about: string }) {
-  return (
-    <SidebarMenuItem>
-      <Hint label={about} side="right">
-        <SidebarMenuButton asChild variant="faint">
-          <div aria-disabled="true" className="cursor-default">
-            {icon}
-            <span className="min-w-0 grow truncate">{children}</span>
-            <span className="sr-only">{about}</span>
-            <SoonPill />
-          </div>
-        </SidebarMenuButton>
-      </Hint>
-    </SidebarMenuItem>
-  );
-}
-
-/**
  * A page that is coming, as a link to its roadmap page: faint, with Soon,
  * and marked current on any of its section's Soon pages.
  */
@@ -1325,17 +1304,13 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
   actions: <PlayCircle size={15} />,
   secrets: <Lock size={15} />,
   webhooks: <Webhook size={15} />,
-  deployments: <Rocket size={15} />,
-  projects: <Layers size={15} />,
   "chat-settings": <MessagesSquare size={15} />,
   emoji: <Smile size={15} />,
-  "artifact-settings": <Shapes size={15} />,
   "security-settings": <Shield size={15} />,
   guardrails: <Gauge size={15} />,
   rules: <Scale size={15} />,
   audit: <History size={15} />,
   integrations: <Plug size={15} />,
-  applications: <Blocks size={15} />,
 };
 
 /**
@@ -1370,10 +1345,9 @@ function FoldingGroup({ title, current, children }: { title: string; current: bo
 /**
  * The Workspace mode's sidebar: the workspace's settings area, every page
  * one click away. Its overview, then the groups in lib/workspace-nav.ts
- * (General, Access, Money, Compute, Code, Chat, Artifacts,
- * Security, Integrations), each folding, the one you are in held open.
- * Pages only owners open are left out for members, and a group with none
- * left goes with them; a page that is coming is a Soon row, not a link.
+ * (General, Access, Money, Compute, Code, Chat, Security, Integrations),
+ * each folding, the one you are in held open. Pages only owners open are
+ * left out for members, and a group with none left goes with them.
  */
 export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean }) {
   const { pathname } = useLocation();
@@ -1395,22 +1369,16 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
           <Fragment key={group.key}>
             <Rule />
             <FoldingGroup title={group.title} current={here?.group === group.key}>
-              {group.pages.filter(shown).map((page) =>
-                page.soon ? (
-                  <SidebarSoon key={page.key} icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Sparkles size={15} />} about={page.soon}>
-                    {page.label}
-                  </SidebarSoon>
-                ) : (
-                  <SidebarLink
-                    key={page.key}
-                    to={`/${slug}/-/${page.path}`}
-                    icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Settings size={15} />}
-                    current={here?.page === page.key}
-                  >
-                    {page.label}
-                  </SidebarLink>
-                ),
-              )}
+              {group.pages.filter(shown).map((page) => (
+                <SidebarLink
+                  key={page.key}
+                  to={`/${slug}/-/${page.path}`}
+                  icon={WORKSPACE_PAGE_ICONS[page.key] ?? <Settings size={15} />}
+                  current={here?.page === page.key}
+                >
+                  {page.label}
+                </SidebarLink>
+              ))}
             </FoldingGroup>
           </Fragment>
         ))}

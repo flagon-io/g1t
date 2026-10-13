@@ -722,8 +722,7 @@ itself: who has access, what it spends, and how each part of g1t is set up
 for it. There is no second Settings inside it: every page is in the
 sidebar, under the group it belongs to, and the group you are in stays
 open while the others fold when you select their name. A page only owners
-open is left out for members; a page that is coming is a greyed **Soon**
-row, with a hint saying what it will hold.
+open is left out for members.
 
 | Group | Page | Who | |
 | --- | --- | --- | --- |
@@ -731,7 +730,7 @@ row, with a hint saying what it will hold.
 | **General** | **General** | Owners | The icon, the display name, a one-line description, the address (the slug), [requiring two-factor authentication](#require-two-factor-authentication), [data residency](#data-residency), and deleting the workspace. `-/settings` |
 | **Access** | **Members** | Members | Who is in the workspace and their roles, with search and filters; owners [invite people](#add-people), change roles, and see **Outside collaborators**. `-/members` |
 | | **Invitations** | Owners | Every invitation to join, filtered by where it stands; send one again, revoke it, copy its link. `-/members/invitations` |
-| | [**Permissions**](/guides/permissions/) | Owners | Who may do what, part by part: the base permission, repositories, teams, chat, artifacts, deployments and packages. `-/permissions` |
+| | [**Permissions**](/guides/permissions/) | Owners | Who may do what, part by part: the base permission, repositories, teams and chat. `-/permissions` |
 | | [**Access tokens**](#workspace-access-tokens) | Members | The workspace's own tokens. Owners create and delete them. `-/tokens` |
 | | **Personal access tokens** | Owners | The workspace's rules for members' tokens, and approving them. `-/personal-access-tokens` |
 | **Money** | [**Usage**](/guides/usage-and-billing/#the-usage-page) | Members | What the workspace used, by product, project and day. `-/usage` |
@@ -741,16 +740,13 @@ row, with a hint saying what it will hold.
 | | **Actions** | Members | How workflows run in the workspace: what jobs' tokens may do, and for owners the [workflows the workspace manages](#workflows-the-workspace-manages) in its repositories. `-/actions` |
 | | [**Secrets and variables**](/guides/secrets-and-variables/) | Members | What runs and deployments are given. Owners change them. `-/secrets` |
 | | [**Webhooks**](/guides/webhooks/) | Members | Where the workspace's events are sent. Owners add and change them. `-/webhooks` |
-| | **Deployments**, **Project defaults** | | Soon: defaults for every project's deployments, and what a new project starts with. |
 | **Chat** | [**Chat settings**](/guides/chat/#workspace-chat-settings) | Members | Renaming and archiving channels, emoji, default channels. Owners change it. `-/settings/chat` |
 | | **Emoji** | Members | The workspace's own emoji. `-/emoji` |
-| **Artifacts** | **Spaces and sharing** | | Soon: which spaces a workspace starts with, and how a new artifact is shared by default. |
 | **Security** | **Security settings** | Members | The workspace's security policies. `-/security/settings` |
 | | [**Guardrails**](/guides/guardrails/) | Members | How long checks, the merge queue and merge checks may run. `-/guardrails` |
 | | [**Rules**](/guides/rules/) | Members | Rulesets across projects. `-/rules` |
 | | [**Audit log**](/guides/audit-log/) | Members | Every change, by whom, to what. `-/audit` |
 | **Integrations** | [**Integrations**](/guides/integrations/) | Members | The tools connected for everyone. `-/integrations` |
-| | **Applications** | | Soon: OAuth applications the workspace registers. |
 
 Each page's address is under `g1t.sh/<workspace>/`. The page's header
 shows where you are: **General**, **Members / Invitations**, **Permissions**.

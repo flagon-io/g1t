@@ -142,7 +142,7 @@ test("Workspace mode's sidebar knows which group and page an address is", async 
     for (const page of group.pages) {
       assert.ok(!keys.has(page.key), `${page.key} twice`);
       keys.add(page.key);
-      if (!page.soon) assert.equal(modeOf(`/acme/-/${page.path}`, "acme"), "workspace", page.path);
+      assert.equal(modeOf(`/acme/-/${page.path}`, "acme"), "workspace", page.path);
     }
   }
 });

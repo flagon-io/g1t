@@ -1,9 +1,7 @@
 ---
 title: Permissions
-description: Who may do what in a workspace, in one place, part by part — repositories, teams, chat, artifacts, deployments and packages — what each setting does, and which are still to come.
+description: Who may do what in a workspace, in one place, part by part — repositories, teams and chat — and what each setting does.
 ---
-
-import Soon from '../../../components/Soon.astro';
 
 **Permissions** is where a workspace's owners decide who may do what, part
 by part: `g1t.sh/<workspace>/-/permissions`, under **Workspace → Access**
@@ -11,10 +9,6 @@ in the sidebar. Only owners can open it. Each part of g1t has a card, each
 setting says what it decides, and each card saves on its own with its
 **Save** button; the change holds on everyone's next request and is
 recorded in the [audit log](/guides/audit-log/).
-
-A setting marked **Soon** is not configurable yet. It is shown the way it
-will be, locked, with the rule that holds today under it, so nobody has to
-look elsewhere to learn what members can do.
 
 ## Code
 
@@ -26,7 +20,6 @@ look elsewhere to learn what members can do.
 | **Repository admins can change visibility** | Whether a member with Admin on a repository can make it public or private. | On |
 | **Repository admins can delete and transfer repositories** | Whether a member with Admin on a repository can delete it, or transfer it to a workspace where they can create one. | Off |
 | **Repository admins can add outside collaborators** | Whether a member with Admin on a repository can give a role on it to someone outside the workspace. | On |
-| **Members can fork private repositories** <Soon /> | Whether a member may fork a private repository under their own name. | g1t has no personal forks: work happens on branches of the repository itself. |
 
 The five switches are the workspace's
 [member privileges](/guides/workspaces/#member-privileges), the same ones
@@ -51,31 +44,15 @@ Renaming and archiving channels, custom emoji and default channels are on
 Chat**: they are about what a channel's own members may do, not who may do
 what in the workspace.
 
-## Artifacts
-
-| Setting | What it decides | Today |
-| --- | --- | --- |
-| **Who can create spaces** <Soon /> | Who may add a space beside the ones the workspace has. | Any member, from **+** beside **Spaces** in the Artifacts sidebar. |
-| **Default sharing** <Soon /> | Who a new artifact is shared with before its author chooses. | A new artifact is its author's, shared with the people and teams they add, or opened to the workspace from its **Share** menu. See [sharing](/guides/artifacts/#sharing). |
-
-## Deployments and packages
-
-| Setting | What it decides | Today |
-| --- | --- | --- |
-| **Who can deploy to production** <Soon /> | Who may deploy a project's production environment, and redeploy or take it down. | Anyone with Write on the project's repository redeploys or takes an app down; turning deployments on for a project takes Admin. See [deployments](/guides/deployments/). |
-| **Who can publish packages** <Soon /> | Who may publish a new version of one of the workspace's packages. | Anyone with Write on the package's repository, or a token given write on packages. See [packages](/guides/packages/). |
-
 ## Through the API
 
-Every setting that exists is set the way it was before it had this page:
+Every setting is set the way it was before it had this page:
 
 | Setting | Route | MCP |
 | --- | --- | --- |
 | Base permission | [`PUT /workspaces/{workspace}/base_permission`](/reference/api/access/set-base-permission/) | `access` `set_base_permission` |
 | Member privileges, who can create teams | [`PATCH /workspaces/{workspace}`](/reference/api/workspaces/update-workspace/) with `members_can_…` or `team_creation` | `workspace` `update` |
 | Public and private channels | The chat service's workspace settings, as [Chat settings](/guides/chat/#workspace-chat-settings) saves them | |
-
-A setting marked Soon has no route yet.
 
 ## Next
 

@@ -28,11 +28,10 @@ export function workspacePage(pathname: string, slug: string): WorkspacePageKey 
 /**
  * Workspace mode's pages, in the groups its sidebar lists them under: the
  * workspace's settings area, every page one click away. `owner` marks the
- * pages only owners open; the sidebar shows members the rest. A page that
- * is not here yet is a `soon` row: what the group will hold, not a link.
+ * pages only owners open; the sidebar shows members the rest.
  * `path` is under `-/`.
  */
-export type WorkspaceSettingsPage = { key: string; label: string; path: string; owner?: boolean; soon?: string };
+export type WorkspaceSettingsPage = { key: string; label: string; path: string; owner?: boolean };
 
 export type WorkspaceSettingsGroup = { key: string; title: string; pages: WorkspaceSettingsPage[] };
 
@@ -74,18 +73,6 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
       { key: "actions", label: "Actions", path: "actions" },
       { key: "secrets", label: "Secrets and variables", path: "secrets" },
       { key: "webhooks", label: "Webhooks", path: "webhooks" },
-      {
-        key: "deployments",
-        label: "Deployments",
-        path: "soon/deployments",
-        soon: "Defaults for every project's deployments: environments, who approves production, and the domains the workspace owns.",
-      },
-      {
-        key: "projects",
-        label: "Project defaults",
-        path: "soon/projects",
-        soon: "What a new project starts with: its visibility, branch rules and merge method.",
-      },
     ],
   },
   {
@@ -94,18 +81,6 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
     pages: [
       { key: "chat-settings", label: "Chat settings", path: "settings/chat" },
       { key: "emoji", label: "Emoji", path: "emoji" },
-    ],
-  },
-  {
-    key: "artifacts",
-    title: "Artifacts",
-    pages: [
-      {
-        key: "artifact-settings",
-        label: "Spaces and sharing",
-        path: "soon/artifact-settings",
-        soon: "Which spaces a workspace starts with, and how a new artifact is shared by default.",
-      },
     ],
   },
   {
@@ -121,15 +96,7 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
   {
     key: "integrations",
     title: "Integrations",
-    pages: [
-      { key: "integrations", label: "Integrations", path: "integrations" },
-      {
-        key: "applications",
-        label: "Applications",
-        path: "soon/applications",
-        soon: "OAuth applications the workspace registers, and the ones it lets its members authorize.",
-      },
-    ],
+    pages: [{ key: "integrations", label: "Integrations", path: "integrations" }],
   },
 ];
 
@@ -147,7 +114,6 @@ export function workspaceSettingsPage(pathname: string, slug: string): { group: 
   let found: { group: string; page: string; depth: number } | null = null;
   for (const group of WORKSPACE_SETTINGS_GROUPS) {
     for (const page of group.pages) {
-      if (page.soon) continue;
       if (rest === page.path || rest.startsWith(`${page.path}/`)) {
         const depth = page.path.split("/").length;
         if (!found || depth > found.depth) found = { group: group.key, page: page.key, depth };
