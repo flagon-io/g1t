@@ -1740,7 +1740,7 @@ pub static OPERATIONS: &[Operation] = &[
         path: "/repos/{owner}/{name}/context",
         tag: "Integrations",
         summary: "Look up a ticket",
-        scope: Some("memory:read"),
+        scope: Some("issues:read"),
         params: &[
             Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
             Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
@@ -2377,39 +2377,6 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[
             Field { name: "org_roles", kind: "array", required: false, values: &[] },
             Field { name: "role", kind: "string", required: false, values: &["owner", "member"] },
-        ],
-    },
-    Operation {
-        id: "recall",
-        method: "GET",
-        path: "/repos/{owner}/{name}/memory",
-        tag: "Memory",
-        summary: "Recall memory",
-        scope: Some("memory:read"),
-        params: &[
-            Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
-            Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
-            Param { name: "q", location: In::Query, kind: "string", required: false, values: &[] },
-            Param { name: "limit", location: In::Query, kind: "integer", required: false, values: &[] },
-        ],
-        body: &[],
-    },
-    Operation {
-        id: "remember",
-        method: "POST",
-        path: "/repos/{owner}/{name}/memory",
-        tag: "Memory",
-        summary: "Remember something",
-        scope: Some("memory:write"),
-        params: &[
-            Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
-            Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
-        ],
-        body: &[
-            Field { name: "from_number", kind: "integer", required: false, values: &[] },
-            Field { name: "kind", kind: "string", required: false, values: &["fact", "convention", "decision", "gotcha"] },
-            Field { name: "scope", kind: "string", required: false, values: &["project", "workspace"] },
-            Field { name: "text", kind: "string", required: true, values: &[] },
         ],
     },
     Operation {

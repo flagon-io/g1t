@@ -1,6 +1,6 @@
 import { inlineParts } from "../lib/inline-markdown";
 
-/** One line of an agent's or a memory's text, with its bold, italics and code shown as such. */
+/** One line of an agent's text, with its bold, italics and code shown as such. */
 export function InlineMarkdown({ text }: { text: string }) {
   return (
     <>

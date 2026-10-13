@@ -165,7 +165,3 @@ curl "https://api.g1t.sh/search?q=parse_query+language:rust&type=code"
 With a token, private results in your workspaces are included. See
 [Search g1t](/reference/api/search/search/) in the API reference and
 [MCP tools](/reference/mcp/#search).
-
-`search` looks across all of g1t. To read what a project or workspace
-remembers, use the `memory` tool's `recall` action; see
-[Memory](/guides/memory/).

@@ -108,7 +108,7 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
  * project at which each is the current one.
  */
 export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: string; also: string[]; soon?: boolean }> = {
-  code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare", "memory"] },
+  code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare"] },
   issues: { label: "Issues", path: "issues", also: ["milestones", "labels"] },
   pulls: { label: "Pull requests", path: "pulls", also: ["pull", "work", "queue", "sessions"] },
   actions: { label: "Workflows", path: "actions", also: [] },

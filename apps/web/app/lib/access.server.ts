@@ -115,8 +115,8 @@ export async function requireRepo(context: Context, params: RepoParams, capabili
 }
 
 /**
- * Pages only people with a role of their own see (plans, memory,
- * deployments, security, settings): a 404 for anyone else, as before.
+ * Pages only people with a role of their own see (plans, deployments,
+ * security, settings): a 404 for anyone else, as before.
  */
 export async function requireInsider(context: Context, params: RepoParams, capability: Capability = "read") {
   const found = await requireRepo(context, params, "read");

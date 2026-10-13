@@ -62,8 +62,6 @@ export const SCOPES = [
   { scope: "deployments:write", description: "Report deployments and their statuses, from any CI" },
   { scope: "observability:read", description: "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports" },
   { scope: "observability:write", description: "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports" },
-  { scope: "memory:read", description: "Recall memory" },
-  { scope: "memory:write", description: "Save memory for whoever works on the project next" },
   { scope: "account:read", description: "Read your email addresses, invites, invitations, pinned projects and stars" },
   { scope: "account:write", description: "Change your email addresses, make invites, answer invitations, pin projects and star repositories" },
   { scope: "notifications:read", description: "See your inbox, its threads, and what you subscribe to and watch" },
@@ -99,13 +97,16 @@ export const UPCOMING_SCOPES: readonly { scope: Scope; description: string }[] =
 
 /**
  * Scopes of what g1t no longer has (Rust: `Resource::retired`): `agents`
- * (g1t's own agents) and `models` (its model proxy and AI Gateway). Tokens
+ * (g1t's own agents), `memory` (project and workspace memory) and `models`
+ * (its model proxy and AI Gateway). Tokens
  * and OAuth grants that stored them still read, but they are never offered
  * or granted and no operation needs them: they give nothing. `isScope` and
  * `parseScopes` leave them out.
  */
 export const RETIRED_SCOPES = [
   { scope: "agents:run", description: "Retired: put g1t's own agents to work. Grants nothing now" },
+  { scope: "memory:read", description: "Retired: recall project and workspace memory. Grants nothing now" },
+  { scope: "memory:write", description: "Retired: save project and workspace memory. Grants nothing now" },
   { scope: "models:read", description: "Retired: see the AI Gateway's requests. Grants nothing now" },
   { scope: "models:write", description: "Retired: send requests through the AI Gateway. Grants nothing now" },
 ] as const;
@@ -128,7 +129,6 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "checks", label: "Checks and statuses", group: "repository" },
   { resource: "deployments", label: "Deployments", group: "repository" },
   { resource: "observability", label: "Observability", group: "repository" },
-  { resource: "memory", label: "Memory", group: "repository" },
   { resource: "account", label: "Your account", group: "account" },
   { resource: "notifications", label: "Notifications", group: "account" },
   { resource: "chat", label: "Chat", group: "account" },
@@ -148,6 +148,7 @@ export const UPCOMING_RESOURCES: { resource: ScopeResource; label: string; group
 /** Resources of what g1t no longer has, as `RETIRED_SCOPES`: settings never show them. */
 export const RETIRED_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
   { resource: "agents", label: "g1t agents", group: "repository" },
+  { resource: "memory", label: "Memory", group: "repository" },
   { resource: "models", label: "AI Gateway", group: "workspace" },
 ];
 
@@ -250,10 +251,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. No preset gives chat: an application gets it only by asking for it. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "artifacts:read",
+    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "artifacts:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "memory:read", "memory:write", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
+    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
@@ -481,6 +482,7 @@ export const OPERATION_SCOPES = [
   ["add_comment", "issues:write"],
   ["edit_comment", "issues:write"],
   ["delete_comment", "issues:write"],
+  ["get_context", "issues:read"],
   ["import_issue", "issues:write"],
   ["list_claims", "issues:read"],
   ["get_work", "issues:read"],
@@ -604,9 +606,6 @@ export const OPERATION_SCOPES = [
   ["list_token_requests", "access:read"],
   ["review_token_request", "access:admin"],
   ["revoke_member_token", "access:admin"],
-  ["recall", "memory:read"],
-  ["get_context", "memory:read"],
-  ["remember", "memory:write"],
   ["list_collaborators", "access:read"],
   ["get_collaborator_permission", "access:read"],
   ["list_repo_invitations", "access:read"],
@@ -712,7 +711,6 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "checks", label: "Checks", scopes: ["checks:read", "checks:write"] },
   { id: "deployments", label: "Deployments", scopes: ["deployments:read", "deployments:write"] },
   { id: "observability", label: "Observability", scopes: ["observability:read", "observability:write"] },
-  { id: "memory", label: "Memory", scopes: ["memory:read", "memory:write"] },
   { id: "account", label: "Account", scopes: ["account:read", "account:write"] },
   { id: "notifications", label: "Notifications", scopes: ["notifications:read", "notifications:write"] },
   { id: "chat", label: "Chat", scopes: ["chat:read", "chat:write"] },

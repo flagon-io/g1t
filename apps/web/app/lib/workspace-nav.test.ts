@@ -86,7 +86,7 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/settings/emails", "acme"), "account");
   assert.equal(modeOf("/acme/-/chat/general", "acme"), "chat");
   assert.equal(modeOf("/acme/-/chat/dm/c1.data", "acme"), "chat");
-  // Agents mode is gone: its old addresses fall to Code's not-found page; Memory is Code's.
+  // Agents mode and Memory are gone: their old addresses fall to Code's not-found page.
   assert.equal(modeOf("/acme/-/agents", "acme"), "code");
   assert.equal(modeOf("/acme/-/memory", "acme"), "code");
   assert.equal(modeOf("/acme/-/artifacts", "acme"), "artifacts");

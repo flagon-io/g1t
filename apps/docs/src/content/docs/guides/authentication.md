@@ -778,7 +778,6 @@ Repository permissions apply in every repository the token reaches:
 | Workflow files | write | `workflow_files:write` |
 | Checks and statuses | read, read and write | `checks:read`, `checks:write` |
 | Deployments | read, read and write | `deployments:read`, `deployments:write` |
-| Memory | read, read and write | `memory:read`, `memory:write` |
 | Who has access | read, admin | `access:read`, `access:admin` |
 | Webhooks | read, admin | `webhooks:read`, `webhooks:admin` |
 | Secrets and variables | read, admin | `secrets:read`, `secrets:admin` |
@@ -834,7 +833,7 @@ any row.
 | Preset | Permissions |
 | --- | --- |
 | Read only | Every resource at read except Chat. Changes nothing. |
-| Agent | Every resource at read except Self-hosted runners and Chat, and Code, Issues, Pull requests, Memory and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, works on issues and pull requests, pushes code, and answers your inbox. No admin level. |
+| Agent | Every resource at read except Self-hosted runners and Chat, and Code, Issues, Pull requests and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, works on issues and pull requests, pushes code, and answers your inbox. No admin level. |
 | CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 
 **All** is not a preset that grows: it ticks every permission there is
@@ -879,8 +878,6 @@ one.
 | `checks:write` | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again |
 | `deployments:read` | See [deployments](/guides/deployments-api/), their statuses and environments |
 | `deployments:write` | Report deployments and their statuses, from any CI |
-| `memory:read` | Recall a project's and the workspace's [memory](/guides/memory/) |
-| `memory:write` | Save to a project's or the workspace's memory |
 | `account:read` | Read your email addresses, invites, invitations, pinned projects and stars |
 | `account:write` | Change your email addresses, make invites, answer invitations, pin projects and star repositories |
 | `notifications:read` | See your [notifications](/guides/notifications/), its threads, and what you subscribe to and watch |
@@ -1005,9 +1002,9 @@ full access too, marked **Legacy · full access**: select **Change access**
 in [Connected applications](https://g1t.sh/settings/applications) to narrow
 it.
 
-A token or application that was given `agents:run`, `models:read` or
-`models:write` keeps working for its other scopes; those three grant
-nothing.
+A token or application that was given `agents:run`, `memory:read`,
+`memory:write`, `models:read` or `models:write` keeps working for its
+other scopes; those five grant nothing.
 
 The old addresses of the token settings lead to the list and to each
 token's page.
@@ -1098,8 +1095,7 @@ everything you can.
 
 An application that asks for no scopes in particular gets the
 [Agent preset](#presets): every `read` scope except `runners:read` and `chat:read`, and `code:write`,
-`issues:write`, `pull_requests:write`, `memory:write` and
-`notifications:write`.
+`issues:write`, `pull_requests:write` and `notifications:write`.
 It never gets an admin scope unless it asks for one and you leave it
 ticked, and it gets `chat:read` and `chat:write` only by asking for them;
 with them it can use [Chat](#chat-and-notifications-without-the-website).

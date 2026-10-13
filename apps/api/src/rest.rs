@@ -536,13 +536,6 @@ pub const ROUTES: &[Route] = &[
         &[],
     ),
     route("GET", "/repos/:owner/:name/queue", Op::GetMergeQueue, &[]),
-    route("POST", "/repos/:owner/:name/memory", Op::Remember, &[]),
-    route(
-        "GET",
-        "/repos/:owner/:name/memory",
-        Op::Recall,
-        &[("q", "query"), ("limit", "limit")],
-    ),
     route(
         "GET",
         "/repos/:owner/:name/events",

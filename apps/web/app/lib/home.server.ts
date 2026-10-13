@@ -10,7 +10,6 @@ import {
   type ChatActivity,
   type Deployment,
   MAX_DIGEST_REPOS,
-  type Memory,
   type ProjectDeploys,
   type Repo,
   type RepoPath,
@@ -21,7 +20,7 @@ import {
 
 import { type CodePull, type CodeWork, G1T_ACTOR, type RepoRef, type Span, type Spend, deployActorKey, spanMonths, spendIn } from "./home";
 import { monthSpan } from "./usage";
-import { actions, agents, billing, chat, deployments, events, identity, repos, work } from "./services.server";
+import { actions, billing, chat, deployments, events, identity, repos, work } from "./services.server";
 
 /** Pull requests read per project and list: `LIST_PAGE` in services/work. */
 const PULL_PAGE = 100;
@@ -213,12 +212,6 @@ export async function loadWorkflowRuns(
   );
   const projects = lists.filter((entry) => entry != null);
   return { projects, complete: projects.length === active.length };
-}
-
-/** The workspace's memory, for the decisions recorded in it. */
-export async function loadMemories(viewer: User, slug: string): Promise<Memory[] | null> {
-  const memories = await agents.listMemories(viewer, slug, null).catch(warn("memories"));
-  return memories?.ok ? memories.value.workspace : null;
 }
 
 /**

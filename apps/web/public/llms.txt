@@ -11,8 +11,8 @@
 > merge queue lands each change on main only once it passes together with
 > everything ahead of it, and deployments put a preview of every pull
 > request and production on g1t.page. Each pull request lives in its own
-> fork and carries a recording of how it was made, and memory carries what
-> one agent learned to the next. The forge is free; compute is priced at
+> fork and carries a recording of how it was made, with the decisions
+> behind it. The forge is free; compute is priced at
 > what it costs g1t plus 20%, never per seat.
 
 This file tells an assistant everything needed to get a person set up on g1t
@@ -190,11 +190,6 @@ for `/repos/{owner}/{name}`.
   ends it. Idle after 15 minutes without a heartbeat, ended after 2 hours.
 - **Dependencies:** `PATCH {repo}/issues/{number}` with `blocked_by` (issue
   numbers) sets the issues that must land first; no cycles.
-- **Recall memory** before you start: `GET {repo}/memory?q=<words>` returns
-  what the project remembers: how to build it, its conventions, decisions
-  and traps. When you learn something the next agent needs, save one short
-  fact with `POST {repo}/memory` and `text` (optional `kind`); never a
-  secret. Reading needs `memory:read`, saving `memory:write`.
 - **Open a pull request:** `POST {repo}/pulls` with `issue` (its number) and
   `agent` (the coding agent's name, such as `claude-code`, so people can
   see what made the change). Without an issue, send `title`.
@@ -282,7 +277,7 @@ failure whose message says what to do and where (such as
 
 Everything under "Do work" is also on the MCP server. Its tools are resources,
 each with an `action`: `search`, `repository`, `issue`, `pull_request`,
-`session`, `memory`, `workflow`, `observability`, `package`, `secret`, `webhook`,
+`session`, `workflow`, `observability`, `package`, `secret`, `webhook`,
 `access`, `team`, `workspace`, `billing`, `security`, `notifications`,
 `account` and `artifact`. Call `tools/call` with the tool's name and
 `arguments` holding `action` and its inputs, such as
@@ -290,7 +285,7 @@ each with an `action`: `search`, `repository`, `issue`, `pull_request`,
 MCP tools take the repository as `repo`, written `owner/name`.
 The flow above is: `issue` `work` (the issue's whole context: definition
 of done, claims, sessions, pull requests, blockers), `issue` `claim`
-(advisory; it lists who else is on it), `memory` `recall`, `pull_request`
+(advisory; it lists who else is on it), `pull_request`
 `create` (with `issue`), push, `pull_request` `record_session` as you go,
 `pull_request` `ready` with `summary`; read `overlaps`, `behind`,
 `statuses` and `required_checks` on `pull_request` `get`, and
@@ -301,8 +296,8 @@ say. `session` `start` (idempotent on `harness_session_id`), `update` (a
 heartbeat), `record` (entries, idempotent on `key`) and `end` say who is
 working on what; `issue` `release` or `handoff` (with a `note`) when you
 stop, and `issue` `update` with `blocked_by` sets the issues that must
-land first. `pull_request` `read_session` reads a session back, and `memory`
-`remember` saves a fact. `notifications` reads and answers the
+land first. `pull_request` `read_session` reads a session back.
+`notifications` reads and answers the
 notifications of the person a token acts for: `list` (unread threads, each
 with a `reason` such as `review_requested` or `mention`), `done`,
 `subscribe`, `watch` and more. `search` runs `code`, `notifications` runs
@@ -326,7 +321,7 @@ https://docs.g1t.sh/reference/mcp/
 
 Every access token and OAuth sign-in has scopes, `resource:level`:
 `repo`, `code`, `issues`, `pull_requests`, `workflows`, `checks`, `deployments`,
-`packages`, `security`, `observability`, `memory`, `account`, `notifications`,
+`packages`, `security`, `observability`, `account`, `notifications`,
 `chat`, `access`, `webhooks`, `secrets`, `runners`, `billing`, `artifacts`
 (read, write or admin as each has them), `workspace:read` and
 `workspace:admin`. A higher
@@ -344,8 +339,7 @@ only public repositories of it, with permissions (`contents`, `issues`,
 `workflows`, …) mapped to these scopes; a workspace may require an owner
 to approve one first. For a coding agent, use the Agent preset (every read
 scope but `runners:read` and `chat:read`, plus `code:write`,
-`issues:write`, `pull_requests:write`, `memory:write`,
-`notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
+`issues:write`, `pull_requests:write`, `notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
 `code:write`, `packages:read`, `packages:write`, `workflows:read`,
 `workflows:write`, `checks:read`, `checks:write`, `deployments:read`,
 `deployments:write`).
@@ -380,9 +374,7 @@ and dependencies need `maintain`; repository webhooks, secrets and
 variables need `admin`, seeing them included; security alerts need
 `write` (dismissing a dependency alert too), dismissing or reopening a
 secret alert `admin`, turning security updates on or off `maintain`;
-enabling or disabling a workflow needs `maintain`; project memory is read
-by anyone who can read the repository, and project memory is
-changed with `write`; workspace memory is for members. Members: the
+enabling or disabling a workflow needs `maintain`. Members: the
 workspace's Members and invites (`g1t.sh/<owner>/-/members`, with an
 Outside collaborators tab and the Base permission for owners); a repository's
 Settings → Access (`g1t.sh/<owner>/<repo>/settings/access`); invitations
@@ -703,7 +695,6 @@ https://docs.g1t.sh/guides/search/
 - [Search and Explore](https://docs.g1t.sh/guides/search/)
 - [Connect a coding agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
 - [Pull requests](https://docs.g1t.sh/guides/pull-requests/)
-- [Memory](https://docs.g1t.sh/guides/memory/)
 - [Chat](https://docs.g1t.sh/guides/chat/)
 - [Artifacts](https://docs.g1t.sh/guides/artifacts/)
 - [The merge queue](https://docs.g1t.sh/guides/merge-queue/)

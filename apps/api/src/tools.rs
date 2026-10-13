@@ -205,16 +205,6 @@ pub const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
-        name: "memory",
-        title: "Memory",
-        description: "What the project and its workspace remember for the next agent: how to build, conventions, decisions, traps. Recall before you start; remember one short fact at a time, never a secret.",
-        default_action: None,
-        actions: &[
-            a("recall", Op::Recall, "Search memory, or list it all"),
-            a("remember", Op::Remember, "Save one fact"),
-        ],
-    },
-    Tool {
         name: "workflow",
         title: "Workflows",
         description: "GitHub Actions workflows from .g1t/workflows: their runs, jobs and logs, and running, cancelling or rerunning them. Runs' artifacts: listing, a download link, deleting, and how long they are kept. The repository's actions/cache entries: listing them, what they hold against its 10 GiB, and deleting them. Deployments wherever they run (reported from any CI, made by jobs with an `environment:`, or built on g1t.page), their statuses and environments, and reporting your own; environments' protection rules, approving or rejecting the jobs they hold, approving a pull request's run from outside, the token's default permissions, repository dispatch, and the workflows a workspace runs in its repositories without a file in them. Checks on commits: statuses, check runs (a g1t Actions job is one) and check suites, to read where a commit stands or report on it from CI or an integration. Also the self-hosted runners they run on: a workspace's (`workspace`) or a repository's own (`repo`), and their groups.",
@@ -955,8 +945,9 @@ mod tests {
     fn a_narrow_token_sees_only_its_tools() {
         let access = token(Some(vec![Scope::IssuesWrite]));
         let names: Vec<Value> = listed(&Gate::Token(&access)).into_iter().map(|tool| tool["name"].clone()).collect();
-        // Labels and milestones are the repository's, managed with issues:write.
-        assert_eq!(names, vec![json!("repository"), json!("issue"), json!("account")]);
+        // Labels and milestones are the repository's, managed with issues:write;
+        // looking up the ticket an issue refers to is search's.
+        assert_eq!(names, vec![json!("search"), json!("repository"), json!("issue"), json!("account")]);
         // Notifications are a resource of their own: reading them lists
         // only what reads.
         let reader = token(Some(vec![Scope::NotificationsRead]));
@@ -978,8 +969,8 @@ mod tests {
         let repository = tools.iter().find(|tool| tool["name"] == "repository").unwrap();
         assert_eq!(repository["annotations"]["destructiveHint"], true);
         assert_eq!(repository["annotations"]["readOnlyHint"], false);
-        let memory = tools.iter().find(|tool| tool["name"] == "memory").unwrap();
-        assert_eq!(memory["annotations"]["destructiveHint"], false);
+        let session = tools.iter().find(|tool| tool["name"] == "session").unwrap();
+        assert_eq!(session["annotations"]["destructiveHint"], false);
     }
 
     #[test]

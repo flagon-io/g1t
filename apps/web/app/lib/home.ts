@@ -13,7 +13,6 @@ import type {
   ChatActivity,
   Deployment,
   InboxItem,
-  Memory,
   ProjectDeploys,
   Pull,
   RepoDigest,
@@ -652,25 +651,6 @@ export function deploysIn(projects: { slug: string; deployments: Deployment[] }[
         by: key ? namesOf([key], names, agentKeys) : null,
       });
     }
-  }
-  return rows.sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
-}
-
-/** A decision made in the span: one recorded in the workspace's memory. */
-export type DecisionRow = {
-  key: string;
-  text: string;
-  by: string | null;
-  at: number;
-  to: string;
-};
-
-/** Decisions kept in the workspace's memory that were recorded in the span, newest first. */
-export function decisionsIn(memories: Memory[] | null, slug: string, span: Pick<Span, "from" | "now">): DecisionRow[] {
-  const rows: DecisionRow[] = [];
-  for (const memory of memories ?? []) {
-    if (memory.kind !== "decision" || (memory.status != null && memory.status !== "kept") || !within(memory.createdAt, span)) continue;
-    rows.push({ key: `memory:${memory.id}`, text: memory.text, by: memory.createdBy, at: Date.parse(memory.createdAt), to: `/${slug}/-/memory` });
   }
   return rows.sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
 }

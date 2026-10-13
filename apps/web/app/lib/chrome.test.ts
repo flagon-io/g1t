@@ -72,7 +72,6 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("pull/3/files"), "pulls");
   assert.equal(projectPageAt("queue"), "pulls");
   assert.equal(projectPageAt("sessions/12"), "pulls");
-  assert.equal(projectPageAt("memory"), "code");
   assert.equal(projectPageAt("actions/runs/9"), "actions");
   assert.equal(projectPageAt("security/secret-scanning"), "security");
   assert.equal(projectPageAt("stargazers"), "insights");

@@ -35,6 +35,14 @@ pub(crate) const RENAMED: &[&str] = &[
     "UPDATE guardrails SET workspace = ?1 WHERE workspace = ?2",
 ];
 
+/// A workspace deleted: its own guardrails go, and the notes it kept when
+/// g1t had project and workspace memory (no longer read or written).
+/// `?1` is its slug.
+pub(crate) const DELETED: &[&str] = &[
+    "DELETE FROM memories WHERE scope = 'workspace' AND scope_key = ?1",
+    "DELETE FROM guardrails WHERE scope = 'workspace' AND scope_key = ?1",
+];
+
 /// A repository transferred: its own guardrails follow it to the new
 /// workspace (see `g1t_kit::transfer`; `?3` the workspace now, `?4` the one
 /// before, `?5` the repository's id).

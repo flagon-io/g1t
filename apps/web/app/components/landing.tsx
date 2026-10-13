@@ -542,7 +542,7 @@ export function Landing() {
             points={[
               "Sessions recorded onto pull requests",
               "Why-blame on any line",
-              "Project memory your coding agents read and add to",
+              "Decisions recorded with the reasons behind them",
               "Search across code, issues and people",
             ]}
             more={["Sessions and why-blame", `${DOCS}/guides/why-blame/`]}
@@ -860,8 +860,8 @@ export function Landing() {
             <p className="mt-4 max-w-md leading-7 text-muted">
               Connect Claude Code, Codex, Cursor or any other MCP client and
               sign in once. It works as you: it reads issues, pushes branches,
-              opens pull requests, records its session onto them, and reads
-              and adds to the project&apos;s memory.
+              opens pull requests, and records its session and its decisions
+              onto them.
             </p>
             <p className="mt-4 max-w-md leading-7 text-muted">
               Every action is a REST route and an MCP tool, with an OpenAPI

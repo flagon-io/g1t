@@ -4,10 +4,8 @@
 // (startReviewRun) puts "what the pull request is" in front of them.
 //
 // Production also appends repository instructions (AGENTS.md, CLAUDE.md,
-// .g1t/review.md), workspace memory and the context hub. Benchmark repos
-// have none of g1t's memory, so only the repository files apply; Claude
-// Code reads CLAUDE.md from the checkout by itself, as it does in a
-// trusted production run.
+// .g1t/review.md); Claude Code reads CLAUDE.md from the checkout by
+// itself, as it does in a trusted production run.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

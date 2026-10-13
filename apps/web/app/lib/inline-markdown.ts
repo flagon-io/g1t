@@ -1,8 +1,7 @@
 /**
- * The few marks an agent's one-line summary or a memory's first line
- * carries, read so a row shows them as marks rather than as asterisks and
- * backticks: **bold**, *italic* or _italic_, `code`, and [links](…) as
- * their words. Nothing else; a row is one line, not a document.
+ * The few marks an agent's one-line summary carries, read so a row shows
+ * them as marks rather than as asterisks and backticks: **bold**, *italic*
+ * or _italic_, `code`, and [links](…) as their words. Nothing else; a row is one line, not a document.
  */
 
 export type InlinePart = { kind: "text" | "strong" | "em" | "code"; text: string };

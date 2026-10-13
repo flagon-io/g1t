@@ -27,8 +27,8 @@ const LIFECYCLE: [&str; 8] = [
 
 /// Each subscriber's binding and the types it is sent beside [`LIFECYCLE`].
 pub const ROUTES: &[(&str, &[&str])] = &[
-    // Memory captured from merges and comments, mentions, pull request
-    // bases, runs stopped in archived repositories (work/src/lib.rs queue).
+    // Mentions, pull request bases, runs stopped in archived repositories
+    // (work/src/lib.rs queue).
     (
         "SUBSCRIBER_WORK",
         &[
@@ -203,11 +203,10 @@ mod tests {
     use super::*;
 
     /// Types published on the bus that hooks are not offered.
-    const UNOFFERED: [&str; 29] = [
+    const UNOFFERED: [&str; 28] = [
         "pull.mergecheck",
         "pull.mergeability",
         "deployment.review_requested",
-        "memory.changed",
         "abuse.flagged",
         "invite.created",
         "invite.redeemed",

@@ -6,7 +6,6 @@ import { hasCodeAccess } from "@g1t/contracts";
 import type { Route } from "./+types/home";
 import {
   Card,
-  DecisionsCard,
   DeploysCard,
   LandedCard,
   NeedsList,
@@ -25,7 +24,6 @@ import {
   type Attention,
   type Digest,
   attention,
-  decisionsIn,
   deploysIn,
   digestOf,
   landed,
@@ -47,7 +45,6 @@ import {
   loadCodeWork,
   loadDeploys,
   loadLastVisit,
-  loadMemories,
   loadNames,
   loadRepos,
   loadSpend,
@@ -112,7 +109,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const reposP = code ? loadRepos(viewer, slug).catch(() => null) : Promise.resolve(null);
   const codeWorkP = code ? reposP.then((owned) => loadCodeWork(viewer, slug, reachFor(span), owned)).catch(() => null) : Promise.resolve("no_access" as const);
   const deploysP = code ? loadDeploys(viewer, slug, span.from).catch(() => null) : Promise.resolve(null);
-  const memoriesP = code ? loadMemories(viewer, slug).catch(() => null) : Promise.resolve(null);
   const activityP = reposP.then((owned) => loadActivity(slug, span, owned)).catch(() => null);
   const chatActivityP = loadChatActivity(viewer, slug, span).catch(() => null);
   const namesP = Promise.all([activityP, chatActivityP, deploysP])
@@ -123,8 +119,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const digest: Promise<Digest | null> = Promise.all([activityP, chatActivityP, namesP, reposP])
     .then(([activity, chatActivity, names, owned]) => digestOf({ slug, repos: repoRefs(owned), activity, chat: chatActivity, names, code }))
     .catch(() => null);
-  const happened = Promise.all([codeWorkP, deploysP, memoriesP, activityP, namesP, reposP])
-    .then(([codeWork, deploys, memories, activity, names, owned]) => {
+  const happened = Promise.all([codeWorkP, deploysP, activityP, namesP, reposP])
+    .then(([codeWork, deploys, activity, names, owned]) => {
       const deployRows = deploys ? deploysIn(deploys.projects, slug, span, names) : null;
       const merges = codeWork && codeWork !== "no_access" ? landedIn(codeWork.pulls, span) : null;
       return {
@@ -133,7 +129,6 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
         landedMissing: [...(code && merges == null ? ["Pull requests"] : []), ...(code && activity == null ? ["Pushes and releases"] : []), ...(code && deployRows == null ? ["Deployments"] : [])],
         deploys: deployRows,
         deploysComplete: deploys?.complete ?? true,
-        decisions: decisionsIn(memories, slug, span),
       };
     })
     .catch(() => null);
@@ -273,11 +268,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <Suspense fallback={null}>
               <Await resolve={happened}>
                 {(value) => <DeploysCard deploys={value?.deploys ?? null} complete={value?.deploysComplete ?? true} code={loaderData.code} now={now} tz={tz} />}
-              </Await>
-            </Suspense>
-            <Suspense fallback={null}>
-              <Await resolve={happened}>
-                {(value) => <DecisionsCard decisions={value?.decisions ?? null} now={now} tz={tz} />}
               </Await>
             </Suspense>
           </div>

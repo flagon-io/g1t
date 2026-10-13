@@ -27,6 +27,20 @@ use crate::{Work, optional};
 /// How the runner starts a step that notes something about the sandbox
 /// rather than what the run is doing: a host it was refused (the runner's
 /// egress.ts `blockedStep`).
+/// A workspace renamed: its runs move to the slug it has now. `?1` is the
+/// current slug, `?2` a stale one (see `g1t_kit::rename`).
+pub(crate) const RENAMED: &[&str] = &[
+    "UPDATE agent_runs SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE agent_runs SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
+];
+
+/// A repository transferred (see `g1t_kit::transfer`): its runs go with
+/// it, as its issues and pull requests do by id. `?1`/`?2` the path now
+/// and before, `?3`/`?4` the workspaces, `?5` the repository's id.
+pub(crate) const TRANSFERRED: &[&str] = &[
+    "UPDATE agent_runs SET workspace = ?3, repo = ?1 WHERE repo_id = ?5 AND repo = ?2",
+];
+
 const NOTE_PREFIXES: [&str; 1] = ["Blocked: "];
 
 /// Where a report leaves the run: its newest step that says what the run
@@ -577,6 +591,24 @@ impl Work {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transfer_and_deletion_statements_take_what_they_name() {
+        for sql in TRANSFERRED.iter().chain(crate::guardrails::TRANSFERRED) {
+            let n = g1t_kit::transfer::parameters(sql);
+            assert!((1..=5).contains(&n), "{sql}");
+        }
+        for sql in crate::guardrails::DELETED {
+            assert_eq!(g1t_kit::rename::parameters(sql), 1, "{sql}");
+        }
+    }
+
+    #[test]
+    fn rename_statements_take_the_two_slugs() {
+        for sql in RENAMED.iter().chain(crate::guardrails::RENAMED) {
+            assert_eq!(g1t_kit::rename::parameters(sql), 2, "{sql}");
+        }
+    }
 
     #[test]
     fn a_refused_host_is_noted_but_never_where_the_run_is() {

@@ -38,7 +38,7 @@ test("every scope is on the checklist exactly once, admin ones under Dangerous",
 
 test("ticked boxes store the highest level of each resource", () => {
   const parsed = scopesFromForm(
-    form({ scope: ["issues:read", "issues:write", "code:read", "agents:run", "bogus:read"] }),
+    form({ scope: ["issues:read", "issues:write", "code:read", "agents:run", "memory:write", "bogus:read"] }),
   );
   assert.deepEqual(parsed, { ok: true, value: ["code:read", "issues:write"] });
   assert.deepEqual(normalizeScopes(["repo:read", "repo:admin", "repo:write"]), ["repo:admin"]);
@@ -48,7 +48,7 @@ test("full access is null, and nothing ticked is refused", () => {
   assert.deepEqual(scopesFromForm(form({ preset: "full", scope: "issues:read" })), { ok: true, value: null });
   assert.equal(scopesFromForm(form({ preset: "full" }), { allowFull: false }).ok, false);
   assert.equal(scopesFromForm(form({ preset: "custom" })).ok, false);
-  assert.deepEqual(grantFromForm(form({ scope: "memory:read" })), { ok: true, value: { scopes: ["memory:read"] } });
+  assert.deepEqual(grantFromForm(form({ scope: "observability:read" })), { ok: true, value: { scopes: ["observability:read"] } });
 });
 
 test("a higher level ticks the lower ones of its resource only", () => {
@@ -63,6 +63,7 @@ test("full access ticks the top level of everything", () => {
   const all = everyScope();
   assert.ok(all.includes("repo:admin"));
   assert.ok(!all.includes("agents:run"), "retired");
+  assert.ok(!all.some((scope) => scope.startsWith("memory:")), "retired");
   assert.ok(all.includes("code:write"));
   assert.ok(!all.includes("code:read"));
 });
@@ -78,7 +79,7 @@ test("a token's access reads plainly", () => {
   assert.equal(accessSummary({ scopes: null, legacy: true }), "Legacy · full access");
   assert.equal(accessSummary({ scopes: null, legacy: false }), "Full access");
   assert.equal(accessSummary({ scopes: ["code:read", "code:write", "packages:write", "workflows:write", "checks:write", "deployments:write", "repo:read"], legacy: false }), "CI");
-  assert.equal(accessSummary({ scopes: ["issues:read", "issues:write", "memory:read"], legacy: false }), "2 scopes");
+  assert.equal(accessSummary({ scopes: ["issues:read", "issues:write", "pull_requests:read"], legacy: false }), "2 scopes");
   assert.equal(accessSummary({ scopes: [], legacy: false }), "No scopes");
 });
 

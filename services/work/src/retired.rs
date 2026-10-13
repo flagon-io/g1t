@@ -69,6 +69,7 @@ pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM milestones WHERE repo_id = ?1",
     "DELETE FROM counters WHERE repo_id = ?1",
     "DELETE FROM repo_settings WHERE repo_id = ?1",
+    // Notes kept when g1t had project memory, no longer read or written.
     "DELETE FROM memories WHERE scope = 'project' AND scope_key = ?1",
     "DELETE FROM guardrails WHERE scope <> 'workspace' AND scope_key = ?1",
 ];

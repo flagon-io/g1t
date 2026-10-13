@@ -102,8 +102,7 @@ once.
 
 The approval page lists what the app asks for: reading your account,
 workspaces, repositories, checks and workflows, reading and writing
-issues, pull requests and notifications, recalling memory, and reading
-artifacts. Untick what you would rather it
+issues, pull requests and notifications, and reading artifacts. Untick what you would rather it
 could not do.
 
 **Use an access token** signs in with a

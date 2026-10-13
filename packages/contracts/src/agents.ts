@@ -1,5 +1,5 @@
 /**
- * Runs, recorded sessions and memory, kept by the work service. Mirrors
+ * Runs and recorded sessions, kept by the work service. Mirrors
  * `g1t_contracts::agents`.
  */
 import type { ServiceBinding } from "./clients";
@@ -132,58 +132,6 @@ export type SessionView = {
   costUsd: number | null;
 };
 
-export type MemoryScope = "project" | "workspace";
-export type MemoryKind = "fact" | "convention" | "decision" | "gotcha";
-export const MEMORY_KINDS: MemoryKind[] = ["fact", "convention", "decision", "gotcha"];
-
-export type MemorySource = {
-  /** `person`, `agent` or `run`; on memory captured before capture was retired, `review`, `pr` or `doc` too. */
-  kind: string;
-  runId: string | null;
-  repo: RepoPath | null;
-  number: number | null;
-  /** What it was captured from: `run:<id>`, `comment:<id>`, `pull:<repo id>#<n>`, `doc:<repo id>:<path>`. */
-  reference?: string | null;
-  /** What it was learned from, quoted. */
-  evidence?: string | null;
-};
-
-/** Only kept memories are recalled; candidates and dismissed ones are from automatic capture, which is retired. */
-export type MemoryStatus = "candidate" | "kept" | "dismissed";
-
-export type Memory = {
-  id: string;
-  scope: MemoryScope;
-  workspace: string;
-  repo: RepoPath | null;
-  text: string;
-  kind: MemoryKind;
-  source: MemorySource;
-  createdBy: string;
-  pinned: boolean;
-  createdAt: string;
-  updatedAt: string;
-  lastUsedAt: string | null;
-  /** Absent from services that predate capture: `kept`. */
-  status?: MemoryStatus;
-  /** 0 to 1: how sure its source was. Null for what people wrote. */
-  confidence?: number | null;
-  /** How many independent sources said it. */
-  seen?: number;
-};
-
-export type Memories = { project: Memory[]; workspace: Memory[] };
-
-export type NewMemory = {
-  scope: MemoryScope;
-  repo?: RepoPath | null;
-  text: string;
-  kind?: MemoryKind;
-  pinned?: boolean;
-};
-
-export type MemoryChange = { text?: string; kind?: MemoryKind; pinned?: boolean };
-
 export interface AgentsApi {
   /** For the runner: records a sandbox it is starting. */
   openRun(input: OpenRunInput): Promise<Result<AgentRunTicket>>;
@@ -193,13 +141,9 @@ export interface AgentsApi {
   getRun(viewer: Viewer, repo: RepoPath, id: string): Promise<Result<AgentRun>>;
   listSessions(viewer: Viewer, repo: RepoPath, filter?: SessionFilter): Promise<Result<SessionSummary[]>>;
   getSession(viewer: Viewer, repo: RepoPath, number: number): Promise<Result<SessionView>>;
-  listMemories(viewer: Viewer, workspace: string, repo?: RepoPath | null): Promise<Result<Memories>>;
-  addMemory(actor: User, workspace: string, memory: NewMemory): Promise<Result<Memory>>;
-  updateMemory(actor: User, workspace: string, id: string, change: MemoryChange): Promise<Result<Memory>>;
-  deleteMemory(actor: User, workspace: string, id: string): Promise<Result<boolean>>;
 }
 
-/** The runs, sessions and memory methods of the work service. */
+/** The runs and sessions methods of the work service. */
 export function agentsClient(service: ServiceBinding): AgentsApi {
   const call = async <T>(method: string, args: object): Promise<T> => {
     const response = await service.fetch(`https://service/rpc/${method}`, {
@@ -217,10 +161,5 @@ export function agentsClient(service: ServiceBinding): AgentsApi {
     getRun: (viewer, repo, id) => call("get_run", { viewer, repo, id }),
     listSessions: (viewer, repo, filter = {}) => call("list_sessions", { viewer, repo, ...filter }),
     getSession: (viewer, repo, number) => call("get_session", { viewer, repo, number }),
-    listMemories: (viewer, workspace, repo) => call("list_memories", { viewer, workspace, repo: repo ?? null }),
-    addMemory: (actor, workspace, memory) =>
-      call("add_memory", { actor, workspace, repo: memory.repo ?? null, scope: memory.scope, text: memory.text, kind: memory.kind ?? "fact", pinned: memory.pinned ?? false }),
-    updateMemory: (actor, workspace, id, change) => call("update_memory", { actor, workspace, id, ...change }),
-    deleteMemory: (actor, workspace, id) => call("delete_memory", { actor, workspace, id }),
   };
 }

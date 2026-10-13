@@ -60,8 +60,6 @@ sets up other harnesses. An assistant can do it for you from
 - **Why-blame and decisions.** `g1t why file:line` answers why code is as it
   is: its commit, pull request, issue, the decisions recorded along the way,
   and the sessions behind it.
-- **Memory.** Short notes about a project or workspace that your team and
-  your agents read before they start and add to as they learn.
 - **Ask g1t.** Ask about your work from any page, or by messaging @g1t. It
   answers with your workspace's own AI provider and reads g1t as you.
 

@@ -71,7 +71,7 @@ export const security = securityClient(SECURITY);
 export const securitySuite = securitySuiteClient(SECURITY);
 /** Security advisories and private vulnerability reports: methods of the security service. */
 export const advisories = advisoriesClient(SECURITY);
-/** Memory and pull request sessions: methods of the work service. */
+/** Runs and pull request sessions: methods of the work service. */
 export const agents = agentsClient(WORK);
 /** The network a sandbox may reach: methods of the work service. */
 export const guardrails = guardrailsClient(WORK);
