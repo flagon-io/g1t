@@ -109,10 +109,17 @@ struct Reporter {
 impl Reporter {
     fn send(&self, step: &str, mut body: Value) -> Result<Value> {
         body["token"] = self.token.clone().into();
-        let response = ureq::post(&format!("{}/{step}", self.base))
-            .send_json(body)
-            .with_context(|| format!("could not report `{step}` to g1t"))?;
-        Ok(response.into_json().unwrap_or(Value::Null))
+        match ureq::post(&format!("{}/{step}", self.base)).send_json(body) {
+            Ok(response) => Ok(response.into_json().unwrap_or(Value::Null)),
+            // A refusal (409 `not_enabled`, say) still says why in its
+            // body, which the step reads: ureq makes any status over 399
+            // an error.
+            Err(ureq::Error::Status(status, response)) => match response.into_json::<Value>() {
+                Ok(answer) if answer.get("ok").is_some() => Ok(answer),
+                _ => bail!("could not report `{step}` to g1t: status code {status}"),
+            },
+            Err(error) => Err(error).with_context(|| format!("could not report `{step}` to g1t")),
+        }
     }
 }
 
@@ -1534,6 +1541,57 @@ fn output_lines(found: &Detected) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A server that answers one request with `status` and `body`.
+    fn answering(status: &str, body: &'static str) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let status = status.to_owned();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            // The whole request first (its headers, then its body by
+            // length), or the client may still be writing when the answer
+            // closes the connection.
+            let mut seen = Vec::new();
+            let mut buf = [0; 4096];
+            loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&seen);
+                if let Some(end) = text.find("\r\n\r\n") {
+                    let length = text[..end]
+                        .lines()
+                        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                        .unwrap_or(0);
+                    if seen.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let reply = format!("HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+            stream.write_all(reply.as_bytes()).unwrap();
+        });
+        base
+    }
+
+    #[test]
+    fn a_refusal_reaches_the_step_with_its_reason() {
+        let base = answering("409 Conflict", r#"{"ok":false,"error":{"code":"not_enabled","message":"Docker deployments are not switched on for g1t.page yet."}}"#);
+        let answer = Reporter { base, token: "t".into() }.send("registry", json!({})).unwrap();
+        assert_eq!(answer["ok"], false);
+        assert_eq!(answer["error"]["code"], "not_enabled");
+    }
+
+    #[test]
+    fn a_failure_without_an_answer_says_its_status() {
+        let base = answering("502 Bad Gateway", "upstream down");
+        let error = Reporter { base, token: "t".into() }.send("registry", json!({})).unwrap_err();
+        assert!(format!("{error:#}").contains("status code 502"), "{error:#}");
+    }
 
     #[test]
     fn the_upload_session_is_read_in_either_spelling() {
