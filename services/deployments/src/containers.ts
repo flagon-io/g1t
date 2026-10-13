@@ -328,7 +328,22 @@ export class ${APP_CLASS} extends DurableObject {
     }
     let response;
     try {
-      response = await container.getTcpPort(port).fetch(request);
+      // To the container over plain HTTP, as the app listens: the visitor's
+      // https:// address would have the port asked for TLS, and the app
+      // close the connection. The path, query, method, headers and body
+      // stay as they came; the original host and scheme go along as
+      // X-Forwarded-* headers.
+      const url = new URL(request.url);
+      const headers = new Headers(request.headers);
+      headers.set("x-forwarded-proto", url.protocol.replace(":", ""));
+      headers.set("x-forwarded-host", url.host);
+      const inner = new Request("http://container" + url.pathname + url.search, {
+        method: request.method,
+        headers,
+        body: request.body,
+        redirect: "manual",
+      });
+      response = await container.getTcpPort(port).fetch(inner);
     } catch (error) {
       return page(502, "The app failed", "It closed the connection before it answered.");
     }
