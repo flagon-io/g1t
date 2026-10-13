@@ -179,8 +179,7 @@ roadmap.
   register or rename a workspace to while it exists. **Remove**
   (`admin_remove_alias`) needs a reason. Both go in sudo's audit log
   (`alias_added`, `alias_removed`), naming the staff member. `@g1t` in
-  text still means g1t's agent: it links to how the agent works, never to
-  `/g1t`.
+  text still means g1t itself (Ask g1t), never the alias's `/g1t`.
 - **Enterprises**: customers that pay for several workspaces with one
   bill, one limit and one set of terms. Each has its workspaces (add or
   remove them), combined usage, terms, credits, ledger and audit log, and
@@ -295,7 +294,7 @@ The same two checks still apply: the Access policy, and `STAFF_EMAILS`.
 
 ```sh
 npm run typecheck -w @g1t/sudo
-npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join, paging, nav, charts, signals, models
+npm test -w @g1t/sudo     # JWT verification, forms, money, the workspace join, paging, nav, charts, signals
 npm run build -w @g1t/sudo
 ```
 

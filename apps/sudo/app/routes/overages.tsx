@@ -143,7 +143,7 @@ function ReviewPanel({ review, cap }: { review: Review; cap: number }) {
       </h2>
       <p className="mt-2 text-sm text-fg-soft">
         A {usd(review.amountMicros)} credit to <span className="font-mono">{review.workspace}</span> is past the {usd(cap)} a goodwill credit
-        absorbs in one click. That is money g1t already paid Cloudflare and model providers. Say why, for whoever looks next; it goes in the
+        absorbs in one click. That is money g1t already paid Cloudflare. Say why, for whoever looks next; it goes in the
         audit log with your email.
       </p>
       <form method="post" action={`${pathname}#review`} className="mt-4 space-y-3">

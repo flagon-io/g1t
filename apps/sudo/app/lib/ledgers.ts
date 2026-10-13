@@ -67,8 +67,8 @@ const ENTERPRISE = /^ent_[a-z0-9_-]{1,80}$/;
  */
 export function accountPath(account: string | null | undefined): string | null {
   const id = (account ?? "").trim().toLowerCase();
-  // Shared invite links (identity's shared_invites.rs): `invites` is a reserved name, never a workspace's.
-  if (id === SHARED_INVITES_ACCOUNT) return "/invites?tab=shared";
+  // Shared invite links, retired with invite-only registration: `invites` is a reserved name, never a workspace's.
+  if (id === SHARED_INVITES_ACCOUNT) return "/invites";
   const status = /^(incident|maintenance):([a-z0-9-]{1,64})$/.exec(id);
   if (status) return status[1] === "incident" ? `/incidents/${status[2]}` : `/incidents/maintenance/${status[2]}`;
   if (ENTERPRISE.test(id)) return `/enterprises/${encodeURIComponent(id)}`;

@@ -95,9 +95,7 @@ export default function Soon({ loaderData }: Route.ComponentProps) {
       {(prices || pricesError) && (
         <Section
           title="The price book today"
-          description={
-            prices ? `Read-only. Models are charged at cost plus ${prices.modelMarginPercent}%.` : undefined
-          }
+          description={prices ? "Read-only." : undefined}
           className="mt-8"
         >
           {pricesError ? (
