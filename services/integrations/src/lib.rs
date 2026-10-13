@@ -16,6 +16,7 @@ mod ask_tools;
 mod github;
 mod github_jwt;
 mod http;
+mod local_day;
 mod models;
 mod refs;
 mod rename;
@@ -23,7 +24,7 @@ mod sentry;
 mod trackers;
 
 use g1t_contracts::events::Event;
-use g1t_contracts::identity::{AskToken, CreateAskTokenArgs, RevokeAskTokenArgs, SlugArgs, Workspace};
+use g1t_contracts::identity::{AskToken, CreateAskTokenArgs, Profile, RevokeAskTokenArgs, SlugArgs, UsernameArgs, Workspace};
 use g1t_contracts::integrations::*;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::rfc3339;
@@ -710,7 +711,7 @@ impl Integrations {
         let provider = row.provider();
         let config = row.config();
         let key = self.secrets(&row).secret;
-        let (named, facts, credential) = futures_util::future::join3(
+        let (named, facts, credential, profile) = futures_util::future::join4(
             g1t_kit::call::<_, Option<Workspace>>(&self.identity, "get_workspace", &SlugArgs { slug: workspace.clone() }),
             self.ask_facts(&a.actor, &a.page),
             g1t_kit::call::<_, Outcome<AskToken>>(
@@ -718,6 +719,8 @@ impl Integrations {
                 "create_ask_token",
                 &CreateAskTokenArgs { actor: a.actor.clone(), workspace: workspace.clone() },
             ),
+            // Their time zone, for what "today" means to them.
+            g1t_kit::call::<_, Option<Profile>>(&self.identity, "profile", &UsernameArgs { username: a.actor.username.clone() }),
         )
         .await;
         let name = named.ok().flatten().map(|found| found.name).unwrap_or_default();
@@ -746,6 +749,19 @@ impl Integrations {
         let now = rfc3339(started);
         let today: String = now.chars().take(10).collect();
         let now: String = format!("{}Z", now.chars().take(19).collect::<String>());
+        // Their profile's zone first, else the one their browser sent.
+        let zone = profile
+            .ok()
+            .flatten()
+            .and_then(|profile| profile.timezone)
+            .or_else(|| a.page.time_zone.clone())
+            .filter(|zone| !zone.trim().is_empty() && zone.len() <= 64);
+        let day = zone.as_deref().and_then(|zone| local_day::today(zone, started));
+        let day_started = day.as_ref().map(local_day::started_at);
+        let local = match (&zone, &day, &day_started) {
+            (Some(zone), Some(day), Some(started)) => Some((zone.as_str(), day.date.as_str(), started.as_str())),
+            _ => None,
+        };
         let username = a.actor.display_username.clone().unwrap_or_else(|| a.actor.username.clone());
         let system = ask::system_prompt(&ask::Context {
             slug: &workspace,
@@ -757,6 +773,7 @@ impl Integrations {
             page: &a.page,
             facts: &facts,
             tools: !toolbox.is_empty(),
+            local,
         });
         let mut answering = ask_loop::Answering::new(
             provider,

@@ -1241,7 +1241,8 @@ class Chat {
       channel: { id: channel.id, kind: channel.kind, name: channel.name },
       actor: viewer,
       messages,
-      page: latestPage(rows) ?? { path: `/${place.slug}/-/chat/dm/${channel.id}` },
+      // The page of the newest question; one asked in Chat is on the direct message itself.
+      page: { ...latestPage(rows), path: latestPage(rows)?.path ?? `/${place.slug}/-/chat/dm/${channel.id}` },
       message: written.value,
     });
   }

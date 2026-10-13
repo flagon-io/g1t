@@ -134,7 +134,12 @@ test("the page an answer is told is the newest question's, as sent from the top 
     repo: { namespace: "acme", name: "web" },
     issue: null,
     pull: null,
+    time_zone: null,
   });
+  // The browser's time zone is kept when it is one; anything else is dropped.
+  assert.equal(pageFrom({ path: "/acme", time_zone: "America/Denver" })?.time_zone, "America/Denver");
+  assert.equal(pageFrom({ path: "/acme", time_zone: "<script>" })?.time_zone, null);
+  assert.deepEqual(pageFrom({ time_zone: "Asia/Kolkata" }), { path: null, repo: null, issue: null, pull: null, time_zone: "Asia/Kolkata" });
   assert.equal(pageFrom({ path: "https://elsewhere" }), null);
   assert.equal(pageFrom("nope"), null);
   assert.equal(metaColumn({}), null);

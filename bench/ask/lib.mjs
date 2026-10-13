@@ -165,7 +165,7 @@ export async function apiAll(path, max = 300) {
 // --- Ask ------------------------------------------------------------------
 
 /** Event types the bench knows. Anything else is recorded as unknown, never dropped. */
-const KNOWN = new Set(["meta", "text", "done", "error"]);
+const KNOWN = new Set(["meta", "text", "done", "error", "tool", "sources", "proposal"]);
 
 /** Looks like a tool step: `tool`, `tool_call`, `tool_result`, `step`, … */
 export const isToolEvent = (event) => /tool|step|action|call/i.test(String(event?.type ?? ""));
@@ -182,10 +182,34 @@ function urlsIn(value, found = new Set()) {
   return found;
 }
 
+/** A chat API call on the site as the user: the `{ ok, value | error }` it answers. */
+async function chatApi(workspace, body) {
+  const response = await site(`/${workspace}/-/chat/api`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: SITE },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: { message: `chat api ${response.status}: ${text.slice(0, 200)}` } };
+  }
+}
+
+async function chatMessages(workspace, channel) {
+  const response = await site(`/${workspace}/-/chat/api?channel=${encodeURIComponent(channel)}&limit=60`);
+  const data = await response.json().catch(() => null);
+  return data?.value?.messages ?? [];
+}
+
 /**
- * Asks once, as the user, and reads the whole answer: every event with the
- * time it came, the time to the first text, the total, the tool steps and
- * sources it reported, and the text.
+ * Asks once, as the user, the way Ask and Chat both do: in the user's
+ * direct message with @g1t, after a New conversation mark, posting each of
+ * the conversation's questions in turn and following g1t's answer to each
+ * as it streams (polled). The last answer is the one graded: its text, the
+ * time to its first words and to its end, and the steps and sources it kept,
+ * as events in the order the stream gave them.
  */
 export async function ask(workspace, { messages, page }, { timeoutMs = 180_000 } = {}) {
   const started = performance.now();
@@ -205,53 +229,48 @@ export async function ask(workspace, { messages, page }, { timeoutMs = 180_000 }
     source_events: [],
     source_urls: [],
   };
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await site(`/${workspace}/-/ask`, {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/x-ndjson" },
-      body: JSON.stringify({ messages, page: page ?? {} }),
-      signal: controller.signal,
-    });
-    result.status = response.status;
-    if (!response.body) throw new Error(`no body (${response.status})`);
-    const decoder = new TextDecoder();
-    let pending = "";
-    const take = (line) => {
-      if (!line.trim()) return;
-      let event;
-      try {
-        event = JSON.parse(line);
-      } catch {
-        event = { type: "_unparsed", line: line.slice(0, 500) };
+    const dm = await chatApi(workspace, { intent: "g1t_dm" });
+    if (!dm.ok) throw new Error(dm.error?.message ?? "could not open the direct message with g1t");
+    const channel = dm.value.channel.id;
+    await chatApi(workspace, { intent: "g1t_reset", channel_id: channel });
+    const questions = messages.filter((m) => m.role === "user");
+    let answer = null;
+    for (const [index, question] of questions.entries()) {
+      const last = index === questions.length - 1;
+      const asked = performance.now();
+      const posted = await chatApi(workspace, { intent: "post", channel_id: channel, body: question.content, page: last ? (page ?? null) : null });
+      result.status = posted.ok ? 200 : 400;
+      if (!posted.ok) throw new Error(posted.error?.message ?? "could not post");
+      const mine = posted.value.id;
+      answer = null;
+      while (performance.now() - asked < timeoutMs) {
+        await sleep(700);
+        const list = await chatMessages(workspace, channel);
+        answer = list.find((m) => m.id > mine && m.author?.kind === "system" && m.answer) ?? null;
+        if (last && answer?.body && result.first_text_ms === null) result.first_text_ms = at();
+        if (last && answer && result.first_event_ms === null) result.first_event_ms = at();
+        if (answer && ["done", "error", "stopped"].includes(answer.answer.state)) break;
       }
-      const ms = at();
-      result.first_event_ms ??= ms;
-      result.events.push({ ms, event });
-      const type = String(event?.type ?? "");
-      if (!KNOWN.has(type) && !result.unknown_types.includes(type)) result.unknown_types.push(type);
-      if (type === "meta") result.meta = event;
-      if (type === "text" && typeof event.text === "string") {
-        result.first_text_ms ??= ms;
-        result.text += event.text;
-      }
-      if (type === "done") result.done = event;
-      if (type === "error") result.error = event.message ?? "error";
-      if (!KNOWN.has(type) && isToolEvent(event)) result.tool_events.push({ ms, event });
-      if (!KNOWN.has(type) && isSourceEvent(event)) result.source_events.push({ ms, event });
-    };
-    for await (const chunk of response.body) {
-      pending += decoder.decode(chunk, { stream: true });
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
-      lines.forEach(take);
+      if (!answer || !["done", "error", "stopped"].includes(answer.answer?.state)) throw new Error(`timed out after ${timeoutMs} ms`);
     }
-    take(pending);
+    const kept = answer.answer;
+    result.meta = { type: "meta", provider_label: kept.provider_label, model: kept.model };
+    result.events.push({ ms: 0, event: result.meta });
+    for (const step of kept.steps ?? []) {
+      const type = String(step?.type ?? "");
+      result.events.push({ ms: null, event: step });
+      if (!KNOWN.has(type) && !result.unknown_types.includes(type)) result.unknown_types.push(type);
+      if (isToolEvent(step)) result.tool_events.push({ ms: null, event: step });
+      if (isSourceEvent(step)) result.source_events.push({ ms: null, event: step });
+    }
+    result.text = answer.body ?? "";
+    result.events.push({ ms: at(), event: { type: "text", text: result.text } });
+    if (kept.state === "done") result.done = { type: "done", stop_reason: kept.stop_reason ?? null };
+    else result.error = kept.error ?? kept.state;
   } catch (error) {
-    result.error = controller.signal.aborted ? `timed out after ${timeoutMs} ms` : String(error?.message ?? error);
+    result.error = String(error?.message ?? error);
   } finally {
-    clearTimeout(timer);
     result.total_ms = at();
   }
   const urls = new Set();

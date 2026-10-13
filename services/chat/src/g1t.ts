@@ -156,8 +156,9 @@ export function pageFrom(value: unknown): AskPage | null {
         : null,
     issue: number(sent.issue),
     pull: number(sent.pull),
+    time_zone: typeof sent.time_zone === "string" && /^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,2}$/.test(sent.time_zone) && sent.time_zone.length <= 64 ? sent.time_zone : null,
   };
-  return page.path || page.repo ? page : null;
+  return page.path || page.repo || page.time_zone ? page : null;
 }
 
 /** What g1t says when nobody chose an AI provider for Ask yet: once, and where to choose one. */

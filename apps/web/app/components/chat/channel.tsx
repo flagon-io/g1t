@@ -43,7 +43,7 @@ import { AgentPill, MemberAvatar } from "./marks";
 import { PersonStatusEmoji, PersonStatusLine, PresenceSummary, WithPresence } from "../presence";
 import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-card";
 
-import { localTime } from "../../lib/time-zone";
+import { browserTimeZone, localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
 // @g1t's answers and its direct message (lib/g1t-chat.ts, components/chat/answer.tsx).
@@ -467,7 +467,8 @@ export function ChannelView({ data }: { data: Loaded }) {
         setMessages(put);
       }
       messageSent({ dnd: dndNow() });
-      const saved = await send<ChatMessage>({ intent: "post", channel_id: data.channel.id, body, thread_root: root });
+      // The browser's time zone rides along: g1t keeps it only on a question to @g1t, for what "today" means.
+      const saved = await send<ChatMessage>({ intent: "post", channel_id: data.channel.id, body, thread_root: root, page: { time_zone: browserTimeZone() } });
       const settle = (list: ShownMessage[]) =>
         saved.ok
           ? mergeMessages(list, [{ ...saved.value, client_id: clientId }])

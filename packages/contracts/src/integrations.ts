@@ -161,6 +161,8 @@ export type AskPage = {
   repo?: RepoPath | null;
   issue?: number | null;
   pull?: number | null;
+  /** The browser's IANA time zone, such as `America/Denver`: what "today" means when their profile names none. */
+  time_zone?: string | null;
 };
 
 /** The most rounds of tool calls one answer takes before it must answer. */

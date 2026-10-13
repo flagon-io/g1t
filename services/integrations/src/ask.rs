@@ -273,11 +273,14 @@ pub struct Context<'a> {
     pub facts: &'a [Fact],
     /// Whether g1t's tools could be offered this time.
     pub tools: bool,
+    /// Their time zone, their date there, and when that day began (UTC):
+    /// what "today" means to them. None when their profile names no zone.
+    pub local: Option<(&'a str, &'a str, &'a str)>,
 }
 
 /// What the provider is told before the conversation.
 pub fn system_prompt(context: &Context) -> String {
-    let Context { slug, name, username, site, today, now, page, facts, tools } = *context;
+    let Context { slug, name, username, site, today, now, page, facts, tools, local } = *context;
     let site = site.trim_end_matches('/');
     let named = if name.is_empty() || name.eq_ignore_ascii_case(slug) {
         slug.to_owned()
@@ -288,8 +291,14 @@ pub fn system_prompt(context: &Context) -> String {
         "You are g1t, the assistant built into g1t ({site}), where teams keep their repositories, issues, pull \
          requests, workflows, deployments, releases and docs. You are answering @{username}, a member of the \
          workspace {named}, and you act for them: you can read what they can read in g1t, and nothing more.\n\n\
-         Today is {today} (UTC); it is now {now}. \"Today\" means since {today}T00:00:00Z unless they say otherwise."
+         It is now {now} (UTC)."
     );
+    match local {
+        Some((zone, date, started)) => prompt.push_str(&format!(
+            " They are in {zone}, where it is {date}: \"today\" means since {started} unless they say otherwise,              and \"yesterday\" the day before that. Give times in their zone where it helps."
+        )),
+        None => prompt.push_str(&format!(" Today is {today} (UTC): \"today\" means since {today}T00:00:00Z unless they say otherwise.")),
+    }
     if tools {
         prompt.push_str(&format!(
             "\n\n## Reading g1t\n\
@@ -299,7 +308,11 @@ pub fn system_prompt(context: &Context) -> String {
              - For anything across the workspace (what shipped, what happened today or this week, who did what, \
              what is in flight), start with the workspace tool's `activity` action with workspace \"{slug}\" and a \
              `since`: one call covers every repository they can read. \"What shipped\" means merged pull requests, \
-             releases, production deployments and pushes to a default branch.\n\
+             releases, production deployments and pushes to a default branch; its `landed` lists the commits those \
+             pushes carried, one line each, so say what changed (group related commits, lead with what matters to \
+             people), not only how many. Pass `since` as the start of their today for \"today\". If `complete` is \
+             false, narrow `kinds` (such as merged, releases, deployments, pushes) or the span and read again rather \
+             than guessing.\n\
              - To find a repository, use the repository tool's `list` or the search tool. Repositories are \
              \"owner/name\", here usually \"{slug}/…\".\n\
              - For one pull request, read it with pull_request `get` (status, checks, reviews) and `changes` for \
@@ -901,6 +914,7 @@ mod tests {
             page,
             facts,
             tools,
+            local: None,
         }
     }
 
@@ -911,6 +925,7 @@ mod tests {
             repo: Some(RepoPath { namespace: "acme".into(), name: "web".into() }),
             issue: Some(12),
             pull: None,
+            time_zone: None,
         };
         let facts = [Fact { kind: "issue", number: 12, title: "Login fails".into(), state: "open".into(), body: "Steps…".into() }];
         let prompt = system_prompt(&context(&page, &facts, true));
@@ -936,6 +951,13 @@ mod tests {
         assert!(!bare.contains("## Where they are"));
         assert!(bare.contains("could not be reached"));
         assert!(!bare.contains("## Reading g1t"));
+        // In their own zone, "today" began at their midnight.
+        let local = system_prompt(&Context {
+            local: Some(("America/Denver", "2026-10-12", "2026-10-12T06:00:00Z")),
+            ..context(&AskPage::default(), &[], true)
+        });
+        assert!(local.contains("They are in America/Denver, where it is 2026-10-12: \"today\" means since 2026-10-12T06:00:00Z"));
+        assert!(!local.contains("(UTC): \"today\""));
     }
 
     #[test]

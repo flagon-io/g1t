@@ -4,7 +4,8 @@ import { Link, useLocation } from "react-router";
 
 import { type AskSetup, type ChatLiveEvent, type ChatMessage, type Result } from "@g1t/contracts";
 
-import { askPage, askWhere, browserTimeZone } from "../lib/ask";
+import { askPage, askWhere } from "../lib/ask";
+import { browserTimeZone } from "../lib/time-zone";
 import { anyAnswering, applyLive, fromG1t, suggestions } from "../lib/g1t-chat";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "./ai-elements/conversation";
 import { Message, MessageContent } from "./ai-elements/message";

@@ -524,6 +524,10 @@ pub struct AskPage {
     pub issue: Option<u32>,
     #[serde(default)]
     pub pull: Option<u32>,
+    /// The browser's IANA time zone, such as `America/Denver`: what
+    /// "today" means when their profile names none.
+    #[serde(default)]
+    pub time_zone: Option<String>,
 }
 
 /// `ask`: one answer, streamed as newline-delimited JSON [`AskEvent`]s:

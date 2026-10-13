@@ -16,7 +16,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use g1t_contracts::events::{Event, ListArgs as ListEventsArgs, MAX_LIST_REPOS};
 use g1t_contracts::identity::UsernamesArgs;
-use g1t_contracts::repos::{ListArgs as ListReposArgs, Repo};
+use g1t_contracts::repos::{Commit, ListArgs as ListReposArgs, LogArgs, Repo, RepoPath};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::work::{MAX_PULLS_FOR_REPOS, PullsForReposArgs, RepoPulls};
 use g1t_contracts::{FailureCode, Outcome, Viewer};
@@ -46,12 +46,19 @@ pub const KINDS: &[(&str, &[&str])] = &[
     ("runs", &["workflow.completed"]),
 ];
 
+/// The most repositories whose default-branch commits are read, and the
+/// most commits that `landed` lists across them.
+const LANDED_REPOS: usize = 8;
+const LANDED_MAX: usize = 40;
+/// How far back each of those repositories' history is read.
+const LANDED_LOG: u32 = 60;
+
 /// What is read when no kinds are given: everything but comments, which
 /// would crowd out the rest on a busy day.
 const DEFAULT_KINDS: &[&str] = &["pulls", "issues", "releases", "deployments", "pushes", "reviews", "packages", "runs"];
 
 pub fn description() -> &'static str {
-    "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments, default-branch pushes and failed runs: what shipped, and what broke. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events."
+    "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments, default-branch pushes and failed runs: what shipped, and what broke. `landed` lists the commits made on default branches in the span, one line each (`repo`, `commit`, `subject`, `author`, `time`, `url`): what shipped where it was pushed rather than merged. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events."
 }
 
 pub fn input() -> Value {
@@ -314,9 +321,34 @@ pub fn shape(found: &Found) -> Value {
             "default_branch_pushes": landed,
             "failed_runs": runs_failed,
         },
+        // What landed on default branches in the span, one line a commit
+        // (`run` fills it in): what shipped where nothing was merged.
+        "landed": [],
         "events": events,
         "complete": !found.more && found.repos.len() <= MAX_LIST_REPOS,
     })
+}
+
+/// One repository's default-branch commits made in the span, newest first,
+/// each as one line: its short sha, the first line of its message, who
+/// wrote it, when, and its page.
+pub fn landed(site: &str, repo: &str, commits: &[Commit], since: u64, until: u64) -> Vec<Value> {
+    let site = site.trim_end_matches('/');
+    commits
+        .iter()
+        .filter(|commit| parse_rfc3339(&commit.authored_at).is_some_and(|at| at >= since && at < until))
+        .map(|commit| {
+            let subject: String = commit.message.lines().next().unwrap_or_default().trim().chars().take(160).collect();
+            json!({
+                "repo": repo,
+                "commit": commit.hash.chars().take(12).collect::<String>(),
+                "subject": subject,
+                "author": commit.author.name,
+                "time": commit.authored_at,
+                "url": format!("{site}/{repo}/commit/{}", commit.hash),
+            })
+        })
+        .collect()
 }
 
 pub async fn run(services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
@@ -408,7 +440,7 @@ pub async fn run(services: &Services, viewer: &Viewer, input: &Value) -> Result<
         }
     }
     let usernames = names.unwrap_or_default();
-    Ok(Outcome::Ok(shape(&Found {
+    let mut answer = shape(&Found {
         workspace: &workspace,
         site: &site,
         since,
@@ -418,7 +450,35 @@ pub async fn run(services: &Services, viewer: &Viewer, input: &Value) -> Result<
         more,
         pull_titles: &pull_titles,
         usernames: &usernames,
-    })))
+    });
+    // The repositories whose default branch was pushed to, busiest first:
+    // their commits say what landed.
+    let mut pushed: Vec<(String, usize)> = Vec::new();
+    for event in events.iter().filter(|event| event.kind == "git.push" && event.data.get("defaultBranch").and_then(Value::as_bool) == Some(true)) {
+        let Some(id) = event.repo_id.as_deref() else { continue };
+        match pushed.iter_mut().find(|(known, _)| known == id) {
+            Some((_, count)) => *count += 1,
+            None => pushed.push((id.to_owned(), 1)),
+        }
+    }
+    pushed.sort_by(|a, b| b.1.cmp(&a.1));
+    let by_id: HashMap<&str, &Repo> = repos.iter().map(|repo| (repo.id.as_str(), repo)).collect();
+    let logs = pushed.iter().take(LANDED_REPOS).filter_map(|(id, _)| by_id.get(id.as_str()).copied()).map(|repo| async move {
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
+        let log: Result<Outcome<Vec<Commit>>> =
+            g1t_kit::call(&services.repos, "log", &LogArgs { path, viewer: viewer.clone(), git_ref: None, limit: LANDED_LOG }).await;
+        (format!("{}/{}", repo.namespace, repo.name), log)
+    });
+    let mut lines = Vec::new();
+    for (repo, log) in futures_util::future::join_all(logs).await {
+        // A history that cannot be read leaves the events to say it.
+        if let Ok(Outcome::Ok(commits)) = log {
+            lines.extend(landed(&site, &repo, &commits, since, until));
+        }
+    }
+    lines.truncate(LANDED_MAX);
+    answer["landed"] = json!(lines);
+    Ok(Outcome::Ok(answer))
 }
 
 #[cfg(test)]
@@ -470,6 +530,33 @@ mod tests {
         assert_eq!(limit(&json!({ "limit": "500" })), MAX_LIMIT);
         assert_eq!(limit(&json!({ "limit": 5 })), 5);
         assert_eq!(limit(&json!({})), DEFAULT_LIMIT);
+    }
+
+    #[test]
+    fn what_landed_is_one_line_a_commit_made_in_the_span() {
+        use g1t_contracts::repos::Signature;
+        let commit = |hash: &str, message: &str, at: &str| Commit {
+            hash: hash.to_owned(),
+            tree_hash: String::new(),
+            message: message.to_owned(),
+            author: Signature { name: "Chase".into(), email: String::new() },
+            parents: Vec::new(),
+            authored_at: at.to_owned(),
+        };
+        let commits = [
+            commit("aaaaaaaaaaaaaaaa", "Ask reads g1t
+
+The long why.", "2026-10-13T05:00:00Z"),
+            commit("bbbbbbbbbbbbbbbb", "Yesterday's change", "2026-10-12T05:00:00Z"),
+        ];
+        let since = parse_rfc3339("2026-10-12T06:00:00Z").unwrap();
+        let until = parse_rfc3339("2026-10-13T06:00:00Z").unwrap();
+        let lines = landed("https://g1t.sh/", "acme/web", &commits, since, until);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0]["subject"], "Ask reads g1t");
+        assert_eq!(lines[0]["commit"], "aaaaaaaaaaaa");
+        assert_eq!(lines[0]["author"], "Chase");
+        assert_eq!(lines[0]["url"], "https://g1t.sh/acme/web/commit/aaaaaaaaaaaaaaaa");
     }
 
     #[test]
