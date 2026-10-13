@@ -407,7 +407,10 @@ async function reportContainers(unit, cwd, out) {
       out.line(`container ${app.name}: ${size || JSON.stringify(c).slice(0, 200)}; version ${app.version ?? "?"}; ${app.instances ?? "?"} instances; ${rollout}`);
     }
   } catch (error) {
-    out.line(`could not read the container applications: ${error.message ?? error}`);
+    out.line(`could not read the container applications as JSON (${error.message ?? error}); wrangler said:`);
+    const said = await wrangler(["containers", "list"], { cwd }).catch(() => ({ out: "" }));
+    for (const line of said.out.split("
+").filter((l) => l.trim()).slice(0, 40)) out.line(`  ${line}`);
   }
 }
 
