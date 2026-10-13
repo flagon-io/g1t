@@ -72,10 +72,6 @@ pub(crate) struct Config {
     pub free_audit_days: u32,
     pub audit_days: u32,
     pub audit_max_days: u32,
-    /// `RUN_CAP_MICROS` and `ISSUE_CAP_MICROS`: one run's spend cap, and
-    /// agents' spend on one issue in all.
-    pub run_cap_micros: i64,
-    pub issue_cap_micros: i64,
     /// `LIMIT_PAID_START_MICROS`: a new paid workspace's ceiling in its
     /// first month.
     pub paid_start_micros: i64,
@@ -109,8 +105,6 @@ impl Default for Config {
             free_audit_days: 7,
             audit_days: 90,
             audit_max_days: 400,
-            run_cap_micros: g1t_contracts::guardrails::DEFAULT_RUN_CAP_MICROS,
-            issue_cap_micros: 10_000_000,
             paid_start_micros: 100_000_000,
             spike_factor: 5,
             spike_floor_micros: 5_000_000,
@@ -140,8 +134,6 @@ impl Config {
             free_audit_days: number("FREE_AUDIT_RETENTION_DAYS", d.free_audit_days.into()).max(1) as u32,
             audit_days: number("AUDIT_RETENTION_DAYS", d.audit_days.into()).max(1) as u32,
             audit_max_days: number("AUDIT_MAX_DAYS", d.audit_max_days.into()).max(1) as u32,
-            run_cap_micros: number("RUN_CAP_MICROS", d.run_cap_micros),
-            issue_cap_micros: number("ISSUE_CAP_MICROS", d.issue_cap_micros),
             paid_start_micros: number("LIMIT_PAID_START_MICROS", d.paid_start_micros),
             spike_factor: number("SPIKE_FACTOR", d.spike_factor).max(1),
             spike_floor_micros: number("SPIKE_FLOOR_MICROS", d.spike_floor_micros),
@@ -782,8 +774,6 @@ mod tests {
         assert_eq!(c.free_audit_days, 7);
         assert_eq!(c.audit_days, 90);
         assert_eq!(c.audit_max_days, 400);
-        assert_eq!(c.run_cap_micros, g1t_contracts::guardrails::DEFAULT_RUN_CAP_MICROS);
-        assert_eq!(c.issue_cap_micros, 10_000_000);
         assert_eq!(c.paid_start_micros, 100_000_000);
         assert_eq!(c.forgive_cost_micros, 50_000_000);
         assert_eq!(c.git_included, 50_000);

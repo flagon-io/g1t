@@ -40490,7 +40490,6 @@
                         "syntaqx"
                       ],
                       "blocked_by": [],
-                      "queued": false,
                       "agent": null,
                       "milestone": {
                         "number": 3,
@@ -40975,7 +40974,6 @@
                     "comment_count": 0,
                     "assignees": [],
                     "blocked_by": [],
-                    "queued": false,
                     "agent": "claude-code",
                     "milestone": null
                   }
@@ -41101,7 +41099,6 @@
                   "comment_count": 0,
                   "assignees": [],
                   "blocked_by": [],
-                  "queued": false,
                   "agent": null,
                   "milestone": null
                 }
@@ -41294,7 +41291,6 @@
                     "comment_count": 0,
                     "assignees": [],
                     "blocked_by": [],
-                    "queued": false,
                     "agent": null,
                     "milestone": null
                   },
@@ -41539,7 +41535,6 @@
                   "blocked_by": [
                     9
                   ],
-                  "queued": false,
                   "agent": null,
                   "milestone": {
                     "number": 3,
@@ -41743,7 +41738,6 @@
                   "comment_count": 0,
                   "assignees": [],
                   "blocked_by": [],
-                  "queued": false,
                   "agent": null,
                   "milestone": null
                 }
@@ -41908,7 +41902,6 @@
                   "comment_count": 0,
                   "assignees": [],
                   "blocked_by": [],
-                  "queued": false,
                   "agent": null,
                   "milestone": null
                 }
@@ -42193,7 +42186,6 @@
                     "blocked_by": [
                       9
                     ],
-                    "queued": false,
                     "agent": null,
                     "milestone": {
                       "number": 3,
@@ -57616,7 +57608,7 @@
           "Runners"
         ],
         "summary": "Change runner settings for a workspace",
-        "description": "Change where g1t's own jobs (checks and the merge queue) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.\n\nAgent work on your runners still uses g1t's model proxy, paid as before, unless the workspace has its own model provider.",
+        "description": "Change where g1t's own jobs (checks and the merge queue) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.\n\n`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (checks, merge checks and the merge queue) to your runners with those labels.",
         "x-operation": "update_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "update_runner_settings",
@@ -59172,7 +59164,6 @@
                     "comment_count": 0,
                     "assignees": [],
                     "blocked_by": [],
-                    "queued": false,
                     "agent": "claude-code",
                     "milestone": null
                   },

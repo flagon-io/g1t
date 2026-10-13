@@ -122,8 +122,6 @@ test("allowances: the plan without its price, pool shares, and staff's overrides
       ossRepoMicros: null,
       trialMicros: null,
       maxConcurrentAgents: null,
-      runCapMicros: null,
-      issueCapMicros: null,
       auditRetentionDays: null,
       hold: null,
     },
@@ -138,8 +136,6 @@ test("allowances: the plan without its price, pool shares, and staff's overrides
         trialMicros: 2_500_000,
         // Retired with g1t's own agents: always cleared, whatever an old form sends.
         maxConcurrentAgents: null,
-        runCapMicros: null,
-        issueCapMicros: null,
         auditRetentionDays: 365,
         hold: "Card disputed; waiting on the bank",
       },

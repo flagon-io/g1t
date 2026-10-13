@@ -561,7 +561,6 @@ export function Landing() {
               "A live preview for every pull request",
               "Production on every merge to main",
               "Custom domains, with certificates",
-              "Projects that depend on each other",
             ]}
             more={["Deployments", `${DOCS}/guides/deployments/`]}
           >

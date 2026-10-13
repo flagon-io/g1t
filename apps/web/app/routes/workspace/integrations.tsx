@@ -161,7 +161,7 @@ const KIND_INFO: Record<ProviderKind, { title: string; icon: ReactNode; blurb: s
   models: {
     title: "Your AI providers",
     icon: <Cpu size={16} />,
-    blurb: "Connect the AI providers your team uses, so g1t can hand work to them.",
+    blurb: "Connect the AI providers your team uses: Ask g1t answers with one, and an Anthropic key starts sessions on issues.",
   },
   alerts: {
     title: "Alerts",

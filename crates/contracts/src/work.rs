@@ -345,10 +345,6 @@ pub struct Issue {
     /// worked on.
     #[serde(default)]
     pub blocked_by: Vec<u32>,
-    /// Whether a g1t agent takes it as soon as it can: at once, or when
-    /// what it is blocked by has merged.
-    #[serde(default)]
-    pub queued: bool,
     /// The agent working on it now: the one behind its newest pull request
     /// that is still in progress in a fork, such as `g1t`.
     #[serde(default)]
@@ -580,13 +576,11 @@ pub fn g1t_author() -> User {
 /// Who is recorded as opening an issue or a pull request that `actor`
 /// opens, and who asked for it: `(author, requested_by)`.
 ///
-/// - g1t's agent, acting for someone through its token (an issue it files
-///   while at work): g1t, requested by that person.
-/// - A person having g1t make the change (`by_g1t`: a hosted g1t agent in
-///   a fork of its own): g1t, requested by them.
+/// - g1t's retired agent, acting for someone through a token of its own
+///   that still works: g1t, requested by that person.
 /// - Anyone else, and g1t's own work that nobody asked for: the actor, and
 ///   nobody asking.
-pub fn authorship(actor: &User, by_g1t: bool) -> (User, Option<User>) {
+pub fn authorship(actor: &User) -> (User, Option<User>) {
     let person = |id: &str, username: &str| User {
         id: id.to_owned(),
         username: username.to_owned(),
@@ -601,9 +595,6 @@ pub fn authorship(actor: &User, by_g1t: bool) -> (User, Option<User>) {
             .filter(|on_behalf_of| !crate::system::is_system_id(&on_behalf_of.id))
             .map(|on_behalf_of| person(&on_behalf_of.id, &on_behalf_of.username));
         return (g1t_author(), asked);
-    }
-    if by_g1t && actor.kind != crate::PrincipalKind::System {
-        return (g1t_author(), Some(person(&actor.id, &actor.username)));
     }
     let author = User {
         id: actor.id.clone(),
@@ -1220,7 +1211,8 @@ pub enum Stage {
     NeedsYou,
 }
 
-/// Where a pull request made by a g1t agent stands. See [`Stage`].
+/// Where a pull request g1t's retired agents made stands, for those still
+/// open. See [`Stage`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Lifecycle {
     pub stage: Stage,
@@ -1253,8 +1245,9 @@ pub enum Advance {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RepoSettings {
-    /// Land a g1t agent's pull request without a person once it is ready:
-    /// required checks passed and approved as the settings below require.
+    /// Land a pull request g1t is seeing through without a person once it
+    /// is ready: required checks passed and approved as the settings below
+    /// require.
     pub auto_merge: bool,
     /// The checks that must pass on a pull request's head before it may
     /// merge into the default branch, by name: a workflow's name (`CI`), or
@@ -1268,7 +1261,7 @@ pub struct RepoSettings {
     /// How many approving reviews a pull request needs before it may
     /// merge. A reviewer who has since asked for changes blocks it.
     pub required_approvals: u32,
-    /// Whether a g1t agent's approval counts towards `required_approvals`.
+    /// Whether an agent's approval counts towards `required_approvals`.
     pub count_agent_approvals: bool,
     /// Whether someone who may merge can bypass required checks that have
     /// not passed, by saying so as they merge.
@@ -1315,8 +1308,8 @@ pub struct UpdateSettingsArgs {
     pub settings: RepoSettings,
 }
 
-/// `stall`: records that a step could not be carried out, so that g1t
-/// stops and a person is asked. Returns `bool`.
+/// What the work service records when a step could not be carried out, so
+/// that g1t stops and a person is asked. Not served over RPC.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StallArgs {
@@ -1639,35 +1632,6 @@ pub struct UpdatePullArgs {
     /// Needs the Write role.
     #[serde(default)]
     pub base: Option<String>,
-}
-
-/// `start_checks`: always refused now; a pull request's checks are the
-/// workflows run on it. Kept so that a runner from before is answered.
-/// Returns `Outcome<CheckJob>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartChecksArgs {
-    pub pull_id: String,
-}
-
-/// What a sandbox needs to carry out a check run.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckJob {
-    pub run_id: String,
-    /// Lets the sandbox, and nothing else, report this run's results.
-    pub token: String,
-    pub commands: Vec<String>,
-    /// The repository holding the commit: the fork, or the repository itself.
-    pub source: RepoPath,
-    pub commit: String,
-    /// Who the pull request is for ([`Pull::owner`]: whoever asked g1t for
-    /// it, or its author), and so can read its source.
-    pub author: User,
-    /// Username of whoever wrote the checks: the issue's author.
-    pub requested_by: String,
-    pub repo: RepoPath,
-    pub number: u32,
 }
 
 /// `report_checks`: what a sandbox says about its run. With no results and
@@ -2261,16 +2225,8 @@ mod authorship_tests {
     }
 
     #[test]
-    fn a_change_a_person_has_g1t_make_is_g1t_s_requested_by_them() {
-        let (author, asked) = authorship(&person(), true);
-        assert_eq!((author.id.as_str(), author.username.as_str(), author.kind), (AGENT_ID, "g1t", PrincipalKind::Agent));
-        let asked = asked.expect("the person asked for it");
-        assert_eq!((asked.id.as_str(), asked.username.as_str(), asked.kind), ("usr_1", "syntaqx", PrincipalKind::User));
-    }
-
-    #[test]
     fn what_g1t_s_agent_files_at_work_is_g1t_s_requested_by_whoever_it_works_for() {
-        let (author, asked) = authorship(&agent_for("usr_1", "syntaqx"), false);
+        let (author, asked) = authorship(&agent_for("usr_1", "syntaqx"));
         assert_eq!(author.id, AGENT_ID);
         assert_eq!(asked.map(|user| user.username), Some("syntaqx".into()));
     }
@@ -2278,18 +2234,18 @@ mod authorship_tests {
     #[test]
     fn nobody_asked_for_g1t_s_own_work() {
         // A run g1t started itself acts for g1t, not for a person.
-        let (author, asked) = authorship(&agent_for(crate::system::ID, "g1t"), false);
+        let (author, asked) = authorship(&agent_for(crate::system::ID, "g1t"));
         assert_eq!(author.id, AGENT_ID);
         assert!(asked.is_none());
         // A security update g1t opens is g1t's own, as before.
-        let (author, asked) = authorship(&User::system("acme"), true);
+        let (author, asked) = authorship(&User::system("acme"));
         assert_eq!((author.id.as_str(), author.kind), (crate::system::ID, PrincipalKind::System));
         assert!(asked.is_none());
     }
 
     #[test]
     fn anyone_else_opens_their_own() {
-        let (author, asked) = authorship(&person(), false);
+        let (author, asked) = authorship(&person());
         assert_eq!((author.id.as_str(), author.kind), ("usr_1", PrincipalKind::User));
         assert!(asked.is_none());
         // Nothing but who they are is kept.

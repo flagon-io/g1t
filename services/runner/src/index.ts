@@ -468,7 +468,6 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         ...track,
         model: null,
         sandbox: this.ctx.id.toString(),
-        budgetUsd: guard?.policy.budgetUsd ?? null,
         timeCapMinutes: guard?.minutes ?? null,
       })
       .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
@@ -744,12 +743,9 @@ const DEFAULT_MINUTES: Record<"queue" | "mergecheck", number> = {
   mergecheck: 10,
 };
 
-/** A plan's caps on one run, for the sandbox to apply under its guardrails'. */
+/** A plan's cap on one run, for the sandbox to apply under its guardrails'. */
 function limitsOf(ent: ComputeEntitlements | null): PlanLimits {
-  return {
-    minutes: ent && ent.maxRunMinutes > 0 ? ent.maxRunMinutes : null,
-    budgetUsd: ent && ent.runCapMicros > 0 ? ent.runCapMicros / 1_000_000 : null,
-  };
+  return { minutes: ent && ent.maxRunMinutes > 0 ? ent.maxRunMinutes : null };
 }
 
 /** The shorter of a kind's time cap and the plan's, for an estimate. */

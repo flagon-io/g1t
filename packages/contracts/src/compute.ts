@@ -68,8 +68,6 @@ export type ComputeEntitlements = {
   firstMonth: boolean;
   /** The longest any sandbox may run, in minutes; zero means no cap. */
   maxRunMinutes: number;
-  /** The most one sandbox run may cost; zero means no cap. */
-  runCapMicros: number;
   ceilingMicros: number;
   exposureMicros: number;
   /** Why g1t paused the workspace's compute; null when it is not paused. */
@@ -121,7 +119,6 @@ export function readEntitlements(answer: unknown): ComputeEntitlements | null {
     trialVerified: field(raw, "trialVerified") === true,
     firstMonth: field(raw, "firstMonth") === true,
     maxRunMinutes: num(field(raw, "maxRunMinutes")),
-    runCapMicros: num(field(raw, "runCapMicros")),
     ceilingMicros: num(field(raw, "ceilingMicros")),
     exposureMicros: num(field(raw, "exposureMicros")),
     paused: typeof paused === "string" && paused.trim() ? paused.trim() : null,

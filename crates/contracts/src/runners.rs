@@ -146,10 +146,11 @@ pub struct RegistrationToken {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnerSettings {
-    /// Agent runs, checks, reviews and the merge queue run on self-hosted
-    /// runners with `agent_labels`, instead of g1t's sandboxes.
+    /// g1t's own work (checks, merge checks and the merge queue) runs on
+    /// self-hosted runners with `agent_labels`, instead of g1t's sandboxes.
+    /// The names are kept from when that work included agent runs.
     pub agents_on_self_hosted: bool,
-    /// The labels a runner needs to take agent work; `self-hosted` is
+    /// The labels a runner needs to take g1t's own work; `self-hosted` is
     /// always one.
     pub agent_labels: Vec<String>,
     /// Jobs of pull requests from forks may run on self-hosted runners.
@@ -469,7 +470,8 @@ pub struct RunnerActivity {
     pub cloud_jobs: Vec<CloudJob>,
     /// Workflow jobs queued for g1t's sandboxes.
     pub cloud_jobs_queued: u32,
-    /// Agent work on, or waiting for, the workspace's own runners.
+    /// g1t's own work (checks, merge checks, the merge queue) on, or waiting
+    /// for, the workspace's own runners.
     pub handed_over: Vec<HandedOverTask>,
     /// Workflow jobs waiting for one of the workspace's own runners.
     pub self_hosted_jobs_queued: u32,

@@ -1,5 +1,4 @@
 import type { GuardrailSettings, RunKind } from "@g1t/contracts";
-import { microsOf, money } from "./money.ts";
 
 /** A number from a field; empty means inherit. Not a number is kept, to be refused. */
 function amount(value: FormDataEntryValue | null): number | null {
@@ -23,15 +22,4 @@ export function settingsFromForm(form: FormData, catalog: { kinds: readonly RunK
     if (cap != null) minutes[kind] = Number.isNaN(cap) ? 0 : Math.trunc(cap);
   }
   return { minutes };
-}
-
-/** A cost in dollars, or "no cap". */
-export function formatCap(usd: number | null | undefined): string {
-  return usd == null ? "no cap" : money(microsOf(usd));
-}
-
-/** How full a cap is, from 0 to 1, or null with no cap. */
-export function capShare(used: number | null | undefined, cap: number | null | undefined): number | null {
-  if (cap == null || cap <= 0 || used == null) return null;
-  return Math.min(1, Math.max(0, used / cap));
 }

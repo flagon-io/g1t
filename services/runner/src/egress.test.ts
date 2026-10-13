@@ -27,17 +27,11 @@ test("a wildcard covers subdomains at any depth, not the domain itself", () => {
   assert.equal(allows(hosts, "badexample.com"), false);
 });
 
-test("the harness is told the run's rules, caps and branch, and nothing about the network", () => {
-  const guard = {
-    policy: { rules: { sudo: true }, deny: ["Bash(kubectl:*)"], budgetUsd: 5, minutes: { implement: 90 } },
-    minutes: 90,
-  };
+test("the harness is told the run's time cap and branch, and nothing about the network", () => {
+  const guard = { policy: { minutes: { checks: 90 } }, minutes: 90 };
   const vars = harnessEnv(guard, { UPSTREAM_BRANCH: "trunk" });
   assert.deepEqual(Object.keys(vars), ["GUARDRAILS"]);
   assert.deepEqual(JSON.parse(vars.GUARDRAILS), {
-    rules: { sudo: true },
-    deny: ["Bash(kubectl:*)"],
-    budgetUsd: 5,
     minutes: 90,
     defaultBranch: "trunk",
   });

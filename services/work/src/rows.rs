@@ -60,8 +60,6 @@ pub struct IssueRow {
     pub assignees: String,
     /// JSON array of issue numbers.
     pub blocked_by: String,
-    /// JSON of who queued it for a g1t agent, if anyone has.
-    pub queued_by: Option<String>,
     pub agent: Option<String>,
     /// The number of its milestone, and that milestone's title.
     #[serde(default)]
@@ -97,7 +95,6 @@ impl From<IssueRow> for Issue {
             comment_count: row.comment_count,
             assignees: serde_json::from_str(&row.assignees).unwrap_or_default(),
             blocked_by: serde_json::from_str(&row.blocked_by).unwrap_or_default(),
-            queued: row.queued_by.is_some(),
             agent: row.agent,
             milestone: milestone_ref(row.milestone, row.milestone_title),
         }

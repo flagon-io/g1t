@@ -6,33 +6,27 @@
 - **Your tools never see your password.** The CLI, coding agents and MCP clients sign in through your browser, with device sign-in or OAuth with PKCE, and get a token you can revoke from your settings. Access tokens are stored only as hashes.
 - **New accounts confirm their email address** before they can create repositories or push.
 
-## Agents act with credentials of their own
+## Jobs act with credentials of their own
 
-Every agent run gets **credentials made for that run alone**, created when it starts and revoked the moment it stops, and never valid for more than two hours. They're not your access tokens:
+Every workflow job, check and build gets **a token made for that job alone**, revoked the moment it ends. It's not your access token:
 
-- They're bound to the run's repository and to what that kind of run needs. A review can't push; an implementation can push only to its own pull request's fork.
-- They act **on behalf of the person who started the work**, and only while that person is still a member of the workspace. An owner's agent is only ever a member.
-- They can never touch a workspace's settings, members, tokens, billing, integrations, webhooks, secrets, or other repositories, and they can't merge a pull request.
+- It reaches **its own repository only**, and does only what the job's `permissions:` allow.
+- What it changes is recorded in the audit log as that job's, and starts no workflows of its own.
+- A pull request from a fork, or from someone without write access, runs without secrets and with a token that can only read.
 
-The runner that clones and pushes holds one credential; the agent's own tools hold another, which can't be used with git at all. Both are removed from everything recorded about the run.
+Coding agents you connect use your own access tokens or an OAuth sign-in, limited to the scopes and repositories you chose, and you can revoke them from your settings at any time.
 
 ## Every action is recorded
 
-The **audit log** records every action through the API, the MCP server and git, by people and by agents: who did it, on whose behalf, what, to what, and whether it was allowed or refused, with the rule that decided. It's kept for 90 days on every plan, free or paid, and can be exported as CSV or JSON. Security is never a paid extra on g1t.
+The **audit log** records every action through the API, the MCP server and git, by people and by the agents and jobs acting for them: who did it, on whose behalf, what, to what, and whether it was allowed or refused, with the rule that decided. It's kept for 90 days on every plan, free or paid, and can be exported as CSV or JSON. Security is never a paid extra on g1t.
 
-## Guardrails on what agents can do
+## Guardrails on what runs
 
-Each workspace decides what its agents may do, and each project can tighten it:
-
-- **A command hook.** The agent's harness checks every tool call before it runs, and refuses force-pushes, rewriting the default branch, reading files outside the project, printing the environment, `sudo`, and any rules you add. With **No sudo** on, the sandbox gives up root before the agent starts.
-- **Caps** on what one run may spend and how long it may take, enforced by the harness and, for time, by stopping the sandbox itself.
-- **Branch protection**, enforced by g1t when a push arrives, whatever happened in the sandbox.
-
-Command rules guard against an agent's mistakes; the run's credentials and branch protection are the hard boundaries. The [guardrails guide](https://docs.g1t.sh/guides/guardrails/) explains each one and how it's enforced.
+Each workspace decides how long its checks, merge queue and merge checks may run in g1t's sandboxes, and each project can tighten it. A run that passes its time cap is stopped by stopping the sandbox itself, and **branch protection** is enforced by g1t when a push arrives, whatever happened in the sandbox. The [guardrails guide](https://docs.g1t.sh/guides/guardrails/) explains each one.
 
 ## Isolated sandboxes
 
-Agents, checks, workflows and builds each run in **a container of their own** on Cloudflare Containers, with one checkout and its run's credentials, and nothing from any other run or workspace. Each is stopped when its work ends, and when its time cap passes, whatever is running in it. A pull request from a fork is checked out without loading that fork's agent settings, hooks or tools.
+Checks, workflows and builds each run in **a container of their own** on Cloudflare Containers, with one checkout and its job's token, and nothing from any other run or workspace. Each is stopped when its work ends, and when its time cap passes, whatever is running in it.
 
 ## Secrets stay secret
 
@@ -44,7 +38,7 @@ Agents, checks, workflows and builds each run in **a container of their own** on
 
 ## Built on Cloudflare
 
-g1t runs on Cloudflare's network: Workers for the site, API and services, D1 for databases, Artifacts for git storage, Containers for sandboxes. Everything is served over HTTPS. The services behind the site talk to each other over Cloudflare service bindings, not the public internet, and only the site, the API, the MCP server, the model proxy, link previews (og.g1t.sh), the documentation, the status page and g1t.page are reachable from outside. Uploaded images are served with a policy that lets nothing in them run.
+g1t runs on Cloudflare's network: Workers for the site, API and services, D1 for databases, Artifacts for git storage, Containers for sandboxes. Everything is served over HTTPS. The services behind the site talk to each other over Cloudflare service bindings, not the public internet, and only the site, the API, the MCP server, link previews (og.g1t.sh), the documentation, the status page and g1t.page are reachable from outside. Uploaded images are served with a policy that lets nothing in them run.
 
 Staff access to accounts and billing goes through an internal tool behind Cloudflare Access. Every change made there is recorded with who made it and why.
 
@@ -54,7 +48,7 @@ g1t is open source, so you can read exactly how all of this works at [g1t.sh/fla
 
 Free compute attracts people who would mine cryptocurrency with it, and stolen cards. g1t guards against both without making honest use harder:
 
-- **No card, no compute.** Agents and sandboxes need a card check or the plan. The check is never charged; each card gets one trial, wherever it's used; prepaid cards start no trial.
+- **No card, no compute.** Sandboxes need a card check or the plan. The check is never charged; each card gets one trial, wherever it's used; prepaid cards start no trial.
 - **Mining detection.** Commands that name known miners, pools or their flags are refused, and a sandbox that stays at full CPU for ten minutes without the disk, network and process activity of real builds is stopped, and a person looks at what ran.
 - **Spend limits and spike pauses.** Every workspace has a spend limit and a ceiling on unpaid usage, and if spending suddenly jumps, new compute pauses until an owner says to keep going.
 
@@ -74,7 +68,7 @@ What you found, where, how to reproduce it, and what an attacker could do with i
 
 - g1t.sh, api.g1t.sh, mcp.g1t.sh, og.g1t.sh, docs.g1t.sh and status.g1t.sh;
 - the g1t.page platform itself: routing, isolation between apps, custom domains;
-- the sandboxes: escaping one, reaching another run or workspace, or getting around guardrails or run credentials;
+- the sandboxes: escaping one, reaching another run or workspace, or getting around guardrails or a job's token;
 - authentication, authorization, the API, the MCP server and git over HTTPS;
 - the [open-source code](/flagon-io/g1t), as deployed.
 

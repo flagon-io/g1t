@@ -1101,7 +1101,6 @@
         "comment_count": 0,
         "assignees": [],
         "blocked_by": [],
-        "queued": false,
         "agent": "claude-code",
         "milestone": null
       }
@@ -1144,7 +1143,6 @@
       "comment_count": 0,
       "assignees": [],
       "blocked_by": [],
-      "queued": false,
       "agent": null,
       "milestone": null
     },
@@ -1180,7 +1178,6 @@
         "comment_count": 0,
         "assignees": [],
         "blocked_by": [],
-        "queued": false,
         "agent": null,
         "milestone": null
       },
@@ -1339,7 +1336,6 @@
         "syntaqx"
       ],
       "blocked_by": [9],
-      "queued": false,
       "agent": null,
       "milestone": {
         "number": 3,
@@ -1379,7 +1375,6 @@
       "comment_count": 0,
       "assignees": [],
       "blocked_by": [],
-      "queued": false,
       "agent": null,
       "milestone": null
     }
@@ -1413,7 +1408,6 @@
       "comment_count": 0,
       "assignees": [],
       "blocked_by": [],
-      "queued": false,
       "agent": null,
       "milestone": null
     }
@@ -1701,7 +1695,6 @@
         "comment_count": 0,
         "assignees": [],
         "blocked_by": [],
-        "queued": false,
         "agent": "claude-code",
         "milestone": null
       },
@@ -2855,7 +2848,6 @@
         "blocked_by": [
           9
         ],
-        "queued": false,
         "agent": null,
         "milestone": {
           "number": 3,
@@ -4259,7 +4251,7 @@
       "fork_pull_requests": false,
       "inherited": false
     },
-    "notes": "Agent work on your runners still uses g1t's model proxy, paid as before, unless the workspace has its own model provider."
+    "notes": "`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (checks, merge checks and the merge queue) to your runners with those labels."
   },
   "list_runner_groups": {
     "params": {
@@ -9310,7 +9302,6 @@
             "syntaqx"
           ],
           "blocked_by": [],
-          "queued": false,
           "agent": null,
           "milestone": {
             "number": 3,

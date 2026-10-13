@@ -79,8 +79,7 @@ export function ActivationPrompt({
         <p className="mt-1.5 text-sm text-muted">
           Security and quality has no price of its own. With the plan{price ? ` (${price} for the workspace)` : ""}, custom patterns,
           validity checks, delegated bypass, code scanning, dependency review and the security overview are on for every private
-          repository in {workspace}, and their scans are charged at cost plus 20%, like everything g1t runs. Fixes by g1t's agent
-          are charged as agent usage. Public repositories have all of it free, and secret scanning, push protection, vulnerability
+          repository in {workspace}, and their scans are charged at cost plus 20%, like everything g1t runs. Public repositories have all of it free, and secret scanning, push protection, vulnerability
           alerts and security updates stay free everywhere.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">

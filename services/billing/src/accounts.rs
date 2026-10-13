@@ -52,10 +52,6 @@ struct AccountRow {
     #[serde(default)]
     max_concurrent_agents: Option<u32>,
     #[serde(default)]
-    run_cap_micros: Option<i64>,
-    #[serde(default)]
-    issue_cap_micros: Option<i64>,
-    #[serde(default)]
     audit_retention_days: Option<u32>,
     #[serde(default)]
     hold: Option<String>,
@@ -69,8 +65,6 @@ impl AccountRow {
             oss_repo_micros: self.oss_repo_micros,
             trial_micros: self.trial_micros,
             max_concurrent_agents: self.max_concurrent_agents,
-            run_cap_micros: self.run_cap_micros,
-            issue_cap_micros: self.issue_cap_micros,
             audit_retention_days: self.audit_retention_days,
             hold: self.hold.clone().filter(|h| !h.trim().is_empty()),
         }
@@ -508,8 +502,8 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::Invalid, "Say who is making the change, and why, in the note."));
         }
         let money = |m: Option<i64>| m.is_none_or(|m| (0..=1_000 * g1t_contracts::billing::MICROS_PER_DOLLAR).contains(&m));
-        if !money(a.allowances.oss_repo_micros) || !money(a.allowances.trial_micros) || !money(a.allowances.run_cap_micros) || !money(a.allowances.issue_cap_micros) {
-            return Ok(Outcome::fail(FailureCode::Invalid, "A pool share or run cap is between $0 and $1,000."));
+        if !money(a.allowances.oss_repo_micros) || !money(a.allowances.trial_micros) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "A pool share or trial is between $0 and $1,000."));
         }
         if a.allowances.max_concurrent_agents.is_some_and(|n| n == 0 || n > 1_000) {
             return Ok(Outcome::fail(FailureCode::Invalid, "Agents at once is between 1 and 1,000."));
@@ -526,12 +520,10 @@ impl Billing {
         self.db
             .prepare(
                 "INSERT INTO billing_accounts (id, kind, name, terms_kind, discount_percent, note, created_by, created_at,
-                   team_granted, oss_repo_micros, trial_micros, max_concurrent_agents, run_cap_micros, hold, issue_cap_micros,
-                   audit_retention_days)
-                 VALUES (?1, ?2, ?3, 'standard', 0, '', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                   team_granted, oss_repo_micros, trial_micros, max_concurrent_agents, hold, audit_retention_days)
+                 VALUES (?1, ?2, ?3, 'standard', 0, '', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                  ON CONFLICT (id) DO UPDATE SET team_granted = ?6, oss_repo_micros = ?7, trial_micros = ?8,
-                   max_concurrent_agents = ?9, run_cap_micros = ?10, hold = ?11, issue_cap_micros = ?12,
-                   audit_retention_days = ?13",
+                   max_concurrent_agents = ?9, hold = ?10, audit_retention_days = ?11",
             )
             .bind(&[
                 account.id.as_str().into(),
@@ -543,9 +535,7 @@ impl Billing {
                 opt(a.allowances.oss_repo_micros),
                 opt(a.allowances.trial_micros),
                 a.allowances.max_concurrent_agents.map_or(JsValue::NULL, JsValue::from),
-                opt(a.allowances.run_cap_micros),
                 optional(a.allowances.hold.as_deref().map(str::trim).filter(|h| !h.is_empty())),
-                opt(a.allowances.issue_cap_micros),
                 a.allowances.audit_retention_days.map_or(JsValue::NULL, JsValue::from),
             ])?
             .run()
@@ -712,12 +702,6 @@ fn describe_allowances(a: &Allowances) -> String {
     if let Some(n) = a.max_concurrent_agents {
         parts.push(format!("{n} agents at once"));
     }
-    if let Some(m) = a.run_cap_micros {
-        parts.push(format!("run cap {}", crate::features::dollars(m)));
-    }
-    if let Some(m) = a.issue_cap_micros {
-        parts.push(format!("issue cap {}", crate::features::dollars(m)));
-    }
     if let Some(days) = a.audit_retention_days {
         parts.push(format!("audit log {days} days"));
     }
@@ -810,14 +794,12 @@ mod tests {
             oss_repo_micros: Some(5_000_000),
             trial_micros: Some(2_000_000),
             max_concurrent_agents: Some(4),
-            run_cap_micros: Some(3_000_000),
-            issue_cap_micros: None,
             audit_retention_days: Some(365),
             hold: Some("mining".into()),
         };
         assert_eq!(
             describe_allowances(&given),
-            "plan given, open-source share $5.00 a repository, trial $2.00, 4 agents at once, run cap $3.00, audit log 365 days, hold: mining"
+            "plan given, open-source share $5.00 a repository, trial $2.00, 4 agents at once, audit log 365 days, hold: mining"
         );
     }
 

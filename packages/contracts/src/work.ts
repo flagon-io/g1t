@@ -58,11 +58,6 @@ export type Issue = {
   /** The numbers of the issues that have to be merged before this one is worked on. */
   blockedBy: number[];
   /**
-   * Whether a g1t agent takes it as soon as it can: at once, or when what it
-   * is blocked by has merged.
-   */
-  queued: boolean;
-  /**
    * The agent working on it now: the one behind its newest pull request
    * that is still in progress in a fork, such as `g1t`.
    */
@@ -333,23 +328,6 @@ export type NewComment = {
   path?: string;
   line?: number;
   verdict?: Verdict;
-};
-
-/** What a sandbox needs to carry out a check run. */
-export type CheckJob = {
-  runId: string;
-  /** Lets the sandbox, and nothing else, report this run's results. */
-  token: string;
-  commands: string[];
-  /** The repository holding the commit: the fork, or the repository itself. */
-  source: RepoPath;
-  commit: string;
-  /** Who the pull request is for (`workOwner`: whoever asked g1t for it, or its author), and so can read its source. */
-  author: User;
-  /** Username of whoever wrote the checks: the issue's author. */
-  requestedBy: string;
-  repo: RepoPath;
-  number: number;
 };
 
 export type CheckReport = { results?: CheckResult[]; error?: string; skip?: boolean };
@@ -736,11 +714,6 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   deleteComment(actor: User, repo: RepoPath, commentId: string): Promise<Result<boolean>>;
 
   /**
-   * Always refused now: a pull request's checks are the workflows run on
-   * it. Kept for a runner from before.
-   */
-  startChecks(pullId: string): Promise<Result<CheckJob>>;
-  /**
    * What a sandbox says about a run from before checks were workflows: so
    * one still finishing is recorded.
    */
@@ -760,8 +733,6 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * however often this is called. For the runner service.
    */
   advance(pullId: string): Promise<Advance>;
-  /** Records that a step could not be carried out, so a person is asked. */
-  stall(pullId: string, reason: string): Promise<boolean>;
   /** Ids of the open pull requests g1t is seeing through. */
   managedPulls(repoId?: string): Promise<string[]>;
 
@@ -881,8 +852,6 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   contributions(username: string, viewer: Viewer): Promise<Result<Contributions>>;
 
 
-  /** Open issues assigned to the viewer, most recently changed first. */
-  listAssignedIssues(viewer: Viewer): Promise<Issue[]>;
 
   appendSession(actor: User, repo: RepoPath, number: number, entries: NewSessionEntry[]): Promise<Result<{ count: number }>>;
   readSession(repo: RepoPath, number: number, viewer: Viewer, afterSeq?: number): Promise<Result<SessionEntry[]>>;

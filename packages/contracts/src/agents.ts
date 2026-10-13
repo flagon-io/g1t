@@ -92,8 +92,7 @@ export type OpenRunInput = {
   model?: string | null;
   sandbox: string;
   startedBy?: string | null;
-  /** Its caps, from its guardrails. */
-  budgetUsd?: number | null;
+  /** Its time cap, from its guardrails. */
   timeCapMinutes?: number | null;
 };
 

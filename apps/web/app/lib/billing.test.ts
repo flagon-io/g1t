@@ -13,7 +13,6 @@ import {
   creditLine,
   needsAttention,
   usageGlance,
-  parseCaps,
   parseLimitRequest,
   parsePrepay,
   parseSpendLimit,
@@ -67,17 +66,6 @@ test("a prepayment is $25 or more, by card up to $10,000, by bank transfer from 
     value: { amountCents: 2_000_000, method: "bank_transfer" },
   });
   assert.equal(parsePrepay({}).ok, false);
-});
-
-test("caps stay in range, and empty goes back to the default", () => {
-  assert.deepEqual(parseCaps({ run: "", issue: "" }), { ok: true, value: { runCapMicros: null, issueCapMicros: null } });
-  assert.deepEqual(parseCaps({ run: "0.10", issue: "1000" }), {
-    ok: true,
-    value: { runCapMicros: 100_000, issueCapMicros: 1_000_000_000 },
-  });
-  assert.equal(parseCaps({ run: "0.05" }).ok, false);
-  assert.equal(parseCaps({ issue: "2000" }).ok, false);
-  assert.equal(parseCaps({ run: "two" }).ok, false);
 });
 
 test("a limit request needs an amount, a reason and a monthly spend; an overage only a reason", () => {

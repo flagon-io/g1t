@@ -184,10 +184,6 @@ export type Allowances = {
   trialMicros: number | null;
   /** Agents at once, in place of the plan's (2 in the first month or on the trial, then 10); null for the default. */
   maxConcurrentAgents?: number | null;
-  /** One run's spend cap, in place of the owners' and the default $2; null for none. */
-  runCapMicros?: number | null;
-  /** What one issue's agents may spend in all, in place of the owners' and the default $10; null for none. */
-  issueCapMicros?: number | null;
   /** Days of audit log its workspaces keep, in place of the plan's (7 free, 90 on the plan), longer or shorter; null for the plan's. */
   auditRetentionDays?: number | null;
   /** A hold on new compute, with why; null for none. */
@@ -255,10 +251,6 @@ export type Entitlements = {
   maxConcurrentAgents: number;
   /** 60 in the first month or on the trial; otherwise the guardrails' own caps. */
   maxRunMinutes: number;
-  /** One run's spend cap, $2 by default; staff can override it. */
-  runCapMicros: number;
-  /** Agent spend on one issue in all, $10 by default. */
-  issueCapMicros: number;
   /** g1t's ceiling on usage not yet paid for; `UNLIMITED_MICROS` for g1t's own; 0 for free. */
   ceilingMicros: number;
   /** Usage not yet paid for this month, prepayment taken off. */
@@ -1024,11 +1016,6 @@ export interface BillingApi {
   ): Promise<Result<LimitRequest>>;
   /** The workspace's requests and their answers, newest first. Members only. */
   limitRequests(workspace: string, viewer: Viewer): Promise<Result<LimitRequest[]>>;
-  /**
-   * The owners' own caps on agents: one run's spend ($0.10 to $100) and one issue's ($1 to $1,000).
-   * Null goes back to the default ($2 and $10). A cap staff set wins. Owners only.
-   */
-  setCaps(actor: User, workspace: string, caps: { runCapMicros: number | null; issueCapMicros: number | null }): Promise<Result<Entitlements>>;
   /** An owner's answer to a spend spike: keep going for 24 hours, or stop. */
   confirmSpike(actor: User, workspace: string, keepGoing: boolean): Promise<Result<Entitlements>>;
   /** Every metered price and the recent changes. Public. */

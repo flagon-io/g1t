@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { capShare, formatCap, settingsFromForm } from "./guardrails.ts";
+import { settingsFromForm } from "./guardrails.ts";
 
 const catalog = { kinds: ["implement", "review"] as const };
 
@@ -32,15 +32,4 @@ test("time caps of a level's own are kept, and nothing else is sent", () => {
 test("nonsense is passed on for the service to refuse", () => {
   const settings = settingsFromForm(form({ "minutes:implement": "soon" }), catalog);
   assert.equal(settings.minutes?.implement, 0);
-});
-
-test("a cap reads as dollars, or no cap", () => {
-  assert.equal(formatCap(null), "no cap");
-  assert.equal(formatCap(5), "$5.00");
-});
-
-test("helpers", () => {
-  assert.equal(capShare(1, 4), 0.25);
-  assert.equal(capShare(9, 4), 1);
-  assert.equal(capShare(1, null), null);
 });

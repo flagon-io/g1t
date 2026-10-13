@@ -1,6 +1,9 @@
 //! Usage other services meter through the month, charged once it is over:
-//! security scans, search embeddings, and two billing measures itself each
-//! day: private repository storage and git operations.
+//! security scans, the actions cache, and two billing measures itself each
+//! day: private repository storage and git operations. `context` (search
+//! embeddings) is no longer reported, since the context service was
+//! retired; it stays a source so usage noted before is still charged and
+//! closed.
 //!
 //! Each reports what it cost g1t so far this month (`note_pending`), so the
 //! workspace's limit counts it as it happens. When the month is over,
@@ -56,7 +59,7 @@ pub(crate) const CHARGED_HERE: [&str; 5] = ["security", "context", "storage", "g
 pub(crate) const PLAN_ONLY: [&str; 1] = ["cache"];
 
 /// Sources g1t pays for itself on a free workspace: security scans and
-/// search embeddings. No security feature is held back for the plan, and
+/// (from before the context service was retired) search embeddings. No security feature is held back for the plan, and
 /// a free workspace never runs up a bill, so on a workspace without the
 /// plan they are recorded at cost, covered by g1t, and charged nothing
 /// (not even from the trial). On the plan they are charged like any usage.
