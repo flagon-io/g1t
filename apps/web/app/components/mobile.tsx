@@ -4,6 +4,7 @@ import {
   BellRing,
   BookOpen,
   CircleUserRound,
+  Compass,
   Ellipsis,
   Keyboard,
   LayoutGrid,
@@ -130,12 +131,15 @@ type Tab = { key: ModeKey; label: string; badge?: { count: number; loud: boolean
 export function BottomBar({
   user,
   workspace,
+  mode: shellMode,
   pins,
   unread,
   onReselect,
 }: {
   user: User;
   workspace: Membership;
+  /** The mode the shell is in, when it knows more than the address (`browse`, lib/workspace-nav.ts `shellMode`). */
+  mode?: ModeKey;
   /** The apps pinned to this person's rail here, for the More sheet. */
   pins: PinnableApp[];
   unread: { notifications: number; chat: number; mentions: number };
@@ -147,7 +151,7 @@ export function BottomBar({
   useEffect(() => setMore(false), [pathname]);
   const slug = workspace.slug;
   const code = hasCodeAccess(workspace);
-  const mode = modeOf(pathname, slug);
+  const mode = shellMode ?? modeOf(pathname, slug);
   const tabs: Tab[] = [
     { key: "home", label: "Home" },
     { key: "chat", label: "Chat", badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 } },
@@ -202,7 +206,7 @@ export function BottomBar({
           </li>
         </ul>
       </nav>
-      <MoreSheet open={more} onOpenChange={setMore} user={user} workspace={workspace} pins={pins} />
+      <MoreSheet open={more} onOpenChange={setMore} user={user} workspace={workspace} pins={pins} onExplore={mode === "browse" ? onReselect : undefined} />
     </>
   );
 }
@@ -256,10 +260,26 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
 /**
  * More, from the bottom bar: a flat panel standing on it, with g1t's
  * mark at its top and a grid of big tiles: all apps,
- * your pinned apps, Artifacts, People, Workspace, and "You and
- * help", which opens your account's sheet.
+ * your pinned apps, Artifacts, People, Workspace, Explore, and "You and
+ * help", which opens your account's sheet. Browsing beyond your
+ * workspaces, Explore opens Explore's menu (`onExplore`) rather than the
+ * page.
  */
-function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolean; onOpenChange: (open: boolean) => void; user: User; workspace: Membership; pins: PinnableApp[] }) {
+function MoreSheet({
+  open,
+  onOpenChange,
+  user,
+  workspace,
+  pins,
+  onExplore,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  user: User;
+  workspace: Membership;
+  pins: PinnableApp[];
+  onExplore?: () => void;
+}) {
   const slug = workspace.slug;
   const [account, setAccount] = useState(false);
   const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);
@@ -287,6 +307,18 @@ function MoreSheet({ open, onOpenChange, user, workspace, pins }: { open: boolea
               <MoreTile to={appOf("artifacts").path(slug)} icon={appIcon("artifacts", 20)} label="Artifacts" />
               <MoreTile to={appOf("people").path(slug)} icon={appIcon("people", 20)} label="People" />
               <MoreTile to={appOf("workspace").path(slug)} icon={appIcon("workspace", 20)} label="Workspace" />
+              {onExplore ? (
+                <MoreTile
+                  icon={<Compass size={20} />}
+                  label="Explore"
+                  onClick={() => {
+                    onOpenChange(false);
+                    onExplore();
+                  }}
+                />
+              ) : (
+                <MoreTile to="/explore" icon={<Compass size={20} />} label="Explore" />
+              )}
               <MoreTile
                 icon={<Avatar name={user.username} image={user.avatar} size={24} />}
                 label="You and help"

@@ -201,7 +201,8 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
  * named by the hint beside it. g1t's mark, which leads to Home; the
  * built-in apps (Home, Chat, Code and Artifacts) with what is
  * unread on them (Notifications is the bell in the top bar, not a rail
- * app); the apps you pinned; the Apps launcher;
+ * app); Explore, lit anywhere beyond your workspaces; the apps you
+ * pinned; the Apps launcher;
  * and at its foot People, Workspace and your account. The one you are in
  * sits on a filled square, and which that is follows the address. A
  * member without Code access has no Code. From 768px; a phone has the
@@ -210,11 +211,14 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
  */
 export function Rail({
   workspace,
+  mode,
   pins: saved,
   unread,
   account,
 }: {
   workspace: Membership;
+  /** The mode the shell is in, when it knows more than the address (`browse`, lib/workspace-nav.ts `shellMode`). */
+  mode?: ModeKey;
   /** The apps pinned to this person's rail in this workspace, as saved. */
   pins: PinnableApp[];
   unread: { notifications: number; chat: number; mentions: number };
@@ -223,7 +227,7 @@ export function Rail({
   const { pathname } = useLocation();
   const going = useNavigation().location?.pathname;
   const path = going ?? pathname;
-  const here = modeOf(path, workspace.slug);
+  const here = mode ?? modeOf(path, workspace.slug);
   const slug = workspace.slug;
   const code = hasCodeAccess(workspace);
   const { pins, toggle } = useAppPins(slug, saved);
@@ -267,8 +271,8 @@ export function Rail({
               badge={item.badge}
             />
           ))}
-          {/* Public repositories across g1t, beyond this workspace. */}
-          <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={at("/explore")} />
+          {/* g1t beyond your workspaces: Explore, search, profiles, other workspaces and their public projects. */}
+          <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={here === "browse" || at("/explore")} />
         </SidebarMenu>
         {/* Your pinned apps: as many as you like, scrolling under a fade at either end. */}
         {shown.length > 0 && (

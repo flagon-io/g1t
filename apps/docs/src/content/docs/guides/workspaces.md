@@ -591,9 +591,22 @@ bookmarked or shared.
 
 Signed in, g1t is always about one workspace: the one you are in. On a
 workspace's pages, and on a project in one of your workspaces, that is the
-workspace the page belongs to; anywhere else, even on public pages such as
+workspace the page belongs to, so opening a project in another of your
+workspaces switches you to it; anywhere else, even on public pages such as
 [Explore](https://g1t.sh/explore), someone's profile or another
 workspace's public project, it stays the one you chose last.
+
+Those pages beyond your workspaces are browsing g1t: the rail lights
+**Explore**, and Explore's sidebar sits beside them. It has **Back to**
+your workspace at the top, which goes to its [Home](/guides/home/); then
+**Recently active**, **New projects** and **Search**; **Your stars** and
+**Your profile**; and under **You are viewing**, whose page this is: a
+workspace with its overview and **Projects**, or a person with their
+profile and **Stars**. In one of their public projects, the sidebar is
+that project's own list, as in Code, with **Projects** at its top to go
+back to the rest of theirs. A project shared with you stays in Code, under
+**Shared with you**. On a phone, the button at the top left opens the same
+sidebar, and **More** has **Explore**.
 
 Each page has three parts:
 
@@ -935,9 +948,11 @@ public repositories. The link preview for a profile uses only public work.
 
 **How it is laid out.** Signed out, a profile, Explore and Search are
 shown with g1t's public header (search, Explore, Docs, signing in) and the page
-at full width, with no workspace sidebar. Signed in, the rail stays, but
-no mode is lit and no mode's sidebar opens beside these pages: they are
-nobody's workspace, and the profile's own left column says whose it is.
+at full width, with no workspace sidebar. Signed in, the rail stays with
+**Explore** lit, and Explore's sidebar opens beside these pages, with the
+person you are looking at under **You are viewing** (see
+[The rail, the sidebar and the page](#the-rail-the-sidebar-and-the-page)).
+Your own profile is browsing too, with **Your profile** lit.
 
 ### The card over a name
 
