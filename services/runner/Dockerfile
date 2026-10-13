@@ -6,9 +6,13 @@
 # runner, a static Linux binary built outside Docker by
 # scripts/build-runner.mjs.
 #
-# Built by scripts/deploy.mjs, which passes BASE (the image recorded in
-# services/runner/base.json) and uses a build context holding only the
-# binary, so this takes seconds. docs/DEPLOYING.md explains the two images.
+# Deploys do not build this file: scripts/deploy/registry.mjs makes the
+# same image in the registry, adding one layer with the binary to the
+# base's layers (the same path, mode and entrypoint; a test in
+# scripts/deploy holds the two together), so a deploy job never pulls the
+# base. scripts/deploy.mjs builds it with Docker for a dry run, or when
+# that fails, passing BASE (the image recorded in services/runner/base.json)
+# and a build context holding only the binary.
 
 ARG BASE
 FROM ${BASE}

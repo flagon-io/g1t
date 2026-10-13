@@ -80,7 +80,7 @@ node scripts/deploy.mjs migrate                 # pending migrations only
 node scripts/deploy.mjs manifest --check        # the manifest's problems
 node scripts/deploy.mjs doctor                  # secrets each unit lacks
 node scripts/deploy.mjs build-base              # build and push the runner's base image (Docker)
-node scripts/deploy.mjs image                   # build and push the runner's image (Docker)
+node scripts/deploy.mjs image                   # make the runner's image in the registry (no Docker)
 ```
 
 | Flag | What it does |
@@ -288,7 +288,15 @@ workflow jobs and deploy builds) from one Containers image in two parts:
 `services/runner/base.json` records the base that was pushed;
 `npm run test:deploy` fails while it and the base's folder disagree. The
 runner's image is tagged with a hash of what it is built from, so a deploy
-builds it only when the registry does not already have it. When nothing
+makes it only when the registry does not already have it. It is made in
+the registry, without Docker: the deploy reads the base's manifest,
+uploads one layer holding the binary, and writes a manifest that names the
+base's layers and that one, with the entrypoint `services/runner/Dockerfile`
+gives it. Nothing of the base is downloaded, so the deploy job needs no
+room for it. If that fails and Docker runs where the deploy does, the
+image is built from `services/runner/Dockerfile` and pushed instead, and
+the log shows how full the disk was before and after. A dry run
+(`build`, or `image --no-push`) builds it with Docker. When nothing
 the image is built from changed, the deploy leaves running sandboxes
 alone. When it did, Cloudflare replaces sandboxes on the new image but
 leaves any that started within the last two hours

@@ -9,12 +9,15 @@
 //           base plus the runner binary (scripts/build-runner.mjs). Its tag
 //           is a hash of everything it is built from, so the same source
 //           always names the same image, and an image already in the
-//           registry is never built again.
+//           registry is never made again.
 //
-// Both live in one repository of Cloudflare's registry, so pushing the
-// runner uploads only its one new layer. `wrangler deploy` is given the
-// runner's registry reference (a generated config), so a deploy never
-// builds an image itself.
+// Both live in one repository of Cloudflare's registry. A deploy makes the
+// runner's image there (registry.mjs): it uploads one layer with the
+// binary and a manifest naming the base's layers and that one, and pulls
+// nothing, so it needs neither Docker nor room for the base. Building it
+// with Docker is for dry runs, and the fallback. `wrangler deploy` is
+// given the runner's registry reference (a generated config), so a deploy
+// never builds an image itself.
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -23,6 +26,7 @@ import { dirname, join } from "node:path";
 
 import { ACCOUNT_ID, exec, jsonFrom, lastLines, wrangler } from "./cloudflare.mjs";
 import { parseCargoLock } from "./lockfiles.mjs";
+import { appendRunnerImage } from "./registry.mjs";
 import { ROOT, parseJsonc } from "./stack.mjs";
 
 export const REGISTRY = "registry.cloudflare.com";
@@ -257,6 +261,37 @@ export function pushedDigest({ code, out }) {
  * which would make it an index with an `unknown/unknown` manifest.
  */
 export const PLAIN_IMAGE = ["--platform", "linux/amd64", "--provenance=false", "--sbom=false"];
+
+/**
+ * Makes the runner's image in the registry, without Docker: the base's
+ * layers, named by its manifest, and one layer with the binary at `binary`
+ * (scripts/deploy/registry.mjs). What deploys use; the Docker build below
+ * is for a dry run, and the fallback. Returns its digest.
+ */
+export async function makeRunnerImage({ ref, base, binary, onLine = () => {}, credentials = () => registryCredentials({ push: true }) }) {
+  return appendRunnerImage({ ref, base, binary: readFileSync(binary), credentials, onLine });
+}
+
+/**
+ * Logs how full the disk is, and what Docker keeps on it: before and after
+ * a Docker build, so a build that runs out of room says what took it.
+ * Never fails; on a machine without `df`, it logs what it can.
+ */
+export async function diskReport(onLine, when, { run = exec } = {}) {
+  if (process.platform === "win32") return;
+  onLine(`disk ${when}:`);
+  for (const [command, args] of [
+    ["df", ["-h", "/", "/tmp", process.env.HOME ?? "/root"]],
+    ["docker", ["system", "df"]],
+  ]) {
+    try {
+      const done = await run(command, args);
+      for (const line of done.out.trim().split(/\r?\n/)) onLine(`  ${line}`);
+    } catch (error) {
+      onLine(`  ${command}: ${error.message ?? error}`);
+    }
+  }
+}
 
 /**
  * Builds the runner's image: the base and the binary, from a build

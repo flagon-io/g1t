@@ -12,7 +12,7 @@
 //   node scripts/deploy.mjs doctor                which units lack their secrets
 //   node scripts/deploy.mjs install --only a,b    npm ci of just what those units need (CI)
 //   node scripts/deploy.mjs build-base            build and push the runner's base image (Docker)
-//   node scripts/deploy.mjs image                 build and push the runner's image for this checkout (Docker)
+//   node scripts/deploy.mjs image                 make the runner's image for this checkout in the registry (--no-push: build it with Docker)
 //
 // Flags: --all (every unit, changed or not), --only a,b, --skip a,b,
 // --force, --concurrency N (default 4), --stage core (one stage),
@@ -25,7 +25,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { OUT_DIR } from "./build-runner.mjs";
+import { BINARY, OUT_DIR } from "./build-runner.mjs";
 import { ensureWorkerBuild } from "./build-rust-worker.mjs";
 import {
   annotation,
@@ -51,9 +51,11 @@ import {
   baseVersions,
   buildBase,
   buildRunnerImage,
+  diskReport,
   dockerHas,
   dockerLogin,
   imageSize,
+  makeRunnerImage,
   pushImage,
   readBaseLock,
   registryHas,
@@ -149,6 +151,12 @@ ${data.migration_errors[0].error}`);
 
 const seconds = (ms) => `${(ms / 1000).toFixed(1)}s`;
 
+/** `fn`, called the first time it is wanted and then remembered. */
+const once = (fn) => {
+  let answer = null;
+  return () => (answer ??= fn());
+};
+
 /** Reads what each unit runs and what its database is waiting for. */
 async function survey(units, opts) {
   const live = {};
@@ -242,8 +250,13 @@ function unitLogger(id) {
 /**
  * The runner's image for this checkout, by registry reference: already in
  * the registry (built by an earlier deploy, `deploy.mjs image`, or on
- * another machine), or built and pushed here, which needs Docker. A dry
- * run builds it locally and pushes nothing. Returns { ref, note }.
+ * another machine), or made here. Pushing, it is made in the registry
+ * (scripts/deploy/registry.mjs: the base's layers and one with the
+ * binary, nothing pulled), which needs no Docker and no room for the
+ * base; if that fails and Docker answers, it is built and pushed with
+ * Docker. A dry run builds it with Docker and pushes nothing. `docker` is
+ * asked only when needed: asking starts a job's Docker Engine. Returns
+ * { ref, note }.
  */
 async function runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, out) {
   let base = baseState(unit);
@@ -253,7 +266,7 @@ async function runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, 
         `${unit.image.base.context} has changed since ${unit.image.base.lock} was written${base.lock ? "" : " (the base has never been built)"}. Build and push the base, and commit ${unit.image.base.lock}: node scripts/deploy.mjs build-base`,
       );
     }
-    if (!docker) throw new Error("--rebuild-base needs Docker.");
+    if (!(await docker())) throw new Error("--rebuild-base needs Docker.");
     await newBase(unit, { push: !dryRun, onLine: out.line });
     base = baseState(unit);
   }
@@ -261,7 +274,7 @@ async function runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, 
   const ref = runnerRef(unit);
   const tag = ref.split(":").pop();
   if (!rebuildImage) {
-    if (dryRun && docker && (await dockerHas(ref))) return { ref, note: `image ${tag} already built here` };
+    if (dryRun && (await docker()) && (await dockerHas(ref))) return { ref, note: `image ${tag} already built here` };
     if (!dryRun) {
       try {
         if (await registryHas(ref)) return { ref, note: `image ${tag} already in the registry` };
@@ -270,18 +283,34 @@ async function runnerImage(unit, { dryRun, docker, rebuildImage, rebuildBase }, 
       }
     }
   }
-  if (!docker) {
-    throw new Error(
-      `its image ${tag} is not in the registry, and Docker does not answer here. Build and push it where Docker runs (a g1t Actions job, or a machine with Docker: node scripts/deploy.mjs image), then run this again.`,
-    );
+  if (dryRun && !(await docker())) {
+    throw new Error(`its image ${tag} is not built here, and Docker does not answer here: a dry run builds it with Docker.`);
   }
   const started = Date.now();
   const binary = await exec(process.execPath, [join(ROOT, "scripts/build-runner.mjs")], { onLine: out.line });
   if (binary.code !== 0) throw new Error(`the runner binary did not build:\n${lastLines(binary.out)}`);
-  if (!dryRun) await dockerLogin({ push: true });
-  await buildRunnerImage(unit, { ref, base: base.ref, binaryDir: OUT_DIR, onLine: out.line });
-  if (!dryRun) await pushImage(ref, { onLine: out.line });
-  return { ref, note: `image ${tag} ${dryRun ? "built" : "built and pushed"} in ${seconds(Date.now() - started)}` };
+  if (!dryRun) {
+    try {
+      await makeRunnerImage({ ref, base: base.ref, binary: BINARY, onLine: out.line });
+      return { ref, note: `image ${tag} made in the registry in ${seconds(Date.now() - started)}` };
+    } catch (error) {
+      if (!(await docker())) {
+        throw new Error(`its image ${tag} could not be made in the registry (${error.message ?? error}), and Docker does not answer here to build it instead.`);
+      }
+      out.line(`could not make ${tag} in the registry (${error.message ?? error}); building it with Docker instead`);
+    }
+  }
+  // With Docker: the base is pulled and unpacked on this disk, so what the
+  // disk held is logged before and after, and when it fails.
+  await diskReport(out.line, "before the build");
+  try {
+    if (!dryRun) await dockerLogin({ push: true });
+    await buildRunnerImage(unit, { ref, base: base.ref, binaryDir: OUT_DIR, onLine: out.line });
+    if (!dryRun) await pushImage(ref, { onLine: out.line });
+  } finally {
+    await diskReport(out.line, "after the build");
+  }
+  return { ref, note: `image ${tag} ${dryRun ? "built" : "built and pushed"} with Docker in ${seconds(Date.now() - started)}` };
 }
 
 /** Builds the base (and pushes it unless `push` is false), and writes its lock. */
@@ -423,7 +452,7 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
   }
 
   if (touched.some((u) => u.kind === "rust-worker")) ensureWorkerBuild();
-  const docker = touched.some((u) => u.image) ? await dockerAvailable() : false;
+  const docker = once(dockerAvailable);
   const context = { head, subject: git.subject(), dirty, dryRun, docker, rebuildImage: opts.rebuildImage, rebuildBase: opts.rebuildBase };
   // A deploy run by hand shows on the repository's Deployments page; a
   // dirty tree is not a commit anyone can look at, so it is left out.
@@ -564,7 +593,7 @@ async function main() {
     case "image": {
       const unit = imageUnit(stack, opts);
       const out = unitLogger(`${unit.id}-image`);
-      const docker = await dockerAvailable();
+      const docker = once(dockerAvailable);
       const image = await runnerImage(unit, { dryRun: Boolean(opts.noPush), docker, rebuildImage: opts.rebuildImage, rebuildBase: opts.rebuildBase }, out);
       out.save();
       console.log(`${image.ref}\n${image.note}`);
