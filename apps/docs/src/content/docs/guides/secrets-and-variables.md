@@ -112,9 +112,9 @@ To broker a secret:
 
 1. Open **Settings → Secrets and variables**, and add or edit the secret.
 2. Under **Brokered**, tick **Only for these hosts**.
-3. List the hosts it is for, one per line, as for
-   [allowed domains](/guides/guardrails/#network): `registry.npmjs.org`,
-   or `*.example.com` for every subdomain of `example.com`.
+3. List the hosts it is for, one per line: `registry.npmjs.org`, or
+   `*.example.com` for every subdomain of `example.com` (not
+   `example.com` itself; list both if you need both).
 4. Save.
 
 Workflows use it as they would any secret: `${{ secrets.NPM_TOKEN }}` in an
@@ -138,10 +138,7 @@ Workflows use it as they would any secret: `${{ secrets.NPM_TOKEN }}` in an
 A request to a host the secret is not for goes out with the stand-in,
 which is useless to whoever receives it, and the job's log says so once:
 `NPM_TOKEN was sent to example.com, which it is not for, so g1t did not
-fill it in.` A host must also be one the job may reach (its project's
-allowed domains, what builds need, or a
-[workflow-only domain](/guides/guardrails/#workflow-only-domains)):
-brokering a secret for a host does not open the network to it.
+fill it in.`
 
 If an answer echoes the value back, it is swapped for the stand-in again
 in the answer's headers, and in its body when that is plain text (JSON,
@@ -151,11 +148,11 @@ follows them itself, and each is filled in only for the secret's hosts.
 
 ### Where it works
 
-- **Workflow jobs on g1t's machines.** Brokering works whether the
-  project's network is restricted or open: a job that may be given a
-  brokered secret sends its HTTP and HTTPS through g1t either way, and
-  trusts the certificate HTTPS is re-signed with, as a restricted one does.
-  Other protocols are not affected.
+- **Workflow jobs on g1t's machines.** A job that may be given a
+  brokered secret sends its HTTP and HTTPS through g1t's runner Worker,
+  which fills the value in and sends every request on, to any host, and
+  the job trusts the certificate its HTTPS is re-signed with. Other jobs'
+  requests go straight out. Other protocols are not affected.
 - **Self-hosted runners on Linux and macOS**, in Docker, in the desktop
   app's sandbox, or directly on the computer: the job's requests to the
   secret's hosts go through g1t, which fills the value in, so it never

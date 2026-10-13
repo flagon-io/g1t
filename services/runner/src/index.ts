@@ -32,7 +32,7 @@ import {
   runnerMinutes,
 } from "@g1t/contracts";
 
-import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
+import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor } from "./bump";
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { holdCredentials, revokeCredentials, runCredential } from "./credentials";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
@@ -45,17 +45,15 @@ import {
   type PlanLimits,
   type RunGuard,
   abuse,
-  buildGuardFor,
+  buildGuard,
   dockerFor,
   egress,
-  egressHosts,
   guardFor,
   harnessEnv,
-  newlyBlocked,
   reportRun,
   SANDBOX_BINDINGS,
   sandboxNamespace,
-  type WorkflowJob,
+  throughWorker,
   timeCapMessage,
   withPlanLimits,
 } from "./guard";
@@ -64,7 +62,8 @@ import { relay, relayDeps } from "./broker-relay";
 import { forward } from "./forward";
 import { EGRESS_ENV, jobNamespaceOf } from "./egress";
 
-// Outbound interception, which network guardrails use, needs this exported.
+// Outbound interception, which brokered secrets and abuse reports use,
+// needs this exported.
 export { ContainerProxy } from "@cloudflare/containers";
 
 export interface RunnerEnv {
@@ -88,9 +87,10 @@ export interface RunnerEnv {
   EVENTS?: ServiceBinding;
   CLOUDFLARE_ACCOUNT_ID: string;
   /**
-   * `off` starts every sandbox with an open network whatever its
-   * guardrails say: a switch for the operator, should egress through the
-   * Worker misbehave. Anything else enforces them.
+   * `off` stops passing any sandbox's HTTP and HTTPS through the Worker: a
+   * switch for the operator, should it misbehave. Brokered secrets' stand-
+   * ins then go out as they are, unfilled. Anything else passes the
+   * requests of workflow jobs that may be given brokered secrets.
    */
   EGRESS?: string;
   /**
@@ -156,24 +156,15 @@ type Meter = {
  */
 type Held = { id: string; workspace: string; microsPerSecond: number };
 /**
- * A sandbox that is not tracked as a run but still runs under guardrails:
- * a workflow job, a deploy build or an update, in `repo`, for `minutes` at
- * most.
+ * A sandbox that is not tracked as a run but still has a time cap: a
+ * workflow job, a deploy build or an update, for `minutes` at most.
  */
 type Build = {
   kind: "actions" | "deploy" | "bump";
-  /** The project whose guardrails apply: never a pull request's working copy. */
-  repo: RepoPath;
-  /** Its id, so it is found even if it moved since. */
-  repoId?: string | null;
   minutes: number;
-  /** A workflow job's workflow, environment and trust, for workflow-only domains. */
-  job?: WorkflowJob | null;
-  /** More hosts it may reach: an update's private registries. */
-  hosts?: string[];
   /**
    * A workflow job that may be given brokered secrets: its HTTP and HTTPS
-   * pass the Worker, which fills them in, even when its network is open.
+   * pass the Worker, which fills them in.
    */
   brokered?: boolean;
 };
@@ -301,12 +292,15 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   // past it by `onActivityExpired`, so only its own cap ends it. A finished
   // run's process exits and stops the sandbox well before this.
   sleepAfter = "100m";
-  // A guarded sandbox's HTTPS goes through `egress` too (guard.ts).
+  // HTTPS to an intercepted host goes through its handler too (guard.ts).
   interceptHttps = true;
   static {
     // Assigned, not declared: a class field would hide the setter that
-    // registers the handler with the containers library.
+    // registers the handler with the containers library. `ABUSE_HOST`,
+    // named up front, is the only host intercepted on its own, so every
+    // other request goes straight out.
     AttemptSandbox.outboundHandlers = { egress, abuse };
+    AttemptSandbox.outboundByHost = { [ABUSE_HOST]: abuse };
   }
 
   async run(request: RunRequest): Promise<void> {
@@ -315,13 +309,14 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     if (reservation) await this.ctx.storage.put("reservation", reservation);
     let guard: RunGuard | null;
     try {
-      // A tracked run gets its project's guardrails, and so do workflow
-      // jobs and deploy builds; no sandbox for one starts without them.
-      // The plan's caps apply under them: the lower of each.
+      // A tracked run gets its project's guardrails; no sandbox for one
+      // starts without them. Workflow jobs, deploy builds and updates get
+      // the time cap they were given. The plan's caps apply under them:
+      // the lower of each.
       guard = track
         ? withPlanLimits(await guardFor(this.env.WORK, track.repo, track.kind), limits)
         : build
-          ? withPlanLimits(await buildGuardFor(this.env.WORK, build.repo, build.kind, build.minutes, build.repoId, build.job, build.hosts), limits)
+          ? withPlanLimits(buildGuard(build.minutes), limits)
           : null;
     } catch (error) {
       // Thrown to the caller, which says why the work did not start; logged
@@ -346,10 +341,10 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     try {
       const vars = tracked ? { ...envVars, AGENT_RUN: tracked.runId, AGENT_RUN_TOKEN: tracked.token } : envVars;
       // The workspace's own runner, not a container: the same environment,
-      // handed over as a task. Network guardrails cannot be enforced there.
+      // handed over as a task.
       const repo = selfHosted?.length ? taskRepo(track, meter, owner) : null;
       if (selfHosted?.length && repo) {
-        const harness = guard ? harnessEnv(guard, vars, false) : {};
+        const harness = guard ? harnessEnv(guard, vars) : {};
         const minutes = guard?.minutes ?? limits?.minutes ?? 60;
         await enqueueTask(this.env.ACTIONS, {
           sandbox: this.ctx.id.toString(),
@@ -369,35 +364,26 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         }
         return;
       }
-      const restricted = (guard?.policy.restrictNetwork ?? false) && this.env.EGRESS !== "off";
-      // A workflow job's brokered secrets are filled in by `egress` from
-      // the job's stand-ins, which it asks for with the job's token.
-      const job = run.kind === "actions" ? { id: run.jobId, token: run.token } : undefined;
-      // A job whose network is open but which may be given brokered
-      // secrets still sends its HTTP and HTTPS through `egress`, which
-      // reaches every host for it; other protocols go straight out, as
-      // they would.
-      const brokering = !restricted && job !== undefined && build?.brokered === true && this.env.EGRESS !== "off";
-      if (guard && restricted) {
-        this.enableInternet = false;
-        await this.setOutboundHandler("egress", { hosts: egressHosts(guard, {}, vars), job });
-      } else if (brokering) {
-        await this.setOutboundHandler("egress", { hosts: [], open: true, job });
-      } else if (this.env.EGRESS !== "off") {
-        // An open sandbox can still report that it stopped itself for
-        // mining; a guarded one does through `egress`.
-        await this.setOutboundByHost(ABUSE_HOST, "abuse").catch((error: unknown) =>
-          console.log("abuse reports not routed", String(error)),
-        );
+      // Every sandbox reaches the internet. Its requests go straight out,
+      // and only `ABUSE_HOST` is intercepted (`outboundByHost`), unless
+      // it is a workflow job that may be given brokered secrets: then its
+      // HTTP and HTTPS pass `egress`, which fills them in from the job's
+      // stand-ins (asked for with the job's token) and sends every
+      // request on, to any host. Other protocols go straight out.
+      // Cloudflare Containers intercept either the hosts a class names
+      // up front or, once a handler is chosen at run time, everything, so
+      // the hosts of one job's secrets cannot be singled out.
+      const brokering = run.kind === "actions" && throughWorker(build, this.env.EGRESS);
+      this.enableInternet = true;
+      if (brokering && run.kind === "actions") {
+        await this.setOutboundHandler("egress", { job: { id: run.jobId, token: run.token } });
       }
-      const harness = guard ? harnessEnv(guard, vars, restricted) : {};
-      // A build needs only the certificate variables, not the rules.
-      if (build) delete harness.GUARDRAILS;
+      const harness = guard && !build ? harnessEnv(guard, vars) : {};
       // Its HTTPS is re-signed as it passes the Worker, so it trusts that
-      // certificate as a guarded sandbox does.
+      // certificate.
       const trust = brokering ? EGRESS_ENV : {};
       const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
-      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: !restricted });
+      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: true });
       // A backup has no guardrails, but still a time cap.
       const cap = guard?.minutes ?? (run.kind === "backup" ? BACKUP_MINUTES : null);
       if (cap) {
@@ -486,16 +472,6 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     }
     await this.ctx.storage.put("agentRun", opened.value);
     return opened.value;
-  }
-
-  /** A host this sandbox was refused, said once as a step of its run. */
-  async noteBlocked(host: string): Promise<void> {
-    const tracked = await this.ctx.storage.get<TrackedRun>("agentRun");
-    if (!tracked) return;
-    const noted = newlyBlocked((await this.ctx.storage.get<string[]>("blocked")) ?? [], host);
-    if (!noted) return;
-    await this.ctx.storage.put("blocked", noted.seen);
-    await reportRun(this.env.WORK, tracked, { steps: [noted.step] });
   }
 
   /**
@@ -789,26 +765,26 @@ function notAdmitted(admitted: Exclude<Admitted, Granted>): Result<never> {
 export class Sandbox2Core extends AttemptSandbox {
   static {
     Sandbox2Core.outboundHandlers = { egress, abuse };
+    Sandbox2Core.outboundByHost = { [ABUSE_HOST]: abuse };
   }
 }
 export class Sandbox4Core extends AttemptSandbox {
   static {
     Sandbox4Core.outboundHandlers = { egress, abuse };
+    Sandbox4Core.outboundByHost = { [ABUSE_HOST]: abuse };
   }
 }
 
-/** What the actions service sends to start a job (`StartJobArgs`). */
+/**
+ * What the actions service sends to start a job (`StartJobArgs`). Callers
+ * from before may also send `workflow`, `environment` and `trusted`, for
+ * workflow-only domains, which are gone: they are ignored.
+ */
 type ActionsJobArgs = {
   job: string;
   token: string;
   repo: RepoPath;
   timeoutMinutes: number;
-  /** Its workflow file, `.g1t/workflows/deploy.yml`. */
-  workflow?: string | null;
-  /** The environment it names plainly. */
-  environment?: string | null;
-  /** Not a pull request from a fork: only then are workflow-only domains given. */
-  trusted?: boolean;
   /** The machine its `runs-on` asked for, by label; absent, the standard one. */
   instance?: string | null;
   /** Whether it may be given brokered secrets, which its requests need filled in. */
@@ -963,14 +939,11 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         token: args.token,
         reservation: admitted.held,
         limits: admitted.limits,
-        // The project's network list plus what builds need (and, for a
-        // trusted run, the workflow-only domains its workflow and
-        // environment are given), and the job's own time limit.
+        // The job's own time limit, and whether its requests pass the
+        // Worker for its brokered secrets.
         build: {
           kind: "actions",
-          repo: args.repo,
           minutes: Math.max(1, args.timeoutMinutes),
-          job: { workflow: args.workflow ?? null, environment: args.environment ?? null, trusted: args.trusted === true },
           brokered: args.brokered === true,
         },
         meter: {
@@ -1021,7 +994,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     });
     const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`deploy:${job.deployId}`));
     const workspace = (job.workspace ?? job.source.namespace).toLowerCase();
-    // The project the build is for: its guardrails, and who it is charged to.
+    // The project the build is for, and who it is charged to.
     const project = job.repo ?? job.source;
     try {
       await sandbox.run({
@@ -1032,9 +1005,8 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
           ? { id: job.reservation, workspace, microsPerSecond: job.microsPerSecond ?? 0 }
           : null,
         limits: { minutes: job.maxRunMinutes ?? null },
-        // The project's network list plus registries and Cloudflare's API,
-        // for as long as its read token lasts.
-        build: { kind: "deploy", repo: project, repoId: job.repoId ?? null, minutes: DEPLOY_TOKEN_TTL_SECONDS / 60 },
+        // For as long as its read token lasts.
+        build: { kind: "deploy", minutes: DEPLOY_TOKEN_TTL_SECONDS / 60 },
         owner: { workspace, repo: `${project.namespace}/${project.name}` },
         envVars: {
           MODE: "deploy",
@@ -1118,7 +1090,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         branch: args.branch,
         reservation: admitted.held,
         limits: admitted.limits,
-        build: { kind: "bump", repo, minutes: BUMP_MINUTES, hosts: registryHosts(args) },
+        build: { kind: "bump", minutes: BUMP_MINUTES },
         meter: meter(repo, `${args.kind === "version" ? "Version" : "Security"} update in ${repo.namespace}/${repo.name}`),
         envVars: bumpEnv(args, base, token),
       });

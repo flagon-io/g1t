@@ -1048,24 +1048,12 @@ pub struct StartJobArgs {
     pub repo: RepoPath,
     /// Minutes before the job is stopped.
     pub timeout_minutes: u32,
-    /// The workflow file the job is in (`.g1t/workflows/deploy.yml`), for
-    /// the guardrails' workflow-only domains.
-    #[serde(default)]
-    pub workflow: Option<String>,
-    /// The environment the job names with `environment:`, when it names
-    /// one plainly (not with an expression).
-    #[serde(default)]
-    pub environment: Option<String>,
-    /// Whether its run is trusted: not a pull request from a fork. Only a
-    /// trusted run's jobs reach workflow-only domains.
-    #[serde(default)]
-    pub trusted: bool,
     /// The machine its `runs-on` asked for, by label (`instance_for`):
     /// `g1t-2core` or `g1t-4core`; absent, the standard one.
     #[serde(default)]
     pub instance: Option<String>,
     /// Whether the job may be given brokered secrets, so the runner sends
-    /// its HTTP and HTTPS through the Worker even when its network is open.
+    /// its HTTP and HTTPS through the Worker, which fills them in.
     #[serde(default)]
     pub brokered: bool,
 }
@@ -1789,7 +1777,14 @@ mod instance_tests {
             "job": "job_1", "token": "t", "repo": { "namespace": "acme", "name": "web" }, "timeoutMinutes": 30
         }))
         .unwrap();
-        assert!(args.workflow.is_none() && args.environment.is_none() && !args.trusted && args.instance.is_none());
+        assert!(args.instance.is_none() && !args.brokered);
+        // Callers from when workflow-only domains existed still read.
+        let older: StartJobArgs = serde_json::from_value(serde_json::json!({
+            "job": "job_1", "token": "t", "repo": { "namespace": "acme", "name": "web" }, "timeoutMinutes": 30,
+            "workflow": ".g1t/workflows/deploy.yml", "environment": "production", "trusted": true
+        }))
+        .unwrap();
+        assert_eq!(older.timeout_minutes, 30);
     }
 }
 

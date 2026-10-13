@@ -439,9 +439,6 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
         </span>
         <Switch name="forks" checked={forks} onCheckedChange={setForks} disabled={!manage} />
       </label>
-      <p className="text-xs text-faint">
-        g1t&apos;s network guardrails are not enforced on your own machines: a job there reaches whatever the machine can.
-      </p>
       {manage && (
         <div className="flex flex-wrap gap-3">
           <SubmitButton name="intent" value="settings" pending="Saving…">

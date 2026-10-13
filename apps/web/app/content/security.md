@@ -24,12 +24,11 @@ The **audit log** records every action through the API, the MCP server and git, 
 
 Each workspace decides what its agents may do, and each project can tighten it:
 
-- **A network allowlist.** By default a sandbox can reach only g1t itself, the package registries you turn on, and the hosts you list. It's enforced outside the sandbox, where its traffic leaves it: a restricted sandbox has no other route to the internet, and nothing running inside it, root included, can change that.
 - **A command hook.** The agent's harness checks every tool call before it runs, and refuses force-pushes, rewriting the default branch, reading files outside the project, printing the environment, `sudo`, and any rules you add. With **No sudo** on, the sandbox gives up root before the agent starts.
 - **Caps** on what one run may spend and how long it may take, enforced by the harness and, for time, by stopping the sandbox itself.
 - **Branch protection**, enforced by g1t when a push arrives, whatever happened in the sandbox.
 
-Command rules guard against an agent's mistakes; the network allowlist, the run's credentials and branch protection are the hard boundaries. The [guardrails guide](https://docs.g1t.sh/guides/guardrails/) explains each one and how it's enforced.
+Command rules guard against an agent's mistakes; the run's credentials and branch protection are the hard boundaries. The [guardrails guide](https://docs.g1t.sh/guides/guardrails/) explains each one and how it's enforced.
 
 ## Isolated sandboxes
 
@@ -75,7 +74,7 @@ What you found, where, how to reproduce it, and what an attacker could do with i
 
 - g1t.sh, api.g1t.sh, mcp.g1t.sh, og.g1t.sh, docs.g1t.sh and status.g1t.sh;
 - the g1t.page platform itself: routing, isolation between apps, custom domains;
-- the sandboxes: escaping one, reaching another run or workspace, or getting around guardrails, run credentials or the network allowlist;
+- the sandboxes: escaping one, reaching another run or workspace, or getting around guardrails or run credentials;
 - authentication, authorization, the API, the MCP server and git over HTTPS;
 - the [open-source code](/flagon-io/g1t), as deployed.
 

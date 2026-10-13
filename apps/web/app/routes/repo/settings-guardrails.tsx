@@ -26,12 +26,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   await requireCapability(context, params, "manage_protection");
   const form = await request.formData();
-  const current = await guardrails.getGuardrails(user, params.owner);
-  if (!current.ok) return { saved: false, error: current.error.message };
-  const settings = settingsFromForm(form, {
-    registries: current.value.registries.map((registry) => registry.id),
-    kinds: SANDBOX_RUN_KINDS,
-  });
+  const settings = settingsFromForm(form, { kinds: SANDBOX_RUN_KINDS });
   const saved = await guardrails.updateGuardrails(user, params.owner, { namespace: params.owner, name: params.repo }, settings);
   return saved.ok ? { saved: true, error: null } : { saved: false, error: saved.error.message };
 }
@@ -42,7 +37,7 @@ export default function RepoGuardrails({ loaderData, actionData, params }: Route
     <>
       <RepoSettingsHeading base={base} />
       <p className="mb-8 max-w-3xl text-sm text-muted">
-        What g1t, its checks and the merge queue may do in this project's sandboxes. Anything left as the
+        How long this project's checks, merge queue and merge checks may run. Anything left as the
         workspace's follows the{" "}
         <Link to={`/${params.owner}/-/guardrails`} className="text-fg underline-offset-2 hover:underline">
           workspace's defaults

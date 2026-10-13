@@ -1,6 +1,7 @@
 /**
- * How the outbound handler sends a sandbox's request on to an allowed
- * host. An upstream that resets the connection or fails outright would
+ * How the outbound handler sends a sandbox's request on, for a workflow
+ * job whose requests pass the Worker, and how a self-hosted job's brokered
+ * request is relayed. An upstream that resets the connection or fails outright would
  * otherwise throw out of the handler, and the sandbox would see its own
  * connection reset, which tools such as npm count as a failure rather
  * than something to retry. So a request that can be sent again (a GET or

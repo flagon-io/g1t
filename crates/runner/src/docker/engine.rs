@@ -194,7 +194,7 @@ mod linux {
         let result = start();
         match &result {
             Ok(version) => super::super::note(format!(
-                "Docker: started this job's own Docker Engine {version} in {:.1}s. Its containers run in this job's sandbox, on the job's network and under its guardrails, and end with the job.",
+                "Docker: started this job's own Docker Engine {version} in {:.1}s. Its containers run in this job's sandbox, on the job's network, and end with the job.",
                 begun.elapsed().as_secs_f64()
             )),
             Err(problem) => super::super::note(format!("##[error]Docker could not start: {problem}")),
@@ -217,7 +217,7 @@ mod linux {
         let _ = std::fs::remove_file(&shim);
         std::os::unix::fs::symlink(&exe, &shim).map_err(|e| format!("could not link runc: {e}"))?;
 
-        // A guarded job's certificate, for its containers.
+        // The certificate of a job whose HTTPS passes the Worker, for its containers.
         let mut ca_dir = None;
         if let Ok(ca) = std::env::var("G1T_EGRESS_CA")
             && Path::new(&ca).exists()

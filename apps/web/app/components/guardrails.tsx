@@ -1,18 +1,15 @@
 /**
  * Guardrails: the form a workspace sets its defaults with and a project its
- * overrides: the network a sandbox may reach, and how long its runs may take.
+ * overrides: how long its runs may take.
  */
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { Form } from "react-router";
 
 import { type GuardrailSettings, type Guardrails, type GuardrailsView, RUN_KIND_LABEL } from "@g1t/contracts";
 
-import { SANDBOX_RUN_KINDS, tri, workflowDomainLine } from "../lib/guardrails";
+import { SANDBOX_RUN_KINDS } from "../lib/guardrails";
 import { ErrorText, Input, SubmitButton, TimeAgo } from "./ui";
 import { Card } from "./ui/card";
-import { CheckboxOption } from "./ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Textarea } from "./ui/textarea";
 
 function Section({ title, about, children }: { title: string; about: ReactNode; children: ReactNode }) {
   return (
@@ -23,53 +20,6 @@ function Section({ title, about, children }: { title: string; about: ReactNode; 
       </div>
       <div className="min-w-0 space-y-3">{children}</div>
     </section>
-  );
-}
-
-/** A choice of inheriting, or on or off, for one setting. */
-function TriSelect({
-  name,
-  value,
-  inherited,
-  parent,
-  labels,
-  title,
-  children,
-}: {
-  name: string;
-  value: boolean | null | undefined;
-  inherited: boolean;
-  parent: string;
-  labels: [on: string, off: string];
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
-      <div className="min-w-0 grow">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="mt-1 text-sm text-muted">{children}</p>
-      </div>
-      <Select name={name} defaultValue={tri(value)}>
-        <SelectTrigger size="sm" aria-label={title} className="w-full shrink-0 sm:w-auto sm:min-w-44">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          <SelectItem value="inherit">
-            As {parent} ({(inherited ? labels[0] : labels[1]).toLowerCase()})
-          </SelectItem>
-          <SelectItem value="on">{labels[0]}</SelectItem>
-          <SelectItem value="off">{labels[1]}</SelectItem>
-        </SelectContent>
-      </Select>
-    </Card>
-  );
-}
-
-/** Hosts in a compact list. */
-function Hosts({ hosts }: { hosts: string[] }) {
-  return (
-    <span className="font-mono text-xs wrap-break-word text-faint">{hosts.length ? hosts.join(", ") : "none"}</span>
   );
 }
 
@@ -97,119 +47,10 @@ export function GuardrailsForm({
   // What this level inherits, and what it is called.
   const base: Guardrails = level === "project" ? view.inherited : view.defaults;
   const parent = level === "project" ? "the workspace" : "g1t's default";
-  const [registryMode, setRegistryMode] = useState(own.registries ? "custom" : "inherit");
-  const shownRegistries = own.registries ?? base.registries;
-  const inheritedDomains = level === "project" ? view.inherited.domains : [];
-  const inheritedWorkflowDomains = level === "project" ? (view.inherited.workflowDomains ?? []) : [];
   return (
     // Keyed to the last change, so after a save the fields show what was kept, as it was tidied.
     <Form key={own.updatedAt ?? "unset"} method="post" className="max-w-4xl space-y-8">
       <fieldset disabled={!editable} className="min-w-0 space-y-8">
-        <Section
-          title="Network"
-          about={
-            <>
-              Which hosts a sandbox may reach. Requests anywhere else are refused at the sandbox's edge, and
-              each refused host shows on the run as a step.
-            </>
-          }
-        >
-          <TriSelect
-            name="restrictNetwork"
-            value={own.restrictNetwork}
-            inherited={base.restrictNetwork}
-            parent={parent}
-            labels={["Restricted", "Open"]}
-            title="Only allowed hosts"
-          >
-            Restricted, a sandbox reaches g1t, the registries below and the domains you list, over HTTP and
-            HTTPS only. Open, it reaches the whole internet.
-          </TriSelect>
-          <Card className="p-4">
-            <p className="text-sm font-medium">Always allowed</p>
-            <p className="mt-1 text-sm text-muted">
-              g1t's own hosts, for cloning, pushing and reporting: <Hosts hosts={view.g1tHosts} />
-            </p>
-          </Card>
-          <Card className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-              <div className="min-w-0 grow">
-                <p className="text-sm font-medium">Package registries</p>
-                <p className="mt-1 text-sm text-muted">Where installs fetch dependencies from.</p>
-              </div>
-              <Select name="registries" value={registryMode} onValueChange={setRegistryMode}>
-                <SelectTrigger size="sm" aria-label="Package registries" className="w-full shrink-0 sm:w-auto sm:min-w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  <SelectItem value="inherit">As {parent}</SelectItem>
-                  <SelectItem value="custom">Choose</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {view.registries.map((registry) => (
-                <CheckboxOption
-                  key={`${registry.id}-${registryMode}`}
-                  name={`registry:${registry.id}`}
-                  disabled={registryMode !== "custom"}
-                  defaultChecked={(registryMode === "custom" ? shownRegistries : base.registries).includes(registry.id)}
-                  label={registry.name}
-                  description={registry.hosts.join(", ")}
-                />
-              ))}
-            </div>
-          </Card>
-          <Card className="p-4">
-            <label htmlFor="guardrail-domains" className="text-sm font-medium">
-              Allowed domains
-            </label>
-            <p className="mt-1 text-sm text-muted">
-              One per line: <span className="font-mono text-xs">api.stripe.com</span>, or{" "}
-              <span className="font-mono text-xs">*.example.com</span> for its subdomains.
-              {level === "project" && " These add to the workspace's."}
-            </p>
-            <Textarea
-              id="guardrail-domains"
-              name="domains"
-              className="mt-3 font-mono text-xs"
-              rows={4}
-              defaultValue={(own.domains ?? []).join("\n")}
-              placeholder="api.stripe.com"
-            />
-            {inheritedDomains.length > 0 && (
-              <p className="mt-2 text-xs text-faint">
-                From the workspace: <Hosts hosts={inheritedDomains} />
-              </p>
-            )}
-          </Card>
-          <Card className="p-4">
-            <label htmlFor="guardrail-workflow-domains" className="text-sm font-medium">
-              Workflow-only domains
-            </label>
-            <p className="mt-1 text-sm text-muted">
-              Hosts that only workflow jobs may reach, such as the API a deploy uploads to. One
-              per line: the domain, then the workflows and the environments it is for, each comma-separated;
-              leave either out for any. Only jobs of runs that are not pull requests from forks get them.
-              {level === "project" && " These add to the workspace's."}
-            </p>
-            <Textarea
-              id="guardrail-workflow-domains"
-              name="workflowDomains"
-              className="mt-3 font-mono text-xs"
-              rows={3}
-              defaultValue={(own.workflowDomains ?? []).map(workflowDomainLine).join("\n")}
-              placeholder="api.cloudflare.com | deploy.yml | production"
-            />
-            {inheritedWorkflowDomains.length > 0 && (
-              <p className="mt-2 text-xs text-faint">
-                From the workspace:{" "}
-                <span className="font-mono wrap-break-word">{inheritedWorkflowDomains.map(workflowDomainLine).join("; ")}</span>
-              </p>
-            )}
-          </Card>
-        </Section>
-
         <Section title="Time limits" about="How long one run may take. A run that reaches it is stopped.">
           <Card className="p-4">
             <p className="text-sm font-medium">Time per run, in minutes</p>

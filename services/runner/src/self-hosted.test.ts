@@ -79,8 +79,8 @@ test("handing over and withdrawing a task", async () => {
   await cancelTask(actions({}), "do_3", null);
 });
 
-test("the run says where it went and what is not enforced there", () => {
-  assert.match(handedOverStep(["self-hosted", "linux"]), /self-hosted, linux.*guardrails are not enforced/);
+test("the run says where it went", () => {
+  assert.equal(handedOverStep(["self-hosted", "linux"]), "Handed to a self-hosted runner with labels self-hosted, linux.");
 });
 
 test("a task's repository comes from what the sandbox was started with", () => {

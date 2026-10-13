@@ -220,19 +220,3 @@ export function bumpEnv(args: BumpArgs, baseBranch: string, token: string): Reco
     COMMIT_MESSAGE: isText(args.message) ? args.message : `Update ${named}`,
   };
 }
-
-/**
- * The hosts of an update's private registries, which its sandbox may reach
- * on top of the public ones (`BUMP_HOSTS`).
- */
-export function registryHosts(args: BumpArgs): string[] {
-  const hosts = new Set<string>();
-  for (const registry of args.registries ?? []) {
-    try {
-      hosts.add(new URL(registry.url).host);
-    } catch {
-      // bumpProblem refuses a registry without a URL.
-    }
-  }
-  return [...hosts];
-}
