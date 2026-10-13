@@ -2,13 +2,9 @@
 //
 // Self-hosted phase 1 runs the core forge only. The site and the services
 // still hold bindings to the cloud runner and the deployments' builders;
-// this Worker stands in for each of them, so a page that asks whether the
-// runner is on here is told no instead of failing.
-//
-// - As the runner, for the methods the site once called on it: it is
-//   not enabled, and starting anything fails with a message that says why.
-// - For the JSON protocol the Rust services speak (`POST /rpc/<method>`):
-//   every method answers with a failed Result.
+// this Worker stands in for each of them: every method of the JSON protocol
+// the services speak (`POST /rpc/<method>`) answers with a failed Result
+// that says why, instead of failing.
 //
 // OFF_NAME names the feature in those messages, such as "Cloud runners".
 
@@ -23,38 +19,6 @@ function off(env) {
 }
 
 export default class Off extends WorkerEntrypoint {
-  // ── The runner's methods, as the site calls them ──
-  async enabled() {
-    return false;
-  }
-  async modelAccess() {
-    return { own: null, hosted: false, trial: null };
-  }
-  async instructions() {
-    return off(this.env);
-  }
-  async run() {
-    return off(this.env);
-  }
-  async plan() {
-    return off(this.env);
-  }
-  async applyPlan() {
-    return off(this.env);
-  }
-  async update() {
-    return off(this.env);
-  }
-  async review() {
-    return off(this.env);
-  }
-  async recheck() {
-    return off(this.env);
-  }
-  async stopRun() {
-    return off(this.env);
-  }
-
   // ── The JSON protocol ──
   async fetch(request) {
     const { pathname } = new URL(request.url);

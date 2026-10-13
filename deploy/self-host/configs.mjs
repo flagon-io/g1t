@@ -363,8 +363,8 @@ writeFileSync(join(out, "schedules.json"), `${JSON.stringify(schedules, null, 2)
 // service in docker-compose.yml), so it stays up when the site does not:
 // not in workers.txt. It checks the site from inside Compose
 // (STATUS_CHECK_URL) and links to it at PUBLIC_URL. Parts this
-// installation does not run (the API, MCP, docs, g1t.page, the model
-// proxy, billing) are left off its page; a public repository of yours in
+// installation does not run (the API, MCP, docs, g1t.page, billing) are
+// left off its page; a public repository of yours in
 // STATUS_PROBE_REPO adds the git check.
 {
   const hosted = parseJsonc(readFileSync(join(root, "apps/status/wrangler.jsonc"), "utf8"));
