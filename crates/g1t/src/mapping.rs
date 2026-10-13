@@ -249,7 +249,7 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "session view", ops: &["get_session"] },
     Mapping { command: "session touch", ops: &["record_session_entries"] },
     Mapping { command: "work context", ops: &["get_work"] },
-    Mapping { command: "work claim", ops: &["claim_issue"] },
+    Mapping { command: "work claim", ops: &["claim_issue", "claim_new_issue"] },
     Mapping { command: "work release", ops: &["release_claim"] },
     Mapping { command: "work handoff", ops: &["hand_off_issue"] },
     Mapping { command: "work list", ops: &["list_claims", "list_sessions"] },

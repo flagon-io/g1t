@@ -7,8 +7,9 @@ g1t's plugin for Claude Code connects the sessions you run on your own
 machine to the work on g1t. With it installed, working in a g1t repository:
 
 - each Claude Code session is recorded on g1t as a
-  [session](/guides/why-blame/#sessions), attached to its issue and pull
-  request, so the people and agents also working there can see it;
+  [session](/guides/why-blame/#sessions), titled with what you asked for
+  and attached to its issue and pull request, so the people and agents
+  also working there can see it, issue or not;
 - Claude starts each session knowing the issue it is on: its definition of
   done, who has claimed it, its pull requests and what blocks it;
 - Claude has g1t's [MCP tools](/reference/mcp/), three skills for working
@@ -67,6 +68,7 @@ recorded as yours and is as visible as the repository it is in.
 | --- | --- | --- |
 | A session starts or resumes | `g1t session start --harness claude_code --harness-session-id ID` | A session for this Claude Code session. Starting the same session again, as a resume does, finds it rather than making another. |
 | You send a prompt | `g1t session log --kind prompt TEXT` | Your prompt's first 2,000 characters. |
+| You send the session's first prompt that is not a slash command | `g1t session heartbeat --json`, then, if the session has no title, `g1t session attach --title INTENT` | Its title: what the prompt is for, as its first line or sentence without code blocks or markdown, up to 80 characters, cut on a word with `…`. A title the session already has (one Claude, you or an earlier prompt set) is never replaced. Not sent with prompts kept back. |
 | Claude uses a tool | `g1t session log --kind tool_call TEXT` | The tool's name and one line on what it was called with: the command, file, pattern or address, up to 200 characters, with anything that looks like a token or password replaced by `…`. |
 | Claude uses a skill, or you run one (`/g1t:work-on-issue 42`) | `g1t session log --kind skill NAME` | The skill's name, nothing more, once in a turn. A plugin's skill or command you type as `/plugin:name` is recorded even with prompts kept back. |
 | Claude writes a file, makes a branch or a commit, or claims an issue | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--issue`) | What it touched: the path from the repository's root, the branch, the commit, the issue. g1t ties the session to the pull requests and issues these lead to, and tells two sessions that touch the same file. |
@@ -113,7 +115,9 @@ checks and overlaps, what blocks it and what it blocks, the decisions
 recorded on it and the last integration failure. If the answer takes longer
 than a second, Claude is told to load it itself.
 
-With no issue in sight, Claude is told how to load and claim one.
+With no issue in sight, Claude is told that the session is already
+recorded on g1t and shows to the team with what it is for, so it can just
+work; see [Work with no issue yet](#work-with-no-issue-yet).
 
 Claude is also told to put the trailer `G1t-Session: $G1T_SESSION` on the
 commits it makes, so g1t ties them, and the pull request they land in, to
@@ -122,6 +126,37 @@ the session.
 A session started from a hand-off (**Start a session** without an
 Anthropic connection, or `g1t work dispatch N --handoff`) runs as
 `G1T_ISSUE=N claude '…'`: the plugin attaches it to issue N as it starts.
+
+## Work with no issue yet
+
+Most sessions start from a question or a request, not an issue, and most
+never need one. The session is the record of that work:
+
+1. **It is titled with what it is for.** At the session's first prompt
+   that is not a slash command (`/clear` and `/g1t:status` are not), the
+   plugin gives the session a title from it, unless it has one. To name
+   it yourself, or have Claude name it, run
+   `g1t session attach --title "Fix the preview builds"`; that replaces
+   the title the prompt gave.
+2. **It shows to the team.** The project's overview and its **Work** page
+   list it in **Live now** under its pull request, else its branch, else
+   under **No branch yet**, with who it is for, Claude Code, its state,
+   when it was last heard from and its branch.
+3. **It gets an issue when it becomes a change** others should know about:
+   a branch to push, a pull request. Claude is told to look for an issue
+   first (`g1t work list`, `g1t issue list`) and claim it with
+   `g1t work claim N`, and if there is none, to open one and claim it in
+   one step:
+
+   ```sh
+   g1t work claim --title "Preview builds time out on large repositories"
+   ```
+
+   The issue is opened, claimed for this session, and the session is
+   attached to it, so **Live now** lists it under the issue from then on.
+   Claude is told never to open issues for questions, exploration or
+   trivial fixes. `/g1t:claim` with a title instead of a number does the
+   same.
 
 ## Subagents
 
@@ -178,8 +213,8 @@ Claude uses a skill when the task matches it, or you can run one by name.
 
 | Command | What it does |
 | --- | --- |
-| `/g1t:claim N [note]` | Loads issue N's context and claims it for this session, telling you who else holds a claim. |
-| `/g1t:status` | This session, and the repository's active claims and sessions. |
+| `/g1t:claim N [note]` | Loads issue N's context and claims it for this session, telling you who else holds a claim. With a title instead of a number (or nothing), looks for an issue that covers the work in hand, and opens and claims one with `g1t work claim --title` if there is none. |
+| `/g1t:status` | This session (its title, issue, branch or pull request), and the repository's active claims and sessions. |
 | `/g1t:handoff N [@login]` | Pushes what is unpushed, writes a hand-off note and hands the issue off, to anyone or to one person. |
 
 A claim says you are working on an issue. It is never a lock: a second
@@ -249,10 +284,17 @@ file. Put this in the repository's `AGENTS.md`:
 This repository is on g1t. Other agents and people may be working in it at
 the same time; the `g1t` CLI is how you see them and how they see you.
 
-- When you start, record a session: `g1t session start --harness codex`
+- When you start, record a session titled with what you were asked to do:
+  `g1t session start --harness codex --title "Fix the preview builds"`
   (or `cursor`, `copilot`, `other`: the harness you are). The CLI remembers
   it for this working copy. Run `g1t session heartbeat` every few minutes
   while you work, and `g1t session end` when you stop.
+- With no issue, just work: the session shows to the team. When the work
+  becomes a change others should know about (a branch to push, a pull
+  request), look for its issue (`g1t work list`, `g1t issue list`) and
+  claim it; if there is none, open and claim one with
+  `g1t work claim --title "TITLE"`. Never open issues for questions,
+  exploration or trivial fixes.
 - Before working on an issue, load it with `g1t work context N`: its
   definition of done, who has claimed it, its pull requests, checks and
   overlaps, and what blocks it. Then claim it with

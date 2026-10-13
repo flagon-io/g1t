@@ -16,6 +16,14 @@ Every `g1t` command takes `--json` when you need fields rather than text.
 
 Issue: $ARGUMENTS (if empty, ask which issue, or list open ones with `g1t issue list`).
 
+If the work you were asked for has no issue yet and has become a change
+others should know about, look for one first (`g1t work list`,
+`g1t issue list`). If there is none, `g1t work claim --title "…"` (with
+`--body "…"` for the details) opens it and claims it for this session in
+one step, attaching the session to it: start at step 4 with its number.
+Questions, exploration and trivial fixes need no issue; the session is
+already recorded on g1t.
+
 1. **Load the context.** Run `g1t work context N`. It shows the issue and
    its definition of done, who has claimed it, the sessions and pull
    requests already on it with their checks and overlaps, what blocks it,

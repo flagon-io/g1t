@@ -22,6 +22,15 @@ use worker::Result;
 use super::{SESSION_COLUMNS, SessionRow};
 use crate::Work;
 
+/// The start (`?2` characters) of the first prompt each session in `?1`
+/// (a JSON list of ids) recorded, by the session's own numbering.
+pub(crate) const FIRST_PROMPTS: &str = "SELECT session_id, text FROM (
+   SELECT ids.value AS session_id,
+     (SELECT substr(e.text, 1, ?2) FROM session_entries e
+      WHERE e.session_id = ids.value AND e.kind = 'prompt' ORDER BY e.session_seq LIMIT 1) AS text
+   FROM json_each(?1) AS ids)
+ WHERE text IS NOT NULL";
+
 /// The most `#N` of one text looked up.
 const MAX_REFS: usize = 10;
 /// The most issues and pull requests a session's links name.
@@ -352,6 +361,32 @@ impl Work {
         let counts: HashMap<String, u32> = counts.into_iter().map(|count| (count.parent_id, count.n)).collect();
         for session in sessions {
             session.subagents = counts.get(&session.id).copied().unwrap_or_default();
+        }
+        Ok(())
+    }
+
+    /// Gives each session with no title the start of the first prompt it
+    /// recorded, as `first_prompt`, for saying what it is for.
+    pub(crate) async fn fill_first_prompts(&self, sessions: &mut [Session]) -> Result<()> {
+        let ids: Vec<&str> = sessions.iter().filter(|session| session.title.is_none()).map(|session| session.id.as_str()).collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        #[derive(Deserialize)]
+        struct First {
+            session_id: String,
+            text: String,
+        }
+        let found = self
+            .db
+            .prepare(FIRST_PROMPTS)
+            .bind(&[serde_json::to_string(&ids)?.into(), (MAX_FIRST_PROMPT_CHARS as u32).into()])?
+            .all()
+            .await?
+            .results::<First>()?;
+        let found: HashMap<String, String> = found.into_iter().map(|first| (first.session_id, first.text)).collect();
+        for session in sessions.iter_mut().filter(|session| session.title.is_none()) {
+            session.first_prompt = found.get(&session.id).map(|text| text.trim().to_owned()).filter(|text| !text.is_empty());
         }
         Ok(())
     }

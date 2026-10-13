@@ -925,6 +925,8 @@ fn operation_id(route: &Route) -> String {
         ("DELETE", "snooze") => "unsnooze_thread".to_owned(),
         // An issue's decisions, by its number.
         ("GET", "decisions") if route.path.contains("/issues/:number/") => "list_issue_decisions".to_owned(),
+        // A claim that opens its issue first.
+        ("POST", "claims") => "claim_new_issue".to_owned(),
         _ => op.name().to_owned(),
     };
     if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
@@ -954,6 +956,7 @@ fn summary(route: &Route, id: &str) -> String {
         "unsave_thread" => "Unsave a thread",
         "unsnooze_thread" => "Bring a snoozed thread back",
         "list_issue_decisions" => "List an issue's decisions",
+        "claim_new_issue" => "Open an issue and claim it",
         _ => title(route.op),
     };
     if id.ends_with("_for_workspace") {

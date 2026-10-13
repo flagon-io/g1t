@@ -17,7 +17,7 @@ import { Hint } from "../../components/ui/hint";
 import { PersonLink } from "../../components/work";
 import { IssueIcon, PullIcon } from "../../components/work-icons";
 import { requireRepo } from "../../lib/access.server";
-import { type SessionNode, TOUCH_KINDS, duration, harnessName, sessionTree, touchedByKind, viaLabel } from "../../lib/coordination";
+import { type SessionNode, TOUCH_KINDS, duration, harnessName, sessionTitle, sessionTree, touchedByKind, viaLabel } from "../../lib/coordination";
 import { page } from "../../lib/meta";
 import { notFound } from "../../lib/not-found.server";
 import { repoPages } from "../../lib/repo-live";
@@ -27,16 +27,19 @@ import { useRepoLive } from "../../lib/use-repo-live";
 
 const MANAGED = "claude_managed_agents";
 
-/** What a session is called: its title, a subagent's kind and task, or whose it is. */
-function sessionName(session: WorkSession): string {
-  if (session.title) return session.title;
-  if (session.parentId) return [session.agentType ?? "Subagent", session.task].filter(Boolean).join(": ");
-  return `${session.actor.username}'s ${harnessName(session.harness) ?? ""} session`.replace("  ", " ");
+/**
+ * What a session is called: its title, a subagent's kind and task, else
+ * what its first prompt was for, its branch, or "Untitled session".
+ */
+function sessionName(session: WorkSession, firstPrompt?: string | null): string {
+  if (!session.title?.trim() && session.parentId) return [session.agentType ?? "Subagent", session.task].filter(Boolean).join(": ");
+  return sessionTitle(session, firstPrompt ?? session.firstPrompt);
 }
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const session = loaderData?.session;
-  const name = session ? `${sessionName(session)} · ` : "";
+  const firstPrompt = loaderData?.entries.find((entry) => entry.kind === "prompt")?.text;
+  const name = session ? `${sessionName(session, firstPrompt)} · ` : "";
   return page(args, { title: `${name}Session · ${params.owner}/${params.repo} · g1t` });
 }
 
@@ -257,6 +260,7 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
   useRepoLive({ match: repoPages.session() });
 
   const tools = entries.filter((entry) => entry.kind === "tool_call").length;
+  const firstPrompt = entries.find((entry) => entry.kind === "prompt")?.text;
   const isSubagent = Boolean(session.parentId);
   const parent = isSubagent && root?.id === session.parentId ? root : null;
   // Its own subagents: those whose parent is in this tree (children lists every descendant).
@@ -298,7 +302,7 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
 
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <Actor username={session.actor.username} harness={session.harness} size={24} />
-        <h2 className="min-w-0 grow text-lg font-semibold tracking-tight wrap-break-word">{sessionName(session)}</h2>
+        <h2 className="min-w-0 grow text-lg font-semibold tracking-tight wrap-break-word">{sessionName(session, firstPrompt)}</h2>
         {isSubagent && session.agentType && (
           <Badge tone="accent">
             <Bot size={11} />

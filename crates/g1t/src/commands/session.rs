@@ -192,12 +192,18 @@ fn attach(ctx: &Ctx, args: SessionAttachArgs) -> Result<()> {
         .field_opt("pull", args.pull)
         .field_opt("branch", args.branch.clone())
         .field_opt("head_commit", args.head_commit.clone())
+        .field_opt("title", args.title.clone())
         .send()?;
     let session = session_of(found);
     if ctx.out.structured() {
         return ctx.out.emit(&session);
     }
-    eprintln!("Session {id} is on {}.", place(&session));
+    if args.issue.is_some() || args.pull.is_some() || args.branch.is_some() || args.head_commit.is_some() {
+        eprintln!("Session {id} is on {}.", place(&session));
+    }
+    if args.title.is_some() {
+        eprintln!("Session {id} is titled {}.", s(&session, "title"));
+    }
     Ok(())
 }
 

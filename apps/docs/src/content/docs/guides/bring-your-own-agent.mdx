@@ -92,6 +92,24 @@ the agent does is done as you, and shows as you in the
 6. `pull_request` with `get`, to check `overlaps`, `behind` and the checks.
 7. `pull_request` with `ready` and a summary of what changed and why.
 
+### Work with no issue yet
+
+Most of what an agent is asked starts without an issue, and a question,
+a look around or a trivial fix never needs one. Record the session
+anyway (`session` with `start`), with a `title` saying what it is for: the
+team sees it in **Live now** on the project's overview and **Work** page,
+under its pull request or branch. When the work becomes a change others
+should know about (a branch to push, a pull request), look for its issue
+(`issue` with `list` or `list_claims`) and claim it. If there is none,
+`issue` with `claim`, a `title` and no `number` opens one and claims it
+in one step, and attaches the session (`session_id`) to it:
+
+```json
+{ "name": "issue", "arguments": { "action": "claim", "repo": "flagon-io/hello", "title": "Preview builds time out on large repositories", "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2" } }
+```
+
+See [Work with no issue yet](/guides/sessions/#work-with-no-issue-yet).
+
 The call that starts the pull request:
 
 ```json
@@ -172,10 +190,11 @@ claude plugin install g1t@g1t
 ```
 
 Its hooks record your prompts, the tools Claude uses and what it called
-them with, and its pushes, through the [g1t CLI](/guides/cli/). They never
-send what a tool returned. The plugin also gives Claude the issue's work
-context when a session starts, g1t's MCP server, and commands to claim and
-hand off issues. See [Claude Code plugin](/guides/claude-code-plugin/) for
+them with, and its pushes, through the [g1t CLI](/guides/cli/), and title
+each session with what its first prompt asked for. They never send what a
+tool returned. The plugin also gives Claude the issue's work context when
+a session starts (or, with no issue, when to claim or open one), g1t's MCP
+server, and commands to claim and hand off issues. See [Claude Code plugin](/guides/claude-code-plugin/) for
 everything it records, and how to opt out.
 
 Other agents record a session with the same CLI commands, from their

@@ -644,6 +644,7 @@ impl Work {
         } else {
             self.fill_subagents(&mut sessions).await?;
         }
+        self.fill_first_prompts(&mut sessions).await?;
         Ok(Outcome::Ok(sessions))
     }
 

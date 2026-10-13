@@ -1097,6 +1097,8 @@ export type WorkSession = {
   model?: string | null;
   /** How many subagents it started. */
   subagents?: number;
+  /** In a list, for one with no title: the start of the first prompt it recorded. */
+  firstPrompt?: string | null;
 };
 
 /** What kind of thing a session touched. */

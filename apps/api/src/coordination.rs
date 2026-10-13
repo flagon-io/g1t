@@ -102,7 +102,7 @@ impl CoordinationOp {
             CoordinationOp::GetSession => "A session and its entries, oldest first, numbered within the session (`seq`); `after` gives the entries after that number, 500 at a time. With them: `children`, its subagents and theirs in the order they started (each names its `parent_id`); `touched`, the files, commits, branches, pull requests and issues it and they touched; `links`, the issues and pull requests they worked on and how each was tied (`via`: attached, claim, branch, commit, trailer, opened or ref); `skills`, the skills they used by name; and for a subagent, `root`, the session at the top of its tree. Anyone who can read the repository may.",
             CoordinationOp::ListSessions => "A repository's sessions, most recently heard from first, up to 100: `state` active (heard from in the last 15 minutes), idle or ended; `issue` or `pull` for those on one, attached or tied to it any other way; `path` for those that touched a file (or any under a folder ending in `/`). Subagents are left out unless `subagents` is true, which lists each tree whole. Each says how many `subagents` it started. Anyone who can read the repository may.",
             CoordinationOp::RecordSessionEntries => "Record entries in one of your sessions: up to 200 at a time, each with `kind` (prompt, message, tool_call, tool_result, note, or skill for a skill it used, by name), `text` (up to 64,000 characters), and for tools `tool`. Give each a `key` and recording it again does nothing, so a retried hook records it once. `touched` says what it touched, up to 200: `{ kind, value }` with kind file (a path from the repository's root), commit, branch, pull (one it opened) or issue (one it named); each is kept once, ties the session to the pull requests and issues it names, and a file another active session touched too (outside its own parents and subagents, so siblings yes) is an overlap.detected event for both, once per pair. Entries of a session attached to a pull request show in that pull request's session too, where reviewers read why the change is what it is. Recording is a heartbeat. Returns how many were `recorded` and how many were `duplicates`.",
-            CoordinationOp::ClaimIssue => "Claim an open issue: say you are working on it. A claim is advisory, never a lock: anyone may claim an issue someone else has, and `others` lists the claims already on it, so you can coordinate or pick something else. It lasts `ttl_minutes` (30 unless you say, up to 240) and is renewed by claiming again or, when you give the `session_id` of one of your sessions, by that session's heartbeats. Returns your `claim`, the `others`, and `blocked_by`: each issue this one waits on, with its claims and pull requests. A new claim is a work.claimed event; one taking over a hand-off says which in `took_over`.",
+            CoordinationOp::ClaimIssue => "Claim an open issue: say you are working on it. A claim is advisory, never a lock: anyone may claim an issue someone else has, and `others` lists the claims already on it, so you can coordinate or pick something else. It lasts `ttl_minutes` (30 unless you say, up to 240) and is renewed by claiming again or, when you give the `session_id` of one of your sessions, by that session's heartbeats. Returns your `claim`, the `others`, and `blocked_by`: each issue this one waits on, with its claims and pull requests. A new claim is a work.claimed event; one taking over a hand-off says which in `took_over`. For work that has no issue yet, leave out `number` and give `title` (and `body`): the issue is opened first (an issue.opened event), then claimed, the session named by `session_id` is attached to it, and `issue` is the issue opened. The session is checked first, so a claim it would refuse opens nothing.",
             CoordinationOp::ReleaseClaim => "Release your claim on an issue, with an optional `reason`: you stopped working on it. A work.released event. Claims also end when the issue closes, and expire when not renewed. Refused with `404` when you hold no active claim on it.",
             CoordinationOp::HandOffIssue => "Hand an issue you claimed off: your claim ends as handed_off, with `note` saying where the work stands, for `to` (a username) or, without one, for anyone. A work.handoff_requested event, which whoever follows the issue hears; the next claim on it says it took the hand-off over. Refused with `404` when you hold no active claim on it.",
             CoordinationOp::ListClaims => "A repository's claims, newest first, up to 100: active ones unless `state` says released, expired or handed_off, and `issue` for one issue's. Anyone who can read the repository may.",
@@ -231,12 +231,14 @@ impl CoordinationOp {
             CoordinationOp::ClaimIssue => (
                 json!({
                     "repo": repo,
-                    "number": number,
-                    "session_id": { "type": "string", "description": "One of your sessions (ses_…) on the repository: its heartbeats renew the claim." },
+                    "number": { "type": "integer", "description": "The issue's number. Left out, give title (and body) to open one and claim it." },
+                    "title": { "type": "string", "description": "Without number: the title of a new issue to open and claim." },
+                    "body": { "type": "string", "description": "Without number: the new issue's description." },
+                    "session_id": { "type": "string", "description": "One of your sessions (ses_…) on the repository: its heartbeats renew the claim. With title, it is attached to the new issue." },
                     "note": { "type": "string", "description": "What you are doing, for whoever else looks. Up to 500 characters." },
                     "ttl_minutes": { "type": "integer", "description": "How long it lasts unless renewed: 30 unless you say, at most 240." },
                 }),
-                &["repo", "number"],
+                &["repo"],
             ),
             CoordinationOp::ReleaseClaim => (
                 json!({
@@ -433,10 +435,19 @@ pub async fn run(op: CoordinationOp, services: &Services, viewer: &Viewer, input
                 Ok(minutes) => minutes,
                 Err(message) => return invalid(message),
             };
+            let title = text(input, "title");
+            if issue_number == 0 && title.is_none() {
+                return invalid("Name the issue by its number, or give a title (and body) to open one.".to_owned());
+            }
+            if issue_number != 0 && title.is_some() {
+                return invalid("Give the issue's number or a title for a new one, not both.".to_owned());
+            }
             let args = ClaimArgs {
                 actor: actor(),
                 repo,
                 number: issue_number,
+                title,
+                body: text(input, "body"),
                 session_id: text(input, "session_id"),
                 note: text(input, "note"),
                 ttl_minutes,
@@ -554,6 +565,10 @@ mod tests {
         let (op, input) = resolve("POST", "/repos/acme/web/issues/4/claim", &[], json!({ "note": "on it" }));
         assert_eq!(op, coordination(CoordinationOp::ClaimIssue));
         assert_eq!(input, json!({ "note": "on it", "number": 4, "repo": "acme/web" }));
+        // Work with no issue yet: one is opened and claimed.
+        let (op, input) = resolve("POST", "/repos/acme/web/claims", &[], json!({ "title": "Fix previews" }));
+        assert_eq!(op, coordination(CoordinationOp::ClaimIssue));
+        assert_eq!(input, json!({ "title": "Fix previews", "repo": "acme/web" }));
         let (op, _) = resolve("POST", "/repos/acme/web/issues/4/release", &[], json!({}));
         assert_eq!(op, coordination(CoordinationOp::ReleaseClaim));
         let (op, _) = resolve("POST", "/repos/acme/web/issues/4/handoff", &[], json!({ "note": "half done" }));
@@ -573,6 +588,8 @@ mod tests {
         assert_eq!(call("session", "update"), Ok(Op::Coordination(CoordinationOp::UpdateSession)));
         assert_eq!(call("session", "record"), Ok(Op::Coordination(CoordinationOp::RecordSessionEntries)));
         assert_eq!(call("issue", "claim"), Ok(Op::Coordination(CoordinationOp::ClaimIssue)));
+        let claim_new = resolve(Tool::by_name("issue").unwrap(), &json!({ "action": "claim", "repo": "a/b", "title": "Fix previews" }));
+        assert_eq!(claim_new, Ok(Op::Coordination(CoordinationOp::ClaimIssue)));
         assert_eq!(call("issue", "work"), Ok(Op::Coordination(CoordinationOp::GetWork)));
     }
 

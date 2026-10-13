@@ -346,7 +346,7 @@ g1t session end --reason done
 | `g1t session start` | Starts a session and prints its id. `--harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`; `claude-code` works too; `claude_managed_agents` is only for the sessions g1t starts itself, with `g1t work dispatch`), `--harness-session-id`, `--issue`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
 | `g1t session heartbeat` | Says the session is still working, and renews its claims. A session with no heartbeat for 15 minutes reads as idle, and after 2 hours as ended. |
 | `g1t session log TEXT` | Records a note. `--kind` takes `note`, `prompt`, `message`, `tool_call` (or `tool-call`) or `skill` (a skill's name), `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash. |
-| `g1t session attach` | Points the session at an `--issue`, a `--pull`, a `--branch` or its latest `--head-commit`. |
+| `g1t session attach` | Points the session at an `--issue`, a `--pull`, a `--branch` or its latest `--head-commit`, or gives it a `--title`: what it is for, which replaces the title it had. |
 | `g1t session touch` | Says what the session touched: `--file PATH`, `--commit SHA`, `--branch NAME`, `--pull N` (one it opened), `--issue N`, each repeatable. Ties the session to the pull requests and issues they lead to; a file another active session touched too is an `overlap.detected` for both. |
 | `g1t session end` | Ends it, with an optional `--reason` and `--result` (what it reported; `-` reads it from stdin), and forgets it. Its subagents still going end with it. |
 | `g1t session list` | The repository's sessions; `--state active`, `--issue`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. |
@@ -361,6 +361,7 @@ a harness that runs several sessions in one working copy.
 ```sh
 g1t work context 12          # everything about #12's work
 g1t work claim 12 --note "Taking the parser" --ttl 1h
+g1t work claim --title "Preview builds time out" --body "Over 1 GB, the build stops at 10 minutes."
 g1t work release 12 --reason done
 g1t work handoff 12 --to ana --note "Parser done; lexer tests still fail."
 g1t work list                # active claims and sessions here
@@ -381,6 +382,13 @@ not done, the answer says so. `g1t work handoff` ends your claim and asks
 `--note` saying where it stands. Claims, releases and hand-offs are the
 current session's, so two sessions of yours (sibling subagents) each hold
 their own.
+
+For work that has no issue yet, `g1t work claim --title "…"` (with
+`--body` for its description) opens the issue and claims it in one step,
+and attaches the current session to it; it prints the new issue's number.
+Use it once the work is a change others should know about, after looking
+for an issue that already covers it; questions, exploration and trivial
+fixes need none. A number and `--title` together are refused.
 
 ### Starting a session on an issue
 

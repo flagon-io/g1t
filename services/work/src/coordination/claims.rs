@@ -33,7 +33,77 @@ impl Work {
             .find(|claim| claim_is_mine(&claim.actor.id, claim.session_id.as_deref(), &actor.id, session)))
     }
 
+    /// `claim_issue`: the issue named, or with a `title` and no number, a
+    /// new one opened for it, with the claim's session attached to it.
     pub(crate) async fn claim_issue(&self, a: ClaimArgs) -> Result<Outcome<Claimed>> {
+        if a.number == 0 {
+            return self.open_and_claim(a).await;
+        }
+        self.claim_number(a).await
+    }
+
+    /// Opens an issue from `title` and `body`, claims it, and attaches the
+    /// claim's session to it. The session is checked before anything is
+    /// opened, so a claim that would be refused opens no issue.
+    async fn open_and_claim(&self, a: ClaimArgs) -> Result<Outcome<Claimed>> {
+        let Some(title) = a.title.as_deref().map(str::trim).filter(|title| !title.is_empty()).map(str::to_owned) else {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Name the issue by its number, or give a title (and body) to open one."));
+        };
+        let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
+        let session_id = a.session_id.as_deref().map(str::trim).filter(|id| !id.is_empty()).map(str::to_owned);
+        if let Some(id) = &session_id {
+            match self.session_row(&repo.id, id).await? {
+                Some(row) if row.actor_id == a.actor.id => {
+                    if row.at(now_ms()).state == SessionState::Ended {
+                        return Ok(Outcome::fail(FailureCode::Invalid, "That session has ended. Start a new one."));
+                    }
+                }
+                _ => return Ok(Outcome::fail(FailureCode::Invalid, "session_id is not one of your sessions in this repository.")),
+            }
+        }
+        let opened = unwrap_or_fail!(
+            self.open_issue(OpenIssueArgs {
+                actor: a.actor.clone(),
+                repo: a.repo.clone(),
+                title,
+                body: a.body.clone().unwrap_or_default(),
+                labels: Vec::new(),
+                checks: Vec::new(),
+                milestone: None,
+            })
+            .await?
+        );
+        let claimed = unwrap_or_fail!(
+            self.claim_number(ClaimArgs { number: opened.number, title: None, body: None, session_id: session_id.clone(), ..a.clone() })
+                .await?
+        );
+        // The session is on the issue now, not only tied to it by the claim.
+        if let Some(id) = session_id {
+            let attached = self
+                .update_session(UpdateSessionArgs {
+                    actor: a.actor.clone(),
+                    repo: a.repo.clone(),
+                    id,
+                    issue: Some(opened.number),
+                    pull: None,
+                    branch: None,
+                    head_commit: None,
+                    title: None,
+                    agent_type: None,
+                    task: None,
+                    prompt: None,
+                    model: None,
+                    result: None,
+                })
+                .await?;
+            if let Outcome::Fail(failure) = attached {
+                worker::console_error!("#{}: the session was not attached: {}", opened.number, failure.message);
+            }
+        }
+        Ok(Outcome::Ok(Claimed { issue: Some(opened), ..claimed }))
+    }
+
+    async fn claim_number(&self, a: ClaimArgs) -> Result<Outcome<Claimed>> {
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
         let Some(issue) = self.issue(&repo.id, a.number).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Issue not found."));
@@ -88,7 +158,7 @@ impl Work {
                 if let Some(session_id) = &session_id {
                     self.link(session_id, &repo.id, LinkKind::Issue, issue.number, LinkVia::Claim).await;
                 }
-                return Ok(Outcome::Ok(Claimed { claim: renewed.into(), others, blocked_by }));
+                return Ok(Outcome::Ok(Claimed { claim: renewed.into(), others, blocked_by, issue: None }));
             }
         }
         // Taking over what was handed off to you, or to anyone.
@@ -145,7 +215,7 @@ impl Work {
             ClaimEvent { others: Some(others.clone()), took_over, ..ClaimEvent::of(&claim) },
         )
         .await?;
-        Ok(Outcome::Ok(Claimed { claim, others, blocked_by }))
+        Ok(Outcome::Ok(Claimed { claim, others, blocked_by, issue: None }))
     }
 
     /// Ends the caller's active claim on an issue as `state`, or refuses

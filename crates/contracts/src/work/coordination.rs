@@ -195,7 +195,15 @@ pub struct Session {
     /// How many subagents it started.
     #[serde(default)]
     pub subagents: u32,
+    /// For a session with no title, in a list: the start of the first
+    /// prompt it recorded (up to [`MAX_FIRST_PROMPT_CHARS`]), for saying
+    /// what it is for until it has a title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_prompt: Option<String>,
 }
+
+/// The most characters of an untitled session's first prompt a list gives.
+pub const MAX_FIRST_PROMPT_CHARS: usize = 300;
 
 /// The most characters a subagent's task keeps.
 pub const MAX_TASK_CHARS: usize = 200;
@@ -803,12 +811,23 @@ pub struct Recorded {
 }
 
 /// `claim_issue`. Returns `Outcome<Claimed>`. Claiming an issue you hold
-/// renews your claim (and changes its note or session when given).
-#[derive(Debug, Serialize, Deserialize)]
+/// renews your claim (and changes its note or session when given). With
+/// no number and a `title`, it opens the issue first and attaches the
+/// session to it; `Claimed::issue` is the issue it opened.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClaimArgs {
     pub actor: User,
     pub repo: RepoPath,
+    /// The issue to claim; 0 with `title` to open one and claim it.
+    #[serde(default)]
     pub number: u32,
+    /// Without a number: the title of a new issue to open and claim. The
+    /// session named by `session_id` is attached to it.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Without a number: the new issue's description.
+    #[serde(default)]
+    pub body: Option<String>,
     #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
@@ -825,6 +844,10 @@ pub struct Claimed {
     pub others: Vec<Claim>,
     /// What the issue is blocked by, and where each stands.
     pub blocked_by: Vec<Blocker>,
+    /// The issue the claim opened, when it was asked to open one (a
+    /// `title` instead of a number).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<Issue>,
 }
 
 /// `release_claim`: gives up your active claim on an issue. Returns

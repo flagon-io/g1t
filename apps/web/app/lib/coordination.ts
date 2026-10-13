@@ -83,16 +83,86 @@ export const SESSION_STATES: Record<SessionState, { label: string; hint: string 
   ended: { label: "Ended", hint: "Ended, or not heard from for 2 hours." },
 };
 
+// ── Session titles ──────────────────────────────────────────────────────
+
+/** The most of a prompt's intent that titles a session. */
+export const TITLE_LIMIT = 80;
+
+/**
+ * What a prompt is for, as a session's title: its first line or sentence,
+ * without code blocks or markdown, whitespace collapsed, clipped at
+ * TITLE_LIMIT on a word with "…". Null for a slash command, a turn the
+ * harness starts itself, or nothing to say. The Claude Code plugin
+ * (plugins/claude-code/hooks/g1t.mjs) titles its sessions the same way.
+ */
+export function intentTitle(prompt: string | null | undefined): string | null {
+  let text = String(prompt ?? "").replace(/^\uFEFF/, "");
+  if (/^\s*\//.test(text) || /^\s*<[a-z][\w-]*>/i.test(text)) return null;
+  text = text
+    .replace(/```[\s\S]*?(```|$)/g, "\n")
+    .replace(/~~~[\s\S]*?(~~~|$)/g, "\n")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/`([^`]*)`/g, "$1");
+  const line = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)+/, "").replace(/(\*\*|__|~~)(.+?)\1/g, "$2").trim())
+    .find((l) => /[\p{L}\p{N}]/u.test(l));
+  if (!line) return null;
+  let intent = line.replace(/\s+/g, " ").split(/(?<=[.!?])\s+(?=\S)/)[0].trim();
+  if (intent.length > TITLE_LIMIT) {
+    const cut = intent.slice(0, TITLE_LIMIT - 1);
+    const space = cut.lastIndexOf(" ");
+    intent = `${(space > TITLE_LIMIT / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.\-–—]+$/, "")}…`;
+  } else {
+    intent = intent.replace(/[\s,;:.]+$/, "");
+  }
+  if (intent.length < 2) return null;
+  return intent[0].toLocaleUpperCase() + intent.slice(1);
+}
+
+/**
+ * What a session is called, never nothing: its title, else what its first
+ * prompt was for, else the branch it is on, else "Untitled session".
+ * `firstPrompt` stands in for the session's own when given.
+ */
+export function sessionTitle(
+  session: Pick<WorkSession, "title" | "branch" | "firstPrompt">,
+  firstPrompt: string | null | undefined = session.firstPrompt,
+): string {
+  const title = session.title?.trim();
+  if (title) return title;
+  const intent = intentTitle(firstPrompt);
+  if (intent) return intent;
+  return session.branch ? `Session on ${session.branch}` : "Untitled session";
+}
+
 // ── Live now ────────────────────────────────────────────────────────────
 
 /** One issue being worked on: its claims and the sessions on it. */
 export type LiveIssue = { issue: number; claims: Claim[]; sessions: WorkSession[] };
 
+/** Sessions on no issue yet, together: on one pull request, on one branch of their own, or on neither. */
+export type LiveGroup =
+  | { kind: "pull"; pull: number; sessions: WorkSession[] }
+  | { kind: "branch"; branch: string; sessions: WorkSession[] }
+  | { kind: "none"; sessions: WorkSession[] };
+
+const latestSeen = (sessions: WorkSession[]) => Math.max(0, ...sessions.map((session) => Date.parse(session.lastSeenAt)));
+
 /**
  * Active claims and sessions grouped by the issue they are on, the issue
- * with the most recent activity first; sessions on no issue last, together.
+ * with the most recent activity first. Sessions on no issue are grouped
+ * after them (`groups`): by their pull request, else by their branch when
+ * it is not `defaultBranch`, the most recently heard from first; the rest,
+ * on no branch of their own, last together. `loose` is every session on no
+ * issue, as the groups hold them.
  */
-export function liveByIssue(claims: Claim[], sessions: WorkSession[]): { issues: LiveIssue[]; loose: WorkSession[] } {
+export function liveByIssue(
+  claims: Claim[],
+  sessions: WorkSession[],
+  defaultBranch?: string | null,
+): { issues: LiveIssue[]; groups: LiveGroup[]; loose: WorkSession[] } {
   const byIssue = new Map<number, LiveIssue>();
   const at = (issue: number) => {
     let group = byIssue.get(issue);
@@ -100,18 +170,31 @@ export function liveByIssue(claims: Claim[], sessions: WorkSession[]): { issues:
     return group;
   };
   for (const claim of claims) at(claim.issue).claims.push(claim);
-  const loose: WorkSession[] = [];
+  const byPull = new Map<number, LiveGroup & { kind: "pull" }>();
+  const byBranch = new Map<string, LiveGroup & { kind: "branch" }>();
+  const rest: WorkSession[] = [];
   for (const session of sessions) {
     if (session.issue != null) at(session.issue).sessions.push(session);
-    else loose.push(session);
+    else if (session.pull != null) {
+      const group = byPull.get(session.pull) ?? { kind: "pull" as const, pull: session.pull, sessions: [] };
+      byPull.set(session.pull, group);
+      group.sessions.push(session);
+    } else if (session.branch && session.branch !== defaultBranch) {
+      const group = byBranch.get(session.branch) ?? { kind: "branch" as const, branch: session.branch, sessions: [] };
+      byBranch.set(session.branch, group);
+      group.sessions.push(session);
+    } else rest.push(session);
   }
-  const latest = (group: LiveIssue) =>
-    Math.max(
-      0,
-      ...group.claims.map((claim) => Date.parse(claim.createdAt)),
-      ...group.sessions.map((session) => Date.parse(session.lastSeenAt)),
-    );
-  return { issues: [...byIssue.values()].sort((a, b) => latest(b) - latest(a) || a.issue - b.issue), loose };
+  const latest = (group: LiveIssue) => Math.max(latestSeen(group.sessions), ...group.claims.map((claim) => Date.parse(claim.createdAt)));
+  const recent = (a: LiveGroup, b: LiveGroup) => latestSeen(b.sessions) - latestSeen(a.sessions);
+  const groups: LiveGroup[] = [...byPull.values(), ...byBranch.values()].sort(recent);
+  if (rest.length > 0) groups.push({ kind: "none", sessions: rest });
+  for (const group of groups) group.sessions.sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+  return {
+    issues: [...byIssue.values()].sort((a, b) => latest(b) - latest(a) || a.issue - b.issue),
+    groups,
+    loose: groups.flatMap((group) => group.sessions),
+  };
 }
 
 // ── Decisions ───────────────────────────────────────────────────────────

@@ -106,6 +106,7 @@ impl SessionRow {
             result: self.result,
             model: self.model,
             subagents: 0,
+            first_prompt: None,
         }
     }
 }

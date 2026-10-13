@@ -93,6 +93,10 @@ function main() {
     const id = args.some((a) => a === "--parent" || a.startsWith("--parent=")) ? `ses_sub_${harness.split("/agent/")[1]}` : "ses_fake01";
     process.stdout.write(JSON.stringify({ id, state: "active" }));
   }
+  // The session as it stands: titled when FAKE_G1T_TITLE says so.
+  if (args[0] === "session" && args[1] === "heartbeat" && args.includes("--json")) {
+    process.stdout.write(JSON.stringify({ id: process.env.G1T_SESSION, state: "active", title: process.env.FAKE_G1T_TITLE || null }));
+  }
   if (args[0] === "work" && args[1] === "context") process.stdout.write(`#${args[2]} The issue's title\nDefinition of done: it works.\n`);
 }
 
