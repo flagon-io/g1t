@@ -139,9 +139,9 @@ There are no seats. The live figures are on
 
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
-| Sandbox time (workflows, checks, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
-| [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 1.9 and 3.4 times a sandbox second | Cost + 20% |
-| Deploy builds | Second | About $0.001 a minute | About $0.0012 a minute |
+| Sandbox time (workflows, checks, the merge queue) on [the standard machine](#machines) (2 vCPU, 8 GiB, 16 GB) | Second | About $0.0015 a minute: from $0.0014 idle to $0.0038 with both vCPUs busy | About $0.0018 a minute: from $0.0016 to $0.0045 |
+| Workflow jobs on [`g1t-4core`](#machines) (4 vCPU, 12 GiB, 20 GB) | Second | About 1.8 times a sandbox second: from $0.0020 a minute idle to $0.0068 with all four vCPUs busy | Cost + 20%: from $0.0024 to $0.0081 |
+| Deploy builds | Second | About $0.0015 a minute | About $0.0018 a minute |
 | App requests | Million | $0.30 | $0.36 |
 | App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
 | Custom domains | Domain-month | $0.10 | $0.12 |
@@ -260,7 +260,7 @@ pool**.
 | | Charged |
 | --- | --- |
 | The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
-| [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time), more on a [larger machine](#workflow-jobs-on-larger-machines) |
+| [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time), more on [`g1t-4core`](#machines) |
 | [Actions cache](#actions-cache) | What it holds, on the plan only |
 | [Deployments](/guides/deployments/) | Builds, requests, CPU time, custom domains and container time, from the first. Projects and previews are not charged. |
 | [Private repository storage](#storage-search-embeddings-and-scans) | Past the free 1 GB, on the plan only |
@@ -327,6 +327,10 @@ matches its cost is found and corrected.
   days later, and for something charged once a month (git operations,
   storage, the actions cache, custom domains, embeddings, scans) at the
   start of the month after that, so no month is charged at two prices.
+- **A new machine** is priced at what it costs from its first second, so
+  g1t never charges less than it pays. When the standard sandbox became
+  [2 vCPU, 8 GiB and 16 GB](#machines), sandbox time and deploy builds
+  rose with it at once.
 - **Nothing already charged changes.** Each charge records the price it
   was made at.
 
@@ -352,24 +356,28 @@ Each sandbox is one line on the [statement](#the-statement), such as
 counted here: [Deployments](/guides/deployments/) charges them by the
 second, from the first, under **Builds**.
 
-### Workflow jobs on larger machines
+### Machines
 
-A workflow job whose `runs-on` names a [larger machine](/guides/actions/#machine-sizes)
-runs on a larger Cloudflare Containers instance, and its seconds cost what
-that instance costs g1t, plus 20%. The standard machine they are compared
-with has 1 vCPU, 4 GiB and 20 GB:
+Checks, the merge queue, deploy builds and workflow jobs run on the
+standard machine: 2 vCPU, 8 GiB of memory and 16 GB of disk. A workflow
+job whose `runs-on` is `g1t-4core` gets 4 vCPU, 12 GiB and 20 GB, for
+heavier jobs. `g1t-2core` is kept as a name of the standard machine, so
+workflows that ask for it keep working, at the standard price.
 
-| `runs-on` | Instance | Its memory and disk, against the standard machine's | A second with its vCPUs as busy as an average sandbox's |
-| --- | --- | --- | --- |
-| `g1t-2core` | 2 vCPU, 8 GiB, 20 GB | 1.8 times | About 1.9 times a sandbox second |
-| `g1t-4core` | 4 vCPU, 12 GiB, 20 GB | 2.5 times | About 3.4 times a sandbox second |
+| `runs-on` | Machine | Memory, disk and the Durable Object, billed every second | CPU, billed as used | A second without its own CPU reported |
+| --- | --- | --- | --- | --- |
+| Any hosted label, and `g1t-2core` | 2 vCPU, 8 GiB, 16 GB | About $0.0014 a minute | $0.00002 a vCPU-second, up to $0.0024 a minute | A sandbox second |
+| `g1t-4core` | 4 vCPU, 12 GiB, 20 GB | About $0.0020 a minute, 1.45 times the standard machine's | Up to $0.0048 a minute | About 1.8 times a sandbox second |
 
-A job that reports its own CPU is priced on it: its memory and disk for
+Those are what each costs g1t; you pay them plus 20%. A job that reports
+its own CPU is priced on it: its memory, disk and Durable Object for
 every second, and the vCPU-seconds it used. One that does not is priced
-at the right-hand column. Its line on the statement names the machine,
-such as *A workflow job in acme/api on g1t-4core: 6m 40s of sandbox
-time*. A job usually finishes several times sooner on a larger machine,
-so it often costs about the same.
+at the right-hand column, from the average CPU sandboxes use. Either way,
+an idle second is charged at no less than its memory, disk and Durable
+Object cost g1t, plus 20%. A job's line on the statement names the
+machine, such as *A workflow job in acme/api on g1t-4core: 6m 40s of
+sandbox time*. A build that compiles often finishes sooner on
+`g1t-4core`, so it can cost about the same.
 
 ## Git operations
 

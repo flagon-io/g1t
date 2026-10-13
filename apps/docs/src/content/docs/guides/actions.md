@@ -537,13 +537,12 @@ say; see [the job's token](#the-jobs-token). The
 
 ### Machine sizes
 
-A job runs on the standard machine unless its `runs-on` names a larger
-one:
+A job runs on the standard machine unless its `runs-on` is `g1t-4core`:
 
 | `runs-on` | vCPUs | Memory | Disk |
 | --- | --- | --- | --- |
-| `ubuntu-latest`, or any other Linux label | 1 | 4 GiB | 20 GB |
-| `g1t-2core` | 2 | 8 GiB | 20 GB |
+| `ubuntu-latest`, or any other Linux label | 2 | 8 GiB | 16 GB |
+| `g1t-2core` (a name of the standard machine) | 2 | 8 GiB | 16 GB |
 | `g1t-4core` | 4 | 12 GiB | 20 GB |
 
 ```yaml
@@ -552,12 +551,12 @@ jobs:
     runs-on: g1t-4core
 ```
 
-The label can come from the matrix or the run's inputs
-(`runs-on: ${{ matrix.big && 'g1t-4core' || 'ubuntu-latest' }}`). A
-larger machine costs what it costs g1t, plus the same margin as all
-sandbox time: see [usage and billing](/guides/usage-and-billing/#workflow-jobs-on-larger-machines).
-Builds that compile, such as Rust or a large TypeScript project, finish
-several times faster on one.
+`g1t-4core` is for heavier jobs: builds that compile, such as Rust or a
+large TypeScript project, image builds and databases. `g1t-2core` is kept
+as a name of the standard machine, so workflows that ask for it keep
+working. The label can come from the matrix or the run's inputs
+(`runs-on: ${{ matrix.big && 'g1t-4core' || 'ubuntu-latest' }}`). What
+each costs is in [usage and billing](/guides/usage-and-billing/#machines).
 
 A job on g1t's machines runs for at most 60 minutes, whatever its
 `timeout-minutes`, and the workflow's page warns about a job that asks
@@ -751,8 +750,7 @@ unless the job brings a cache:
 
 - **Machine.** Containers share the job's machine: its vCPUs, memory and
   disk ([machine sizes](#machine-sizes)). Image builds and databases want
-  `g1t-2core` or `g1t-4core`. `--cpus` and `--memory` limit a container
-  within that.
+  `g1t-4core`. `--cpus` and `--memory` limit a container within that.
 - **Disk.** Images take room on the job's disk. On a machine whose disk
   cannot hold layered images, the Engine stores plain copies, which take
   more room; the log says when it does.

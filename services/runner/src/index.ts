@@ -68,8 +68,9 @@ export { ContainerProxy } from "@cloudflare/containers";
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
   /**
-   * Larger machines for workflow jobs that ask for one with `runs-on`
-   * (`g1t-2core`, `g1t-4core`): the same image on a larger instance type.
+   * Workflow jobs that ask with `runs-on` for `g1t-2core` (the standard
+   * machine, kept as a name so the label keeps working) or `g1t-4core` (a
+   * larger instance type): the same image, in classes of their own.
    */
   SANDBOX_2CORE?: DurableObjectNamespace<Sandbox2Core>;
   SANDBOX_4CORE?: DurableObjectNamespace<Sandbox4Core>;

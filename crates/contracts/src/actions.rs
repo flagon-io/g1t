@@ -1037,17 +1037,18 @@ pub struct StartJobArgs {
     pub brokered: bool,
 }
 
-/// A size of machine g1t runs workflow jobs on, asked for by a label in
-/// `runs-on`. Each is a Cloudflare Containers instance type (named, or a
-/// custom one: services/runner/wrangler.jsonc), every one with the 20 GB of
-/// disk Containers allow at most; it costs what that instance costs g1t,
-/// plus the margin, like any sandbox time.
+/// A machine g1t runs workflow jobs on, asked for by a label in `runs-on`.
+/// Each is a named Cloudflare Containers instance type (see
+/// services/runner/wrangler.jsonc; no custom types): the standard machine
+/// is standard-3 (2 vCPU, 8 GiB, 16 GB of disk), `g1t-2core` is kept as a
+/// name of it so workflows that ask for it keep working, and `g1t-4core` is
+/// standard-4 (4 vCPU, 12 GiB, 20 GB). It costs what that instance costs
+/// g1t, plus the margin, like any sandbox time.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InstanceType {
     /// The `runs-on` label, or `standard` for the default.
     pub label: &'static str,
-    /// The Containers instance type: a named one, or `custom` for one
-    /// sized by its vCPU, memory and disk.
+    /// The named Containers instance type.
     pub container: &'static str,
     pub vcpu: f64,
     pub memory_gib: f64,
@@ -1063,13 +1064,14 @@ pub struct InstanceType {
 
 /// The default: what `ubuntu-latest` and every other hosted label get.
 pub const STANDARD_INSTANCE: InstanceType =
-    InstanceType { label: "standard", container: "custom", vcpu: 1.0, memory_gib: 4.0, disk_gb: 20.0, price_scale: 1.0 };
+    InstanceType { label: "standard", container: "standard-3", vcpu: 2.0, memory_gib: 8.0, disk_gb: 16.0, price_scale: 1.0 };
 
-/// Every machine a workflow job can ask for, the default first.
+/// Every label a workflow job can ask for, the default first.
 pub const INSTANCE_TYPES: [InstanceType; 3] = [
     STANDARD_INSTANCE,
-    InstanceType { label: "g1t-2core", container: "custom", vcpu: 2.0, memory_gib: 8.0, disk_gb: 20.0, price_scale: 1.9 },
-    InstanceType { label: "g1t-4core", container: "standard-4", vcpu: 4.0, memory_gib: 12.0, disk_gb: 20.0, price_scale: 3.4 },
+    // The standard machine under the name it had when it was larger.
+    InstanceType { label: "g1t-2core", ..STANDARD_INSTANCE },
+    InstanceType { label: "g1t-4core", container: "standard-4", vcpu: 4.0, memory_gib: 12.0, disk_gb: 20.0, price_scale: 1.8 },
 ];
 
 /// The machine a job's `runs-on` labels ask for: the largest named, or the
@@ -1583,24 +1585,30 @@ mod instance_tests {
     fn runs_on_picks_the_machine() {
         assert_eq!(instance_for(&labels(&["ubuntu-latest"])), STANDARD_INSTANCE);
         assert_eq!(instance_for(&labels(&[])).label, "standard");
-        assert_eq!(instance_for(&labels(&["g1t-4core"])).container, "standard-4");
+        assert_eq!(instance_for(&labels(&["g1t-4core"])).label, "g1t-4core");
         assert_eq!(instance_for(&labels(&["ubuntu-latest", "G1T-2Core"])).label, "g1t-2core");
-        // Both named: the larger.
+        // Both named: the later one.
         assert_eq!(instance_for(&labels(&["g1t-2core", "g1t-4core"])).label, "g1t-4core");
+        assert_eq!(instance_named("g1t-2core").map(|i| i.vcpu), Some(2.0));
         assert_eq!(instance_named("g1t-4core").map(|i| i.vcpu), Some(4.0));
         assert_eq!(instance_named("standard"), Some(STANDARD_INSTANCE));
         assert_eq!(instance_named("g1t-64core"), None);
     }
 
     #[test]
-    fn every_machine_has_the_most_disk_containers_allow_and_fits_a_custom_type() {
+    fn every_machine_is_a_named_instance_type_at_its_size() {
+        // Containers' named instance types, at the sizes Cloudflare gives
+        // them; no custom types.
+        let named = |container: &str| match container {
+            "standard-3" => Some((2.0, 8.0, 16.0)),
+            "standard-4" => Some((4.0, 12.0, 20.0)),
+            _ => None,
+        };
         for instance in INSTANCE_TYPES {
-            assert_eq!(instance.disk_gb, 20.0, "{}", instance.label);
-            // Custom instance types: 1 to 4 vCPU, at most 12 GiB, at least
-            // 3 GiB a vCPU.
-            assert!((1.0..=4.0).contains(&instance.vcpu), "{}", instance.label);
-            assert!(instance.memory_gib <= 12.0 && instance.memory_gib >= 3.0 * instance.vcpu, "{}", instance.label);
+            assert_eq!(named(instance.container), Some((instance.vcpu, instance.memory_gib, instance.disk_gb)), "{}", instance.label);
         }
+        // g1t-2core is a name of the standard machine.
+        assert_eq!(instance_named("g1t-2core").map(|i| InstanceType { label: "standard", ..i }), Some(STANDARD_INSTANCE));
     }
 
     #[test]

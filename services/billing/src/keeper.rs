@@ -187,10 +187,12 @@ pub(crate) struct ContainerUsage {
     memory_byte_seconds: f64,
 }
 
-/// g1t's standard sandbox (`STANDARD_INSTANCE` in the contracts): a custom
-/// Containers instance type of 1 vCPU, 4 GiB and 20 GB of disk.
-const SANDBOX_GIB: f64 = 4.0;
-const SANDBOX_DISK_GB: f64 = 20.0;
+/// g1t's standard sandbox (`STANDARD_INSTANCE` in the contracts):
+/// Containers' standard-3, 2 vCPU, 8 GiB and 16 GB of disk. Memory and disk
+/// are billed as provisioned for every second it runs, so they are in the
+/// base; CPU only as used.
+const SANDBOX_GIB: f64 = 8.0;
+const SANDBOX_DISK_GB: f64 = 16.0;
 const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 /// The Durable Object behind each container is billed for as long as the
 /// container runs, at 128 MB.
@@ -563,13 +565,18 @@ mod tests {
     #[test]
     fn a_sandbox_second_is_its_memory_and_disk_and_the_cpu_it_uses() {
         // An hour of sandboxes that kept a fifth of a vCPU busy.
-        let usage = ContainerUsage { cpu_seconds: 720.0, memory_byte_seconds: 3600.0 * 4.0 * GIB };
+        let usage = ContainerUsage { cpu_seconds: 720.0, memory_byte_seconds: 3600.0 * 8.0 * GIB };
         let micros =
             sandbox_second_micros(usage, LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_VCPU_SECOND, LIST_DO_GB_SECOND).unwrap();
-        // 4 x 2.5 + 20 x 0.07 + 0.125 x 12.5 + 0.2 x 20 = 16.9625
-        assert!((micros - 16.9625).abs() < 1e-9, "{micros}");
-        // The Durable Object adds about 14% to the second it left out.
-        assert!((sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND) - 12.9625).abs() < 1e-9);
+        // 8 x 2.5 + 16 x 0.07 + 0.125 x 12.5 + 0.2 x 20 = 26.6825
+        assert!((micros - 26.6825).abs() < 1e-9, "{micros}");
+        // Memory, disk and the Durable Object, billed for every second.
+        let base = sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND);
+        assert!((base - 22.6825).abs() < 1e-9);
+        // An hour of sandboxes that used no CPU still costs their base.
+        let idle = ContainerUsage { cpu_seconds: 0.0, memory_byte_seconds: 3600.0 * 8.0 * GIB };
+        let idle = sandbox_second_micros(idle, LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_VCPU_SECOND, LIST_DO_GB_SECOND).unwrap();
+        assert!((idle - base).abs() < 1e-9);
         // Too little use to say anything.
         assert!(sandbox_second_micros(ContainerUsage { cpu_seconds: 1.0, memory_byte_seconds: GIB }, 1.0, 1.0, 1.0, 1.0).is_none());
     }
@@ -578,9 +585,17 @@ mod tests {
     fn a_run_that_reports_its_cpu_is_priced_on_it() {
         let base = sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND);
         let vcpu = LIST_VCPU_SECOND * MICROS_PER_DOLLAR as f64;
-        // A 10-minute cargo build that kept half its vCPU busy throughout.
+        // A 10-minute cargo build that kept half a vCPU busy throughout.
         let heavy = run_cost(600, 300.0, base, vcpu);
-        assert!((heavy - (600.0 * 12.9625 + 300.0 * 20.0)).abs() < 1e-6);
+        assert!((heavy - (600.0 * 22.6825 + 300.0 * 20.0)).abs() < 1e-6);
+        // Ten idle minutes cost the memory, disk and Durable Object that
+        // Cloudflare bills for all of them, and are charged that plus the
+        // margin, never less.
+        let idle = run_cost(600, 0.0, base, vcpu);
+        let provisioned = 600.0 * (8.0 * 2.5 + 16.0 * 0.07 + 0.125 * 12.5);
+        assert!((idle - provisioned).abs() < 1e-6, "{idle}");
+        let charged = crate::credits::with_margin(idle.ceil() as i64, 20);
+        assert!(charged as f64 >= provisioned * 1.2, "{charged}");
         // The same ten minutes, mostly idle, costs less.
         let light = run_cost(600, 30.0, base, vcpu);
         assert!(light < heavy);
@@ -590,13 +605,18 @@ mod tests {
         assert_eq!(run_cost(0, -1.0, base, vcpu), 0.0);
         // A larger machine's base: its memory and disk, not its CPU.
         assert!((base_scale(SANDBOX_GIB, SANDBOX_DISK_GB) - 1.0).abs() < 1e-12);
-        assert!((base_scale(12.0, 20.0) - 2.54).abs() < 0.01, "{}", base_scale(12.0, 20.0));
-        assert!((base_scale(8.0, 20.0) - 1.77).abs() < 0.01, "{}", base_scale(8.0, 20.0));
-        // Each machine in the contracts, priced from its own memory and disk.
+        assert!((base_scale(12.0, 20.0) - 1.45).abs() < 0.01, "{}", base_scale(12.0, 20.0));
+        // Each machine in the contracts, priced from its own memory and
+        // disk. Its price scale is at least its base's, so a job that does
+        // not report its CPU (charged the average sandbox second, which is
+        // never under the base, times the price scale) still pays for the
+        // memory and disk it held, idle or not.
         for instance in g1t_contracts::actions::INSTANCE_TYPES {
             let scale = base_scale(instance.memory_gib, instance.disk_gb);
-            assert!(scale >= 1.0 && scale < instance.price_scale.max(1.0) + 1e-9, "{}: {scale}", instance.label);
+            assert!(scale >= 1.0 - 1e-12 && scale <= instance.price_scale + 1e-9, "{}: {scale}", instance.label);
         }
+        let standard = g1t_contracts::actions::STANDARD_INSTANCE;
+        assert_eq!((standard.memory_gib, standard.disk_gb), (SANDBOX_GIB, SANDBOX_DISK_GB));
     }
 
     #[test]
