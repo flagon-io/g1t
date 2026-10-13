@@ -3559,6 +3559,7 @@ pub static OPERATIONS: &[Operation] = &[
             Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
             Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
             Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+            Param { name: "paths", location: In::Query, kind: "array", required: false, values: &[] },
         ],
         body: &[],
     },
