@@ -1260,7 +1260,17 @@ class Deployments {
           return Response.json({ ok: false, error }, { status: 409 });
         }
         const instanceType = instanceTypeOf((await this.settingsRow(row.project_id))?.instance_type);
-        const login = await cloudflare.registryLogin();
+        let login: Awaited<ReturnType<typeof cloudflare.registryLogin>>;
+        try {
+          login = await cloudflare.registryLogin();
+        } catch (error) {
+          // Said in the build's log, not as a bare 500: most often the
+          // operator's Cloudflare token lacks Containers: Edit.
+          const reason = error instanceof Error ? error.message : String(error);
+          console.error("registry login refused", row.id, reason);
+          const message = `Cloudflare refused a login to push the image (${reason}). Its API token needs the Containers: Edit permission.`;
+          return Response.json(fail("unavailable", message), { status: 502 });
+        }
         return Response.json(
           ok({
             registry: REGISTRY_HOST,
