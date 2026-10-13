@@ -47,7 +47,7 @@ import { browserTimeZone, localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
 // @g1t's answers and its direct message (lib/g1t-chat.ts, components/chat/answer.tsx).
-import { ConversationMark, G1tAnswer } from "./answer";
+import { AskedFrom, ConversationMark, G1tAnswer } from "./answer";
 import type { ResponseContext } from "../ai-elements/response";
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
 import { anyAnswering, applyLive, fromG1t, suggestions } from "../../lib/g1t-chat";
@@ -1334,6 +1334,7 @@ function MessageRow({
           ) : (
             message.body && <MessageText body={message.body} context={context} />
           )}
+          {!editor && !answer && message.page && <AskedFrom page={message.page} />}
           {!editor && !answer && message.body && !message.pending && <FolioUnfurls slug={slug} body={message.body} />}
           {message.card && (
             <CardBox card={message.card} slug={slug} code={code} />

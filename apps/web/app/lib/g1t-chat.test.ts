@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { ChatLiveEvent, ChatMessage } from "@g1t/contracts";
 
-import { answerLabel, anyAnswering, applyLive, cutOff, fromG1t, refTarget, suggestions } from "./g1t-chat.ts";
+import { askedFrom, answerLabel, anyAnswering, applyLive, cutOff, fromG1t, refTarget, suggestions } from "./g1t-chat.ts";
 
 const g1t = { kind: "system" as const, id: "g1t", name: "g1t", display_name: "g1t", avatar: null, role: null };
 const ana = { kind: "user" as const, id: "u1", name: "ana", display_name: "Ana", avatar: null, role: null };
@@ -75,4 +75,14 @@ test("links into the site show as what they lead to", () => {
   assert.equal(refTarget("https://example.com/acme/web/issues/1"), null);
   assert.equal(refTarget("//evil.example/x"), null);
   assert.equal(refTarget("javascript:alert(1)"), null);
+});
+
+test("a question asked on a page says which, and one written in Chat says nothing", () => {
+  const repo = { namespace: "flagon-io", name: "g1t" };
+  assert.deepEqual(askedFrom({ path: "/flagon-io/g1t/pull/8", repo, pull: 8 }), { label: "pull request #8 in flagon-io/g1t", href: "/flagon-io/g1t/pull/8" });
+  assert.deepEqual(askedFrom({ repo, issue: 21 }), { label: "issue #21 in flagon-io/g1t", href: "/flagon-io/g1t/issues/21" });
+  assert.equal(askedFrom({ path: "/flagon-io/g1t", repo })?.label, "flagon-io/g1t");
+  assert.equal(askedFrom({ path: "/flagon-io/-/chat/dm/chn_1" }), null);
+  assert.equal(askedFrom({ time_zone: "America/Denver" }), null);
+  assert.equal(askedFrom(null), null);
 });

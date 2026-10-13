@@ -73,6 +73,21 @@ export function suggestions(page: AskPage): string[] {
   return ["What shipped today?", "What needs my attention?", "Summarize what my team is working on", "How do I set up a deployment?"];
 }
 
+/**
+ * Where a question to @g1t was asked from, when it was asked on a page
+ * (the top bar's Ask on a pull request, an issue or a repository): what to
+ * call it and where it leads. Null for a question written in Chat.
+ */
+export function askedFrom(page: AskPage | null | undefined): { label: string; href: string } | null {
+  if (!page) return null;
+  const repo = page.repo ? `${page.repo.namespace}/${page.repo.name}` : null;
+  if (repo && page.pull) return { label: `pull request #${page.pull} in ${repo}`, href: page.path ?? `/${repo}/pull/${page.pull}` };
+  if (repo && page.issue) return { label: `issue #${page.issue} in ${repo}`, href: page.path ?? `/${repo}/issues/${page.issue}` };
+  if (repo) return { label: repo, href: page.path ?? `/${repo}` };
+  if (page.path && !/\/-\/chat(\/|$)/.test(page.path)) return { label: page.path, href: page.path };
+  return null;
+}
+
 /** A link g1t knows how to show as a chip: an issue or pull request, a commit, or another page of the site. */
 export type RefTarget =
   | { kind: "issue"; repo: string; number: number; href: string }

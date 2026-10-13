@@ -5,12 +5,12 @@
  * as they stream, then the answer with who wrote it and what can be done
  * with it: copy it, or have g1t answer again.
  */
-import { Check, CircleAlert, Copy, RefreshCw, Settings2 } from "lucide-react";
+import { Check, CircleAlert, Copy, CornerDownRight, RefreshCw, Settings2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import type { ChatMessage } from "@g1t/contracts";
+import type { AskPage, ChatMessage } from "@g1t/contracts";
 
-import { answerLabel, answering, cutOff } from "../../lib/g1t-chat";
+import { answerLabel, answering, askedFrom, cutOff } from "../../lib/g1t-chat";
 import { AskTrail } from "../ask-steps";
 import { Loader } from "../ai-elements/loader";
 import { MessageAction, MessageActions } from "../ai-elements/message";
@@ -108,5 +108,20 @@ export function ConversationMark() {
       <span aria-hidden="true" className="absolute inset-x-0 top-1/2 h-px bg-line" />
       <Badge className="relative bg-bg px-3 py-0.5 text-faint">New conversation</Badge>
     </div>
+  );
+}
+
+/**
+ * Under a question to @g1t asked on a page: which page, so "this pull
+ * request" reads as the one it was. g1t was told the same.
+ */
+export function AskedFrom({ page }: { page: AskPage | null | undefined }) {
+  const from = askedFrom(page);
+  if (!from) return null;
+  return (
+    <a href={from.href} className="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+      <CornerDownRight size={12} aria-hidden="true" className="shrink-0" />
+      <span className="truncate">Asked on {from.label}</span>
+    </a>
   );
 }

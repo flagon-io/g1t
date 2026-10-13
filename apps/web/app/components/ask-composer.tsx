@@ -11,7 +11,7 @@ import { Conversation, ConversationContent, ConversationEmptyState, Conversation
 import { Message, MessageContent } from "./ai-elements/message";
 import type { ResponseContext } from "./ai-elements/response";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
-import { G1tAnswer } from "./chat/answer";
+import { AskedFrom, G1tAnswer } from "./chat/answer";
 import { useChatLive } from "./chat/live";
 import { MarkGlyph } from "./logo";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -398,6 +398,7 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
               ) : (
                 <Message key={m.id} from="user">
                   <MessageContent className={m.pending && !m.failed ? "opacity-70" : undefined}>{m.body}</MessageContent>
+                  <AskedFrom page={m.page} />
                   {m.failed && <span className="text-xs text-danger">Not sent. Ask again.</span>}
                 </Message>
               ),

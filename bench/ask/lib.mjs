@@ -182,6 +182,9 @@ function urlsIn(value, found = new Set()) {
   return found;
 }
 
+/** What every question the bench posts starts with. */
+export const TEST_PREFIX = "[TEST] ";
+
 /** A chat API call on the site as the user: the `{ ok, value | error }` it answers. */
 async function chatApi(workspace, body) {
   const response = await site(`/${workspace}/-/chat/api`, {
@@ -239,7 +242,8 @@ export async function ask(workspace, { messages, page }, { timeoutMs = 180_000 }
     for (const [index, question] of questions.entries()) {
       const last = index === questions.length - 1;
       const asked = performance.now();
-      const posted = await chatApi(workspace, { intent: "post", channel_id: channel, body: question.content, page: last ? (page ?? null) : null });
+      // Marked, so the person whose direct message it is can tell the bench's questions from their own.
+      const posted = await chatApi(workspace, { intent: "post", channel_id: channel, body: `${TEST_PREFIX}${question.content}`, page: last ? (page ?? null) : null });
       result.status = posted.ok ? 200 : 400;
       if (!posted.ok) throw new Error(posted.error?.message ?? "could not post");
       const mine = posted.value.id;
