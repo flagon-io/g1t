@@ -26,7 +26,7 @@ inputs:
 
 outputs:
   kind:
-    description: workers (a Wrangler config, or a framework's Cloudflare adapter), static (a site a build writes), html (the files as they are), container (a Dockerfile, a framework set up to need a server, or a server g1t writes a Dockerfile for) or none (nothing to serve).
+    description: workers (a Wrangler config, a framework's Cloudflare adapter, or a Node.js server run as a Worker), static (a site a build writes), html (the files as they are), container (a server that is not run as a Worker, a framework set up to need a server, or a Dockerfile with nothing else to serve) or none (nothing to serve).
     value: ${{ steps.detect.outputs.kind }}
   install:
     description: How its dependencies are installed, such as npm ci. Empty without a package.json.
@@ -38,7 +38,7 @@ outputs:
     description: The folder that is served, relative to the project (. for the project itself). Empty when a build has yet to write it.
     value: ${{ steps.detect.outputs.output-dir }}
   framework:
-    description: The framework it is built with, such as vite, astro, nextjs, sveltekit or hugo; for a container without one, dockerfile or the server g1t writes a Dockerfile for (node, flask, rails…). Empty when there is none.
+    description: The framework it is built with, such as vite, astro, nextjs, sveltekit or hugo; node for a Node.js server run as a Worker; for a container without one, dockerfile or the server g1t writes a Dockerfile for (node, flask, rails…). Empty when there is none.
     value: ${{ steps.detect.outputs.framework }}
   dockerfile:
     description: A container's own Dockerfile, relative to the project. Empty when g1t writes one, or for anything else.
@@ -46,6 +46,9 @@ outputs:
   port:
     description: The port a container listens on, its Dockerfile's EXPOSE or 8080. Empty for anything else.
     value: ${{ steps.detect.outputs.port }}
+  entry:
+    description: For a Node.js server run as a Worker, the file that starts it, relative to the project. Empty for anything else.
+    value: ${{ steps.detect.outputs.entry }}
 
 runs:
   using: composite

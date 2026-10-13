@@ -36,7 +36,7 @@ export const BUILD_AS_OPTIONS: { value: BuildAs; label: string }[] = [
   { value: "auto", label: "Auto: found from its files" },
   { value: "static", label: "Static site" },
   { value: "workers", label: "Workers" },
-  { value: "docker", label: "Docker" },
+  { value: "docker", label: "Container" },
 ];
 
 /** `1/16 vCPU, 256 MiB, 2 GB disk`. */
