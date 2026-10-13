@@ -1786,6 +1786,14 @@ class Deployments {
     ]);
   }
 
+  private async takeDownBranchPreview(projectId: string, branch: string): Promise<void> {
+    const apps = await this.db
+      .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'preview' AND number IS NULL AND branch = ?")
+      .bind(projectId, branch)
+      .all<{ script: string }>();
+    for (const app of apps.results) await this.removeApp(app.script);
+  }
+
   private async takeDownWhere(projectId: string, kind: DeployKind | null, branch?: string): Promise<void> {
     const apps = await this.db
       .prepare(
@@ -1854,6 +1862,13 @@ class Deployments {
             .bind(project.id, event.data.number)
             .all<{ script: string }>();
           for (const app of apps.results) await this.removeApp(app.script);
+        }
+        break;
+      // A branch deleted takes its own preview (not a pull request's) down.
+      case "git.deleted":
+        if (event.data.ref.startsWith("refs/heads/")) {
+          const branch = event.data.ref.slice("refs/heads/".length);
+          for (const project of await this.projects.byRepo(event.data.repoId)) await this.takeDownBranchPreview(project.id, branch);
         }
         break;
       case "git.push":
@@ -2156,7 +2171,6 @@ class Deployments {
     for (const [id, project] of await this.projectsById(unknown)) projects.set(id, project);
     const billing = billingClient(this.env.BILLING);
     const open = new Map<string, boolean>();
-    const actors = new Map<string, User | null>();
 
     for (const target of targets) {
       const row = settings.get(target.projectId)!;
@@ -2204,13 +2218,13 @@ class Deployments {
           result.waiting++;
           continue;
         }
-        if (!actors.has(project.workspace)) actors.set(project.workspace, await this.workspaceActor(project.workspace));
         const started =
           target.kind === "production"
             ? await this.deployProduction(project, target.commit, "g1t")
             : target.number != null
               ? await this.deployPreview(project, target.number, "g1t", true)
-              : await this.rebuildStack(project, target.branch, target.commit, actors.get(project.workspace) ?? null);
+              : // A preview no pull request holds is not built again; the sweep takes it down.
+                null;
         const outcome = rebuildOutcome(started);
         if (outcome === "queued") result.queued++;
         else if (outcome === "failed") {
@@ -2466,26 +2480,6 @@ class Deployments {
     return { ...project, workspace: current, source };
   }
 
-  /** A stack's preview (no pull request of its own) built again at `commit`. */
-  private async rebuildStack(project: Project, branch: string | null, commit: string, actor: User | null): Promise<Result<Deployment> | null> {
-    if (!actor || branch == null) return null;
-    const settings = await this.settingsRow(project.id);
-    if (!settings?.enabled || !settings.previews || settings.repo_deleted_at) return null;
-    return this.start({
-      project,
-      kind: "preview",
-      branch,
-      number: null,
-      commit,
-      source: repoOf(project).path,
-      reader: actor,
-      createdBy: "g1t",
-      settings,
-      // As `stack` built it: the project's own default branch.
-      trusted: true,
-    });
-  }
-
   // ---- The sweep -----------------------------------------------------
 
   /**
@@ -2509,6 +2503,7 @@ class Deployments {
         .all<{ id: string }>();
       for (const { id } of stuck.results) await this.finishFailed(id, "The build did not finish in 45 minutes.", null, null);
     });
+    await step("taking down previews no pull request holds", () => this.takeDownUnheld());
     await step("taking down idle previews", () => this.takeDownIdle());
     await step("charging months", () => this.chargeMonths());
 
@@ -2723,6 +2718,38 @@ class Deployments {
           .notePending(meter.namespace, "domains", cost.domains.micros, cost.domains.detail)
           .catch((error) => console.error("could not note pending usage", error));
       }
+    }
+  }
+
+  /**
+   * Previews of a branch that is gone. A pull request's preview comes down
+   * when it closes or merges; a branch's preview (built by a project's
+   * deploy workflow, or by the preview stacks projects' dependencies once
+   * built) has no pull request, so it comes down once its branch is
+   * deleted, here for any whose deletion was missed. A deleted
+   * workspace's stay paused for a restore.
+   */
+  private async takeDownUnheld(): Promise<void> {
+    const unheld = await this.db
+      .prepare(
+        `SELECT apps.script, apps.project_id, apps.branch FROM apps JOIN settings ON settings.project_id = apps.project_id
+         WHERE apps.kind = 'preview' AND apps.number IS NULL AND settings.workspace_deleted_at IS NULL`,
+      )
+      .all<{ script: string; project_id: string; branch: string | null }>();
+    if (unheld.results.length === 0) return;
+    const projects = await this.projectsById([...new Set(unheld.results.map((app) => app.project_id))]);
+    const branchesOf = new Map<string, Set<string> | null>();
+    for (const app of unheld.results) {
+      const project = projects.get(app.project_id);
+      if (!project || project.source.kind !== "hosted") continue;
+      if (!branchesOf.has(project.id)) {
+        const actor = await this.workspaceActor(project.workspace);
+        const branches = actor ? await reposClient(this.env.REPOS).branches(repoOf(project).path, actor) : null;
+        // A read that failed says nothing: the app stays until one succeeds.
+        branchesOf.set(project.id, branches?.ok ? new Set(branches.value.map((b) => b.name)) : null);
+      }
+      const names = branchesOf.get(project.id);
+      if (names && (app.branch == null || !names.has(app.branch))) await this.removeApp(app.script);
     }
   }
 

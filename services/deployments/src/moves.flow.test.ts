@@ -86,6 +86,8 @@ function world() {
     /** Cloudflare API calls, as `METHOD path`. */
     cloudflare: [] as string[],
     kv: new Map<string, { value: string; expiration?: number }>(),
+    /** The repository's branches. */
+    branches: ["main", "v2"],
   };
   const project = () => ({
     id: PROJECT,
@@ -127,6 +129,7 @@ function world() {
     REPOS: service((method) => {
       if (method === "path_by_id") return state.path;
       if (method === "get") return ok({ isPrivate: true });
+      if (method === "branches") return ok(state.branches.map((name) => ({ name, hash: `${name}head` })));
       return ok([]);
     }),
     PROJECTS: service((method) => {
@@ -320,4 +323,33 @@ test("the sweep never pauses a moved app for its old workspace's limit", async (
   w.state.limits.set("flagon-io", "stopped");
   await worker.scheduled({} as never, w.env as never);
   assert.ok(rows("SELECT paused_at FROM apps").every((r) => r.paused_at));
+});
+
+test("a branch's preview comes down once its branch is gone, and a pull request's stays", async () => {
+  // Branch previews have no pull request: one the deploy workflow built for
+  // a branch that is still there, and one a preview stack built (before
+  // projects stopped depending on each other) for a branch since deleted.
+  const app = w.state.sqlite.prepare(
+    `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at)
+     VALUES (?, ?, 'syntaqx', 'lab-api', 'preview', ?, NULL, 'abc1234', '2026-10-06T22:01:00Z', '2026-10-06T22:01:00Z')`,
+  );
+  app.run("lab-api-git-feature-syntaqx", PROJECT, "feature");
+  app.run("lab-api-git-stack-syntaqx", PROJECT, "stack");
+  w.state.sqlite
+    .prepare(
+      `INSERT INTO deployments (id, project_id, workspace, slug, repo_id, repo, kind, branch, number, commit_sha, script, status,
+         trusted, created_by, created_at, finished_at)
+       VALUES ('dpl_stack', ?, 'syntaqx', 'lab-api', ?, 'syntaqx/lab-api', 'preview', 'stack', NULL, 'abc1234', 'lab-api-git-stack-syntaqx', 'ready', 1, 'g1t', '2026-10-06T22:00:00Z', '2026-10-06T22:01:00Z')`,
+    )
+    .run(PROJECT, API);
+  w.state.branches.push("feature");
+  await worker.scheduled({} as never, w.env as never);
+  const previews = () => rows("SELECT script FROM apps WHERE kind = 'preview' ORDER BY script").map((r) => r.script);
+  assert.deepEqual(previews(), ["lab-api-git-feature-syntaqx", "lab-api-git-v2-syntaqx"]);
+  assert.equal(rows("SELECT status FROM deployments WHERE id = 'dpl_stack'")[0].status, "down");
+  // Deleting the branch takes its preview down at once.
+  w.state.branches = w.state.branches.filter((name) => name !== "feature");
+  const deleted = { ...transferred, id: "evt_2", type: "git.deleted", data: { repoId: API, ref: "refs/heads/feature", before: "abc1234" } };
+  assert.equal(await deliver(deleted), true);
+  assert.deepEqual(previews(), ["lab-api-git-v2-syntaqx"]);
 });
