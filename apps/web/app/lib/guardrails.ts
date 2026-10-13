@@ -1,50 +1,5 @@
-import type { GuardrailSettings, RunKind, WorkflowDomain } from "@g1t/contracts";
+import type { GuardrailSettings, RunKind } from "@g1t/contracts";
 import { microsOf, money } from "./money.ts";
-
-/** What a level's form field means: inherit, or a choice of its own. */
-export type Tri = "inherit" | "on" | "off";
-
-export function tri(value: boolean | null | undefined): Tri {
-  return value == null ? "inherit" : value ? "on" : "off";
-}
-
-/** Lines of a textarea, trimmed, without blanks or repeats. */
-export function lines(value: FormDataEntryValue | null): string[] {
-  const seen = new Set<string>();
-  for (const line of String(value ?? "").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed) seen.add(trimmed);
-  }
-  return [...seen];
-}
-
-/**
- * Workflow-only domains, one per line, as
- * `domain | workflows | environments`: the last two comma-separated, and
- * either left out or empty for any. `api.cloudflare.com | deploy.yml |
- * production` lets only deploy.yml's jobs in production reach it.
- */
-export function workflowDomains(value: FormDataEntryValue | null): WorkflowDomain[] {
-  const list = (text: string | undefined) =>
-    (text ?? "")
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
-  const out: WorkflowDomain[] = [];
-  for (const line of lines(value)) {
-    const [domain, workflows, environments] = line.split("|").map((part) => part.trim());
-    if (!domain) continue;
-    out.push({ domain, workflows: list(workflows), environments: list(environments) });
-  }
-  return out;
-}
-
-/** A workflow-only domain as a line of the form's field. */
-export function workflowDomainLine(entry: WorkflowDomain): string {
-  const parts = [entry.domain, entry.workflows.join(", "), entry.environments.join(", ")];
-  while (parts.length > 1 && !parts[parts.length - 1]) parts.pop();
-  return parts.join(" | ");
-}
 
 /** A number from a field; empty means inherit. Not a number is kept, to be refused. */
 function amount(value: FormDataEntryValue | null): number | null {
@@ -57,30 +12,17 @@ function amount(value: FormDataEntryValue | null): number | null {
 /** The kinds of run that still use a sandbox: checks, the merge queue and merge checks. */
 export const SANDBOX_RUN_KINDS = ["checks", "queue", "mergecheck"] as const satisfies readonly RunKind[];
 
-/** What one level's form says, as the settings that level keeps. */
-export function settingsFromForm(
-  form: FormData,
-  catalog: { registries: string[]; kinds: readonly RunKind[] },
-): GuardrailSettings {
-  const choice = (name: string): boolean | null => {
-    const value = form.get(name);
-    return value === "on" ? true : value === "off" ? false : null;
-  };
+/**
+ * What one level's form says, as the settings that level keeps: a time cap
+ * for each kind of run it sets, the rest inherited.
+ */
+export function settingsFromForm(form: FormData, catalog: { kinds: readonly RunKind[] }): GuardrailSettings {
   const minutes: Record<string, number> = {};
   for (const kind of catalog.kinds) {
     const cap = amount(form.get(`minutes:${kind}`));
     if (cap != null) minutes[kind] = Number.isNaN(cap) ? 0 : Math.trunc(cap);
   }
-  return {
-    restrictNetwork: choice("restrictNetwork"),
-    registries:
-      form.get("registries") === "custom"
-        ? catalog.registries.filter((id) => form.get(`registry:${id}`) === "on")
-        : null,
-    domains: lines(form.get("domains")),
-    workflowDomains: workflowDomains(form.get("workflowDomains")),
-    minutes,
-  };
+  return { minutes };
 }
 
 /** A cost in dollars, or "no cap". */

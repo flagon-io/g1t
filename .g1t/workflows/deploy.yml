@@ -19,17 +19,13 @@
 # makes no deployment.
 #
 # Needs the repository secret CLOUDFLARE_API_TOKEN (a Production row, with
-# Containers write), the variable CLOUDFLARE_ACCOUNT_ID, and
-# api.cloudflare.com among the project's workflow-only domains for
-# deploy.yml in production (Settings, Guardrails), and
-# registry.cloudflare.com there too, to find the runner's image and make
-# it. A job that must make that image (the `runner-image` group) builds the
-# runner's binary on a larger machine and makes the image in the registry
-# with no Docker: one layer with the binary on the base's layers, pulling
-# none of the base (scripts/deploy/registry.mjs). Optionally, the
-# secret STATUS_DEPLOY_TOKEN (the status Worker's secret of the same name)
-# and status.g1t.sh among the same workflow-only domains, so status.g1t.sh
-# hears each deploy start and finish.
+# Containers write) and the variable CLOUDFLARE_ACCOUNT_ID. A job that
+# must make the runner's image (the `runner-image` group) builds the
+# runner's binary on a larger machine and makes the image in
+# registry.cloudflare.com with no Docker: one layer with the binary on the
+# base's layers, pulling none of the base (scripts/deploy/registry.mjs).
+# Optionally, the secret STATUS_DEPLOY_TOKEN (the status Worker's secret of
+# the same name), so status.g1t.sh hears each deploy start and finish.
 name: Deploy
 
 on:

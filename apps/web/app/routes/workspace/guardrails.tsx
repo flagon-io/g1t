@@ -24,12 +24,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
-  const current = await guardrails.getGuardrails(user, params.owner);
-  if (!current.ok) return { saved: false, error: current.error.message };
-  const settings = settingsFromForm(form, {
-    registries: current.value.registries.map((registry) => registry.id),
-    kinds: SANDBOX_RUN_KINDS,
-  });
+  const settings = settingsFromForm(form, { kinds: SANDBOX_RUN_KINDS });
   const saved = await guardrails.updateGuardrails(user, params.owner, null, settings);
   return saved.ok ? { saved: true, error: null } : { saved: false, error: saved.error.message };
 }

@@ -6,8 +6,7 @@
  * service as a task, a runner of the workspace's with the right labels
  * takes it on its next poll, and the actions service tells the Durable
  * Object how it ended (`task_ended`), which then does exactly what it does
- * when a container stops. Network guardrails cannot be enforced on someone
- * else's machine, and the run says so.
+ * when a container stops. The run says where it went.
  */
 
 import type { RepoPath, ServiceBinding } from "@g1t/contracts";
@@ -87,7 +86,7 @@ export function taskEnv(vars: Record<string, string>): Record<string, string> {
 
 /** What the run's session says when it goes to the workspace's runners. */
 export function handedOverStep(labels: string[]): string {
-  return `Handed to a self-hosted runner with labels ${labels.join(", ")}. g1t's network guardrails are not enforced on your own machines.`;
+  return `Handed to a self-hosted runner with labels ${labels.join(", ")}.`;
 }
 
 /** Where the work is: the tracked repository, else the meter's `owner/name`. */

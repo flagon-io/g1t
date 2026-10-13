@@ -118,7 +118,7 @@ fn consumers(list: &[String]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// A brokered secret's hosts, tidied as allowed domains are: each once, at
+/// A brokered secret's hosts, tidied as host names: each once, at
 /// most `MAX_HOSTS`.
 fn valid_hosts(list: &[String]) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();

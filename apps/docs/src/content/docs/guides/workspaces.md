@@ -733,7 +733,7 @@ row, with a hint saying what it will hold.
 | | **Emoji** | Members | The workspace's own emoji. `-/emoji` |
 | **Artifacts** | **Spaces and sharing** | | Soon: which spaces a workspace starts with, and how a new artifact is shared by default. |
 | **Security** | **Security settings** | Members | The workspace's security policies. `-/security/settings` |
-| | [**Guardrails**](/guides/guardrails/) | Members | What Actions jobs on g1t's machines may reach. `-/guardrails` |
+| | [**Guardrails**](/guides/guardrails/) | Members | How long checks, the merge queue and merge checks may run. `-/guardrails` |
 | | [**Rules**](/guides/rules/) | Members | Rulesets across projects. `-/rules` |
 | | [**Audit log**](/guides/audit-log/) | Members | Every change, by whom, to what. `-/audit` |
 | **Integrations** | [**Integrations**](/guides/integrations/) | Members | The tools connected for everyone. `-/integrations` |

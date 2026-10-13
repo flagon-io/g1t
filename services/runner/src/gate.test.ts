@@ -16,7 +16,7 @@ import {
   refusalMessage,
   sandboxEstimateMicros,
 } from "../../../packages/contracts/src/compute.ts";
-import { BUILD_HOSTS, buildHosts, dockerFor, withPlanLimits } from "./egress.ts";
+import { dockerFor, throughWorker, withPlanLimits } from "./egress.ts";
 
 const repo = { namespace: "acme", name: "web" };
 
@@ -243,24 +243,17 @@ test("caps are the lower of the guardrails' and the plan's", () => {
   assert.equal((unlimited.policy as { budgetUsd: number }).budgetUsd, 5);
 });
 
-// ---- Builds' network ---------------------------------------------------------------------
+// ---- Sandboxes' network ------------------------------------------------------------------
 
-test("builds reach registries and git hosts, and no mining pool", () => {
-  for (const host of ["registry.npmjs.org", "codeload.github.com", "nodejs.org", "crates.io"]) {
-    assert.ok(BUILD_HOSTS.includes(host), host);
-  }
-  // A job's Docker Engine pulls from Docker Hub (through its mirror) and Quay.
-  for (const host of ["registry-1.docker.io", "auth.docker.io", "production.cloudflare.docker.com", "mirror.gcr.io", "ghcr.io", "quay.io"]) {
-    assert.ok(BUILD_HOSTS.includes(host), host);
-  }
-  assert.ok(buildHosts("deploy").includes("api.cloudflare.com"));
-  // A container build pushes its image to Cloudflare's registry, from a sandbox or a job.
-  assert.ok(buildHosts("deploy").includes("registry.cloudflare.com"));
-  assert.ok(buildHosts("actions").includes("registry.cloudflare.com"));
-  assert.ok(!buildHosts("actions").includes("api.cloudflare.com"));
-  for (const host of buildHosts("deploy")) {
-    assert.doesNotMatch(host, /pool|xmr|monero|nicehash|^\*/, host);
-  }
+test("only a job that may be given brokered secrets passes the Worker", () => {
+  assert.equal(throughWorker({ brokered: true }, undefined), true);
+  assert.equal(throughWorker({ brokered: true }, "on"), true);
+  // Everything else goes straight out.
+  assert.equal(throughWorker({ brokered: false }, undefined), false);
+  assert.equal(throughWorker({}, undefined), false);
+  assert.equal(throughWorker(null, undefined), false);
+  // The operator's switch.
+  assert.equal(throughWorker({ brokered: true }, " OFF "), false);
 });
 
 test("workflow jobs get Docker unless the operator turns it off", () => {

@@ -83,10 +83,11 @@
 	},
 	"vars": {
 		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
-		// Guardrails' network list is enforced by starting sandboxes without
-		// internet and passing their HTTP(S) through this Worker. "off" opens
-		// every sandbox's network again, whatever its guardrails say.
-		"EGRESS": "enforce",
+		// Sandboxes reach the internet directly. A workflow job that may be
+		// given brokered secrets passes its HTTP(S) through this Worker, which
+		// fills them in. "off" passes nothing through it: stand-ins then go
+		// out unfilled.
+		"EGRESS": "on",
 		// Sandboxes stop themselves when they look like they are mining
 		// (crates/runner abuse.rs). "off" turns the CPU watch off; miners
 		// named in commands are refused either way.

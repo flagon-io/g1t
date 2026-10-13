@@ -141,14 +141,8 @@ Deploys run one at a time; a second push waits. Rust units build on
 sccache kept in the Actions cache.
 
 The deploy jobs use `environment: production`, so only they can read the
-Cloudflare token. They reach Cloudflare through the project's
-[workflow-only domains](/guides/guardrails/), under **Settings →
-Guardrails**:
-
-```text
-api.cloudflare.com | deploy.yml | production
-registry.cloudflare.com | deploy.yml, runner-base.yml | production
-```
+Cloudflare token. Jobs on g1t's machines reach Cloudflare's API and
+registry as they reach any host; there is nothing to allow.
 
 Every deploy shows on the repository's Deployments page. A deploy run by
 hand reports one too when `G1T_DEPLOY_TOKEN` holds a g1t token with
@@ -338,38 +332,34 @@ Before turning it on, check each of these with a test project:
    `pull` (Docker checks for layers before it uploads them). If it needs
    `pull`, do not add it: a pull login reads every app's image. Find
    another way first, such as Cloudflare scoping logins to a repository.
-3. **The registry's hosts.** A push from a guarded sandbox reaches only
-   `registry.cloudflare.com` (on the deploy builds' list in
-   `services/runner/src/egress.ts`). If its layers upload to another host,
-   add that host there.
-4. **Checking a digest.** g1t asks
+3. **Checking a digest.** g1t asks
    `HEAD https://registry.cloudflare.com/v2/<account>/g1t-<app>/manifests/sha256:…`
    with a pull login of its own, following a `WWW-Authenticate: Bearer`
    challenge. It answers 200 for an image that was pushed.
-5. **The app's Worker.** A script uploaded to the dispatch namespace with
+4. **The app's Worker.** A script uploaded to the dispatch namespace with
    `exports: { "G1tApp": { "type": "durable-object", "storage": "sqlite" } }`
    and `containers: [{ "class_name": "G1tApp" }]` in its metadata is taken,
    and taken again on the next deploy with nothing changed about the class.
-6. **Its Durable Object namespace.**
+5. **Its Durable Object namespace.**
    `GET /accounts/{id}/workers/durable_objects/namespaces` lists it with
    `class` `G1tApp`, `script` the app's name and `dispatch_namespace`
    `g1t-deployments`.
-7. **The Container application.** `POST /accounts/{id}/containers/applications`
+6. **The Container application.** `POST /accounts/{id}/containers/applications`
    with `scheduling_policy` `default`, the image by digest, `instance_type`,
    `max_instances` 1 and `durable_objects.namespace_id` creates it; a
    rollout (`…/rollouts`, `strategy` `rolling`, `step_percentage` 100,
    `kind` `full_auto`) moves it to a new image; `DELETE` removes it.
-8. **Starting.** `ctx.container.start({ env, enableInternet: true })`
+7. **Starting.** `ctx.container.start({ env, enableInternet: true })`
    works under the default policy from a Worker in a dispatch namespace,
    the container gets its environment, and `getTcpPort(port).fetch()`
    reaches it; the dispatcher's limits (50 ms of CPU, 50 subrequests) leave
    room for a page that waits on a container starting.
-9. **Sleeping and billing.** Five minutes after the last request the
+8. **Sleeping and billing.** Five minutes after the last request the
    container stops (the app's object stops it itself), Cloudflare's billable
    usage for Containers stops growing, and `container_meters` in the
    deployments database has the minutes the app's Worker reported, which
    should be at least what Cloudflare billed for the same time.
-10. **Pausing and taking down.** A workspace over its limit gets its
+9. **Pausing and taking down.** A workspace over its limit gets its
     container app's Worker put back paused, which stops the container, and
     taking an app down deletes its application before its Worker.
 
@@ -418,8 +408,7 @@ For a key that may have leaked, skip keeping the previous one.
 Restarts during a deploy can look like an outage to the status page's
 checks. Set the same value as the status Worker's secret
 `STATUS_DEPLOY_TOKEN` and as the repository's Actions secret
-`STATUS_DEPLOY_TOKEN`, and add the status page's host to the workflow-only
-domains. Deploys then announce their start and finish, and the status page
+`STATUS_DEPLOY_TOKEN`. Deploys then announce their start and finish, and the status page
 drafts no incident during them or for 3 minutes after.
 
 ### Browser push

@@ -1,18 +1,15 @@
-//! Guardrails: what a workspace lets its sandboxes do. Kept by the work
+//! Guardrails: how long a workspace's runs may take. Kept by the work
 //! service.
 //!
-//! A workspace sets defaults and each project may override them. Two kinds
-//! of rule come out of the two:
+//! A workspace sets defaults and each project may override them: a time
+//! cap for each kind of run, after which g1t stops it. Sandboxes reach the
+//! internet as any CI machine does; guardrails say nothing about the
+//! network.
 //!
-//! - **Network**: which hosts a sandbox may reach. g1t's own hosts always,
-//!   the package registries the project needs, and any domains listed.
-//!   Everything else is refused at the sandbox's edge. Some domains can be
-//!   opened to workflow jobs only.
-//! - **Time**: how long each kind of run may take before g1t stops it.
-//!
-//! Levels saved when guardrails also had command rules, deny patterns and
-//! a cost cap (for g1t's own agents, since removed) still read: those
-//! fields are ignored.
+//! Levels saved when guardrails also had network rules (restricting the
+//! network, package registries, allowed domains and workflow-only
+//! domains), command rules, deny patterns and a cost cap still read: those
+//! fields are ignored, and dropped when the level is saved again.
 //!
 //! Each `*Args` struct is the argument of the method of the same name,
 //! served at `POST /rpc/<method>`.
@@ -25,56 +22,6 @@ use crate::agents::RunKind;
 use crate::repos::RepoPath;
 use crate::{User, Viewer};
 
-/// g1t's own hosts. Always reachable: without them a sandbox could not
-/// clone, push or report.
-pub const G1T_HOSTS: &[&str] = &["g1t.sh", "api.g1t.sh", "mcp.g1t.sh"];
-
-/// A package registry, which a project turns on or off as one.
-#[derive(Clone, Copy, Debug)]
-pub struct Registry {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub hosts: &'static [&'static str],
-}
-
-/// The registries a sandbox can be given, all on by default.
-pub const REGISTRIES: &[Registry] = &[
-    Registry {
-        id: "npm",
-        name: "npm and Yarn",
-        hosts: &["registry.npmjs.org", "registry.yarnpkg.com", "repo.yarnpkg.com"],
-    },
-    Registry {
-        id: "pypi",
-        name: "PyPI",
-        hosts: &["pypi.org", "files.pythonhosted.org"],
-    },
-    Registry {
-        id: "crates",
-        name: "crates.io and Rust toolchains",
-        hosts: &["crates.io", "index.crates.io", "static.crates.io", "static.rust-lang.org"],
-    },
-    Registry {
-        id: "go",
-        name: "Go module proxy",
-        hosts: &["proxy.golang.org", "sum.golang.org"],
-    },
-    Registry {
-        id: "github",
-        name: "GitHub downloads",
-        hosts: &[
-            "codeload.github.com",
-            "raw.githubusercontent.com",
-            "objects.githubusercontent.com",
-        ],
-    },
-];
-
-/// The most domains one level keeps.
-pub const MAX_DOMAINS: usize = 100;
-/// The most workflow-only domains one level keeps.
-pub const MAX_WORKFLOW_DOMAINS: usize = 50;
-const MAX_NAME_CHARS: usize = 255;
 /// The longest any run may be allowed to take, in minutes.
 pub const MAX_MINUTES: u32 = 240;
 
@@ -99,21 +46,10 @@ pub fn default_minutes(kind: RunKind) -> u32 {
 
 /// What one level, the workspace or a project, sets. Anything left unset
 /// is inherited: a project from its workspace, a workspace from g1t's
-/// defaults. Domains add up across the two levels.
+/// defaults.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct GuardrailSettings {
-    /// Whether sandboxes may reach only the allowed hosts.
-    pub restrict_network: Option<bool>,
-    /// The registries that are on, by id. Replaces the inherited list.
-    pub registries: Option<Vec<String>>,
-    /// More hosts to allow: `example.com`, or `*.example.com` for its
-    /// subdomains.
-    pub domains: Vec<String>,
-    /// Hosts only workflow jobs may reach, never agents: a deploy's API,
-    /// say. Each can be limited to some workflows and environments. They
-    /// add to the other level's.
-    pub workflow_domains: Vec<WorkflowDomain>,
     /// How long a run may take, in minutes, by kind of run.
     pub minutes: BTreeMap<String, u32>,
     /// Username of whoever last changed this level.
@@ -122,105 +58,43 @@ pub struct GuardrailSettings {
     pub updated_at: Option<String>,
 }
 
-/// A host that only workflow jobs may reach: jobs of a trusted run (not a
-/// pull request from a fork), of the workflows named, in the environments
-/// named. Agents, checks, the merge queue and g1t.page builds never do.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct WorkflowDomain {
-    /// `api.example.com`, or `*.example.com` for its subdomains.
-    pub domain: String,
-    /// Workflow files by name, such as `deploy.yml`. Empty: any workflow.
-    pub workflows: Vec<String>,
-    /// The environments a job must name with `environment:`, such as
-    /// `production`. Empty: any job, whether it names one or not.
-    pub environments: Vec<String>,
-}
-
-impl WorkflowDomain {
-    /// Whether a job of `workflow` (its path or file name) in `environment`
-    /// may reach this domain. Names compare without regard to case.
-    pub fn applies_to(&self, workflow: &str, environment: Option<&str>) -> bool {
-        let file = workflow_file(workflow);
-        let workflow_ok = self.workflows.is_empty() || self.workflows.iter().any(|w| workflow_file(w).eq_ignore_ascii_case(file));
-        let environment_ok = self.environments.is_empty()
-            || environment.is_some_and(|env| self.environments.iter().any(|e| e.eq_ignore_ascii_case(env.trim())));
-        workflow_ok && environment_ok
-    }
-}
-
-/// A workflow's file name: `.g1t/workflows/deploy.yml` is `deploy.yml`.
-fn workflow_file(path: &str) -> &str {
-    let path = path.trim();
-    path.rsplit(['/', '\\']).next().unwrap_or(path)
-}
-
 /// The guardrails a run actually gets: g1t's defaults, then the
 /// workspace's, then the project's.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Guardrails {
-    pub restrict_network: bool,
-    pub registries: Vec<String>,
-    /// The domains listed at either level, workspace first.
-    pub domains: Vec<String>,
-    /// Every host a sandbox may reach: g1t's, the registries', the domains.
-    pub hosts: Vec<String>,
-    /// Hosts only some workflow jobs may reach, from both levels,
-    /// workspace first. Never in `hosts`.
-    #[serde(default)]
-    pub workflow_domains: Vec<WorkflowDomain>,
     /// Every kind of run.
     pub minutes: BTreeMap<String, u32>,
+    /// Always false, and `hosts` always empty: sent for a runner deployed
+    /// before network rules were removed, which reads them to start its
+    /// sandboxes with an open network rather than failing to start them.
+    /// Never read. Remove once the runner after this change is deployed.
+    #[serde(skip_deserializing)]
+    pub restrict_network: bool,
+    #[serde(skip_deserializing)]
+    pub hosts: Vec<String>,
 }
 
 impl Guardrails {
-    /// g1t's defaults: network restricted to g1t and every registry, and a
-    /// time cap for each kind of run.
+    /// g1t's defaults: a time cap for each kind of run.
     pub fn defaults() -> Self {
-        let mut defaults = Guardrails {
-            restrict_network: true,
-            registries: REGISTRIES.iter().map(|registry| registry.id.to_owned()).collect(),
-            domains: Vec::new(),
-            hosts: Vec::new(),
-            workflow_domains: Vec::new(),
+        Guardrails {
             minutes: RunKind::ALL
                 .into_iter()
                 .map(|kind| (kind.as_str().to_owned(), default_minutes(kind)))
                 .collect(),
-        };
-        defaults.hosts = defaults.allowed_hosts();
-        defaults
+            restrict_network: false,
+            hosts: Vec::new(),
+        }
     }
 
     /// One level laid over what it inherits.
     pub fn apply(mut self, level: &GuardrailSettings) -> Self {
-        if let Some(restrict) = level.restrict_network {
-            self.restrict_network = restrict;
-        }
-        if let Some(registries) = &level.registries {
-            self.registries = REGISTRIES
-                .iter()
-                .filter(|registry| registries.iter().any(|id| id == registry.id))
-                .map(|registry| registry.id.to_owned())
-                .collect();
-        }
-        for domain in &level.domains {
-            if !self.domains.contains(domain) {
-                self.domains.push(domain.clone());
-            }
-        }
-        for entry in &level.workflow_domains {
-            if !self.workflow_domains.contains(entry) {
-                self.workflow_domains.push(entry.clone());
-            }
-        }
         for (kind, minutes) in &level.minutes {
             if let Some(cap) = self.minutes.get_mut(kind) {
                 *cap = *minutes;
             }
         }
-        self.hosts = self.allowed_hosts();
         self
     }
 
@@ -233,35 +107,6 @@ impl Guardrails {
         }
     }
 
-    fn allowed_hosts(&self) -> Vec<String> {
-        let mut hosts: Vec<String> = G1T_HOSTS.iter().map(|host| (*host).to_owned()).collect();
-        for registry in REGISTRIES {
-            if self.registries.iter().any(|id| id == registry.id) {
-                hosts.extend(registry.hosts.iter().map(|host| (*host).to_owned()));
-            }
-        }
-        for domain in &self.domains {
-            if !hosts.contains(domain) {
-                hosts.push(domain.clone());
-            }
-        }
-        hosts
-    }
-
-    /// The hosts a job of `workflow` (its path) in `environment` may
-    /// reach on top of `hosts`: the workflow-only domains that apply to
-    /// it. For workflow jobs of trusted runs only; the runner never adds
-    /// them for anything else.
-    pub fn workflow_hosts(&self, workflow: &str, environment: Option<&str>) -> Vec<String> {
-        let mut hosts: Vec<String> = Vec::new();
-        for entry in self.workflow_domains.iter().filter(|entry| entry.applies_to(workflow, environment)) {
-            if !hosts.contains(&entry.domain) {
-                hosts.push(entry.domain.clone());
-            }
-        }
-        hosts
-    }
-
     /// The time cap of a kind of run, in minutes.
     pub fn minutes_for(&self, kind: RunKind) -> u32 {
         self.minutes
@@ -271,8 +116,9 @@ impl Guardrails {
     }
 }
 
-/// A domain as it is kept: lower case, no scheme, path or port, optionally
-/// `*.` for its subdomains. Refused if it is not a host name.
+/// A host name as it is kept: lower case, no scheme, path or port,
+/// optionally `*.` for its subdomains. Refused if it is not a host name.
+/// The hosts a brokered secret is for are kept this way.
 pub fn normalize_domain(input: &str) -> Result<String, String> {
     let mut domain = input.trim().to_lowercase();
     for scheme in ["https://", "http://"] {
@@ -304,32 +150,6 @@ pub fn normalize_domain(input: &str) -> Result<String, String> {
 
 /// One level's settings, checked and tidied before they are kept.
 pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String> {
-    let mut domains = Vec::new();
-    for domain in &settings.domains {
-        if domain.trim().is_empty() {
-            continue;
-        }
-        let domain = normalize_domain(domain)?;
-        if !domains.contains(&domain) {
-            domains.push(domain);
-        }
-    }
-    if domains.len() > MAX_DOMAINS {
-        return Err(format!("At most {MAX_DOMAINS} domains can be listed."));
-    }
-    let mut workflow_domains: Vec<WorkflowDomain> = Vec::new();
-    for entry in &settings.workflow_domains {
-        if entry.domain.trim().is_empty() {
-            continue;
-        }
-        let entry = validate_workflow_domain(entry)?;
-        if !workflow_domains.contains(&entry) {
-            workflow_domains.push(entry);
-        }
-    }
-    if workflow_domains.len() > MAX_WORKFLOW_DOMAINS {
-        return Err(format!("At most {MAX_WORKFLOW_DOMAINS} workflow-only domains can be listed."));
-    }
     let mut minutes = BTreeMap::new();
     for (kind, cap) in settings.minutes {
         if RunKind::parse(&kind).is_none() {
@@ -340,60 +160,11 @@ pub fn validate(settings: GuardrailSettings) -> Result<GuardrailSettings, String
         }
         minutes.insert(kind, cap);
     }
-    let registries = settings.registries.map(|ids| {
-        REGISTRIES
-            .iter()
-            .filter(|registry| ids.iter().any(|id| id == registry.id))
-            .map(|registry| registry.id.to_owned())
-            .collect()
-    });
     Ok(GuardrailSettings {
-        restrict_network: settings.restrict_network,
-        registries,
-        domains,
-        workflow_domains,
         minutes,
         updated_by: settings.updated_by,
         updated_at: settings.updated_at,
     })
-}
-
-/// A workflow-only domain, tidied: its domain as `normalize_domain` keeps
-/// it, workflows as file names ending in `.yml` or `.yaml`, and
-/// environments as given, each list without repeats.
-pub fn validate_workflow_domain(entry: &WorkflowDomain) -> Result<WorkflowDomain, String> {
-    let domain = normalize_domain(&entry.domain)?;
-    let mut workflows: Vec<String> = Vec::new();
-    for workflow in entry.workflows.iter().map(|w| workflow_file(w).to_owned()).filter(|w| !w.is_empty()) {
-        let lower = workflow.to_lowercase();
-        let valid = (lower.ends_with(".yml") || lower.ends_with(".yaml"))
-            && workflow.chars().count() <= MAX_NAME_CHARS
-            && workflow.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-        if !valid {
-            return Err(format!("{workflow} is not a workflow file. Name it as it is in .g1t/workflows, such as deploy.yml."));
-        }
-        if !workflows.iter().any(|w| w.eq_ignore_ascii_case(&workflow)) {
-            workflows.push(workflow);
-        }
-    }
-    let mut environments: Vec<String> = Vec::new();
-    for environment in entry.environments.iter().map(|e| e.trim().to_owned()).filter(|e| !e.is_empty()) {
-        if environment.chars().count() > MAX_NAME_CHARS || environment.contains(['\n', '\r']) || environment.contains("${{") {
-            return Err(format!("{environment} is not an environment name."));
-        }
-        if !environments.iter().any(|e| e.eq_ignore_ascii_case(&environment)) {
-            environments.push(environment);
-        }
-    }
-    Ok(WorkflowDomain { domain, workflows, environments })
-}
-
-/// A registry as the settings page shows it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RegistryInfo {
-    pub id: String,
-    pub name: String,
-    pub hosts: Vec<String>,
 }
 
 /// Everything the settings pages show: each level as it was set, what
@@ -409,8 +180,6 @@ pub struct GuardrailsView {
     pub inherited: Guardrails,
     /// What runs get: the project's, or with no project, the workspace's.
     pub effective: Guardrails,
-    pub g1t_hosts: Vec<String>,
-    pub registries: Vec<RegistryInfo>,
 }
 
 impl GuardrailsView {
@@ -423,15 +192,6 @@ impl GuardrailsView {
             defaults: Guardrails::defaults(),
             inherited,
             effective,
-            g1t_hosts: G1T_HOSTS.iter().map(|host| (*host).to_owned()).collect(),
-            registries: REGISTRIES
-                .iter()
-                .map(|registry| RegistryInfo {
-                    id: registry.id.to_owned(),
-                    name: registry.name.to_owned(),
-                    hosts: registry.hosts.iter().map(|host| (*host).to_owned()).collect(),
-                })
-                .collect(),
         }
     }
 }
@@ -508,15 +268,10 @@ mod tests {
     }
 
     #[test]
-    fn defaults_restrict_to_g1t_and_every_registry() {
+    fn defaults_cap_every_kind_of_run() {
         let defaults = Guardrails::defaults();
-        assert!(defaults.restrict_network);
-        assert!(defaults.hosts.iter().any(|host| host == "api.g1t.sh"));
-        assert!(defaults.hosts.iter().any(|host| host == "registry.npmjs.org"));
-        assert!(defaults.hosts.iter().any(|host| host == "codeload.github.com"));
-        assert!(!defaults.hosts.iter().any(|host| host == "github.com"));
-        assert!(!defaults.hosts.iter().any(|host| host == "models.g1t.sh"));
         assert_eq!(defaults.minutes_for(RunKind::Implement), 90);
+        assert_eq!(defaults.minutes.len(), RunKind::ALL.len());
     }
 
     #[test]
@@ -527,116 +282,48 @@ mod tests {
     #[test]
     fn a_project_overrides_its_workspace() {
         let workspace = GuardrailSettings {
-            registries: Some(vec!["npm".into(), "pypi".into()]),
-            minutes: BTreeMap::from([("implement".to_owned(), 30)]),
+            minutes: BTreeMap::from([("implement".to_owned(), 30), ("review".to_owned(), 20)]),
             ..level()
         };
         let project = GuardrailSettings {
-            registries: Some(vec!["crates".into()]),
+            minutes: BTreeMap::from([("review".to_owned(), 15)]),
             ..level()
         };
         let inherited = Guardrails::merge(&workspace, None);
-        assert_eq!(inherited.registries, vec!["npm", "pypi"]);
-        assert!(inherited.hosts.iter().any(|host| host == "pypi.org"));
-        assert!(!inherited.hosts.iter().any(|host| host == "crates.io"));
-
+        assert_eq!(inherited.minutes_for(RunKind::Review), 20);
         let effective = Guardrails::merge(&workspace, Some(&project));
-        assert_eq!(effective.registries, vec!["crates"]);
-        assert!(effective.hosts.iter().any(|host| host == "crates.io"));
-        assert!(!effective.hosts.iter().any(|host| host == "pypi.org"));
         // Inherited where the project says nothing.
         assert_eq!(effective.minutes_for(RunKind::Implement), 30);
-        assert_eq!(effective.minutes_for(RunKind::Review), 30);
-        // g1t's own hosts can never be turned off.
-        assert!(effective.hosts.iter().any(|host| host == "g1t.sh"));
+        assert_eq!(effective.minutes_for(RunKind::Review), 15);
     }
 
     #[test]
-    fn domains_add_up() {
-        let workspace = GuardrailSettings { domains: vec!["api.stripe.com".into()], ..level() };
-        let project = GuardrailSettings { domains: vec!["*.example.com".into(), "api.stripe.com".into()], ..level() };
-        let effective = Guardrails::merge(&workspace, Some(&project));
-        assert_eq!(effective.domains, vec!["api.stripe.com", "*.example.com"]);
-        assert!(effective.hosts.iter().any(|host| host == "*.example.com"));
-    }
-
-    fn workflow_domain(domain: &str, workflows: &[&str], environments: &[&str]) -> WorkflowDomain {
-        WorkflowDomain {
-            domain: domain.into(),
-            workflows: workflows.iter().map(|w| (*w).to_owned()).collect(),
-            environments: environments.iter().map(|e| (*e).to_owned()).collect(),
-        }
-    }
-
-    #[test]
-    fn workflow_domains_are_never_hosts_and_reach_only_the_jobs_named() {
-        let workspace = GuardrailSettings {
-            workflow_domains: vec![workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"])],
-            ..level()
-        };
-        let project = GuardrailSettings {
-            workflow_domains: vec![
-                workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"]),
-                workflow_domain("*.example.com", &[], &[]),
-            ],
-            ..level()
-        };
-        let effective = Guardrails::merge(&workspace, Some(&project));
-        // Added up across the levels, once each, and never for agents.
-        assert_eq!(effective.workflow_domains.len(), 2);
-        assert!(!effective.hosts.iter().any(|host| host == "api.cloudflare.com" || host == "*.example.com"));
-        // deploy.yml's jobs in production, by path or name, in any case.
-        assert_eq!(effective.workflow_hosts(".g1t/workflows/deploy.yml", Some("production")), ["api.cloudflare.com", "*.example.com"]);
-        assert_eq!(effective.workflow_hosts("DEPLOY.yml", Some("Production")), ["api.cloudflare.com", "*.example.com"]);
-        // Another environment, none, or another workflow: only the open one.
-        assert_eq!(effective.workflow_hosts(".g1t/workflows/deploy.yml", Some("staging")), ["*.example.com"]);
-        assert_eq!(effective.workflow_hosts(".g1t/workflows/deploy.yml", None), ["*.example.com"]);
-        assert_eq!(effective.workflow_hosts(".g1t/workflows/ci.yml", Some("production")), ["*.example.com"]);
-    }
-
-    #[test]
-    fn workflow_domains_are_tidied_or_refused() {
-        let settings = validate(GuardrailSettings {
-            workflow_domains: vec![
-                workflow_domain(" HTTPS://API.Cloudflare.com/client/v4 ", &[".g1t/workflows/deploy.yml", "deploy.yml"], &[" production ", "Production"]),
-                workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"]),
-                workflow_domain(" ", &[], &[]),
-            ],
-            ..level()
-        })
+    fn levels_saved_with_network_rules_still_read_and_drop_them() {
+        // Network rules, command rules, deny patterns and a cost cap, from
+        // before, are ignored, and gone once the level is saved again.
+        let old: GuardrailSettings = serde_json::from_str(
+            r#"{"restrictNetwork":true,"registries":["npm"],"domains":["example.com"],
+                "workflowDomains":[{"domain":"api.cloudflare.com","workflows":["deploy.yml"],"environments":[]}],
+                "rules":{"sudo":false},"deny":["Bash(rm:*)"],"budgetUsd":2.5,"minutes":{"implement":45}}"#,
+        )
         .unwrap();
-        assert_eq!(settings.workflow_domains, vec![workflow_domain("api.cloudflare.com", &["deploy.yml"], &["production"])]);
-        let refused = |entry: WorkflowDomain| validate(GuardrailSettings { workflow_domains: vec![entry], ..level() }).is_err();
-        assert!(refused(workflow_domain("localhost", &[], &[])));
-        assert!(refused(workflow_domain("api.example.com", &["deploy"], &[])));
-        assert!(refused(workflow_domain("api.example.com", &["de ploy.yml"], &[])));
-        assert!(refused(workflow_domain("api.example.com", &[], &["${{ inputs.env }}"])));
-        let many = (0..=MAX_WORKFLOW_DOMAINS).map(|i| workflow_domain(&format!("h{i}.example.com"), &[], &[])).collect();
-        assert!(validate(GuardrailSettings { workflow_domains: many, ..level() }).is_err());
-    }
-
-    #[test]
-    fn levels_saved_before_workflow_domains_still_read() {
-        let old: GuardrailSettings = serde_json::from_str(r#"{"domains":["example.com"]}"#).unwrap();
-        assert!(old.workflow_domains.is_empty());
+        assert_eq!(old.minutes, BTreeMap::from([("implement".to_owned(), 45)]));
+        let saved = serde_json::to_value(validate(old).unwrap()).unwrap();
+        assert_eq!(saved, serde_json::json!({ "minutes": { "implement": 45 }, "updatedBy": null, "updatedAt": null }));
+        // What a run got before reads as its time caps.
         let old: Guardrails = serde_json::from_value(serde_json::json!({
-            "restrictNetwork": true, "registries": [], "domains": [], "hosts": [], "rules": {}, "deny": [], "budgetUsd": null, "minutes": {}
+            "restrictNetwork": true, "registries": [], "domains": [], "hosts": ["g1t.sh"], "workflowDomains": [], "minutes": { "implement": 90 }
         }))
         .unwrap();
-        assert!(old.workflow_hosts("deploy.yml", Some("production")).is_empty());
-        // Command rules, deny patterns and a cost cap, from when g1t's own
-        // agents had them, are ignored.
-        let old: GuardrailSettings =
-            serde_json::from_str(r#"{"rules":{"sudo":false},"deny":["Bash(rm:*)"],"budgetUsd":2.5,"domains":["example.com"]}"#).unwrap();
-        assert_eq!(old.domains, vec!["example.com"]);
-        assert!(validate(old).is_ok());
+        assert_eq!(old.minutes_for(RunKind::Implement), 90);
+        assert!(!old.restrict_network && old.hosts.is_empty());
     }
 
     #[test]
-    fn unrestricted_is_kept() {
-        let project = GuardrailSettings { restrict_network: Some(false), ..level() };
-        let effective = Guardrails::merge(&level(), Some(&project));
-        assert!(!effective.restrict_network);
+    fn a_runner_from_before_reads_an_open_network() {
+        let sent = serde_json::to_value(Guardrails::defaults()).unwrap();
+        assert_eq!(sent["restrictNetwork"], false);
+        assert_eq!(sent["hosts"], serde_json::json!([]));
     }
 
     #[test]
@@ -651,15 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_clamps_and_drops_unknowns() {
-        let settings = validate(GuardrailSettings {
-            registries: Some(vec!["npm".into(), "nonsense".into()]),
-            domains: vec!["Example.com".into(), "example.com".into(), " ".into()],
-            ..level()
-        })
-        .unwrap();
-        assert_eq!(settings.registries, Some(vec!["npm".to_owned()]));
-        assert_eq!(settings.domains, vec!["example.com"]);
+    fn validation_refuses_bad_caps() {
         assert!(
             validate(GuardrailSettings {
                 minutes: BTreeMap::from([("implement".to_owned(), 0)]),
@@ -673,6 +352,13 @@ mod tests {
                 ..level()
             })
             .is_err()
+        );
+        assert!(
+            validate(GuardrailSettings {
+                minutes: BTreeMap::from([("implement".to_owned(), MAX_MINUTES)]),
+                ..level()
+            })
+            .is_ok()
         );
     }
 }

@@ -93,7 +93,7 @@ fn main() {
     if selfhosted::is_command(&args) {
         std::process::exit(selfhosted::main(args));
     }
-    // A guarded sandbox's HTTPS is re-signed on its way out: trust that
+    // A sandbox whose HTTPS passes the Worker has it re-signed: trust that
     // before anything is fetched.
     guard::trust_egress_ca();
     // Watches for mining for as long as the sandbox runs (abuse.rs).

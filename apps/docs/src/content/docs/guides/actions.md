@@ -574,37 +574,23 @@ self-hosted Arm runner runs it on Arm.
 
 ### What a job can reach
 
-A job's network is restricted by its project's
-[guardrails](/guides/guardrails/): it reaches the hosts its project's
-guardrails allow, g1t itself, and what builds need, and nothing else.
-What builds need is the package registries (npm, PyPI, crates.io, the Go
-proxy, RubyGems, Packagist, NuGet, Maven and Gradle, Debian's mirrors),
-GitHub, where `uses:` actions and the setup actions' downloads come from,
-the toolchains' download sites (`nodejs.org`, `go.dev`,
-`static.rust-lang.org`), and the public container registries (Docker Hub,
-GitHub's, Quay, and `mirror.gcr.io`, the mirror of Docker Hub that a job's
-Engine asks first). A request anywhere else gets `403`, and its status
-line names the host (`403 Forbidden by g1t guardrails: example.com is not
-an allowed domain`), so even a tool that reports only the status says which
-host to allow. To reach another host, someone with the Maintain [role](/guides/access-and-roles/) or
-higher adds it to the project's
-allowed domains under **Settings → Guardrails**; a project whose guardrails
-turn the network restriction off runs its jobs with an open network.
+A job reaches the internet, as on GitHub's machines: package registries,
+GitHub, toolchains' download sites, container registries, your cloud's
+APIs and any other host. There is no list of hosts to allow. A job that
+may be given [brokered secrets](#brokered-secrets) sends its HTTP and
+HTTPS through g1t's runner Worker, which fills them in and sends every
+request on; every other job's requests go straight out. See
+[network](/guides/guardrails/#network).
 
-A request to an allowed host that fails on the way is handled for the job.
-A `GET` or `HEAD` with no body is sent again, twice, after a short wait; one
-that still fails gets `502` with `x-g1t-egress: upstream-failed` and a body
-naming the host and the error, which npm, pip and most tools retry. A
-request with a body is never sent twice. An answer up to 8 MB that breaks
-off partway is fetched again whole, and a larger one, such as a 50 MB
-package tarball, is resumed from where it stopped with a `Range` request
-when its host takes ranges, so the job receives one unbroken answer.
-
-A host only workflows should reach, such as the API a deploy uploads to,
-goes in **Workflow-only domains** instead, limited to the workflows and
-environments that need it: `api.cloudflare.com | deploy.yml | production`
-lets only `deploy.yml`'s jobs with `environment: production` reach it.
-Runs of pull requests from forks never reach those hosts. See [workflow-only domains](/guides/guardrails/#workflow-only-domains).
+A request that passes the Worker and fails on the way is handled for the
+job. A `GET` or `HEAD` with no body is sent again, twice, after a short
+wait; one that still fails gets `502` with `x-g1t-egress: upstream-failed`
+and a body naming the host and the error, which npm, pip and most tools
+retry. A request with a body is never sent twice. An answer up to 8 MB
+that breaks off partway is fetched again whole, and a larger one, such as
+a 50 MB package tarball, is resumed from where it stopped with a `Range`
+request when its host takes ranges, so the job receives one unbroken
+answer.
 
 ### Brokered secrets
 
@@ -614,8 +600,7 @@ real value on the job's requests to the hosts the secret names as they
 leave its sandbox, in headers (Basic auth included) and the query string.
 The value never enters the job, so neither its steps nor a compromised
 dependency can read it. A stand-in sent to any other host goes as it is,
-and the log says so once. This works on g1t's machines, whether the
-project's network is restricted or open, and on self-hosted runners whose
+and the log says so once. This works on g1t's machines, and on self-hosted runners whose
 jobs run on Linux or macOS, which pass the job's requests to those hosts
 through g1t so the value never reaches the runner's computer. A job on
 Windows gets the stand-in too, never the value, and its log warns that it
@@ -769,12 +754,12 @@ unless the job brings a cache:
 - **One Engine per job.** It runs inside the job's own sandbox, a virtual
   machine of its own, and is gone with it. No Docker socket of g1t's, or of
   any machine, is shared with a job.
-- **The job's guardrails hold.** Containers use the job's network, so a
-  container, a build step or an image pull reaches only what the job may
-  reach. A host off the list gets `403` with the reason, as any step does.
-- **HTTPS keeps working.** In a job whose network is restricted, every
-  container and build step is given the certificate the job's HTTPS is
-  checked with, in `/dev/g1t-egress`, and `SSL_CERT_FILE`,
+- **The job's network.** Containers use the job's network, so a
+  container, a build step or an image pull reaches what the job reaches.
+- **HTTPS keeps working.** In a job whose requests pass g1t's runner
+  Worker for its brokered secrets, every container and build step is
+  given the certificate the job's HTTPS is re-signed with, in
+  `/dev/g1t-egress`, and `SSL_CERT_FILE`,
   `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `PIP_CERT`,
   `GIT_SSL_CAINFO` and `CARGO_HTTP_CAINFO` pointing at it, unless the
   container sets them itself. None of it is written into an image's layers.
@@ -1117,30 +1102,17 @@ refused with `403` and `This job has no OIDC token`.
 
 ### Reaching your cloud
 
-Asking for the token goes to `api.g1t.sh`, which every job reaches. Trading
-it for credentials goes to your cloud's token service, which a job reaches
-only when its project allows it (see [what a job can reach](#what-a-job-can-reach)).
-Add the hosts under **Settings → Guardrails → Workflow-only domains**,
-limited to the workflow and environment that deploy, so other workflows
-never reach them:
-
-```text
-sts.us-east-1.amazonaws.com | deploy.yml | production
-s3.us-east-1.amazonaws.com | deploy.yml | production
-sts.googleapis.com | deploy.yml | production
-iamcredentials.googleapis.com | deploy.yml | production
-login.microsoftonline.com | deploy.yml | production
-management.azure.com | deploy.yml | production
-```
+Asking for the token goes to `api.g1t.sh`, and trading it for credentials
+goes to your cloud's token service. A job reaches both, as it reaches any
+host (see [what a job can reach](#what-a-job-can-reach)); there is nothing
+to allow on g1t's side. Which repositories, branches and environments may
+take on a role is up to the trust policy you write on your cloud's side.
 
 | Cloud | Token exchange | Then |
 | --- | --- | --- |
-| AWS | `sts.<region>.amazonaws.com`, the region `aws-region` names | Each service the job uses, such as `s3.<region>.amazonaws.com`, or `*.amazonaws.com` for all of them |
+| AWS | `sts.<region>.amazonaws.com`, the region `aws-region` names | Each service the job uses, such as `s3.<region>.amazonaws.com` |
 | Google Cloud | `sts.googleapis.com`, `iamcredentials.googleapis.com` | Each API the job uses, such as `run.googleapis.com` |
 | Azure | `login.microsoftonline.com` | `management.azure.com`, and each service the job uses |
-
-Without them, the login step fails with `403` and a line naming the host
-that is not allowed.
 
 ### Claims
 
@@ -1195,9 +1167,7 @@ those read g1t's the same way.
    }
    ```
 
-3. Allow `sts.<region>.amazonaws.com`, and what the job deploys to, as
-   [workflow-only domains](#reaching-your-cloud).
-4. Use `aws-actions/configure-aws-credentials@v4` with `role-to-assume`,
+3. Use `aws-actions/configure-aws-credentials@v4` with `role-to-assume`,
    as above.
 
 ### Google Cloud
@@ -1221,9 +1191,7 @@ those read g1t's the same way.
      --member="principalSet://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/g1t/attribute.repository/acme/web"
    ```
 
-3. Allow `sts.googleapis.com` and `iamcredentials.googleapis.com`, and
-   the APIs the job uses, as [workflow-only domains](#reaching-your-cloud).
-4. Use `google-github-actions/auth@v2` with
+3. Use `google-github-actions/auth@v2` with
    `workload_identity_provider: projects/123456789/locations/global/workloadIdentityPools/g1t/providers/g1t`
    and `service_account`. It asks for the provider's own name as the
    audience, which the provider accepts unless you change its allowed
@@ -1247,9 +1215,7 @@ those read g1t's the same way.
    ```
 
 2. Give it a role on what it deploys to, as for any identity.
-3. Allow `login.microsoftonline.com` and `management.azure.com` as
-   [workflow-only domains](#reaching-your-cloud).
-4. Use `azure/login@v2` with `client-id`, `tenant-id` and
+3. Use `azure/login@v2` with `client-id`, `tenant-id` and
    `subscription-id`, and no secret.
 
 A federated credential matches the subject exactly: add one per
@@ -1258,9 +1224,9 @@ environment or branch that deploys.
 ### Cloudflare
 
 Cloudflare's API takes API tokens, not OIDC tokens. Keep a token scoped
-to what the workflow deploys in a secret, available to that workflow only
-(see [workflow-only domains](/guides/guardrails/#workflow-only-domains)
-for limiting where it can be sent).
+to what the workflow deploys in a secret, available to that workflow only,
+and broker it to `api.cloudflare.com` so the job never holds its value
+(see [brokered secrets](#brokered-secrets)).
 
 A Worker of your own can trust g1t's jobs directly, by checking the token
 a job sends it against g1t's keys:

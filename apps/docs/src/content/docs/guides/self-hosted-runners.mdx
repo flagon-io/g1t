@@ -666,8 +666,6 @@ give the labels a runner needs to take it (`self-hosted` is always one).
   short-lived credential that can do only what that kind of run may, in
   that repository, revoked when it ends.
 - Its machine time is free, as for every job on your runners.
-- [Guardrails](/guides/guardrails/) cannot enforce their network list on
-  your machine.
 
 A project can have its own setting, or follow the workspace's.
 
@@ -707,8 +705,7 @@ so you can see how much ran there.
   runner's user and can reach whatever that user can; host mode is
   deprecated and refuses public repositories' work. Use ephemeral runners
   for code you do not trust. See [isolation](#isolation).
-- **Network**: g1t's network guardrails are not enforced on your machines.
-  A job reaches whatever the machine can.
+- **Network**: a job reaches whatever the machine can.
 - **Audit**: making a registration token, registering, removing, and every
   job a runner takes are in the [audit log](/guides/audit-log/), with the
   runner as the actor.

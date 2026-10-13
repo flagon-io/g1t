@@ -767,10 +767,9 @@ Usage from the month that is under way is still charged once it ends.
    reason and what to do, and **Redeploy** shows the same reason.
 2. It starts a build in a sandbox of its own, the same machines that run
    [GitHub Actions](/guides/actions/). The sandbox checks out
-   the commit with a read-only token that expires in 30 minutes. Its
-   network is restricted to the project's allowed domains, the package
-   registries, GitHub and Cloudflare's API, as
-   [workflow jobs'](/guides/actions/#what-a-job-can-reach) are, and it
+   the commit with a read-only token that expires in 30 minutes. It
+   reaches the internet, as
+   [workflow jobs](/guides/actions/#what-a-job-can-reach) do, and it
    stops at 30 minutes.
    When it stops, what it cost is settled against what was reserved.
 3. The sandbox builds, then lists its files. g1t opens an upload with
@@ -864,7 +863,6 @@ own code (October 2026):
 | "Deployments come with the g1t plan … and `<workspace>` does not have it" | An owner starts the g1t plan under Billing. |
 | A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing. |
 | "Stopped: unusual CPU use" | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining). |
-| "403" from a host in the build log | The build's network is restricted. Add the host to the project's allowed domains under **Settings → Guardrails**. |
 | "found nothing to serve" | Add a `Dockerfile`, a `build` script, an `index.html`, or a Workers config; or set **Output directory**. |
 | "Docker deployments are not switched on for g1t.page yet" | The project is a container, which g1t.page does not run yet. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments). |
 | "**Build as** is Docker, but this project has no Dockerfile" | Add a `Dockerfile`, or set **Dockerfile** to its path. |

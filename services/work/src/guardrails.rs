@@ -1,12 +1,14 @@
-//! Guardrails: which hosts a sandbox may reach (the network rules and
-//! workflow-only domains) and how long each kind of run may take, as a
-//! workspace's defaults and each project's overrides. The runner service
-//! reads what a run gets (`run_guardrails`) and enforces it; this service
-//! keeps the settings and ends a run that reached a cap (`halt_run`, from
+//! Guardrails: how long each kind of run may take, as a workspace's
+//! defaults and each project's overrides. The runner service reads what a
+//! run gets (`run_guardrails`) and enforces it; this service keeps the
+//! settings and ends a run that reached a cap (`halt_run`, from
 //! `report_run`).
 //!
-//! Command rules, deny patterns and cost caps were for g1t's own agents:
-//! levels saved with them still read, and they are dropped when saved again.
+//! Network rules (restricting the network, registries, allowed and
+//! workflow-only domains), command rules, deny patterns and cost caps are
+//! gone: levels saved with them still read, and they are dropped when
+//! saved again. The `guardrails` table keeps each level as JSON, so
+//! nothing in it needed to change.
 //!
 //! See `g1t_contracts::guardrails` for the rules and how levels merge.
 
@@ -312,29 +314,21 @@ impl Work {
     }
 }
 
-/// What a change to one level did, for the audit log: the workflow-only
-/// domains added and removed, each with what it is limited to, and
-/// whether anything else changed.
+/// What a change to one level did, for the audit log: each time cap set,
+/// changed or cleared (inherited again).
 fn guardrails_change(before: &GuardrailSettings, after: &GuardrailSettings) -> String {
-    let describe = |entry: &WorkflowDomain| {
-        let workflows = if entry.workflows.is_empty() { "any workflow".to_owned() } else { entry.workflows.join(", ") };
-        let environments = if entry.environments.is_empty() { "any environment".to_owned() } else { entry.environments.join(", ") };
-        format!("{} ({workflows}; {environments})", entry.domain)
-    };
-    let added: Vec<String> = after.workflow_domains.iter().filter(|e| !before.workflow_domains.contains(e)).map(describe).collect();
-    let removed: Vec<String> = before.workflow_domains.iter().filter(|e| !after.workflow_domains.contains(e)).map(describe).collect();
     let mut parts = Vec::new();
-    if !added.is_empty() {
-        parts.push(format!("Workflow-only domains added: {}.", added.join("; ")));
+    for (kind, minutes) in &after.minutes {
+        match before.minutes.get(kind) {
+            Some(was) if was == minutes => {}
+            Some(was) => parts.push(format!("{kind} {was} to {minutes} minutes")),
+            None => parts.push(format!("{kind} set to {minutes} minutes")),
+        }
     }
-    if !removed.is_empty() {
-        parts.push(format!("Workflow-only domains removed: {}.", removed.join("; ")));
+    for kind in before.minutes.keys().filter(|kind| !after.minutes.contains_key(*kind)) {
+        parts.push(format!("{kind} inherited"));
     }
-    let rest = |s: &GuardrailSettings| GuardrailSettings { workflow_domains: Vec::new(), updated_by: None, updated_at: None, ..s.clone() };
-    if rest(before) != rest(after) {
-        parts.push("Other guardrails changed.".to_owned());
-    }
-    if parts.is_empty() { "Guardrails saved unchanged.".to_owned() } else { parts.join(" ") }
+    if parts.is_empty() { "Guardrails saved unchanged.".to_owned() } else { format!("Time caps: {}.", parts.join("; ")) }
 }
 
 /// The pull request id of a pull request's working copy
@@ -395,18 +389,16 @@ mod tests {
     }
 
     #[test]
-    fn a_change_to_workflow_domains_is_described_for_the_audit_log() {
-        let deploy = WorkflowDomain {
-            domain: "api.cloudflare.com".into(),
-            workflows: vec!["deploy.yml".into()],
-            environments: vec!["production".into()],
+    fn a_change_to_time_caps_is_described_for_the_audit_log() {
+        let caps = |pairs: &[(&str, u32)]| GuardrailSettings {
+            minutes: pairs.iter().map(|(kind, minutes)| ((*kind).to_owned(), *minutes)).collect(),
+            ..GuardrailSettings::default()
         };
-        let open = WorkflowDomain { domain: "*.example.com".into(), ..WorkflowDomain::default() };
-        let before = GuardrailSettings { workflow_domains: vec![open.clone()], ..GuardrailSettings::default() };
-        let after = GuardrailSettings { workflow_domains: vec![deploy], restrict_network: Some(false), ..GuardrailSettings::default() };
+        let before = caps(&[("implement", 90), ("review", 30)]);
+        let after = caps(&[("implement", 60), ("checks", 20)]);
         assert_eq!(
             guardrails_change(&before, &after),
-            "Workflow-only domains added: api.cloudflare.com (deploy.yml; production). Workflow-only domains removed: *.example.com (any workflow; any environment). Other guardrails changed."
+            "Time caps: checks set to 20 minutes; implement 90 to 60 minutes; review inherited."
         );
         assert_eq!(guardrails_change(&before, &before), "Guardrails saved unchanged.");
     }
@@ -421,12 +413,12 @@ mod tests {
     #[test]
     fn a_level_reads_back_with_who_changed_it() {
         let row = SettingsRow {
-            settings: r#"{"budgetUsd":2.5,"domains":["example.com"]}"#.to_owned(),
+            settings: r#"{"budgetUsd":2.5,"restrictNetwork":true,"domains":["example.com"],"minutes":{"review":15}}"#.to_owned(),
             updated_by: "ada".to_owned(),
             updated_at: "2026-10-04T00:00:00Z".to_owned(),
         };
         let settings = GuardrailSettings::from(row);
-        assert_eq!(settings.domains, vec!["example.com"]);
+        assert_eq!(settings.minutes.get("review"), Some(&15));
         assert_eq!(settings.updated_by.as_deref(), Some("ada"));
     }
 
@@ -438,6 +430,6 @@ mod tests {
             updated_at: "2026-10-04T00:00:00Z".to_owned(),
         };
         let settings = GuardrailSettings::from(row);
-        assert!(settings.domains.is_empty() && settings.restrict_network.is_none());
+        assert!(settings.minutes.is_empty());
     }
 }

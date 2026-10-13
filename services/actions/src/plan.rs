@@ -505,25 +505,13 @@ pub(crate) fn deploys_to(run: &RunRow, job: &JobRow) -> Option<JobEnvironment> {
     env.filter(|env| env.deploys)
 }
 
-/// What the runner is told about a job it starts, from its workflow: the
-/// environment it names plainly, and the machine its `runs-on` asks for
-/// (`instance_for`; none for the standard one).
-#[derive(Default)]
-struct StartDetails {
-    environment: Option<String>,
-    instance: Option<String>,
-}
-
-fn start_details(run: &RunRow, job: &JobRow) -> StartDetails {
+/// The machine a job's `runs-on` asks for (`instance_for`), for the
+/// runner: none for the standard one.
+fn start_instance(run: &RunRow, job: &JobRow) -> Option<String> {
     let spec = match job.callee() {
         Some((_, spec, _)) => spec,
-        None => match workflow::parse(&run.source).ok().and_then(|w| w.jobs.into_iter().find(|j| j.id == job.key)) {
-            Some(spec) => spec,
-            None => return StartDetails::default(),
-        },
+        None => workflow::parse(&run.source).ok().and_then(|w| w.jobs.into_iter().find(|j| j.id == job.key))?,
     };
-    // As read when its needs were done, an expression's included.
-    let environment = job.environment.clone();
     // `runs-on` as the job was queued with: its matrix and the run's
     // inputs. A label that needs more than those is the standard machine.
     let contexts = start_contexts(run, job, &spec.id);
@@ -539,10 +527,7 @@ fn start_details(run: &RunRow, job: &JobRow) -> StartDetails {
         _ => Vec::new(),
     };
     let instance = g1t_contracts::actions::instance_for(&labels);
-    StartDetails {
-        environment,
-        instance: (instance != g1t_contracts::actions::STANDARD_INSTANCE).then(|| instance.label.to_owned()),
-    }
+    (instance != g1t_contracts::actions::STANDARD_INSTANCE).then(|| instance.label.to_owned())
 }
 
 fn now() -> String {
@@ -1644,8 +1629,8 @@ impl Actions {
                 namespace: job.namespace.clone(),
                 name: String::new(),
             });
-            // Its environment and the machine it asked for, for the runner.
-            let details = run.as_ref().map(|run| start_details(run, &job)).unwrap_or_default();
+            // The machine it asked for, for the runner.
+            let instance = run.as_ref().and_then(|run| start_instance(run, &job));
             let trusted = run.as_ref().is_some_and(|run| run.trusted != 0);
             // Only a trusted run's jobs get secrets, brokered ones included.
             let brokered = trusted && self.may_broker(&job.repo_id, &job.namespace).await?;
@@ -1657,10 +1642,7 @@ impl Actions {
                     token,
                     repo,
                     timeout_minutes: job.timeout_minutes,
-                    workflow: run.as_ref().map(|run| run.path.clone()),
-                    environment: details.environment,
-                    trusted,
-                    instance: details.instance,
+                    instance,
                     brokered,
                 },
             )

@@ -12,16 +12,7 @@
 #   the app's code from `npx expo start` on your computer.
 #
 # Needs the repository secret EXPO_TOKEN (an Expo access token with access
-# to @flagon-io/g1t), and Expo's hosts allowed for these workflows alone in
-# the project's Settings, Guardrails, Workflow-only domains:
-#
-#   api.expo.dev | mobile-build.yml, mobile-release.yml
-#   expo.dev | mobile-build.yml, mobile-release.yml
-#   storage.googleapis.com | mobile-build.yml, mobile-release.yml
-#   *.eascdn.net | mobile-build.yml, mobile-release.yml
-#
-# (the API, its artifact links, where EAS uploads the project's archive,
-# and where an artifact link sends the APK's download).
+# to @flagon-io/g1t).
 name: Mobile build
 
 on:
@@ -72,11 +63,6 @@ jobs:
         run: |
           # A token pasted with a newline breaks the request's header.
           export EXPO_TOKEN="$(printf %s "$EXPO_TOKEN" | tr -d '[:space:]')"
-          # Without a token Expo answers 200; a bare 403 is the sandbox's egress refusing it.
-          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST https://api.expo.dev/graphql \
-            -H 'Content-Type: application/json' -d '{"query":"{ meUserActor { id } }"}')"
-          echo "api.expo.dev answers this runner with $code"
-          if [ "$code" = 403 ]; then echo "::error::api.expo.dev is not allowed: add the workflow-only domains above in the project's Guardrails"; exit 1; fi
           npx --yes eas-cli@24.12.1 whoami
           npx --yes eas-cli@24.12.1 build --platform android --profile "$PROFILE" \
             --non-interactive --wait --json > build.json

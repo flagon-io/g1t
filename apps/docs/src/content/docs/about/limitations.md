@@ -194,8 +194,7 @@ name, as on GitHub, but two containers cannot listen on the same port, and
 
 - **Why.** Jobs run in Cloudflare Containers, which let a container run
   Docker but not route a container network of its own out, or change its
-  packet filter. Sharing the job's network is also what keeps the job's
-  guardrails on every container.
+  packet filter.
 - **Instead.** Give containers that would clash different ports.
 - **Status.** Not scheduled.
 

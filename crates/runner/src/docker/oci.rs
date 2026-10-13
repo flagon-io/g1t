@@ -8,7 +8,7 @@
 //!   job's own network instead (their network namespace and libnetwork's
 //!   hook are taken out of the container's config), because a sandbox has
 //!   no route out of a bridge. `RUN --network=none` stays without one.
-//! - **In a guarded job**, every container (`docker run`, services, build
+//! - **In a job whose HTTPS passes the Worker** (one that may be given brokered secrets), every container (`docker run`, services, build
 //!   steps, `docker exec`) gets the certificate the job's HTTPS is
 //!   re-signed with: the folder of certificates at `/dev/g1t-egress`, and
 //!   the variables that point common tools at it, unless the container
@@ -27,7 +27,7 @@ pub(crate) const BUNDLE: &str = "ca-certificates.crt";
 /// The egress certificate alone.
 pub(crate) const EGRESS: &str = "egress-ca.crt";
 
-/// The variables a container is given in a guarded job, as the sandbox's
+/// The variables a container is given in a job whose HTTPS passes the Worker, as the sandbox's
 /// own (services/runner egress.ts `EGRESS_ENV`) point its tools.
 pub(crate) fn ca_variables() -> Vec<(&'static str, String)> {
     let bundle = format!("{CA_MOUNT}/{BUNDLE}");
@@ -103,7 +103,7 @@ fn add_variables(process: &mut Value) -> bool {
 }
 
 /// Changes a container's `config.json`. `ca_dir`: the folder of
-/// certificates to give it, in a guarded job. Returns whether it changed.
+/// certificates to give it, in a job whose HTTPS passes the Worker. Returns whether it changed.
 pub(crate) fn patch_config(config: &mut Value, bundle: &str, ca_dir: Option<&str>) -> bool {
     let mut changed = false;
     // A BuildKit step bound for a bridge network: the job's network instead.

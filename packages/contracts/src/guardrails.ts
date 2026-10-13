@@ -1,6 +1,8 @@
 /**
- * Guardrails: which hosts a workspace's sandboxes may reach and how long a
- * run may take, kept by the work service. Mirrors `g1t_contracts::guardrails`.
+ * Guardrails: how long a workspace's runs may take, kept by the work
+ * service. Mirrors `g1t_contracts::guardrails`. Sandboxes reach the
+ * internet as any CI machine does; guardrails say nothing about the
+ * network.
  */
 import type { ServiceBinding } from "./clients";
 import type { User, Viewer } from "./identity";
@@ -9,13 +11,6 @@ import type { Result } from "./result";
 
 /** What one level, the workspace or a project, sets. Unset is inherited. */
 export type GuardrailSettings = {
-  restrictNetwork?: boolean | null;
-  /** The registries that are on, by id. Replaces the inherited list. */
-  registries?: string[] | null;
-  /** More hosts to allow; they add to the other level's. */
-  domains?: string[];
-  /** Hosts only workflow jobs may reach, never agents; they add to the other level's. */
-  workflowDomains?: WorkflowDomain[];
   /** How long each kind of run may take, in minutes. */
   minutes?: Record<string, number>;
   updatedBy?: string | null;
@@ -24,13 +19,6 @@ export type GuardrailSettings = {
 
 /** What a run actually gets. */
 export type Guardrails = {
-  restrictNetwork: boolean;
-  registries: string[];
-  domains: string[];
-  /** Every host a sandbox may reach. `*.example.com` covers subdomains. */
-  hosts: string[];
-  /** Hosts only some workflow jobs may reach (never in `hosts`). */
-  workflowDomains?: WorkflowDomain[];
   /**
    * No longer sent: command rules, deny patterns and the cost cap were for
    * g1t's own agents. Kept optional for the runner, which still passes
@@ -42,22 +30,6 @@ export type Guardrails = {
   minutes: Record<string, number>;
 };
 
-/**
- * A host only workflow jobs may reach: jobs of a trusted run (not a pull
- * request from a fork), of the workflows named, in the environments
- * named. Agents, checks, the merge queue and g1t.page builds never do.
- */
-export type WorkflowDomain = {
-  /** `api.example.com`, or `*.example.com` for its subdomains. */
-  domain: string;
-  /** Workflow files by name, such as `deploy.yml`. Empty: any workflow. */
-  workflows: string[];
-  /** Environments a job must name with `environment:`. Empty: any job. */
-  environments: string[];
-};
-
-export type RegistryInfo = { id: string; name: string; hosts: string[] };
-
 export type GuardrailsView = {
   workspace: GuardrailSettings;
   project: GuardrailSettings | null;
@@ -65,8 +37,6 @@ export type GuardrailsView = {
   /** g1t's defaults with the workspace's: what a project inherits. */
   inherited: Guardrails;
   effective: Guardrails;
-  g1tHosts: string[];
-  registries: RegistryInfo[];
 };
 
 export interface GuardrailsApi {

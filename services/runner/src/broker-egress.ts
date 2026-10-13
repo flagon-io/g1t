@@ -1,7 +1,7 @@
 /**
  * The outbound handler's side of brokered secrets (broker.ts): `egress`
- * (guard.ts) asks `brokered` once for each request to a host the sandbox
- * may reach, before forwarding it itself.
+ * (guard.ts) asks `brokered` once for each request a workflow job that may
+ * be given brokered secrets makes, before forwarding it itself.
  */
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 
@@ -12,12 +12,10 @@ import { sandboxNamespace } from "./egress.ts";
 import { forward } from "./forward.ts";
 
 /**
- * What the outbound handler is given for brokering: `open` for a job whose
- * network is open but which may be given brokered secrets (every host is
- * reached, as it would be), and for a workflow job, the job, whose
- * stand-ins it fills in.
+ * What the outbound handler is given for brokering: the workflow job,
+ * whose stand-ins it fills in.
  */
-export type BrokeredParams = { open?: boolean; job?: BrokeredJob };
+export type BrokeredParams = { job?: BrokeredJob };
 
 /**
  * Sends a workflow job's request with its brokered secrets filled in: a
