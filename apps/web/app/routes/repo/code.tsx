@@ -41,8 +41,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export default function Code({ loaderData }: Route.ComponentProps) {
   const project = useProject();
-  // The files and latest commit follow pushes; checks update as they report.
-  useRepoLive({ match: repoPages.files() });
+  // The files and latest commit follow pushes to the branch; the latest
+  // commit's checks update as they report.
+  const { tree, branches } = loaderData;
+  useRepoLive({ match: repoPages.files({ branch: tree.ref, branches: branches?.map((branch) => branch.name), sha: tree.head?.hash }) });
   return (
     <TreeView
       tree={loaderData.tree}

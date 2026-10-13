@@ -8,9 +8,14 @@
  * then every push, pull request, issue, comment, review, check, run,
  * release and security alert there arrives as a small `RepoChange`. A page
  * refreshes its loader when a change matches it, a second after the last
- * one, and never under someone typing or with a dialog open. Signed out,
- * or while the socket is down, it refreshes when the tab comes back into
- * view and once a minute while it is in view instead.
+ * one, at most every two seconds, never under someone typing or with a
+ * dialog open, and not at all while the tab is out of view: it catches up
+ * once when it comes back. A busy repository sends changes all the time
+ * (every branch's pushes, every commit's checks), so each page matches
+ * only what it shows: the Code page its own branch and the checks of the
+ * commit it shows, not another branch's. Signed out, or while the socket
+ * is down, it refreshes when the tab comes back into view and once a
+ * minute while it is in view instead.
  */
 import type { RepoChange } from "@g1t/contracts";
 
@@ -23,10 +28,10 @@ export type RepoMatch = (change: RepoChange) => boolean;
 export const LIVE_DEBOUNCE_MS = 1000;
 /** However steady the changes, a page waits no longer than this before refreshing. */
 export const LIVE_MAX_WAIT_MS = 5000;
+/** However many changes arrive, a page refreshes at most this often. */
+export const LIVE_MIN_GAP_MS = 2000;
 /** How often a page held back (someone typing, a dialog open) looks again. */
 export const LIVE_HOLD_CHECK_MS = 1000;
-/** A tab out of view refreshes at most this often. */
-export const HIDDEN_MIN_MS = 60_000;
 /** Without the socket: coming back into view refreshes at most this often. */
 export const FALLBACK_FOCUS_MS = 30_000;
 /** Without the socket: how often a page in view refreshes. */
@@ -73,30 +78,60 @@ const SESSION_KINDS = ["session.started", "session.progressed", "session.ended"]
 
 const ALERTS = ["secret_scanning_alert", "code_scanning_alert", "vulnerability_alert"];
 
+/** A check on one of `shas`: any check when they are not known, and one that names no commit. */
+function isCheckOn(change: RepoChange, shas: readonly string[] | null | undefined): boolean {
+  return isCheck(change) && (shas == null || !change.sha || shas.includes(change.sha));
+}
+
+/** What a page of files shows, for matching only what can change it. */
+export type ShownFiles = {
+  /** The branch shown; null for a tag or a commit. */
+  branch: string | null;
+  /** Every branch, for the branch menu and count: a new one, or one of them deleted, changes them. */
+  branches?: readonly string[] | null;
+  /** The commit shown, whose checks are on the page. */
+  sha?: string | null;
+};
+
 /** What each kind of repository page shows. */
 export const repoPages = {
   /**
-   * Files and a folder: any ref moving (the files and latest
-   * commit, the branch menu, recent pushes), checks on commits, releases
-   * and deployments.
+   * Files and a folder: its own branch moving (the files and the latest
+   * commit), a branch made, deleted or renamed and the default changing
+   * (the branch menu and count), any tag (the About's), checks on the
+   * commit shown, releases and deployments. Without `shown`, any ref and
+   * any check.
    */
-  files(): RepoMatch {
-    return (change) => isRefChange(change) || isCheck(change) || ["release", "deployment", "deployment_status"].includes(family(change));
+  files(shown?: ShownFiles): RepoMatch {
+    return (change) => {
+      if (["release", "deployment", "deployment_status"].includes(family(change))) return true;
+      if (!shown) return isRefChange(change) || isCheck(change);
+      if (isCheck(change)) return isCheckOn(change, shown.sha ? [shown.sha] : null);
+      if (!isRefChange(change)) return false;
+      const branch = branchOf(change.ref);
+      if (branch == null || change.kind === "branch.renamed" || change.kind === "repo.default_branch_changed") return true;
+      if (branch === shown.branch) return true;
+      // Another branch: only made or deleted matters, by the menu it is in or not.
+      const known = shown.branches == null || shown.branches.includes(branch);
+      return change.kind === "git.deleted" ? known : !known;
+    };
   },
   /**
    * A project's overview: what it runs and how it is doing (deployments,
    * checks, releases), who is working on it (claims and sessions), and the
    * pull requests that may need someone (opened, readied, reviewed, merged).
+   * Of the checks, only the shown commit's (`sha`) and finished pull
+   * requests' (how often checks pass); without `sha`, all.
    */
-  overview(): RepoMatch {
+  overview(sha?: string | null): RepoMatch {
     return (change) =>
-      isCheck(change) ||
+      (change.kind === "checks.completed" || isCheckOn(change, sha ? [sha] : null)) ||
       ["release", "deployment", "deployment_status", "work", "pull", "review"].includes(family(change)) ||
       SESSION_KINDS.includes(change.kind);
   },
-  /** Commits: pushes to the branch shown, and checks on commits. */
-  commits(branch: string | null): RepoMatch {
-    return (change) => (branch == null ? change.kind === "git.push" && !tagOf(change.ref) : isPushTo(change, branch)) || isCheck(change);
+  /** Commits: pushes to the branch shown, and checks on the commits shown (on any without `shas`). */
+  commits(branch: string | null, shas?: readonly string[] | null): RepoMatch {
+    return (change) => (branch == null ? change.kind === "git.push" && !tagOf(change.ref) : isPushTo(change, branch)) || isCheckOn(change, shas);
   },
   /** Branches and tags: any ref moving, pull requests (a branch's), checks. */
   refs(): RepoMatch {
@@ -196,27 +231,28 @@ export type GateInput = {
   navigating: boolean;
 };
 
-export type GateDecision = { action: "idle" } | { action: "run" } | { action: "wait"; ms: number };
+/**
+ * `hold`: nothing to do until the tab comes back into view, which asks
+ * again; no timer runs meanwhile.
+ */
+export type GateDecision = { action: "idle" } | { action: "run" } | { action: "hold" } | { action: "wait"; ms: number };
 
 /**
  * Whether to refresh now for the changes waiting, or how long to wait
  * before asking again. A second after the last change (at most five after
- * the first), never under someone typing or with a dialog open, and at
- * most once a minute for a tab out of view, which refreshes as soon as it
- * comes back instead.
+ * the first), at most every two seconds, never under someone typing or
+ * with a dialog open, and never for a tab out of view: what waited is
+ * fetched once, as soon as it comes back.
  */
 export function gate(state: GateState, input: GateInput): GateDecision {
   if (state.pendingSince == null) return { action: "idle" };
+  if (!input.visible) return { action: "hold" };
   if (input.busy || input.navigating) return { action: "wait", ms: LIVE_HOLD_CHECK_MS };
-  if (!input.visible && state.lastRunAt != null && input.now - state.lastRunAt < HIDDEN_MIN_MS) {
-    return { action: "wait", ms: HIDDEN_MIN_MS - (input.now - state.lastRunAt) };
-  }
   const quiet = input.now - (state.lastChangeAt ?? state.pendingSince);
   const waited = input.now - state.pendingSince;
-  if (quiet < LIVE_DEBOUNCE_MS && waited < LIVE_MAX_WAIT_MS) {
-    return { action: "wait", ms: Math.min(LIVE_DEBOUNCE_MS - quiet, LIVE_MAX_WAIT_MS - waited) };
-  }
-  return { action: "run" };
+  const since = state.lastRunAt == null ? Infinity : input.now - state.lastRunAt;
+  const ms = Math.max(quiet < LIVE_DEBOUNCE_MS && waited < LIVE_MAX_WAIT_MS ? Math.min(LIVE_DEBOUNCE_MS - quiet, LIVE_MAX_WAIT_MS - waited) : 0, LIVE_MIN_GAP_MS - since);
+  return ms > 0 ? { action: "wait", ms } : { action: "run" };
 }
 
 /**

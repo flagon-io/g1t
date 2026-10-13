@@ -220,7 +220,14 @@ export function ChannelView({ data }: { data: Loaded }) {
   const g1tBusy = withG1t && anyAnswering(messages);
   // References in g1t's answers point into the repository the latest question was asked from, if any.
   const askedRepo = useMemo(() => [...messages].reverse().find((m) => m.page)?.page?.repo ?? null, [messages]);
-  const answerContext = useMemo<ResponseContext>(() => ({ slug, repo: askedRepo }), [slug, askedRepo]);
+  // Kept while it names the same repository: each answer draws itself again
+  // (and React replaces all of it) whenever this changes, so a new message
+  // or a refresh, which hand over new objects, must not change it.
+  const answerContext = useMemo<ResponseContext>(
+    () => ({ slug, repo: askedRepo }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the repository by name, not the object it came in
+    [slug, askedRepo?.namespace, askedRepo?.name],
+  );
   const lastAnswer = withG1t ? ([...messages].reverse().find((m) => !m.deleted_at && !m.pending) ?? null) : null;
   const g1tSend = useCallback(
     async (intent: "g1t_retry" | "g1t_stop" | "g1t_reset") => {

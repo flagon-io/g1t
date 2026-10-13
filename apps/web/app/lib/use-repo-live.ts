@@ -6,9 +6,10 @@
  * Signed in, the tab watches the repository over its live socket: the
  * site checks the person may read it (`/-/notify`, `watch_repo`), then
  * every change there arrives as it happens, and the page's loader runs
- * again a second after the last matching one. Never under someone typing
- * on the page or with a dialog open (it waits until they are done), and
- * at most once a minute for a tab out of view. Signed out, or while the
+ * again a second after the last matching one, at most every two seconds.
+ * Never under someone typing on the page or with a dialog open (it waits
+ * until they are done), and never for a tab out of view: it catches up
+ * once when the tab comes back. Signed out, or while the
  * socket is down, the page refreshes when the tab comes back into view
  * (at most every 30 s) and once a minute while it is in view.
  *
@@ -147,6 +148,7 @@ export function useRepoLive(options: RepoLiveOptions): RepoLive {
     const decision = gate(state.current, { now: Date.now(), visible: visibleNow(), busy: busyNow(), navigating: latest.current.navigating });
     if (decision.action === "run") run();
     else if (decision.action === "wait") timer.current = setTimeout(check, decision.ms);
+    // "hold": out of view; coming back into view (`back` below) asks again.
   }, [run]);
 
   /** Something to refresh for: `now` skips the second's wait for more. */
