@@ -64,11 +64,11 @@ jobs:
       # and asks the registry only for what changed, so a dropped
       # connection to it rarely stops the job.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       # Wrangler, from the root, and the app's own (EAS reads app.config.ts
       # through its `expo`).
       - name: Install Wrangler and the app

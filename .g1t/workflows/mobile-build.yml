@@ -57,11 +57,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       # EAS reads app.config.ts through the app's own `expo`.
       - name: Install the app's dependencies
         run: npm ci --prefer-offline --no-audit --no-fund -w @g1t/mobile

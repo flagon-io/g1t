@@ -74,11 +74,11 @@ jobs:
           node scripts/cli-release.mjs sign
           node scripts/cli-release.mjs verify
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-${{ runner.os }}-
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
       - name: Install Wrangler
         run: npm ci --prefer-offline --workspaces=false --no-audit --no-fund
       - name: Publish to g1t.sh/downloads/cli

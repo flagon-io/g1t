@@ -125,7 +125,9 @@ fn deploy_runs_on_main_and_by_hand_one_at_a_time() {
     let concurrency = deploy.concurrency.as_ref().unwrap();
     assert_eq!(concurrency.group, "deploy-production");
     assert_eq!(concurrency.cancel_in_progress, json!(false));
-    assert_eq!(deploy.job_order(), ["check", "plan", "migrate", "core", "edge", "front", "smoke"]);
+    assert_eq!(deploy.job_order(), ["check", "npm-cache", "plan", "migrate", "core", "edge", "front", "smoke"]);
+    // Nothing waits for npm's downloads to be saved.
+    assert!(deploy.jobs.iter().all(|job| !job.needs.iter().any(|n| n == "npm-cache")));
     // The stages share their steps (a YAML alias), and read the token only
     // where they deploy.
     let steps = |id: &str| deploy.jobs.iter().find(|j| j.id == id).unwrap().steps.len();
@@ -133,6 +135,52 @@ fn deploy_runs_on_main_and_by_hand_one_at_a_time() {
     assert_eq!(steps("core"), steps("front"));
     let source = std::fs::read_to_string(workflows_dir().join("deploy.yml")).unwrap();
     assert!(!source.contains("cancel-in-progress: true"));
+}
+
+/// Whether a step's `run` installs the whole lockfile: `npm ci` with no
+/// workspace narrowing it, and not the deploy tool's install of some units.
+fn installs_everything(run: &str) -> bool {
+    run.split('\n').any(|line| {
+        let line = line.trim();
+        line.starts_with("npm ci") && !line.contains(" -w ") && !line.contains("--workspace")
+    })
+}
+
+#[test]
+fn npm_downloads_are_cached_whole_and_only_whole_installs_save_them() {
+    // Every job's npm cache is the whole lockfile's, under one key. A job
+    // that installs part of it only restores: had it saved, its part would
+    // stand in for the whole under that key (the first job to finish used
+    // to save Wrangler alone, and every later install downloaded the rest).
+    let mut saving = Vec::new();
+    for entry in std::fs::read_dir(workflows_dir()).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yml") {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for job in read(&name).jobs {
+            let whole = job.steps.iter().any(|s| s.run.as_deref().is_some_and(installs_everything));
+            for step in &job.steps {
+                let Some(uses) = step.uses.as_deref() else { continue };
+                if !uses.starts_with("actions/cache") || step.raw["with"]["path"] != json!("~/.npm") {
+                    continue;
+                }
+                let key = step.raw["with"]["key"].as_str().unwrap_or_default();
+                assert_eq!(key, "npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}", "{name} {}", job.id);
+                if let Some(prefix) = step.raw["with"]["restore-keys"].as_str() {
+                    assert_eq!(prefix, "npm-full-${{ runner.os }}-", "{name} {}", job.id);
+                }
+                let saves = uses.starts_with("actions/cache@") || uses.starts_with("actions/cache/save@");
+                assert!(!saves || whole, "{name} {}: saves npm's cache but installs only part of the lockfile", job.id);
+                if saves {
+                    saving.push(format!("{name} {}", job.id));
+                }
+            }
+        }
+    }
+    // main's whole cache is kept by the deploy workflow, beside its check.
+    assert!(saving.contains(&"deploy.yml npm-cache".to_owned()), "{saving:?}");
 }
 
 #[test]
