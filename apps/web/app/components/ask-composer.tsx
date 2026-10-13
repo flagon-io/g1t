@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import { Kbd } from "./ui/kbd";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { Skeleton } from "./ui/skeleton";
 import { Textarea } from "./ui/textarea";
 
@@ -468,9 +468,12 @@ function NotSetUp({ slug, setup }: { slug: string; setup: Setup }) {
         <p className="mt-2">
           Ask answers with an AI provider your workspace connects, on its own key: g1t hosts no model for it.{" "}
           {setup.owner ? (
-            <Link to={`/${slug}/-/integrations/models#ask`} className="text-accent hover:underline">
-              Connect a provider and choose it for Ask
-            </Link>
+            // Following it closes the panel, so the page it opens is not behind it.
+            <SheetClose asChild>
+              <Link to={`/${slug}/-/integrations/models#ask`} className="text-accent hover:underline">
+                Connect a provider and choose it for Ask
+              </Link>
+            </SheetClose>
           ) : (
             <>Ask an owner of {slug} to connect one and choose it for Ask.</>
           )}
