@@ -743,13 +743,14 @@ impl Billing {
             let cost = deployment_costs::MICROS_PER_BUILD_SECOND as f64;
             (cost, Price::price_for(cost, self.margin_percent))
         });
-        // A larger machine (`runs-on: g1t-4core`): its memory and disk
-        // cost more each second, and without its own CPU it is priced at
-        // its vCPUs as busy as the standard machine's.
-        let instance = a.instance.as_deref().and_then(g1t_contracts::actions::instance_named);
-        let base_scale = instance.map_or(1.0, |i| keeper::base_scale(i.memory_gib, i.disk_gb));
-        let price_scale = instance.map_or(1.0, |i| i.price_scale);
-        let vcpus = instance.map_or(4.0, |i| i.vcpu.max(4.0));
+        // The machine it ran on, from the catalogue by its `runs-on` label;
+        // the standard one otherwise. What it cost g1t: a larger machine's
+        // memory and disk cost more each second, and without its own CPU it
+        // is costed at its vCPUs as busy as the standard machine's.
+        let instance = a.instance.as_deref().and_then(g1t_contracts::actions::instance_named).unwrap_or(g1t_contracts::actions::STANDARD_INSTANCE);
+        let base_scale = keeper::base_scale(instance.memory_gib, instance.disk_gb);
+        let cost_scale = keeper::busy_scale(&instance);
+        let vcpus = instance.vcpu.max(4.0);
         // Its own CPU when the sandbox reports it; otherwise the average.
         let parts = match a.cpu_seconds.filter(|cpu| cpu.is_finite() && *cpu >= 0.0) {
             Some(cpu) => match (self.price("sandbox_base_second").await?, self.price("sandbox_cpu_second").await?) {
@@ -760,13 +761,22 @@ impl Billing {
             },
             None => None,
         };
-        let cost = parts.map_or(seconds as f64 * cost_per_second * price_scale, |(cost, _)| cost).ceil() as i64;
-        let (charge, terms_note, discount) = self.charged(&workspace, credits::with_margin(cost, self.margin_percent)).await?;
+        let cost = parts.map_or(seconds as f64 * cost_per_second * cost_scale, |(cost, _)| cost).ceil() as i64;
+        // Charged by the job: its minutes, rounded up, at the machine's rate
+        // (never under what it cost g1t).
+        let (minutes, price) = keeper::runner_charge(seconds, &instance, cost);
+        let (charge, terms_note, discount) = self.charged(&workspace, price).await?;
         let eligible = credits::eligible_for(a.kind, a.repo.as_deref());
         let drawn = self.draw(&workspace, charge, &credits::month_of(&timestamp), &eligible).await?;
         let charge = charge - drawn.total();
-        let cpu_note = parts.map_or(String::new(), |(_, cpu)| format!(", {cpu:.0} vCPU-seconds"));
-        let description = format!("{}: {} of sandbox time{cpu_note}{terms_note}{}", a.description, duration(seconds), drawn.note());
+        let description = format!(
+            "{}: {}, {} on the {} machine{terms_note}{}",
+            a.description,
+            duration(seconds),
+            keeper::minutes_text(minutes),
+            instance.machine,
+            drawn.note()
+        );
         // The price versions it was charged at (pricing.rs).
         let meters: &[&str] = if parts.is_some() { &["sandbox_base_second", "sandbox_cpu_second"] } else { &["sandbox_second"] };
         let mut versions = Vec::new();
@@ -780,8 +790,8 @@ impl Billing {
                     .prepare(
                         "INSERT INTO ledger
                            (id, workspace, kind, amount_micros, description, repo, task,
-                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version, quantity, compute)
-                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?, ?, ?)",
+                            cost_micros, reference, created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version, quantity, compute, machine)
+                         VALUES (?, ?, 'usage', ?, ?, ?, 'sandbox', ?, ?, ?, 'g1t', ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         new_id("led", now).into(),
@@ -797,8 +807,11 @@ impl Billing {
                         (drawn.oss as f64).into(),
                         (drawn.given as f64).into(),
                         optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
-                        (seconds as f64).into(),
+                        // Runner minutes, as charged; lines with no machine
+                        // (before minutes) hold seconds.
+                        (minutes as f64).into(),
                         optional(a.kind.map(ComputeKind::as_str)),
+                        instance.machine.into(),
                     ])?,
                 self.db
                     .prepare(

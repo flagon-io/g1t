@@ -1,6 +1,7 @@
 import { ArrowUpRight } from "lucide-react";
 
 import type { FeaturePlan, FreeTier, Price } from "@g1t/contracts";
+import { type InstanceType, machineSize, machines } from "@g1t/contracts/instances";
 
 import type { Route } from "./+types/pricing";
 import { money as sum, wholeDollars } from "../lib/money";
@@ -64,7 +65,21 @@ const SHOWN_APART = new Set([
   "card_fee_percent",
   "card_fee_fixed",
   "security_activation",
+  // What a sandbox second costs g1t: runner minutes are charged at each
+  // machine's rate, in rows of their own.
+  "sandbox_second",
+  "sandbox_base_second",
+  "sandbox_cpu_second",
 ]);
+
+/**
+ * What a minute of a machine costs g1t at Cloudflare's list prices with
+ * every vCPU busy: memory, disk and the Durable Object behind it (128 MB)
+ * for every second, and its vCPUs.
+ */
+function busyMinuteMicros(instance: InstanceType): number {
+  return 60 * (instance.memoryGib * 2.5 + instance.diskGb * 0.07 + 0.125 * 12.5 + instance.vcpu * 20);
+}
 
 /** A retired meter: agents' models and tokens, and the AI Gateway. */
 function retired(meter: string): boolean {
@@ -148,7 +163,7 @@ const ENTERPRISE_MAIL = "mailto:hey@flagon.io?subject=Enterprise%20billing%20for
 const HOW = [
   {
     title: "Our cost, passed through",
-    body: "Every sandbox second, build and app request costs g1t money at Cloudflare. Each is metered and charged at that cost plus 20%, from the first second and the first request. Use a little, pay a little.",
+    body: "Every runner minute, build and app request costs g1t money at Cloudflare. Builds and app traffic are charged at that cost plus 20%, from the first second and the first request; runner minutes at a fixed rate for each machine, set from its cost plus 20% and never under its cost with every vCPU busy. Use a little, pay a little.",
   },
   {
     title: "Prices follow costs, by themselves",
@@ -612,6 +627,21 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                 </>
               );
             })()}
+            {machines().map((instance) => (
+              <tr key={instance.machine}>
+                <td className="px-4 py-3">
+                  <p className="font-medium">
+                    Runner minutes, {instance.label === "standard" ? "standard machine" : instance.label}
+                  </p>
+                  <p className="text-xs text-faint">
+                    {machineSize(instance)}. Each job's time rounded up to the minute; checks, workflows and the merge queue
+                  </p>
+                </td>
+                <td className="px-4 py-3 font-mono text-xs tabular-nums text-muted">Up to {money(busyMinuteMicros(instance))} a minute</td>
+                <td className="hidden px-4 py-3 tabular-nums sm:table-cell">Fixed rate</td>
+                <td className="px-4 py-3 font-mono text-xs tabular-nums">{money(instance.microsPerMinute)} a minute</td>
+              </tr>
+            ))}
             <tr>
               <td className="px-4 py-3">
                 <p className="font-medium">Your own runners</p>

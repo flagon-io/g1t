@@ -52,8 +52,8 @@ export type RunnersPageData = RunnersData & {
   waiting: OwnWaiting | null;
   /** This month's machine time; null when billing did not answer. */
   cost: RunnerCost | null;
-  /** A minute on g1t's cloud, from the price book; null when it has none. */
-  prices: CloudPrice[] | null;
+  /** Each machine on g1t's cloud and its price a minute, from the machine catalogue. */
+  prices: CloudPrice[];
   /** People's computers with the desktop app, as each app last said; null when the actions service did not answer. */
   desktops: DesktopRunner[] | null;
 };
@@ -75,7 +75,7 @@ const warn = (what: string) => (error: unknown) => {
 export async function loadRunnersPage(workspace: string, actor: User, repositories: string[] = [], now = new Date()): Promise<RunnersPageData> {
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
   const until = now.toISOString().slice(0, 10);
-  const [base, activity, runs, report, book, desktops] = await Promise.all([
+  const [base, activity, runs, report, desktops] = await Promise.all([
     loadRunners({ workspace }, actor, repositories),
     runners
       .activity(actor, workspace)
@@ -89,7 +89,6 @@ export async function loadRunnersPage(workspace: string, actor: User, repositori
       .usageReport(workspace, actor, { from, until })
       .then((result) => (result.ok ? result.value : null))
       .catch(warn("usage report")),
-    billing.prices().catch(warn("prices")),
     runners
       .desktops(actor, workspace)
       .then((result) => (result.ok ? result.value : null))
@@ -100,7 +99,7 @@ export async function loadRunnersPage(workspace: string, actor: User, repositori
     cloud: cloudNow(runs, activity, RUN_PAGE, RUNNER_ACTIVITY_LIMIT),
     waiting: ownWaiting(activity),
     cost: runnerCost(report),
-    prices: cloudPrices(book?.prices ?? null),
+    prices: cloudPrices(),
     desktops,
   };
 }

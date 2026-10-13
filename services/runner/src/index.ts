@@ -28,6 +28,8 @@ import {
   type InstanceType,
   STANDARD_INSTANCE,
   instanceNamed,
+  priceScale,
+  runnerMinutes,
 } from "@g1t/contracts";
 
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
@@ -60,7 +62,7 @@ import {
 import { newlyMisdirected } from "./broker";
 import { relay, relayDeps } from "./broker-relay";
 import { forward } from "./forward";
-import { EGRESS_ENV } from "./egress";
+import { EGRESS_ENV, jobNamespaceOf } from "./egress";
 
 // Outbound interception, which network guardrails use, needs this exported.
 export { ContainerProxy } from "@cloudflare/containers";
@@ -68,8 +70,9 @@ export { ContainerProxy } from "@cloudflare/containers";
 export interface RunnerEnv {
   SANDBOX: DurableObjectNamespace<AttemptSandbox>;
   /**
-   * Larger machines for workflow jobs that ask for one with `runs-on`
-   * (`g1t-2core`, `g1t-4core`): the same image on a larger instance type.
+   * Workflow jobs that ask with `runs-on` for `g1t-2core` (the standard
+   * machine, kept as a name so the label keeps working) or `g1t-4core` (a
+   * larger instance type): the same image, in classes of their own.
    */
   SANDBOX_2CORE?: DurableObjectNamespace<Sandbox2Core>;
   SANDBOX_4CORE?: DurableObjectNamespace<Sandbox4Core>;
@@ -895,12 +898,16 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     const route = selfHosted && (kind === "check" || kind === "queue") ? await selfHostedRoute(this.env.ACTIONS, repo) : null;
     if (route) return { ok: true, held: null, limits: limitsOf(ent), route };
     const [standardMicros, isPublic] = await Promise.all([compute.microsPerSecond(), this.isPublic(repo)]);
-    // A larger machine is reserved for at what it costs with every vCPU busy.
-    const microsPerSecond = standardMicros * instance.estimateScale;
-    const admission = await compute.admit(
-      { workspace, repo, public: isPublic, kind, estimateMicros: sandboxEstimateMicros(estimateMinutes(minutes, ent), microsPerSecond) },
-      ent,
+    // Reserved for its time limit at the larger of what it may cost (the
+    // sandbox price, scaled to its machine) and its minutes at the
+    // machine's rate, which is what it is charged.
+    const limit = estimateMinutes(minutes, ent);
+    const microsPerSecond = standardMicros * priceScale(instance);
+    const estimateMicros = Math.max(
+      sandboxEstimateMicros(limit, microsPerSecond),
+      runnerMinutes(limit * 60) * instance.microsPerMinute,
     );
+    const admission = await compute.admit({ workspace, repo, public: isPublic, kind, estimateMicros }, ent);
     if (!admission.ok) return { ok: false, code: admission.code, message: admission.message };
     return {
       ok: true,
@@ -991,11 +998,9 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     return ok(true);
   }
 
-  /** The sandboxes of a machine size: each instance type is a class of its own. */
+  /** The sandboxes of a label: the class the catalogue names for it, by its binding. */
   private jobNamespace(instance: InstanceType): DurableObjectNamespace<AttemptSandbox> | null {
-    if (instance === STANDARD_INSTANCE) return this.env.SANDBOX;
-    const bound = instance.label === "g1t-4core" ? this.env.SANDBOX_4CORE : instance.label === "g1t-2core" ? this.env.SANDBOX_2CORE : undefined;
-    return (bound as DurableObjectNamespace<AttemptSandbox> | undefined) ?? null;
+    return jobNamespaceOf(this.env, instance) as DurableObjectNamespace<AttemptSandbox> | null;
   }
 
   /**

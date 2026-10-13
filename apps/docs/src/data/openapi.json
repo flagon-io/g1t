@@ -17300,11 +17300,11 @@
                   "from": "2026-10-01",
                   "until": "2026-10-07",
                   "totals": {
-                    "price_micros": 48210000,
+                    "price_micros": 48212000,
                     "discount_micros": 0,
                     "included_micros": 20000000,
                     "credits_micros": 18000000,
-                    "charged_micros": 10210000,
+                    "charged_micros": 10212000,
                     "pending_micros": 1340000,
                     "pending_charged_micros": 1340000,
                     "cost_micros": 40100000
@@ -17330,15 +17330,15 @@
                     {
                       "key": "sandboxes",
                       "label": "Sandboxes",
-                      "micros": 7210000,
+                      "micros": 7212000,
                       "meters": [
                         {
-                          "key": "sandbox",
-                          "label": "Sandbox time",
+                          "key": "runner_2-core",
+                          "label": "Runner minutes, 2-core (2 vCPU, 8 GiB, 16 GB)",
                           "product": "sandboxes",
-                          "unit": "seconds",
-                          "quantity": 41300,
-                          "micros": 7210000,
+                          "unit": "minutes",
+                          "quantity": 1803,
+                          "micros": 7212000,
                           "pending_micros": 0,
                           "daily": [
                             900000,
@@ -17347,18 +17347,14 @@
                             1100000,
                             0,
                             2100000,
-                            1110000
+                            1112000
                           ],
-                          "allowance": {
-                            "used": 41300,
-                            "of": 108000,
-                            "unit": "seconds"
-                          },
+                          "allowance": null,
                           "by_project": [
                             {
                               "project": "flagon-io/g1t",
-                              "micros": 7210000,
-                              "quantity": 41300
+                              "micros": 7212000,
+                              "quantity": 1803
                             }
                           ]
                         }

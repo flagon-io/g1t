@@ -29,6 +29,7 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN kind = 'top_up' AND reference LIKE 'crd%' THEN 'Credits from g1t'
     WHEN kind = 'top_up' AND amount_micros < 0 THEN 'Refunds'
     WHEN kind = 'top_up' THEN 'Payments'
+    WHEN task = 'sandbox' AND machine IS NOT NULL THEN 'Runner minutes, ' || machine
     WHEN task = 'sandbox' THEN 'Sandbox time'
     WHEN task = 'self_hosted' THEN 'Self-hosted runner time'
     WHEN task = 'deployments' THEN 'Deployments'
@@ -46,6 +47,9 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN reference LIKE 'run%' THEN 'Agent runs'
     ELSE 'Other usage' END";
 
+/// How a runner-minutes line begins: `Runner minutes, 2-core`, by machine.
+pub(crate) const RUNNER_MINUTES: &str = "Runner minutes, ";
+
 /// A usage line at its price, in SQL: what was charged, what paid for it
 /// first (the plan's included usage, the trial, a pool, g1t), and what a
 /// discount took off. `line_price`, for a whole column. The one measure of
@@ -59,6 +63,9 @@ pub(crate) const RUN_SQL: &str = "(reference LIKE 'run%' AND instr(reference, '/
 
 /// The order lines appear in within a group.
 pub(crate) fn kind_order(kind: &str) -> u8 {
+    if kind.starts_with(RUNNER_MINUTES) {
+        return 2;
+    }
     match kind {
         "Agent runs" => 0,
         "Agent rate" => 0,
@@ -98,7 +105,7 @@ pub(crate) fn line_price(charged: i64, covered: i64, discount: i64) -> i64 {
 
 /// The Billing page's meters, in order: key and label.
 pub(crate) const METERS: [(&str, &str); 6] = [
-    ("agents", "Sandboxes & other usage"),
+    ("agents", "Runner minutes & other usage"),
     ("builds", "Builds"),
     ("requests", "Requests & CPU"),
     ("domains", "Custom domains"),
@@ -128,6 +135,22 @@ pub(crate) fn meter_of_source(source: &str) -> &'static str {
 pub(crate) fn build_minutes(seconds: i64) -> Option<String> {
     let minutes = (seconds.max(0) + 59) / 60;
     (seconds > 0).then(|| format!("{} build minute{}", crate::features::thousands(minutes as u64), if minutes == 1 { "" } else { "s" }))
+}
+
+/// `40 runner minutes on 2-core, 6 on 4-core`, by machine; None without any.
+pub(crate) fn runner_minutes(by_machine: &[(String, i64)]) -> Option<String> {
+    let used: Vec<_> = by_machine.iter().filter(|(_, minutes)| *minutes > 0).collect();
+    let (first, rest) = used.split_first()?;
+    let mut text = format!(
+        "{} runner minute{} on {}",
+        crate::features::thousands(first.1 as u64),
+        if first.1 == 1 { "" } else { "s" },
+        first.0
+    );
+    for (machine, minutes) in rest {
+        text.push_str(&format!(", {} on {machine}", crate::features::thousands(*minutes as u64)));
+    }
+    Some(text)
 }
 
 /// `12 runs`.
@@ -189,6 +212,8 @@ struct Row {
     oss: Option<i64>,
     given: Option<i64>,
     discount: Option<i64>,
+    #[serde(default)]
+    minutes: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -241,7 +266,8 @@ impl Billing {
                 "SELECT {group_sql} AS group_key, {KIND_SQL} AS kind, COUNT(*) AS count,
                         SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
                         SUM(credit_micros) AS credit, SUM(trial_micros) AS trial, SUM(oss_micros) AS oss,
-                        SUM(given_micros) AS given, SUM(discount_micros) AS discount
+                        SUM(given_micros) AS given, SUM(discount_micros) AS discount,
+                        SUM(CASE WHEN task = 'sandbox' AND machine IS NOT NULL THEN quantity END) AS minutes
                  FROM ledger WHERE workspace = ?1 AND created_at >= ?2 AND created_at < ?3
                  GROUP BY 1, 2"
             ))
@@ -270,6 +296,7 @@ impl Billing {
                 kind: row.kind,
                 count: row.count,
                 passed_micros: 0,
+                minutes: row.minutes.map(|m| m.round() as i64),
             };
             add_line(&mut groups, key, line);
         }
@@ -303,6 +330,7 @@ impl Billing {
                 price_micros: 0,
                 discount_micros: 0,
                 passed_micros: amount,
+                minutes: None,
             };
             add_line(&mut groups, extra.group_key.unwrap_or_default(), line);
         }
@@ -420,12 +448,32 @@ impl Billing {
                 }
             }
         }
+        // Runner minutes this month, by machine.
+        #[derive(Deserialize)]
+        struct Minutes {
+            machine: String,
+            minutes: Option<f64>,
+        }
+        let minutes: Vec<(String, i64)> = self
+            .db
+            .prepare(
+                "SELECT machine, SUM(quantity) AS minutes FROM ledger
+                 WHERE workspace = ?1 AND kind = 'usage' AND task = 'sandbox' AND machine IS NOT NULL AND created_at >= ?2 AND created_at < ?3
+                 GROUP BY machine ORDER BY machine",
+            )
+            .bind(&[workspace.as_str().into(), from.as_str().into(), until.as_str().into()])?
+            .all()
+            .await?
+            .results::<Minutes>()?
+            .into_iter()
+            .map(|m| (m.machine, m.minutes.unwrap_or(0.0).round() as i64))
+            .collect();
         let build_seconds = self.allowance_used("build_seconds", &workspace, &month).await?;
         let operations = self.git_operations_this_month(&workspace).await?;
         let stored = self.private_storage(&workspace).await?;
         for meter in &mut meters {
             match meter.key.as_str() {
-                "agents" => meter.quantity = runs(agent_runs),
+                "agents" => meter.quantity = runner_minutes(&minutes).or_else(|| runs(agent_runs)),
                 "builds" => meter.quantity = build_minutes(build_seconds),
                 "git_storage" => meter.quantity = git_and_storage(operations, stored),
                 _ => {}
@@ -516,6 +564,7 @@ mod tests {
             price_micros: 0,
             discount_micros: 0,
             passed_micros: passed,
+            minutes: None,
         };
         add_line(&mut groups, "2026-10-08".into(), line("Tax", 1_640_000));
         add_line(&mut groups, "2026-10-08".into(), line("Card processing fees", 920_000));
@@ -544,6 +593,10 @@ mod tests {
     #[test]
     fn usage_lines_come_before_money_in() {
         assert!(kind_order("Agent runs") < kind_order("Sandbox time"));
+        // Runner minutes, by machine, sit with sandbox time.
+        assert_eq!(kind_order("Runner minutes, 4-core"), kind_order("Sandbox time"));
+        assert!(KIND_SQL.contains("'Runner minutes, ' || machine") && RUNNER_MINUTES == "Runner minutes, ");
+        assert!(KIND_SQL.find("'Runner minutes, '") < KIND_SQL.find("'Sandbox time'"));
         assert!(kind_order("Deployments") < kind_order("Payments"));
         assert!(kind_order("Security scans") < kind_order("Payments"));
     }
@@ -569,6 +622,13 @@ mod tests {
         assert_eq!(build_minutes(1).as_deref(), Some("1 build minute"));
         assert_eq!(build_minutes(2_461).as_deref(), Some("42 build minutes"));
         assert_eq!(runs(1).as_deref(), Some("1 run"));
+        assert_eq!(runner_minutes(&[]), None);
+        assert_eq!(runner_minutes(&[("2-core".into(), 0)]), None);
+        assert_eq!(runner_minutes(&[("2-core".into(), 1)]).as_deref(), Some("1 runner minute on 2-core"));
+        assert_eq!(
+            runner_minutes(&[("2-core".into(), 1_240), ("4-core".into(), 6)]).as_deref(),
+            Some("1,240 runner minutes on 2-core, 6 on 4-core")
+        );
         assert_eq!(runs(1_200).as_deref(), Some("1,200 runs"));
         assert_eq!(git_and_storage(0, 0), None);
         assert_eq!(git_and_storage(12_345, 420_000_000).as_deref(), Some("12,345 git operations, 0.42 GB private"));

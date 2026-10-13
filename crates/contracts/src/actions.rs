@@ -1062,48 +1062,123 @@ pub struct StartJobArgs {
     pub brokered: bool,
 }
 
-/// A size of machine g1t runs workflow jobs on, asked for by a label in
-/// `runs-on`. Each is a Cloudflare Containers instance type (named, or a
-/// custom one: services/runner/wrangler.jsonc), every one with the 20 GB of
-/// disk Containers allow at most; it costs what that instance costs g1t,
-/// plus the margin, like any sandbox time.
+// ── The machine catalogue ─────────────────────────────────────────────────
+//
+// `INSTANCE_TYPES` is the one table of g1t's hosted machines: each row is a
+// `runs-on` label, the machine it bills as, the runner's Container class
+// that runs it, the Cloudflare Containers instance type behind that class,
+// its size, and its price a minute. Its TypeScript mirror is
+// packages/contracts/src/instances.ts, and services/runner/wrangler.jsonc
+// gives each class its instance type; tests hold the three together.
+// Adding a size, renaming a label or pointing a label at another instance
+// type is a row here and in the mirror, and a class in wrangler.jsonc
+// (CONTRIBUTING.md, "Adding a machine size").
+
+/// A label a workflow job can ask for in `runs-on`, and the machine g1t
+/// runs it on. Each machine is a named Cloudflare Containers instance type
+/// (no custom types): the standard machine is standard-3 (2 vCPU, 8 GiB,
+/// 16 GB of disk), `g1t-2core` is kept as a name of it so workflows that
+/// ask for it keep working, and `g1t-4core` is standard-4 (4 vCPU, 12 GiB,
+/// 20 GB).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InstanceType {
     /// The `runs-on` label, or `standard` for the default.
     pub label: &'static str,
-    /// The Containers instance type: a named one, or `custom` for one
-    /// sized by its vCPU, memory and disk.
+    /// The machine, as it is billed and reported: runner minutes are
+    /// counted by machine (`2-core`), so a label renamed or pointed at
+    /// another machine leaves the history where it was. Never reused for a
+    /// different machine.
+    pub machine: &'static str,
+    /// The runner's Durable Object class that runs it, one per label (a
+    /// class has one instance type and its own `max_instances`).
+    pub class: &'static str,
+    /// The named Containers instance type its class runs on.
     pub container: &'static str,
     pub vcpu: f64,
     pub memory_gib: f64,
     pub disk_gb: f64,
-    /// What a second of it costs g1t as a multiple of the standard
-    /// machine's, with its vCPUs as busy (Cloudflare's list prices:
-    /// memory $0.0000025 a GiB-second, disk $0.00000007 a GB-second, vCPU
-    /// $0.00002 a second, and the Durable Object behind it at 128 MB,
-    /// $0.0000125 a GB-second), to one decimal. Used to reserve before a
-    /// job starts, and to price a job that did not report its own CPU.
-    pub price_scale: f64,
+    /// What a minute of it is charged, in millionths of a dollar: a job is
+    /// charged its minutes, rounded up, at this rate (`runner_minutes`).
+    /// The machine's cost a minute at Cloudflare's list prices with half
+    /// its vCPUs busy, plus the 20% margin, rounded up to a tenth of a cent,
+    /// and never under its cost with every vCPU busy (Cloudflare bills
+    /// memory, disk and the Durable Object for every second, CPU as used).
+    pub micros_per_minute: i64,
+}
+
+impl InstanceType {
+    /// Its price as a multiple of the standard machine's.
+    pub fn price_scale(&self) -> f64 {
+        self.micros_per_minute as f64 / STANDARD_INSTANCE.micros_per_minute as f64
+    }
+
+    /// `2 vCPU, 8 GiB, 16 GB`.
+    pub fn size(&self) -> String {
+        format!("{} vCPU, {} GiB, {} GB", self.vcpu, self.memory_gib, self.disk_gb)
+    }
 }
 
 /// The default: what `ubuntu-latest` and every other hosted label get.
-pub const STANDARD_INSTANCE: InstanceType =
-    InstanceType { label: "standard", container: "custom", vcpu: 1.0, memory_gib: 4.0, disk_gb: 20.0, price_scale: 1.0 };
+pub const STANDARD_INSTANCE: InstanceType = InstanceType {
+    label: "standard",
+    machine: "2-core",
+    class: "AttemptSandbox",
+    container: "standard-3",
+    vcpu: 2.0,
+    memory_gib: 8.0,
+    disk_gb: 16.0,
+    micros_per_minute: 4_000,
+};
 
-/// Every machine a workflow job can ask for, the default first.
+/// Every label a workflow job can ask for, the default first.
 pub const INSTANCE_TYPES: [InstanceType; 3] = [
     STANDARD_INSTANCE,
-    InstanceType { label: "g1t-2core", container: "custom", vcpu: 2.0, memory_gib: 8.0, disk_gb: 20.0, price_scale: 1.9 },
-    InstanceType { label: "g1t-4core", container: "standard-4", vcpu: 4.0, memory_gib: 12.0, disk_gb: 20.0, price_scale: 3.4 },
+    // The standard machine under the name it had when it was larger.
+    InstanceType { label: "g1t-2core", class: "Sandbox2Core", ..STANDARD_INSTANCE },
+    InstanceType {
+        label: "g1t-4core",
+        machine: "4-core",
+        class: "Sandbox4Core",
+        container: "standard-4",
+        vcpu: 4.0,
+        memory_gib: 12.0,
+        disk_gb: 20.0,
+        micros_per_minute: 7_000,
+    },
 ];
 
-/// The machine a job's `runs-on` labels ask for: the largest named, or the
-/// standard one. Labels compare without regard to case.
+/// The machines, once each, in the catalogue's order: the first row of
+/// each.
+pub fn machines() -> Vec<InstanceType> {
+    let mut seen: Vec<InstanceType> = Vec::new();
+    for instance in INSTANCE_TYPES {
+        if !seen.iter().any(|m| m.machine == instance.machine) {
+            seen.push(instance);
+        }
+    }
+    seen
+}
+
+/// A machine by its key (`2-core`), if it is one.
+pub fn machine_named(machine: &str) -> Option<InstanceType> {
+    INSTANCE_TYPES.iter().find(|instance| instance.machine == machine).copied()
+}
+
+/// The minutes a job on g1t's machines is charged for: its time rounded up
+/// to the whole minute, so 61 seconds is 2 minutes and any job that ran is
+/// at least 1. Nothing for a job that never ran.
+pub fn runner_minutes(seconds: i64) -> i64 {
+    if seconds <= 0 { 0 } else { (seconds + 59) / 60 }
+}
+
+/// The machine a job's `runs-on` labels ask for: the dearest named (the
+/// later row when two cost the same), or the standard one. Labels compare
+/// without regard to case.
 pub fn instance_for(labels: &[String]) -> InstanceType {
     INSTANCE_TYPES
         .iter()
-        .rev()
-        .find(|instance| instance.label != STANDARD_INSTANCE.label && labels.iter().any(|label| label.trim().eq_ignore_ascii_case(instance.label)))
+        .filter(|instance| instance.label != STANDARD_INSTANCE.label && labels.iter().any(|label| label.trim().eq_ignore_ascii_case(instance.label)))
+        .max_by_key(|instance| instance.micros_per_minute)
         .copied()
         .unwrap_or(STANDARD_INSTANCE)
 }
@@ -1608,35 +1683,96 @@ mod instance_tests {
     fn runs_on_picks_the_machine() {
         assert_eq!(instance_for(&labels(&["ubuntu-latest"])), STANDARD_INSTANCE);
         assert_eq!(instance_for(&labels(&[])).label, "standard");
-        assert_eq!(instance_for(&labels(&["g1t-4core"])).container, "standard-4");
+        assert_eq!(instance_for(&labels(&["g1t-4core"])).label, "g1t-4core");
         assert_eq!(instance_for(&labels(&["ubuntu-latest", "G1T-2Core"])).label, "g1t-2core");
-        // Both named: the larger.
+        // Both named: the later one.
         assert_eq!(instance_for(&labels(&["g1t-2core", "g1t-4core"])).label, "g1t-4core");
+        assert_eq!(instance_named("g1t-2core").map(|i| i.vcpu), Some(2.0));
         assert_eq!(instance_named("g1t-4core").map(|i| i.vcpu), Some(4.0));
         assert_eq!(instance_named("standard"), Some(STANDARD_INSTANCE));
         assert_eq!(instance_named("g1t-64core"), None);
     }
 
     #[test]
-    fn every_machine_has_the_most_disk_containers_allow_and_fits_a_custom_type() {
+    fn every_machine_is_a_named_instance_type_at_its_size() {
+        // Containers' named instance types, at the sizes Cloudflare gives
+        // them; no custom types.
+        let named = |container: &str| match container {
+            "standard-3" => Some((2.0, 8.0, 16.0)),
+            "standard-4" => Some((4.0, 12.0, 20.0)),
+            _ => None,
+        };
         for instance in INSTANCE_TYPES {
-            assert_eq!(instance.disk_gb, 20.0, "{}", instance.label);
-            // Custom instance types: 1 to 4 vCPU, at most 12 GiB, at least
-            // 3 GiB a vCPU.
-            assert!((1.0..=4.0).contains(&instance.vcpu), "{}", instance.label);
-            assert!(instance.memory_gib <= 12.0 && instance.memory_gib >= 3.0 * instance.vcpu, "{}", instance.label);
+            assert_eq!(named(instance.container), Some((instance.vcpu, instance.memory_gib, instance.disk_gb)), "{}", instance.label);
+        }
+        // g1t-2core is a name of the standard machine, in a class of its own.
+        let two = instance_named("g1t-2core").unwrap();
+        assert_eq!(InstanceType { label: "standard", class: "AttemptSandbox", ..two }, STANDARD_INSTANCE);
+    }
+
+    #[test]
+    fn the_catalogue_is_one_row_a_label_and_one_size_a_machine() {
+        let mut labels: Vec<_> = INSTANCE_TYPES.iter().map(|i| i.label).collect();
+        let mut classes: Vec<_> = INSTANCE_TYPES.iter().map(|i| i.class).collect();
+        labels.sort_unstable();
+        labels.dedup();
+        classes.sort_unstable();
+        classes.dedup();
+        assert_eq!((labels.len(), classes.len()), (INSTANCE_TYPES.len(), INSTANCE_TYPES.len()));
+        // Every row of a machine says the same size and price as its first.
+        for instance in INSTANCE_TYPES {
+            let first = machine_named(instance.machine).unwrap();
+            assert_eq!(
+                (instance.container, instance.vcpu, instance.memory_gib, instance.disk_gb, instance.micros_per_minute),
+                (first.container, first.vcpu, first.memory_gib, first.disk_gb, first.micros_per_minute),
+                "{}",
+                instance.label
+            );
+        }
+        assert_eq!(machines().iter().map(|m| m.machine).collect::<Vec<_>>(), ["2-core", "4-core"]);
+        assert_eq!(STANDARD_INSTANCE.size(), "2 vCPU, 8 GiB, 16 GB");
+        assert!((INSTANCE_TYPES[2].price_scale() - 1.75).abs() < 1e-12);
+    }
+
+    #[test]
+    fn rates_cover_the_machine_at_full_cpu_and_its_usual_cost_plus_the_margin() {
+        // Memory, disk and the Durable Object behind the container (128 MB)
+        // for every second, and vCPU as used, at Cloudflare's list prices,
+        // in micros a minute.
+        let per_minute = |i: &InstanceType, busy_vcpus: f64| 60.0 * (i.memory_gib * 2.5 + i.disk_gb * 0.07 + 0.125 * 12.5 + busy_vcpus * 20.0);
+        let tenth_of_a_cent = |micros: f64| ((micros / 1_000.0).ceil() * 1_000.0) as i64;
+        for instance in machines() {
+            let usual = per_minute(&instance, instance.vcpu / 2.0) * 1.2;
+            let full = per_minute(&instance, instance.vcpu);
+            assert_eq!(instance.micros_per_minute, tenth_of_a_cent(usual).max(tenth_of_a_cent(full)), "{}: {usual} {full}", instance.machine);
+            assert!(instance.micros_per_minute as f64 >= full, "{}", instance.machine);
+        }
+        assert_eq!(STANDARD_INSTANCE.micros_per_minute, 4_000);
+        assert_eq!(machine_named("4-core").map(|m| m.micros_per_minute), Some(7_000));
+    }
+
+    #[test]
+    fn the_typescript_mirror_has_every_row() {
+        let mirror = include_str!("../../../packages/contracts/src/instances.ts");
+        let rows = mirror.lines().filter(|line| line.trim_start().starts_with("{ label: ")).count();
+        assert_eq!(rows, INSTANCE_TYPES.len());
+        for i in INSTANCE_TYPES {
+            let row = format!(
+                r#"{{ label: "{}", machine: "{}", sandboxClass: "{}", container: "{}", vcpu: {}, memoryGib: {}, diskGb: {}, microsPerMinute: {} }}"#,
+                i.label, i.machine, i.class, i.container, i.vcpu, i.memory_gib, i.disk_gb, i.micros_per_minute
+            );
+            assert!(mirror.contains(&row), "instances.ts has no row\n{row}");
         }
     }
 
     #[test]
-    fn price_scales_follow_the_list_prices_with_every_vcpu_busy() {
-        // Memory, disk and vCPU at Cloudflare's list prices, and the
-        // Durable Object behind the container (128 MB), in micros a second.
-        let busy = |i: &InstanceType| i.memory_gib * 2.5 + i.disk_gb * 0.07 + i.vcpu * 20.0 + 0.125 * 12.5;
-        for instance in INSTANCE_TYPES {
-            let scale = busy(&instance) / busy(&STANDARD_INSTANCE);
-            assert!((instance.price_scale - (scale * 10.0).round() / 10.0).abs() < 1e-9, "{}: {scale}", instance.label);
-        }
+    fn a_job_is_charged_its_minutes_rounded_up() {
+        assert_eq!(runner_minutes(0), 0);
+        assert_eq!(runner_minutes(-5), 0);
+        assert_eq!(runner_minutes(1), 1);
+        assert_eq!(runner_minutes(60), 1);
+        assert_eq!(runner_minutes(61), 2);
+        assert_eq!(runner_minutes(3_600), 60);
     }
 
     #[test]

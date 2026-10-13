@@ -35,8 +35,11 @@ pub(crate) const MAX_DAYS: u64 = 400;
 const DAY_MS: u64 = 86_400_000;
 
 /// Which meter a ledger line is on. One SQL expression, so every query
-/// agrees with `METERS`.
+/// agrees with `meters()`. Runner minutes are by machine (`runner_2-core`,
+/// one meter for each machine in the catalogue); sandbox lines from before
+/// minutes have no machine and stay sandbox time, in seconds.
 pub(crate) const METER_KEY_SQL: &str = "CASE
+    WHEN task = 'sandbox' AND machine IS NOT NULL THEN 'runner_' || machine
     WHEN task = 'sandbox' THEN 'sandbox'
     WHEN task = 'self_hosted' THEN 'self_hosted'
     WHEN task = 'deployments' AND reference LIKE 'deploy/%' THEN 'builds'
@@ -50,8 +53,28 @@ pub(crate) const METER_KEY_SQL: &str = "CASE
     WHEN task = 'context' THEN 'context'
     ELSE 'other' END";
 
-/// Every meter: key, name, product family and the unit of its quantity.
+/// A meter: key, name, product family and the unit of its quantity.
+pub(crate) type Meter = (String, String, &'static str, &'static str);
+
+/// The runner-minutes meter of a machine (`runner_2-core`).
+pub(crate) fn runner_meter(machine: &str) -> String {
+    format!("runner_{machine}")
+}
+
+/// Every meter: runner minutes for each machine in the catalogue, then
+/// `METERS`.
+pub(crate) fn meters() -> Vec<Meter> {
+    g1t_contracts::actions::machines()
+        .into_iter()
+        .map(|m| (runner_meter(m.machine), format!("Runner minutes, {} ({})", m.machine, m.size()), "sandboxes", "minutes"))
+        .chain(METERS.iter().map(|(key, label, product, unit)| ((*key).to_owned(), (*label).to_owned(), *product, *unit)))
+        .collect()
+}
+
+/// Every meter but the runners': key, name, product family and the unit
+/// of its quantity.
 pub(crate) const METERS: [(&str, &str, &str, &str); 12] = [
+    // Sandbox lines from before runner minutes, by the second.
     ("sandbox", "Sandbox time", "sandboxes", "seconds"),
     ("self_hosted", "Self-hosted runner time", "sandboxes", "seconds"),
     ("builds", "Builds", "deployments", "entries"),
@@ -156,13 +179,14 @@ pub(crate) fn shape(
     let wanted_product = |product: &str| products.is_empty() || products.iter().any(|p| p == product);
     let wanted_project = |project: &str| projects.is_empty() || projects.iter().any(|p| p == project);
     let index: BTreeMap<&str, usize> = days.iter().enumerate().map(|(i, d)| (d.as_str(), i)).collect();
-    let product_of = |meter: &str| METERS.iter().find(|m| m.0 == meter).map_or(OTHER, |m| m.2);
+    let all_meters = meters();
+    let product_of = |meter: &str| all_meters.iter().find(|m| m.0 == meter).map_or(OTHER, |m| m.2);
     let mut all_projects = BTreeSet::new();
-    let mut lines: Vec<MeterLine> = METERS
+    let mut lines: Vec<MeterLine> = all_meters
         .iter()
         .map(|(key, label, product, unit)| MeterLine {
-            key: (*key).to_owned(),
-            label: (*label).to_owned(),
+            key: key.clone(),
+            label: label.clone(),
             product: (*product).to_owned(),
             unit: (*unit).to_owned(),
             quantity: 0.0,
@@ -186,7 +210,7 @@ pub(crate) fn shape(
             continue;
         }
         // A meter this page does not know is Other's: never dropped.
-        let meter = if METERS.iter().any(|m| m.0 == cell.meter) { cell.meter.as_str() } else { "other" };
+        let meter = if all_meters.iter().any(|m| m.0 == cell.meter) { cell.meter.as_str() } else { "other" };
         let Some(line) = lines.iter_mut().find(|l| l.key == meter) else { continue };
         let price = cell.price.unwrap_or(0.0).round() as i64;
         line.micros += price;
@@ -235,7 +259,7 @@ pub(crate) fn shape(
     let products_out = PRODUCTS
         .iter()
         .copied()
-        .filter(|(key, _)| METERS.iter().any(|m| m.2 == *key))
+        .filter(|(key, _)| all_meters.iter().any(|m| m.2 == *key))
         .chain(other_used.then_some((OTHER, "Other")))
         .filter(|(key, _)| wanted_product(key))
         .map(|(key, label)| {
@@ -421,6 +445,30 @@ mod tests {
         assert_eq!(totals.included_micros, 1_000_000);
         assert_eq!(by_day.iter().filter(|d| d.product == "deployments").map(|d| d.micros).sum::<i64>(), 3_000_000);
         assert_eq!(projects, ["acme/api", "acme/web"]);
+    }
+
+    #[test]
+    fn runner_minutes_are_by_machine_beside_older_sandbox_time() {
+        let days = days_between("2026-10-01", "2026-10-01").unwrap();
+        let minutes = |meter: &str, quantity: f64, price: f64| Cell { quantity: Some(quantity), ..cell("2026-10-01", meter, "acme/web", price) };
+        let cells = vec![
+            minutes("runner_2-core", 12.0, 48_000.0),
+            minutes("runner_4-core", 3.0, 21_000.0),
+            // A line from before minutes: seconds of sandbox time.
+            minutes("sandbox", 90.0, 1_000.0),
+            // A machine since taken out of the catalogue: kept, under Other.
+            minutes("runner_1-core", 5.0, 5_000.0),
+        ];
+        let (products, _, totals, _) = shape(&days, &cells, &[], &[], &[]);
+        let sandboxes = &products[0];
+        let line = |key: &str| sandboxes.meters.iter().find(|m| m.key == key).unwrap();
+        let two = line("runner_2-core");
+        assert_eq!((two.label.as_str(), two.unit.as_str(), two.quantity, two.micros), ("Runner minutes, 2-core (2 vCPU, 8 GiB, 16 GB)", "minutes", 12.0, 48_000));
+        assert_eq!((line("runner_4-core").quantity, line("runner_4-core").micros), (3.0, 21_000));
+        assert_eq!((line("sandbox").unit.as_str(), line("sandbox").quantity), ("seconds", 90.0));
+        assert_eq!(products.last().unwrap().micros, 5_000);
+        assert_eq!(totals.price_micros, 75_000);
+        assert!(METER_KEY_SQL.contains("'runner_' || machine"));
     }
 
     #[test]

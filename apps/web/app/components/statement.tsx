@@ -200,6 +200,7 @@ export function StatementView({
                       month={statement.month}
                       kind={line.kind}
                       count={line.count}
+                      minutes={line.minutes ?? null}
                       chargedMicros={atPrice && line.chargedMicros >= 0 ? (line.priceMicros ?? line.chargedMicros) : line.chargedMicros}
                       coveredMicros={line.coveredMicros ?? 0}
                       day={group === "day" ? g.key : null}
@@ -229,6 +230,7 @@ function StatementLineRow({
   month,
   kind,
   count,
+  minutes,
   chargedMicros,
   coveredMicros,
   day,
@@ -238,6 +240,8 @@ function StatementLineRow({
   month: string;
   kind: string;
   count: number;
+  /** Runner minutes on the line, as charged. */
+  minutes: number | null;
   chargedMicros: number;
   coveredMicros: number;
   day: string | null;
@@ -288,6 +292,7 @@ function StatementLineRow({
         <ChevronRight size={14} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
         <span className="grow truncate font-medium">{kind}</span>
         <span className="shrink-0 text-xs text-faint tabular-nums">
+          {minutes !== null && `${minutes.toLocaleString("en-US")} ${minutes === 1 ? "minute" : "minutes"} · `}
           {count.toLocaleString("en-US")} {count === 1 ? "entry" : "entries"}
           {coveredMicros > 0 && ` · ${charge(coveredMicros)} paid for`}
         </span>

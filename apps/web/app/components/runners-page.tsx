@@ -183,7 +183,7 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
             </div>
           }
         >
-          <Figure label="This month" hint="Sandbox time on your usage, at price, from the first of the month.">
+          <Figure label="This month" hint="Runner minutes on your usage, at price, from the first of the month. Each job's time is rounded up to the minute.">
             {cost ? (
               <>
                 {machineTime(cost.cloudSeconds)} · {money(cost.cloudMicros)}
@@ -192,22 +192,15 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
               <Unknown what="Billing" />
             )}
           </Figure>
-          {data.prices ? (
-            <Figure label="Price" hint={`From g1t's price book: ${data.prices.map((price) => price.title).join("; ")}.`}>
-              <span className="flex flex-wrap justify-end gap-x-1">
-                {data.prices.map((price, at) => (
-                  <span key={price.meter} className="whitespace-nowrap">
-                    {at > 0 && "+ "}
-                    {perMinute(price.perMinuteMicros)}/{price.unit}
-                  </span>
-                ))}
-              </span>
-            </Figure>
-          ) : (
-            <Figure label="Price">
-              <Unknown what="Billing" />
-            </Figure>
-          )}
+          <Figure label="Price" hint={`A minute of each machine: ${data.prices.map((price) => price.title).join("; ")}.`}>
+            <span className="flex flex-wrap justify-end gap-x-2">
+              {data.prices.map((price) => (
+                <span key={price.machine} className="whitespace-nowrap">
+                  {price.machine} {perMinute(price.perMinuteMicros)}/min
+                </span>
+              ))}
+            </span>
+          </Figure>
         </PlaceCard>
 
         <PlaceCard

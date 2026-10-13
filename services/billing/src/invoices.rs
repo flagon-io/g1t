@@ -204,6 +204,7 @@ impl Billing {
             .db
             .prepare(
                 "SELECT CASE
+                          WHEN task = 'sandbox' AND machine IS NOT NULL THEN 'Runner minutes, ' || machine
                           WHEN task = 'sandbox' THEN 'Sandbox time'
                           WHEN task = 'self_hosted' THEN 'Self-hosted runner time'
                           WHEN task = 'deployments' THEN 'Deployments: builds and usage past the plan'

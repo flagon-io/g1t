@@ -58,6 +58,8 @@ test("the money axis has clean ticks, never the same label twice", () => {
 test("quantities read in their units", () => {
   assert.equal(quantity(1_234_567, "tokens"), "1.2M tokens");
   assert.equal(quantity(3_725, "seconds"), "1h 2m");
+  assert.equal(quantity(1, "minutes"), "1 minute");
+  assert.equal(quantity(1_240, "minutes"), "1,240 minutes");
   assert.equal(quantity(504_000_000, "bytes"), "504 MB");
   assert.equal(quantity(1, "entries"), "1 entry");
 });

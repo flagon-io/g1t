@@ -98,7 +98,8 @@ excludes tax ([Tax](#tax)), and paid by card it carries Stripe's
 on $20.
 
 - **$10 of usage each month**, used first: everything g1t runs, at cost
-  plus 20%.
+  plus 20%. That is 2,500 runner minutes on the standard machine, or
+  about 1,428 on `g1t-4core`.
 - **Everyone in the workspace** at one price, never per person.
 - **Unlimited** projects, previews and repositories.
 - Workflows, the merge queue,
@@ -118,7 +119,7 @@ operations that every workspace has), and only your spend limit stops
 work.
 
 **Included usage** pays for the month's usage first, at the same prices as
-everything else: sandbox time, builds, app traffic, custom domains,
+everything else: runner minutes, builds, app traffic, custom domains,
 storage, git operations, search embeddings and security scans. Past it,
 usage is charged at the same prices. It starts again on the 1st of each
 month (UTC). **Unused included usage does not roll over.** Billing shows
@@ -128,9 +129,12 @@ how much of it this month's usage has drawn.
 
 Pricing has two rules:
 
-1. **Everything g1t runs at cost plus 20%.** Sandboxes, builds,
-   hosting, storage, git operations, search and security scans: what g1t
-   pays for them, plus 20%.
+1. **Everything g1t runs at cost plus 20%.** Builds, hosting, storage,
+   git operations, search and security scans: what g1t pays for them,
+   plus 20%. [Runner minutes](#runner-minutes) are a fixed rate for each
+   machine, set the same way: what a minute of it costs g1t with half its
+   vCPUs busy, plus 20%, rounded up to a tenth of a cent, and never under
+   its cost with every vCPU busy.
 2. **Your own runners are free.** Jobs on your
    [own runners](/guides/self-hosted-runners/) cost nothing here.
 
@@ -139,9 +143,9 @@ There are no seats. The live figures are on
 
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
-| Sandbox time (workflows, checks, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
-| [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 1.9 and 3.4 times a sandbox second | Cost + 20% |
-| Deploy builds | Second | About $0.001 a minute | About $0.0012 a minute |
+| [Runner minutes](#runner-minutes) on the standard machine (2 vCPU, 8 GiB, 16 GB): workflow jobs, checks, the merge queue | Minute, each job rounded up | From $0.0014 a minute idle to $0.0038 with both vCPUs busy | $0.004 a minute |
+| [Runner minutes](#runner-minutes) on `g1t-4core` (4 vCPU, 12 GiB, 20 GB) | Minute, each job rounded up | From $0.0020 a minute idle to $0.0068 with all four vCPUs busy | $0.007 a minute |
+| Deploy builds | Second | About $0.0015 a minute | About $0.0018 a minute |
 | App requests | Million | $0.30 | $0.36 |
 | App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
 | Custom domains | Domain-month | $0.10 | $0.12 |
@@ -154,8 +158,9 @@ There are no seats. The live figures are on
 | Security scans | Million CPU ms / million rows | $0.02 / $1.00 | $0.024 / $1.20 |
 | Projects, previews, apps and repositories | | Next to nothing | Not charged |
 
-Sandbox and build seconds follow what Cloudflare bills g1t, so the
-figures above move a little; the pricing page always has today's.
+Build seconds follow what Cloudflare bills g1t, so that figure moves a
+little; the pricing page always has today's. Runner minutes are fixed
+rates.
 Actions cache storage is charged at R2's published price, and is not on
 the pricing page yet.
 
@@ -228,8 +233,8 @@ The card check unlocks:
 ## The trial
 
 Once its card is checked, a workspace gets **$5 of trial credit**, once. It
-pays for usage at cost plus 20%: sandbox time, workflows,
-the merge queue and semantic search. It never pays for deployments.
+pays for usage at cost plus 20%: runner minutes for checks, workflows
+and the merge queue (1,250 on the standard machine), and semantic search. It never pays for deployments.
 
 - Each card gets one trial, whichever workspace it is checked in. Prepaid
   cards start none.
@@ -246,8 +251,9 @@ by g1t**. When the trial is used up, new compute waits for the plan.
 ## The open-source pool
 
 g1t sets aside **$25 a month** for public repositories, at most **$2 a
-month** for any one repository. It pays for **checks, workflows and the
-merge queue on public repositories**, after a card check. It does not pay
+month** for any one repository: 6,250 and 500 runner minutes on the
+standard machine. It pays for **checks, workflows and the merge queue on
+public repositories**, after a card check. It does not pay
 for deployments, storage or embeddings.
 
 When the pool or the repository's share is spent, those runs wait for the
@@ -259,8 +265,8 @@ pool**.
 
 | | Charged |
 | --- | --- |
-| The [merge queue](/guides/merge-queue/) | [Sandbox time](#sandbox-time) |
-| [Workflow](/guides/actions/) jobs | [Sandbox time](#sandbox-time), more on a [larger machine](#workflow-jobs-on-larger-machines) |
+| Checks and the [merge queue](/guides/merge-queue/) | [Runner minutes](#runner-minutes) |
+| [Workflow](/guides/actions/) jobs | [Runner minutes](#runner-minutes), at the rate of the machine each ran on |
 | [Actions cache](#actions-cache) | What it holds, on the plan only |
 | [Deployments](/guides/deployments/) | Builds, requests, CPU time, custom domains and container time, from the first. Projects and previews are not charged. |
 | [Private repository storage](#storage-search-embeddings-and-scans) | Past the free 1 GB, on the plan only |
@@ -293,7 +299,7 @@ billing charges from.
 
 | Meter | Unit |
 | --- | --- |
-| Sandbox time | Per second: memory, disk and the Durable Object behind each container, plus CPU |
+| Runner minutes | Per minute, each job rounded up, at a fixed rate for each machine |
 | Deploy builds | Per second |
 | App requests and CPU | Per million requests, per million CPU milliseconds |
 | Custom domains | Per domain-month |
@@ -327,6 +333,10 @@ matches its cost is found and corrected.
   days later, and for something charged once a month (git operations,
   storage, the actions cache, custom domains, embeddings, scans) at the
   start of the month after that, so no month is charged at two prices.
+- **A new machine** is priced at what it costs from its first minute, so
+  g1t never charges less than it pays. When the standard machine became
+  [2 vCPU, 8 GiB and 16 GB](#runner-minutes), its runner minutes and
+  deploy builds were priced for it at once.
 - **Nothing already charged changes.** Each charge records the price it
   was made at.
 
@@ -334,42 +344,54 @@ Some of the Cloudflare products g1t pays for are in beta and do not yet
 define exactly what they bill; see
 [What g1t can't do yet](/about/limitations/#billing).
 
-### Sandbox time
+### Runner minutes
 
-Every sandbox g1t starts runs on Cloudflare Containers, and Cloudflare
-charges g1t for every second of it. So each one is metered by the second,
-from start to stop, whatever it was for: checks, the merge queue and
-workflow jobs.
-There are no free minutes.
+Every job g1t runs on its own machines (a workflow job, a check, a merge
+queue run) is charged by the minute, at a fixed rate for the machine it
+ran on:
 
-A sandbox second is priced in two parts: memory, disk and the Durable
-Object behind the container, for every second; and CPU, for the vCPU it
-used. A sandbox that reports its own CPU use is priced on it. One
-that does not is priced at the average CPU sandboxes use.
+| `runs-on` | Machine | vCPUs | Memory | Disk | A minute |
+| --- | --- | --- | --- | --- | --- |
+| `ubuntu-latest`, any other Linux label, or `g1t-2core` | Standard (`2-core`) | 2 | 8 GiB | 16 GB | $0.004 |
+| `g1t-4core` | `4-core` | 4 | 12 GiB | 20 GB | $0.007 |
 
-Each sandbox is one line on the [statement](#the-statement), such as
-*Checks on acme/api#12: 3m 12s of sandbox time*. Deploy builds are not
-counted here: [Deployments](/guides/deployments/) charges them by the
-second, from the first, under **Builds**.
+Checks and the merge queue run on the standard machine. `g1t-2core` is
+kept as a name of the standard machine, so workflows that ask for it keep
+working, at its rate.
 
-### Workflow jobs on larger machines
+**How a job's minutes are counted.** Each job's time, from when its
+machine starts to when it stops, is rounded up to the whole minute: a
+job of 61 seconds is 2 minutes, and any job that ran is at least 1. Each
+job is rounded on its own, so a run of three 20-second jobs is 3
+minutes. There are no free minutes outside the plan's
+[included usage](#the-g1t-plan), the [trial](#the-trial) and the
+[open-source pool](#the-open-source-pool), which pay for minutes at these
+rates.
 
-A workflow job whose `runs-on` names a [larger machine](/guides/actions/#machine-sizes)
-runs on a larger Cloudflare Containers instance, and its seconds cost what
-that instance costs g1t, plus 20%. The standard machine they are compared
-with has 1 vCPU, 4 GiB and 20 GB:
+**Why these rates.** Cloudflare bills g1t for a machine's memory and disk,
+and the Durable Object behind it, for every second it runs, busy or idle,
+and for its CPU as it is used. Each rate is what a minute of the machine
+costs g1t with half its vCPUs busy, plus 20%, rounded up to a tenth of a
+cent, and never under what it costs with every vCPU busy:
 
-| `runs-on` | Instance | Its memory and disk, against the standard machine's | A second with its vCPUs as busy as an average sandbox's |
-| --- | --- | --- | --- |
-| `g1t-2core` | 2 vCPU, 8 GiB, 20 GB | 1.8 times | About 1.9 times a sandbox second |
-| `g1t-4core` | 4 vCPU, 12 GiB, 20 GB | 2.5 times | About 3.4 times a sandbox second |
+| Machine | Costs g1t a minute, idle | With half its vCPUs busy | With every vCPU busy | A minute |
+| --- | --- | --- | --- | --- |
+| Standard (`2-core`) | $0.0014 | $0.0026 | $0.0038 | $0.004 |
+| `4-core` | $0.0020 | $0.0044 | $0.0068 | $0.007 |
 
-A job that reports its own CPU is priced on it: its memory and disk for
-every second, and the vCPU-seconds it used. One that does not is priced
-at the right-hand column. Its line on the statement names the machine,
-such as *A workflow job in acme/api on g1t-4core: 6m 40s of sandbox
-time*. A job usually finishes several times sooner on a larger machine,
-so it often costs about the same.
+Should a job ever cost g1t more than its minutes at the rate, it is
+charged that cost instead. A build that compiles often finishes several
+times sooner on `g1t-4core`, so it can cost about the same.
+
+Each job is one line on the [statement](#the-statement), naming its
+machine and minutes, such as *A workflow job in acme/api on g1t-4core:
+6m 40s, 7 minutes on the 4-core machine*. Usage, the statement and the API
+total them as **Runner minutes, 2-core** and **Runner minutes, 4-core**;
+months before runner minutes show **Sandbox time**, by the second.
+Deploy builds are not counted here: [Deployments](/guides/deployments/)
+charges them by the second, from the first, under **Builds**. Jobs on
+[your own runners](/guides/self-hosted-runners/) are free: they show as
+**Self-hosted runner time** at $0.
 
 ## Git operations
 
@@ -867,7 +889,8 @@ Then:
   **Monthly**), stacked by product, with **Cumulative** to add them up.
   Hover or focus a column for each product's part; **Show as a table** has
   every number.
-- **The breakdown**: each product family with its meters (sandbox time;
+- **The breakdown**: each product family with its meters (runner minutes
+  for each machine;
   builds; git operations and private storage with what is free; and so
   on), each with a trend line, how much was used and its charge at price.
   Open a meter for its projects.
@@ -890,7 +913,8 @@ time. Every member can see it.
 
   | Line | What it holds |
   | --- | --- |
-  | Sandbox time | Each sandbox's time. |
+  | Runner minutes, 2-core and Runner minutes, 4-core | Each job on g1t's machines, with the minutes charged on that machine. |
+  | Sandbox time | Each sandbox's time, in months before runner minutes. |
   | Self-hosted runner time | Each job on your own runners, at $0. |
   | Deployments | Builds as they finish; each month's requests, CPU time, custom domains and container time when it closes. |
   | Private storage | Storage past the free 1 GB, once a month. |

@@ -192,6 +192,8 @@ export function quantity(amount: number, unit: string): string {
       const m = Math.floor((s % 3600) / 60);
       return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
     }
+    case "minutes":
+      return `${compact(amount)} ${Math.round(amount) === 1 ? "minute" : "minutes"}`;
     case "bytes":
       return bytes(amount);
     case "operations":

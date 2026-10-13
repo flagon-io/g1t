@@ -220,6 +220,47 @@ whether it saved. `sccache's hits and misses` is on each Rust job's summary.
 `g1t cache usage` says what the repository's entries hold against its
 10 GiB, and `g1t cache list --sort size-in-bytes` which take the most.
 
+## Adding a machine size
+
+g1t's hosted machines are one catalogue: `INSTANCE_TYPES` in
+`crates/contracts/src/actions.rs`, mirrored row for row in
+`packages/contracts/src/instances.ts`. Each row is a `runs-on` label, the
+machine it bills as (`machine`, such as `2-core`), the runner's Durable
+Object class that runs it (`class` / `sandboxClass`), the Cloudflare
+Containers instance type behind that class (`container`), its vCPUs,
+memory and disk, and its price a minute (`micros_per_minute`). The runner
+starts a job in its label's class, billing charges its minutes at its
+rate and reports them by machine, and the docs' tables follow it.
+
+- **A new label for an existing machine** (another name for the standard
+  one, say): a row with the new label and class and the machine's
+  `machine`, size and rate; the class and its binding below.
+- **A new size**: a row with a new `machine` key and its rate. The rate is
+  what a minute costs at Cloudflare's list prices with half the vCPUs
+  busy, plus 20%, rounded up to a tenth of a cent, and never under its
+  cost with every vCPU busy; `rates_cover_the_machine_at_full_cpu_and_its_usual_cost_plus_the_margin`
+  checks it.
+- **Pointing a label at another instance type**: change its `container`
+  and size (and `machine`, if it is a different machine now), and the
+  class's `instance_type` in `services/runner/wrangler.jsonc`. A custom
+  instance type works the same way, once the account may use them: add its
+  size to the runner test's table of instance types.
+- **Renaming a label**: change `label`; keep `machine`, so its minutes stay
+  on the same line of everyone's usage.
+
+Never reuse a `machine` key for a different machine: past usage is
+reported under it. For a new class, add it to `services/runner/wrangler.jsonc`
+(`containers`, a `durable_objects` binding and a migration tag with
+`new_sqlite_classes`), export it from `services/runner/src/index.ts`
+(`export class SandboxXCore extends AttemptSandbox {}`), and give it a
+binding in `SANDBOX_BINDINGS` (`services/runner/src/egress.ts`). The tests
+that hold all of this together are `cargo test -p g1t-contracts instance`
+(the table, its rates and its TypeScript mirror) and the runner's
+`npm test` (every class in wrangler.jsonc, its instance type, size and
+binding against the catalogue). Then update the machine tables in
+`guides/actions.md`, `guides/usage-and-billing.md` and
+`architecture/compute.mdx`.
+
 ## Speed
 
 Pages are a few rounds of service calls, and each round costs a trip to

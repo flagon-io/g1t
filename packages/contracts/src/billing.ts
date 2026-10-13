@@ -471,6 +471,8 @@ export type Statement = {
       discountMicros?: number;
       /** On `Tax` and `Card processing fees` lines: what was paid with payments on top of what reached the balance. Never charged. */
       passedMicros?: number;
+      /** On a `Runner minutes, <machine>` line: the minutes charged, each job's time rounded up to the minute. */
+      minutes?: number;
     }[];
     chargedMicros: number;
     priceMicros?: number;
