@@ -137,6 +137,30 @@ function useG1tConversation(slug: string, open: boolean) {
     setMessages((now) => applyLive(now, event, channelId) as Shown[]);
   }, [channelId]);
 
+  // Read up to the newest message while the panel is open and in view, as
+  // the conversation in Chat does: it is the same direct message, so what
+  // was read here is not left unread there.
+  const lastRead = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open || !channelId) return;
+    const markRead = () => {
+      if (document.visibilityState !== "visible") return;
+      const newest = [...messages].reverse().find((m) => !m.pending);
+      if (!newest || newest.id === lastRead.current) return;
+      lastRead.current = newest.id;
+      void chatApi(slug, { intent: "read", channel_id: channelId, id: newest.id });
+      window.dispatchEvent(new CustomEvent("g1t:chat-read", { detail: channelId }));
+    };
+    const timer = setTimeout(markRead, 400);
+    document.addEventListener("visibilitychange", markRead);
+    window.addEventListener("focus", markRead);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", markRead);
+      window.removeEventListener("focus", markRead);
+    };
+  }, [open, channelId, messages, slug]);
+
   const ask = useCallback(
     async (text: string, pathname: string) => {
       const body = text.trim();
