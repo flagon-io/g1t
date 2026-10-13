@@ -29,6 +29,7 @@ import {
   STANDARD_INSTANCE,
   instanceNamed,
   priceScale,
+  runnerMinutes,
 } from "@g1t/contracts";
 
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
@@ -897,12 +898,16 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     const route = selfHosted && (kind === "check" || kind === "queue") ? await selfHostedRoute(this.env.ACTIONS, repo) : null;
     if (route) return { ok: true, held: null, limits: limitsOf(ent), route };
     const [standardMicros, isPublic] = await Promise.all([compute.microsPerSecond(), this.isPublic(repo)]);
-    // A larger machine is reserved for at what it costs with every vCPU busy.
+    // Reserved for its time limit at the larger of what it may cost (the
+    // sandbox price, scaled to its machine) and its minutes at the
+    // machine's rate, which is what it is charged.
+    const limit = estimateMinutes(minutes, ent);
     const microsPerSecond = standardMicros * priceScale(instance);
-    const admission = await compute.admit(
-      { workspace, repo, public: isPublic, kind, estimateMicros: sandboxEstimateMicros(estimateMinutes(minutes, ent), microsPerSecond) },
-      ent,
+    const estimateMicros = Math.max(
+      sandboxEstimateMicros(limit, microsPerSecond),
+      runnerMinutes(limit * 60) * instance.microsPerMinute,
     );
+    const admission = await compute.admit({ workspace, repo, public: isPublic, kind, estimateMicros }, ent);
     if (!admission.ok) return { ok: false, code: admission.code, message: admission.message };
     return {
       ok: true,
