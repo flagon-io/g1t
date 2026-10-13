@@ -296,11 +296,9 @@ export class AttemptSandbox extends Container<RunnerEnv> {
   interceptHttps = true;
   static {
     // Assigned, not declared: a class field would hide the setter that
-    // registers the handler with the containers library. `ABUSE_HOST`,
-    // named up front, is the only host intercepted on its own, so every
-    // other request goes straight out.
+    // registers the handler with the containers library. Which one a
+    // sandbox uses is chosen as it starts (`run`).
     AttemptSandbox.outboundHandlers = { egress, abuse };
-    AttemptSandbox.outboundByHost = { [ABUSE_HOST]: abuse };
   }
 
   async run(request: RunRequest): Promise<void> {
@@ -364,19 +362,23 @@ export class AttemptSandbox extends Container<RunnerEnv> {
         }
         return;
       }
-      // Every sandbox reaches the internet. Its requests go straight out,
-      // and only `ABUSE_HOST` is intercepted (`outboundByHost`), unless
-      // it is a workflow job that may be given brokered secrets: then its
-      // HTTP and HTTPS pass `egress`, which fills them in from the job's
-      // stand-ins (asked for with the job's token) and sends every
-      // request on, to any host. Other protocols go straight out.
-      // Cloudflare Containers intercept either the hosts a class names
-      // up front or, once a handler is chosen at run time, everything, so
-      // the hosts of one job's secrets cannot be singled out.
+      // Every sandbox reaches the internet. A workflow job that may be
+      // given brokered secrets sends its HTTP and HTTPS through `egress`,
+      // which fills them in from the job's stand-ins (asked for with the
+      // job's token) and sends every request on, to any host; any other
+      // sandbox has only `ABUSE_HOST` intercepted, so it can report that it
+      // stopped itself for mining. Both are chosen here, as it starts: hosts
+      // named on the class up front (`outboundByHost` in a static block)
+      // left sandboxes that never picked up their jobs (rolled back
+      // 2026-10-13).
       const brokering = run.kind === "actions" && throughWorker(build, this.env.EGRESS);
       this.enableInternet = true;
       if (brokering && run.kind === "actions") {
         await this.setOutboundHandler("egress", { job: { id: run.jobId, token: run.token } });
+      } else if (this.env.EGRESS?.trim().toLowerCase() !== "off") {
+        await this.setOutboundByHost(ABUSE_HOST, "abuse").catch((error: unknown) =>
+          console.log("abuse reports not routed", String(error)),
+        );
       }
       const harness = guard && !build ? harnessEnv(guard, vars) : {};
       // Its HTTPS is re-signed as it passes the Worker, so it trusts that
@@ -765,13 +767,11 @@ function notAdmitted(admitted: Exclude<Admitted, Granted>): Result<never> {
 export class Sandbox2Core extends AttemptSandbox {
   static {
     Sandbox2Core.outboundHandlers = { egress, abuse };
-    Sandbox2Core.outboundByHost = { [ABUSE_HOST]: abuse };
   }
 }
 export class Sandbox4Core extends AttemptSandbox {
   static {
     Sandbox4Core.outboundHandlers = { egress, abuse };
-    Sandbox4Core.outboundByHost = { [ABUSE_HOST]: abuse };
   }
 }
 
