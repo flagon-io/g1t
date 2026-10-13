@@ -655,9 +655,12 @@ pub(crate) struct Detected {
     /// For a container: its Dockerfile, or the one g1t writes.
     pub container: Option<ContainerBuild>,
     /// What it would be served as without its Dockerfile, when it is a
-    /// container only for having one: built so while g1t.page runs no
-    /// containers (`not_enabled` from the registry step).
+    /// container only for having one: built so where Docker deployments
+    /// are switched off (`not_enabled` from the registry step).
     fallback: Option<Box<Detected>>,
+    /// Why it is built as this and not as the other thing it could be (a
+    /// site beside a Dockerfile), for the build's log.
+    pub reason: Option<String>,
 }
 
 /// How a container is built.
@@ -685,6 +688,7 @@ impl Detected {
             pre_build: None,
             container: None,
             fallback: None,
+            reason: None,
         }
     }
 
@@ -733,6 +737,7 @@ fn as_container(dir: &Path, framework: Option<Framework>, own: Option<String>) -
         pre_build: None,
         container: Some(build),
         fallback: None,
+        reason: None,
     })
 }
 
@@ -747,13 +752,18 @@ pub(crate) fn detect(dir: &Path, custom_build: Option<&str>, chosen_output: Opti
 /// - **Docker**: a container, from its Dockerfile or one g1t writes.
 /// - **Static site**: built and served as files, whatever else it has.
 /// - **Workers**: its Wrangler config or a framework adapter's Worker.
-/// - **Auto**: a Wrangler config is a Workers project; a framework that
-///   builds a static site or a Worker is that, which costs nothing while
-///   no one visits; a framework set up to need a server is a container
+/// - **Auto**, in order: a Wrangler config (or a framework's Workers
+///   adapter) is a Workers project; a site beside a Dockerfile of the
+///   project's own is a container when the Dockerfile runs a server
+///   (`container::runs_server`: `CMD`, `ENTRYPOINT`, or `EXPOSE` on an
+///   image that is not only a file server), else the site, which costs
+///   nothing while no one visits; any other framework that builds a site
+///   is that site; a framework set up to need a server is a container
 ///   when it has a Dockerfile, or when g1t can write one; a project with
 ///   no framework g1t knows is a container when it has a Dockerfile or is
-///   a server g1t recognises (a Node.js, Python, Go, Ruby or PHP app),
-///   else a static site, else nothing, saying to add a Dockerfile.
+///   a server g1t recognises (a Node.js, Python, Go, Ruby, PHP or Rust
+///   app), else a static site, else nothing, saying to add a Dockerfile.
+///   Each choice between a site and a container says why (`reason`).
 pub(crate) fn detect_as(
     dir: &Path,
     custom_build: Option<&str>,
@@ -791,7 +801,34 @@ pub(crate) fn detect_as(
         }
         BuildAs::Auto => {
             let site = detect_site(dir, custom_build, chosen_output, false)?;
-            if site.kind == "workers" || (site.framework.is_some() && site.problem.is_none()) {
+            if site.kind == "workers" {
+                return Ok(site);
+            }
+            // A site beside a Dockerfile of the project's own: the
+            // Dockerfile, when it runs a server; else the site, which g1t
+            // serves for nothing while no one visits.
+            let serves = site.problem.is_none() && (site.kind == "static" || site.kind == "html");
+            if serves && let Some(path) = &own {
+                let text = std::fs::read_to_string(dir.join(path)).unwrap_or_default();
+                let (server, why) = container::runs_server(&text);
+                let what = if site.kind == "html" { "plain HTML site" } else { "static site" };
+                if !server {
+                    let mut site = site;
+                    site.reason = Some(format!(
+                        "Building it as a {what}, not from {path}: {why}, and g1t serves the site itself. \
+                         Set **Build as** to Docker to run the container instead."
+                    ));
+                    return Ok(site);
+                }
+                let mut found = as_container(dir, site.framework.clone(), own.clone()).context("its Dockerfile was not read")?;
+                found.reason = Some(format!(
+                    "Building it as a container from {path}, not as the {what} it also has: {why}. \
+                     Set **Build as** to Static site to serve the site instead."
+                ));
+                found.fallback = Some(Box::new(site));
+                return Ok(found);
+            }
+            if site.framework.is_some() && site.problem.is_none() {
                 return Ok(site);
             }
             if let Some(problem) = site.problem.clone() {
@@ -801,11 +838,14 @@ pub(crate) fn detect_as(
                     Detected::nothing(site.framework, site.install, format!("{problem} Or add a `Dockerfile` to run it as a container."))
                 }));
             }
-            let has_own = own.is_some();
+            // A Dockerfile with nothing else to serve, or a server g1t
+            // recognises, which it writes one for.
             if let Some(mut found) = as_container(dir, None, own) {
-                // A Dockerfile beside a site that could be served as it is.
-                if has_own && (site.kind == "static" || site.kind == "html") {
-                    found.fallback = Some(Box::new(site));
+                if let (Some(server), Some(folder)) = (found.container.as_ref().and_then(|c| c.generated.as_ref()), &site.output_dir) {
+                    found.reason = Some(format!(
+                        "Building it as a {} server, not as a site of `{folder}`. Set **Build as** to Static site to serve only `{folder}` instead.",
+                        server.name
+                    ));
                 }
                 return Ok(found);
             }
@@ -848,6 +888,7 @@ fn detect_site(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&st
             pre_build,
             container: None,
             fallback: None,
+            reason: None,
         });
     }
     let build = custom_build
@@ -868,6 +909,7 @@ fn detect_site(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&st
             problem: None,
             container: None,
             fallback: None,
+            reason: None,
         });
     }
     // A command or a folder of the project's own says it knows better, as
@@ -889,7 +931,7 @@ fn detect_site(dir: &Path, custom_build: Option<&str>, chosen_output: Option<&st
         (None, None) => "none",
         _ => "static",
     };
-    Ok(Detected { kind, framework, install, pre_build: build.clone(), build, output_dir, problem: None, container: None, fallback: None })
+    Ok(Detected { kind, framework, install, pre_build: build.clone(), build, output_dir, problem: None, container: None, fallback: None, reason: None })
 }
 
 /// The compatibility date a Worker gets when its config names none.
@@ -936,8 +978,9 @@ fn adapter_config_path() -> PathBuf {
     bundle.with_file_name(format!("{}.wrangler.json", bundle.file_name().unwrap_or_default().to_string_lossy()))
 }
 
-/// What a container build says when g1t.page runs no containers.
-const CONTAINERS_OFF: &str = "This project deploys as a container, and Docker deployments are not switched on for g1t.page yet. \
+/// What a container build says where Docker deployments are switched off
+/// (a self-hosted g1t with `CONTAINERS` set to `off`).
+const CONTAINERS_OFF: &str = "This project deploys as a container, and Docker deployments are switched off on this g1t. \
      Set **Build as** to Static site or Workers under Settings, Deployments if it can be built as one.";
 
 /// Where a container's registry login is kept for the build: its own
@@ -1063,9 +1106,12 @@ fn container_build(reporter: &Reporter, log: &mut Log, secrets: &[String], dir: 
     std::fs::create_dir_all(&config)?;
     let image = format!("{}/{}:{}", grant.registry, grant.repository, grant.tag);
     let quote = |path: &Path| format!("'{}'", path.display().to_string().replace('\'', r"'\''"));
+    // One image for one platform, with no attestation beside it: what
+    // `wrangler containers build` pushes, so the digest pushed is the
+    // image's own manifest, not an index Containers would have to choose from.
     let built = step(
         log,
-        &format!("docker build --platform linux/amd64 --pull -f {} -t {image} .", quote(&dockerfile)),
+        &format!("docker build --platform linux/amd64 --provenance=false --pull -f {} -t {image} .", quote(&dockerfile)),
         &secrets,
     );
     let pushed = built.and_then(|()| {
@@ -1109,6 +1155,9 @@ fn build(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Built
     if let Some(framework) = &plan.framework {
         log.line(&format!("Detected {}: framework={}.", framework.name, framework.id));
     }
+    if let Some(reason) = &plan.reason {
+        log.line(reason);
+    }
     // Said before anything is installed: it would fail after, less clearly.
     if let Some(problem) = &plan.problem {
         bail!("{problem}");
@@ -1125,8 +1174,8 @@ fn build(reporter: &Reporter, log: &mut Log, secrets: &[String]) -> Result<Built
                     container: Some(image),
                 });
             }
-            // g1t.page runs no containers yet: the site it is without its
-            // Dockerfile, as it was built before.
+            // Docker deployments are switched off here: the site it is
+            // without its Dockerfile.
             None => match plan.fallback.take() {
                 Some(site) => {
                     log.line(&format!("Building it as a {} site instead, as it is without its Dockerfile.", if site.kind == "html" { "plain HTML" } else { "static" }));
@@ -1580,7 +1629,7 @@ mod tests {
 
     #[test]
     fn a_refusal_reaches_the_step_with_its_reason() {
-        let base = answering("409 Conflict", r#"{"ok":false,"error":{"code":"not_enabled","message":"Docker deployments are not switched on for g1t.page yet."}}"#);
+        let base = answering("409 Conflict", r#"{"ok":false,"error":{"code":"not_enabled","message":"Docker deployments are switched off on this g1t."}}"#);
         let answer = Reporter { base, token: "t".into() }.send("registry", json!({})).unwrap();
         assert_eq!(answer["ok"], false);
         assert_eq!(answer["error"]["code"], "not_enabled");
@@ -1730,6 +1779,7 @@ crons = [\"0 * * * *\"]
             pre_build: None,
             container: None,
             fallback: None,
+            reason: None,
         };
         assert_eq!(output_lines(&found), "kind=static\ninstall=npm ci\nbuild=a b\noutput-dir=\n");
         let vite = project("lines", &[("package.json", r#"{ "devDependencies": { "vite": "7" } }"#)]);
@@ -2096,9 +2146,29 @@ crons = [\"0 * * * *\"]
     fn build_as_and_dockerfiles_decide_in_order() {
         let detect_with = |dir: &Path, build_as: BuildAs, dockerfile: Option<&str>| detect_as(dir, None, None, build_as, dockerfile).unwrap();
         // A framework that builds a static site stays one beside a
-        // Dockerfile: it costs nothing while no one visits.
+        // Dockerfile that only serves its files: it costs nothing while no
+        // one visits.
         let vite = project("p-vite", &[("package.json", r#"{ "devDependencies": { "vite": "7" } }"#), ("Dockerfile", "FROM nginx\nEXPOSE 80\n")]);
-        assert_eq!(detect_with(&vite, BuildAs::Auto, None).kind, "static");
+        let found = detect_with(&vite, BuildAs::Auto, None);
+        assert_eq!(found.kind, "static");
+        assert!(found.reason.unwrap().contains("only serves files with `nginx`"));
+        // Beside a Dockerfile that runs a server of its own, the server:
+        // the site alone would leave its back end out.
+        let full = project(
+            "p-vite-server",
+            &[
+                ("package.json", r#"{ "devDependencies": { "vite": "7" } }"#),
+                (
+                    "Dockerfile",
+                    "FROM node:22-slim AS build\nRUN npm ci && npm run build\nFROM node:22-slim\nCOPY --from=build /app /app\nENV PORT=3000\nCMD [\"node\", \"server.js\"]\n",
+                ),
+            ],
+        );
+        let found = detect_with(&full, BuildAs::Auto, None);
+        assert_eq!((found.kind, found.framework_id()), ("container", Some("vite")));
+        assert_eq!(found.container.as_ref().unwrap().port, 3000);
+        assert_eq!(found.fallback.as_ref().map(|site| site.kind), Some("static"));
+        assert!(found.reason.unwrap().contains("not as the static site it also has: its Dockerfile starts a server of its own (`CMD`)"));
         // Unless the project says Docker.
         let found = detect_with(&vite, BuildAs::Docker, None);
         assert_eq!((found.kind, found.framework_id()), ("container", Some("vite")));
@@ -2113,13 +2183,23 @@ crons = [\"0 * * * *\"]
         let found = detect_with(&html, BuildAs::Workers, None);
         assert_eq!(found.kind, "none");
         assert!(found.problem.unwrap().contains("no Wrangler config"));
-        // No framework and a Dockerfile: a container, built as the site it
-        // is without one while g1t.page runs no containers.
-        let both = project("p-both", &[("index.html", ""), ("Containerfile", "FROM nginx")]);
+        // No framework, a site and a Dockerfile that runs a server: a
+        // container, built as the site it is without one where Docker
+        // deployments are switched off.
+        let both = project("p-both", &[("index.html", ""), ("Containerfile", "FROM python:3.12-slim\nEXPOSE 5000\n")]);
         let found = detect_with(&both, BuildAs::Auto, None);
         assert_eq!((found.kind, found.framework_id()), ("container", Some("dockerfile")));
-        assert_eq!(found.container.as_ref().unwrap().port, 8080);
+        assert_eq!(found.container.as_ref().unwrap().port, 5000);
         assert_eq!(found.fallback.as_ref().map(|site| site.kind), Some("html"));
+        // A site and a Dockerfile that says neither how it starts nor
+        // where it listens: the site.
+        let bare = project("p-bare", &[("index.html", ""), ("Dockerfile", "FROM nginx")]);
+        let found = detect_with(&bare, BuildAs::Auto, None);
+        assert_eq!(found.kind, "html");
+        assert!(found.reason.unwrap().contains("neither starts a server"));
+        // A Dockerfile and nothing else is a container, whatever it says.
+        let alone = project("p-alone", &[("Dockerfile", "FROM nginx")]);
+        assert_eq!(detect_with(&alone, BuildAs::Auto, None).kind, "container");
         // A Dockerfile at a path of the project's choosing.
         let chosen = project("p-chosen", &[("ops/web.Dockerfile", "FROM node\nEXPOSE 3000")]);
         assert_eq!(detect_with(&chosen, BuildAs::Auto, None).kind, "none");
@@ -2148,7 +2228,16 @@ crons = [\"0 * * * *\"]
         // OpenNext's adapter means Workers: it is not run as a server.
         let opennext = project("p-opennext", &[("package.json", r#"{ "dependencies": { "next": "16", "@opennextjs/cloudflare": "1" } }"#)]);
         assert_eq!(detect_with(&opennext, BuildAs::Auto, None).kind, "none");
-        for dir in [vite, workers, html, both, chosen, express, nothing, next, opennext] {
+        // A server g1t recognises beside a folder it could serve: the
+        // server, saying so.
+        let public = project(
+            "p-public",
+            &[("package.json", r#"{ "scripts": { "start": "node index.js" }, "dependencies": { "express": "5" } }"#), ("public/index.html", "")],
+        );
+        let found = detect_with(&public, BuildAs::Auto, None);
+        assert_eq!(found.kind, "container");
+        assert!(found.reason.unwrap().contains("as a Node.js server, not as a site of `public`"));
+        for dir in [vite, full, workers, html, both, bare, alone, chosen, express, nothing, next, opennext, public] {
             let _ = std::fs::remove_dir_all(dir);
         }
     }

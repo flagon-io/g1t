@@ -155,24 +155,40 @@ fn deploy_needs_its_build() {
 }
 
 #[test]
-fn a_container_is_built_as_its_site_while_g1t_page_runs_none() {
+fn a_container_is_built_as_its_site_where_containers_are_switched_off() {
     let (api, seen) = fake_api();
-    let dir = checkout("container-site", &[("index.html", "<h1>hello</h1>"), ("Dockerfile", "FROM nginx")]);
+    let dir = checkout(
+        "container-site",
+        &[("index.html", "<h1>hello</h1>"), ("server.js", ""), ("Dockerfile", "FROM node:22-slim\nCOPY . .\nCMD [\"node\", \"server.js\"]\n")],
+    );
     let output = deploy(&dir, &api, &[]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{stdout}
 {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("Building it as a container from Dockerfile, not as the plain HTML site it also has"), "{stdout}");
     assert!(stdout.contains("as a plain HTML site instead"), "{stdout}");
     let seen = seen.lock().unwrap();
     let steps: Vec<&str> = seen.iter().map(|(path, _)| path.as_str()).collect();
     assert_eq!(steps[1], "/deployments/jobs/dpl_1/registry");
     assert_eq!(seen.last().unwrap().1["detected"], "html");
-    // A server with nothing else to serve fails, saying so.
     drop(seen);
+    // A Dockerfile that only serves the site with nginx: the site, with no
+    // image asked for.
+    let (api, seen) = fake_api();
+    let files = checkout("files-only", &[("index.html", "<h1>hello</h1>"), ("Dockerfile", "FROM nginx:alpine\nCOPY . /usr/share/nginx/html\nEXPOSE 80\n")]);
+    let output = deploy(&files, &api, &[]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}");
+    assert!(stdout.contains("its Dockerfile only serves files with `nginx`"), "{stdout}");
+    let seen = seen.lock().unwrap();
+    assert!(!seen.iter().any(|(path, _)| path.ends_with("/registry")));
+    assert_eq!(seen.last().unwrap().1["detected"], "html");
+    drop(seen);
+    // A server with nothing else to serve fails, saying so.
     let server = checkout("container-only", &[("package.json", r#"{ "scripts": { "start": "node index.js" }, "dependencies": { "express": "5" } }"#)]);
     let output = deploy(&server, &api, &[]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("Docker deployments are not switched on"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Docker deployments are switched off"));
     // Build as Static site skips the Dockerfile altogether.
     let output = deploy(&dir, &api, &[("BUILD_AS", "static")]);
     assert!(output.status.success());

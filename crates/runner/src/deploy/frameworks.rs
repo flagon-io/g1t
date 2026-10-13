@@ -211,9 +211,9 @@ fn node(dir: &Path, package: &Package, wrangler: bool) -> Option<Framework> {
             next = next.static_site(package.build_or("npx next build"), "out");
         } else if !wrangler {
             next.problem = Some(
-                "This is a Next.js app that needs a server, and g1t.page does not run servers. Set `output: 'export'` in \
-                 `next.config` to build it as a static site (served from `out`), or deploy it as a Worker with OpenNext's \
-                 Cloudflare adapter, `@opennextjs/cloudflare`, and a `wrangler.jsonc`."
+                "This is a Next.js app that needs a server, and g1t could not write a Dockerfile to run it. Set \
+                 `output: 'export'` in `next.config` to build it as a static site (served from `out`), or deploy it as a \
+                 Worker with OpenNext's Cloudflare adapter, `@opennextjs/cloudflare`, and a `wrangler.jsonc`."
                     .to_owned(),
             );
         }
@@ -231,9 +231,9 @@ fn node(dir: &Path, package: &Package, wrangler: bool) -> Option<Framework> {
             }
         } else if !wrangler && (sets(&text, "output", "server") || sets(&text, "output", "hybrid")) {
             astro.problem = Some(
-                "This Astro site renders on a server (`output: 'server'`), and g1t.page does not run servers. Use \
-                 `output: 'static'` (the default) to build a static site, or add the `@astrojs/cloudflare` adapter to run \
-                 it as a Worker."
+                "This Astro site renders on a server (`output: 'server'`) with no adapter g1t can start. Add \
+                 `@astrojs/node` to run it as a container, use `output: 'static'` (the default) to build a static site, \
+                 or add the `@astrojs/cloudflare` adapter to run it as a Worker."
                     .to_owned(),
             );
         }
@@ -278,8 +278,8 @@ fn node(dir: &Path, package: &Package, wrangler: bool) -> Option<Framework> {
             None => {
                 kit.problem = Some(
                     "This SvelteKit app has no adapter g1t.page can serve. Use `@sveltejs/adapter-static` to build a static \
-                     site, or `@sveltejs/adapter-cloudflare` to run it as a Worker; `adapter-auto`, `adapter-node` and the \
-                     others need a host of their own."
+                     site, `@sveltejs/adapter-cloudflare` to run it as a Worker, or `@sveltejs/adapter-node` to run it as a \
+                     container; `adapter-auto` and the others need a host of their own."
                         .to_owned(),
                 );
             }
@@ -322,7 +322,7 @@ fn node(dir: &Path, package: &Package, wrangler: bool) -> Option<Framework> {
         } else {
             let file = if id == "remix" { "the Remix plugin's options in `vite.config`" } else { "`react-router.config.ts`" };
             found.problem = Some(format!(
-                "This {name} app renders on a server, and g1t.page does not run servers. Set `ssr: false` in {file} \
+                "This {name} app renders on a server, and g1t could not write a Dockerfile to run it. Set `ssr: false` in {file} \
                  to build it as a single-page app (served from `build/client`), or deploy it as a Worker with \
                  `@cloudflare/vite-plugin` and a `wrangler.jsonc`."
             ));

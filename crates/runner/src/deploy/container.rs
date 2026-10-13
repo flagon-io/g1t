@@ -59,22 +59,112 @@ pub(crate) fn own_dockerfile(dir: &Path, chosen: Option<&str>) -> Result<Option<
     Ok(DOCKERFILES.iter().find(|name| dir.join(name).is_file()).map(|name| (*name).to_owned()))
 }
 
-/// The port a Dockerfile's last stage says it listens on (its first
-/// `EXPOSE` there), if it says.
-pub(crate) fn exposed_port(dockerfile: &str) -> Option<u16> {
-    let mut port = None;
+/// The instructions of a Dockerfile's last stage, the one that runs: each
+/// as its keyword in capitals and the rest of its line. Lines continued
+/// with `\` are joined, and comments dropped.
+fn last_stage(dockerfile: &str) -> Vec<(String, String)> {
+    let mut joined = Vec::new();
+    let mut current = String::new();
     for line in dockerfile.lines() {
-        let line = line.trim();
-        let mut words = line.split_whitespace();
-        let Some(word) = words.next() else { continue };
-        if word.eq_ignore_ascii_case("FROM") {
-            // Each stage starts afresh: only the last one's is what runs.
-            port = None;
-        } else if word.eq_ignore_ascii_case("EXPOSE") && port.is_none() {
-            port = words.next().and_then(|p| p.split('/').next()).and_then(|p| p.parse::<u16>().ok()).filter(|p| *p > 0);
+        let trimmed = line.trim();
+        if current.is_empty() && (trimmed.is_empty() || trimmed.starts_with('#')) {
+            continue;
+        }
+        match trimmed.strip_suffix('\\') {
+            Some(start) => {
+                current.push_str(start);
+                current.push(' ');
+            }
+            None => {
+                current.push_str(trimmed);
+                joined.push(std::mem::take(&mut current));
+            }
         }
     }
-    port
+    if !current.is_empty() {
+        joined.push(current);
+    }
+    let mut stage = Vec::new();
+    for line in joined {
+        let (word, rest) = line.split_once(char::is_whitespace).unwrap_or((line.as_str(), ""));
+        let word = word.to_ascii_uppercase();
+        if word == "FROM" {
+            // Each stage starts afresh: only the last one's is what runs.
+            stage.clear();
+        }
+        stage.push((word, rest.trim().to_owned()));
+    }
+    stage
+}
+
+/// The port a Dockerfile's last stage says it listens on: its first
+/// `EXPOSE` there, else the `PORT` it sets with `ENV`, if it says.
+pub(crate) fn exposed_port(dockerfile: &str) -> Option<u16> {
+    let stage = last_stage(dockerfile);
+    let port = |text: &str| text.split('/').next().and_then(|p| p.trim_matches('"').parse::<u16>().ok()).filter(|p| *p > 0);
+    let exposed = stage.iter().filter(|(word, _)| word == "EXPOSE").find_map(|(_, rest)| rest.split_whitespace().next().and_then(port));
+    exposed.or_else(|| {
+        stage.iter().rev().filter(|(word, _)| word == "ENV").find_map(|(_, rest)| {
+            // `ENV PORT=3000 OTHER=x`, or the old `ENV PORT 3000`.
+            if let Some(value) = rest.split_whitespace().find_map(|pair| pair.strip_prefix("PORT=")) {
+                return port(value);
+            }
+            let mut words = rest.split_whitespace();
+            (words.next() == Some("PORT")).then(|| words.next().and_then(port)).flatten()
+        })
+    })
+}
+
+/// Images that serve a folder of files and nothing else, as the base of a
+/// Dockerfile that only copies a site into them.
+const FILE_SERVERS: [&str; 8] = [
+    "nginx",
+    "nginxinc/nginx-unprivileged",
+    "httpd",
+    "caddy",
+    "lighttpd",
+    "joseluisq/static-web-server",
+    "pierrezemb/gostatic",
+    "busybox",
+];
+
+/// What a Dockerfile's last stage is: whether it runs a server of the
+/// project's own, and in words, why, for the build's log.
+///
+/// It does when that stage says how it starts (`CMD` or `ENTRYPOINT`), or
+/// says it listens (`EXPOSE`) on an image that is not only a file server
+/// (nginx, httpd, Caddy…). A Dockerfile that only copies a built site into
+/// such an image, or says neither, is taken to serve files, which g1t
+/// serves itself, for nothing while no one visits.
+pub(crate) fn runs_server(dockerfile: &str) -> (bool, String) {
+    let stage = last_stage(dockerfile);
+    let has = |word: &str| stage.iter().any(|(w, _)| w == word);
+    // `FROM [--platform=…] image[:tag|@digest] [AS name]`
+    let base = stage
+        .first()
+        .filter(|(word, _)| word == "FROM")
+        .and_then(|(_, rest)| rest.split_whitespace().find(|w| !w.starts_with("--")))
+        .map(|image| {
+            let image = image.split('@').next().unwrap_or(image);
+            // A tag is after the last `/`, so a registry's port is kept.
+            let name = match image.rsplit_once(':') {
+                Some((name, tag)) if !tag.contains('/') => name,
+                _ => image,
+            };
+            name.trim_start_matches("docker.io/").trim_start_matches("library/").to_ascii_lowercase()
+        })
+        .unwrap_or_default();
+    let starts = ["CMD", "ENTRYPOINT"].into_iter().find(|word| has(word));
+    if let Some(word) = starts {
+        return (true, format!("its Dockerfile starts a server of its own (`{word}`)"));
+    }
+    if has("EXPOSE") {
+        if FILE_SERVERS.contains(&base.as_str()) {
+            return (false, format!("its Dockerfile only serves files with `{base}`"));
+        }
+        return (true, "its Dockerfile runs a server (`EXPOSE`)".to_owned());
+    }
+    (false, "its Dockerfile neither starts a server (`CMD`, `ENTRYPOINT`) nor listens on a port (`EXPOSE`)".to_owned())
 }
 
 /// A server g1t can write a Dockerfile for.
@@ -82,7 +172,7 @@ pub(crate) fn exposed_port(dockerfile: &str) -> Option<u16> {
 pub(crate) struct Server {
     /// As `g1t-runner detect` prints it when no framework names it:
     /// `node`, `django`, `flask`, `fastapi`, `python`, `go`, `rails`,
-    /// `rack`, `laravel`, `php`.
+    /// `rack`, `laravel`, `php`, `rust`.
     pub id: &'static str,
     /// For the build's log: `Node.js`, `Django`…
     pub name: &'static str,
@@ -166,13 +256,24 @@ fn node_dockerfile(dir: &Path, name: &str, start: &str, build: Option<&str>) -> 
          COPY . .\n\
          RUN {install}\n\
          {build}\
-         ENV NODE_ENV=production HOST=0.0.0.0 PORT={DEFAULT_PORT}\n\
+         ENV NODE_ENV=production HOST=0.0.0.0 HOSTNAME=0.0.0.0 PORT={DEFAULT_PORT}\n\
          EXPOSE {DEFAULT_PORT}\n\
          CMD {start}\n",
         header = header(name),
         major = node_major(dir),
         install = node_install(dir),
     )
+}
+
+/// Whether a Next.js app builds a standalone server (`output:
+/// 'standalone'`), which `next start` does not run.
+fn next_standalone(dir: &Path) -> bool {
+    ["next.config.js", "next.config.mjs", "next.config.ts", "next.config.cjs"].iter().any(|name| {
+        std::fs::read_to_string(dir.join(name)).is_ok_and(|text| {
+            let text: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+            ["output:\"standalone\"", "output:'standalone'", "output:`standalone`"].iter().any(|form| text.contains(form))
+        })
+    })
 }
 
 /// The command a Node.js server starts with, as a Dockerfile's exec form.
@@ -197,6 +298,19 @@ pub(crate) fn for_framework(dir: &Path, framework: &str) -> Option<Server> {
     let has_build = script("build").is_some();
     let start = |fallback: &[&str]| if script("start").is_some() { exec(&["npm", "start"]) } else { exec(fallback) };
     let (name, command, own_build) = match framework {
+        // A standalone build is its own server, with the static files it
+        // serves copied beside it, as Next.js's guide does.
+        "nextjs" if next_standalone(dir) => {
+            let build = if has_build { "npm run build" } else { "npx next build" };
+            let build = format!(
+                "{build} && cp -r .next/static .next/standalone/.next/static && if [ -d public ]; then cp -r public .next/standalone/public; fi"
+            );
+            return Some(Server {
+                id: "node",
+                name: "Next.js",
+                dockerfile: node_dockerfile(dir, "Next.js", &exec(&["node", ".next/standalone/server.js"]), Some(&build)),
+            });
+        }
         "nextjs" => ("Next.js", start(&["npx", "next", "start"]), "npx next build"),
         // `astro dev` is a common `start` script, so Astro's node adapter's
         // own server is run instead.
@@ -214,7 +328,57 @@ pub(crate) fn for_framework(dir: &Path, framework: &str) -> Option<Server> {
 /// A server g1t recognises in a project with no framework it knows, and
 /// the Dockerfile it writes for it.
 pub(crate) fn server(dir: &Path) -> Option<Server> {
-    node_server(dir).or_else(|| python(dir)).or_else(|| go(dir)).or_else(|| ruby(dir)).or_else(|| php(dir))
+    node_server(dir)
+        .or_else(|| python(dir))
+        .or_else(|| go(dir))
+        .or_else(|| ruby(dir))
+        .or_else(|| php(dir))
+        .or_else(|| rust(dir))
+}
+
+/// Crates that make a Rust program a web server.
+const RUST_SERVERS: [&str; 7] = ["axum", "actix-web", "rocket", "warp", "poem", "salvo", "tide"];
+
+/// A Rust web server: a `Cargo.toml` with one program, depending on a web
+/// framework.
+fn rust(dir: &Path) -> Option<Server> {
+    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(dir.join("Cargo.toml")).ok()?).ok()?;
+    let package = manifest.get("package")?.get("name")?.as_str()?;
+    let dependencies = manifest.get("dependencies")?.as_table()?;
+    if !RUST_SERVERS.iter().any(|name| dependencies.contains_key(*name)) {
+        return None;
+    }
+    // Its one `[[bin]]`, else the package's own program.
+    let bins: Vec<&str> = manifest
+        .get("bin")
+        .and_then(|bins| bins.as_array())
+        .map(|bins| bins.iter().filter_map(|bin| bin.get("name")?.as_str()).collect())
+        .unwrap_or_default();
+    let program = match bins.as_slice() {
+        [] if dir.join("src/main.rs").is_file() => package,
+        [one] => one,
+        // None, or more than one: which to run is the project's to say.
+        _ => return None,
+    };
+    if !program.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return None;
+    }
+    let dockerfile = format!(
+        "{header}FROM rust:1-bookworm AS build\n\
+         WORKDIR /src\n\
+         COPY . .\n\
+         RUN cargo build --release --locked --bin {program} || cargo build --release --bin {program}\n\
+         RUN cp target/release/{program} /app\n\
+         \n\
+         FROM debian:bookworm-slim\n\
+         RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*\n\
+         COPY --from=build /app /app\n\
+         ENV PORT={DEFAULT_PORT}\n\
+         EXPOSE {DEFAULT_PORT}\n\
+         ENTRYPOINT [\"/app\"]\n",
+        header = header("Rust"),
+    );
+    Some(Server { id: "rust", name: "Rust", dockerfile })
 }
 
 /// A Node.js server: a `start` script, with a server package or nothing
@@ -459,6 +623,78 @@ mod tests {
         assert_eq!(exposed_port("FROM golang AS build\nEXPOSE 9000\nFROM scratch\nexpose 8000/tcp"), Some(8000));
         assert_eq!(exposed_port("FROM golang AS build\nEXPOSE 9000\nFROM scratch\n"), None);
         assert_eq!(exposed_port("FROM x\nEXPOSE $PORT"), None);
+        // Without an `EXPOSE`, the `PORT` it sets.
+        assert_eq!(exposed_port("FROM node\nENV NODE_ENV=production PORT=3000\nCMD node ."), Some(3000));
+        assert_eq!(exposed_port("FROM node\nENV PORT 4000"), Some(4000));
+        assert_eq!(exposed_port("FROM node\nENV PORT=1\nFROM node\nENV PORT=5000\nEXPOSE 7000"), Some(7000));
+        // Continued lines and comments.
+        assert_eq!(exposed_port("FROM node\n# EXPOSE 1\nRUN a \\\n  && b\nEXPOSE \\\n  9000"), Some(9000));
+    }
+
+    #[test]
+    fn a_dockerfile_runs_a_server_unless_it_only_serves_files() {
+        let (server, why) = runs_server("FROM node:22-slim\nCOPY . .\nCMD [\"node\", \"server.js\"]\n");
+        assert!(server);
+        assert_eq!(why, "its Dockerfile starts a server of its own (`CMD`)");
+        assert!(runs_server("FROM golang AS build\nRUN go build\nFROM scratch\nENTRYPOINT [\"/app\"]").0);
+        assert!(runs_server("FROM python:3.12\nEXPOSE 5000").0);
+        // A site copied into a file server, by any of its names.
+        for base in ["nginx", "nginx:1.27-alpine", "docker.io/library/nginx:latest", "httpd@sha256:abc", "--platform=linux/amd64 caddy:2"] {
+            let (server, why) = runs_server(&format!("FROM node AS build\nCMD x\nFROM {base}\nCOPY --from=build /app/dist /srv\nEXPOSE 80\n"));
+            assert!(!server, "{base}");
+            assert!(why.contains("only serves files"), "{why}");
+        }
+        // nginx with a start of its own is the project's to say.
+        assert!(runs_server("FROM nginx\nCOPY . .\nCMD [\"nginx\", \"-g\", \"daemon off;\"]").0);
+        assert!(!runs_server("FROM node\nCOPY . .").0);
+        // A registry with a port is not a tag.
+        assert!(runs_server("FROM registry.local:5000/nginx\nEXPOSE 80").0);
+    }
+
+    #[test]
+    fn rust_servers_are_recognised() {
+        let axum = project("axum", &[("Cargo.toml", "[package]\nname = \"todo-api\"\n\n[dependencies]\naxum = \"0.8\"\n"), ("src/main.rs", "fn main() {}")]);
+        let found = server(&axum).unwrap();
+        assert_eq!((found.id, found.name), ("rust", "Rust"));
+        assert!(found.dockerfile.contains("--bin todo-api"));
+        assert!(found.dockerfile.contains("ENTRYPOINT [\"/app\"]"));
+        assert!(runs_server(&found.dockerfile).0);
+        let lib = project("rust-lib", &[("Cargo.toml", "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\n"), ("src/main.rs", "")]);
+        assert_eq!(server(&lib), None, "not a web server");
+        let two = project("rust-two", &[("Cargo.toml", "[package]\nname = \"x\"\n[dependencies]\naxum = \"0.8\"\n[[bin]]\nname = \"a\"\n[[bin]]\nname = \"b\"\n")]);
+        assert_eq!(server(&two), None, "which program runs is the project's to say");
+    }
+
+    #[test]
+    fn every_dockerfile_g1t_writes_runs_a_server_on_its_port() {
+        let projects = [
+            project("w-node", &[("package.json", r#"{ "scripts": { "start": "node i.js" }, "dependencies": { "express": "5" } }"#)]),
+            project("w-flask", &[("requirements.txt", "flask\n"), ("app.py", "")]),
+            project("w-go", &[("go.mod", "module x\n"), ("main.go", "package main")]),
+            project("w-rack", &[("Gemfile", "gem 'sinatra'\n"), ("config.ru", "")]),
+            project("w-php", &[("composer.json", "{}"), ("index.php", "")]),
+        ];
+        for dir in &projects {
+            let found = server(dir).unwrap();
+            assert_eq!(exposed_port(&found.dockerfile), Some(DEFAULT_PORT), "{}", found.id);
+            // PHP's Apache image starts itself: it has no `CMD` of the file's own.
+            assert!(runs_server(&found.dockerfile).0, "{}", found.id);
+        }
+    }
+
+    #[test]
+    fn a_standalone_next_app_runs_its_own_server() {
+        let next = project(
+            "next-standalone",
+            &[
+                ("package.json", r#"{ "scripts": { "build": "next build", "start": "next start" }, "dependencies": { "next": "16" } }"#),
+                ("next.config.mjs", "export default {\n  output: \"standalone\",\n};\n"),
+            ],
+        );
+        let found = for_framework(&next, "nextjs").unwrap();
+        assert!(found.dockerfile.contains("RUN npm run build && cp -r .next/static .next/standalone/.next/static"));
+        assert!(found.dockerfile.contains("CMD [\"node\", \".next/standalone/server.js\"]"));
+        assert!(found.dockerfile.contains("HOSTNAME=0.0.0.0"));
     }
 
     #[test]

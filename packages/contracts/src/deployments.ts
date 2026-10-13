@@ -181,6 +181,7 @@ export const FRAMEWORK_NAMES: Record<string, string> = {
   rack: "Rack",
   laravel: "Laravel",
   php: "PHP",
+  rust: "Rust",
 };
 
 /** A framework id a build reported, if it is one g1t knows. */
