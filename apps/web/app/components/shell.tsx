@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -740,6 +740,20 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
 const INSIGHTS = roadmapItem("insights");
 
 /**
+ * A page a project will have that is a page of its own, not a tab: its own
+ * faint row in the project's list, leading to what it will be.
+ */
+function ProjectSoonRow({ base, feature, icon }: { base: string; feature: string; icon: ReactNode }) {
+  const item = roadmapItem(feature);
+  if (!item) return null;
+  return (
+    <SidebarSoonLink to={`${base}/soon/${item.key}`} icon={icon} about={item.summary}>
+      {item.title}
+    </SidebarSoonLink>
+  );
+}
+
+/**
  * What the repository menu needs. Known from the address before the page's
  * data arrives, so the menu is right from the first frame; the counts fill
  * in once it does.
@@ -835,11 +849,14 @@ function RepoMenu({
             Deployments
           </SidebarLink>
         ) : null}
+        {repo.member && <ProjectSoonRow base={base} feature="analytics" icon={<ChartLine size={15} />} />}
         {shows.has("observability") && (
           <SidebarLink to={`${base}/observability`} also={soonPaths(base, "Observability")} icon={<Activity size={15} />}>
             Observability
           </SidebarLink>
         )}
+        {repo.member && <ProjectSoonRow base={base} feature="firewall" icon={<BrickWall size={15} />} />}
+        {repo.member && <ProjectSoonRow base={base} feature="flags" icon={<Flag size={15} />} />}
         {shows.has("security") ? (
           <SidebarLink to={`${base}/security`} also={soonPaths(base, "Security")} icon={<ShieldCheck size={15} />}>
             Security
@@ -1617,6 +1634,8 @@ function Breadcrumbs({
     if (third === "pull" && fourth) trail.push({ label: `Pull request #${fourth}`, short: `#${fourth}`, to: `${repo}/pull/${fourth}` });
     else if (third === "issues" && fourth && fourth !== "new") trail.push({ label: `Issue #${fourth}`, short: `#${fourth}`, to: `${repo}/issues/${fourth}` });
     else if (third === "commit" && fourth) trail.push({ label: fourth.slice(0, 7), to: `${repo}/commit/${fourth}`, mono: true });
+    // A Soon page names what is coming.
+    else if (third === "soon" && fourth && roadmapItem(fourth)) trail.push({ label: roadmapItem(fourth)!.title, to: `${repo}/soon/${fourth}` });
     else if (third && SECTIONS[third]) {
       trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
       // A settings page names which one: Settings / Secrets and variables.

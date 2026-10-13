@@ -143,7 +143,7 @@ export function SoonView({
       {siblings.length > 0 && (
         <section className="mt-10">
           <h2 className="text-sm font-medium text-muted">
-            Also coming {inWorkspace ? "across projects" : `to ${item.section}`}
+            Also coming {inWorkspace ? "across projects" : item.section === "Project" ? "to every project" : `to ${item.section}`}
           </h2>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2">
             {siblings.map((other) => (

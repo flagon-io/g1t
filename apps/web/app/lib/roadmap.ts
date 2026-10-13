@@ -12,10 +12,11 @@ export type RoadmapItem = {
   key: string;
   title: string;
   /**
-   * Where it lives: a project page whose tabs it joins, or the workspace,
-   * for what spans projects (Insights).
+   * Where it lives: a project page whose tabs it joins, a page of its own
+   * in the project's sidebar ("Project"), or the workspace, for what spans
+   * projects (Insights).
    */
-  section: "Code" | "Issues" | "Deployments" | "Observability" | "Security" | "Insights" | "Workspace";
+  section: "Code" | "Issues" | "Deployments" | "Observability" | "Security" | "Insights" | "Project" | "Workspace";
   /** One line, for the menu's tooltip and the page's lead. */
   summary: string;
   /** Why it matters, in two or three sentences. */
@@ -59,10 +60,29 @@ export const ROADMAP: RoadmapItem[] = [
     ],
     today: { label: "Deployments", path: "deployments" },
   },
+
+  // --- Pages of their own in the project's sidebar ----------------------
+  {
+    key: "analytics",
+    title: "Analytics",
+    section: "Project",
+    summary: "Who visits the deployed apps, without cookies.",
+    why: "Visits, pages and referrers for each app, private by design, from Cloudflare's own analytics.",
+    plans: ["Visits, pages, referrers and countries", "No cookies, no personal data", "Per deployment and per preview"],
+  },
+  {
+    key: "firewall",
+    title: "Firewall",
+    section: "Project",
+    summary: "Rules for who may reach the project's deployed apps.",
+    why: "Deployed apps run on Cloudflare. Rate limits, bot protection and IP rules, per app and environment.",
+    plans: ["Rate limits and bot protection", "IP and country rules", "Password-protected previews"],
+    today: { label: "Deployments", path: "deployments" },
+  },
   {
     key: "flags",
-    title: "Feature flags",
-    section: "Deployments",
+    title: "Flags",
+    section: "Project",
     summary: "Turn features on per environment or per user, without a deploy.",
     why: "Ship code dark and turn it on when ready, for some users first, at the edge, with no deploy.",
     plans: ["Flags read at the edge by deployed apps", "Rollouts by percentage, user or environment", "Reminders to clean up flags once fully on"],
@@ -72,15 +92,6 @@ export const ROADMAP: RoadmapItem[] = [
   // --- Security -------------------------------------------------------------
   // The overview, secret scanning, code scanning, vulnerabilities and the
   // dependency graph are built: see routes/repo/security-*.tsx.
-  {
-    key: "firewall",
-    title: "Firewall",
-    section: "Security",
-    summary: "Rules for who may reach the project's deployed apps.",
-    why: "Deployed apps run on Cloudflare. Rate limits, bot protection and IP rules, per app and environment.",
-    plans: ["Rate limits and bot protection", "IP and country rules", "Password-protected previews"],
-    today: { label: "Deployments", path: "deployments" },
-  },
 
   // --- Observe ------------------------------------------------------------
   {
@@ -90,14 +101,6 @@ export const ROADMAP: RoadmapItem[] = [
     summary: "Checks that the app answers, from around the world.",
     why: "Know the app is down before your users tell you, and who was told.",
     plans: ["Checks from many places", "Alerts by email and webhook", "A public status page"],
-  },
-  {
-    key: "analytics",
-    title: "Web analytics",
-    section: "Insights",
-    summary: "Who visits the deployed apps, without cookies.",
-    why: "Visits, pages and referrers for each app, private by design, from Cloudflare's own analytics.",
-    plans: ["Visits, pages, referrers and countries", "No cookies, no personal data", "Per deployment and per preview"],
   },
 
   // --- Insights -------------------------------------------------------------
