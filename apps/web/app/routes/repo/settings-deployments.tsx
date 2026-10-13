@@ -110,7 +110,7 @@ function ContainerSizes({ offer, chosen }: { offer: ContainerOffer; chosen: stri
       <p className="text-xs text-muted">
         Charged by the minute while awake, at what Cloudflare charges g1t plus 20%, with every vCPU counted as busy; data a
         container sends is {money(offer.egressGbMicros, { precise: true })} a GB.
-        {!offer.available && " Docker deployments are not switched on for g1t.page yet: until they are, a container build fails, or builds the site the project is without its Dockerfile."}
+        {!offer.available && " Docker deployments are switched off on this g1t: a container build fails, or builds the site the project is without its Dockerfile."}
       </p>
     </div>
   );
@@ -172,7 +172,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
               Build through a workflow g1t manages for this project, listed under Actions with its runs and logs. It runs on g1t's machines like any workflow, and a workflow named g1t in .g1t/workflows takes its place.
             </Check>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Build as" hint="Auto finds it from the project's files: a Wrangler config is Workers, a framework that builds a static site stays one, and a Dockerfile or a server makes it a container.">
+              <Field label="Build as" hint="Auto finds it from the project's files: a Wrangler config is Workers; a Dockerfile that runs a server, or a server g1t recognises, is a container; anything else that builds a site stays one. The build's log says which it chose and why.">
                 <SelectField name="buildAs" defaultValue={settings.buildAs ?? "auto"} aria-label="Build as" options={BUILD_AS_OPTIONS} />
               </Field>
               <Field label="Dockerfile" hint="For a container; Dockerfile or Containerfile is found by itself when empty.">

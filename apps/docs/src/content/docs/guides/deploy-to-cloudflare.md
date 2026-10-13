@@ -317,10 +317,14 @@ read.
 ## Docker deployments
 
 Container apps ([Docker deployments](/guides/deployments/#docker-deployments))
-are off until `CONTAINERS` is `on` in `services/deployments/wrangler.jsonc`.
-The code follows Cloudflare's documentation and Wrangler's own client for
-these APIs, but none of them has been called against g1t's account yet.
-Before turning it on, check each of these with a test project:
+run when `CONTAINERS` is `on` in `services/deployments/wrangler.jsonc`, as
+it is for g1t.sh. On an account without Containers, set it to `off`: a
+container build then fails, saying so, and a project with a site beside
+its `Dockerfile` is built as that site.
+
+The calls follow Cloudflare's API reference and Wrangler's own client.
+On a new account, deploy a small server (an Express app with a
+`Dockerfile`, or none) and check each of these:
 
 1. **The token.** `CLOUDFLARE_API_TOKEN` of `services/deployments` has
    **Containers: Edit** (and the account has Containers, on Workers Paid).
@@ -340,10 +344,11 @@ Before turning it on, check each of these with a test project:
    `exports: { "G1tApp": { "type": "durable-object", "storage": "sqlite" } }`
    and `containers: [{ "class_name": "G1tApp" }]` in its metadata is taken,
    and taken again on the next deploy with nothing changed about the class.
-5. **Its Durable Object namespace.**
+5. **Its Durable Object namespace.** The app's Worker's `APP` binding
+   (`GET …/dispatch/namespaces/g1t-deployments/scripts/<app>/bindings`)
+   names its `namespace_id`; failing that,
    `GET /accounts/{id}/workers/durable_objects/namespaces` lists it with
-   `class` `G1tApp`, `script` the app's name and `dispatch_namespace`
-   `g1t-deployments`.
+   `class` `G1tApp` and `script` the app's name.
 6. **The Container application.** `POST /accounts/{id}/containers/applications`
    with `scheduling_policy` `default`, the image by digest, `instance_type`,
    `max_instances` 1 and `durable_objects.namespace_id` creates it; a
@@ -362,11 +367,10 @@ Before turning it on, check each of these with a test project:
 9. **Pausing and taking down.** A workspace over its limit gets its
     container app's Worker put back paused, which stops the container, and
     taking an app down deletes its application before its Worker.
-
-Then set `CONTAINERS` to `on`, deploy `services/deployments`, and the
-container build of a project with a `Dockerfile` goes live; the
-[limitations page](/about/limitations/#containers-are-not-switched-on-yet)
-and the caution in the deployments guide come out in the same change.
+10. **Old images.** After a second deploy of the app, the registry's tag
+    list for `<account>/g1t-<app>` has only the two newest builds' tags
+    (`GET /v2/<account>/g1t-<app>/tags/list`), and none once the app is
+    taken down. The account holds 50 GB of images in all.
 
 ## Rolling back
 

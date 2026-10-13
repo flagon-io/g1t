@@ -51,11 +51,13 @@
 		// The g1t.page zone: custom domains are Cloudflare for SaaS custom
 		// hostnames on it (see src/domains.ts).
 		"CUSTOM_HOSTNAMES_ZONE_ID": "45d1c969bdd9d593756e70d5f45c2cbb",
-		// Docker deployments (src/containers.ts): "on" runs container apps.
-		// Off until Cloudflare's container APIs are checked live against this
-		// account ("Docker deployments" in docs.g1t.sh/guides/deploy-to-cloudflare/);
-		// while off, a container build is refused at its registry step.
-		"CONTAINERS": "off",
+		// Docker deployments (src/containers.ts): "on" runs container apps,
+		// found from a project's files with nothing to set. "off" for an
+		// account without Containers (a self-hosted g1t): a container build
+		// is then refused at its registry step, or built as the site the
+		// project is without its Dockerfile ("Docker deployments" in
+		// docs.g1t.sh/guides/deploy-to-cloudflare/).
+		"CONTAINERS": "on",
 		// Where container apps' Workers report how long they ran.
 		"G1T_API": "https://api.g1t.sh",
 		// Cloudflare's own tracing of each app (a span for every fetch, KV,
