@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronDown, Code2, File, FileArchive, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal, Tag as TagIcon } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Code2, CornerLeftUp, File, FileArchive, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal, Tag as TagIcon } from "lucide-react";
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
 
@@ -274,9 +274,24 @@ function FileRows({
   last: FileCommits | null | undefined;
 }) {
   const byName = new Map((last?.entries ?? []).map((entry) => [entry.name, entry.commit]));
+  // Inside a directory, `..` leads one level up: to its parent, or the
+  // repository's top from a directory at the top.
+  const parent = prefix ? prefix.slice(0, -1).split("/").slice(0, -1).join("/") : null;
   return (
     // Busy while each entry's last commit is on its way; its cells keep their size.
     <ul aria-busy={last === undefined || undefined} className="divide-y divide-line text-sm">
+      {parent !== null && (
+        <li className="px-4 transition-colors hover:bg-surface">
+          <Link
+            to={parent ? `${base}/tree/${gitRef}/${parent}` : `${base}/tree/${gitRef}`}
+            aria-label="Parent directory"
+            className="flex min-h-11 min-w-0 items-center gap-3 py-2 hover:text-accent hover:underline sm:min-h-0"
+          >
+            <CornerLeftUp size={15} className="shrink-0 text-faint" />
+            <span className="font-mono text-[0.8125rem]">..</span>
+          </Link>
+        </li>
+      )}
       {entries.map((entry) => {
         const isTree = entry.kind === "tree";
         const Icon = isTree ? Folder : entry.kind === "gitlink" ? FolderGit2 : File;
