@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import type { Root } from "hast";
 import type { Components } from "react-markdown";
-import { type ReactNode, isValidElement, useEffect, useRef, useState } from "react";
+import { type ReactNode, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -204,94 +204,103 @@ export function Markdown({
    */
   rawBase?: string;
 }) {
+  // The same text renders to the same elements with the same components, so
+  // a page that revalidates (a live refresh) leaves the text as it is
+  // rather than mounting it again and reloading its pictures.
+  const tree = useMemo(() => treeOf(source, repo), [source, repo?.namespace, repo?.name]);
+  const components = useMemo(() => markdownComponents(base, rawBase), [base, rawBase]);
+  const rendered = useMemo(() => renderMarkdownTree(tree, components), [tree, components]);
   return (
     // A long word or address breaks rather than widening the page.
-    <div className="prose wrap-break-word">
-      {renderMarkdownTree(treeOf(source, repo), {
-        h1: ({ children }) => <Heading level={1}>{children}</Heading>,
-        h2: ({ children }) => <Heading level={2}>{children}</Heading>,
-        h3: ({ children }) => <Heading level={3}>{children}</Heading>,
-        h4: ({ children }) => <Heading level={4}>{children}</Heading>,
-        a({ href = "", children, node }) {
-          const ref = (node?.properties as { dataRef?: string } | undefined)?.dataRef;
-          if (ref === "mention") {
-            // `@name` may be a person (with a card) or a workspace (none).
-            const name = href === G1T_MENTION_HREF ? "g1t" : href.replace(/^\//, "");
-            return (
-              <UserCard username={name}>
-                <Link to={href} prefetch="intent" className="font-medium">
-                  {children}
-                </Link>
-              </UserCard>
-            );
-          }
-          if (ref) {
-            return (
-              <Link
-                to={href}
-                prefetch="intent"
-                className={ref === "commit" ? "font-mono text-[0.9em]" : ref === "mention" ? "font-medium" : ""}
-              >
-                {children}
-              </Link>
-            );
-          }
-          if (href.startsWith("#")) return <a href={href}>{children}</a>;
-          if (isExternal(href)) {
-            return (
-              <a href={href} rel="noreferrer nofollow ugc" target="_blank">
-                {children}
-              </a>
-            );
-          }
-          // A link within the site, or relative to the document's folder.
-          const to = href.startsWith("/") || !base ? href : `${base}/${href.replace(/^\.\//, "")}`;
-          return <Link to={to}>{children}</Link>;
-        },
-        blockquote({ children, node }) {
-          const kind = (node?.properties as { dataAlert?: AlertKind } | undefined)?.dataAlert;
-          if (!kind || !ALERT[kind]) return <blockquote>{children}</blockquote>;
-          const alert = ALERT[kind];
-          return (
-            <div className={`markdown-alert border-l-2 py-1 pl-4 ${alert.tone}`}>
-              <p className="alert-title flex items-center gap-2 text-sm font-medium">
-                {alert.icon}
-                {alert.title}
-              </p>
-              <div className="mt-1 [&>*+*]:mt-3">{children}</div>
-            </div>
-          );
-        },
-        pre({ children }) {
-          const code = Array.isArray(children) ? children[0] : children;
-          if (isValidElement<{ className?: string; children?: ReactNode }>(code)) {
-            const language = /language-([\w+-]+)/.exec(code.props.className ?? "")?.[1] ?? null;
-            return <CodeBlock language={language} code={textOf(code.props.children).replace(/\n$/, "")} />;
-          }
-          return <pre>{children}</pre>;
-        },
-        // A wide table scrolls on its own, inside the text, not the page.
-        table: ({ children }) => (
-          <div className="overflow-x-auto">
-            <table className="max-sm:[&_td]:min-w-32 max-sm:[&_th]:whitespace-nowrap">{children}</table>
-          </div>
-        ),
-        input({ type, checked, disabled }) {
-          // Task list boxes: shown, not editable.
-          return type === "checkbox" ? (
-            <Checkbox
-              checked={checked === true}
-              disabled={disabled !== false}
-              aria-label={checked ? "Done" : "Not done"}
-              className="mr-1.5 inline-flex translate-y-0.5 disabled:cursor-default disabled:opacity-100"
-            />
-          ) : null;
-        },
-        img({ src, alt }) {
-          const at = typeof src === "string" ? imageSource(src, rawBase) : undefined;
-          return <img src={at} alt={alt ?? ""} loading="lazy" className="inline max-w-full rounded" />;
-        },
-      } satisfies Components)}
-    </div>
+    <div className="prose wrap-break-word">{rendered}</div>
   );
+}
+
+/** How each element is drawn: links relative to `base`, pictures under `rawBase`. */
+function markdownComponents(base: string | undefined, rawBase: string | undefined): Components {
+  return {
+    h1: ({ children }) => <Heading level={1}>{children}</Heading>,
+    h2: ({ children }) => <Heading level={2}>{children}</Heading>,
+    h3: ({ children }) => <Heading level={3}>{children}</Heading>,
+    h4: ({ children }) => <Heading level={4}>{children}</Heading>,
+    a({ href = "", children, node }) {
+      const ref = (node?.properties as { dataRef?: string } | undefined)?.dataRef;
+      if (ref === "mention") {
+        // `@name` may be a person (with a card) or a workspace (none).
+        const name = href === G1T_MENTION_HREF ? "g1t" : href.replace(/^\//, "");
+        return (
+          <UserCard username={name}>
+            <Link to={href} prefetch="intent" className="font-medium">
+              {children}
+            </Link>
+          </UserCard>
+        );
+      }
+      if (ref) {
+        return (
+          <Link
+            to={href}
+            prefetch="intent"
+            className={ref === "commit" ? "font-mono text-[0.9em]" : ref === "mention" ? "font-medium" : ""}
+          >
+            {children}
+          </Link>
+        );
+      }
+      if (href.startsWith("#")) return <a href={href}>{children}</a>;
+      if (isExternal(href)) {
+        return (
+          <a href={href} rel="noreferrer nofollow ugc" target="_blank">
+            {children}
+          </a>
+        );
+      }
+      // A link within the site, or relative to the document's folder.
+      const to = href.startsWith("/") || !base ? href : `${base}/${href.replace(/^\.\//, "")}`;
+      return <Link to={to}>{children}</Link>;
+    },
+    blockquote({ children, node }) {
+      const kind = (node?.properties as { dataAlert?: AlertKind } | undefined)?.dataAlert;
+      if (!kind || !ALERT[kind]) return <blockquote>{children}</blockquote>;
+      const alert = ALERT[kind];
+      return (
+        <div className={`markdown-alert border-l-2 py-1 pl-4 ${alert.tone}`}>
+          <p className="alert-title flex items-center gap-2 text-sm font-medium">
+            {alert.icon}
+            {alert.title}
+          </p>
+          <div className="mt-1 [&>*+*]:mt-3">{children}</div>
+        </div>
+      );
+    },
+    pre({ children }) {
+      const code = Array.isArray(children) ? children[0] : children;
+      if (isValidElement<{ className?: string; children?: ReactNode }>(code)) {
+        const language = /language-([\w+-]+)/.exec(code.props.className ?? "")?.[1] ?? null;
+        return <CodeBlock language={language} code={textOf(code.props.children).replace(/\n$/, "")} />;
+      }
+      return <pre>{children}</pre>;
+    },
+    // A wide table scrolls on its own, inside the text, not the page.
+    table: ({ children }) => (
+      <div className="overflow-x-auto">
+        <table className="max-sm:[&_td]:min-w-32 max-sm:[&_th]:whitespace-nowrap">{children}</table>
+      </div>
+    ),
+    input({ type, checked, disabled }) {
+      // Task list boxes: shown, not editable.
+      return type === "checkbox" ? (
+        <Checkbox
+          checked={checked === true}
+          disabled={disabled !== false}
+          aria-label={checked ? "Done" : "Not done"}
+          className="mr-1.5 inline-flex translate-y-0.5 disabled:cursor-default disabled:opacity-100"
+        />
+      ) : null;
+    },
+    img({ src, alt }) {
+      const at = typeof src === "string" ? imageSource(src, rawBase) : undefined;
+      return <img src={at} alt={alt ?? ""} loading="lazy" className="inline max-w-full rounded" />;
+    },
+  } satisfies Components;
 }
