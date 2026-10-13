@@ -36,8 +36,13 @@ export function ProductionShot({
   const image = useRef<HTMLImageElement>(null);
   const [at, setAt] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // The picture last shown, kept under the next one until that has loaded
+  // and faded in: a new deploy's screenshot replaces the old one rather
+  // than the frame going blank while it comes.
+  const [shown, setShown] = useState<CardSource | null>(null);
   const key = sources.map((source) => source.src).join("\n");
   const source = sources[at] ?? null;
+  const under = source && shown && shown.src !== source.src ? shown : null;
 
   // Other sources (another deploy, a new upload): from the first again.
   useEffect(() => {
@@ -53,6 +58,14 @@ export function ProductionShot({
     else setAt((index) => index + 1);
   }, [source?.src]);
 
+  // Once the new picture has faded in over it (300 ms), the old one goes.
+  useEffect(() => {
+    if (!loaded || !source || shown?.src === source.src) return;
+    const timer = setTimeout(() => setShown(source), 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `source` is the one `src` names
+  }, [loaded, source?.src, shown?.src]);
+
   const empty = source == null;
   const waiting = !empty && !loaded ? (source.kind === "screenshot" ? "Taking a screenshot…" : "Loading the image…") : null;
 
@@ -63,7 +76,18 @@ export function ProductionShot({
         href && "transition-colors group-hover:border-line-strong",
       )}
     >
-      {!loaded && <Placeholder label={label} waiting={waiting} note={empty && !addImage ? (note ?? null) : null} />}
+      {!loaded && !under && <Placeholder label={label} waiting={waiting} note={empty && !addImage ? (note ?? null) : null} />}
+      {under && (
+        <img
+          key={under.src}
+          src={under.src}
+          alt=""
+          aria-hidden="true"
+          width={1280}
+          height={800}
+          className="absolute inset-0 size-full object-cover object-top"
+        />
+      )}
       {source && (
         <img
           key={source.src}

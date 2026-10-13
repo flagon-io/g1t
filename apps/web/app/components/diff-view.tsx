@@ -16,9 +16,13 @@ import { Form, Link } from "react-router";
 
 import type { Comment, Comparison, DiffLine } from "@g1t/contracts";
 
-import type {
-  HighlightedFile,
-  HighlightedLine,
+import {
+  type FileHtml,
+  type HighlightedFile,
+  type HighlightedLine,
+  diffContent,
+  htmlOfFile,
+  withHtml,
 } from "../lib/diff";
 import { Markdown } from "./markdown";
 import { EmptyState, SubmitButton, Textarea, TimeAgo } from "./ui";
@@ -398,13 +402,21 @@ function FileSection({
   // Shown plain at once, and highlighted in the browser when it comes near
   // the screen: the page never waits for colours.
   const section = useRef<HTMLElement>(null);
-  const [highlighted, setHighlighted] = useState<HighlightedFile | null>(null);
+  const [highlighted, setHighlighted] = useState<{ content: string; html: FileHtml } | null>(null);
+  // What the colours depend on. A refresh hands the page a new `file` with
+  // the same lines: it keeps its colours rather than going plain and being
+  // highlighted again, which flashed every coloured diff on the page.
+  const content = useMemo(() => `${file.path}\n${diffContent(file)}`, [file]);
+  const latest = useRef(file);
+  latest.current = file;
+  const kept = highlighted?.content === content ? highlighted.html : null;
+  const drawn = useMemo(() => (kept ? withHtml(file, kept) : file), [file, kept]);
   useEffect(() => {
-    setHighlighted(null);
     const element = section.current;
+    const file = latest.current;
     // Highlighted by the server already: one of the change's first files.
     const done = file.hunks.some((hunk) => hunk.lines.some((line) => (line as HighlightedLine).html != null));
-    if (!element || collapsed || done) return;
+    if (!element || collapsed || done || kept) return;
     let cancelled = false;
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -413,7 +425,7 @@ function FileSection({
         void import("../lib/shiki")
           .then(({ highlightFile }) => highlightFile(file))
           .then((result) => {
-            if (!cancelled && result) setHighlighted(result);
+            if (!cancelled && result) setHighlighted({ content, html: htmlOfFile(result) });
           })
           .catch(() => {});
       },
@@ -424,8 +436,10 @@ function FileSection({
       cancelled = true;
       observer.disconnect();
     };
-  }, [file, collapsed]);
-  const props = { file: highlighted ?? file, comments, canComment: review?.canComment ?? false };
+    // `kept` is whether `content` is highlighted already: the lines, not the object they came in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, collapsed, kept != null]);
+  const props = { file: drawn, comments, canComment: review?.canComment ?? false };
   return (
     <Card asChild tone="plain" className="scroll-mt-[calc(4rem+var(--diff-toolbar,3rem))]">
       <section
