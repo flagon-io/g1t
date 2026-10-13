@@ -729,7 +729,7 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
                   onChange={(value) => update(index, { value })}
                 />
               ) : actor.kind === "g1t" ? (
-                <span className="grow text-sm text-muted">g1t's agents and g1t itself (the merge queue, security updates)</span>
+                <span className="grow text-sm text-muted">g1t itself (the merge queue, security updates)</span>
               ) : (
                 <Input aria-label="Who, by name" value={actor.value} disabled={disabled} placeholder={KINDS.find((kind) => kind.value === actor.kind)?.placeholder} className="w-48 grow" onChange={(event) => update(index, { value: event.target.value })} />
               )}
@@ -754,7 +754,7 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
       </ul>
       {hasG1t && (
         <p className="flex items-start gap-2 text-xs text-warn">
-          <TriangleAlert size={13} className="mt-px shrink-0" /> g1t's agents bypass these rules. Agents obey rules exactly as people do unless they are listed here.
+          <TriangleAlert size={13} className="mt-px shrink-0" /> g1t itself (the merge queue, security updates) bypasses these rules. Coding agents obey rules exactly as the people they act for do.
         </p>
       )}
       {!disabled && (

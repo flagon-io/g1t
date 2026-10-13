@@ -74,31 +74,6 @@ export function parsePrepay(form: {
   return { ok: true, value: { amountCents: Math.round(amount * 100), method } };
 }
 
-/** What owners may set each cap to, in micros, and what applies when they set none. */
-export const CAPS = {
-  run: { min: 100_000, max: 100_000_000, default: 2_000_000 },
-  issue: { min: 1_000_000, max: 1_000_000_000, default: 10_000_000 },
-} as const;
-
-/** The owners' caps: empty goes back to the default. */
-export function parseCaps(form: {
-  run?: FormDataEntryValue | null;
-  issue?: FormDataEntryValue | null;
-}): Parsed<{ runCapMicros: number | null; issueCapMicros: number | null }> {
-  const run = readDollars(form.run);
-  const issue = readDollars(form.issue);
-  if (String(form.run ?? "").trim() && run == null) return { ok: false, error: "A run's cap is a dollar amount." };
-  if (String(form.issue ?? "").trim() && issue == null) return { ok: false, error: "An issue's cap is a dollar amount." };
-  if (run != null && (run < CAPS.run.min || run > CAPS.run.max))
-    return { ok: false, error: `A run's cap is between ${wholeDollars(CAPS.run.min)} and ${wholeDollars(CAPS.run.max)}.` };
-  if (issue != null && (issue < CAPS.issue.min || issue > CAPS.issue.max))
-    return {
-      ok: false,
-      error: `An issue's cap is between ${wholeDollars(CAPS.issue.min)} and ${wholeDollars(CAPS.issue.max)}.`,
-    };
-  return { ok: true, value: { runCapMicros: run, issueCapMicros: issue } };
-}
-
 /** A request for a higher limit, or for help with usage past what was meant. */
 export function parseLimitRequest(form: {
   kind?: FormDataEntryValue | null;
