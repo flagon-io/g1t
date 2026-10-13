@@ -376,6 +376,7 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
     if (deployed.code !== 0) throw new Error(`wrangler deploy failed:\n${wranglerError(deployed.out)}`);
     result.version = dryRun ? "(dry run)" : versionFrom(deployed.out);
     result.ok = true;
+    if (unit.image && !dryRun) await reportContainers(unit, cwd, out);
   } catch (error) {
     result.note = String(error.message ?? error);
   } finally {
@@ -385,6 +386,29 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
   out.save();
   if (!result.ok) result.note += `\n  full log: ${out.file}`;
   return result;
+}
+
+/**
+ * What Cloudflare runs for a unit's container applications after a deploy:
+ * each one's instance type, size, version and rollout, from `wrangler
+ * containers list`, so a deploy log says whether new settings took. Never
+ * fails the deploy.
+ */
+async function reportContainers(unit, cwd, out) {
+  try {
+    const listed = await wrangler(["containers", "list"], { cwd });
+    const text = listed.out.slice(listed.out.indexOf("["));
+    const apps = JSON.parse(text.slice(0, text.lastIndexOf("]") + 1));
+    for (const app of apps.filter((a) => String(a.name ?? "").startsWith(`${unit.worker}-`))) {
+      const c = app.configuration ?? {};
+      const disk = c.disk?.size_mb ?? c.disk_mb ?? c.disk?.size;
+      const size = [c.instance_type, c.vcpu != null && `${c.vcpu} vCPU`, c.memory_mib != null && `${c.memory_mib} MiB`, disk != null && `${disk} MB disk`].filter(Boolean).join(", ");
+      const rollout = app.active_rollout_id ? `rollout ${app.active_rollout_id} in progress` : "no rollout in progress";
+      out.line(`container ${app.name}: ${size || JSON.stringify(c).slice(0, 200)}; version ${app.version ?? "?"}; ${app.instances ?? "?"} instances; ${rollout}`);
+    }
+  } catch (error) {
+    out.line(`could not read the container applications: ${error.message ?? error}`);
+  }
 }
 
 async function migrate(stack, units, migrations, opts) {
