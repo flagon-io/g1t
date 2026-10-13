@@ -143,7 +143,18 @@ fn card(addresses: &crate::addresses::Addresses) -> Value {
         "endpoint": addresses.mcp,
         "transport": "streamable-http",
         "protocol_versions": SUPPORTED_VERSIONS,
+        // For Claude Code, g1t's plugin comes first: it adds this server
+        // itself (as plugin:g1t:g1t), so `connect` is for Claude Code
+        // without the plugin; with both, every tool is listed twice.
         "connect": format!("claude mcp add --transport http g1t {}", addresses.mcp),
+        "claude_code_plugin": {
+            "install": [
+                "claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git",
+                "claude plugin install g1t@g1t",
+            ],
+            "note": "The plugin adds this server (listed in /mcp as plugin:g1t:g1t) and records your sessions on g1t. With it installed, skip `connect`, or each tool is listed twice.",
+            "documentation_url": "https://docs.g1t.sh/guides/claude-code-plugin/",
+        },
         "authorization": {
             "required": true,
             "oauth_protected_resource": addresses.protected_resource(),

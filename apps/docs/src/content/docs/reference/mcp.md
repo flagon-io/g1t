@@ -15,11 +15,17 @@ with the same inputs, permissions and results, so the two always agree.
 ## Connect
 
 To connect Claude Code, Codex, OpenCode, Cursor or another client, see
-[connect a coding agent](/guides/bring-your-own-agent/). With Claude Code:
+[connect a coding agent](/guides/bring-your-own-agent/). With Claude Code,
+install g1t's [plugin](/guides/claude-code-plugin/), which adds the server
+(`plugin:g1t:g1t` in `/mcp`) and records your sessions:
 
 ```sh
-claude mcp add --transport http g1t https://mcp.g1t.sh
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin install g1t@g1t
 ```
+
+Without the plugin, `claude mcp add --transport http g1t https://mcp.g1t.sh`
+adds the server alone. Never both, or every tool is listed twice.
 
 The server speaks MCP over streamable HTTP, and answers every request with
 JSON. Every call needs to be signed in, in one of two ways:

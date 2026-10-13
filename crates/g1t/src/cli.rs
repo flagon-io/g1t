@@ -365,6 +365,8 @@ pub struct CommentArgs {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum CloseReason {
     Completed,
+    // Spelled as the API spells it.
+    #[value(name = "not_planned", alias = "not-planned")]
     NotPlanned,
 }
 
@@ -1030,6 +1032,8 @@ pub enum EntryKind {
     Note,
     Prompt,
     Message,
+    // Spelled as the API spells it, which is what the plugin sends.
+    #[value(name = "tool_call", alias = "tool-call")]
     ToolCall,
     /// A skill the session used: give its name.
     Skill,
@@ -1416,4 +1420,134 @@ pub struct PushArgs {
 
 fn parse_chunk(text: &str) -> Result<u64, String> {
     crate::chunk::check_chunk(crate::chunk::parse_size(text)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::Parser;
+    use serde_json::Value;
+
+    /// Every command the Claude Code plugin's hooks run, from the contract
+    /// their tests hold them to (plugins/claude-code/test/cli-contract.json),
+    /// with every value each flag is given there, parses here.
+    #[test]
+    fn the_plugin_hooks_commands_parse() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../plugins/claude-code/test/cli-contract.json"
+        );
+        let contract: Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let mut checked = 0;
+        for command in contract["commands"].as_array().unwrap() {
+            let words: Vec<String> = command["command"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|w| w.as_str().unwrap().to_owned())
+                .collect();
+            let flags = command["flags"].as_object().unwrap();
+            // One argv for each value of each flag, with every other flag too.
+            let mut variants: Vec<Vec<(String, Option<String>)>> = vec![vec![]];
+            for (flag, kind) in flags {
+                let values: Vec<Option<String>> = match kind {
+                    Value::Array(values) => values
+                        .iter()
+                        .map(|v| Some(v.as_str().unwrap().to_owned()))
+                        .collect(),
+                    Value::String(kind) => match kind.as_str() {
+                        // Spaced, and as --flag=VALUE, which the hooks use for
+                        // text that may start with a dash.
+                        "text" => vec![
+                            Some("a text, with spaces".into()),
+                            Some("=- a text that starts with a dash".into()),
+                        ],
+                        "number" => vec![Some("42".into())],
+                        "switch" | "json" => vec![None],
+                        other => panic!("{flag}: no type {other}"),
+                    },
+                    other => panic!("{flag}: {other}"),
+                };
+                let mut next = Vec::new();
+                for variant in &variants {
+                    for value in &values {
+                        let mut v = variant.clone();
+                        v.push((flag.clone(), value.clone()));
+                        next.push(v);
+                    }
+                }
+                variants = next;
+            }
+            let dash_dash = command["dash_dash"].as_bool().unwrap_or(false);
+            // A text positional after -- may start with a dash.
+            let positionals: Vec<String> = command["positionals"]
+                .as_array()
+                .map(|p| {
+                    p.iter()
+                        .map(|k| match (k.as_str(), dash_dash) {
+                            (Some("number"), _) => "42".to_owned(),
+                            (_, true) => "-a text that starts with a dash".to_owned(),
+                            _ => "a_text".to_owned(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            for variant in variants {
+                let mut argv = vec!["g1t".to_owned()];
+                argv.extend(words.iter().cloned());
+                // --json last: with nothing after it, it takes no fields.
+                let mut json = false;
+                for (flag, value) in &variant {
+                    if flag == "--json" {
+                        json = true;
+                        continue;
+                    }
+                    match value {
+                        Some(v) if v.starts_with('=') => argv.push(format!("{flag}{v}")),
+                        _ => {
+                            argv.push(flag.clone());
+                            argv.extend(value.iter().cloned());
+                        }
+                    }
+                }
+                if dash_dash {
+                    argv.push("--".into());
+                }
+                argv.extend(positionals.iter().cloned());
+                if json {
+                    argv.push("--json".into());
+                }
+                match Cli::try_parse_from(&argv) {
+                    Ok(_) => {}
+                    Err(e) if e.kind() == clap::error::ErrorKind::DisplayVersion => {}
+                    Err(e) => panic!("the plugin runs {argv:?}, which the CLI refuses: {e}"),
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked >= 10, "checked {checked}");
+        // This CLI is at least the version the hooks ask for.
+        let version = |v: &str| {
+            v.split('.')
+                .map(|n| n.parse::<u32>().unwrap())
+                .collect::<Vec<_>>()
+        };
+        let minimum = contract["minimum_version"].as_str().unwrap();
+        assert!(
+            version(env!("CARGO_PKG_VERSION")) >= version(minimum),
+            "the hooks need {minimum}"
+        );
+    }
+
+    #[test]
+    fn entry_kinds_take_both_spellings() {
+        for kind in ["tool_call", "tool-call"] {
+            let cli = Cli::try_parse_from(["g1t", "session", "log", "--kind", kind, "x"]).unwrap();
+            let super::Command::Session(super::SessionCommand::Log(args)) = cli.command else {
+                panic!("not session log")
+            };
+            assert_eq!(args.kind.name(), "tool_call");
+        }
+    }
 }

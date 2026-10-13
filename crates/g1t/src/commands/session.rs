@@ -354,7 +354,7 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     if let Some(seen) = session["last_seen_at"].as_str() {
         facts.push(format!("last seen {}", ago(seen)));
     }
-    println!("{}", facts.join(" Â· "));
+    println!("{}", facts.join(" · "));
     let on = place(&session);
     if !on.is_empty() {
         println!("{} {on}", out.dim("On:"));
@@ -364,6 +364,20 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     }
     if let Some(reason) = session["end_reason"].as_str() {
         println!("{} {reason}", out.dim("Ended:"));
+    }
+    // A subagent: who started it, what it was asked and what it reported.
+    if let Some(parent) = session["parent_id"].as_str() {
+        let kind = session["agent_type"].as_str().map(|t| format!(" ({t})")).unwrap_or_default();
+        println!("{} {parent}{kind}", out.dim("Subagent of:"));
+    }
+    if let Some(task) = session["task"].as_str().filter(|t| !t.trim().is_empty()) {
+        println!("{} {}", out.dim("Task:"), task.trim());
+    }
+    if let Some(result) = session["result"].as_str().filter(|r| !r.trim().is_empty()) {
+        println!("{}", out.dim("Result:"));
+        for line in result.trim().lines() {
+            println!("  {line}");
+        }
     }
     let entries = session["entries"].as_array().cloned().unwrap_or_default();
     if !entries.is_empty() {
@@ -445,6 +459,38 @@ mod tests {
                 { "kind": "pull", "value": "14" },
             ])
         );
+    }
+
+    /// UTF-8 read as Windows-1252 and saved again (the middle dot as
+    /// U+00C2 U+00B7) printed as mojibake in `g1t session view`; no source
+    /// holds it.
+    #[test]
+    fn no_source_holds_mojibake() {
+        let marks = ['\u{00C2}', '\u{00E2}'].map(|lead| {
+            // U+00C2 before a Latin-1 symbol, or U+00E2 U+20AC (how an
+            // ellipsis, a dash or a curly quote starts when read so).
+            move |text: &str| {
+                text.char_indices().any(|(i, c)| {
+                    c == lead
+                        && text[i + c.len_utf8()..]
+                            .chars()
+                            .next()
+                            .is_some_and(|next| ('\u{00A0}'..='\u{00BF}').contains(&next) || next == '\u{20AC}')
+                })
+            }
+        });
+        let mut dirs = vec![std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    assert!(!marks.iter().any(|found| found(&text)), "{} holds mojibake", path.display());
+                }
+            }
+        }
     }
 
     #[test]

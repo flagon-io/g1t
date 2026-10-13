@@ -32,9 +32,11 @@ Install g1t's plugin for Claude Code:
   claude plugin marketplace add $BASE/flagon-io/g1t.git
   claude plugin install g1t@g1t
 
-The plugin's hooks use the g1t CLI. If you do not have it yet, install it
+The plugin's hooks use the g1t CLI (0.3.2 or later) and Node 18 or later.
+If you do not have the CLI yet, or have an older one, install it
 (curl -fsSL $BASE/install | sh) and sign in with \`g1t auth login\`.
-Then, in Claude Code, run /mcp and choose g1t to sign its tools in.
+Then, in Claude Code, run /mcp and choose plugin:g1t:g1t to sign its tools
+in. The plugin adds g1t's MCP server itself: skip \`claude mcp add\`.
 
 Guide: https://docs.g1t.sh/guides/claude-code-plugin/
 EOF

@@ -83,7 +83,10 @@ test("parseAgent accepts only known agents", () => {
 });
 
 test("every snippet points at the MCP server", () => {
-  for (const id of AGENT_IDS) assert.ok(AGENTS[id].code.includes(MCP_URL), id);
+  // Claude Code's is g1t's plugin, which adds the server itself.
+  for (const id of AGENT_IDS) if (id !== "claude-code") assert.ok(AGENTS[id].code.includes(MCP_URL), id);
+  assert.match(AGENTS["claude-code"].code, /^claude plugin marketplace add https:\/\/g1t\.sh\/flagon-io\/g1t\.git\nclaude plugin install g1t@g1t$/);
+  assert.match(AGENTS["claude-code"].then, /plugin:g1t:g1t/);
   assert.deepEqual(JSON.parse(AGENTS.cursor.code), { mcpServers: { g1t: { url: MCP_URL } } });
   assert.equal(JSON.parse(AGENTS.opencode.code).mcp.g1t.type, "remote");
   const config = new URL(cursorInstallLink()).searchParams.get("config");
