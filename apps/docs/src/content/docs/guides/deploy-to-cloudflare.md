@@ -305,8 +305,11 @@ finish first. A workflow job on g1t's machines runs for at most 60
 minutes, so a deploy never cuts one short; an agent run whose guardrails
 allow more than two hours can be.
 
-Jobs choose larger machines with `runs-on: g1t-2core` or `g1t-4core`. Your
-account's Containers limits must allow `standard-4`.
+Jobs choose larger machines with `runs-on: g1t-2core` or `g1t-4core`.
+Every sandbox has 20 GB of disk: the standard one and `g1t-2core` are
+custom instance types (1 vCPU and 4 GiB, and 2 vCPU and 8 GiB), and
+`g1t-4core` is `standard-4`. Your account's Containers limits must allow
+all three.
 
 Set the runner Worker's `DOCKER` variable to `off` to give workflow jobs no
 Docker Engine.

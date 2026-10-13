@@ -187,9 +187,10 @@ pub(crate) struct ContainerUsage {
     memory_byte_seconds: f64,
 }
 
-/// g1t's sandboxes: Containers' standard-1, half a vCPU, 4 GiB, 8 GB disk.
+/// g1t's standard sandbox (`STANDARD_INSTANCE` in the contracts): a custom
+/// Containers instance type of 1 vCPU, 4 GiB and 20 GB of disk.
 const SANDBOX_GIB: f64 = 4.0;
-const SANDBOX_DISK_GB: f64 = 8.0;
+const SANDBOX_DISK_GB: f64 = 20.0;
 const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 /// The Durable Object behind each container is billed for as long as the
 /// container runs, at 128 MB.
@@ -565,10 +566,10 @@ mod tests {
         let usage = ContainerUsage { cpu_seconds: 720.0, memory_byte_seconds: 3600.0 * 4.0 * GIB };
         let micros =
             sandbox_second_micros(usage, LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_VCPU_SECOND, LIST_DO_GB_SECOND).unwrap();
-        // 4 x 2.5 + 8 x 0.07 + 0.125 x 12.5 + 0.2 x 20 = 16.1225
-        assert!((micros - 16.1225).abs() < 1e-9, "{micros}");
-        // The Durable Object adds about 11% to the second it left out.
-        assert!((sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND) - 12.1225).abs() < 1e-9);
+        // 4 x 2.5 + 20 x 0.07 + 0.125 x 12.5 + 0.2 x 20 = 16.9625
+        assert!((micros - 16.9625).abs() < 1e-9, "{micros}");
+        // The Durable Object adds about 14% to the second it left out.
+        assert!((sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND) - 12.9625).abs() < 1e-9);
         // Too little use to say anything.
         assert!(sandbox_second_micros(ContainerUsage { cpu_seconds: 1.0, memory_byte_seconds: GIB }, 1.0, 1.0, 1.0, 1.0).is_none());
     }
@@ -577,9 +578,9 @@ mod tests {
     fn a_run_that_reports_its_cpu_is_priced_on_it() {
         let base = sandbox_base_micros(LIST_MEMORY_GIB_SECOND, LIST_DISK_GB_SECOND, LIST_DO_GB_SECOND);
         let vcpu = LIST_VCPU_SECOND * MICROS_PER_DOLLAR as f64;
-        // A 10-minute cargo build that kept its half vCPU busy throughout.
+        // A 10-minute cargo build that kept half its vCPU busy throughout.
         let heavy = run_cost(600, 300.0, base, vcpu);
-        assert!((heavy - (600.0 * 12.1225 + 300.0 * 20.0)).abs() < 1e-6);
+        assert!((heavy - (600.0 * 12.9625 + 300.0 * 20.0)).abs() < 1e-6);
         // The same ten minutes, mostly idle, costs less.
         let light = run_cost(600, 30.0, base, vcpu);
         assert!(light < heavy);
@@ -589,8 +590,13 @@ mod tests {
         assert_eq!(run_cost(0, -1.0, base, vcpu), 0.0);
         // A larger machine's base: its memory and disk, not its CPU.
         assert!((base_scale(SANDBOX_GIB, SANDBOX_DISK_GB) - 1.0).abs() < 1e-12);
-        assert!((base_scale(12.0, 20.0) - 2.72).abs() < 0.01, "{}", base_scale(12.0, 20.0));
-        assert!((base_scale(8.0, 16.0) - 1.87).abs() < 0.01, "{}", base_scale(8.0, 16.0));
+        assert!((base_scale(12.0, 20.0) - 2.54).abs() < 0.01, "{}", base_scale(12.0, 20.0));
+        assert!((base_scale(8.0, 20.0) - 1.77).abs() < 0.01, "{}", base_scale(8.0, 20.0));
+        // Each machine in the contracts, priced from its own memory and disk.
+        for instance in g1t_contracts::actions::INSTANCE_TYPES {
+            let scale = base_scale(instance.memory_gib, instance.disk_gb);
+            assert!(scale >= 1.0 && scale < instance.price_scale.max(1.0) + 1e-9, "{}: {scale}", instance.label);
+        }
     }
 
     #[test]

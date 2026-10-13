@@ -73,9 +73,15 @@ what is kept.
 
 | `runs-on` | Class | Size |
 | --- | --- | --- |
-| Any other hosted label, and every other kind of work | `AttemptSandbox` | Cloudflare's `standard-1` |
-| `g1t-2core` | `Sandbox2Core` | 2 vCPU, 8 GiB memory, 16 GB disk |
-| `g1t-4core` | `Sandbox4Core` | 4 vCPU, 12 GiB memory, 20 GB disk |
+| Any other hosted label, and every other kind of work | `AttemptSandbox` | 1 vCPU, 4 GiB memory, 20 GB disk (a custom instance type) |
+| `g1t-2core` | `Sandbox2Core` | 2 vCPU, 8 GiB memory, 20 GB disk (a custom instance type) |
+| `g1t-4core` | `Sandbox4Core` | 4 vCPU, 12 GiB memory, 20 GB disk (Cloudflare's `standard-4`) |
+
+Each has the 20 GB of disk Containers allow at most. The named instance
+types with 1 and 2 vCPU come with 8 and 16 GB, so those two are custom
+instance types (`instance_type` with `vcpu`, `memory_mib` and `disk_mb` in
+`services/runner/wrangler.jsonc`); 1 vCPU is the smallest a custom type may
+have.
 
 Every sandbox starts from one image: `services/runner/base/Dockerfile`,
 which has Node, Python, Go, Rust, Java, .NET, Ruby and Docker, with the

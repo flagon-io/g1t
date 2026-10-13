@@ -1,13 +1,15 @@
 /**
  * Sizes of machine g1t runs workflow jobs on, asked for by a label in
  * `runs-on`. Mirrors `g1t_contracts::actions::INSTANCE_TYPES`. Each is a
- * Cloudflare Containers instance type, and costs what that instance costs
- * g1t, plus the margin, like any sandbox time.
+ * Cloudflare Containers instance type (named, or a custom one sized in
+ * services/runner/wrangler.jsonc), every one with the 20 GB of disk
+ * Containers allow at most, and costs what that instance costs g1t, plus
+ * the margin, like any sandbox time.
  */
 export type InstanceType = {
   /** The `runs-on` label, or `standard` for the default. */
   label: string;
-  /** The Containers instance type. */
+  /** The Containers instance type: a named one, or `custom`. */
   container: string;
   vcpu: number;
   memoryGib: number;
@@ -24,22 +26,23 @@ export type InstanceType = {
 /** The default: what `ubuntu-latest` and every other hosted label get. */
 export const STANDARD_INSTANCE: InstanceType = {
   label: "standard",
-  container: "standard-1",
-  vcpu: 0.5,
+  container: "custom",
+  vcpu: 1,
   memoryGib: 4,
-  diskGb: 8,
+  diskGb: 20,
   estimateScale: 1,
 };
 
 /**
  * Every machine a job can ask for, the default first. The scales follow
  * Cloudflare's list prices: memory $0.0000025 a GiB-second, disk
- * $0.00000007 a GB-second, vCPU $0.00002 a second.
+ * $0.00000007 a GB-second, vCPU $0.00002 a second, and the Durable Object
+ * behind each at 128 MB, $0.0000125 a GB-second; to one decimal.
  */
 export const INSTANCE_TYPES: readonly InstanceType[] = [
   STANDARD_INSTANCE,
-  { label: "g1t-2core", container: "standard-3", vcpu: 2, memoryGib: 8, diskGb: 16, estimateScale: 2.8 },
-  { label: "g1t-4core", container: "standard-4", vcpu: 4, memoryGib: 12, diskGb: 20, estimateScale: 5.1 },
+  { label: "g1t-2core", container: "custom", vcpu: 2, memoryGib: 8, diskGb: 20, estimateScale: 1.9 },
+  { label: "g1t-4core", container: "standard-4", vcpu: 4, memoryGib: 12, diskGb: 20, estimateScale: 3.4 },
 ];
 
 /** An instance type by its label; the standard one for anything else. */

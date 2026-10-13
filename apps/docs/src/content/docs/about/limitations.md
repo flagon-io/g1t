@@ -319,6 +319,7 @@ includes, and fails for any other version.
 | Limit | Value |
 | --- | --- |
 | Largest machine | 4 vCPUs, 12 GiB of memory, 20 GB of disk (`g1t-4core`). No GPUs. |
+| Disk | 20 GB on every machine, the most Cloudflare Containers give one. |
 | One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours. |
 | One cache entry | 2 GiB, compressed. A larger one is not saved. |
 | A repository's caches | 10 GiB together. Past it, the entries restored longest ago are removed. |

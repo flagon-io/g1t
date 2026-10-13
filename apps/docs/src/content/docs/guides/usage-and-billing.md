@@ -140,7 +140,7 @@ There are no seats. The live figures are on
 | What | Unit | Costs g1t | You pay |
 | --- | --- | --- | --- |
 | Sandbox time (workflows, checks, the merge queue) | Second | About $0.001 a minute | About $0.0012 a minute |
-| [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 2.8 and 5.1 times a sandbox second | Cost + 20% |
+| [Larger machines](#workflow-jobs-on-larger-machines) for workflow jobs (`g1t-2core`, `g1t-4core`) | Second | About 1.9 and 3.4 times a sandbox second | Cost + 20% |
 | Deploy builds | Second | About $0.001 a minute | About $0.0012 a minute |
 | App requests | Million | $0.30 | $0.36 |
 | App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
@@ -356,12 +356,13 @@ second, from the first, under **Builds**.
 
 A workflow job whose `runs-on` names a [larger machine](/guides/actions/#machine-sizes)
 runs on a larger Cloudflare Containers instance, and its seconds cost what
-that instance costs g1t, plus 20%:
+that instance costs g1t, plus 20%. The standard machine they are compared
+with has 1 vCPU, 4 GiB and 20 GB:
 
 | `runs-on` | Instance | Its memory and disk, against the standard machine's | A second with its vCPUs as busy as an average sandbox's |
 | --- | --- | --- | --- |
-| `g1t-2core` | 2 vCPU, 8 GiB, 16 GB | 1.9 times | About 2.8 times a sandbox second |
-| `g1t-4core` | 4 vCPU, 12 GiB, 20 GB | 2.7 times | About 5.1 times a sandbox second |
+| `g1t-2core` | 2 vCPU, 8 GiB, 20 GB | 1.8 times | About 1.9 times a sandbox second |
+| `g1t-4core` | 4 vCPU, 12 GiB, 20 GB | 2.5 times | About 3.4 times a sandbox second |
 
 A job that reports its own CPU is priced on it: its memory and disk for
 every second, and the vCPU-seconds it used. One that does not is priced

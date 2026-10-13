@@ -249,10 +249,11 @@ export function computeNote(
 
 /**
  * What one second of a sandbox costs g1t, in millionths of a dollar, when
- * the price book cannot be read: Containers standard-1 with its Durable
- * Object, rounded up.
+ * the price book cannot be read: the standard sandbox (1 vCPU, 4 GiB, 20 GB)
+ * with its vCPU busy and its Durable Object, 32.96 at list prices, rounded
+ * up.
  */
-export const FALLBACK_SANDBOX_MICROS_PER_SECOND = 25;
+export const FALLBACK_SANDBOX_MICROS_PER_SECOND = 33;
 
 /** A sandbox for `minutes` at `microsPerSecond`. */
 export function sandboxEstimateMicros(minutes: number, microsPerSecond: number): number {

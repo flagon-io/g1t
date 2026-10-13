@@ -542,8 +542,8 @@ one:
 
 | `runs-on` | vCPUs | Memory | Disk |
 | --- | --- | --- | --- |
-| `ubuntu-latest`, or any other Linux label | 0.5 | 4 GiB | 8 GB |
-| `g1t-2core` | 2 | 8 GiB | 16 GB |
+| `ubuntu-latest`, or any other Linux label | 1 | 4 GiB | 20 GB |
+| `g1t-2core` | 2 | 8 GiB | 20 GB |
 | `g1t-4core` | 4 | 12 GiB | 20 GB |
 
 ```yaml

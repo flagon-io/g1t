@@ -228,7 +228,7 @@ test("the gate reads the sandbox price from the price book", async () => {
   const gate = new ComputeGate(billing({}).binding, memory(), quiet);
   assert.equal(await gate.microsPerSecond(), 20);
   const down = new ComputeGate(billing({ fail: new Set(["prices"]) }).binding, memory(), quiet);
-  assert.equal(await down.microsPerSecond(), 25);
+  assert.equal(await down.microsPerSecond(), 33);
 });
 
 // ---- Caps -------------------------------------------------------------------------------

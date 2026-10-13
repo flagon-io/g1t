@@ -385,12 +385,12 @@ pub mod deployment_costs {
     pub const MICROS_PER_MILLION_REQUESTS: i64 = 300_000;
     /// $0.02 per million CPU milliseconds.
     pub const MICROS_PER_MILLION_CPU_MS: i64 = 20_000;
-    /// What one second of a build's sandbox costs g1t (Cloudflare
-    /// Containers, standard-1: half a vCPU, 4 GiB, 8 GB disk), rounded up,
-    /// as the price keeper measured it on 2026-10-05 (14.5). Only a
-    /// fallback: billing charges builds at the price book's `build_second`,
-    /// which the keeper keeps current.
-    pub const MICROS_PER_BUILD_SECOND: i64 = 15;
+    /// What one second of a build's sandbox costs g1t (the standard
+    /// sandbox, `actions::STANDARD_INSTANCE`), rounded up: the price keeper
+    /// measured 14.5 on 2026-10-05, when it had 8 GB of disk, and its 20 GB
+    /// now add 0.84. Only a fallback: billing charges builds at the price
+    /// book's `build_second`, which the keeper keeps current.
+    pub const MICROS_PER_BUILD_SECOND: i64 = 16;
     /// What one custom hostname costs g1t a month (Cloudflare for SaaS):
     /// $0.10.
     pub const MICROS_PER_DOMAIN_MONTH: i64 = 100_000;

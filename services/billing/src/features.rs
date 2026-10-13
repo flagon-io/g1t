@@ -854,12 +854,12 @@ mod tests {
 
     #[test]
     fn every_build_second_is_metered_at_cost_plus_the_margin() {
-        // A 5-minute build at 15 millionths a second costs g1t 4,500, and
+        // A 5-minute build at 16 millionths a second costs g1t 4,800, and
         // is charged at cost plus 20%, from the first second: there are no
         // included build minutes, only the plan's included usage.
         let cost = 300 * costs::MICROS_PER_BUILD_SECOND;
-        assert_eq!(cost, 4_500);
-        assert_eq!(crate::credits::with_margin(cost, 20), 5_400);
+        assert_eq!(cost, 4_800);
+        assert_eq!(crate::credits::with_margin(cost, 20), 5_760);
     }
 
     #[test]

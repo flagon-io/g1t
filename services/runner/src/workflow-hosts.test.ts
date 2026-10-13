@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import type { WorkflowDomain } from "@g1t/contracts";
+
+import { INSTANCE_TYPES } from "../../../packages/contracts/src/instances.ts";
 
 import { SANDBOX_BINDINGS, jobHosts, sandboxNamespace } from "./egress.ts";
 
@@ -41,4 +44,26 @@ test("each sandbox class reports to its own namespace", () => {
   assert.equal(sandboxNamespace(env, undefined), "standard");
   assert.equal(sandboxNamespace({ SANDBOX: "standard" }, "Sandbox4Core"), "standard");
   assert.deepEqual(Object.keys(SANDBOX_BINDINGS), ["AttemptSandbox", "Sandbox2Core", "Sandbox4Core"]);
+});
+
+test("each sandbox class is the size the contracts give its runs-on label", () => {
+  type Size = { vcpu: number; memory_mib: number; disk_mb: number };
+  // wrangler.jsonc's comments are whole lines.
+  const text = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
+  const config = JSON.parse(text) as { containers: { class_name: string; instance_type: string | Size }[] };
+  // The named Cloudflare instance types a machine may be.
+  const named: Record<string, Size> = { "standard-4": { vcpu: 4, memory_mib: 12 * 1024, disk_mb: 20_000 } };
+  const classes = Object.keys(SANDBOX_BINDINGS);
+  assert.equal(INSTANCE_TYPES.length, classes.length);
+  INSTANCE_TYPES.forEach((instance, i) => {
+    const type = config.containers.find((c) => c.class_name === classes[i])?.instance_type;
+    const size = typeof type === "string" ? named[type] : type;
+    assert.ok(size, `${classes[i]}: ${JSON.stringify(type)}`);
+    assert.equal(typeof type === "string" ? type : "custom", instance.container, instance.label);
+    assert.deepEqual(
+      { vcpu: size.vcpu, memoryGib: size.memory_mib / 1024, diskGb: size.disk_mb / 1000 },
+      { vcpu: instance.vcpu, memoryGib: instance.memoryGib, diskGb: instance.diskGb },
+      instance.label,
+    );
+  });
 });
