@@ -28,6 +28,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash, createPrivateKey } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,7 +36,13 @@ import { signBytes, verifyBytes } from "./runner-release.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BUCKET = "g1t-downloads";
-const BUILDER = "ghcr.io/rust-cross/cargo-zigbuild:latest";
+// Pinned by digest, so a release builds with the toolchain (Rust 1.93.0,
+// zig 0.16.0) its cache was built with, and `latest` moving never changes a
+// release under it. To move on: `docker pull ghcr.io/rust-cross/cargo-zigbuild:latest`
+// and take the digest from `docker image inspect --format '{{json .RepoDigests}}'`.
+// The Caches workflow keys the build's cache by it (ci-cache.mjs keys:
+// zigbuild), so a new digest starts a new entry.
+export const BUILDER = "ghcr.io/rust-cross/cargo-zigbuild@sha256:d8313491ec5798de0633fdc1c5753761bff79967bea69076020dc78121b2cca8";
 export const TARGETS = {
   "linux-x64": { triple: "x86_64-unknown-linux-musl", file: "g1t-linux-x64" },
   "linux-arm64": { triple: "aarch64-unknown-linux-musl", file: "g1t-linux-arm64" },
@@ -78,6 +85,32 @@ export function manifest(dir, v, now = new Date()) {
   return body;
 }
 
+/**
+ * The builder container's flags. Its target is target/zig in the
+ * checkout, which the workflows cache (cli-release-…). In a workflow job,
+ * Cargo's registry is the job's own ~/.cargo/registry, which the crates
+ * entry (cargo-crates-…) restores; elsewhere a Docker volume keeps it.
+ */
+export function builderArgs({ root = ROOT, env = process.env, home = homedir() } = {}) {
+  const registry = env.GITHUB_ACTIONS === "true" ? `${join(env.CARGO_HOME || join(home, ".cargo"), "registry").replaceAll("\\", "/")}` : "g1t-cargo-registry";
+  return [
+    "-e", "CARGO_TARGET_DIR=/src/target/zig",
+    "-v", `${root.replaceAll("\\", "/")}:/src`,
+    "-v", `${registry}:/usr/local/cargo/registry`,
+    "-w", "/src", BUILDER,
+  ];
+}
+
+/**
+ * What the container runs. It runs as root, so on a host with users what
+ * it wrote is handed back to the one running this, for the cache to save
+ * and prune.
+ */
+export function builderScript(triples, owner = process.getuid ? `${process.getuid()}:${process.getgid()}` : null) {
+  const build = `set -e; for t in ${triples}; do rustup target add $t >/dev/null 2>&1; cargo zigbuild --release --locked --package g1t --target $t; done`;
+  return owner ? `trap 'chown -R ${owner} /src/target/zig /usr/local/cargo/registry' EXIT; ${build}` : build;
+}
+
 function build() {
   const v = version();
   const dir = outDir(v);
@@ -85,14 +118,7 @@ function build() {
   const triples = Object.values(TARGETS).map((t) => t.triple).join(" ");
   // One container builds every platform; its target folder is kept apart
   // from the host's so the two never mix.
-  run("docker", [
-    "run", "--rm",
-    "-e", "CARGO_TARGET_DIR=/src/target/zig",
-    "-v", `${ROOT.replaceAll("\\", "/")}:/src`,
-    "-v", "g1t-cargo-registry:/usr/local/cargo/registry",
-    "-w", "/src", BUILDER, "sh", "-c",
-    `set -e; for t in ${triples}; do rustup target add $t >/dev/null 2>&1; cargo zigbuild --release --locked --package g1t --target $t; done`,
-  ], { env: { ...process.env, MSYS_NO_PATHCONV: "1" } });
+  run("docker", ["run", "--rm", ...builderArgs(), "sh", "-c", builderScript(triples)], { env: { ...process.env, MSYS_NO_PATHCONV: "1" } });
   for (const target of Object.values(TARGETS)) {
     const built = join(ROOT, "target", "zig", target.triple, "release", target.exe ? "g1t.exe" : "g1t");
     writeFileSync(join(dir, target.file), readFileSync(built));

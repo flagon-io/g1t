@@ -6,8 +6,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { TARGETS, manifest, sha256, version } from "./cli-release.mjs";
+import { BUILDER, TARGETS, builderArgs, builderScript, manifest, sha256, version } from "./cli-release.mjs";
 import { keygen, signBytes, verifyBytes } from "./runner-release.mjs";
+
+test("a workflow's build uses the job's Cargo registry, which the crates cache restores", () => {
+  const job = builderArgs({ root: "/home/runner/work/repo", env: { GITHUB_ACTIONS: "true" }, home: "/home/node" });
+  assert.ok(job.includes("/home/node/.cargo/registry:/usr/local/cargo/registry"), job.join(" "));
+  assert.ok(job.includes("/home/runner/work/repo:/src"));
+  assert.equal(job.at(-1), BUILDER);
+  // Elsewhere a Docker volume keeps it.
+  assert.ok(builderArgs({ root: "/x", env: {}, home: "/h" }).includes("g1t-cargo-registry:/usr/local/cargo/registry"));
+  // What the container wrote as root goes back to the user, even when the build fails.
+  const script = builderScript("x86_64-unknown-linux-musl", "1000:1000");
+  assert.match(script, /^trap 'chown -R 1000:1000 \/src\/target\/zig \/usr\/local\/cargo\/registry' EXIT; set -e;/);
+  assert.ok(!builderScript("t", null).includes("chown"));
+});
 
 test("the version is crates/g1t's", () => {
   assert.match(version(), /^\d+\.\d+\.\d+/);

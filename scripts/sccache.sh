@@ -15,7 +15,11 @@
 # install downloads the pinned release and checks its sha256, starts the
 # server (which reads and writes a check entry in the cache), and only then
 # sets RUSTC_WRAPPER for the steps after it. If anything there fails, the
-# job builds as it did without sccache, and the step says why.
+# job builds as it did without sccache, and the step says why. A release
+# tag's run only reads: a run restores from its own ref, then its base, then
+# main, so what a tag saved no later run would read
+# (docs.g1t.sh/guides/actions/#the-cache); it reads what main's runs saved,
+# the Caches workflow's among them.
 # stats prints the server's hits and misses, and adds them to the job's
 # summary.
 #
@@ -40,6 +44,11 @@ export SCCACHE_IGNORE_SERVER_IO_ERROR=1
 # sccache cannot cache incremental builds; a fresh checkout gains nothing
 # from them anyway.
 export CARGO_INCREMENTAL=0
+# Read only, on a tag: sccache's GHA backend then makes no CreateCacheEntry
+# call, and still looks every compile up.
+if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+  export SCCACHE_GHA_RW_MODE=READ_ONLY
+fi
 
 warn() { echo "::warning title=sccache::$1, so this job builds without it"; }
 
@@ -75,8 +84,13 @@ install_sccache() {
     echo "SCCACHE_IDLE_TIMEOUT=$SCCACHE_IDLE_TIMEOUT"
     echo "SCCACHE_IGNORE_SERVER_IO_ERROR=$SCCACHE_IGNORE_SERVER_IO_ERROR"
     echo "CARGO_INCREMENTAL=$CARGO_INCREMENTAL"
+    if [ -n "${SCCACHE_GHA_RW_MODE:-}" ]; then echo "SCCACHE_GHA_RW_MODE=$SCCACHE_GHA_RW_MODE"; fi
   } >> "$GITHUB_ENV"
-  echo "sccache ${VERSION}: rustc goes through it from here on, cached in this repository's Actions cache."
+  if [ -n "${SCCACHE_GHA_RW_MODE:-}" ]; then
+    echo "sccache ${VERSION}: rustc goes through it from here on, reading this repository's Actions cache; a tag's run saves nothing to it."
+  else
+    echo "sccache ${VERSION}: rustc goes through it from here on, cached in this repository's Actions cache."
+  fi
 }
 
 stats() {

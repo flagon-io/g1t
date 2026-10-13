@@ -1054,6 +1054,7 @@ What to expect:
 | What is compiled each time | What rustc links: binaries, `cdylib` crates, proc macros, build scripts and test harnesses. |
 | Its entries | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's 10 GiB like any other entry, and the ones not restored for 7 days are deleted. |
 | Branches | A pull request reads what the default branch saved. Run the workflow on pushes to the default branch too, as above, or each pull request's first run starts with an empty cache. |
+| Releases from tags | A tag's run reads the default branch's entries, but what it saves only that tag would ever read. Set `SCCACHE_GHA_RW_MODE: READ_ONLY` on a tag's run (`if [ "$GITHUB_REF_TYPE" = tag ]`) so it saves nothing: it still looks every crate up. |
 | Starting over | Set `SCCACHE_GHA_VERSION` to any new value. A new sccache release starts over by itself. |
 | If the cache cannot be reached | sccache refuses to start. Set `SCCACHE_IGNORE_SERVER_IO_ERROR: "1"` to have rustc run without it instead. |
 

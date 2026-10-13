@@ -15,6 +15,8 @@
 #   desktop-linux    the desktop release's Linux build
 #   desktop-windows  its Windows cross build, cargo-xwin, the MSVC CRT and
 #                    apt's downloads for it
+#   cli              the CLI release's build of every platform, in the
+#                    cargo-zigbuild image
 #
 # A job runs only when its key is missing (a new lockfile, a new toolchain,
 # or an expired entry), and builds what the release builds. Nothing waits for
@@ -51,6 +53,7 @@ jobs:
       runner: ${{ steps.missing.outputs.runner }}
       desktop-linux: ${{ steps.desktop-linux.outputs.cache-hit != 'true' }}
       desktop-windows: ${{ steps.desktop-windows.outputs.cache-hit != 'true' || steps.xwin.outputs.cache-hit != 'true' || steps.apt-windows.outputs.cache-hit != 'true' }}
+      cli: ${{ steps.cli.outputs.cache-hit != 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: Cache keys
@@ -134,6 +137,14 @@ jobs:
         with:
           path: ~/.cache/apt/tauri-windows
           key: apt-tauri-windows-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
+          lookup-only: true
+      - id: cli
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/zig
+            !target/zig/**/incremental
+          key: cli-release-${{ runner.os }}-${{ steps.keys.outputs.zigbuild }}-${{ steps.keys.outputs.cargo }}
           lookup-only: true
       # The runner's targets to build: those whose build is missing, or all
       # of them when zig is (each saves it, the first to finish wins).
@@ -352,3 +363,40 @@ jobs:
       # What the CRT and SDK came to, for the cache's 2 GB an entry may hold.
       - name: How large the MSVC CRT is
         run: du -sh ~/.cache/cargo-xwin || true
+
+  # cli-release.yml's build of every platform, in the cargo-zigbuild image
+  # (scripts/cli-release.mjs). Built whole whenever its key is new (a new
+  # image or new dependencies), never started from an older entry: what
+  # zigbuild built cannot be listed by this machine's Cargo to prune it, so
+  # nothing old is carried in to begin with.
+  cli:
+    name: The CLI's release build
+    needs: look
+    if: ${{ needs.look.outputs.cli == 'true' }}
+    # The builder runs in Docker, which g1t's own machines give each job.
+    runs-on: g1t-4core
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      - name: Cache crates
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cargo-crates-${{ runner.os }}-
+      - name: Cache the CLI's build
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/zig
+            !target/zig/**/incremental
+          key: cli-release-${{ runner.os }}-${{ steps.keys.outputs.zigbuild }}-${{ steps.keys.outputs.cargo }}
+      - name: Build
+        run: node scripts/cli-release.mjs build
+      - name: How large the build is
+        run: du -sh target/zig || true

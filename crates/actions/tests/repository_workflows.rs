@@ -344,6 +344,7 @@ fn each_cache_has_one_set_of_paths_wherever_it_is_used() {
         "apt-tauri-windows-",
         "xwin-",
         "zig-0.13.0-zigbuild-",
+        "cli-release-",
     ] {
         assert!(seen.contains_key(family), "{family}: {:?}", seen.keys());
     }
@@ -403,7 +404,14 @@ fn rust_caches_are_keyed_by_the_toolchain_and_the_dependencies() {
         );
         let target = paths(&step).iter().any(|p| p.contains("target"));
         if target {
-            assert!(key.contains("steps.keys.outputs.rust"), "{file} {}: {key}", job.id);
+            // The toolchain that built it: this machine's rustc, or for
+            // the CLI's release, the cargo-zigbuild image it builds in.
+            let toolchain = if paths(&step).iter().any(|p| p.starts_with("target/zig")) {
+                "steps.keys.outputs.zigbuild"
+            } else {
+                "steps.keys.outputs.rust"
+            };
+            assert!(key.contains(toolchain), "{file} {}: {key}", job.id);
             // A restore key never reaches another toolchain's entries.
             for prefix in step.raw["with"]["restore-keys"]
                 .as_str()
@@ -411,7 +419,7 @@ fn rust_caches_are_keyed_by_the_toolchain_and_the_dependencies() {
                 .lines()
                 .filter(|l| !l.trim().is_empty())
             {
-                assert!(prefix.contains("steps.keys.outputs.rust"), "{file} {}: {prefix}", job.id);
+                assert!(prefix.contains(toolchain), "{file} {}: {prefix}", job.id);
             }
         }
         if key.contains("steps.keys.outputs.") {
@@ -463,6 +471,18 @@ fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
             "{file} {id}"
         );
     }
+    // The CLI's build is made in the builder image, whose Cargo the host
+    // cannot ask what it built: so it is never started from an older entry,
+    // and has nothing old to prune.
+    let caches = read("caches.yml");
+    let cli = caches.jobs.iter().find(|j| j.id == "cli").unwrap();
+    let build = cli
+        .steps
+        .iter()
+        .find(|s| s.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("cli-release-")))
+        .unwrap();
+    assert!(saves(build));
+    assert!(build.raw["with"].get("restore-keys").is_none());
     let ci = read("ci.yml");
     let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
     assert_eq!(
@@ -976,6 +996,12 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     assert!(script.contains("sha256sum -c"));
     assert!(script.contains("RUSTC_WRAPPER="));
     assert!(script.contains("GITHUB_STEP_SUMMARY"));
+    // A tag's run reads main's entries and saves none, which only its own
+    // tag could read; the mode reaches the steps after it too.
+    assert!(script.contains("if [ \"${GITHUB_REF_TYPE:-}\" = tag ]; then\n  export SCCACHE_GHA_RW_MODE=READ_ONLY"));
+    assert!(script.contains("echo \"SCCACHE_GHA_RW_MODE=$SCCACHE_GHA_RW_MODE\""));
+    let tagged = read("runner-release.yml");
+    assert!(tagged.trigger("push").unwrap().tags.allows("runner-v0.4.0"));
 }
 
 #[test]

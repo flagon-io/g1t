@@ -18,6 +18,10 @@
 //            the week before this were version bumps, and each saved every
 //            Rust cache again (the test build's 0.7 to 1.7 GB each time).
 //   desktop  the same for apps/desktop/src-tauri/Cargo.lock.
+//   zigbuild the first 12 hex characters of the cargo-zigbuild image's
+//            digest (scripts/cli-release.mjs): the CLI's release builds in
+//            it, with its own Rust, so its cache is keyed by the image
+//            rather than by this machine's rustc.
 //
 // prune runs Cargo again with --message-format=json once the build is done
 // (everything is fresh, so it only lists what it built) and deletes, from
@@ -34,6 +38,8 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { BUILDER } from "../cli-release.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -52,6 +58,11 @@ export function depsHash(lock) {
   return createHash("sha256").update(externalPackages(lock).join("\n\n")).digest("hex").slice(0, 16);
 }
 
+/** 12 hex characters of an image reference's digest (`name@sha256:…`); null for a tag, which moves. */
+export function imageDigest(reference) {
+  return reference.match(/@sha256:([0-9a-f]{64})$/)?.[1].slice(0, 12) ?? null;
+}
+
 /** `1.99.0` from `rustc 1.99.0 (90b35a623 2026-09-30)`; null if it is not that. */
 export function rustVersion(text) {
   return text.match(/^rustc (\S+)/)?.[1] ?? null;
@@ -61,7 +72,9 @@ function keys() {
   const rustc = spawnSync("rustc", ["-V"], { encoding: "utf8" });
   const rust = rustVersion(rustc.stdout ?? "");
   if (!rust) throw new Error(`rustc -V said ${JSON.stringify(rustc.stdout ?? rustc.error?.message)}`);
-  const outputs = { rust };
+  const zigbuild = imageDigest(BUILDER);
+  if (!zigbuild) throw new Error(`scripts/cli-release.mjs builds in ${BUILDER}, which is not pinned by digest`);
+  const outputs = { rust, zigbuild };
   for (const [name, path] of [
     ["cargo", "Cargo.lock"],
     ["desktop", "apps/desktop/src-tauri/Cargo.lock"],

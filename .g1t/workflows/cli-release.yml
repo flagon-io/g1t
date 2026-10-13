@@ -8,10 +8,11 @@
 # work, and its header says what a release holds. It is signed with the
 # runner's release key (RUNNER_RELEASE_KEY, RUNNER_RELEASE_PUBLIC_KEY).
 #
-# Every platform builds in one job, in the rust-cross/cargo-zigbuild image:
-# the macOS builds link Apple's Security framework (the keychain), and that
-# image carries its SDK. It runs on g1t's own machines (g1t-4core), whose
-# jobs have a Docker Engine of their own.
+# Every platform builds in one job, in the rust-cross/cargo-zigbuild image,
+# pinned by digest in scripts/cli-release.mjs: the macOS builds link Apple's
+# Security framework (the keychain), and that image carries its SDK. It
+# runs on g1t's own machines (g1t-4core), whose jobs have a Docker Engine of
+# their own.
 name: CLI release
 
 on:
@@ -42,6 +43,34 @@ jobs:
         run: |
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/g1t/Cargo.toml | head -1)"
           [ "cli-v$version" = "${GITHUB_REF_NAME}" ] || { echo "::error::The tag is ${GITHUB_REF_NAME}, but crates/g1t is $version"; exit 1; }
+      # zigbuild: the builder image's digest, whose Rust the build uses;
+      # cargo: Cargo.lock's crates.io and git packages, not the workspace's
+      # own versions (scripts/deploy/ci-cache.mjs).
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      # Every crate the lockfile names, as CI's Rust job saves them on main.
+      # The builder reads them from this job's ~/.cargo/registry.
+      - name: Cache crates
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cargo-crates-${{ runner.os }}-
+      # Every platform's build. A tag's run restores only from its own tag
+      # and from main, so the Caches workflow (caches.yml) builds and saves
+      # this on main whenever the key is new; a release compiles the CLI's
+      # own crates again, and saves nothing.
+      - name: Cache the CLI's build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/zig
+            !target/zig/**/incremental
+          key: cli-release-${{ runner.os }}-${{ steps.keys.outputs.zigbuild }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cli-release-${{ runner.os }}-${{ steps.keys.outputs.zigbuild }}-
       - name: Build
         run: node scripts/cli-release.mjs build
       - uses: actions/upload-artifact@v4

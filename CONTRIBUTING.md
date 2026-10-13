@@ -189,6 +189,14 @@ another tag's entries; a key is written once; and a repository holds
 - **One set of paths per entry.** An entry's version is the hash of its
   paths, so every step that names it, in every workflow, names the same
   ones. `crates/actions/tests/repository_workflows.rs` holds all of this.
+- **sccache only reads on a tag** (`scripts/sccache.sh` sets
+  `SCCACHE_GHA_RW_MODE=READ_ONLY` when `GITHUB_REF_TYPE` is `tag`): a
+  release's run finds what `main`'s runs compiled, and saves nothing only
+  its own tag could read.
+- **Images a build runs in are pinned by digest.** The CLI's release
+  builds in `cargo-zigbuild` (`BUILDER` in `scripts/cli-release.mjs`), and
+  its cache is keyed by that digest (`zigbuild` from `ci-cache.mjs keys`)
+  rather than by this machine's `rustc`.
 
 | Entry | Key | Saved by | Restored by |
 | --- | --- | --- | --- |
@@ -203,11 +211,14 @@ another tag's entries; a key is written once; and a repository holds
 | apt for Tauri | `apt-tauri-<os>-<scripts/apt-install.sh>` | CI desktop | the desktop release |
 | The runner release | `runner-release-<os>-<target>-<rust>-<deps>`, zig | Caches (`runner`) | the runner release |
 | The desktop release | `desktop-release-linux-…`, `desktop-release-windows-…`, `xwin-…`, `apt-tauri-windows-…` | Caches (`desktop-linux`, `desktop-windows`) | the desktop release |
+| The CLI release | `cli-release-<os>-<zigbuild>-<deps>` (`target/zig`, every platform) | Caches (`cli`), built whole | the CLI release |
 
 To see whether a change helped, read a run's cache steps: `Cache restored
 from key` names the entry (the key itself is a hit; another is a start),
 `Cache Size` and the step's time say what it cost, and the post step says
 whether it saved. `sccache's hits and misses` is on each Rust job's summary.
+`g1t cache usage` says what the repository's entries hold against its
+10 GiB, and `g1t cache list --sort size-in-bytes` which take the most.
 
 ## Speed
 
