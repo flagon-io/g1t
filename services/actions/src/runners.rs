@@ -955,7 +955,7 @@ impl Actions {
             place.repo.as_ref().map(|r| format!("{}/{}", r.namespace, r.name)),
             None,
             format!(
-                "Agents on self-hosted runners: {}; labels {}; pull requests from forks: {}.",
+                "g1t's work on self-hosted runners: {}; labels {}; pull requests from forks: {}.",
                 if settings.agents_on_self_hosted { "on" } else { "off" },
                 settings.agent_labels.join(", "),
                 if settings.fork_pull_requests { "allowed" } else { "not allowed" }

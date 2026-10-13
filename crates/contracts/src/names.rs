@@ -37,7 +37,7 @@ const ROUTES: &[&str] = &[
     "device",
     "workspaces",
     "u",
-    // g1t.sh/invite/<code>: invite links; and the waitlist.
+    // g1t.sh/invite/<code>: invite links; and the retired waitlist.
     "invite",
     "invites",
     "waitlist",

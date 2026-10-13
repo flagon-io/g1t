@@ -13,7 +13,7 @@ const RESERVED = new Set([
   "g1t", "g1t-agent", "ghost",
   // Trust pages on g1t.sh, and names kept for them.
   "policies", "security", "support", "status", "terms", "privacy", "help", "blog",
-  // Invite links, and the waitlist.
+  // Invite links, and the retired waitlist.
   "invite", "invites", "waitlist",
   // g1t.sh/invitations: the workspace invitations waiting for an answer.
   "invitations",
