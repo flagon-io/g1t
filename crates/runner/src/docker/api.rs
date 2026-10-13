@@ -6,7 +6,7 @@
 //! - **A container's network.** A sandbox cannot route a container's
 //!   bridge network out (Cloudflare Containers allow no iptables and no IP
 //!   forwarding), so containers join the job's own network (`host`), the
-//!   one its guardrails apply to. The names a container would have had on
+//!   one its requests leave by. The names a container would have had on
 //!   its network (its name, its aliases, its Compose service) resolve to
 //!   127.0.0.1 in later containers and in the job's own steps, and a port
 //!   published under another number (`-p 8080:80`) is forwarded to it.

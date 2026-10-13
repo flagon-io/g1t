@@ -53,7 +53,7 @@ g1t's agents ("g1t agents") write code, review changes, answer questions, plan w
 
 - **An agent acts on behalf of the person who started its work**, within the limits of that person's access and the workspace's guardrails. Its actions are recorded as such in the audit log.
 - **You're responsible for what you ask agents to do**, and for checking what they produce before you rely on it, merge it or deploy it, as you would for a teammate's work. Agents make mistakes. Their output can be wrong, insecure, or similar to code that exists elsewhere, and you're responsible for making sure your use of it complies with the licenses and laws that apply.
-- **Guardrails** (network limits, command rules and caps) reduce risk. They're a safety net, not a guarantee that an agent won't do something you didn't intend.
+- **Guardrails** (time caps on runs) reduce risk. They're a safety net, not a guarantee that an agent won't do something you didn't intend.
 - **What agents produce for you is your content.** As between you and us, Flagon claims no rights in it.
 - **Agents cost money.** Runs, sandbox time and model use are charged to the workspace that owns the repository, as described on [pricing](/pricing).
 

@@ -90,7 +90,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 Policies
               </h2>
               <p className="mt-1.5 text-sm text-muted">
-                What sandboxes may reach, the rules every repository follows, and how the workspace&apos;s security is set up.
+                How long runs may take, the rules every repository follows, and how the workspace&apos;s security is set up.
               </p>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <Link to={`/${slug}/-/guardrails`} className="text-accent hover:underline">

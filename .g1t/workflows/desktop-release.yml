@@ -19,10 +19,8 @@
 #
 #   DESKTOP_WINDOWS_RUNNER=true   a self-hosted runner on Windows, labels `self-hosted` and `windows`,
 #                                 with Rust, Node and the Visual Studio build tools (the NSIS installer is fetched)
-#   DESKTOP_WINDOWS_FROM_LINUX=true  no Windows machine: cross-build on g1t's Linux machine with cargo-xwin and NSIS.
-#                                 Needs aka.ms and download.visualstudio.microsoft.com among the project's
-#                                 workflow-only domains for desktop-release.yml in production (Settings, Guardrails),
-#                                 where cargo-xwin fetches the MSVC CRT from.
+#   DESKTOP_WINDOWS_FROM_LINUX=true  no Windows machine: cross-build on g1t's Linux machine with cargo-xwin and NSIS
+#                                 (cargo-xwin fetches the MSVC CRT from aka.ms and download.visualstudio.microsoft.com).
 #   DESKTOP_MACOS_RUNNER=true     a self-hosted runner on a Mac, labels `self-hosted` and `macos`.
 name: Desktop release
 

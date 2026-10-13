@@ -6,10 +6,10 @@
 //!   Containers run Docker), with no iptables and no IP forwarding, which
 //!   a sandbox does not have.
 //! - `api` is `/var/run/docker.sock`: the Engine's API, with containers
-//!   moved to the job's own network, where its guardrails apply.
+//!   moved to the job's own network.
 //! - `oci` is the `runc` the Engine runs containers with: build steps on
-//!   the job's network, and a guarded job's egress certificate in every
-//!   container.
+//!   the job's network, and, in a job whose HTTPS passes the Worker, its
+//!   egress certificate in every container.
 //! - `http` is the HTTP/1.1 the proxy reads.
 //!
 //! Nothing here is shared with another job: each job has its own sandbox,

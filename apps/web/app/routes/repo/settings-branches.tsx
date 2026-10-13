@@ -144,7 +144,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
                 <span className="min-w-0 grow">
                   <span className="block text-sm font-medium">Guardrails</span>
                   <span className="mt-0.5 block text-sm text-muted">
-                    What this repository's sandboxes may reach, and how long their runs may take.
+                    How long this repository's runs may take.
                   </span>
                 </span>
                 <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />

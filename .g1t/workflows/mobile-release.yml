@@ -15,8 +15,7 @@
 #
 # Needs the repository secret EXPO_TOKEN (an Expo access token with access
 # to the g1t project), CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as the
-# deploy has them, and Expo's hosts as workflow-only domains (mobile-build.yml
-# lists them).
+# deploy has them.
 name: Mobile release
 
 on:

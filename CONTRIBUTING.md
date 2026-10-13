@@ -145,8 +145,8 @@ setup.
   `apps/desktop/src-tauri/Cargo.toml`, merge, and push a
   `desktop-v<version>` tag. `.g1t/workflows/desktop-release.yml` builds
   the installers (Linux on g1t's machines; Windows and macOS on machines
-  registered for them, or Windows cross-built on Linux once its download
-  hosts are allowed, each switched on by a repository variable the
+  registered for them, or Windows cross-built on Linux, each switched on
+  by a repository variable the
   workflow's header names; a platform with no machine is left out of that
   release), signs the updater's files and publishes them, and installed
   apps update themselves. `scripts/desktop-release.mjs` does the

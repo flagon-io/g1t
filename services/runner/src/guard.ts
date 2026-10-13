@@ -1,31 +1,19 @@
 /**
- * Guardrails, as the runner applies them to a sandbox: what it may reach,
- * what its harness refuses, and how long and how much a run may take.
+ * Guardrails, as the runner applies them to a sandbox: how long a run may
+ * take, and the outbound handlers its requests may pass.
  *
- * - The network list is enforced here, outside the sandbox: a guarded
- *   sandbox starts with no internet, and every HTTP(S) request it makes
- *   comes to `egress` below, which forwards it or refuses it.
- * - Command rules and the cost cap are handed to the harness inside the
- *   sandbox as `GUARDRAILS`, which applies them to the agent.
  * - The time cap is enforced twice: by the harness, and by the sandbox's
  *   own alarm here, which stops the whole sandbox a little after.
+ * - Every sandbox reaches the internet directly. A workflow job that may
+ *   be given brokered secrets sends its HTTP and HTTPS through `egress`
+ *   below, which fills them in and sends everything on, to any host.
+ * - A sandbox's report that it stopped itself for mining comes to `abuse`.
  */
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 
 import { type RepoPath, type RunKind, type ServiceBinding, guardrailsClient } from "@g1t/contracts";
 
-import {
-  ABUSE_HOST,
-  type ModelHosts,
-  type RunGuard,
-  type WorkflowJob,
-  allows,
-  buildHosts,
-  jobHosts,
-  refusal,
-  sandboxHosts,
-  sandboxNamespace,
-} from "./egress";
+import { ABUSE_HOST, type RunGuard, sandboxNamespace } from "./egress";
 import { type BrokeredParams, brokered } from "./broker-egress.ts";
 import { forward } from "./forward.ts";
 
@@ -36,20 +24,15 @@ export {
   SANDBOX_BINDINGS,
   dockerFor,
   harnessEnv,
-  jobHosts,
-  newlyBlocked,
   sandboxNamespace,
+  throughWorker,
   timeCapMessage,
   withPlanLimits,
 } from "./egress";
-export type { PlanLimits, RunGuard, WorkflowJob } from "./egress";
+export type { PlanLimits, RunGuard } from "./egress";
 
-/**
- * What the outbound handler is given: the hosts this sandbox may reach,
- * and what brokered secrets need (broker-egress.ts).
- */
-export type EgressParams = { hosts: string[] } & BrokeredParams;
-
+/** What the outbound handler is given: what brokered secrets need (broker-egress.ts). */
+export type EgressParams = BrokeredParams;
 
 /** The stop by the sandbox's alarm comes this long after the harness's own. */
 export const ALARM_GRACE_SECONDS = 3 * 60;
@@ -66,40 +49,18 @@ export async function guardFor(work: ServiceBinding, repo: RepoPath, kind: RunKi
 }
 
 /**
- * The guardrails of a workflow job, deploy build or security update in
- * `repo`: its project's network list, plus what builds need (`buildHosts`), and the
- * time cap it was given. `repo` is the project, not a pull request's
- * working copy; `repoId`, when known, finds it however it has moved.
- * A workflow job of a trusted run also gets the workflow-only domains
- * that name its workflow and environment (`jobHosts`); nothing else
- * ever does. Throws when they cannot be read: no build starts without them.
+ * The guardrails of a workflow job, deploy build or update: the time cap it
+ * was given, which is all a build's guardrails are.
  */
-export async function buildGuardFor(
-  work: ServiceBinding,
-  repo: RepoPath,
-  kind: "actions" | "deploy" | "bump",
-  minutes: number,
-  repoId?: string | null,
-  job?: WorkflowJob | null,
-  extra: readonly string[] = [],
-): Promise<RunGuard> {
-  const found = await guardrailsClient(work).runGuardrails(repo, repoId);
-  if (!found.ok) throw new Error(`g1t could not read this project's guardrails: ${found.error.message}`);
-  const policy = found.value;
-  const hosts = [...policy.hosts, ...buildHosts(kind), ...jobHosts(policy, kind, job), ...extra];
-  return { policy: { ...policy, hosts: [...new Set(hosts)] }, minutes };
-}
-
-
-/** Every host the sandbox may reach, for the outbound handler. */
-export function egressHosts(guard: RunGuard, env: ModelHosts, sandboxEnv: Record<string, string>): string[] {
-  return sandboxHosts(guard.policy.hosts, env, sandboxEnv);
+export function buildGuard(minutes: number): RunGuard {
+  return { policy: { minutes: {} }, minutes };
 }
 
 /**
- * The outbound handler of a guarded sandbox: every HTTP and HTTPS request
- * it makes. An allowed host is fetched as asked; any other is refused, and
- * the sandbox told so it can say so on the run.
+ * The outbound handler of a sandbox whose HTTP and HTTPS pass the Worker
+ * (a workflow job that may be given brokered secrets): every request it
+ * makes, to any host. Its brokered secrets are filled in first, if it has
+ * any, and the request is sent on with `forward`'s retries.
  */
 export async function egress(
   request: Request,
@@ -109,26 +70,14 @@ export async function egress(
   const host = new URL(request.url).host;
   // A sandbox reporting that it stopped itself for mining.
   if (host === ABUSE_HOST) return abuse(request, env, ctx);
-  if (ctx.params?.open || allows(ctx.params?.hosts ?? [], host)) {
-    // A workflow job's brokered secrets are filled in first, if it has any.
-    return (await brokered(request, env, ctx)) ?? forward(request);
-  }
-  try {
-    const namespace = sandboxNamespace(env, ctx.className);
-    const sandbox = namespace.get(namespace.idFromString(ctx.containerId)) as unknown as {
-      noteBlocked(host: string): Promise<void>;
-    };
-    await sandbox.noteBlocked(host);
-  } catch (error) {
-    console.log("blocked host not reported", host, String(error));
-  }
-  return refusal(host);
+  return (await brokered(request, env, ctx)) ?? forward(request);
 }
 
 /**
  * A sandbox's report that it stopped itself for mining (crates/runner
- * abuse.rs), handed to its Durable Object. Reached through `egress` for a
- * guarded sandbox and as the handler for `ABUSE_HOST` for any other.
+ * abuse.rs), handed to its Durable Object. The handler for `ABUSE_HOST`
+ * on every sandbox, and reached through `egress` for one whose requests
+ * pass the Worker.
  */
 export async function abuse(
   request: Request,
@@ -167,4 +116,3 @@ export async function reportRun(
     })
     .catch((error: unknown) => console.log("run report failed", tracked.runId, String(error)));
 }
-

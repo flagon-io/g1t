@@ -232,7 +232,7 @@ A project's **Settings** has a tab for each part:
 | **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), its [links](#links), and its [production image](#uploading-an-image). A project shows its repository's description, and follows it as it changes, until you give the project one of its own; **Use the repository's description** goes back. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
-| **Guardrails** | What g1t's sandboxes may reach while they work here. See [guardrails](/guides/guardrails/). |
+| **Guardrails** | How long g1t's checks, merge queue and merge checks may run here. See [guardrails](/guides/guardrails/). |
 | **Repository** | The repository's name, description, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, archive, transfer and delete. See [Managing a repository](/guides/managing-repositories/). |
 | **Access** | Who has a [role](/guides/access-and-roles/) on the repository, and invitations. |
 | **Branches and merging** | Auto-merge, the CODEOWNERS file's errors, and what the rules hold for the default branch. |

@@ -20,7 +20,7 @@ When you connect these, your information goes to them because you asked, under y
 
 - **Integrations**, such as GitHub, Linear, Jira, Sentry and Datadog.
 - **Webhooks** you add, which send events to the addresses you choose.
-- **Hosts your sandboxes reach**, such as package registries and anything you allow in your guardrails.
+- **Hosts your sandboxes reach**, such as package registries and anything your jobs and builds fetch from or send to.
 - **Custom domains** you point at your deployments.
 
 Questions about subprocessors: [hey@flagon.io](mailto:hey@flagon.io).

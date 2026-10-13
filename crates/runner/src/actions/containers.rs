@@ -674,7 +674,7 @@ impl Job {
             return (false, BTreeMap::new());
         }
         if let Some(driver) = with.get("driver").filter(|d| !d.is_empty() && *d != "docker") {
-            self.log.line(&format!("`driver: {driver}` is not used on g1t's machines: builds run on this job's own Docker Engine (BuildKit, the `docker` driver), which keeps the sandbox's network and guardrails."));
+            self.log.line(&format!("`driver: {driver}` is not used on g1t's machines: builds run on this job's own Docker Engine (BuildKit, the `docker` driver), which keeps the sandbox's network."));
         }
         for input in ["driver-opts", "buildkitd-flags", "buildkitd-config", "buildkitd-config-inline", "endpoint"] {
             if with.get(input).is_some_and(|v| !v.trim().is_empty()) {

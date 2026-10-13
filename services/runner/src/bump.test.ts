@@ -3,8 +3,7 @@ import { test } from "node:test";
 
 import type { BumpArgs } from "@g1t/contracts";
 
-import { bumpEnv, bumpProblem, bumpSandboxName, isBranchName, isSystem, registryHosts, systemActor } from "./bump.ts";
-import { buildHosts } from "./egress.ts";
+import { bumpEnv, bumpProblem, bumpSandboxName, isBranchName, isSystem, systemActor } from "./bump.ts";
 
 const PREFIX = "g1t/security/";
 
@@ -143,17 +142,4 @@ test("a version update's sandbox is told what to raise, how and from where", () 
   assert.equal(one.BUMP_STRATEGY, "increase");
   assert.equal(one.BUMP_FORCE, "0");
   assert.equal(one.BUMP_REGISTRIES, "[]");
-});
-
-test("a security update reaches the package registries and nothing else builds get", () => {
-  const hosts = buildHosts("bump");
-  for (const host of ["registry.npmjs.org", "repo.yarnpkg.com", "index.crates.io", "static.crates.io", "proxy.golang.org", "sum.golang.org", "pypi.org", "files.pythonhosted.org"]) {
-    assert.ok(hosts.includes(host), host);
-  }
-  for (const host of ["github.com", "api.cloudflare.com", "ghcr.io"]) assert.ok(!hosts.includes(host), host);
-});
-
-test("an update's private registries are reachable from its sandbox", () => {
-  assert.deepEqual(registryHosts(update), [...new Set((update.registries ?? []).map((registry) => new URL(registry.url).host))]);
-  assert.deepEqual(registryHosts(args), []);
 });

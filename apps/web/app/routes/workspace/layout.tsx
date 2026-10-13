@@ -103,7 +103,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   guardrails: {
     title: "Guardrails",
-    about: "What every project's sandboxes may reach, and how long their runs may take. Each project can override these under its settings.",
+    about: "How long every project's runs may take. Each project can override these under its settings.",
   },
   webhooks: {
     title: "Webhooks",
