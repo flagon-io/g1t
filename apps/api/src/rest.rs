@@ -608,6 +608,8 @@ pub const ROUTES: &[Route] = &[
     // sessions of people's own harnesses.
     route("GET", "/repos/:owner/:name/issues/:number/work", Op::Coordination(CoordinationOp::GetWork), &[]),
     route("POST", "/repos/:owner/:name/issues/:number/claim", Op::Coordination(CoordinationOp::ClaimIssue), &[]),
+    // Work with no issue yet: open one from a title and claim it.
+    route("POST", "/repos/:owner/:name/claims", Op::Coordination(CoordinationOp::ClaimIssue), &[]),
     route("POST", "/repos/:owner/:name/issues/:number/release", Op::Coordination(CoordinationOp::ReleaseClaim), &[]),
     route("POST", "/repos/:owner/:name/issues/:number/handoff", Op::Coordination(CoordinationOp::HandOffIssue), &[]),
     route(

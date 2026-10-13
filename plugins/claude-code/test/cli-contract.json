@@ -33,7 +33,8 @@
       "one_of": ["--file", "--commit", "--branch", "--issue"]
     },
     { "command": ["session", "end"], "flags": { "--reason": "text", "--result": "text" } },
-    { "command": ["session", "heartbeat"], "flags": {} },
+    { "command": ["session", "heartbeat"], "flags": { "--json": "json" } },
+    { "command": ["session", "attach"], "flags": { "--title": "text" }, "required": ["--title"] },
     { "command": ["work", "context"], "flags": {}, "positionals": ["number"] },
     {
       "command": ["api"],

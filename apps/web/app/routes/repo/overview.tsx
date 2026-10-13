@@ -33,7 +33,7 @@ import { GithubLinkStrip } from "../../components/github";
 import { githubApp } from "../../lib/github.server";
 import { ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
-import { LiveNowList, StartHere } from "../../components/coordination";
+import { type LivePull, LiveNowList, StartHere } from "../../components/coordination";
 import { liveByIssue } from "../../lib/coordination";
 import { type Need, ageBuckets, firstPassRate, passRate, rankNeeds, runHealth } from "../../lib/mission";
 import { count, duration, percent } from "../../lib/observability";
@@ -250,6 +250,11 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // --- Live now ------------------------------------------------------------------
   const titles: Record<number, string> = {};
   for (const issue of openIssues ?? []) titles[issue.number] = issue.title;
+  // For sessions on a pull request or a branch of their own, with no issue yet.
+  const livePulls: Record<number, LivePull> = {};
+  for (const pull of openPulls) livePulls[pull.number] = { title: pull.title, status: pull.status };
+  const repoValue = await repoP;
+  const defaultBranch = repoValue?.ok ? repoValue.value.defaultBranch : null;
 
   // --- Where it runs ------------------------------------------------------------
   const environmentList = ok(environments);
@@ -308,6 +313,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     sessions: [...(ok(active) ?? []), ...(ok(idle) ?? [])],
     liveLoaded: claims?.ok === true || active?.ok === true,
     titles,
+    livePulls,
+    defaultBranch,
     health: {
       // A pull request's checks when any finished lately; otherwise the
       // project's workflow runs, for one that ships straight to its branch.
@@ -784,7 +791,7 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, production, needs, library, claims, sessions, titles, previews } = loaderData;
+  const { member, project, settings, production, needs, library, claims, sessions, titles, livePulls, defaultBranch, previews } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const name = project?.name ?? params.repo;
   const plan = project ? projectPlan(project) : "production";
@@ -899,7 +906,16 @@ function Overview({
               <Unavailable what="Who is working" />
             ) : working ? (
               <>
-                <LiveNowList claims={claims} sessions={sessions} titles={titles} base={base} now={Date.now()} limit={LIVE_SHOWN} />
+                <LiveNowList
+                  claims={claims}
+                  sessions={sessions}
+                  titles={titles}
+                  pulls={livePulls}
+                  defaultBranch={defaultBranch}
+                  base={base}
+                  now={Date.now()}
+                  limit={LIVE_SHOWN}
+                />
                 {moreIssues > 0 && (
                   <Link to={`${base}/work`} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">
                     {plural(moreIssues, "more issue")} being worked on

@@ -14,6 +14,12 @@ means, its pull requests are the proposals, and around it g1t records:
 - **Claims**: an advisory, expiring "I'm working on #12". Never a lock.
 - **Dependencies**: the issues that have to land before this one.
 
+Until there is an issue, the session is the unit: work that starts from a
+question or a quick request is recorded as a session titled with what it
+is for, and shows to the team on its branch or pull request. It opens or
+claims an issue only when it becomes a change others should know about;
+see [Work with no issue yet](#work-with-no-issue-yet).
+
 Nothing here waits on a harness. A harness that crashes, loses its
 network or sends the same thing twice does no harm: sessions and claims
 that go quiet are read as idle, ended or expired the next time anyone
@@ -28,8 +34,15 @@ Everything here shows on g1t.sh as it happens, without reloading.
 - **The Work page**, `g1t.sh/<workspace>/<repo>/work`, a tab beside
   **Pull requests**, **Merge queue** and **Sessions**:
   - **Live now**: the active claims and the active and idle sessions,
-    grouped by the issue they are on, with sessions on no issue yet
-    after them. An issue with more than one claim is marked.
+    grouped by the issue they are on, the most recently active first. An
+    issue with more than one claim is marked. Sessions on no issue yet
+    follow, grouped by their pull request, else by their branch (when it
+    is not the default branch), the most recently heard from first; those
+    on neither are last, under **No branch yet**. Each session shows its
+    title, who it acts for, its harness, its state, when it was last heard
+    from and its branch. A session with no title is named by what its
+    first prompt was for, else **Session on** its branch, else **Untitled
+    session**.
   - **Merge queue**: what is waiting to land and what is being tested,
     as on the [Merge queue](/guides/merge-queue/#the-merge-queue-page) page.
   - **What happened**: the latest 30 coordination events, from claims to
@@ -103,11 +116,14 @@ harness starts, keep it alive while it works, and end it when it stops.
    `cursor`, `copilot` or `other`) and the harness's own id for the session as
    `harness_session_id`. Starting again with the same id returns the
    session already started, so a hook can call it every time without
-   checking first. Give `issue`, `pull` and `branch` when you know them.
+   checking first. Give `issue`, `pull` and `branch` when you know them,
+   and a `title`: what the session is for, in a few words (up to 200
+   characters).
 2. **Heartbeat** with `session` `update`, or
    [`PATCH /repos/{owner}/{name}/sessions/{id}`](/reference/api/sessions/update-session/)
    with an empty body. The same call attaches the session to an issue or
-   pull request, or records the `head_commit` it pushed.
+   pull request, records the `head_commit` it pushed, or changes its
+   `title`.
 3. **Record** what happens with `session` `record`, or
    [`POST /repos/{owner}/{name}/sessions/{id}/entries`](/reference/api/sessions/record-session-entries/):
    prompts, reasoning, tool calls, notes and the skills it used (`skill`,
@@ -146,8 +162,32 @@ List a repository's sessions with `session` `list`, or
 [`GET /repos/{owner}/{name}/sessions`](/reference/api/sessions/list-sessions/)
 by `state`, `issue` or `pull` (any session tied to it), or `path` (those
 that touched a file, or any under a folder ending in `/`); subagents are
-listed too with `subagents=true`. Read one with its entries, subagents,
-links, skills and what it touched with `session` `get`.
+listed too with `subagents=true`. A session in the list with no `title`
+carries `first_prompt`: the first 300 characters of the first prompt it
+recorded. Read one with its entries, subagents, links, skills and what it
+touched with `session` `get`.
+
+## Work with no issue yet
+
+Not every session starts from an issue, and most should not end with one:
+a question, a look around or a quick fix needs no issue. The session is
+the record of that work, and the team sees it in **Live now** while it
+goes:
+
+1. **It says what it is for.** Give it a `title` when you start it, or
+   later with `session` `update`. The
+   [Claude Code plugin](/guides/claude-code-plugin/#work-with-no-issue-yet)
+   titles each session from its first prompt that is not a slash command,
+   and never replaces a title the session already has.
+2. **It shows where it works.** Attach its `branch` and, once there is
+   one, its `pull`: **Live now** groups sessions on no issue by pull
+   request, then by branch.
+3. **It opens or claims an issue when it becomes a change** others should
+   know about: a branch to push, a pull request. Look for one first
+   (`issue` `list`, `issue` `list_claims`); if one covers the work,
+   claim it. Otherwise open one and claim it in one step with `issue`
+   `claim` and a `title` instead of a `number` (see [Claims](#claims)),
+   which attaches the session to it.
 
 ## Subagents
 
@@ -277,6 +317,13 @@ of a claim.
   The answer has your `claim`, the `others` already on the issue, and
   `blocked_by`: each issue this one waits on, with its claims and pull
   requests.
+- **Open an issue and claim it** in one step, for work that has no issue
+  yet: `issue` `claim` with `title` (and `body`) and no `number`, or
+  [`POST /repos/{owner}/{name}/claims`](/reference/api/claims-and-work/claim-new-issue/).
+  The issue is opened (an `issue.opened` event), then claimed, and the
+  session named by `session_id` is attached to it. The answer also has
+  `issue`, the issue opened. The session is checked first: a claim that
+  would be refused for it opens nothing.
 - **Renew** it by claiming again, or give the `session_id` of your session
   when you claim, and that session's heartbeats renew it.
 - **Release** it with `issue` `release`, or
@@ -293,11 +340,17 @@ curl -X POST https://api.g1t.sh/repos/acme/web/issues/12/claim \
   -H "Authorization: Bearer $G1T_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2", "note": "Taking the argument parsing first."}'
+
+curl -X POST https://api.g1t.sh/repos/acme/web/claims \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2", "title": "Preview builds time out on large repositories"}'
 ```
 
 | | |
 | --- | --- |
 | How long a claim lasts | `ttl_minutes`: 30 unless you say, at most 240. |
+| Opening its issue | `title` (and `body`) instead of `number`. Giving both is refused with `422`. |
 | When it ends | Released, handed off, its issue closed, or not renewed in time (`expired`). |
 | States | `active`, `released`, `expired`, `handed_off`. |
 
@@ -372,7 +425,7 @@ minute it lapsed.
 | To | You need |
 | --- | --- |
 | Read sessions, claims and an issue's context | To be able to read the repository. Public repositories need no token. |
-| Start a session, claim an issue | A confirmed email address and a role that may open issues; the repository must not be archived. |
+| Start a session, claim an issue, open one by claiming it | A confirmed email address and a role that may open issues; the repository must not be archived. |
 | Update, record in or end a session | To be the person whose token started it. |
 | Release a claim or hand it off | To be the person who made it. |
 | Set `blocked_by` | To be the issue's author, or the Triage role. |

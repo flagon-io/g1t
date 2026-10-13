@@ -9,7 +9,9 @@ import {
   expiresIn,
   feedLine,
   harnessName,
+  intentTitle,
   liveByIssue,
+  sessionTitle,
   duration,
   mergeSessions,
   numberedParts,
@@ -115,6 +117,55 @@ test("live work is grouped by issue, most recent first, with sessions on no issu
     ],
   );
   assert.deepEqual(loose.map((one) => one.id), ["ses_b"]);
+});
+
+test("sessions on no issue are grouped by pull request, then by a branch of their own, then the rest together", () => {
+  const seen = (minute: number) => `2026-10-12T10:${String(minute).padStart(2, "0")}:00Z`;
+  const { issues, groups, loose } = liveByIssue(
+    [],
+    [
+      session("ses_main", { branch: "main", lastSeenAt: seen(50) }),
+      session("ses_fix1", { branch: "fix-previews", lastSeenAt: seen(10) }),
+      session("ses_pr", { pull: 12, branch: "tidy-readme", lastSeenAt: seen(20) }),
+      session("ses_fix2", { branch: "fix-previews", lastSeenAt: seen(40) }),
+      session("ses_none", { lastSeenAt: seen(30) }),
+      session("ses_issue", { issue: 3, branch: "3-x", lastSeenAt: seen(5) }),
+    ],
+    "main",
+  );
+  assert.deepEqual(issues.map((group) => group.issue), [3]);
+  assert.deepEqual(
+    groups.map((group) => [group.kind === "pull" ? `#${group.pull}` : group.kind === "branch" ? group.branch : "none", group.sessions.map((one) => one.id)]),
+    [
+      // The most recently heard from first; the rest, on no branch of their own (the default branch is none), last.
+      ["fix-previews", ["ses_fix2", "ses_fix1"]],
+      ["#12", ["ses_pr"]],
+      ["none", ["ses_main", "ses_none"]],
+    ],
+  );
+  assert.deepEqual(loose.map((one) => one.id), ["ses_fix2", "ses_fix1", "ses_pr", "ses_main", "ses_none"]);
+  // Without the default branch known, its sessions are a branch's.
+  assert.equal(liveByIssue([], [session("ses_main", { branch: "main" })]).groups[0].kind, "branch");
+});
+
+test("a session is never title-less: its title, its first prompt's intent, its branch, or untitled", () => {
+  assert.equal(sessionTitle({ title: "Rewrite the auth flow", branch: "auth", firstPrompt: "fix it" }), "Rewrite the auth flow");
+  assert.equal(sessionTitle({ title: null, branch: "auth", firstPrompt: "fix the login redirect. It loops." }), "Fix the login redirect");
+  assert.equal(sessionTitle({ title: "  ", branch: "auth", firstPrompt: "/clear" }), "Session on auth");
+  assert.equal(sessionTitle({ title: null, branch: null }), "Untitled session");
+  assert.equal(sessionTitle({ title: null, branch: null }, "look at the CI"), "Look at the CI", "a first prompt given stands in");
+});
+
+test("a prompt's intent is its first line or sentence, plain, clipped on a word", () => {
+  assert.equal(intentTitle("Make preview builds faster. They time out on big repositories."), "Make preview builds faster");
+  assert.equal(intentTitle("Why does `src/app.ts` fail? It worked yesterday."), "Why does src/app.ts fail?");
+  assert.equal(intentTitle("```js\nconst a = 1;\n```\n## Clean **this** up\nmore"), "Clean this up");
+  assert.equal(intentTitle("\n\n- look at [the docs](https://docs.g1t.sh) for g1t.mjs"), "Look at the docs for g1t.mjs");
+  const long = intentTitle("Tidy up the README and then look at the CI pipeline, which keeps failing on the Windows runners every night")!;
+  assert.ok(long.length <= 80 && long.endsWith("…") && !long.endsWith(" …"), long);
+  for (const prompt of ["/clear", "/g1t:status 4", "<command-name>/clear</command-name>", "```\ncode only\n```", "?", "", null]) {
+    assert.equal(intentTitle(prompt), null, String(prompt));
+  }
 });
 
 test("evidence is read as far as it goes", () => {

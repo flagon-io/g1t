@@ -257,11 +257,21 @@ pub fn decision_line(out: &Output, decision: &Value) -> String {
 }
 
 fn claim(ctx: &Ctx, args: WorkClaimArgs) -> Result<()> {
+    if args.number.is_some() && args.body.is_some() {
+        return Err(Error::usage("--body is the new issue's description: give it with --title, not a number."));
+    }
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    let found = client
-        .op("claim_issue")
-        .repo(&repo)
-        .arg("number", args.number)
+    // A number claims that issue; a title opens one and claims it.
+    let request = match (args.number, &args.title) {
+        (Some(number), _) => client.op("claim_issue").repo(&repo).arg("number", number),
+        (None, Some(title)) => client
+            .op("claim_new_issue")
+            .repo(&repo)
+            .field("title", title.as_str())
+            .field_opt("body", args.body.clone()),
+        (None, None) => return Err(Error::usage("Name the issue by its number, or give --title to open one.")),
+    };
+    let found = request
         .field_opt("session_id", super::session::current())
         .field_opt("note", args.note.clone())
         .field_opt("ttl_minutes", args.ttl)
@@ -271,13 +281,17 @@ fn claim(ctx: &Ctx, args: WorkClaimArgs) -> Result<()> {
     }
     let out = &ctx.out;
     let claim = &found["claim"];
+    let number = claimed_number(args.number, &found);
+    if args.number.is_none() {
+        println!("Opened #{number} {}.", s(&found["issue"], "title"));
+    }
     match claim["expires_at"].as_str() {
-        Some(expires) => println!("Claimed #{}; it expires {} unless renewed.", args.number, until(expires)),
-        None => println!("Claimed #{}.", args.number),
+        Some(expires) => println!("Claimed #{number}; it expires {} unless renewed.", until(expires)),
+        None => println!("Claimed #{number}."),
     }
     let others = list_of(&found, "others");
     if !others.is_empty() {
-        println!("{}", out.yellow(&format!("#{} is claimed by others too:", args.number)));
+        println!("{}", out.yellow(&format!("#{number} is claimed by others too:")));
         for other in others {
             println!("  {}", claim_line(out, other));
         }
@@ -287,12 +301,20 @@ fn claim(ctx: &Ctx, args: WorkClaimArgs) -> Result<()> {
         .filter(|b| !matches!(b["state"].as_str(), Some("closed" | "merged")))
         .collect();
     if !waiting.is_empty() {
-        println!("{}", out.yellow(&format!("#{} waits on:", args.number)));
+        println!("{}", out.yellow(&format!("#{number} waits on:")));
         for blocker in waiting {
             println!("  {}", blocker_line(out, blocker));
         }
     }
     Ok(())
+}
+
+/// The issue a claim is on: the number given, or the one it opened.
+fn claimed_number(given: Option<u64>, found: &Value) -> u64 {
+    given
+        .or_else(|| found["claim"]["issue"].as_u64())
+        .or_else(|| found["issue"]["number"].as_u64())
+        .unwrap_or_default()
 }
 
 /// The time a dispatch may take: starting a Managed Agents session makes
@@ -744,6 +766,14 @@ fn events(ctx: &Ctx, args: WorkEventsArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_claim_says_which_issue_it_is_on() {
+        assert_eq!(claimed_number(Some(12), &json!({ "claim": { "issue": 12 } })), 12);
+        // Opened for it: the claim names it, and so does the issue opened.
+        assert_eq!(claimed_number(None, &json!({ "claim": { "issue": 31 }, "issue": { "number": 31 } })), 31);
+        assert_eq!(claimed_number(None, &json!({ "issue": { "number": 31 } })), 31);
+    }
 
     #[test]
     fn blocking_adds_and_unblocking_removes() {

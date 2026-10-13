@@ -3,7 +3,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::links::{BRANCH_SESSIONS, FAMILY, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, TOUCHED_BY_OTHERS, end_tree_sql, tree_sql};
+use super::links::{BRANCH_SESSIONS, FAMILY, FIRST_PROMPTS, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, TOUCHED_BY_OTHERS, end_tree_sql, tree_sql};
 use super::sessions::{INSERT_ENTRY, MOVE_ENTRIES, RENEW_CLAIM, harness_session_sql, insert_session_sql, refresh_sql, renewal, resume_sql};
 use super::{after_minutes, expire_claims_sql, time_out_sessions_sql};
 use g1t_contracts::time::rfc3339;
@@ -329,4 +329,27 @@ fn claims_expire_when_due_and_heartbeats_only_extend_them() {
     // Never an expired one, and never shorter than it is.
     assert_eq!(db.execute(RENEW_CLAIM, params![renewed, "clm_due"]).unwrap(), 0);
     assert_eq!(renewal(NOW, 30, &after_minutes(NOW, 240)), None);
+}
+
+#[test]
+fn an_untitled_sessions_first_prompt_is_found_by_its_own_numbering() {
+    let db = database();
+    start(&db, "ses_1", Some("claude-1")).unwrap();
+    start(&db, "ses_2", Some("claude-2")).unwrap();
+    let entry = |session: &str, kind: &str, text: &str| {
+        db.query_row(INSERT_ENTRY, params![None::<String>, kind, text, None::<String>, None::<String>, rfc3339(NOW), session, None::<String>], |_| Ok(()))
+            .unwrap();
+    };
+    entry("ses_1", "tool_call", "Bash: ls");
+    entry("ses_1", "prompt", "Fix the preview builds that time out");
+    entry("ses_1", "prompt", "and the second one");
+    // ses_2 recorded no prompt.
+    entry("ses_2", "note", "a note");
+    let mut statement = db.prepare(FIRST_PROMPTS).unwrap();
+    let found: Vec<(String, String)> = statement
+        .query_map(params![r#"["ses_1","ses_2","ses_none"]"#, 12], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(found, vec![("ses_1".to_owned(), "Fix the prev".to_owned())]);
 }

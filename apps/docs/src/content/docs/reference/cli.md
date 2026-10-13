@@ -944,10 +944,10 @@ Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/
 
 ### g1t session attach
 
-Attach the current session to an issue, a pull request or a branch.
+Attach the current session to an issue, a pull request or a branch, or give it a title.
 
 ```text
-g1t session attach [OPTIONS] <--issue <ISSUE>|--pull <PULL>|--branch <BRANCH>|--head-commit <SHA>>
+g1t session attach [OPTIONS] <--issue <ISSUE>|--pull <PULL>|--branch <BRANCH>|--head-commit <SHA>|--title <TITLE>>
 ```
 
 | Argument or flag | |
@@ -956,6 +956,7 @@ g1t session attach [OPTIONS] <--issue <ISSUE>|--pull <PULL>|--branch <BRANCH>|--
 | `-p, --pull <PULL>` |  |
 | `-b, --branch <BRANCH>` |  |
 | `--head-commit <SHA>` | The commit it pushed last. |
+| `-t, --title <TITLE>` | What it is for, in a few words; replaces its title. |
 
 Calls [`update_session`](/reference/api/sessions/update-session/).
 
@@ -1053,16 +1054,26 @@ Calls [`get_work`](/reference/api/claims-and-work/get-work/).
 Claim an issue: say you are working on it. Others are told, never stopped.
 
 ```text
-g1t work claim [OPTIONS] <NUMBER>
+g1t work claim [OPTIONS] <NUMBER|--title <TITLE>>
 ```
 
 | Argument or flag | |
 | --- | --- |
-| `<NUMBER>` | The issue's number. |
+| `[NUMBER]` | The issue's number. |
+| `--title <TITLE>` | Open a new issue with this title and claim it; the current session is attached to it. |
+| `--body <BODY>` | The new issue's description. |
 | `-n, --note <NOTE>` | What you are doing about it. |
 | `--ttl <DURATION>` | How long the claim lasts unless renewed: 30m, 2h (at most 4h). |
 
-Calls [`claim_issue`](/reference/api/claims-and-work/claim-issue/).
+```text
+With --title instead of a number, a new issue is opened and claimed in one step, and the
+current session is attached to it: for work that became a change others should know about.
+Examples:
+  g1t work claim 12 --note "Rewriting the retry loop"
+  g1t work claim --title "Preview builds time out on large repositories"
+```
+
+Calls [`claim_issue`](/reference/api/claims-and-work/claim-issue/), [`claim_new_issue`](/reference/api/claims-and-work/claim-new-issue/).
 
 ### g1t work release
 

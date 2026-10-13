@@ -37,6 +37,7 @@ import {
   type Decision,
   type DecisionConfidence,
   type Harness,
+  type Pull,
   type SessionState,
   type State,
   type WorkContext,
@@ -54,10 +55,12 @@ import {
   evidenceOf,
   expiresIn,
   harnessName,
+  type LiveGroup,
   type LiveIssue,
   liveByIssue,
   mergeSessions,
   numberedParts,
+  sessionTitle,
   sessionTree,
 } from "../lib/coordination";
 import { CopyLine, EmptyState, Input, SubmitButton, TimeAgo } from "./ui";
@@ -74,7 +77,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
 import { PersonLink } from "./work";
-import { IssueIcon } from "./work-icons";
+import { IssueIcon, PullIcon } from "./work-icons";
 
 /** Text with each `#N` linked to that issue or pull request (the issue's address leads to a pull request too). */
 export function NumberedText({ text, base }: { text: string; base: string }) {
@@ -189,7 +192,7 @@ export function SessionLine({
       <div className="min-w-0 grow">
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
           <Link to={`${base}/work/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
-            {session.title ?? `${session.actor.username}'s session`}
+            {sessionTitle(session)}
           </Link>
           <HarnessBadge harness={session.harness} />
           <SessionStateBadge state={session.state} />
@@ -783,15 +786,75 @@ export function LiveIssueCard({ group, title, base, now }: { group: LiveIssue; t
   );
 }
 
+/** A pull request a session is on, as Live now names it. */
+export type LivePull = { title: string; status: Pull["status"] };
+
+/** What a group of sessions on no issue is on, as its card's heading: the pull request, the branch, or neither. */
+function LiveGroupHeading({ group, pulls, base }: { group: LiveGroup; pulls: Record<number, LivePull>; base: string }) {
+  if (group.kind === "pull") {
+    const pull = pulls[group.pull];
+    return (
+      <div className="flex items-start gap-2.5 px-4 py-3">
+        <span className="mt-1">
+          <PullIcon status={pull?.status ?? "open"} />
+        </span>
+        <Link to={`${base}/pull/${group.pull}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
+          {pull?.title ?? `Pull request #${group.pull}`} <span className="font-normal text-faint">#{group.pull}</span>
+        </Link>
+        <span className="mt-0.5 shrink-0 text-xs text-faint">No issue yet</span>
+      </div>
+    );
+  }
+  if (group.kind === "branch") {
+    return (
+      <div className="flex items-center gap-2.5 px-4 py-3">
+        <GitBranch size={16} className="shrink-0 text-muted" />
+        <Link to={`${base}/tree/${encodeURIComponent(group.branch)}`} prefetch="intent" className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent">
+          {group.branch}
+        </Link>
+        <span className="ml-auto shrink-0 text-xs text-faint">No issue yet</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2.5 px-4 py-3">
+      <Activity size={16} className="shrink-0 text-faint" />
+      <Hint label="Sessions on no issue, pull request or branch of their own yet, each titled with what it is for. One opens or claims an issue when its work becomes a change.">
+        <span className="text-sm text-muted">No branch yet</span>
+      </Hint>
+    </div>
+  );
+}
+
+/** Sessions on no issue yet that share a pull request or a branch, or share neither: a heading, then each session. */
+export function LiveGroupCard({ group, pulls, base }: { group: LiveGroup; pulls: Record<number, LivePull>; base: string }) {
+  return (
+    <Card asChild divided>
+      <li>
+        <LiveGroupHeading group={group} pulls={pulls} base={base} />
+        {group.sessions.map((session) => (
+          <div key={session.id} className="px-4 py-3">
+            {/* Its pull request and branch are the heading's, unless it has neither of its own. */}
+            <SessionLine session={session} base={base} showWhere={group.kind === "none"} />
+          </div>
+        ))}
+      </li>
+    </Card>
+  );
+}
+
 /**
  * Who is working right now: each issue with its claims and sessions, the
- * most recently active first, then sessions on no issue yet. `limit` caps
- * the issues shown, for a page that links to the rest.
+ * most recently active first, then sessions on no issue yet, by pull
+ * request, then by branch, then those on neither. `limit` caps the issues
+ * shown, for a page that links to the rest.
  */
 export function LiveNowList({
   claims,
   sessions,
   titles,
+  pulls = {},
+  defaultBranch,
   base,
   now,
   limit,
@@ -799,29 +862,29 @@ export function LiveNowList({
   claims: Claim[];
   sessions: WorkSession[];
   titles: Record<number, string>;
+  /** The open pull requests' titles and states, for the sessions on one with no issue. */
+  pulls?: Record<number, LivePull>;
+  /** Sessions on it have no branch of their own. */
+  defaultBranch?: string | null;
   base: string;
   now: number;
   limit?: number;
 }) {
-  const live = liveByIssue(claims, sessions);
+  const live = liveByIssue(claims, sessions, defaultBranch);
   const issues = limit == null ? live.issues : live.issues.slice(0, limit);
   return (
     <ol className="space-y-3">
       {issues.map((group) => (
         <LiveIssueCard key={group.issue} group={group} title={titles[group.issue]} base={base} now={now} />
       ))}
-      {live.loose.length > 0 && (
-        <Card asChild divided>
-          <li>
-            <p className="px-4 py-3 text-sm text-muted">Not on an issue yet</p>
-            {live.loose.map((session) => (
-              <div key={session.id} className="px-4 py-3">
-                <SessionLine session={session} base={base} />
-              </div>
-            ))}
-          </li>
-        </Card>
-      )}
+      {live.groups.map((group) => (
+        <LiveGroupCard
+          key={group.kind === "pull" ? `pull:${group.pull}` : group.kind === "branch" ? `branch:${group.branch}` : "none"}
+          group={group}
+          pulls={pulls}
+          base={base}
+        />
+      ))}
     </ol>
   );
 }

@@ -954,7 +954,7 @@ Starting again with the same --harness-session-id returns the same session.")]
     Heartbeat,
     /// Record a note, prompt or message in the current session.
     Log(SessionLogArgs),
-    /// Attach the current session to an issue, a pull request or a branch.
+    /// Attach the current session to an issue, a pull request or a branch, or give it a title.
     Attach(SessionAttachArgs),
     /// End the current session.
     End(SessionEndArgs),
@@ -1066,7 +1066,7 @@ pub struct SessionLogArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["issue", "pull", "branch", "head_commit"])))]
+#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["issue", "pull", "branch", "head_commit", "title"])))]
 pub struct SessionAttachArgs {
     #[arg(short, long)]
     pub issue: Option<u64>,
@@ -1077,6 +1077,9 @@ pub struct SessionAttachArgs {
     /// The commit it pushed last.
     #[arg(long, value_name = "SHA")]
     pub head_commit: Option<String>,
+    /// What it is for, in a few words; replaces its title.
+    #[arg(short, long)]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1128,6 +1131,11 @@ pub enum WorkCommand {
     /// Everything about an issue's work: claims, sessions, pull requests, dependencies, decisions.
     Context(WorkNumber),
     /// Claim an issue: say you are working on it. Others are told, never stopped.
+    #[command(after_help = "\nWith --title instead of a number, a new issue is opened and claimed in one step, and the
+current session is attached to it: for work that became a change others should know about.
+Examples:
+  g1t work claim 12 --note \"Rewriting the retry loop\"
+  g1t work claim --title \"Preview builds time out on large repositories\"")]
     Claim(WorkClaimArgs),
     /// Release your claim on an issue.
     Release(WorkReleaseArgs),
@@ -1206,9 +1214,16 @@ pub struct WorkNumber {
 }
 
 #[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("which").required(true).args(["number", "title"])))]
 pub struct WorkClaimArgs {
     /// The issue's number.
-    pub number: u64,
+    pub number: Option<u64>,
+    /// Open a new issue with this title and claim it; the current session is attached to it.
+    #[arg(long, conflicts_with = "number")]
+    pub title: Option<String>,
+    /// The new issue's description.
+    #[arg(long, requires = "title")]
+    pub body: Option<String>,
     /// What you are doing about it.
     #[arg(short, long)]
     pub note: Option<String>,
@@ -1549,5 +1564,37 @@ mod tests {
             };
             assert_eq!(args.kind.name(), "tool_call");
         }
+    }
+
+    /// `work claim` takes an issue's number, or a title for a new one, never both.
+    #[test]
+    fn a_claim_names_an_issue_or_a_title_for_a_new_one() {
+        let claim = |argv: &[&str]| {
+            let mut all = vec!["g1t", "work", "claim"];
+            all.extend_from_slice(argv);
+            Cli::try_parse_from(all).map(|cli| match cli.command {
+                super::Command::Work(super::WorkCommand::Claim(args)) => args,
+                _ => panic!("not work claim"),
+            })
+        };
+        let by_number = claim(&["12", "--note", "on it"]).unwrap();
+        assert_eq!((by_number.number, by_number.title), (Some(12), None));
+        let new = claim(&["--title", "Preview builds time out", "--body", "On repositories over 1 GB."]).unwrap();
+        assert_eq!(new.number, None);
+        assert_eq!(new.title.as_deref(), Some("Preview builds time out"));
+        assert_eq!(new.body.as_deref(), Some("On repositories over 1 GB."));
+        assert!(claim(&[]).is_err());
+        assert!(claim(&["12", "--title", "x"]).is_err());
+        // --body goes with --title: claim() refuses it with a number.
+    }
+
+    #[test]
+    fn a_session_takes_a_title_on_its_own() {
+        let cli = Cli::try_parse_from(["g1t", "session", "attach", "--title", "Fix the preview builds"]).unwrap();
+        let super::Command::Session(super::SessionCommand::Attach(args)) = cli.command else {
+            panic!("not session attach")
+        };
+        assert_eq!(args.title.as_deref(), Some("Fix the preview builds"));
+        assert!(Cli::try_parse_from(["g1t", "session", "attach"]).is_err());
     }
 }

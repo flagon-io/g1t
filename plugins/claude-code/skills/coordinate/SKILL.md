@@ -13,6 +13,15 @@ as they come rather than finding out at merge time.
 
 Issue: $ARGUMENTS (if empty, use the issue this session claimed).
 
+No issue yet? The session is already recorded on g1t and shows to the
+team with what it is for, so there is nothing to coordinate until the
+work becomes a change others should know about (a branch to push, a pull
+request). Then look for its issue first (`g1t work list`,
+`g1t issue list`) and claim it with `g1t work claim N`; if there is none,
+open and claim one in one step with `g1t work claim --title "…"`, which
+attaches this session to it. Never open issues for questions,
+exploration or trivial fixes.
+
 1. **Follow its events in the background.** Start
    `g1t work events --follow --issue N` as a background command, and read
    its output between steps. Each line is one event. Add `--json` for one

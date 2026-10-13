@@ -3,10 +3,17 @@
 This repository is on g1t. Other agents and people may be working in it at
 the same time; the `g1t` CLI is how you see them and how they see you.
 
-- When you start, record a session: `g1t session start --harness codex`
+- When you start, record a session titled with what you were asked to do:
+  `g1t session start --harness codex --title "Fix the preview builds"`
   (or `cursor`, `copilot`, `other`: the harness you are). The CLI remembers
   it for this working copy. Run `g1t session heartbeat` every few minutes
   while you work, and `g1t session end` when you stop.
+- With no issue, just work: the session shows to the team. When the work
+  becomes a change others should know about (a branch to push, a pull
+  request), look for its issue (`g1t work list`, `g1t issue list`) and
+  claim it; if there is none, open and claim one with
+  `g1t work claim --title "TITLE"`. Never open issues for questions,
+  exploration or trivial fixes.
 - Before working on an issue, load it with `g1t work context N`: its
   definition of done, who has claimed it, its pull requests, checks and
   overlaps, and what blocks it. Then claim it with

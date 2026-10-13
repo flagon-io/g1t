@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import type { EventType, Pull } from "@g1t/contracts";
 
 import type { Route } from "./+types/work";
-import { CoordinationFeed, LiveNowList, StartHere } from "../../components/coordination";
+import { CoordinationFeed, type LivePull, LiveNowList, StartHere } from "../../components/coordination";
 import { QueueTrain } from "../../components/merge-queue";
 import { EmptyState, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
@@ -32,7 +32,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer, repo } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
   // One round: who is on what, the queue, what happened, what landed.
-  const [claims, active, idle, queue, recent, open, closed] = await Promise.all([
+  const [claims, active, idle, queue, recent, open, closed, openPulls] = await Promise.all([
     work.listClaims(path, viewer).catch(() => null),
     work.listWorkSessions(path, viewer, { state: "active" }).catch(() => null),
     work.listWorkSessions(path, viewer, { state: "idle" }).catch(() => null),
@@ -47,9 +47,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // The titles of the issues being worked on.
     work.listIssues(path, viewer, { state: "open" }).catch(() => null),
     work.listPulls(path, viewer, "closed").catch(() => null),
+    // The titles of the pull requests sessions with no issue are on.
+    work.listPulls(path, viewer, "open").catch(() => null),
   ]);
   const titles: Record<number, string> = {};
   for (const issue of open?.ok ? open.value : []) titles[issue.number] = issue.title;
+  const pulls: Record<number, LivePull> = {};
+  for (const pull of openPulls?.ok ? openPulls.value : []) pulls[pull.number] = { title: pull.title, status: pull.status };
   const landed = (closed?.ok ? closed.value : [])
     .filter((pull) => pull.status === "merged" && pull.mergedAt)
     .sort((a, b) => Date.parse(b.mergedAt!) - Date.parse(a.mergedAt!))
@@ -60,6 +64,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     queue: queue?.ok ? queue.value : null,
     feed: recent.flatMap((event) => feedLine(event) ?? []),
     titles,
+    pulls,
     landed,
     defaultBranch: repo.defaultBranch,
   };
@@ -113,7 +118,7 @@ function LandedRow({ pull, base }: { pull: Pull; base: string }) {
 }
 
 export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
-  const { claims, sessions, queue, feed, titles, landed, defaultBranch } = loaderData;
+  const { claims, sessions, queue, feed, titles, pulls, landed, defaultBranch } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const now = Date.now();
   const working = claims.length > 0 || sessions.length > 0;
@@ -145,7 +150,7 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
         {!working ? (
           <StartHere title="Nobody is working on this repository right now" />
         ) : (
-          <LiveNowList claims={claims} sessions={sessions} titles={titles} base={base} now={now} />
+          <LiveNowList claims={claims} sessions={sessions} titles={titles} pulls={pulls} defaultBranch={defaultBranch} base={base} now={now} />
         )}
       </Section>
 

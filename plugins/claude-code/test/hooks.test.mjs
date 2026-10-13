@@ -13,8 +13,11 @@ import {
   agentResult,
   branchFromCommand,
   g1tTool,
+  hasTitle,
   hook,
+  intentTitle,
   MIN_CLI,
+  TITLE_LIMIT,
   oldNode,
   older,
   typedSkill,
@@ -59,6 +62,35 @@ describe("plan", () => {
     const notification = "<task-notification>\n<task-id>a1</task-id>\n<result>SECRET OUTPUT</result>\n</task-notification>";
     assert.equal(plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: notification }, {}), null);
     assert.equal(plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: "﻿hi" }, {}).steps[0].args.at(-1), "hi");
+  });
+
+  test("a prompt's intent is its first line or sentence, plain, clipped on a word", () => {
+    assert.equal(intentTitle("fix the login redirect"), "Fix the login redirect");
+    assert.equal(intentTitle("Make preview builds faster. They time out on big repositories."), "Make preview builds faster");
+    assert.equal(intentTitle("Why does `src/app.ts` fail? It worked yesterday."), "Why does src/app.ts fail?");
+    assert.equal(intentTitle("```js\nconst a = 1;\n```\n## Clean **this** up\nmore"), "Clean this up");
+    assert.equal(intentTitle("\n\n- look at [the docs](https://docs.g1t.sh) for g1t.mjs"), "Look at the docs for g1t.mjs");
+    assert.equal(intentTitle("  spread   over\tspaces  "), "Spread over spaces");
+    const long = intentTitle("[TEST] Tidy up the README and then look at the CI pipeline, which keeps failing on the Windows runners");
+    assert.ok(long.length <= TITLE_LIMIT, long);
+    assert.ok(long.endsWith("…") && !long.endsWith(" …"), long);
+    assert.ok(long.startsWith("[TEST] Tidy up the README"), long);
+    assert.ok("[TEST] Tidy up the README and then look at the CI pipeline, which keeps failing on the Windows runners".startsWith(long.slice(0, -1)));
+    // Not intents: slash commands, turns Claude Code starts, nothing to say.
+    for (const prompt of ["/clear", "/compact keep the plan", "/g1t:status 4", "<command-name>/clear</command-name>", "```\ncode only\n```", "?", "", null]) {
+      assert.equal(intentTitle(prompt), null, String(prompt));
+    }
+  });
+
+  test("UserPromptSubmit titles the session with its intent, unless prompts are kept back", () => {
+    const job = plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: "fix the login redirect" }, {});
+    assert.deepEqual(job.steps.at(-1), { title: "Fix the login redirect" });
+    assert.ok(!plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: "/clear" }, {}).steps.some((s) => s.title));
+    assert.equal(plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: "fix it" }, { G1T_RECORD_PROMPTS: "0" }), null);
+    assert.equal(hasTitle(JSON.stringify({ id: "ses_1", title: null })), false);
+    assert.equal(hasTitle(JSON.stringify({ id: "ses_1", title: "  " })), false);
+    assert.equal(hasTitle(JSON.stringify({ id: "ses_1", title: "Fix it" })), true);
+    assert.equal(hasTitle("not json"), true, "unreadable: nothing is replaced");
   });
 
   test("G1T_RECORD_PROMPTS=0 keeps prompts back, and G1T_RECORD=0 everything", () => {
@@ -582,6 +614,45 @@ describe("with a working copy", () => {
     // Prompts kept back: the typed skill's name is still recorded, the prompt is not.
     const quiet = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:status" }, { ...env, G1T_RECORD_PROMPTS: "0" }).job;
     assert.deepEqual(quiet.steps.map((s) => s.args.at(-1)), ["g1t:status"]);
+  });
+
+  test("with no issue in sight, Claude is told the session is recorded and when to open or claim one", () => {
+    git("symbolic-ref", "HEAD", "refs/heads/fix-previews");
+    const { output } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart", source: "startup" }, env);
+    const context = output.hookSpecificOutput.additionalContext;
+    assert.match(context, /this session is recorded on g1t and shows to the team/);
+    assert.match(context, /Just work/);
+    assert.match(context, /`g1t work claim --title "…"`/);
+    assert.match(context, /Never open issues for questions, exploration or trivial fixes/);
+    assert.ok(context.length < 900, `injected every session, so short: ${context.length}`);
+    assert.ok(!calls().some((c) => c.args[0] === "work"), "no issue's context is asked for");
+  });
+
+  test("the session's first prompt with an intent titles it, once, and never over a title it has", () => {
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
+    const prompt = (text, more = {}) => hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: text }, { ...env, ...more }).job;
+    // A slash command says nothing of what the session is for.
+    work(prompt("/clear"), env);
+    assert.ok(!calls().some((c) => c.args[1] === "attach" || c.args[1] === "heartbeat"));
+    work(prompt("[TEST] fix the preview builds. They time out."), env);
+    const titled = calls().filter((c) => c.args[1] === "heartbeat" || c.args[1] === "attach");
+    assert.deepEqual(titled, [
+      { args: ["session", "heartbeat", "--json"], session: "ses_fake01" },
+      { args: ["session", "attach", "--title=[TEST] fix the preview builds"], session: "ses_fake01" },
+    ]);
+    // Later prompts do not try again.
+    const next = prompt("now the tests");
+    assert.ok(!next.steps.some((s) => s.title));
+  });
+
+  test("a session titled already keeps its title", () => {
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
+    const job = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "fix the login" }, env).job;
+    work(job, { ...env, FAKE_G1T_TITLE: "Rewrite the auth flow" });
+    assert.ok(calls().some((c) => c.args[1] === "heartbeat"));
+    assert.ok(!calls().some((c) => c.args[1] === "attach"), "a title set before is never replaced");
   });
 
   test("Claude's own commands get the session's id once it has started", () => {
