@@ -1,4 +1,4 @@
-These terms are the agreement between you and Flagon, Inc. ("Flagon", "we", "us") when you use g1t: the website at g1t.sh, its API at api.g1t.sh, its MCP server at mcp.g1t.sh, git over g1t.sh, the documentation, apps deployed to g1t.page, and the agents and sandboxes g1t runs for you (together, "g1t" or "the service").
+These terms are the agreement between you and Flagon, Inc. ("Flagon", "we", "us") when you use g1t: the website at g1t.sh, its API at api.g1t.sh, its MCP server at mcp.g1t.sh, git over g1t.sh, the documentation, apps deployed to g1t.page, and the sandboxes g1t runs for you (together, "g1t" or "the service").
 
 We've tried to write them the way we'd want to read them: plainly. If anything here is unclear, write to [hey@flagon.io](mailto:hey@flagon.io) and we'll explain it.
 
@@ -10,12 +10,12 @@ The g1t software is open source under the MIT license. These terms cover the ser
 
 - **You need an account to do most things.** Give us a real email address and keep it current: it's how we reach you about your account, security and billing, and how you get back in if you lose your password.
 - **You must be at least 13 years old**, and old enough where you live to agree to these terms yourself. If you're under 18, a parent or guardian must agree to them for you.
-- **An account is for one person.** Automation is welcome: use access tokens, workspace tokens and agents for it. Don't share a password, and don't create accounts to get around a limit, a trial, or a suspension.
+- **An account is for one person.** Automation is welcome: use access tokens, workspace tokens and coding agents for it. Don't share a password, and don't create accounts to get around a limit, a trial, or a suspension.
 - **Keep your credentials safe.** You're responsible for what happens under your account, your tokens and your SSH keys. If you think someone else has them, revoke them in your settings and tell us at [hey@flagon.io](mailto:hey@flagon.io).
 
 ## 2. Workspaces
 
-Everything on g1t lives in a workspace: its projects, repositories, issues, pull requests, agents, settings and bill. A workspace's **owners** control it. They decide who is a member, what members and agents may do, and they're responsible for paying for it. If you create a workspace for an organization, the organization is the customer, and its owners act for it.
+Everything on g1t lives in a workspace: its projects, repositories, issues, pull requests, settings and bill. A workspace's **owners** control it. They decide who is a member, what members and agents may do, and they're responsible for paying for it. If you create a workspace for an organization, the organization is the customer, and its owners act for it.
 
 ## 3. Acceptable use
 
@@ -28,14 +28,14 @@ Your code, issues, pull requests, comments, files, settings, and anything else y
 To run g1t, we need your permission to handle your content. You give Flagon a worldwide, non-exclusive, royalty-free license to host, store, copy, process, transmit and display your content **only as needed to provide, secure and improve the service for you**. That includes, for example:
 
 - storing your repositories and showing them to the people you let see them;
-- sending the relevant parts to a model provider when you ask an agent to work (see section 6);
+- sending the relevant parts to your workspace's AI provider when you ask g1t a question (see section 6);
 - indexing it so you can search it;
 - scanning it for secrets and vulnerable dependencies, so we can warn you;
 - making backups.
 
 This license ends when your content is deleted from g1t, except for copies in backups (which expire on their own schedule) and content others have a right to keep under section 5.
 
-**We don't sell your content, and we don't use your private content to train AI models.** We don't let the model providers we use for hosted agents train on it either.
+**We don't sell your content, and we don't use your private content to train AI models.** g1t itself doesn't send your content to any model provider: Ask g1t uses the AI provider your workspace connects, under your agreement with them.
 
 You're responsible for your content: that you have the right to put it on g1t, and that it doesn't break the law or someone else's rights.
 
@@ -49,15 +49,13 @@ A fork someone else made of your public repository while it was public is theirs
 
 ## 6. Agents act on your behalf
 
-g1t's agents ("g1t agents") write code, review changes, answer questions, plan work and land changes, when you or another member of your workspace asks them to: by assigning an issue, mentioning an agent, starting a plan, or turning on something that runs on its own, such as upkeep or automatic merges.
+The coding agents you connect to g1t (through the MCP server, the API, the g1t CLI or a plugin) work with your access: they read and change what you let them, and open issues and pull requests, record their sessions and claim work as you.
 
-- **An agent acts on behalf of the person who started its work**, within the limits of that person's access and the workspace's guardrails. Its actions are recorded as such in the audit log.
+- **An agent acts on behalf of the person whose credentials it uses**, within the limits of that person's access, the token's scopes and the workspace's rules. Its actions are recorded as such in the audit log.
 - **You're responsible for what you ask agents to do**, and for checking what they produce before you rely on it, merge it or deploy it, as you would for a teammate's work. Agents make mistakes. Their output can be wrong, insecure, or similar to code that exists elsewhere, and you're responsible for making sure your use of it complies with the licenses and laws that apply.
-- **Guardrails** (time caps on runs) reduce risk. They're a safety net, not a guarantee that an agent won't do something you didn't intend.
 - **What agents produce for you is your content.** As between you and us, Flagon claims no rights in it.
-- **Agents cost money.** Runs, sandbox time and model use are charged to the workspace that owns the repository, as described on [pricing](/pricing).
 
-To run hosted agents, we send the relevant content (such as the issue, the code it needs and the conversation so far) to a model provider. The [subprocessors](/policies/subprocessors) page lists who. If your workspace connects its own model provider, your content goes to that provider instead, under your agreement with them.
+**Ask g1t** answers questions about your workspace with the AI provider your workspace connects. To answer, we send that provider the question and the content it needs (such as the issue, pull request or files it reads), under your agreement with them. Its answers can be wrong too.
 
 ## 7. Services you connect
 
@@ -66,7 +64,7 @@ You can connect g1t to other services: your own model providers, issue trackers,
 ## 8. Paying for g1t
 
 - **The forge is free.** Repositories, git, issues, pull requests and review cost nothing, within the free limits described on [pricing](/pricing).
-- **Compute is paid.** Agents, sandboxes, checks, workflows, the merge queue, deployments and the other metered items on [pricing](/pricing) are charged to the workspace, at what they cost us plus the markup shown there. **The g1t plan** is a monthly subscription per workspace, with some usage included.
+- **Compute is paid.** Sandboxes, checks, workflows, the merge queue, deployments and the other metered items on [pricing](/pricing) are charged to the workspace, at what they cost us plus the markup shown there. **The g1t plan** is a monthly subscription per workspace, with some usage included.
 - **Usage prices follow our costs.** They move when what we pay our providers moves, and every change is listed on the pricing page with its reason. We'll give owners at least 30 days' notice by email before we raise the plan's own monthly price.
 - **Payment.** Payments are processed by Stripe. You authorize us to charge the workspace's card, or another payment method on file, for the plan, for usage as it is billed, and when the workspace nears its limit. Invoices are available from the Billing page. Card numbers never reach g1t.
 - **Taxes.** Prices don't include taxes unless we say so. You're responsible for the taxes that apply to your purchases, other than taxes on our income.
@@ -106,7 +104,7 @@ When an account or workspace is closed, we'll keep its content for 30 days so it
 
 ## 12. Disclaimers
 
-We work hard to make g1t reliable, but **g1t is provided "as is" and "as available."** To the extent the law allows, Flagon disclaims all warranties, express or implied, including merchantability, fitness for a particular purpose, title and non-infringement. We don't promise that g1t will be uninterrupted or error-free, that agents' output will be correct or fit for your purpose, or that content will never be lost. Keep your own copies of what matters to you: git makes this easy.
+We work hard to make g1t reliable, but **g1t is provided "as is" and "as available."** To the extent the law allows, Flagon disclaims all warranties, express or implied, including merchantability, fitness for a particular purpose, title and non-infringement. We don't promise that g1t will be uninterrupted or error-free, that answers or agents' output will be correct or fit for your purpose, or that content will never be lost. Keep your own copies of what matters to you: git makes this easy.
 
 ## 13. Limitation of liability
 

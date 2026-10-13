@@ -1,4 +1,4 @@
-This policy explains what information g1t collects, why, where it goes, how long we keep it, and what you can do about it. It covers g1t.sh, api.g1t.sh, mcp.g1t.sh, docs.g1t.sh, g1t.page and the agents and sandboxes g1t runs. g1t is run by Flagon, Inc. ("Flagon", "we"), which is responsible for your information.
+This policy explains what information g1t collects, why, where it goes, how long we keep it, and what you can do about it. It covers g1t.sh, api.g1t.sh, mcp.g1t.sh, docs.g1t.sh, g1t.page and the sandboxes g1t runs. g1t is run by Flagon, Inc. ("Flagon", "we"), which is responsible for your information.
 
 The short version: we collect what we need to run a git platform for you and your agents, we don't sell it, we don't advertise, we don't use your private content to train AI models, and the only analytics on g1t.sh counts how pages are used without reading what is in your workspaces.
 
@@ -25,7 +25,7 @@ The short version: we collect what we need to run a git platform for you and you
 
 ### What agents do
 
-When an agent runs, we keep a **session**: what it was asked, the steps it took, the tools it called, what it wrote, which model it used, what it cost, and how the run ended. Run credentials and model keys are removed from what is recorded. A session is as visible as its project: **on a public project, anyone can read it**. Workflow and check logs are kept the same way.
+When a coding agent you connect records its work on g1t, we keep a **session**: what it was asked, the steps and tools it reports, what it wrote, which model it says it used, and how it ended. Credentials are removed from what is recorded. When you ask g1t a question, the conversation is kept with your direct message with @g1t. A session is as visible as its project: **on a public project, anyone can read it**. Workflow and check logs are kept the same way.
 
 To catch cryptocurrency mining, every sandbox samples its own CPU use, disk and network activity, and the command lines of the processes it runs. These measurements are used only for abuse detection.
 
@@ -84,7 +84,7 @@ The site also keeps a few preferences in your browser's local storage, which nev
 
 We use your information to:
 
-- run g1t: sign you in, store and show your content to the people allowed to see it, run the agents, checks and deployments you ask for;
+- run g1t: sign you in, store and show your content to the people allowed to see it, run the checks, workflows and deployments you ask for;
 - keep g1t secure and fair: detect abuse, mining and fraud, enforce limits, and investigate problems;
 - bill workspaces and keep the records the law requires;
 - send you the email g1t needs to: confirming your address, resetting your password, billing alerts and receipts, answers to requests you made, and important changes to g1t or these policies. **We don't send marketing email**;
@@ -100,7 +100,7 @@ If you're in the European Economic Area or the United Kingdom, our legal bases a
 We share information only to run g1t, at your direction, or when the law requires it.
 
 - **Service providers ("subprocessors")** that run parts of g1t for us, under contracts that limit them to doing so: Cloudflare (hosting, storage, databases, sandboxes, email and search), Stripe (payments) and HeyCatch (site analytics). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
-- **Services you connect.** When you connect an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
+- **Services you connect.** When you connect an AI provider, an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
 - **Other people on g1t**, as your settings allow: your workspace's members, and everyone for public projects and your public profile.
 - **Vulnerability databases.** To find vulnerable dependencies, we send the names and versions of packages in your lockfiles to OSV.dev, an open database run by Google. Nothing else about you or your repository is sent.
 - **The law.** We disclose information when we must by law, such as a valid court order, and when we need to protect the rights, property or safety of our users, the public or Flagon. Where we can, we tell you first.
