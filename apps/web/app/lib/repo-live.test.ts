@@ -4,10 +4,10 @@ import { test } from "node:test";
 import {
   FALLBACK_FOCUS_MS,
   FALLBACK_POLL_MS,
-  HIDDEN_MIN_MS,
   LIVE_DEBOUNCE_MS,
   LIVE_HOLD_CHECK_MS,
   LIVE_MAX_WAIT_MS,
+  LIVE_MIN_GAP_MS,
   type RepoChange,
   atBottom,
   branchOf,
@@ -53,6 +53,16 @@ test("a project's overview follows what it runs, who is working on it and what m
   assert.equal(overview(change("comment.created", { number: 3 })), false);
 });
 
+test("the overview hears its own commit's checks, and every pull request's finished ones", () => {
+  const overview = repoPages.overview("abc");
+  assert.equal(overview(change("status.created", { sha: "abc" })), true);
+  assert.equal(overview(change("run.updated", { sha: "abc", run: "run_1" })), true);
+  assert.equal(overview(change("status.created", { sha: "f00d" })), false, "another commit's");
+  assert.equal(overview(change("run.updated", { sha: "f00d", run: "run_2" })), false);
+  assert.equal(overview(change("checks.completed", { sha: "f00d", number: 4 })), true, "how often checks pass");
+  assert.equal(overview(change("status.created")), true, "a check that names no commit may be its");
+});
+
 test("the files page follows refs, checks, releases and deployments", () => {
   const files = repoPages.files();
   for (const c of [push("main"), push("other"), change("git.deleted", { ref: "refs/heads/old" }), change("status.created", { sha: "abc" }), change("release.published"), change("deployment_status.created")]) {
@@ -62,6 +72,30 @@ test("the files page follows refs, checks, releases and deployments", () => {
   assert.equal(files(change("comment.created", { number: 3 })), false);
 });
 
+test("a page of files hears its own branch and its commit's checks, not every branch's", () => {
+  const files = repoPages.files({ branch: "main", branches: ["main", "feature"], sha: "abc" });
+  assert.equal(files(push("main")), true, "its files and latest commit");
+  assert.equal(files(push("feature")), false, "another branch moving changes nothing here");
+  assert.equal(files(push("brand-new")), true, "a new branch: the menu and count");
+  assert.equal(files(change("git.deleted", { ref: "refs/heads/feature" })), true, "one of the menu's gone");
+  assert.equal(files(change("git.deleted", { ref: "refs/heads/never-listed" })), false);
+  assert.equal(files(change("git.push", { ref: "refs/tags/v2" })), true, "the About's tags");
+  assert.equal(files(change("branch.renamed", { ref: "refs/heads/feature" })), true);
+  assert.equal(files(change("repo.default_branch_changed")), true);
+  assert.equal(files(change("status.created", { sha: "abc" })), true, "its latest commit's checks");
+  assert.equal(files(change("check_run.completed", { sha: "f00d" })), false, "another commit's checks");
+  assert.equal(files(change("run.updated", { run: "run_1" })), true, "a check that names no commit may be its");
+  assert.equal(files(change("deployment_status.created")), true);
+  assert.equal(files(change("release.published")), true);
+  // A tag or a commit shown: no branch of its own moves it.
+  const tag = repoPages.files({ branch: null, branches: ["main"], sha: "abc" });
+  assert.equal(tag(push("main")), false);
+  // Without the branches, any branch may be new: only its own and deletions count.
+  const unknown = repoPages.files({ branch: "main", branches: null, sha: "abc" });
+  assert.equal(unknown(push("other")), false);
+  assert.equal(unknown(change("git.deleted", { ref: "refs/heads/other" })), true);
+});
+
 test("the commits page hears pushes to its own branch only", () => {
   const commits = repoPages.commits("main");
   assert.equal(commits(push("main")), true);
@@ -69,6 +103,9 @@ test("the commits page hears pushes to its own branch only", () => {
   assert.equal(commits(change("git.push", { ref: "refs/tags/v1" })), false);
   assert.equal(commits(change("workflow.completed", { sha: "abc", run: "run_1" })), true, "checks on its commits");
   assert.equal(commits(change("pull.opened", { number: 1 })), false);
+  const shown = repoPages.commits("main", ["abc", "def"]);
+  assert.equal(shown(change("status.created", { sha: "def" })), true, "checks on a commit it lists");
+  assert.equal(shown(change("status.created", { sha: "f00d" })), false, "not on one it does not");
 });
 
 test("branches, tags, and the lists of pull requests and issues", () => {
@@ -183,13 +220,35 @@ test("never under someone typing, a dialog, or a navigation: it waits for them",
   assert.deepEqual(gate(due, { now: NOW, visible: true, busy: false, navigating: false }), { action: "run" });
 });
 
-test("a tab out of view refreshes at most once a minute", () => {
+test("a burst of changes refreshes at most every two seconds", () => {
+  const idle = { now: NOW, visible: true, busy: false, navigating: false };
+  // Quiet for a second, but the page refreshed half a second ago: it waits out the gap.
+  const justRan = { pendingSince: NOW - LIVE_DEBOUNCE_MS, lastChangeAt: NOW - LIVE_DEBOUNCE_MS, lastRunAt: NOW - 500 };
+  assert.deepEqual(gate(justRan, idle), { action: "wait", ms: LIVE_MIN_GAP_MS - 500 });
+  assert.deepEqual(gate(justRan, { ...idle, now: NOW - 500 + LIVE_MIN_GAP_MS }), { action: "run" });
+  // A steady stream after a refresh: one more at most five seconds on, never sooner than the gap.
+  const stream = { pendingSince: NOW - LIVE_MAX_WAIT_MS, lastChangeAt: NOW, lastRunAt: NOW - LIVE_MAX_WAIT_MS - 10 };
+  assert.deepEqual(gate(stream, idle), { action: "run" });
+  // Changes arriving every 100 ms for a minute refresh no more than once per gap.
+  let state = { pendingSince: null as number | null, lastChangeAt: null as number | null, lastRunAt: NOW };
+  let runs = 0;
+  for (let t = NOW; t < NOW + 60_000; t += 100) {
+    state = { ...state, pendingSince: state.pendingSince ?? t, lastChangeAt: t };
+    if (gate(state, { ...idle, now: t }).action === "run") {
+      runs++;
+      state = { pendingSince: null, lastChangeAt: null, lastRunAt: t };
+    }
+  }
+  assert.ok(runs <= 60_000 / LIVE_MIN_GAP_MS, `${runs} runs`);
+  assert.ok(runs >= 60_000 / LIVE_MAX_WAIT_MS - 1, `${runs} runs: still kept up to date`);
+});
+
+test("a tab out of view never refreshes; back in view, it catches up at once", () => {
   const hidden = { now: NOW, visible: false, busy: false, navigating: false };
-  const ranLately = { pendingSince: NOW - 5000, lastChangeAt: NOW - 5000, lastRunAt: NOW - 20_000 };
-  assert.deepEqual(gate(ranLately, hidden), { action: "wait", ms: HIDDEN_MIN_MS - 20_000 });
-  assert.deepEqual(gate({ ...ranLately, lastRunAt: NOW - HIDDEN_MIN_MS }, hidden), { action: "run" });
-  // Back in view: at once.
-  assert.deepEqual(gate(ranLately, { ...hidden, visible: true }), { action: "run" });
+  const waiting = { pendingSince: NOW - 5000, lastChangeAt: NOW - 5000, lastRunAt: NOW - 20 * 60_000 };
+  assert.deepEqual(gate(waiting, hidden), { action: "hold" }, "no timer: coming back asks again");
+  assert.deepEqual(gate({ pendingSince: null, lastChangeAt: null, lastRunAt: null }, hidden), { action: "idle" });
+  assert.deepEqual(gate(waiting, { ...hidden, visible: true }), { action: "run" });
 });
 
 test("without the socket: back in view every 30 s at most, a poll every minute in view, never with it", () => {

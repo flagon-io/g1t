@@ -64,7 +64,7 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
   // moving the list under the reader; checks on the shown ones update.
   const branch = useProject()?.repo.defaultBranch ?? null;
   const pushed = (change: Parameters<typeof isPushTo>[0]) => change.kind === "git.push" && isPushTo(change, branch);
-  const { held, show } = useRepoLive({ match: repoPages.commits(branch), hold: commits.length > 0 ? pushed : undefined });
+  const { held, show } = useRepoLive({ match: repoPages.commits(branch, commits.map((commit) => commit.hash)), hold: commits.length > 0 ? pushed : undefined });
   if (commits.length === 0) {
     return <EmptyState title="No commits yet" />;
   }

@@ -819,7 +819,7 @@ function Overview({
   const elsewhereUrl = loaderData.deployment?.url ?? project?.productionUrl ?? null;
   const working = claims.length + sessions.length > 0;
   // Deployments, checks, releases, claims and sessions show as they happen.
-  useRepoLive({ match: repoPages.overview() });
+  useRepoLive({ match: repoPages.overview(loaderData.commit?.hash) });
   // Claims lapse and sessions go idle with no event to say so.
   useRefreshWhile(working, 15_000);
   const live = liveByIssue(claims, sessions);
