@@ -1,0 +1,354 @@
+# Keeps, on main, the cache entries that only other workflows' runs would
+# otherwise make. A run restores from its own ref, then its pull request's
+# base branch, then main (docs.g1t.sh/guides/actions/#the-cache): a release
+# tag's run never sees another tag's entries, and before this every release
+# built its Rust from the start (desktop: 10 of 14 Linux and 12 of 13
+# Windows builds found nothing). So what a release restores is saved here.
+#
+#   look             looks every key up without downloading anything; a
+#                    lookup counts as a use, so a warm entry is never taken
+#                    for an unused one, and an entry past its 28 days is
+#                    simply made again
+#   npm              npm's downloads for the whole lockfile, which every npm
+#                    install in every workflow starts from
+#   runner           the runner release's build, for each target
+#   desktop-linux    the desktop release's Linux build
+#   desktop-windows  its Windows cross build, cargo-xwin, the MSVC CRT and
+#                    apt's downloads for it
+#
+# A job runs only when its key is missing (a new lockfile, a new toolchain,
+# or an expired entry), and builds what the release builds. Nothing waits for
+# this workflow, and a failed build only leaves the cache as it was. CI
+# keeps the rest of main's caches (ci.yml); CONTRIBUTING.md ("How g1t's own
+# CI caches") has the whole scheme, and the paths and keys here must stay
+# the same as the steps that restore them (repository_workflows.rs checks).
+name: Caches
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A build half done saves nothing, so one is never cut off; the next run
+# waits, and finds the key saved.
+concurrency:
+  group: caches-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  look:
+    name: What is missing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      npm: ${{ steps.npm.outputs.cache-hit != 'true' }}
+      runner: ${{ steps.missing.outputs.runner }}
+      desktop-linux: ${{ steps.desktop-linux.outputs.cache-hit != 'true' }}
+      desktop-windows: ${{ steps.desktop-windows.outputs.cache-hit != 'true' || steps.xwin.outputs.cache-hit != 'true' || steps.apt-windows.outputs.cache-hit != 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      - id: npm
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          lookup-only: true
+      - id: zig
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.local/lib/python3*/site-packages/ziglang
+            ~/.local/bin
+            ~/.cargo/bin/cargo-zigbuild
+          key: zig-0.13.0-zigbuild-${{ runner.os }}-1
+          lookup-only: true
+      - id: runner-linux-x64
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target
+            !target/runner-release
+            !target/**/incremental
+          key: runner-release-${{ runner.os }}-linux-x64-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
+          lookup-only: true
+      - id: runner-linux-arm64
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target
+            !target/runner-release
+            !target/**/incremental
+          key: runner-release-${{ runner.os }}-linux-arm64-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
+          lookup-only: true
+      - id: runner-windows-x64
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target
+            !target/runner-release
+            !target/**/incremental
+          key: runner-release-${{ runner.os }}-windows-x64-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
+          lookup-only: true
+      - id: desktop-linux
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            apps/desktop/src-tauri/target/release
+            !apps/desktop/src-tauri/target/release/bundle
+            !apps/desktop/src-tauri/target/**/incremental
+          key: desktop-release-linux-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          lookup-only: true
+      - id: desktop-windows
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            apps/desktop/src-tauri/target/release
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release
+            !apps/desktop/src-tauri/target/**/bundle
+            !apps/desktop/src-tauri/target/**/incremental
+          key: desktop-release-windows-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          lookup-only: true
+      - id: xwin
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-xwin
+            ~/.cache/cargo-xwin
+          key: xwin-${{ runner.os }}-0.23.1
+          lookup-only: true
+      - id: apt-windows
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/apt/tauri-windows
+          key: apt-tauri-windows-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
+          lookup-only: true
+      # The runner's targets to build: those whose build is missing, or all
+      # of them when zig is (each saves it, the first to finish wins).
+      - name: The runner's targets to build
+        id: missing
+        env:
+          ZIG: ${{ steps.zig.outputs.cache-hit }}
+          LINUX_X64: ${{ steps.runner-linux-x64.outputs.cache-hit }}
+          LINUX_ARM64: ${{ steps.runner-linux-arm64.outputs.cache-hit }}
+          WINDOWS_X64: ${{ steps.runner-windows-x64.outputs.cache-hit }}
+        # Each with its Rust triple, as scripts/runner-release.mjs names it.
+        run: |
+          targets=()
+          [ "$ZIG" = true ] && [ "$LINUX_X64" = true ] || targets+=('{"target":"linux-x64","triple":"x86_64-unknown-linux-musl"}')
+          [ "$ZIG" = true ] && [ "$LINUX_ARM64" = true ] || targets+=('{"target":"linux-arm64","triple":"aarch64-unknown-linux-musl"}')
+          [ "$ZIG" = true ] && [ "$WINDOWS_X64" = true ] || targets+=('{"target":"windows-x64","triple":"x86_64-pc-windows-gnu"}')
+          list="[$(IFS=,; echo "${targets[*]}")]"
+          echo "runner=$list" >> "$GITHUB_OUTPUT"
+          echo "The runner's targets to build: $list"
+
+  # npm's downloads for the whole lockfile, saved once for each lockfile.
+  # Before, every job saved its own part under one key, and the first to
+  # finish (Wrangler alone, 73 MB) stood in for the rest: each stage then
+  # downloaded hundreds of MB through the runner's egress, 50 MB tarballs
+  # among them. Starts from the last lockfile's, with scripts off.
+  npm:
+    name: npm's downloads
+    needs: look
+    if: ${{ needs.look.outputs.npm == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start from the last lockfile's
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      # A failed download leaves the cache as it was, and the run green.
+      - name: Download every package
+        id: download
+        continue-on-error: true
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --ignore-scripts --no-audit --no-fund
+      - name: Save them
+        if: ${{ steps.download.outcome == 'success' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+  # The steps of runner-release.yml's binaries job that fill its cache.
+  runner:
+    name: The runner's build for ${{ matrix.target }}
+    needs: look
+    if: ${{ needs.look.outputs.runner != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.look.outputs.runner) }}
+    env:
+      G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache zig and cargo-zigbuild
+        id: zig
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/lib/python3*/site-packages/ziglang
+            ~/.local/bin
+            ~/.cargo/bin/cargo-zigbuild
+          key: zig-0.13.0-zigbuild-${{ runner.os }}-1
+      - name: Install zig and cargo-zigbuild
+        if: steps.zig.outputs.cache-hit != 'true'
+        run: |
+          pip install --user --break-system-packages ziglang==0.13.0
+          cargo install --locked cargo-zigbuild
+      - name: zig on the PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      - name: Cache crates
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cargo-crates-${{ runner.os }}-
+      - name: Cache the runner's build
+        id: runner-build
+        uses: actions/cache@v4
+        with:
+          path: |
+            target
+            !target/runner-release
+            !target/**/incremental
+          key: runner-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: runner-release-${{ runner.os }}-${{ matrix.target }}-${{ steps.keys.outputs.rust }}-
+      - name: sccache
+        run: bash scripts/sccache.sh install
+      - name: Build
+        run: node scripts/runner-release.mjs build --targets ${{ matrix.target }}
+      - name: Only this build's files are saved
+        if: ${{ steps.runner-build.outputs.cache-hit != 'true' }}
+        run: node scripts/deploy/ci-cache.mjs prune target/release target/${{ matrix.triple }}/release -- zigbuild --release --locked --package g1t-runner --target ${{ matrix.triple }}
+      - name: sccache's hits and misses
+        if: ${{ always() }}
+        run: bash scripts/sccache.sh stats
+
+  # desktop-release.yml's Linux build, without its installers: `tauri
+  # build --no-bundle` compiles exactly what `tauri build` does, and needs
+  # no signing key.
+  desktop-linux:
+    name: The desktop app's Linux build
+    needs: look
+    if: ${{ needs.look.outputs.desktop-linux == 'true' }}
+    # The larger machine: linking Tauri on the small one dies with a bus error.
+    runs-on: g1t-4core
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      # Saved by CI's desktop job; only restored here.
+      - name: Cache apt's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/apt/tauri
+          key: apt-tauri-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
+      - name: What Tauri needs on Linux
+        run: bash scripts/apt-install.sh tauri
+      - name: Cache the release build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            apps/desktop/src-tauri/target/release
+            !apps/desktop/src-tauri/target/release/bundle
+            !apps/desktop/src-tauri/target/**/incremental
+          key: desktop-release-linux-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          restore-keys: desktop-release-linux-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+      - name: Cache npm's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      - name: Install
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund
+      - name: Build
+        working-directory: apps/desktop
+        run: npx tauri build --ci --no-bundle
+
+  # desktop-release.yml's Windows cross build, without its installer.
+  desktop-windows:
+    name: The desktop app's Windows build
+    needs: look
+    if: ${{ needs.look.outputs.desktop-windows == 'true' && vars.DESKTOP_WINDOWS_FROM_LINUX == 'true' && vars.DESKTOP_WINDOWS_RUNNER != 'true' }}
+    runs-on: g1t-4core
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      - name: Cache apt's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/apt/tauri-windows
+          key: apt-tauri-windows-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
+      - name: What the cross build needs
+        run: bash scripts/desktop-cross-tools.sh
+      - name: Cache cargo-xwin and the MSVC CRT
+        id: xwin
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-xwin
+            ~/.cache/cargo-xwin
+          key: xwin-${{ runner.os }}-0.23.1
+      - name: cargo-xwin
+        if: ${{ steps.xwin.outputs.cache-hit != 'true' }}
+        run: cargo install --locked cargo-xwin@0.23.1
+      - name: Cache the release build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            apps/desktop/src-tauri/target/release
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release
+            !apps/desktop/src-tauri/target/**/bundle
+            !apps/desktop/src-tauri/target/**/incremental
+          key: desktop-release-windows-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          restore-keys: desktop-release-windows-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+      - name: Cache npm's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      - name: Install
+        run: node scripts/deploy/npm-ci.mjs --prefer-offline --no-audit --no-fund
+      - name: Build
+        working-directory: apps/desktop
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          npx tauri build --ci --runner cargo-xwin --target x86_64-pc-windows-msvc --no-bundle
+      # What the CRT and SDK came to, for the cache's 2 GB an entry may hold.
+      - name: How large the MSVC CRT is
+        run: du -sh ~/.cache/cargo-xwin || true

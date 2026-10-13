@@ -75,26 +75,40 @@ jobs:
     timeout-minutes: 60  # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
+      # rust: the toolchain; desktop: the app's Cargo.lock's crates.io and
+      # git packages, not its own version (scripts/deploy/ci-cache.mjs).
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      # apt's lists and downloads, as CI's desktop job saves them on main.
+      - name: Cache apt's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/apt/tauri
+          key: apt-tauri-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: What Tauri needs on Linux
-        # Tried three times: the mirror has answered with a mismatched package before.
-        run: |
-          ok=0
-          for try in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev; then ok=1; break; fi
-            sudo apt-get clean; sleep 15
-          done
-          [ "$ok" = 1 ]
-      - uses: actions/cache@v4
+        run: bash scripts/apt-install.sh tauri
+      # The app's release build. A tag's run restores only from its own tag
+      # and from main, never from the last release's, so the Caches
+      # workflow (caches.yml) builds and saves this on main whenever the
+      # key is new. Only restored here.
+      - name: Cache the release build
+        uses: actions/cache/restore@v4
         with:
           path: |
-            ~/.cargo/registry
-            apps/desktop/src-tauri/target
-          key: desktop-release-linux-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
-      # npm's downloads, kept between runs: an install reads them first
-      # and asks the registry only for what changed, so a dropped
-      # connection to it rarely stops the job.
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            apps/desktop/src-tauri/target/release
+            !apps/desktop/src-tauri/target/release/bundle
+            !apps/desktop/src-tauri/target/**/incremental
+          key: desktop-release-linux-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          restore-keys: desktop-release-linux-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+      # npm's downloads for the whole lockfile, which the Caches workflow
+      # keeps on main: an install reads them first and asks the registry
+      # only for what changed. Only restored: a tag's entries are read by
+      # nothing else.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -165,51 +179,53 @@ jobs:
     timeout-minutes: 60  # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      # apt's lists and downloads, which the Caches workflow keeps on main.
+      - name: Cache apt's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/apt/tauri-windows
+          key: apt-tauri-windows-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: What the cross build needs
         # The tray's Linux library too: Tauri's bundler looks for it on the
         # machine it runs on, whatever the target, and stops without it.
         run: |
-          ok=0
-          for try in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y build-essential curl wget file libssl-dev libayatana-appindicator3-dev nsis clang lld llvm; then ok=1; break; fi
-            sudo apt-get clean; sleep 15
-          done
-          [ "$ok" = 1 ]
-          # cargo-xwin compiles C (ring's, among others) with clang-cl and
-          # links with lld-link and llvm-lib. Each is a mode of a tool
-          # Debian does install, chosen by the name it is run as: clang-cl
-          # is clang, lld-link is lld, and llvm-lib is llvm-ar. Debian ships
-          # none of the three names, so each is linked to its tool.
-          for pair in clang-cl:clang lld-link:lld llvm-lib:llvm-ar; do
-            name="${pair%%:*}" tool="${pair##*:}"
-            command -v "$name" >/dev/null && continue
-            found="$(command -v "$tool" || ls /usr/lib/llvm-*/bin/"$tool" 2>/dev/null | sort -V | tail -1)"
-            [ -n "$found" ] || { echo "::error::$tool is not installed, so there is no $name"; exit 1; }
-            sudo ln -sf "$(readlink -f "$found")" "/usr/local/bin/$name"
-            echo "$name: $(readlink -f "$found")"
-          done
-          # Tauri's installer script includes Win\RestartManager.nsh, which
-          # NSIS ships from 3.10 on; Debian's is 3.08. The header stands
-          # alone (defines and System calls), so it is added from NSIS 3.11's
-          # source, checked against its SHA-256.
-          rm_nsh=/usr/share/nsis/Include/Win/RestartManager.nsh
-          if [ ! -f "$rm_nsh" ]; then
-            curl -fsSL --retry 3 -o /tmp/RestartManager.nsh https://raw.githubusercontent.com/kichik/nsis/v311/Include/Win/RestartManager.nsh
-            echo "67149978412da9b283e2e1abe48a360093df9caf6363373e2cabe463978b7c0e  /tmp/RestartManager.nsh" | sha256sum -c -
-            sudo install -m 0644 /tmp/RestartManager.nsh "$rm_nsh"
-          fi
-          cargo install --locked cargo-xwin
-      - uses: actions/cache@v4
+          bash scripts/desktop-cross-tools.sh
+      # cargo-xwin, pinned, and the MSVC CRT and Windows SDK it downloads on
+      # first use: 88 s compiling it and 59 s downloading them in every
+      # release before. The Caches workflow keeps them on main.
+      - name: Cache cargo-xwin and the MSVC CRT
+        id: xwin
+        uses: actions/cache/restore@v4
         with:
           path: |
-            ~/.cargo/registry
-            apps/desktop/src-tauri/target
-          key: desktop-release-windows-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
-      # npm's downloads, kept between runs: an install reads them first
-      # and asks the registry only for what changed, so a dropped
-      # connection to it rarely stops the job.
+            ~/.cargo/bin/cargo-xwin
+            ~/.cache/cargo-xwin
+          key: xwin-${{ runner.os }}-0.23.1
+      - name: cargo-xwin
+        if: ${{ steps.xwin.outputs.cache-hit != 'true' }}
+        run: cargo install --locked cargo-xwin@0.23.1
+      # The app's Windows build, which the Caches workflow keeps on main.
+      - name: Cache the release build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            apps/desktop/src-tauri/target/release
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release
+            !apps/desktop/src-tauri/target/**/bundle
+            !apps/desktop/src-tauri/target/**/incremental
+          key: desktop-release-windows-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          restore-keys: desktop-release-windows-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+      # npm's downloads for the whole lockfile, which the Caches workflow
+      # keeps on main: an install reads them first and asks the registry
+      # only for what changed. Only restored: a tag's entries are read by
+      # nothing else.
       - name: Cache npm's downloads
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.npm
           key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}

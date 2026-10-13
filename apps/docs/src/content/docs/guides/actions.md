@@ -793,16 +793,18 @@ unless the job brings a cache:
 | One entry | Up to 2 GiB, compressed. A larger one is not saved, and the job goes on. |
 | A repository's entries | Up to 10 GiB together. Saving past it removes the entries restored longest ago. |
 | A free workspace | Its cache and [artifacts](#artifacts), in every repository, up to 2 GiB together. Past it, a save is refused (the job goes on) until old entries expire or artifacts are deleted; on the g1t plan there is no such cap. |
-| How long | Until it has not been restored for 7 days, and at most 28 days after it was saved. |
-| Which branch | An entry belongs to the branch, tag or pull request whose run saved it. A run restores from its own, then from the branch its pull request merges into, then from the default branch. |
-| Keys | Written once on each branch: saving under a key that exists there does nothing. On each branch in turn, a restore finds its `key` exactly, else the newest entry whose key starts with one of its `restore-keys`. |
+| How long | Until it has not been restored for 7 days, and at most 28 days after it was saved. A lookup (`lookup-only: true`) counts as a restore. |
+| Which branch | An entry belongs to the branch, tag or pull request whose run saved it. A run restores from its own, then from the branch its pull request merges into, then from the default branch. A tag's run reads its own tag's entries and the default branch's, never another tag's. |
+| Keys | Written once on each branch: saving under a key that exists there does nothing, and the step says the key is already cached. On each branch in turn, a restore finds its `key` exactly, else the newest entry whose key starts with its `key`, else the newest whose key starts with each of its `restore-keys` in order. |
 | `path` | Files and folders; globs, `**` included; `~/` is the home folder; a line starting with `!` leaves matching paths out. The same key saved for other paths is another entry. |
 | Compression | zstd. |
 
 So a feature branch can read what `main` saved, but `main` never reads
 what a feature branch saved, and a pull request from outside the
 repository saves where nothing else ever reads it: nobody can plant an
-entry that the default branch's builds restore. Actions that cache through the
+entry that the default branch's builds restore. For the same reason, a
+release built from a tag finds only what the default branch saved: have
+a workflow on the default branch save what your releases restore. Actions that cache through the
 toolkit, such as `actions/setup-node` with `cache: npm`, follow the same
 rules.
 
@@ -888,9 +890,11 @@ repository's cache.
   it, from its paths and compression, as on GitHub: an entry `setup-node`
   saved is restored by `actions/cache` with the same key and paths, and
   the other way round.
-- An entry the toolkit sends whole, which it does below 128 MB, is not
-  saved when it is over 100 MB, the most g1t takes in one request. The
-  step warns and the job goes on.
+- Against any server but github.com, the toolkit uses the cache's older
+  protocol, which sends an entry in 32 MB chunks, so an entry up to the
+  cache's 2 GiB is saved. A client of the newer protocol that sends an
+  entry whole in one request is held to 100 MB there; past it, the step
+  warns and the job goes on.
 - The toolkit's artifact library refuses to run against any server but
   github.com, so an action that uploads artifacts with it directly fails
   with its own message. `actions/upload-artifact`,

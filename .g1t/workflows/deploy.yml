@@ -72,8 +72,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-      # npm's downloads for the whole lockfile, which the npm-cache job
-      # keeps: an install reads them first and asks the registry only for
+      # npm's downloads for the whole lockfile, which the Caches workflow
+      # keeps (caches.yml): an install reads them first and asks the registry only for
       # what changed, so a dropped connection to it rarely stops the job.
       # Only restored: a job that installs part of the lockfile never
       # saves, or its part would stand in for the whole under that key.
@@ -89,45 +89,6 @@ jobs:
         run: node scripts/deploy.mjs manifest --check
       - name: The deploy tool's tests
         run: npm run test:deploy
-
-  # npm's downloads for the whole lockfile, saved once for each lockfile
-  # on main, which every install of this and the other workflows starts
-  # from. Before, every job saved its own part under one key, and the
-  # first to finish (Wrangler alone, 73 MB) stood in for the rest: each
-  # stage then downloaded hundreds of MB through the runner's egress,
-  # 50 MB tarballs among them. Nothing waits for this job, and a failed
-  # download only leaves the cache as it was.
-  npm-cache:
-    name: npm's downloads
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-      - name: Look for this lockfile's downloads
-        id: saved
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.npm
-          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          lookup-only: true
-      - name: Start from the last lockfile's
-        if: ${{ steps.saved.outputs.cache-hit != 'true' }}
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.npm
-          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-full-${{ runner.os }}-
-      - name: Download every package
-        id: download
-        if: ${{ steps.saved.outputs.cache-hit != 'true' }}
-        continue-on-error: true
-        run: node scripts/deploy/npm-ci.mjs --prefer-offline --ignore-scripts --no-audit --no-fund
-      - name: Save them
-        if: ${{ steps.saved.outputs.cache-hit != 'true' && steps.download.outcome == 'success' }}
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.npm
-          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
   # Runs beside check: nothing deploys until both have succeeded.
   plan:
@@ -233,20 +194,31 @@ jobs:
         with:
           path: ~/.cache/worker-build
           key: worker-build-tools-${{ runner.os }}-${{ hashFiles('scripts/build-rust-worker.mjs') }}
+      # rust: the toolchain; cargo: Cargo.lock's crates.io and git packages,
+      # not the workspace's own versions (scripts/deploy/ci-cache.mjs).
+      - name: Cache keys
+        id: keys
+        if: ${{ matrix.rust || matrix.image }}
+        run: node scripts/deploy/ci-cache.mjs keys
+      # Every crate the lockfile names, as CI's Rust job saves them on
+      # main. Only restored: a stage downloads the crates of its own units,
+      # and saving those would stand in for the whole under that key.
       - name: Cache crates
-        if: ${{ matrix.rust }}
-        uses: actions/cache@v4
+        if: ${{ matrix.rust || matrix.image }}
+        uses: actions/cache/restore@v4
         with:
-          path: ~/.cargo/registry/cache
-          key: cargo-crates-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
           restore-keys: cargo-crates-${{ runner.os }}-
       # The compiled dependencies of this job's units, for wasm32 and the
       # build scripts and proc macros they run. Cargo calls rustc again for
       # the workspace's own crates whatever is cached (a checkout's sources
       # are newer); sccache, below, answers those calls. So an entry is
-      # saved only when the dependencies change: a new Cargo.lock, or a new
-      # base image (base.json names its Rust). Otherwise the nearest earlier
-      # entry, of any group, is a start.
+      # saved only when the dependencies or the toolchain change, not when
+      # a release bumps a workspace crate's version; otherwise this group's
+      # last entry for the toolchain is a start, else any group's.
       - name: Cache the Cargo target
         if: ${{ matrix.rust }}
         uses: actions/cache@v4
@@ -256,17 +228,19 @@ jobs:
             target/wasm32-unknown-unknown/release
             !target/**/incremental
             !target/**/*.wasm
-          key: cargo-target-${{ runner.os }}-${{ matrix.group }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
+          key: cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.group }}-${{ steps.keys.outputs.cargo }}
           restore-keys: |
-            cargo-target-${{ runner.os }}-${{ matrix.group }}-
-            cargo-target-${{ runner.os }}-
+            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.group }}-
+            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
       # The runner's image: its binary, built natively for musl (the base
       # has musl-gcc; the target is added here), with its Cargo target kept
-      # between runs. The image itself is made in the registry, without
-      # Docker: the base's layers and one with the binary
-      # (scripts/deploy/registry.mjs). Building it with the job's Docker
-      # Engine, only if that fails, pulls the 4.5 GB base onto the job's
-      # disk.
+      # between runs: the musl target's, and target/release, where Cargo
+      # puts the build scripts and proc macros it runs on this machine
+      # (without it, 87 crates were compiled again on every deploy). The
+      # image itself is made in the registry, without Docker: the base's
+      # layers and one with the binary (scripts/deploy/registry.mjs).
+      # Building it with the job's Docker Engine, only if that fails, pulls
+      # the 4.5 GB base onto the job's disk.
       - name: Rust for the runner
         if: ${{ matrix.image }}
         run: rustup target add x86_64-unknown-linux-musl
@@ -275,11 +249,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry/cache
+            target/release
             target/x86_64-unknown-linux-musl/release
             !target/**/incremental
-          key: runner-musl-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
-          restore-keys: runner-musl-${{ runner.os }}-
+          key: runner-musl-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: runner-musl-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
       # Every rustc call that makes a library (the workspace's crates,
       # which Cargo compiles again on every checkout, and any dependency
       # not restored above) is looked up by its inputs in the repository's

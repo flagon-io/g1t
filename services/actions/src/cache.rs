@@ -13,7 +13,8 @@
 //!   for other paths is another entry.
 //! - A key is written once in its scope and version. In each scope in
 //!   turn, a restore finds its key exactly, else the newest entry whose key
-//!   starts with one of its restore keys.
+//!   starts with its key, else with each of its restore keys in order
+//!   (`prefixes`), as GitHub's cache does.
 //! - An entry is at most `CACHE_MAX_ENTRY_BYTES`. A repository's entries
 //!   hold at most `CACHE_REPO_QUOTA_BYTES` together: saving past it evicts
 //!   the entries restored longest ago.
@@ -103,6 +104,19 @@ pub(crate) fn storage_cost(gb_months: f64) -> i64 {
     (gb_months * CACHE_MICROS_PER_GB_MONTH as f64).ceil() as i64
 }
 
+/// The prefixes a restore tries in each scope once its key has no exact
+/// match, in order: the key itself, then its restore keys. Blank ones and
+/// repeats are dropped.
+pub(crate) fn prefixes<'a>(key: &'a str, restore: &'a [String]) -> Vec<&'a str> {
+    let mut out: Vec<&str> = Vec::new();
+    for prefix in std::iter::once(key).chain(restore.iter().map(String::as_str)).map(str::trim) {
+        if !prefix.is_empty() && !out.contains(&prefix) {
+            out.push(prefix);
+        }
+    }
+    out
+}
+
 /// Where a job's cache entries are found and saved: its repository, and in
 /// it the refs it restores from, in order, and the one it saves to.
 pub(crate) struct CacheScope {
@@ -175,7 +189,7 @@ impl Actions {
             if found.is_some() {
                 break;
             }
-            for prefix in a.restore.iter().map(|p| p.trim()).filter(|p| !p.is_empty()) {
+            for prefix in prefixes(&a.key, &a.restore) {
                 found = self
                     .db
                     .prepare(
@@ -546,6 +560,13 @@ mod tests {
             assert!(to_evict(&held, "a", quota).is_empty());
         }
         assert!(over_quota(11, 10));
+    }
+
+    #[test]
+    fn a_restore_tries_its_key_as_a_prefix_before_its_restore_keys() {
+        let restore = vec!["cargo-Linux-1.99.0-".to_owned(), " ".to_owned(), "cargo-".to_owned(), "cargo-".to_owned()];
+        assert_eq!(prefixes("cargo-Linux-1.99.0-abc", &restore), ["cargo-Linux-1.99.0-abc", "cargo-Linux-1.99.0-", "cargo-"]);
+        assert_eq!(prefixes("k", &[]), ["k"]);
     }
 
     #[test]
