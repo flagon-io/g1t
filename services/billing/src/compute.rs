@@ -44,9 +44,12 @@ use crate::credits::{self, left};
 use crate::features::dollars;
 use crate::limits::alert_level;
 
-/// Agents at once in the first month or on the trial, and after.
-pub(crate) const FIRST_MONTH_AGENTS: u32 = 2;
-pub(crate) const AGENTS: u32 = 10;
+/// Sandboxes (workflow jobs, checks, the queue, deploy builds) a workspace
+/// runs at once in the first month, on the free plan or the trial, and
+/// after: room for a workflow's matrix and a deploy side by side, where 2
+/// and 10, sized for g1t's former hosted agents, held CI behind one another.
+pub(crate) const FIRST_MONTH_AGENTS: u32 = 20;
+pub(crate) const AGENTS: u32 = 40;
 /// The longest run in the first month or on the trial, in minutes.
 pub(crate) const FIRST_MONTH_MINUTES: u32 = 60;
 /// How long "keep going" lifts a spike's pause.
@@ -1043,10 +1046,10 @@ mod tests {
 
     #[test]
     fn caps_are_tight_in_the_first_month_and_on_the_trial() {
-        assert_eq!(caps(PlanKind::Paid, true, false, None), (2, 60));
-        assert_eq!(caps(PlanKind::Free, false, true, None), (2, 60));
-        assert_eq!(caps(PlanKind::Paid, false, false, None), (10, g1t_contracts::guardrails::MAX_MINUTES));
-        assert_eq!(caps(PlanKind::Internal, false, false, None).0, 10);
+        assert_eq!(caps(PlanKind::Paid, true, false, None), (20, 60));
+        assert_eq!(caps(PlanKind::Free, false, true, None), (20, 60));
+        assert_eq!(caps(PlanKind::Paid, false, false, None), (40, g1t_contracts::guardrails::MAX_MINUTES));
+        assert_eq!(caps(PlanKind::Internal, false, false, None).0, 40);
         // Staff can set agents at once.
         assert_eq!(caps(PlanKind::Paid, true, false, Some(6)).0, 6);
     }
