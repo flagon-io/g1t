@@ -343,13 +343,14 @@ g1t session end --reason done
 
 | Command | What it does |
 | --- | --- |
-| `g1t session start` | Starts a session and prints its id. `--harness` (`claude-code`, `codex`, `cursor`, `copilot`, `other`), `--harness-session-id`, `--issue`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. |
+| `g1t session start` | Starts a session and prints its id. `--harness` (`claude-code`, `claude-managed-agents`, `codex`, `cursor`, `copilot`, `other`), `--harness-session-id`, `--issue`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
 | `g1t session heartbeat` | Says the session is still working, and renews its claims. A session with no heartbeat for 15 minutes reads as idle, and after 2 hours as ended. |
-| `g1t session log TEXT` | Records a note. `--kind` takes `note`, `prompt`, `message` or `tool-call`, `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash. |
+| `g1t session log TEXT` | Records a note. `--kind` takes `note`, `prompt`, `message`, `tool-call` or `skill` (a skill's name), `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash. |
 | `g1t session attach` | Points the session at an `--issue`, a `--pull`, a `--branch` or its latest `--head-commit`. |
-| `g1t session end` | Ends it, with an optional `--reason`, and forgets it. |
-| `g1t session list` | The repository's sessions; `--state active`, `--issue`, `--pull`. |
-| `g1t session view [ID]` | A session and what it recorded; the current one without an id. |
+| `g1t session touch` | Says what the session touched: `--file PATH`, `--commit SHA`, `--branch NAME`, `--pull N` (one it opened), `--issue N`, each repeatable. Ties the session to the pull requests and issues they lead to; a file another active session touched too is an `overlap.detected` for both. |
+| `g1t session end` | Ends it, with an optional `--reason` and `--result` (what it reported; `-` reads it from stdin), and forgets it. Its subagents still going end with it. |
+| `g1t session list` | The repository's sessions; `--state active`, `--issue`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. |
+| `g1t session view [ID]` | A session and what it recorded, its subagents and their results, the issues and pull requests it worked on, and the skills used; the current one without an id. |
 
 The id is kept in `.git/g1t/session`, in the working copy's own git
 directory, so each worktree has its own. `G1T_SESSION` overrides it, for
@@ -377,7 +378,25 @@ it was made in renews it. It is made in the current session, if there is
 one. If others have claimed the issue too, or it waits on issues that are
 not done, the answer says so. `g1t work handoff` ends your claim and asks
 `--to` someone, or anyone without it, to take the issue over, with a
-`--note` saying where it stands.
+`--note` saying where it stands. Claims, releases and hand-offs are the
+current session's, so two sessions of yours (sibling subagents) each hold
+their own.
+
+### Starting a session on an issue
+
+```sh
+g1t work dispatch 12                                   # on the workspace's Anthropic account
+g1t work dispatch 12 --mode plan --instruction "Keep the old flag"
+g1t work dispatch --title "Add a healthcheck" --handoff  # open the issue; print a claude command
+```
+
+`g1t work dispatch` starts work on an issue in a session on your own
+Claude: with the workspace's Anthropic connection, a Claude Managed Agents
+session on that account (it prints the session's page on g1t); without
+one, or with `--handoff`, the `claude` command line to run in your working
+copy with g1t's [Claude Code plugin](/guides/claude-code-plugin/).
+`--managed` fails rather than hand off. `--mode` is `plan`, `implement` or
+`review`. See [Start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).
 
 ### Dependencies
 

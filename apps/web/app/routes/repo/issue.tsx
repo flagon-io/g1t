@@ -1,7 +1,7 @@
 import { Bot, ExternalLink, GitCommitHorizontal, GitMerge } from "lucide-react";
 import { Form, Link, redirect } from "react-router";
 
-import { type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
+import { AGENT_MODES, type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
 
 import type { Route } from "./+types/issue";
 import { excerpt, page } from "../../lib/meta";
@@ -31,7 +31,7 @@ import {
 } from "../../components/work";
 import { notFound } from "../../lib/not-found.server";
 import { openedBy } from "../../lib/opened-by";
-import { identity, inbox, integrations, work } from "../../lib/services.server";
+import { agentSessions, identity, inbox, integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
@@ -39,7 +39,7 @@ import { useRefreshWhile } from "../../lib/refresh";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
-import { DecisionList, IntegrationFailure, IssueWorkPanel } from "../../components/coordination";
+import { DecisionList, IntegrationFailure, IssueWorkPanel, StartSessionDialog } from "../../components/coordination";
 import { parseBlockedBy, resolutionOf } from "../../lib/coordination";
 
 
@@ -64,7 +64,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   const access = accessTo(context, params);
-  const [{ can }, found, labels, milestones, members, links, subscription, teams, coordination, ended] = await Promise.all([
+  const [{ can }, found, labels, milestones, members, links, subscription, teams, coordination, ended, sessionTrees, agentSetup] = await Promise.all([
     access,
     work.getIssue(path, number, viewer),
     work.listLabels(path, viewer),
@@ -91,6 +91,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
         work.listClaims(path, viewer, { state, issue: number }).catch(() => null),
       ),
     ),
+    // Every session tied to it in any way, with their subagents, for the Work panel's trees.
+    work.listWorkSessions(path, viewer, { issue: number, subagents: true }).catch(() => null),
+    // Whether a member can start a session on the workspace's Anthropic account.
+    roleIn(viewer, params.owner) ? agentSessions.setup(params.owner, viewer).catch(() => null) : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be a pull request.
@@ -107,6 +111,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     links,
     subscription,
     coordination: coordination?.ok ? coordination.value : null,
+    sessionTrees: sessionTrees?.ok ? sessionTrees.value : null,
+    // Only when it can start: the button is not shown otherwise.
+    agentSetup: agentSetup?.ok && agentSetup.value.available ? agentSetup.value : null,
     endedClaims: ended
       .flatMap((claims) => (claims?.ok ? claims.value : []))
       .sort((a, b) => Date.parse(b.endedAt ?? b.createdAt) - Date.parse(a.endedAt ?? a.createdAt)),
@@ -144,6 +151,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       });
       if (!result.ok) return { error: result.error.message };
       throw redirect(`/${params.owner}/${params.repo}/pull/${result.value.number}`);
+    }
+    // A session on the workspace's Anthropic account, which the
+    // integrations service checks the person may start; then its page.
+    case "start-session": {
+      const mode = AGENT_MODES.find((one) => one.mode === form.get("mode"))?.mode ?? "implement";
+      const instruction = String(form.get("instruction") ?? "").trim();
+      const result = await agentSessions
+        .start(user, path, { issue: number, mode, instruction: instruction || undefined, handoff: false })
+        .catch(() => null);
+      if (!result) return { error: "The session could not be started. Try again in a moment.", action: "start-session" };
+      if (!result.ok) return { error: result.error.message, action: "start-session" };
+      const started = result.value;
+      const to = sitePath(started.sessionUrl, request.url) ?? (started.session ? `/${params.owner}/${params.repo}/work/sessions/${started.session.id}` : null);
+      if (!to) return { error: "No session was started.", action: "start-session" };
+      throw redirect(to);
     }
     case "comment": {
       const result = await work.addComment(user, path, number, {
@@ -199,6 +221,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       );
       return result.ok ? null : { error: result.error.message };
     }
+  }
+}
+
+/** The path of a page of this site an address names, to redirect to; null for none or another site's. */
+function sitePath(url: string | null | undefined, here: string): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url, here);
+    const own = parsed.origin === new URL(here).origin || parsed.hostname === "g1t.sh";
+    return own ? parsed.pathname + parsed.search : null;
+  } catch {
+    return null;
   }
 }
 
@@ -429,7 +463,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         </div>
         <div className="mt-2">
           {/* A refused comment edit says so under the comment. */}
-          {!(actionData && ("comment" in actionData || ("action" in actionData && actionData.action === "blocked-by"))) && (
+          {!(actionData && ("comment" in actionData || ("action" in actionData && (actionData.action === "blocked-by" || actionData.action === "start-session")))) && (
             <ErrorText>{actionData?.error}</ErrorText>
           )}
         </div>
@@ -452,6 +486,15 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             now={now}
             canEdit={canManage}
             error={actionData && "action" in actionData && actionData.action === "blocked-by" ? actionData.error : null}
+            sessions={loaderData.sessionTrees}
+            start={
+              loaderData.agentSetup && open ? (
+                <StartSessionDialog
+                  setup={loaderData.agentSetup}
+                  error={actionData && "action" in actionData && actionData.action === "start-session" ? actionData.error : null}
+                />
+              ) : undefined
+            }
           />
         )}
         {loaderData.links.length > 0 && (

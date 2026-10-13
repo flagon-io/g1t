@@ -169,6 +169,7 @@ impl Identity {
                 // A run credential's scope is its run's; see agent_scope.
                 scopes: None,
                 listed: false,
+                repo: None,
             })
             .await?;
         self.db

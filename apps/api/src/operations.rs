@@ -268,6 +268,9 @@ pub enum Op {
     UnpinProject,
     ReorderPinnedProjects,
     ListProjects,
+    GetWorkspaceActivity,
+    GetContents,
+    ListCommits,
     GetProject,
     UpdateProject,
     ListTeams,
@@ -697,7 +700,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 372] = [
+    pub const ALL: [Op; 376] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -856,6 +859,9 @@ impl Op {
         Op::ListProjects,
         Op::GetProject,
         Op::UpdateProject,
+        Op::GetWorkspaceActivity,
+        Op::GetContents,
+        Op::ListCommits,
         Op::ListTeams,
         Op::GetTeam,
         Op::CreateTeam,
@@ -1070,6 +1076,7 @@ impl Op {
         Op::Coordination(CoordinationOp::HandOffIssue),
         Op::Coordination(CoordinationOp::ListClaims),
         Op::Coordination(CoordinationOp::GetWork),
+        Op::Coordination(CoordinationOp::StartAgentSession),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {
@@ -1235,6 +1242,9 @@ impl Op {
             Op::UnpinProject => "unpin_project",
             Op::ReorderPinnedProjects => "reorder_pinned_projects",
             Op::ListProjects => "list_projects",
+            Op::GetWorkspaceActivity => "get_workspace_activity",
+            Op::GetContents => "get_contents",
+            Op::ListCommits => "list_commits",
             Op::GetProject => "get_project",
             Op::UpdateProject => "update_project",
             Op::ListTeams => "list_teams",
@@ -1559,7 +1569,7 @@ impl Op {
                 "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs. `attempts` lists every attempt (each re-run is one) with who started it and how it ended; give `attempt` to read an earlier one, whose jobs keep their own ids and logs."
             }
             Op::GetJobLogs => {
-                "A job's log, in order, after `after` (a sequence number from an earlier call). `done` says whether more will come. Lines starting ##[group], ##[endgroup], ##[error] and ##[warning] mark groups and messages."
+                "A job's log, in order, after `after` (a sequence number from an earlier call), or with `tail` its last chunks, where a failed job says why. `done` says whether more will come. Lines starting ##[group], ##[endgroup], ##[error] and ##[warning] mark groups and messages."
             }
             Op::DispatchWorkflow => {
                 "Run a workflow that has `on: workflow_dispatch`, on a branch or tag (the default branch if none), with its inputs. Needs the Write role or higher."
@@ -1708,6 +1718,9 @@ impl Op {
             Op::ReorderPinnedProjects => {
                 "Put your pins in a workspace in a new order: `projects` names every pinned project's slug, once, in the order you want them. Returns your pins, in order."
             }
+            Op::GetWorkspaceActivity => crate::activity::description(),
+            Op::GetContents => crate::contents::description(),
+            Op::ListCommits => crate::commits::description(),
             Op::ListProjects => {
                 "A workspace's projects that you can see, by name. A project is what a workspace builds and runs, from a repository or a root directory in one; every repository has a project of its own name. Each has what it is (`kind`: app, library, tool, docs or other) and why (`kind_reason`), where it runs (`runs`: `g1t` when g1t deploys it, `elsewhere` when it is deployed by other means, at `production_url`), and its `links`."
             }
@@ -2603,6 +2616,7 @@ impl Op {
                     "repo": repo_schema(),
                     "job": { "type": "string", "description": "The job's id, from get_workflow_run." },
                     "after": { "type": "integer", "description": "Only chunks after this sequence number." },
+                    "tail": { "type": "integer", "minimum": 1, "maximum": 500, "description": "The last this many chunks instead, where a failed job says why. after is ignored with it." },
                 }),
                 &["repo", "job"],
             ),
@@ -2983,6 +2997,9 @@ impl Op {
                 &["workspace", "projects"],
             ),
             Op::ListProjects => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
+            Op::GetWorkspaceActivity => crate::activity::input(),
+            Op::GetContents => crate::contents::input(),
+            Op::ListCommits => crate::commits::input(),
             Op::GetProject => object(
                 json!({
                     "workspace": workspace_schema(),
@@ -3381,6 +3398,7 @@ impl Op {
                 | Op::ListProjects
                 | Op::GetProject
                 | Op::UpdateProject
+                | Op::GetWorkspaceActivity
                 | Op::ListTeams
                 | Op::GetTeam
                 | Op::CreateTeam
@@ -4693,7 +4711,7 @@ impl Op {
                 pass(
                     actions,
                     "logs",
-                    &json!({ "repo": repo, "viewer": viewer, "job": text(input, "job"), "after": integer(input, "after").unwrap_or(0) }),
+                    &json!({ "repo": repo, "viewer": viewer, "job": text(input, "job"), "after": integer(input, "after").unwrap_or(0), "tail": integer(input, "tail") }),
                 )
                 .await
             }
@@ -5402,6 +5420,9 @@ impl Op {
             }
             // What a project is, where it runs and its links: the projects
             // service keeps them and decides who may change them.
+            Op::GetWorkspaceActivity => crate::activity::run(services, viewer, input).await,
+            Op::GetContents => crate::contents::run(services, viewer, &repo, input).await,
+            Op::ListCommits => crate::commits::run(services, viewer, &repo, input).await,
             Op::ListProjects | Op::GetProject | Op::UpdateProject => {
                 crate::projects::run(self, services, viewer, input).await
             }

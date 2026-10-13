@@ -808,6 +808,8 @@ pub enum SessionEntryKind {
     ToolCall,
     ToolResult,
     Note,
+    /// A skill the session used: its name only.
+    Skill,
 }
 
 /// One step of an agent's session: the "why" behind a pull request's commits.

@@ -9,14 +9,20 @@ import { fileURLToPath } from "node:url";
 
 import {
   PROMPT_LIMIT,
+  RESULT_LIMIT,
+  agentResult,
+  branchFromCommand,
+  g1tTool,
   hook,
   isG1tRemote,
+  isGitCommit,
   isGitPush,
   issueFromBranch,
   issueFromCommand,
   plan,
   redact,
   sessionFiles,
+  subagentHarnessId,
   summarizeTool,
   work,
 } from "../hooks/g1t.mjs";
@@ -87,6 +93,135 @@ describe("plan", () => {
   test("events without a session, and other events, do nothing", () => {
     assert.equal(plan({ hook_event_name: "Stop" }, {}), null);
     assert.equal(plan({ ...base, hook_event_name: "PreToolUse", tool_name: "Bash" }, {}), null);
+  });
+});
+
+// Payloads as Claude Code sends them (code.claude.com/docs/en/hooks).
+const fixtures = {
+  subagentStart: {
+    session_id: "abc-123",
+    transcript_path: "/t.jsonl",
+    cwd: "/work/repo",
+    hook_event_name: "SubagentStart",
+    agent_id: "agent-def456",
+    agent_type: "Explore",
+  },
+  subagentStop: {
+    session_id: "abc-123",
+    transcript_path: "/t.jsonl",
+    cwd: "/work/repo",
+    permission_mode: "default",
+    hook_event_name: "SubagentStop",
+    stop_hook_active: false,
+    agent_id: "def456",
+    agent_type: "Explore",
+    agent_transcript_path: "/t/abc-123/subagents/agent-def456.jsonl",
+    last_assistant_message: "Analysis complete. Found 3 potential issues...",
+    background_tasks: [],
+    session_crons: [],
+  },
+  agentCompleted: {
+    ...base,
+    hook_event_name: "PostToolUse",
+    tool_name: "Agent",
+    tool_input: { description: "Find API endpoints", prompt: "Find all API endpoints", subagent_type: "Explore" },
+    tool_response: {
+      status: "completed",
+      agentId: "a4d2c8f1e0b3a297",
+      content: [{ type: "text", text: "Found 12 endpoints in src/api." }],
+      resolvedModel: "claude-sonnet-4-5",
+      totalTokens: 12450,
+      totalDurationMs: 48211,
+      totalToolUseCount: 7,
+      usage: { input_tokens: 8320, output_tokens: 410 },
+    },
+    tool_use_id: "toolu_9",
+  },
+  agentLaunched: {
+    ...base,
+    hook_event_name: "PostToolUse",
+    tool_name: "Agent",
+    tool_input: { description: "Review the diff", prompt: "Review it", subagent_type: "code-reviewer", run_in_background: true },
+    tool_response: { status: "async_launched", agentId: "b5", description: "Review the diff", prompt: "Review it", outputFile: "/tmp/b5.out", resolvedModel: "claude-sonnet-4-5" },
+  },
+  inSubagent: {
+    ...base,
+    hook_event_name: "PostToolUse",
+    agent_id: "agent-def456",
+    agent_type: "Explore",
+    tool_name: "Edit",
+    tool_input: { file_path: "/work/repo/src/api/routes.ts", old_string: "a", new_string: "b" },
+    tool_response: { filePath: "/work/repo/src/api/routes.ts", structuredPatch: "SECRET PATCH" },
+  },
+  skill: { ...base, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "work-on-issue", args: "42" }, tool_response: { success: true, commandName: "work-on-issue" } },
+};
+
+describe("subagents", () => {
+  test("SubagentStart starts a session of its own for the subagent", () => {
+    const job = plan(fixtures.subagentStart, {});
+    assert.deepEqual(job.agent, { id: "agent-def456", type: "Explore", start: true });
+    assert.deepEqual(job.steps, []);
+    assert.equal(subagentHarnessId("abc-123", "agent-def456"), "abc-123/agent/def456");
+    assert.equal(subagentHarnessId("abc-123", "def456"), "abc-123/agent/def456", "the Agent tool's id names the same subagent");
+  });
+
+  test("SubagentStop ends it with its final message, cut to the limit", () => {
+    const job = plan(fixtures.subagentStop, {});
+    assert.deepEqual(job.agent, { id: "def456", type: "Explore" });
+    assert.deepEqual(job.steps, [{ args: ["session", "end", "--reason", "done", "--result", "Analysis complete. Found 3 potential issues..."] }]);
+    const long = plan({ ...fixtures.subagentStop, last_assistant_message: "z".repeat(RESULT_LIMIT * 2) }, {});
+    assert.equal(long.steps[0].args.at(-1).length, RESULT_LIMIT);
+  });
+
+  test("an Agent call gives its subagent the task, and once finished its final message, and nothing else of its answer", () => {
+    const job = plan(fixtures.agentCompleted, {});
+    assert.deepEqual(job.subagent, {
+      id: "a4d2c8f1e0b3a297",
+      type: "Explore",
+      task: "Find API endpoints",
+      prompt: "Find all API endpoints",
+      model: "claude-sonnet-4-5",
+      result: "Found 12 endpoints in src/api.",
+    });
+    assert.deepEqual(job.steps, [{ args: ["session", "log", "--kind", "tool_call", "--", "Agent: Find API endpoints"] }]);
+    assert.ok(!JSON.stringify(job).includes("12450") && !JSON.stringify(job).includes("8320"));
+    const launched = plan(fixtures.agentLaunched, {});
+    assert.equal(launched.subagent.id, "b5");
+    assert.equal(launched.subagent.result, null, "a background subagent reports at SubagentStop");
+    assert.equal(plan(fixtures.agentCompleted, { G1T_RECORD_PROMPTS: "0" }).subagent.prompt, null);
+    assert.equal(agentResult({ content: "plain" }), "plain");
+  });
+
+  test("what a subagent does is its own session's, and the files it writes are touched", () => {
+    const job = plan(fixtures.inSubagent, {});
+    assert.deepEqual(job.agent, { id: "agent-def456", type: "Explore" });
+    assert.deepEqual(job.steps, [
+      { args: ["session", "log", "--kind", "tool_call", "--", "Edit: src/api/routes.ts"] },
+      { args: ["session", "touch", "--file", "src/api/routes.ts"] },
+    ]);
+    assert.ok(!JSON.stringify(job).includes("SECRET PATCH"));
+  });
+
+  test("a skill is its name only", () => {
+    assert.deepEqual(plan(fixtures.skill, {}).steps, [{ args: ["session", "log", "--kind", "skill", "--", "work-on-issue"] }]);
+  });
+
+  test("branches made, commits, claims and g1t's MCP tools are touched", () => {
+    const bash = (command) => plan({ ...base, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command } }, {});
+    assert.deepEqual(bash("git checkout -b 42-fix").steps.at(-1), { args: ["session", "touch", "--branch", "42-fix"] });
+    assert.deepEqual(bash('git commit -m "x" --trailer "G1t-Session: $G1T_SESSION"').steps.at(-1), { touchHead: true });
+    assert.deepEqual(bash("g1t work claim 42").steps.at(-1), { args: ["session", "touch", "--issue", "42"] });
+    const mcp = plan({ ...base, hook_event_name: "PostToolUse", tool_name: "mcp__plugin_g1t_g1t__issue", tool_input: { action: "claim", repo: "a/b", number: 7 } }, {});
+    assert.equal(mcp.issue, 7);
+    assert.equal(branchFromCommand("git switch -c feat/x && echo"), "feat/x");
+    assert.equal(branchFromCommand("git branch -d old"), null);
+    assert.equal(isGitCommit("git -C repo commit -am x"), true);
+    assert.equal(g1tTool("mcp__g1t__session"), "session");
+    assert.equal(g1tTool("mcp__github__issue"), null);
+  });
+
+  test("a hand-off's issue comes with the session", () => {
+    assert.equal(plan({ ...base, hook_event_name: "SessionStart" }, { G1T_ISSUE: "12" }).issue, 12);
   });
 });
 
@@ -199,12 +334,81 @@ describe("with a working copy", () => {
   });
 
   test("a push that reached the remote updates the head commit", () => {
-    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "one");
+    git("-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "one");
     git("update-ref", "refs/remotes/origin/42-fix-login", "HEAD");
     const head = git("rev-parse", "HEAD").stdout.trim();
     work(plan({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "git push" } }, env), env);
     const update = calls().find((c) => c.args[0] === "api");
     assert.deepEqual(update.args, ["api", "update_session", "-f", "id=ses_fake01", "-f", `head_commit=${head}`, "--silent"]);
+  });
+
+  test("each subagent is a session of its own under this one, whatever order its hooks arrive in", () => {
+    const at = (event) => ({ ...event, cwd: dir });
+    hook(at({ ...base, hook_event_name: "SessionStart", source: "startup" }), env);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
+    // Claude calls Agent; its task waits for the subagent.
+    const pre = hook(at({ ...base, hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: fixtures.agentCompleted.tool_input }), env);
+    assert.equal(pre.output, null);
+    const started = hook(at(fixtures.subagentStart), env);
+    assert.match(started.output.hookSpecificOutput.additionalContext, /session of your own/);
+    assert.match(started.output.hookSpecificOutput.additionalContext, /g1t session list --issue 42 --subagents|g1t session list --subagents/);
+    assert.equal(started.job.agent.task, "Find API endpoints");
+    work(started.job, env);
+    // What it does goes to its own session.
+    const edited = { ...fixtures.inSubagent.tool_input, file_path: join(dir, "src", "api", "routes.ts") };
+    work(hook(at({ ...fixtures.inSubagent, tool_input: edited }), env).job, env);
+    // Its g1t commands act as it.
+    const bash = hook(at({ ...base, hook_event_name: "PreToolUse", agent_id: "agent-def456", agent_type: "Explore", tool_name: "Bash", tool_input: { command: "g1t work claim 42" } }), env);
+    assert.equal(bash.output.hookSpecificOutput.updatedInput.command, "export G1T_SESSION=ses_sub_def456; g1t work claim 42");
+    const mcp = hook(at({ ...base, hook_event_name: "PreToolUse", agent_id: "agent-def456", tool_name: "mcp__plugin_g1t_g1t__issue", tool_input: { action: "claim", repo: "acme/app", number: 42 } }), env);
+    assert.equal(mcp.output.hookSpecificOutput.updatedInput.session_id, "ses_sub_def456");
+    // Outside a subagent, a command is left alone.
+    assert.equal(hook(at({ ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "g1t work claim 42" } }), env).output, null);
+    work(hook(at(fixtures.subagentStop), env).job, env);
+    // A late SubagentStart starts it again, which g1t answers with the same, ended, session.
+    work(hook(at(fixtures.subagentStart), env).job, env);
+    const log = calls();
+    const childStarts = log.filter((c) => c.args[1] === "start" && c.args.includes("--parent"));
+    assert.ok(childStarts.length >= 2);
+    const first = childStarts[0].args;
+    assert.deepEqual(first.slice(0, 8), ["session", "start", "--harness", "claude_code", "--harness-session-id", "abc-123/agent/def456", "--parent", "ses_fake01"]);
+    assert.ok(first.includes("--no-remember"));
+    assert.equal(first[first.indexOf("--agent-type") + 1], "Explore");
+    assert.equal(first[first.indexOf("--task") + 1], "Find API endpoints");
+    const edit = log.find((c) => c.args[2] === "--kind" && c.args.at(-1) === "Edit: src/api/routes.ts");
+    assert.equal(edit.session, "ses_sub_def456");
+    const touched = log.find((c) => c.args[1] === "touch");
+    assert.deepEqual(touched, { args: ["session", "touch", "--file", "src/api/routes.ts"], session: "ses_sub_def456" });
+    const ended = log.find((c) => c.args[1] === "end");
+    assert.deepEqual(ended, { args: ["session", "end", "--reason", "done", "--result", "Analysis complete. Found 3 potential issues..."], session: "ses_sub_def456" });
+  });
+
+  test("a subagent whose stop arrives first is started, then ended", () => {
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work(hook({ ...fixtures.subagentStop, cwd: dir }, env).job, env);
+    const [, start, end] = calls().filter((c) => c.args[0] === "session");
+    assert.ok(start.args.includes("--parent"));
+    assert.equal(end.args[1], "end");
+    assert.equal(end.session, "ses_sub_def456");
+  });
+
+  test("an Agent call that finished ends its subagent with what it reported", () => {
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work(hook({ ...fixtures.agentCompleted, cwd: dir }, env).job, env);
+    const log = calls().filter((c) => c.args[0] === "session");
+    assert.equal(log.find((c) => c.args[1] === "log").session, "ses_fake01", "the Agent call is the parent's");
+    const end = log.find((c) => c.args[1] === "end");
+    assert.deepEqual(end, { args: ["session", "end", "--reason", "done", "--result", "Found 12 endpoints in src/api."], session: "ses_sub_a4d2c8f1e0b3a297" });
+  });
+
+  test("a hand-off names its issue at the start", () => {
+    git("checkout", "-q", "-b", "main");
+    const { output, job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, { ...env, G1T_ISSUE: "12" });
+    assert.match(output.hookSpecificOutput.additionalContext, /issue #12 \(from the work handed to it\)/);
+    assert.match(output.hookSpecificOutput.additionalContext, /G1t-Session/);
+    work(job, env);
+    const start = calls().find((c) => c.args[1] === "start");
+    assert.ok(start.args.includes("--issue") && start.args.includes("12"));
   });
 
   test("a missing CLI records nothing and says so once", () => {

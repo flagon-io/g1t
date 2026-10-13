@@ -163,10 +163,64 @@ export type AskPage = {
   pull?: number | null;
 };
 
-/** One line of an `ask` answer, as newline-delimited JSON. */
+/** The most rounds of tool calls one answer takes before it must answer. */
+export const ASK_MAX_TOOL_ROUNDS = 10;
+/** The most tool calls one answer makes, across its rounds. */
+export const ASK_MAX_TOOL_CALLS = 30;
+/** The most characters of one tool's result the model is given; more is trimmed, with a note. */
+export const ASK_MAX_TOOL_RESULT_CHARS = 16_000;
+/** The most characters of tool results one answer gives the model in all. */
+export const ASK_MAX_TOOL_TOTAL_CHARS = 120_000;
+/** How long one answer may spend calling tools, in seconds. */
+export const ASK_MAX_TOOL_SECONDS = 120;
+/** The most sources one answer lists. */
+export const ASK_MAX_SOURCES = 12;
+
+/**
+ * Where a step of an answer is. `refused`: Ask did not run it (it only
+ * reads and hands work off, or the answer had used its tool calls).
+ */
+export type AskToolStatus = "running" | "done" | "failed" | "refused";
+
+/** A page on g1t an answer drew on; `cited` when the answer links to it. */
+export type AskSource = { title: string; url: string; cited: boolean };
+
+/**
+ * One line of an `ask` answer, as newline-delimited JSON: `meta`, then
+ * `text` as it comes and a `tool` line as each step starts and ends (the
+ * same `id` twice), then `sources` and `done`, or `error` at any point.
+ */
 export type AskEvent =
   | { type: "meta"; provider: Provider; provider_label: string; model: string }
   | { type: "text"; text: string }
+  | {
+      type: "tool";
+      id: string;
+      /** The tool, such as `pull_request`, and its action, such as `list`. */
+      name: string;
+      action: string | null;
+      /** What it does, for a person: "Read pull requests in acme/web". */
+      label: string;
+      status: AskToolStatus;
+      summary: string | null;
+      link: string | null;
+    }
+  | { type: "sources"; sources: AskSource[] }
+  | {
+      /**
+       * Work Ask proposes to hand to a session in the person's own harness:
+       * on an issue, or a new one with `title` and `body`. Nothing has
+       * started; the person starts it from the card the answer shows.
+       */
+      type: "proposal";
+      id: string;
+      repo: string;
+      issue: number | null;
+      title: string | null;
+      body: string | null;
+      mode: "plan" | "implement" | "review";
+      instruction: string | null;
+    }
   | { type: "done"; stop_reason: string | null }
   | { type: "error"; message: string };
 

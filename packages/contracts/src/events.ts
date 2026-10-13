@@ -12,7 +12,7 @@ import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
-import type { AgentRef, ClaimEventData, DependencyChangedData, OverlapDetectedData, SessionEventData, Verdict } from "./work";
+import type { AgentRef, ClaimEventData, DependencyChangedData, OverlapDetectedData, SessionEventData, SessionProgressedData, Verdict } from "./work";
 
 /** What every `package.*` event names. */
 export type PackageEventData = {
@@ -446,6 +446,8 @@ export type EventPayloads = {
   "session.started": SessionEventData;
   /** A session ended, or timed out after 2 hours without a heartbeat. */
   "session.ended": SessionEventData;
+  /** A session (or a subagent of it) recorded more: at most every few seconds each, for the pages showing it. */
+  "session.progressed": SessionProgressedData;
   /** Someone claimed an issue; `others` are the other active claims on it. */
   "work.claimed": ClaimEventData;
   "work.released": ClaimEventData;
@@ -659,8 +661,13 @@ export type NewEvent<T extends EventType = EventType> = {
   [K in T]: Omit<G1tEvent<K>, "id" | "time">;
 }[T];
 
+/** The most repositories one `list` reads with `repoIds`. */
+export const MAX_LIST_REPOS = 100;
+
 export type EventQuery = {
   repoId?: string;
+  /** Only events of these repositories, by id (at most `MAX_LIST_REPOS`); the caller has checked the viewer may read each. */
+  repoIds?: string[];
   types?: EventType[];
   /** Return events older than this event id. */
   before?: string;

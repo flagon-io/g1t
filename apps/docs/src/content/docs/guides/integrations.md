@@ -120,6 +120,13 @@ page shows only their last four characters.
 chooses which, and its model, under **Ask g1t** on this page. See
 [Ask g1t](/guides/ask/).
 
+With an **Anthropic** connection, members can also start a session on an
+issue (**Start a session** on the issue, or `g1t work dispatch`): a Claude
+Managed Agents session on that account, with its key, recorded on g1t.
+g1t keeps one agent and one environment on the account for it, and
+uploads its own skills there the first time. See
+[Start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).
+
 ## Alerts
 
 An alert source opens issues in one repository. Each problem it reports is

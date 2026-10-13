@@ -21,7 +21,10 @@
 		// Workspaces by slug, and people's names and avatars for members.
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		// Live notifications and unread counts for the people in a conversation (services/notify).
-		{ "binding": "NOTIFY", "service": "g1t-notify" }
+		{ "binding": "NOTIFY", "service": "g1t-notify" },
+		// Ask (services/integrations): @g1t's answers in a direct message with
+		// it, from the workspace's own AI provider. The channel's room asks.
+		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" }
 	],
 	// One room per channel for live delivery: it holds the channel's open
 	// sockets, hibernating while nobody says anything (src/room.ts).

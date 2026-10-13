@@ -360,6 +360,9 @@ export const OPERATION_SCOPES = [
   ["set_budget", "billing:write"],
   ["list_repos", "repo:read"],
   ["get_repo", "repo:read"],
+  // A file or directory of a repository, as clone and fetch would give it.
+  ["get_contents", "code:read"],
+  ["list_commits", "code:read"],
   ["download_tarball_archive", "code:read"],
   ["download_zipball_archive", "code:read"],
   ["why", "code:read"],
@@ -368,6 +371,8 @@ export const OPERATION_SCOPES = [
   ["get_project", "repo:read"],
   ["search", "repo:read"],
   ["list_events", "repo:read"],
+  // A workspace's activity: the events of its repositories the caller can read.
+  ["get_workspace_activity", "repo:read"],
   // What the default branch says about a repository, who starred it, and
   // its releases.
   ["get_languages", "repo:read"],
@@ -502,6 +507,7 @@ export const OPERATION_SCOPES = [
   ["update_session", "pull_requests:write"],
   ["end_session", "pull_requests:write"],
   ["record_session_entries", "pull_requests:write"],
+  ["start_agent_session", "pull_requests:write"],
   ["list_workflows", "workflows:read"],
   ["get_workflow", "workflows:read"],
   ["list_workflow_runs", "workflows:read"],

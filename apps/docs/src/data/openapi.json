@@ -79,7 +79,8 @@
         "get_workspace",
         "create_workspace",
         "update_workspace",
-        "delete_workspace"
+        "delete_workspace",
+        "get_workspace_activity"
       ]
     },
     {
@@ -135,6 +136,8 @@
         "list_repos",
         "create_repo",
         "get_repo",
+        "get_contents",
+        "list_commits",
         "download_tarball_archive",
         "download_zipball_archive",
         "update_repo",
@@ -414,7 +417,7 @@
     },
     {
       "name": "Sessions",
-      "description": "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to an issue and a pull request, and recording prompts, reasoning and the tools that ran. A pull request's session shows what was recorded on it.",
+      "description": "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to an issue and a pull request, and recording prompts, reasoning, the tools that ran, the skills used and what it touched. Each subagent is a session of its own under the one that started it. A pull request's session shows what was recorded on it. A session can also be started on an issue in your own Claude, on the workspace's Anthropic account.",
       "x-tools": [
         "start_session",
         "update_session",
@@ -422,6 +425,7 @@
         "get_session",
         "list_sessions",
         "record_session_entries",
+        "start_agent_session",
         "read_session",
         "record_session"
       ]
@@ -11404,6 +11408,195 @@
         },
         "x-example-params": {
           "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/activity": {
+      "get": {
+        "operationId": "get_workspace_activity",
+        "tags": [
+          "Workspaces"
+        ],
+        "summary": "Get a workspace's activity",
+        "description": "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments, default-branch pushes and failed runs: what shipped, and what broke. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events.\n\nWhat shipped today across a workspace: `since` at midnight UTC and `kinds=merged,releases,deployments,pushes`. Each event links to its page on g1t (`url`). Ask g1t reads this to answer questions about a workspace.",
+        "x-operation": "get_workspace_activity",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "activity",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: the start of the span, inclusive. The last 24 hours when left out; for \"today\", midnight UTC."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: the end of the span, exclusive. Now when left out."
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "merged",
+                  "pulls",
+                  "issues",
+                  "releases",
+                  "deployments",
+                  "pushes",
+                  "reviews",
+                  "comments",
+                  "packages",
+                  "runs"
+                ]
+              }
+            },
+            "description": "What to read: merged (merged pull requests only), pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs (workflow runs that finished). All but comments when left out."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "description": "The most events to return, newest first: 100 unless you say, at most 200."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "since": "2026-10-12T00:00:00Z",
+                  "until": "2026-10-12T21:40:00Z",
+                  "repositories": 4,
+                  "summary": {
+                    "merged_pull_requests": 1,
+                    "releases": 1,
+                    "production_deployments": 1,
+                    "failed_deployments": 0,
+                    "default_branch_pushes": 0,
+                    "failed_runs": 0
+                  },
+                  "events": [
+                    {
+                      "kind": "deployment_succeeded",
+                      "time": "2026-10-12T21:12:04Z",
+                      "repo": "flagon-io/g1t",
+                      "actor": "syntaqx",
+                      "environment": "production",
+                      "project": "g1t",
+                      "branch": "main",
+                      "commit": "75c6704f2b1a",
+                      "url": "https://g1t.sh/flagon-io/g1t/deployments/dpl_01kkp3m8w2f6t9qh4c7d1r5n0x"
+                    },
+                    {
+                      "kind": "release_published",
+                      "time": "2026-10-12T19:30:51Z",
+                      "repo": "flagon-io/runner",
+                      "actor": "syntaqx",
+                      "tag": "v0.3.3",
+                      "title": "Runner 0.3.3",
+                      "url": "https://g1t.sh/flagon-io/runner/releases/tag/v0.3.3"
+                    },
+                    {
+                      "kind": "pull_merged",
+                      "time": "2026-10-12T18:02:17Z",
+                      "repo": "flagon-io/g1t",
+                      "actor": "syntaqx",
+                      "number": 412,
+                      "title": "Ask g1t answers with the workspace's own AI provider",
+                      "url": "https://g1t.sh/flagon-io/g1t/pull/412",
+                      "issue": 398
+                    }
+                  ],
+                  "complete": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        },
+        "x-example-query": {
+          "since": "2026-10-12T00:00:00Z",
+          "kinds": "merged,releases,deployments"
         }
       }
     },
@@ -26608,6 +26801,290 @@
               }
             }
           }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/contents": {
+      "get": {
+        "operationId": "get_contents",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "Get repository contents",
+        "description": "What a repository holds at a path, at `ref` (a branch, tag or commit; the default branch when left out). A file: its `text` (null for a binary file or one too large to show; at most 200,000 characters, the rest cut with a note), `size` in bytes and `html_url`. A directory (or the root, with no `path`): its `entries` (each `name`, `path` and `type`: dir, file, symlink or submodule) and its README's `text` when it has one. Read the root first to find README, CONTRIBUTING, package.json, Cargo.toml or a workflow under .g1t/workflows, then the files you need.\n\nA file's text, or with no `path` (or a directory's) the entries and README. `ref` is a branch, tag or commit; the default branch when left out.",
+        "x-operation": "get_contents",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "contents",
+        "x-scope": "code:read",
+        "security": [
+          {
+            "token": [
+              "code:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A file or directory, such as README.md or src/lib; the root when left out."
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A branch, tag or commit; the default branch when left out."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "type": "file",
+                  "repo": "flagon-io/g1t",
+                  "ref": "main",
+                  "path": "CONTRIBUTING.md",
+                  "size": 412,
+                  "binary": false,
+                  "text": "# Contributing\n\nRun the tests before you push:\n\n```sh\ncargo test --workspace\nnpm test --workspaces --if-present\n```\n",
+                  "html_url": "https://g1t.sh/flagon-io/g1t/blob/main/CONTRIBUTING.md"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        },
+        "x-example-query": {
+          "path": "CONTRIBUTING.md"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/commits": {
+      "get": {
+        "operationId": "list_commits",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "List commits",
+        "description": "A branch's commits, newest first (the default branch unless `ref` names a branch, tag or commit): each with its `sha`, `message` (why it was made: g1t's commit messages say), `author`, `authored_at` and `html_url`. `limit` is 30 unless you say, at most 100. With `path` (a file or directory), also `last_changed`: the commit that last changed it.\n\nWith `path`, `last_changed` is the commit that last changed that file or directory.",
+        "x-operation": "list_commits",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "commits",
+        "x-scope": "code:read",
+        "security": [
+          {
+            "token": [
+              "code:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A branch, tag or commit; the default branch when left out."
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A file or directory, such as scripts/deploy/npm-ci.mjs: adds the commit that last changed it."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "How many commits: 30 unless you say, at most 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "repo": "flagon-io/g1t",
+                  "commits": [
+                    {
+                      "sha": "85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5",
+                      "message": "The runner's broker test reads the relayed answer's body as chunks.",
+                      "author": {
+                        "name": "Chase Pierce"
+                      },
+                      "authored_at": "2026-10-12T22:04:11Z",
+                      "parents": [
+                        "75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809"
+                      ],
+                      "html_url": "https://g1t.sh/flagon-io/g1t/commit/85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5"
+                    }
+                  ],
+                  "path": "scripts/deploy/npm-ci.mjs",
+                  "last_changed": {
+                    "sha": "5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e",
+                    "message": "Installs in cloud jobs retry when npm's download breaks off.",
+                    "author": {
+                      "name": "Chase Pierce"
+                    },
+                    "authored_at": "2026-10-13T01:12:40Z",
+                    "parents": [
+                      "0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3"
+                    ],
+                    "html_url": "https://g1t.sh/flagon-io/g1t/commit/5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        },
+        "x-example-query": {
+          "path": "scripts/deploy/npm-ci.mjs",
+          "limit": "1"
         }
       }
     },
@@ -42146,6 +42623,10 @@
                   "reason": {
                     "type": "string",
                     "description": "Why, in a few words. \"released\" if left out."
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "description": "The session (ses_…) whose claim it is, when you have several on the issue, such as sibling subagents."
                   }
                 }
               },
@@ -42297,6 +42778,10 @@
                   "note": {
                     "type": "string",
                     "description": "Where the work stands: what is done, what is left, what to watch for. Up to 500 characters."
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "description": "The session (ses_…) whose claim it is, when you have several on the issue, such as sibling subagents."
                   }
                 },
                 "required": [
@@ -42476,7 +42961,7 @@
           "Sessions"
         ],
         "summary": "Start a session",
-        "description": "Start a session: one run of your own harness (a Claude Code session, a Codex run) on a repository, so others can see who is working on what. `harness` is claude_code, codex, cursor, copilot or other. Give `harness_session_id`, the harness's own id for the session, and starting again with it returns the session already started (refreshing the issue, pull request, branch, title and head given) instead of a new one, so a hook that fires twice is harmless. `issue` and `pull` attach it to an issue and a pull request of the repository; a pull request for an issue attaches that issue too. Returns the session (`id` `ses_…`, `state` active, idle or ended). A new session, or one started again after it ended, is a session.started event. Needs a confirmed email address and a role that may open issues.\n\nIdempotent on `harness_session_id`: a second start with it returns this session, so call it from a hook without checking first. `state` is `active`, `idle` (no heartbeat for 15 minutes) or `ended` (ended, or no heartbeat for 2 hours: `end_reason` `timed_out`). See [Sessions](/guides/sessions/).",
+        "description": "Start a session: one run of your own harness (a Claude Code session, a Codex run) on a repository, so others can see who is working on what. `harness` is claude_code, codex, cursor, copilot or other. Give `harness_session_id`, the harness's own id for the session, and starting again with it returns the session already started (refreshing the issue, pull request, branch, title and head given) instead of a new one, so a hook that fires twice is harmless. `issue` and `pull` attach it to an issue and a pull request of the repository; a pull request for an issue attaches that issue too. A subagent is a session of its own: give `parent_id` (one of your sessions here), its `agent_type`, the `task` and `prompt` its parent gave it, and as `harness_session_id` the parent's harness id, `/agent/` and the subagent's id; it starts on the parent's issue, pull request and branch unless it says otherwise, sees and is seen by its siblings in get_work and list_sessions, and once ended stays ended when started again. Returns the session (`id` `ses_…`, `state` active, idle or ended). A new session, or one started again after it ended, is a session.started event. Needs a confirmed email address and a role that may open issues.\n\nIdempotent on `harness_session_id`: a second start with it returns this session, so call it from a hook without checking first. `state` is `active`, `idle` (no heartbeat for 15 minutes) or `ended` (ended, or no heartbeat for 2 hours: `end_reason` `timed_out`). A subagent gives `parent_id`, `agent_type`, `task` and `prompt`. See [Sessions](/guides/sessions/).",
         "x-operation": "start_session",
         "x-mcp-tool": "session",
         "x-mcp-action": "start",
@@ -42619,6 +43104,7 @@
                     "type": "string",
                     "enum": [
                       "claude_code",
+                      "claude_managed_agents",
                       "codex",
                       "cursor",
                       "copilot",
@@ -42628,7 +43114,27 @@
                   },
                   "harness_session_id": {
                     "type": "string",
-                    "description": "The harness's own id for the session, such as Claude Code's session_id. Starting again with it returns the same session."
+                    "description": "The harness's own id for the session, such as Claude Code's session_id; for a subagent, the parent's, `/agent/` and the subagent's id. Starting again with it returns the same session."
+                  },
+                  "parent_id": {
+                    "type": "string",
+                    "description": "For a subagent: the session that started it (ses_…), one of yours on the repository."
+                  },
+                  "agent_type": {
+                    "type": "string",
+                    "description": "For a subagent: its kind, as the harness names it (Explore, security-reviewer)."
+                  },
+                  "task": {
+                    "type": "string",
+                    "description": "For a subagent: the task it was given, in a few words. Up to 200 characters."
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "For a subagent: the prompt its parent gave it. Kept up to 4,000 characters."
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "The model it runs on, when known."
                   }
                 },
                 "required": [
@@ -42652,7 +43158,7 @@
           "Sessions"
         ],
         "summary": "List sessions",
-        "description": "A repository's sessions, most recently heard from first, up to 100: `state` active (heard from in the last 15 minutes), idle or ended, and `issue` or `pull` for those attached to one. Anyone who can read the repository may.",
+        "description": "A repository's sessions, most recently heard from first, up to 100: `state` active (heard from in the last 15 minutes), idle or ended; `issue` or `pull` for those on one, attached or tied to it any other way; `path` for those that touched a file (or any under a folder ending in `/`). Subagents are left out unless `subagents` is true, which lists each tree whole. Each says how many `subagents` it started. Anyone who can read the repository may.",
         "x-operation": "list_sessions",
         "x-mcp-tool": "session",
         "x-mcp-action": "list",
@@ -42705,7 +43211,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Only sessions on this issue."
+            "description": "Only sessions on this issue: attached, or tied to it any other way."
           },
           {
             "name": "pull",
@@ -42714,7 +43220,25 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Only sessions on this pull request."
+            "description": "Only sessions on this pull request: attached, or tied to it any other way."
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only sessions that touched this file, or any under it when it ends in `/`."
+          },
+          {
+            "name": "subagents",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "List subagents too, each tree whole. Left out, only the sessions at the top."
           }
         ],
         "responses": {
@@ -42795,6 +43319,190 @@
         }
       }
     },
+    "/repos/{owner}/{name}/agent-sessions": {
+      "post": {
+        "operationId": "start_agent_session",
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Start an agent session on an issue",
+        "description": "Start work on an issue in a session of its own, on the person's own Claude: g1t runs no model and bills nothing for it. Give `issue`, or `title` and `body` to open a new issue first; `instruction` adds to what the session is asked; `mode` (plan, implement or review) says what kind of work it is. With the workspace's Anthropic connection (an owner adds it under Integrations), g1t starts a Claude Managed Agents session with that key: g1t's MCP server attached with a credential for you and this repository only that lasts the session and is kept in a vault on the Anthropic account (never in the prompt), g1t's skills (work-on-issue, coordinate, fix-integration) next to the account's own, and the session, its subagents (threads), what they touched and what they reported recorded here as a g1t session (`harness` claude_managed_agents). Returns `session`, its `session_url` on g1t, `provider_session_url`, and `prompt`. With `handoff` true, or without an Anthropic connection when `handoff` is not false, nothing is started: `command` is a Claude Code command line, and `prompt` what to paste, for someone with g1t's Claude Code plugin, whose session then attaches to the issue as it starts.\n\nRuns on the workspace's own Anthropic key: g1t runs no model and bills nothing for it. Without an Anthropic connection (or with `handoff: true`) nothing is started and `command` is a Claude Code command line to run with g1t's plugin. See [Sessions](/guides/sessions/#start-a-session-on-your-anthropic-account).",
+        "x-operation": "start_agent_session",
+        "x-mcp-tool": "session",
+        "x-mcp-action": "dispatch",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "issue": 12,
+                  "session": {
+                    "id": "ses_01m4c9a8b7c6d5e4f3g2h1j0k9",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "issue": 12,
+                    "pull": null,
+                    "branch": null,
+                    "actor": {
+                      "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                      "username": "syntaqx"
+                    },
+                    "harness": "claude_managed_agents",
+                    "harness_session_id": "sesn_011CZkZAtmR3yMPDzynEDxu7",
+                    "title": "#12 Make the greeting name the caller",
+                    "state": "active",
+                    "head_commit": null,
+                    "started_at": "2026-10-12T15:10:02.117Z",
+                    "last_seen_at": "2026-10-12T15:10:02.117Z",
+                    "ended_at": null,
+                    "end_reason": null,
+                    "parent_id": null,
+                    "agent_type": null,
+                    "task": null,
+                    "prompt": null,
+                    "result": null,
+                    "model": "claude-opus-5-5",
+                    "subagents": 0
+                  },
+                  "session_url": "https://g1t.sh/syntaqx/hello/work/sessions/ses_01m4c9a8b7c6d5e4f3g2h1j0k9",
+                  "provider": "anthropic",
+                  "provider_session_id": "sesn_011CZkZAtmR3yMPDzynEDxu7",
+                  "provider_session_url": "https://platform.claude.com/workspaces/default/sessions/sesn_011CZkZAtmR3yMPDzynEDxu7",
+                  "handoff": false,
+                  "command": null,
+                  "prompt": "Work on issue #12 in syntaqx/hello: Make the greeting name the caller.\n\n…"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "issue": {
+                    "type": "integer",
+                    "description": "The issue to work on. Left out, give title (and body) to open one."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Without issue: the title of a new issue to open and work on."
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Without issue: the new issue's description."
+                  },
+                  "instruction": {
+                    "type": "string",
+                    "description": "What to do beyond what the issue says. Up to 4,000 characters."
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "plan",
+                      "implement",
+                      "review"
+                    ],
+                    "description": "What kind of work: plan (say how, change nothing), implement (the default) or review (review its pull request)."
+                  },
+                  "handoff": {
+                    "type": "boolean",
+                    "description": "true for a Claude Code command and prompt to run yourself instead of a session on the workspace's Anthropic account; false to refuse when there is no Anthropic connection. Left out, a session when the workspace can, else the hand-off."
+                  }
+                }
+              },
+              "example": {
+                "issue": 12,
+                "mode": "implement",
+                "instruction": "Keep the old greeting behind a flag."
+              }
+            }
+          }
+        }
+      }
+    },
     "/repos/{owner}/{name}/sessions/{id}": {
       "get": {
         "operationId": "get_session",
@@ -42802,7 +43510,7 @@
           "Sessions"
         ],
         "summary": "Get a session",
-        "description": "A session and its entries, oldest first, numbered within the session (`seq`); `after` gives the entries after that number, 500 at a time. Anyone who can read the repository may.\n\nEntries are numbered within the session and come 500 at a time; send the last `seq` you have as `after` for the next page.",
+        "description": "A session and its entries, oldest first, numbered within the session (`seq`); `after` gives the entries after that number, 500 at a time. With them: `children`, its subagents and theirs in the order they started (each names its `parent_id`); `touched`, the files, commits, branches, pull requests and issues it and they touched; `links`, the issues and pull requests they worked on and how each was tied (`via`: attached, claim, branch, commit, trailer, opened or ref); `skills`, the skills they used by name; and for a subagent, `root`, the session at the top of its tree. Anyone who can read the repository may.\n\nEntries are numbered within the session and come 500 at a time; send the last `seq` you have as `after` for the next page. `children` are the session's subagents and theirs; `touched`, `links` and `skills` cover the whole tree.",
         "x-operation": "get_session",
         "x-mcp-tool": "session",
         "x-mcp-action": "get",
@@ -42897,7 +43605,87 @@
                       "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
                       "at": "2026-10-12T14:30:12.660Z"
                     }
-                  ]
+                  ],
+                  "children": [
+                    {
+                      "id": "ses_01m4b2d8x1y2z3a4b5c6d7e8f9",
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "issue": 12,
+                      "pull": null,
+                      "branch": "greet-caller",
+                      "actor": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx"
+                      },
+                      "harness": "claude_code",
+                      "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13/agent/a4d2c8f1e0b3a297",
+                      "title": null,
+                      "state": "ended",
+                      "head_commit": null,
+                      "started_at": "2026-10-12T14:05:40.112Z",
+                      "last_seen_at": "2026-10-12T14:07:02.930Z",
+                      "ended_at": "2026-10-12T14:07:02.930Z",
+                      "end_reason": "done",
+                      "parent_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                      "agent_type": "Explore",
+                      "task": "Find where the greeting is built",
+                      "prompt": "Find every place the greeting text is built and say which file to change.",
+                      "result": "The greeting is built in src/greet.rs (greet) and nowhere else.",
+                      "model": "claude-sonnet-5-5",
+                      "subagents": 0
+                    }
+                  ],
+                  "touched": [
+                    {
+                      "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                      "kind": "file",
+                      "value": "src/greet.rs",
+                      "at": "2026-10-12T14:12:30.004Z"
+                    },
+                    {
+                      "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                      "kind": "branch",
+                      "value": "greet-caller",
+                      "at": "2026-10-12T14:30:40.871Z"
+                    }
+                  ],
+                  "links": [
+                    {
+                      "kind": "pull",
+                      "number": 14,
+                      "title": "Name the caller in the greeting",
+                      "state": "open",
+                      "via": [
+                        "attached",
+                        "branch"
+                      ],
+                      "session_ids": [
+                        "ses_01m4b2c3d4e5f6g7h8j9k0m1n2"
+                      ]
+                    },
+                    {
+                      "kind": "issue",
+                      "number": 12,
+                      "title": "Make the greeting name the caller",
+                      "state": "open",
+                      "via": [
+                        "attached",
+                        "claim"
+                      ],
+                      "session_ids": [
+                        "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                        "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"
+                      ]
+                    }
+                  ],
+                  "skills": [
+                    {
+                      "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+                      "name": "work-on-issue",
+                      "uses": 1
+                    }
+                  ],
+                  "root": null
                 }
               }
             }
@@ -42953,7 +43741,7 @@
           "Sessions"
         ],
         "summary": "Update a session",
-        "description": "Update one of your sessions: attach it to an issue or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 2 hours; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. Returns the session; one ended with end_session is refused with `409`.\n\nSend `{}` as a heartbeat. Each call renews the session's claims and brings back one that timed out. Refused with `404` for a session that is not yours, and `409` for one you ended.",
+        "description": "Update one of your sessions: attach it to an issue or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 2 hours; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. A subagent's `task`, `prompt`, `model` and `result` (what it reported, up to 8,000 characters) can be set too; a subagent that ended takes them and stays ended. Returns the session; one ended with end_session is refused with `409`.\n\nSend `{}` as a heartbeat. Each call renews the session's claims and brings back one that timed out. Refused with `404` for a session that is not yours, and `409` for one you ended.",
         "x-operation": "update_session",
         "x-mcp-tool": "session",
         "x-mcp-action": "update",
@@ -43100,6 +43888,26 @@
                   "head_commit": {
                     "type": "string",
                     "description": "The commit it is at, such as after a push."
+                  },
+                  "result": {
+                    "type": "string",
+                    "description": "What it reported when it finished: a subagent's final message. Kept up to 8,000 characters. Never a tool's output."
+                  },
+                  "agent_type": {
+                    "type": "string",
+                    "description": "For a subagent: its kind, as the harness names it (Explore, security-reviewer)."
+                  },
+                  "task": {
+                    "type": "string",
+                    "description": "For a subagent: the task it was given, in a few words. Up to 200 characters."
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "For a subagent: the prompt its parent gave it. Kept up to 4,000 characters."
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "The model it runs on, when known."
                   }
                 }
               },
@@ -43119,7 +43927,7 @@
           "Sessions"
         ],
         "summary": "End a session",
-        "description": "End one of your sessions, with an optional `reason`. A session.ended event. Ending one already ended returns it as it is. Its claims are not released: release them, hand the issue off, or let them expire.",
+        "description": "End one of your sessions, with an optional `reason` and `result` (what it reported when it finished: a subagent's final message, up to 8,000 characters, never a tool's output). A session.ended event. Ending one already ended returns it as it is, taking `result` if it had none. Its subagents still going end with it (`parent ended`). Its claims are not released: release them, hand the issue off, or let them expire.",
         "x-operation": "end_session",
         "x-mcp-tool": "session",
         "x-mcp-action": "end",
@@ -43250,6 +44058,10 @@
                   "reason": {
                     "type": "string",
                     "description": "Why it ended, in a few words. \"ended\" if left out."
+                  },
+                  "result": {
+                    "type": "string",
+                    "description": "What it reported when it finished: a subagent's final message. Kept up to 8,000 characters. Never a tool's output."
                   }
                 }
               },
@@ -43268,7 +44080,7 @@
           "Sessions"
         ],
         "summary": "Record entries in a session",
-        "description": "Record entries in one of your sessions: up to 200 at a time, each with `kind` (prompt, message, tool_call, tool_result or note), `text` (up to 64,000 characters), and for tools `tool`. Give each a `key` and recording it again does nothing, so a retried hook records it once. Entries of a session attached to a pull request show in that pull request's session too, where reviewers read why the change is what it is. Recording is a heartbeat. Returns how many were `recorded` and how many were `duplicates`.\n\nUp to 200 entries a request. An entry whose `key` the session recorded before is counted in `duplicates` and not recorded again. Entries of a session on a pull request show in that pull request's session too (read_session).",
+        "description": "Record entries in one of your sessions: up to 200 at a time, each with `kind` (prompt, message, tool_call, tool_result, note, or skill for a skill it used, by name), `text` (up to 64,000 characters), and for tools `tool`. Give each a `key` and recording it again does nothing, so a retried hook records it once. `touched` says what it touched, up to 200: `{ kind, value }` with kind file (a path from the repository's root), commit, branch, pull (one it opened) or issue (one it named); each is kept once, ties the session to the pull requests and issues it names, and a file another active session touched too (outside its own parents and subagents, so siblings yes) is an overlap.detected event for both, once per pair. Entries of a session attached to a pull request show in that pull request's session too, where reviewers read why the change is what it is. Recording is a heartbeat. Returns how many were `recorded` and how many were `duplicates`.\n\nUp to 200 entries a request. An entry whose `key` the session recorded before is counted in `duplicates` and not recorded again. Entries of a session on a pull request show in that pull request's session too (read_session).",
         "x-operation": "record_session_entries",
         "x-mcp-tool": "session",
         "x-mcp-action": "record",
@@ -43316,7 +44128,7 @@
               "application/json": {
                 "schema": {},
                 "example": {
-                  "recorded": 2,
+                  "recorded": 3,
                   "duplicates": 0
                 }
               }
@@ -43374,7 +44186,7 @@
           }
         },
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
@@ -43393,11 +44205,13 @@
                             "message",
                             "tool_call",
                             "tool_result",
-                            "note"
+                            "note",
+                            "skill"
                           ]
                         },
                         "text": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "For a skill, its name only."
                         },
                         "tool": {
                           "type": "string",
@@ -43417,11 +44231,35 @@
                         "text"
                       ]
                     }
+                  },
+                  "touched": {
+                    "type": "array",
+                    "description": "What it touched, up to 200, each kept once.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "file",
+                            "commit",
+                            "branch",
+                            "pull",
+                            "issue"
+                          ]
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "A path from the repository's root, a commit, a branch, or a number."
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ]
+                    }
                   }
-                },
-                "required": [
-                  "entries"
-                ]
+                }
               },
               "example": {
                 "entries": [
@@ -43435,6 +44273,21 @@
                     "text": "cargo test",
                     "tool": "Bash",
                     "key": "tool-7"
+                  },
+                  {
+                    "kind": "skill",
+                    "text": "work-on-issue",
+                    "key": "skill-3"
+                  }
+                ],
+                "touched": [
+                  {
+                    "kind": "file",
+                    "value": "src/greet.rs"
+                  },
+                  {
+                    "kind": "branch",
+                    "value": "greet-caller"
                   }
                 ]
               }
@@ -44172,6 +45025,7 @@
                         "session.appended",
                         "session.started",
                         "session.ended",
+                        "session.progressed",
                         "work.claimed",
                         "work.released",
                         "work.claim_expired",
@@ -44459,6 +45313,7 @@
                         "session.appended",
                         "session.started",
                         "session.ended",
+                        "session.progressed",
                         "work.claimed",
                         "work.released",
                         "work.claim_expired",
@@ -45392,6 +46247,7 @@
                         "session.appended",
                         "session.started",
                         "session.ended",
+                        "session.progressed",
                         "work.claimed",
                         "work.released",
                         "work.claim_expired",
@@ -45665,6 +46521,7 @@
                         "session.appended",
                         "session.started",
                         "session.ended",
+                        "session.progressed",
                         "work.claimed",
                         "work.released",
                         "work.claim_expired",
@@ -48992,7 +49849,7 @@
           "Actions"
         ],
         "summary": "Get a job's log",
-        "description": "A job's log, in order, after `after` (a sequence number from an earlier call). `done` says whether more will come. Lines starting ##[group], ##[endgroup], ##[error] and ##[warning] mark groups and messages.\n\nReturns at most 500 chunks. Step 0 is the job's setup. While `done` is false, call again with the last `seq` as `after`.",
+        "description": "A job's log, in order, after `after` (a sequence number from an earlier call), or with `tail` its last chunks, where a failed job says why. `done` says whether more will come. Lines starting ##[group], ##[endgroup], ##[error] and ##[warning] mark groups and messages.\n\nReturns at most 500 chunks. Step 0 is the job's setup. While `done` is false, call again with the last `seq` as `after`.",
         "x-operation": "get_job_logs",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "job_logs",
@@ -49040,6 +49897,17 @@
               "type": "integer"
             },
             "description": "Only chunks after this sequence number."
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "description": "The last this many chunks instead, where a failed job says why. after is ignored with it."
           }
         ],
         "responses": {

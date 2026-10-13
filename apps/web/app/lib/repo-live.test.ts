@@ -98,11 +98,32 @@ test("the Work page hears claims, sessions starting and ending, what the queue f
   for (const kind of ["work.claimed", "work.claim_expired", "session.started", "session.ended", "dependency.changed", "overlap.detected", "integration.failed", "decision.recorded", "queue.changed", "pull.merged"]) {
     assert.equal(page(change(kind, { number: 3 })), true, kind);
   }
+  assert.equal(page(change("session.progressed")), true, "a session going on");
   assert.equal(page(change("session.appended", { number: 3 })), false);
   assert.equal(page(change("comment.created", { number: 3 })), false);
   assert.equal(page(push("main")), false);
   // An issue hears coordination about itself and its pull requests by number.
   assert.equal(repoPages.issue(3, [9])(change("integration.failed", { number: 9 })), true);
+});
+
+test("a session going on reaches the issue and pull request it is on, and no other", () => {
+  assert.equal(repoPages.issue(3, [9])(change("session.progressed", { number: 3 })), true);
+  assert.equal(repoPages.issue(3, [9])(change("session.progressed", { number: 9 })), true);
+  assert.equal(repoPages.issue(3)(change("session.progressed", { number: 4 })), false);
+  assert.equal(repoPages.issue(3)(change("session.progressed")), false);
+  assert.equal(repoPages.pull(9)(change("session.progressed", { number: 9 })), true);
+  assert.equal(repoPages.pull(9)(change("session.progressed", { number: 3 })), false);
+  assert.equal(repoPages.pull(9)(change("session.progressed")), false);
+});
+
+test("a session's page hears every session, claim and overlap in the repository", () => {
+  const page = repoPages.session();
+  for (const kind of ["session.started", "session.progressed", "session.ended", "work.claimed", "work.released", "overlap.detected"]) {
+    assert.equal(page(change(kind)), true, kind);
+  }
+  assert.equal(page(change("comment.created", { number: 3 })), false);
+  assert.equal(page(change("pull.merged", { number: 3 })), false);
+  assert.equal(page(push("main")), false);
 });
 
 test("runs, one run, and security", () => {

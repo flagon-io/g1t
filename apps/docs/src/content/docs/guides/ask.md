@@ -1,6 +1,6 @@
 ---
 title: Ask g1t
-description: Ask g1t about your work from the top bar of any page. It answers with your workspace's own AI provider and key, knows which page you are on, and reads the issue or pull request in front of you.
+description: Ask g1t about your work from the top bar of any page. It answers with your workspace's own AI provider and key, reads g1t as you with read-only access, and shows each step it takes and the pages it drew on.
 ---
 
 **Ask**, in the top bar, opens a conversation with g1t beside the page
@@ -29,7 +29,8 @@ An owner of the workspace sets it up once:
    an endpoint that does not list its models, the model's name.
 
 Every member can then ask. Until a provider is chosen, Ask says so: owners
-get a link to set it up, and members are told to ask an owner. **Turn Ask
+get a link to set it up, and members are told to ask an owner. A message
+to @g1t in Chat before then gets a short reply from g1t saying the same. **Turn Ask
 off** on the same page stops it answering, and removing the provider it
 uses does too.
 
@@ -37,31 +38,130 @@ Every AI provider g1t connects works with Ask: Anthropic and
 Anthropic-compatible endpoints through Anthropic's Messages API, and the
 rest through OpenAI's Chat Completions API.
 
-## What it knows
+## What it can read
 
-Each question is sent with a short note saying that this is Ask in your
-workspace and which page you are on: the repository, and the issue or pull
+Ask reads g1t to answer: whatever you can read, and nothing more. It uses
+the same tools the [g1t MCP server](/reference/mcp/) gives any agent, run
+as you: repositories and their files and commits, issues, pull requests
+and their changes, workflow runs and their logs, deployments, releases,
+production telemetry, and what happened across your workspace. Every read
+goes through the same permission checks as your own, so it never sees a
+repository, issue or log you could not open yourself.
+
+Each question asked from the panel is sent with a short note saying that
+this is Ask in your workspace and which page you are on (a question
+written in Chat says you are in Chat): the repository, and the issue or pull
 request number, when there is one. On an issue or a pull request, g1t also
 reads its title, state and description, as you can see them, and sends
 those along, so you can ask "what is left to do here?" without pasting
 anything.
 
-That is all it is given. Ask cannot change anything in g1t or read
-anything beyond that page; if you ask it to, it says so. Its answers come
-from a model and can be wrong.
+It only reads. For each answer g1t makes a credential that is yours, holds
+read permissions only, reaches only this workspace, and ends with the
+answer, a few minutes at most. Nobody sees it: not the model, not your
+browser. Anything that would change g1t is refused, whatever your role.
 
-## Conversations
+Each question is also sent with which page you are on and today's date. On
+an issue or a pull request, g1t sends its title, state and description, so
+you can ask "what is left to do here?" without pasting anything. Some
+questions it answers well:
 
-Ask keeps one conversation per workspace, in your browser tab: it stays as
-you move between pages and when you reload, and is gone when you close the
-tab. **New conversation** starts over, and **Stop** ends an answer while it
-is being written; what had come so far stays. Each answer shows the
-provider and model that wrote it.
+- What shipped today across all our projects?
+- Why did the last Deploy fail?
+- Summarize this pull request.
+- How do I run this project's tests?
+- What changed in this file recently, and why?
+
+For a question about the whole workspace, Ask reads the workspace's
+activity first: merged pull requests, releases, deployments, workflow runs
+and pushes across every repository you can read, in one read
+(`activity` on the MCP server's `workspace` tool, or
+[`GET /workspaces/{workspace}/activity`](/reference/api/workspaces/get-workspace-activity/)).
+
+Answers link to what they name on g1t, and every number, title and link
+comes from what Ask read; when something does not exist, it says so.
+Answers come from a model and can still be wrong: follow the links to
+check.
+
+### Steps and sources
+
+While Ask works, the panel shows each step as it runs, such as **Read
+activity in acme since 2026-10-12** or **Read pull request #7 in
+acme/web**, with what it found and a link to the page it read. A step that
+was refused, or that failed, says why. Once the answer is written the steps
+fold into one line you can open again. Under the answer, **Sources** lists
+the pages on g1t it links to, and the ones it read directly.
+
+### Asking for work
+
+Ask does not do the work itself: it does not write code or change
+anything. g1t coordinates the work, and a session in your own harness does
+it. When you ask for work to be done, such as planning a change, fixing a
+bug or implementing an issue, Ask reads the issue the work belongs to,
+checks whether a session already holds it, and proposes a session: a card
+under the answer that names the issue (or a new one it would open) and
+what the session should do (plan, implement or review).
+
+Nothing starts until you choose on the card:
+
+- **Start session** runs it on your workspace's Anthropic account as a
+  [Claude Managed Agents session](/guides/sessions/), with g1t's tools and
+  skills beside your own. It shows when an owner has connected Anthropic.
+- **Copy Claude Code command** copies a `claude` command that runs it on
+  your computer with the [g1t plugin](/guides/claude-code-plugin/), with
+  your own skills, settings and subagents.
+
+Either way the session is tied to the issue: it shows on the issue, on the
+repository's Work page and on its own session page, with its subagents, and
+Ask can tell you where it stands. If a session already holds the issue, Ask
+links it rather than proposing another.
+
+## One conversation, in Ask and in Chat
+
+Ask is your **direct message with @g1t** in [Chat](/guides/chat/#talk-with-g1t).
+What you ask in the panel is posted there, and g1t's answer is written
+there as it streams, so it shows in both places at once: start a question
+on an issue page, and read the answer later in Chat, on your phone, or
+in the desktop app. **Open in Chat** at the top of the panel takes you to
+it. Nobody else can read it, and it stays until you delete it.
+
+- **New conversation** leaves a mark in the direct message. From then on,
+  g1t reads only what comes after it, and the panel shows only that; what
+  came before stays in Chat to read.
+- **Stop**, or **Esc** while an answer is coming, ends the answer; what had
+  come so far stays. Writing again while g1t is still answering does the
+  same: g1t stops and answers your newest words, reading both.
+- **Answer again**, under g1t's latest answer, has it write that answer
+  anew.
+- **Copy** copies an answer as Markdown. Each answer shows the provider
+  and model that wrote it.
+
+Answers are Markdown: code is highlighted with its language and a Copy
+button, tables scroll within the answer, and issues, pull requests and
+commits (`acme/web#12`, a link to one, a commit hash) show as chips that
+open their title and state when you hover over them. Links to
+[artifacts](/guides/artifacts/) show their card. Pictures show only from
+g1t itself; any other picture is a link.
+
+In the panel, **Enter** sends, **Shift+Enter** starts a new line, and
+**⌘K** (**Ctrl+K**) puts you back in the box. On an empty conversation,
+the panel suggests a few questions for the page you are on.
 
 ## Limits
 
-- 20 questions a minute for each person.
-- A question can be up to 16,000 characters, and a conversation up to
-  64,000 characters; past that, start a new one. Only the conversation's
-  latest 40 messages are sent.
+- 20 questions a minute for each person; past that, g1t says to wait a
+  moment.
+- g1t reads the conversation since the last **New conversation**, up to
+  its latest 40 messages and 64,000 characters, the newest first; a
+  message longer than 16,000 characters is cut to that.
 - An answer is at most 4,096 tokens long, and says when it was cut off.
+- An answer reads g1t in at most 10 rounds and 30 reads, over at most 2
+  minutes; then it answers with what it has read and says what it could
+  not check.
+- The model is given at most 16,000 characters of any one read and 120,000
+  in all. A longer read is trimmed: long lists keep their first items (a
+  job's log keeps its end, where a failure says why), long texts are
+  shortened, and each says how much was left out.
+- Its reads count against the [API's rate limit](/reference/rate-limits/)
+  like any other access token's. Each step is also a call to your AI
+  provider, on your provider's bill.

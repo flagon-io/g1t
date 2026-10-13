@@ -12,6 +12,7 @@
 mod claims;
 mod context;
 mod dependencies;
+mod links;
 mod overlaps;
 mod sessions;
 #[cfg(test)]
@@ -40,7 +41,8 @@ macro_rules! unwrap_or_fail {
 pub(crate) use unwrap_or_fail;
 
 const SESSION_COLUMNS: &str = "id, repo_id, issue, pull, branch, actor_id, actor_name, harness, harness_session_id,
-  title, state, head_commit, started_at, last_seen_at, ended_at, end_reason";
+  title, state, head_commit, started_at, last_seen_at, ended_at, end_reason,
+  parent_id, agent_type, task, prompt, result, model";
 
 const CLAIM_COLUMNS: &str = "id, repo_id, issue, session_id, actor_id, actor_name, harness, note, state,
   ttl_minutes, created_at, expires_at, ended_at, end_reason, handoff_to";
@@ -63,6 +65,18 @@ pub(crate) struct SessionRow {
     last_seen_at: String,
     ended_at: Option<String>,
     end_reason: Option<String>,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    agent_type: Option<String>,
+    #[serde(default)]
+    task: Option<String>,
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    result: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 impl SessionRow {
@@ -85,6 +99,13 @@ impl SessionRow {
             last_seen_at: self.last_seen_at,
             ended_at: self.ended_at,
             end_reason: self.end_reason,
+            parent_id: self.parent_id,
+            agent_type: self.agent_type,
+            task: self.task,
+            prompt: self.prompt,
+            result: self.result,
+            model: self.model,
+            subagents: 0,
         }
     }
 }

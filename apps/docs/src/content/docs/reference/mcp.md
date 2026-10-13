@@ -244,6 +244,8 @@ out.
 | --- | --- | --- | --- |
 | [`list`](/reference/api/repositories/list-repos/) | Repositories you can see, optionally filtered by `query`. | None | `repo:read` |
 | [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
+| [`commits`](/reference/api/repositories/list-commits/) | A branch's commits, newest first, each with its `sha`, `message`, `author`, `authored_at` and `html_url`; `ref` names another branch, tag or commit, `limit` is 30 unless you say (at most 100). With `path`, `last_changed`: the commit that last changed that file or directory. | `repo` | `code:read` |
+| [`contents`](/reference/api/repositories/get-contents/) | What it holds at `path` (the root when left out) at `ref` (the default branch when left out): a file's `text` (null for a binary one; at most 200,000 characters), or a directory's `entries` and its README. | `repo` | `code:read` |
 | [`tarball`](/reference/api/repositories/download-tarball-archive/) | A link to a branch, tag or commit (`ref`, the default branch when left out) as a `.tar.gz` that needs no token, good for 10 minutes, as `url`, with the `commit` it is of. | `repo` | `code:read` |
 | [`zipball`](/reference/api/repositories/download-zipball-archive/) | The same as a `.zip`. | `repo` | `code:read` |
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
@@ -385,12 +387,13 @@ and end it. See [sessions](/guides/sessions/#sessions).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
-| [`start`](/reference/api/sessions/start-session/) | Start a session: `harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`), and `harness_session_id`, which makes starting again return the same session. `issue`, `pull`, `branch`, `title` and `head_commit` as you know them. | `repo`, `harness` | `pull_requests:write` |
-| [`update`](/reference/api/sessions/update-session/) | A heartbeat, and renews the session's claims; with fields, attaches an `issue` or `pull`, or sets `branch`, `head_commit` or `title`. | `repo`, `id` | `pull_requests:write` |
-| [`record`](/reference/api/sessions/record-session-entries/) | Record up to 200 `entries`, each with `kind` and `text`, `tool` for tools, and a `key` that makes recording it again a no-op. | `repo`, `id`, `entries` | `pull_requests:write` |
-| [`end`](/reference/api/sessions/end-session/) | End it, with an optional `reason`. | `repo`, `id` | `pull_requests:write` |
-| [`get`](/reference/api/sessions/get-session/) | A session and its entries; `after` pages through them. | `repo`, `id` | `pull_requests:read` |
-| [`list`](/reference/api/sessions/list-sessions/) | A repository's sessions, most recently heard from first, by `state` (`active`, `idle`, `ended`), `issue` or `pull`. | `repo` | `pull_requests:read` |
+| [`start`](/reference/api/sessions/start-session/) | Start a session: `harness` (`claude_code`, `claude_managed_agents`, `codex`, `cursor`, `copilot` or `other`), and `harness_session_id`, which makes starting again return the same session. `issue`, `pull`, `branch`, `title` and `head_commit` as you know them. A subagent gives `parent_id`, `agent_type`, `task` and `prompt`, and starts on its parent's issue and branch. | `repo`, `harness` | `pull_requests:write` |
+| [`update`](/reference/api/sessions/update-session/) | A heartbeat, and renews the session's claims; with fields, attaches an `issue` or `pull`, or sets `branch`, `head_commit`, `title`, or a subagent's `task`, `prompt`, `model` or `result`. | `repo`, `id` | `pull_requests:write` |
+| [`record`](/reference/api/sessions/record-session-entries/) | Record up to 200 `entries`, each with `kind` and `text` (`skill` for a skill used, by name), `tool` for tools, and a `key` that makes recording it again a no-op; and `touched`, what it touched (`file`, `commit`, `branch`, `pull`, `issue`), which ties it to pull requests and issues and tells sessions on the same files of each other. | `repo`, `id` | `pull_requests:write` |
+| [`end`](/reference/api/sessions/end-session/) | End it, with an optional `reason` and `result` (what it reported). Its subagents still going end with it. | `repo`, `id` | `pull_requests:write` |
+| [`get`](/reference/api/sessions/get-session/) | A session and its entries (`after` pages through them), its subagents (`children`), what they touched, the issues and pull requests they worked on (`links`) and the skills used. | `repo`, `id` | `pull_requests:read` |
+| [`list`](/reference/api/sessions/list-sessions/) | A repository's sessions, most recently heard from first, by `state` (`active`, `idle`, `ended`), `issue` or `pull` (any session tied to it), or `path` (a file touched); `subagents` lists each tree whole. | `repo` | `pull_requests:read` |
+| [`dispatch`](/reference/api/sessions/start-agent-session/) | Start work on an `issue` (or a new one from `title` and `body`) in a session on the person's own Claude: a Claude Managed Agents session on the workspace's Anthropic account, recorded here, or with `handoff` a Claude Code command line to run. `mode` is `plan`, `implement` or `review`; `instruction` adds to it. | `repo` | `pull_requests:write` |
 
 ## `memory`
 
@@ -421,7 +424,7 @@ deployments; and the self-hosted runners workflows run on. See
 | [`get`](/reference/api/actions/get-workflow/) | One workflow by its id, file name, path or name, as `list` gives it, with `source`, its file on `ref` (the default branch unless given). | `repo`, `workflow` | `workflows:read` |
 | [`list_runs`](/reference/api/actions/list-runs-of-workflow/) | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull` or `sha`. | `repo` | `workflows:read` |
 | [`get_run`](/reference/api/actions/get-workflow-run/) | A run with its jobs, their steps and annotations, and its `attempts`; `attempt` reads an earlier attempt, with the jobs it had then. | `repo`, `id` | `workflows:read` |
-| [`job_logs`](/reference/api/actions/get-job-logs/) | A job's log after `after`; `done` says if more will come. | `repo`, `job` | `workflows:read` |
+| [`job_logs`](/reference/api/actions/get-job-logs/) | A job's log after `after`, or with `tail` its last chunks (at most 500), where a failed job says why; `done` says if more will come. | `repo`, `job` | `workflows:read` |
 | [`dispatch`](/reference/api/actions/dispatch-workflow/) | Run a `workflow_dispatch` workflow on `ref` with `inputs`. Write role. | `repo`, `workflow` | `workflows:write` |
 | [`cancel`](/reference/api/actions/cancel-workflow-run/) | Cancel a run: running jobs stop their step and run their cleanup steps first. `force` (or cancelling again) stops them outright. Write role. | `repo`, `id` | `workflows:write` |
 | [`rerun`](/reference/api/actions/rerun-workflow-run/) | Run it again as a new attempt; `failed_only` for the jobs that did not succeed, `job` for one job and those that need it, `debug` for debug logging. Write role. | `repo`, and `id` or `job` | `workflows:write` |
@@ -668,7 +671,9 @@ for people: a workspace's token cannot make them.
 
 ## `workspace`
 
-Workspaces own repositories: create, update or delete one, invite members,
+Workspaces own repositories: read what happened across them (`activity`:
+what merged, shipped and deployed, by whom), create, update or delete one,
+invite members,
 manage its members and owners,
 connect [integrations](/guides/integrations/), read and
 change its [projects](/guides/projects/) (what each is, where it runs, its
@@ -695,6 +700,7 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`update_integration`](/reference/api/integrations/update-integration/) | Change one: its `name`, its `config` (replaced whole) or its `secret` (write-only, never returned). Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`disconnect_integration`](/reference/api/integrations/disconnect-integration/) | Remove it and its secrets. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`test_integration`](/reference/api/integrations/test-integration/) | Check its credentials against the system it connects to. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`activity`](/reference/api/workspaces/get-workspace-activity/) | What happened across its repositories you can read, newest first: pull requests merged, opened and closed, issues, releases, deployments, pushes (`default_branch` marks what landed without a pull request), reviews and packages, each with its `repo`, `actor`, `number`, `title` and `url` where it has them, and a `summary` of what shipped. `since` and `until` (RFC 3339; the last 24 hours by default, at most 31 days), `kinds` and `limit` (at most 200) narrow it; `complete` is false when more happened than was read. | `workspace` | `repo:read` |
 | [`list_projects`](/reference/api/projects/list-projects/) | Its projects you can see, by name: each with its `kind` and `kind_reason`, where it `runs` and its `production_url`, its repository and `root_dir`, and its `links`. | `workspace` | `repo:read` |
 | [`get_project`](/reference/api/projects/get-project/) | One project, with what a person set (`setting`) and what detection decides (`detected`). | `workspace`, `project` | `repo:read` |
 | [`update_project`](/reference/api/projects/update-project/) | Change its `name`, `description`, `root_dir`, `kind`, `runs`, `production_url`, `homepage`, `docs_url` or `links`; only what you give changes. `auto` leaves `kind` or `runs` to detection, null clears a link or goes back to the repository's, and `links` replaces its other links (at most 10). Maintain role or higher. | `workspace`, `project` | `repo:write` |

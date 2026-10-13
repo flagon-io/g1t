@@ -59,9 +59,6 @@ export const RATE_LIMITS = {
   GIT_SIGNED_LIMIT: { worker: "apps/web", namespaceId: 4206, limit: 1200, per: "credential, git requests with credentials" },
   // The same as API_TOKEN_LIMIT: a token counts alike on the website and the API.
   WEB_TOKEN_LIMIT: { worker: "apps/web", namespaceId: 4207, limit: 1000, per: "token, pages and data requests with an access token" },
-  // Ask g1t (routes/workspace/ask.ts): answers on the workspace's own AI
-  // provider and key, so a runaway tab cannot spend them.
-  WEB_ASK_LIMIT: { worker: "apps/web", namespaceId: 4208, limit: 20, per: "person, Ask g1t questions" },
   // services/repos (src/lib.rs): what an anonymous clone can cost a repository's owner.
   PACK_FILL_LIMIT: { worker: "services/repos", namespaceId: 4301, limit: 30, per: "repository, packs written to the pack cache" },
   ANONYMOUS_FETCH_LIMIT: { worker: "services/repos", namespaceId: 4302, limit: 120, per: "repository, anonymous fetches the store answers" },

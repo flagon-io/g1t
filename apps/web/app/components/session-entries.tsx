@@ -3,11 +3,12 @@
  * tool calls in a line each and their results folded. The pull request's
  * Sessions page and a harness session's page both list them.
  */
-import { MessageSquare, StickyNote, Terminal, Wrench } from "lucide-react";
+import { MessageSquare, Sparkles, StickyNote, Terminal, Wrench } from "lucide-react";
 
 import type { SessionEntry } from "@g1t/contracts";
 
 import { TimeAgo } from "./ui";
+import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 
@@ -58,6 +59,17 @@ function Entry({ entry }: { entry: SessionEntry }) {
           <summary className="cursor-pointer text-xs text-faint">Result</summary>
           <pre className="mt-1.5 max-h-72 overflow-auto rounded-lg bg-bg p-3 text-xs text-muted">{entry.text}</pre>
         </details>
+      </li>
+    );
+  }
+  if (entry.kind === "skill") {
+    return (
+      <li className="flex items-center gap-2.5 px-4 py-2 text-xs text-muted">
+        <Sparkles size={13} className="shrink-0 text-accent" />
+        <span className="min-w-0 grow">
+          Used skill <Badge shape="tag" className="font-mono">{entry.text}</Badge>
+        </span>
+        {at}
       </li>
     );
   }

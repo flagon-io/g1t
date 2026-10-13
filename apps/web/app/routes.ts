@@ -162,6 +162,8 @@ export default [
     route("-/chat/api", "routes/workspace/chat/api.ts"),
     // A person's card in Chat: their profile and teams here.
     route("-/chat/person/:username", "routes/workspace/chat/person.ts"),
+    // An issue or pull request's card, over its chip in chat and g1t's answers.
+    route("-/chat/ref", "routes/workspace/chat/ref.ts"),
     route("-/chat", "routes/workspace/chat/layout.tsx", [
       index("routes/workspace/chat/index.tsx"),
       route("browse", "routes/workspace/chat/browse.tsx"),

@@ -25,8 +25,12 @@ fn text_or_null(value: &Option<String>) -> JsValue {
 
 impl Work {
     /// The caller's active claim on an issue, if they hold one.
-    async fn own_claim(&self, repo_id: &str, issue: u32, actor: &User) -> Result<Option<Claim>> {
-        Ok(self.active_claims(repo_id, issue).await?.into_iter().find(|claim| claim.actor.id == actor.id))
+    async fn own_claim(&self, repo_id: &str, issue: u32, actor: &User, session: Option<&str>) -> Result<Option<Claim>> {
+        Ok(self
+            .active_claims(repo_id, issue)
+            .await?
+            .into_iter()
+            .find(|claim| claim_is_mine(&claim.actor.id, claim.session_id.as_deref(), &actor.id, session)))
     }
 
     pub(crate) async fn claim_issue(&self, a: ClaimArgs) -> Result<Outcome<Claimed>> {
@@ -55,7 +59,9 @@ impl Work {
         let now = now_ms();
         let expires_at = after_minutes(now, minutes);
         let standing = self.active_claims(&repo.id, issue.number).await?;
-        let (mine, others): (Vec<Claim>, Vec<Claim>) = standing.into_iter().partition(|claim| claim.actor.id == a.actor.id);
+        let (mine, others): (Vec<Claim>, Vec<Claim>) = standing
+            .into_iter()
+            .partition(|claim| claim_is_mine(&claim.actor.id, claim.session_id.as_deref(), &a.actor.id, session_id.as_deref()));
         let blocked_by = self.blockers(&repo.id, &issue.blocked_by).await?;
         // Claiming what you hold renews it.
         if let Some(held) = mine.into_iter().next() {
@@ -79,6 +85,9 @@ impl Work {
                 .first::<ClaimRow>(None)
                 .await?;
             if let Some(renewed) = renewed {
+                if let Some(session_id) = &session_id {
+                    self.link(session_id, &repo.id, LinkKind::Issue, issue.number, LinkVia::Claim).await;
+                }
                 return Ok(Outcome::Ok(Claimed { claim: renewed.into(), others, blocked_by }));
             }
         }
@@ -126,6 +135,9 @@ impl Work {
             return Err(worker::Error::RustError("the claim was not recorded".into()));
         };
         let claim = Claim::from(created);
+        if let Some(session_id) = &claim.session_id {
+            self.link(session_id, &repo.id, LinkKind::Issue, claim.issue, LinkVia::Claim).await;
+        }
         self.publish(
             "work.claimed",
             &repo.id,
@@ -146,9 +158,10 @@ impl Work {
         state: ClaimState,
         reason: &str,
         handoff: Option<(&Option<String>, &str)>,
+        session: Option<&str>,
     ) -> Result<Outcome<Claim>> {
         let repo = unwrap_or_fail!(self.participating_repo(repo, actor).await?);
-        let Some(held) = self.own_claim(&repo.id, number, actor).await? else {
+        let Some(held) = self.own_claim(&repo.id, number, actor, session.map(str::trim).filter(|id| !id.is_empty())).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("You hold no claim on #{number}.")));
         };
         let at = rfc3339(now_ms());
@@ -176,7 +189,7 @@ impl Work {
     pub(crate) async fn release_claim(&self, a: ReleaseArgs) -> Result<Outcome<Claim>> {
         let reason = tidy(a.reason.as_deref(), MAX_NOTE_CHARS).unwrap_or_else(|| "released".to_owned());
         let claim = unwrap_or_fail!(
-            self.end_own_claim(&a.actor, &a.repo, a.number, ClaimState::Released, &reason, None).await?
+            self.end_own_claim(&a.actor, &a.repo, a.number, ClaimState::Released, &reason, None, a.session_id.as_deref()).await?
         );
         self.publish(
             "work.released",
@@ -201,7 +214,7 @@ impl Work {
             }
         }
         let claim = unwrap_or_fail!(
-            self.end_own_claim(&a.actor, &a.repo, a.number, ClaimState::HandedOff, "handed_off", Some((&to, &note)))
+            self.end_own_claim(&a.actor, &a.repo, a.number, ClaimState::HandedOff, "handed_off", Some((&to, &note)), a.session_id.as_deref())
                 .await?
         );
         self.publish(

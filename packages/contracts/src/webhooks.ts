@@ -97,6 +97,7 @@ export const EVENT_TYPES = [
   "session.appended",
   "session.started",
   "session.ended",
+  "session.progressed",
   "work.claimed",
   "work.released",
   "work.claim_expired",

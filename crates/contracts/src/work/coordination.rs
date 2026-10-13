@@ -59,6 +59,9 @@ pub const COORDINATION_EVENTS: [&str; 11] = [
 #[serde(rename_all = "snake_case")]
 pub enum Harness {
     ClaudeCode,
+    /// A session g1t started on Claude Managed Agents with the workspace's
+    /// own Anthropic key (`start_agent_session`).
+    ClaudeManagedAgents,
     Codex,
     Cursor,
     Copilot,
@@ -66,11 +69,19 @@ pub enum Harness {
 }
 
 impl Harness {
-    pub const ALL: [Harness; 5] = [Harness::ClaudeCode, Harness::Codex, Harness::Cursor, Harness::Copilot, Harness::Other];
+    pub const ALL: [Harness; 6] = [
+        Harness::ClaudeCode,
+        Harness::ClaudeManagedAgents,
+        Harness::Codex,
+        Harness::Cursor,
+        Harness::Copilot,
+        Harness::Other,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Harness::ClaudeCode => "claude_code",
+            Harness::ClaudeManagedAgents => "claude_managed_agents",
             Harness::Codex => "codex",
             Harness::Cursor => "cursor",
             Harness::Copilot => "copilot",
@@ -160,6 +171,306 @@ pub struct Session {
     pub ended_at: Option<String>,
     /// Why it ended: what the harness said, or `timed_out`.
     pub end_reason: Option<String>,
+    /// For a subagent: the session that started it (`ses_…`).
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// For a subagent: its kind, as the harness names it (`Explore`,
+    /// `security-reviewer`, a Managed Agents thread's agent).
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    /// For a subagent: the task it was given, in a few words.
+    #[serde(default)]
+    pub task: Option<String>,
+    /// For a subagent: the prompt its parent gave it, cut to
+    /// [`MAX_PROMPT_CHARS`].
+    #[serde(default)]
+    pub prompt: Option<String>,
+    /// What it reported when it finished (a subagent's final message), cut to
+    /// [`MAX_RESULT_CHARS`]: its parent's evidence, never a tool's output.
+    #[serde(default)]
+    pub result: Option<String>,
+    /// The model it ran on, when the harness said.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// How many subagents it started.
+    #[serde(default)]
+    pub subagents: u32,
+}
+
+/// The most characters a subagent's task keeps.
+pub const MAX_TASK_CHARS: usize = 200;
+/// The most characters of a subagent's prompt kept.
+pub const MAX_PROMPT_CHARS: usize = 4_000;
+/// The most characters of a session's result kept.
+pub const MAX_RESULT_CHARS: usize = 8_000;
+/// The most things one call says a session touched.
+pub const MAX_TOUCHES: usize = 200;
+/// The most characters a touched path, branch or commit keeps.
+pub const MAX_TOUCH_CHARS: usize = 500;
+
+/// The harness's id for a subagent of the harness session `parent`: what
+/// its start is idempotent on. Claude Code's `agent_id` arrives as
+/// `agent-abc` in hooks and `abc` in the Agent tool's answer, so the prefix
+/// is dropped.
+pub fn subagent_harness_id(parent: &str, agent_id: &str) -> String {
+    let agent = agent_id.trim();
+    let agent = agent.strip_prefix("agent-").unwrap_or(agent);
+    format!("{}/agent/{agent}", parent.trim())
+}
+
+/// What kind of thing a session touched.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TouchKind {
+    /// A file it wrote or edited, relative to the repository's root.
+    File,
+    /// A commit it made.
+    Commit,
+    /// A branch it made or pushed.
+    Branch,
+    /// A pull request it opened.
+    Pull,
+    /// An issue it named.
+    Issue,
+}
+
+impl TouchKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TouchKind::File => "file",
+            TouchKind::Commit => "commit",
+            TouchKind::Branch => "branch",
+            TouchKind::Pull => "pull",
+            TouchKind::Issue => "issue",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<TouchKind> {
+        [TouchKind::File, TouchKind::Commit, TouchKind::Branch, TouchKind::Pull, TouchKind::Issue]
+            .into_iter()
+            .find(|kind| kind.as_str() == name.trim())
+    }
+}
+
+/// Something a session says it touched, to record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewTouch {
+    pub kind: TouchKind,
+    /// The path, commit, branch, or number (`12`) for a pull request or issue.
+    pub value: String,
+}
+
+/// Something a session touched: recorded once per session, kind and value.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTouch {
+    pub session_id: String,
+    pub kind: TouchKind,
+    pub value: String,
+    /// RFC 3339: when it was first said.
+    pub at: String,
+}
+
+/// Touches as given, tidied: trimmed, cut, numbers for pull requests and
+/// issues, empty and repeated ones dropped, at most [`MAX_TOUCHES`].
+pub fn tidy_touches(touches: &[NewTouch]) -> Vec<NewTouch> {
+    let mut out: Vec<NewTouch> = Vec::new();
+    for touch in touches {
+        let mut value: String = touch.value.trim().chars().take(MAX_TOUCH_CHARS).collect();
+        match touch.kind {
+            TouchKind::Pull | TouchKind::Issue => {
+                match value.trim_start_matches('#').parse::<u32>() {
+                    Ok(number) if number > 0 => value = number.to_string(),
+                    _ => continue,
+                }
+            }
+            TouchKind::Commit => {
+                if value.len() < 7 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
+                    continue;
+                }
+                value = value.to_ascii_lowercase();
+            }
+            TouchKind::Branch => value = value.trim_start_matches("refs/heads/").to_owned(),
+            TouchKind::File => value = value.replace('\\', "/"),
+        }
+        if value.is_empty() || out.iter().any(|seen| seen.kind == touch.kind && seen.value == value) {
+            continue;
+        }
+        out.push(NewTouch { kind: touch.kind, value });
+        if out.len() == MAX_TOUCHES {
+            break;
+        }
+    }
+    out
+}
+
+/// The issue and pull request numbers `#N` in text names, in order, once
+/// each: `#12`, `(#12)`, `fixes #12`, never `a#12`, `&#12;` or `#12abc`.
+pub fn refs_in(text: &str) -> Vec<u32> {
+    let bytes = text.as_bytes();
+    let mut found = Vec::new();
+    let mut at = 0;
+    while let Some(offset) = text[at..].find('#') {
+        let hash = at + offset;
+        at = hash + 1;
+        let before = hash.checked_sub(1).map(|i| bytes[i]);
+        if before.is_some_and(|b| b.is_ascii_alphanumeric() || b == b'&' || b == b'/' || b == b'_') {
+            continue;
+        }
+        let digits: String = text[at..].chars().take_while(char::is_ascii_digit).collect();
+        if digits.is_empty() || digits.len() > 7 {
+            continue;
+        }
+        let after = text[at + digits.len()..].chars().next();
+        if after.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == ';') {
+            continue;
+        }
+        if let Ok(number) = digits.parse::<u32>()
+            && number > 0
+            && !found.contains(&number)
+        {
+            found.push(number);
+        }
+    }
+    found
+}
+
+/// The sessions a commit message names in `G1t-Session: ses_…` trailers.
+pub fn session_trailers(message: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for line in message.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        if !key.trim().eq_ignore_ascii_case("g1t-session") {
+            continue;
+        }
+        let id = value.trim();
+        if id.starts_with("ses_") && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !found.iter().any(|f| f == id) {
+            found.push(id.to_owned());
+        }
+    }
+    found
+}
+
+/// How a session was tied to an issue or pull request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkVia {
+    /// The session said it works on it (start or update).
+    Attached,
+    /// It claimed the issue.
+    Claim,
+    /// It pushed the pull request's branch.
+    Branch,
+    /// It made the pull request's head commit.
+    Commit,
+    /// A commit on the pull request's branch names it in a `G1t-Session:`
+    /// trailer.
+    Trailer,
+    /// It opened the pull request.
+    Opened,
+    /// Its prompt, task or a subagent's named it (`#12`).
+    Ref,
+}
+
+impl LinkVia {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LinkVia::Attached => "attached",
+            LinkVia::Claim => "claim",
+            LinkVia::Branch => "branch",
+            LinkVia::Commit => "commit",
+            LinkVia::Trailer => "trailer",
+            LinkVia::Opened => "opened",
+            LinkVia::Ref => "ref",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<LinkVia> {
+        [LinkVia::Attached, LinkVia::Claim, LinkVia::Branch, LinkVia::Commit, LinkVia::Trailer, LinkVia::Opened, LinkVia::Ref]
+            .into_iter()
+            .find(|via| via.as_str() == name)
+    }
+}
+
+/// Issue or pull request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkKind {
+    Issue,
+    Pull,
+}
+
+/// An issue or pull request a session, or one of its subagents, worked on.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLink {
+    pub kind: LinkKind,
+    pub number: u32,
+    pub title: String,
+    /// The issue's state (`open`, `closed`) or the pull request's status.
+    pub state: String,
+    /// How it was tied, strongest first.
+    pub via: Vec<LinkVia>,
+    /// The sessions of the tree it was tied through.
+    pub session_ids: Vec<String>,
+}
+
+/// One tie of a session to an issue or pull request, as stored.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkRecord {
+    pub session_id: String,
+    pub kind: LinkKind,
+    pub number: u32,
+    pub via: LinkVia,
+}
+
+/// The links a session tree's ties make: one per issue or pull request,
+/// its ways gathered strongest first, the pull requests first, then the
+/// issues, each by number. `known` gives each one's title and state; a tie
+/// to anything it does not know (deleted, or a `#N` that names nothing) is
+/// left out.
+pub fn gather_links(records: &[LinkRecord], known: &std::collections::HashMap<(LinkKind, u32), (String, String)>) -> Vec<SessionLink> {
+    let mut links: Vec<SessionLink> = Vec::new();
+    for record in records {
+        let Some((title, state)) = known.get(&(record.kind, record.number)) else {
+            continue;
+        };
+        let link = match links.iter_mut().find(|link| link.kind == record.kind && link.number == record.number) {
+            Some(link) => link,
+            None => {
+                links.push(SessionLink {
+                    kind: record.kind,
+                    number: record.number,
+                    title: title.clone(),
+                    state: state.clone(),
+                    via: Vec::new(),
+                    session_ids: Vec::new(),
+                });
+                links.last_mut().expect("just pushed")
+            }
+        };
+        if !link.via.contains(&record.via) {
+            link.via.push(record.via);
+            link.via.sort();
+        }
+        if !link.session_ids.contains(&record.session_id) {
+            link.session_ids.push(record.session_id.clone());
+        }
+    }
+    links.sort_by_key(|link| (std::cmp::Reverse(link.kind), link.number));
+    links
+}
+
+/// A skill a session used (Claude Code's Skill tool): its name only.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSkill {
+    pub session_id: String,
+    pub name: String,
+    /// How many times it was used.
+    pub uses: u32,
 }
 
 /// Where a claim stands.
@@ -217,6 +528,18 @@ pub struct Claim {
     pub end_reason: Option<String>,
     /// For a hand-off: the username it was handed to; none for anyone.
     pub handoff_to: Option<String>,
+}
+
+/// Whether a claim (made by `claim_actor` from `claim_session`) is the
+/// caller's own (`actor`, acting from `session`): theirs, and from the same
+/// session when both name one. Two sessions of one person, such as sibling
+/// subagents, hold claims of their own and are told of each other's.
+pub fn claim_is_mine(claim_actor: &str, claim_session: Option<&str>, actor: &str, session: Option<&str>) -> bool {
+    claim_actor == actor
+        && match (claim_session, session) {
+            (Some(held), Some(asking)) => held == asking,
+            _ => true,
+        }
 }
 
 /// How long a claim lasts, in minutes: the default when none was asked,
@@ -331,6 +654,19 @@ pub struct StartSessionArgs {
     pub title: Option<String>,
     #[serde(default)]
     pub head_commit: Option<String>,
+    /// For a subagent: the session that started it, one of the actor's on
+    /// the repository. Its `harness_session_id` should be
+    /// [`subagent_harness_id`] of the parent's.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    #[serde(default)]
+    pub task: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 /// `update_session`: changes whichever fields are given; with none, it is a
@@ -351,10 +687,21 @@ pub struct UpdateSessionArgs {
     pub head_commit: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    #[serde(default)]
+    pub task: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub result: Option<String>,
 }
 
 /// `end_session`. Returns `Outcome<Session>`; ending one already ended
-/// returns it as it is.
+/// returns it as it is (taking `result` if it had none). Ending a session
+/// ends its subagents still going.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EndSessionArgs {
     pub actor: User,
@@ -362,6 +709,9 @@ pub struct EndSessionArgs {
     pub id: String,
     #[serde(default)]
     pub reason: Option<String>,
+    /// What it reported when it finished.
+    #[serde(default)]
+    pub result: Option<String>,
 }
 
 /// `get_work_session`: a session and its entries after `after_seq`.
@@ -380,10 +730,29 @@ pub struct SessionDetail {
     pub session: Session,
     /// Oldest first, numbered within the session.
     pub entries: Vec<SessionEntry>,
+    /// Its subagents, and theirs, in the order they started: each names its
+    /// parent in `parent_id`.
+    #[serde(default)]
+    pub children: Vec<Session>,
+    /// What it and its subagents touched, in the order first said.
+    #[serde(default)]
+    pub touched: Vec<SessionTouch>,
+    /// The issues and pull requests it and its subagents worked on.
+    #[serde(default)]
+    pub links: Vec<SessionLink>,
+    /// The skills it and its subagents used, by name.
+    #[serde(default)]
+    pub skills: Vec<SessionSkill>,
+    /// For a subagent: the session at the top of its tree.
+    #[serde(default)]
+    pub root: Option<Session>,
 }
 
 /// `list_work_sessions`: a repository's sessions, most recently heard from
-/// first. Returns `Outcome<Vec<Session>>`.
+/// first. Returns `Outcome<Vec<Session>>`. Subagents are left out unless
+/// `subagents`; with `issue` or `pull`, the sessions tied to it any way
+/// (attached, a claim, its branch or commits, a trailer, opened, named)
+/// are listed, and with `subagents` their subagents too.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListWorkSessionsArgs {
     pub viewer: Viewer,
@@ -394,6 +763,12 @@ pub struct ListWorkSessionsArgs {
     pub issue: Option<u32>,
     #[serde(default)]
     pub pull: Option<u32>,
+    #[serde(default)]
+    pub subagents: bool,
+    /// Only sessions that touched this file, or any under it when it ends
+    /// in `/`.
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 /// An entry to record in a session. `key` makes recording it again a no-op.
@@ -412,6 +787,11 @@ pub struct RecordEntriesArgs {
     pub repo: RepoPath,
     pub id: String,
     pub entries: Vec<KeyedSessionEntry>,
+    /// What it touched: files, commits, branches, pull requests opened,
+    /// issues named. Recorded once each; pull requests and issues tie the
+    /// session to them.
+    #[serde(default)]
+    pub touched: Vec<NewTouch>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -456,6 +836,9 @@ pub struct ReleaseArgs {
     pub number: u32,
     #[serde(default)]
     pub reason: Option<String>,
+    /// The session whose claim it is, when the caller has several.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// `hand_off_issue`: ends your active claim on an issue as handed off, to
@@ -469,6 +852,9 @@ pub struct HandOffArgs {
     #[serde(default)]
     pub to: Option<String>,
     pub note: String,
+    /// The session whose claim it is, when the caller has several.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// `list_claims`: a repository's claims, newest first; active ones unless
@@ -606,6 +992,26 @@ impl SessionEvent {
     }
 }
 
+/// The most often a session's recording is announced as
+/// `session.progressed`, so its open pages follow it without hearing of
+/// every tool call.
+pub const PROGRESS_EVERY_MS: u64 = 5_000;
+
+/// `session.progressed`: a session (or a subagent of it) recorded more, for
+/// the pages showing it. Says where, never what.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionProgressed {
+    pub repo_id: String,
+    /// The pull request it works on, else its issue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<u32>,
+    pub session_id: String,
+    /// The session at the top of its tree, when it is a subagent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_id: Option<String>,
+}
+
 /// `work.claimed`, `work.released`, `work.claim_expired` and
 /// `work.handoff_requested`: `number` and `issue` are the issue claimed.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -694,6 +1100,58 @@ pub struct OverlapDetected {
     pub other_issue: Option<u32>,
 }
 
+/// `overlap.detected` between two sessions: the session `session_id` (or
+/// one of its subagents) touched files that `other_session_id`, active
+/// and outside its own line of parents and subagents, touched too. Sent
+/// once for each side when a pair starts overlapping. Siblings (subagents
+/// of one session) are told of each other.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionOverlapDetected {
+    pub repo_id: String,
+    /// The pull request the session is on, else its issue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<u32>,
+    pub session_id: String,
+    pub other_session_id: String,
+    /// Who runs the other session.
+    pub other_actor: String,
+    /// The files both touched.
+    pub files: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other_issue: Option<u32>,
+}
+
+/// The sessions `touched` (session and file pairs, as found) overlaps
+/// with, leaving out `me` and `family` (its parents and subagents): each
+/// with the files both touched, by session id, files sorted.
+pub fn session_overlaps(me: &str, family: &std::collections::HashSet<String>, touched: &[(String, String)]) -> Vec<(String, Vec<String>)> {
+    let mut found: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for (session, file) in touched {
+        if session == me || family.contains(session) {
+            continue;
+        }
+        let files = found.entry(session.clone()).or_default();
+        if !files.contains(file) {
+            files.push(file.clone());
+        }
+    }
+    found
+        .into_iter()
+        .map(|(session, mut files)| {
+            files.sort();
+            (session, files)
+        })
+        .collect()
+}
+
+/// A pair of sessions, lower id first, as overlaps are kept.
+pub fn session_pair(a: &str, b: &str) -> (String, String) {
+    if a <= b { (a.to_owned(), b.to_owned()) } else { (b.to_owned(), a.to_owned()) }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
@@ -774,6 +1232,98 @@ mod tests {
         // 9 stopped overlapping: forgotten, so a later overlap is new again.
         assert_eq!(overlap_changes(&[7], &[7, 9]), (vec![], vec![9]));
         assert_eq!(overlap_changes(&[7, 9], &[7]), (vec![9], vec![]));
+    }
+
+    #[test]
+    fn a_subagent_is_known_by_its_parent_and_agent_id_however_it_is_spelled() {
+        assert_eq!(subagent_harness_id("abc123", "agent-def456"), "abc123/agent/def456");
+        assert_eq!(subagent_harness_id("abc123", "def456"), "abc123/agent/def456");
+        assert_eq!(Harness::parse("claude_managed_agents"), Some(Harness::ClaudeManagedAgents));
+    }
+
+    #[test]
+    fn sibling_sessions_of_one_person_hold_claims_of_their_own() {
+        assert!(claim_is_mine("usr_1", Some("ses_a"), "usr_1", Some("ses_a")));
+        assert!(!claim_is_mine("usr_1", Some("ses_a"), "usr_1", Some("ses_b")), "a sibling's claim is another's");
+        assert!(claim_is_mine("usr_1", None, "usr_1", Some("ses_b")), "a claim from no session is the person's");
+        assert!(claim_is_mine("usr_1", Some("ses_a"), "usr_1", None), "without a session, any of theirs");
+        assert!(!claim_is_mine("usr_2", Some("ses_a"), "usr_1", Some("ses_a")));
+    }
+
+    #[test]
+    fn references_are_hashes_followed_by_numbers_and_nothing_else() {
+        assert_eq!(refs_in("Fix #12 (see #4, #12) and fixes #7."), vec![12, 4, 7]);
+        assert_eq!(refs_in("a#3 &#39; #12abc #0 #x issue#9 owner/repo#5 #_2"), Vec::<u32>::new());
+        assert_eq!(refs_in("#1\n#22"), vec![1, 22]);
+        assert_eq!(refs_in("#12345678"), Vec::<u32>::new());
+    }
+
+    #[test]
+    fn commits_name_their_sessions_in_trailers() {
+        let message = "Greet in French\n\nCloses #4\n\nG1t-Session: ses_01abc\ng1t-session: ses_01abc\nG1t-Session: nope\nCo-authored-by: x";
+        assert_eq!(session_trailers(message), vec!["ses_01abc".to_owned()]);
+        assert!(session_trailers("no trailer").is_empty());
+    }
+
+    #[test]
+    fn touches_are_tidied_and_said_once() {
+        let touch = |kind, value: &str| NewTouch { kind, value: value.into() };
+        let tidied = tidy_touches(&[
+            touch(TouchKind::File, "src\\lib.rs"),
+            touch(TouchKind::File, "src/lib.rs"),
+            touch(TouchKind::Pull, "#14"),
+            touch(TouchKind::Issue, "not a number"),
+            touch(TouchKind::Commit, "ABCDEF1234"),
+            touch(TouchKind::Commit, "xyz"),
+            touch(TouchKind::Branch, "refs/heads/fix-4"),
+            touch(TouchKind::Branch, "  "),
+        ]);
+        assert_eq!(
+            tidied,
+            vec![
+                touch(TouchKind::File, "src/lib.rs"),
+                touch(TouchKind::Pull, "14"),
+                touch(TouchKind::Commit, "abcdef1234"),
+                touch(TouchKind::Branch, "fix-4"),
+            ]
+        );
+    }
+
+    #[test]
+    fn links_gather_every_way_a_tree_was_tied_and_skip_what_is_unknown() {
+        let record = |session: &str, kind, number, via| LinkRecord { session_id: session.into(), kind, number, via };
+        let known: std::collections::HashMap<(LinkKind, u32), (String, String)> = [
+            ((LinkKind::Issue, 4), ("Greet".to_owned(), "open".to_owned())),
+            ((LinkKind::Pull, 9), ("Greet in French".to_owned(), "open".to_owned())),
+        ]
+        .into_iter()
+        .collect();
+        let links = gather_links(
+            &[
+                record("ses_root", LinkKind::Issue, 4, LinkVia::Ref),
+                record("ses_root", LinkKind::Issue, 4, LinkVia::Claim),
+                record("ses_child", LinkKind::Pull, 9, LinkVia::Branch),
+                record("ses_child", LinkKind::Pull, 9, LinkVia::Opened),
+                record("ses_root", LinkKind::Issue, 77, LinkVia::Ref),
+            ],
+            &known,
+        );
+        assert_eq!(links.len(), 2);
+        assert_eq!((links[0].kind, links[0].number, links[0].via.clone()), (LinkKind::Pull, 9, vec![LinkVia::Branch, LinkVia::Opened]));
+        assert_eq!(links[0].session_ids, vec!["ses_child".to_owned()]);
+        assert_eq!((links[1].kind, links[1].number, links[1].via.clone()), (LinkKind::Issue, 4, vec![LinkVia::Claim, LinkVia::Ref]));
+    }
+
+    #[test]
+    fn a_session_from_before_subagents_reads_as_a_top_level_one() {
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1", "repoId": "rep_1", "issue": null, "pull": null, "branch": null,
+            "actor": { "id": "usr_1", "username": "ana" }, "harness": "claude_code",
+            "harnessSessionId": null, "title": null, "state": "active", "headCommit": null,
+            "startedAt": "", "lastSeenAt": "", "endedAt": null, "endReason": null
+        }))
+        .unwrap();
+        assert_eq!((session.parent_id, session.subagents), (None, 0));
     }
 
     #[test]

@@ -8,16 +8,39 @@
  */
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
+import type { AskPage } from "./integrations";
 import type { Result } from "./result";
 
-/** Who is speaking: a person (by user id), or, on older messages, a former workspace agent (by agent id). */
-export type Principal = { kind: "user" | "agent"; id: string };
+/**
+ * Who is speaking: a person (by user id), g1t itself (`system:g1t`, the one
+ * reserved actor all of g1t's own work shows as), or, on older messages, a
+ * former workspace agent (by agent id).
+ */
+export type Principal = { kind: "user" | "agent" | "system"; id: string };
+
+/**
+ * g1t in chat: @g1t, the same reserved `system` actor (id `g1t`) the
+ * runner and the feed show g1t's own work as. Every member can talk with
+ * it in a direct message, where it answers with the workspace's own AI
+ * provider (docs.g1t.sh/guides/ask/). It is never a person: the People
+ * directory and member pickers never list it.
+ */
+export const G1T_PRINCIPAL: Principal = { kind: "system", id: "g1t" };
+/** `system:g1t`, as chat keeps members and authors. */
+export const G1T_KEY = "system:g1t";
+
+/** Whether a member is g1t itself. */
+export function isG1t(member: { kind: string; id?: string } | null | undefined): boolean {
+  return member?.kind === "system" && member.id === "g1t";
+}
 
 export function principalKey(principal: Principal): string {
   return `${principal.kind}:${principal.id}`;
 }
 
 export function parsePrincipalKey(key: string): Principal | null {
+  // g1t is the only `system` member there is.
+  if (key === G1T_KEY) return { ...G1T_PRINCIPAL };
   const at = key.indexOf(":");
   if (at < 0) return null;
   const kind = key.slice(0, at);
@@ -171,6 +194,47 @@ export type ChatMessage = {
    * always sets it; optional so messages a page makes for itself need not.
    */
   reactions?: ChatReaction[];
+  /**
+   * On a message from @g1t that answers someone: how the answer went, who
+   * wrote it, and the steps it took. Absent on every other message.
+   */
+  answer?: ChatAnswer | null;
+  /**
+   * On a question someone asked @g1t from a page (the top bar's Ask): the
+   * page they were on, which g1t is told. Absent otherwise.
+   */
+  page?: AskPage | null;
+  /**
+   * A "New conversation" mark in a direct message with @g1t: answers after
+   * it read only what was said after it. Absent otherwise.
+   */
+  reset?: boolean;
+};
+
+/**
+ * Where an answer from @g1t is: `thinking` until its first words,
+ * `streaming` while they come (live as `message.streaming`), then `done`,
+ * `stopped` (Stop, or a newer question took over) or `error`.
+ */
+export type ChatAnswerState = "thinking" | "streaming" | "done" | "stopped" | "error";
+
+export type ChatAnswer = {
+  state: ChatAnswerState;
+  /** The provider's name and the model, once the provider said. */
+  provider_label?: string | null;
+  model?: string | null;
+  /** `max_tokens`, `length`: cut off at its limit. */
+  stop_reason?: string | null;
+  /** What went wrong, for `error`. */
+  error?: string | null;
+  /**
+   * Steps the answer took on its way (tool calls and the like), as the
+   * integrations service streamed them: each `ask` event other than meta,
+   * text, done and error, kept as it came. At most 50.
+   */
+  steps?: Record<string, unknown>[];
+  /** Set when Ask is not set up in the workspace: the answer says where to set it up. */
+  setup?: "missing" | null;
 };
 
 /**
@@ -332,7 +396,12 @@ export type MessagePage = {
 
 export type NewChannel = { name: string; topic?: string | null; private?: boolean };
 
-export type PostMessage = { body: string; thread_root?: string | null };
+export type PostMessage = {
+  body: string;
+  thread_root?: string | null;
+  /** In a direct message with @g1t: the page the person asks from, which g1t is told. Ignored elsewhere. */
+  page?: AskPage | null;
+};
 
 /**
  * What the live socket sends. The site opens
@@ -343,6 +412,12 @@ export type ChatLiveEvent =
   | { type: "message.created"; message: ChatMessage }
   | { type: "message.updated"; message: ChatMessage }
   | { type: "message.deleted"; channel_id: string; id: string }
+  /**
+   * An answer from @g1t as it is written: the whole text so far (not a
+   * delta, so a late or dropped frame never garbles it) and where it is.
+   * The stored message catches up with a `message.updated` at the end.
+   */
+  | { type: "message.streaming"; channel_id: string; id: string; body: string; answer: ChatAnswer }
   | { type: "typing"; channel_id: string; member: MemberProfile; until: string }
   | { type: "read"; channel_id: string; principal: Principal; last_read_id: string }
   | { type: "channel.updated"; channel: Channel }
@@ -443,7 +518,48 @@ export type ChatApi = {
   removeEmoji(workspace: string, viewer: User, name: string): Promise<Result<null>>;
   /** Owners only: who may add emoji. */
   setEmojiUpload(workspace: string, viewer: User, value: EmojiUpload): Promise<Result<EmojiUpload>>;
+  /** The viewer's direct message with @g1t, created on first use. */
+  g1tDm(workspace: string, viewer: User): Promise<Result<Channel>>;
+  /**
+   * Starts a new conversation in the viewer's direct message with @g1t: a
+   * mark after which answers read only what comes next. Stops an answer
+   * still coming.
+   */
+  g1tReset(workspace: string, channelId: string, viewer: User): Promise<Result<ChatMessage>>;
+  /** Has @g1t answer the latest question again, in place of its last answer. */
+  g1tRetry(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
+  /** Stops @g1t's answer still coming; what came stays. */
+  g1tStop(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
 };
+
+/**
+ * For g1t's own services only, never the site on a person's behalf: posts
+ * and edits messages as @g1t in a direct message with it. The chat service
+ * answers these at `POST /internal/<method>`, which no route from the site
+ * reaches, and refuses anything that came in from the internet.
+ */
+export type ChatInternalApi = {
+  /** Posts `body` as @g1t in a direct message with it, in the workspace with this slug. */
+  g1tPost(workspace: string, channelId: string, body: string): Promise<Result<ChatMessage>>;
+  /** Changes the text of one of @g1t's messages there. */
+  g1tEdit(workspace: string, channelId: string, id: string, body: string): Promise<Result<ChatMessage>>;
+};
+
+export function chatInternalClient(service: ServiceBinding): ChatInternalApi {
+  const call = async <T>(method: string, args: object): Promise<T> => {
+    const response = await service.fetch(`https://service/internal/${method}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    if (!response.ok) throw new Error(`${method} failed with status ${response.status}`);
+    return (await response.json()) as T;
+  };
+  return {
+    g1tPost: (workspace, channelId, body) => call("g1t_post", { workspace, channel_id: channelId, body }),
+    g1tEdit: (workspace, channelId, id, body) => call("g1t_edit", { workspace, channel_id: channelId, id, body }),
+  };
+}
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
   const response = await service.fetch(`https://service/rpc/${method}`, {
@@ -499,5 +615,9 @@ export function chatClient(service: ServiceBinding): ChatApi {
     aliasEmoji: (workspace, viewer, name, target) => call("alias_emoji", { workspace, viewer, name, target }),
     removeEmoji: (workspace, viewer, name) => call("remove_emoji", { workspace, viewer, name }),
     setEmojiUpload: (workspace, viewer, value) => call("set_emoji_upload", { workspace, viewer, value }),
+    g1tDm: (workspace, viewer) => call("g1t_dm", { workspace, viewer }),
+    g1tReset: (workspace, channelId, viewer) => call("g1t_reset", { workspace, channel_id: channelId, viewer }),
+    g1tRetry: (workspace, channelId, viewer) => call("g1t_retry", { workspace, channel_id: channelId, viewer }),
+    g1tStop: (workspace, channelId, viewer) => call("g1t_stop", { workspace, channel_id: channelId, viewer }),
   };
 }

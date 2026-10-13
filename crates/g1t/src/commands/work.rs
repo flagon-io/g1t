@@ -7,8 +7,8 @@ use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::cli::{
-    WorkBlockArgs, WorkClaimArgs, WorkCommand, WorkEventsArgs, WorkHandoffArgs, WorkNumber,
-    WorkReleaseArgs,
+    WorkBlockArgs, WorkClaimArgs, WorkCommand, WorkDispatchArgs, WorkEventsArgs, WorkHandoffArgs,
+    WorkNumber, WorkReleaseArgs,
 };
 use crate::client::Client;
 use crate::context::Ctx;
@@ -33,6 +33,7 @@ pub fn run(ctx: &Ctx, command: WorkCommand) -> Result<()> {
         WorkCommand::Block(args) => block(ctx, args, true),
         WorkCommand::Unblock(args) => block(ctx, args, false),
         WorkCommand::Events(args) => events(ctx, args),
+        WorkCommand::Dispatch(args) => dispatch(ctx, args),
     }
 }
 
@@ -294,6 +295,50 @@ fn claim(ctx: &Ctx, args: WorkClaimArgs) -> Result<()> {
     Ok(())
 }
 
+/// The time a dispatch may take: starting a Managed Agents session makes
+/// several calls to the provider.
+const DISPATCH_TIMEOUT: Duration = Duration::from_secs(60);
+
+fn dispatch(ctx: &Ctx, args: WorkDispatchArgs) -> Result<()> {
+    let (repo, client) = super::coordination_client(ctx, DISPATCH_TIMEOUT)?;
+    let handoff = if args.handoff {
+        Some(true)
+    } else if args.managed {
+        Some(false)
+    } else {
+        None
+    };
+    let found = client
+        .op("start_agent_session")
+        .repo(&repo)
+        .field_opt("issue", args.number)
+        .field_opt("title", args.title.clone())
+        .field_opt("body", args.body.clone())
+        .field_opt("instruction", args.instruction.clone())
+        .field_opt("mode", args.mode.map(|mode| mode.name()))
+        .field_opt("handoff", handoff)
+        .send()?;
+    if ctx.out.structured() {
+        return ctx.out.emit(&found);
+    }
+    let issue = found["issue"].as_u64().unwrap_or_default();
+    if found["handoff"].as_bool() == Some(true) {
+        eprintln!("Run this where the repository is checked out, with g1t's Claude Code plugin, to work on #{issue}:");
+        println!("{}", s(&found, "command"));
+        return Ok(());
+    }
+    let out = &ctx.out;
+    println!("{}", s(&found, "session_url"));
+    eprintln!(
+        "Started {} on #{issue} on the workspace's Anthropic account.",
+        found["session"]["id"].as_str().unwrap_or("a session")
+    );
+    if let Some(url) = found["provider_session_url"].as_str() {
+        eprintln!("{} {url}", out.dim("On Anthropic:"));
+    }
+    Ok(())
+}
+
 fn release(ctx: &Ctx, args: WorkReleaseArgs) -> Result<()> {
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     let found = client
@@ -301,6 +346,7 @@ fn release(ctx: &Ctx, args: WorkReleaseArgs) -> Result<()> {
         .repo(&repo)
         .arg("number", args.number)
         .field_opt("reason", args.reason.clone())
+        .field_opt("session_id", super::session::current())
         .send()?;
     if ctx.out.structured() {
         return ctx.out.emit(&found);
@@ -324,6 +370,7 @@ fn handoff(ctx: &Ctx, args: WorkHandoffArgs) -> Result<()> {
         .arg("number", args.number)
         .field_opt("to", to.clone())
         .field("note", args.note.trim())
+        .field_opt("session_id", super::session::current())
         .send()?;
     if ctx.out.structured() {
         return ctx.out.emit(&found);

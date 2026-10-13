@@ -354,7 +354,7 @@ export type CheckJob = {
 
 export type CheckReport = { results?: CheckResult[]; error?: string; skip?: boolean };
 
-export type SessionEntryKind = "prompt" | "message" | "tool_call" | "tool_result" | "note";
+export type SessionEntryKind = "prompt" | "message" | "tool_call" | "tool_result" | "note" | "skill";
 
 /** One step of an agent's session: the "why" behind a pull request's commits. */
 export type SessionEntry = {
@@ -1060,7 +1060,7 @@ export type Contributions = {
 // Mirrors `crates/contracts/src/work/coordination.rs`.
 
 /** The harness a session runs in. */
-export type Harness = "claude_code" | "codex" | "cursor" | "copilot" | "other";
+export type Harness = "claude_code" | "claude_managed_agents" | "codex" | "cursor" | "copilot" | "other";
 
 /** Active: heard from in 15 minutes; idle: not since; ended: ended, or quiet for 2 hours. */
 export type SessionState = "active" | "idle" | "ended";
@@ -1084,7 +1084,43 @@ export type WorkSession = {
   endedAt: string | null;
   /** What the harness said, or `timed_out`. */
   endReason: string | null;
+  /** For a subagent: the session that started it. */
+  parentId?: string | null;
+  /** For a subagent: its kind (Explore, security-reviewer). */
+  agentType?: string | null;
+  /** For a subagent: the task it was given, in a few words. */
+  task?: string | null;
+  /** For a subagent: the prompt its parent gave it. */
+  prompt?: string | null;
+  /** What it reported when it finished: a subagent's final message. */
+  result?: string | null;
+  model?: string | null;
+  /** How many subagents it started. */
+  subagents?: number;
 };
+
+/** What kind of thing a session touched. */
+export type TouchKind = "file" | "commit" | "branch" | "pull" | "issue";
+
+/** Something a session touched, kept once per session. */
+export type SessionTouch = { sessionId: string; kind: TouchKind; value: string; at: string };
+
+/** How a session was tied to an issue or pull request. */
+export type LinkVia = "attached" | "claim" | "branch" | "commit" | "trailer" | "opened" | "ref";
+
+/** An issue or pull request a session, or one of its subagents, worked on. */
+export type SessionLink = {
+  kind: "issue" | "pull";
+  number: number;
+  title: string;
+  /** The issue's state or the pull request's status. */
+  state: string;
+  via: LinkVia[];
+  sessionIds: string[];
+};
+
+/** A skill a session used, by name. */
+export type SessionSkill = { sessionId: string; name: string; uses: number };
 
 export type ClaimState = "active" | "released" | "expired" | "handed_off";
 
@@ -1137,8 +1173,8 @@ export type DependencyChangedData = {
   mergedPull?: number;
 };
 
-/** `overlap.detected`, sent once for each side of a new overlap. */
-export type OverlapDetectedData = {
+/** `overlap.detected` between two pull requests, sent once for each side of a new overlap. */
+export type PullOverlapData = {
   repoId: string;
   number: number;
   pull: number;
@@ -1147,6 +1183,24 @@ export type OverlapDetectedData = {
   issue?: number;
   otherIssue?: number;
 };
+
+/** `overlap.detected` between two sessions that touched the same files (siblings included), once for each side. */
+export type SessionOverlapData = {
+  repoId: string;
+  number?: number;
+  sessionId: string;
+  otherSessionId: string;
+  otherActor: string;
+  files: string[];
+  issue?: number;
+  otherIssue?: number;
+};
+
+/** `overlap.detected`: between pull requests, or between sessions (with `sessionId`). */
+export type OverlapDetectedData = PullOverlapData | SessionOverlapData;
+
+/** `session.progressed`: a session recorded more (at most every few seconds). */
+export type SessionProgressedData = { repoId: string; number?: number; sessionId: string; rootId?: string };
 
 /** An issue in brief. */
 export type IssueBrief = { number: number; title: string; state: State };
@@ -1246,7 +1300,19 @@ export type WorkContext = {
 };
 
 /** A harness session and what it recorded. */
-export type WorkSessionDetail = { session: WorkSession; entries: SessionEntry[] };
+export type WorkSessionDetail = {
+  session: WorkSession;
+  entries: SessionEntry[];
+  /** Its subagents and theirs, in the order they started. */
+  children?: WorkSession[];
+  /** What it and its subagents touched. */
+  touched?: SessionTouch[];
+  /** The issues and pull requests it and its subagents worked on. */
+  links?: SessionLink[];
+  skills?: SessionSkill[];
+  /** For a subagent: the session at the top of its tree. */
+  root?: WorkSession | null;
+};
 
 /** Reading coordination: work service methods (services/work/src/coordination, decisions.rs). */
 export interface CoordinationApi {
@@ -1257,7 +1323,7 @@ export interface CoordinationApi {
   listWorkSessions(
     repo: RepoPath,
     viewer: Viewer,
-    filter?: { state?: SessionState; issue?: number; pull?: number },
+    filter?: { state?: SessionState; issue?: number; pull?: number; path?: string; subagents?: boolean },
   ): Promise<Result<WorkSession[]>>;
   getWorkSession(repo: RepoPath, id: string, viewer: Viewer, afterSeq?: number): Promise<Result<WorkSessionDetail>>;
   /** An issue's (with its pull requests') or a pull request's, oldest first. */

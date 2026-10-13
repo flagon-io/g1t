@@ -73,8 +73,6 @@ declare global {
       WEB_SESSION_LIMIT?: RateLimitBinding;
       WEB_ADDRESS_LIMIT?: RateLimitBinding;
       WEB_TOKEN_LIMIT?: RateLimitBinding;
-      /** Ask g1t's questions, per person (app/routes/workspace/ask.ts). */
-      WEB_ASK_LIMIT?: RateLimitBinding;
       GIT_ANONYMOUS_LIMIT?: RateLimitBinding;
       GIT_SIGNED_LIMIT?: RateLimitBinding;
       /**

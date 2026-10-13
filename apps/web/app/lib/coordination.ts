@@ -12,13 +12,16 @@ import type {
   EventType,
   G1tEvent,
   Harness,
+  LinkVia,
   SessionState,
+  TouchKind,
   WorkSession,
 } from "@g1t/contracts";
 
 /** How each harness is named. */
 export const HARNESS_NAMES: Record<Harness, string> = {
   claude_code: "Claude Code",
+  claude_managed_agents: "Claude Managed Agents",
   codex: "Codex",
   cursor: "Cursor",
   copilot: "Copilot",
@@ -218,6 +221,8 @@ export type FeedLine = {
   text: string;
   /** The issue or pull request it is about. */
   number: number | null;
+  /** The harness session it is about, by id, for a link to its page. */
+  session?: string;
   tone: "neutral" | "accent" | "success" | "warn" | "danger" | "info";
 };
 
@@ -306,6 +311,18 @@ export function feedLine(event: G1tEvent): FeedLine | null {
       };
     }
     case "overlap.detected": {
+      if ("sessionId" in event.data) {
+        const { sessionId, otherActor, files, issue } = event.data;
+        return {
+          ...base,
+          type: event.type,
+          who: otherActor,
+          text: `touched the same ${plural(files.length, "file", "files")} in a session as another session: ${files.slice(0, 3).join(", ")}${files.length > 3 ? ` and ${files.length - 3} more` : ""}`,
+          number: issue ?? number,
+          session: sessionId,
+          tone: "warn",
+        };
+      }
       const { pull, otherPull, files } = event.data;
       return {
         ...base,
@@ -345,9 +362,88 @@ export function feedLine(event: G1tEvent): FeedLine | null {
         tone: decision.kind === "integration_failure" ? "danger" : decision.confidence === "approved" ? "success" : "neutral",
       };
     }
+    // Steps of a session as it goes: for the pages showing it, not the feed.
+    case "session.progressed":
     default:
       return null;
   }
+}
+
+// ── Session trees ───────────────────────────────────────────────────────
+
+/** A session with its subagents under it, and theirs under them. */
+export type SessionNode = { session: WorkSession; children: SessionNode[] };
+
+/**
+ * Sessions as trees, by `parentId`: the roots in the order given, each
+ * with its subagents in the order given. One whose parent is not in the
+ * list is a root of its own.
+ */
+export function sessionTree(sessions: WorkSession[]): SessionNode[] {
+  const nodes = new Map<string, SessionNode>();
+  for (const session of sessions) if (!nodes.has(session.id)) nodes.set(session.id, { session, children: [] });
+  const roots: SessionNode[] = [];
+  for (const node of nodes.values()) {
+    const parent = node.session.parentId ? nodes.get(node.session.parentId) : undefined;
+    // A parent that is the session itself or under it (a cycle) does not count.
+    if (parent && !contains(node, parent)) parent.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+/** The sessions of several lists, each once (as the first list to have it says), in the order first given. */
+export function mergeSessions(...lists: (WorkSession[] | null | undefined)[]): WorkSession[] {
+  const seen = new Map<string, WorkSession>();
+  for (const list of lists) for (const session of list ?? []) if (!seen.has(session.id)) seen.set(session.id, session);
+  return [...seen.values()];
+}
+
+function contains(node: SessionNode, target: SessionNode): boolean {
+  return node === target || node.children.some((child) => contains(child, target));
+}
+
+/** How many sessions are under a tree's root, at any depth. */
+export function treeSize(node: SessionNode): number {
+  return node.children.reduce((total, child) => total + 1 + treeSize(child), 0);
+}
+
+/** How a session was tied to an issue or pull request, in a few words. */
+export const VIA_LABELS: Record<LinkVia, string> = {
+  attached: "attached",
+  claim: "claimed",
+  branch: "its branch",
+  commit: "its commit",
+  trailer: "commit trailer",
+  opened: "opened it",
+  ref: "named it",
+};
+
+export function viaLabel(via: LinkVia): string {
+  return VIA_LABELS[via] ?? via;
+}
+
+/** What each kind of thing a session touched is called. */
+export const TOUCH_KINDS: Record<TouchKind, string> = {
+  file: "Files",
+  commit: "Commits",
+  branch: "Branches",
+  pull: "Pull requests",
+  issue: "Issues",
+};
+
+/** What was touched, grouped by kind in TOUCH_KINDS' order, each value once, in the order given. */
+export function touchedByKind(touched: { kind: TouchKind; value: string }[]): { kind: TouchKind; values: string[] }[] {
+  return (Object.keys(TOUCH_KINDS) as TouchKind[])
+    .map((kind) => ({ kind, values: [...new Set(touched.filter((one) => one.kind === kind).map((one) => one.value))] }))
+    .filter((group) => group.values.length > 0);
+}
+
+/** "12s", "4m", "1h 20m": how long a session ran, or has run until `now`. */
+export function duration(session: Pick<WorkSession, "startedAt" | "endedAt" | "lastSeenAt" | "state">, now: number): string {
+  const end = session.endedAt ? Date.parse(session.endedAt) : session.state === "ended" ? Date.parse(session.lastSeenAt) : now;
+  const ms = Math.max(0, end - Date.parse(session.startedAt));
+  return ms < MINUTE ? `${Math.floor(ms / 1000)}s` : span(ms);
 }
 
 /** Splits text at `#N`, for linking each number. */

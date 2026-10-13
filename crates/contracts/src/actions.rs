@@ -723,7 +723,8 @@ pub struct RunLogsArgs {
 /// The most log `run_logs` returns at once, in bytes.
 pub const MAX_RUN_LOG_BYTES: usize = 24 * 1024 * 1024;
 
-/// `logs`: a job's log after `after`. Returns `Outcome<JobLog>`.
+/// `logs`: a job's log after `after`, or with `tail` its last chunks.
+/// Returns `Outcome<JobLog>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogsArgs {
     pub repo: RepoPath,
@@ -731,7 +732,14 @@ pub struct LogsArgs {
     pub job: String,
     #[serde(default)]
     pub after: u64,
+    /// The last this many chunks (at most [`MAX_LOG_PAGE`]) instead: where
+    /// a failed job says why. `after` is ignored with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tail: Option<u32>,
 }
+
+/// The most chunks of a log one `logs` call returns.
+pub const MAX_LOG_PAGE: u32 = 500;
 
 /// `dispatch`: run a workflow that has `workflow_dispatch`. Members only.
 /// Returns `Outcome<WorkflowRun>`.

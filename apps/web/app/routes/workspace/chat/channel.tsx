@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { type ShouldRevalidateFunctionArgs, data } from "react-router";
+import { type ShouldRevalidateFunctionArgs, data, redirect } from "react-router";
 
 
 import type { Channel, ChannelMember, ChatMessage, User } from "@g1t/contracts";
@@ -44,6 +44,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const name = "channel" in params ? (params.channel as string | undefined) : undefined;
+  // `-/chat/dm/g1t`: the viewer's direct message with @g1t, opened on first use.
+  if ("id" in params && params.id === "g1t") {
+    const opened = await chat.g1tDm(slug, viewer).catch(() => null);
+    if (opened?.ok) throw redirect(channelPath(slug, opened.value));
+  }
   const fallbackTitle = name ? `#${name}` : "Direct message";
   const read = await readConversation(slug, viewer, name, "id" in params ? (params.id as string | undefined) : undefined).catch(
     (error: unknown) => {

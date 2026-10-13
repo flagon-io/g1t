@@ -3,6 +3,7 @@ export * from "./access";
 export * from "./account-deletion";
 export * from "./accounts";
 export * from "./actions";
+export * from "./agent-sessions";
 export * from "./agents";
 export * from "./audit";
 export * from "./billing";

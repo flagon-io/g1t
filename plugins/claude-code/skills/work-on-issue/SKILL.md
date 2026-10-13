@@ -21,7 +21,13 @@ Issue: $ARGUMENTS (if empty, ask which issue, or list open ones with `g1t issue 
    requests already on it with their checks and overlaps, what blocks it,
    what it blocks, the decisions recorded so far and the last integration
    failure. Read all of it before you change anything.
-2. **Check it is free to start.**
+2. **Check it is free to start, and who else is on it.**
+   - Its sessions include subagents: if you are one of several agents on
+     this issue (siblings started by the same session, or other people's),
+     run `g1t session list --issue N --subagents` and read what each is
+     doing and has touched (`g1t session view ID`). Take a part nobody has,
+     and say which in your claim's note. Before editing a shared file,
+     `g1t session list --path FILE` says who else touched it.
    - If it is blocked by issues that are still open, say so and stop
      unless you are asked to go on anyway.
    - If someone else holds an active claim, tell the person who asked you,
@@ -30,15 +36,24 @@ Issue: $ARGUMENTS (if empty, ask which issue, or list open ones with `g1t issue 
    - If a pull request for it is already open, prefer continuing that one
      (`g1t pr checkout NUMBER`) over starting another.
 3. **Claim it.** `g1t work claim N --note "what you are about to do"`. The
-   claim belongs to this session and is renewed while the session is
-   active.
+   claim belongs to this session (a subagent's to its own session) and is
+   renewed while the session is active. Its answer lists the other claims
+   on the issue, siblings' included: read them. If g1t later reports an
+   overlap (`overlap.detected`) with another session, agree who changes
+   the file before going on; `g1t work events --follow --issue N` keeps
+   you told.
+   Without the CLI, g1t's MCP server does the same: `issue` with action
+   `work`, `claim` and `release`, and `session` with action `list`.
 4. **Branch.** From an up-to-date default branch, make a branch whose name
    starts with the issue number, such as `42-short-description`, so the
    session and the next one know which issue it is for.
 5. **Open a draft pull request early**, as soon as there is a first commit:
    `g1t pr create --issue N --draft --fill`. Others then see your changes,
    and g1t tells you when they overlap with someone else's.
-6. **Do the work.** Commit in small steps and push often. Run the same
+6. **Do the work.** Commit in small steps and push often, with the
+   trailer `G1t-Session: $G1T_SESSION` on each commit
+   (`git commit --trailer "G1t-Session: $G1T_SESSION"`) so g1t ties the
+   commits to this session. Run the same
    tests and linters the repository's workflows run before each push. Log
    a decision worth keeping with `g1t session log --kind note "TEXT"`.
 7. **Watch the checks.** `g1t pr checks --watch --fail-fast`. When one

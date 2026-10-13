@@ -6,6 +6,14 @@
 //! the session active, brings back one that timed out, and renews the
 //! claims made from it. Only the person whose token started a session
 //! changes it.
+//!
+//! A subagent is a session of its own with a parent (`parent_id`): a
+//! Claude Code subagent, a Managed Agents thread. It starts on what its
+//! parent is on unless it says otherwise, keeps the task, prompt and
+//! result its parent gave and got (cut short), and once ended stays ended
+//! even if a late hook starts it again: a subagent never comes back. Its
+//! heartbeats keep its parent seen, and ending a session ends the
+//! subagents it left going.
 
 use g1t_contracts::events::SessionAppended;
 use g1t_contracts::repos::Repo;
@@ -17,6 +25,7 @@ use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
+use super::links::{count_subagents, end_tree_sql};
 use super::{SESSION_COLUMNS, SessionRow, after_minutes, tidy, unwrap_or_fail};
 use crate::Work;
 use crate::rows::NumberRow;
@@ -29,6 +38,10 @@ const MAX_TITLE_CHARS: usize = 200;
 const MAX_BRANCH_CHARS: usize = 255;
 const MAX_ID_CHARS: usize = 200;
 const MAX_COMMIT_CHARS: usize = 64;
+const MAX_AGENT_CHARS: usize = 100;
+const MAX_MODEL_CHARS: usize = 100;
+/// How long one prompt entry may be before its `#N` go unread.
+const MAX_REF_TEXT: usize = 8_000;
 
 fn not_found<T>() -> Outcome<T> {
     Outcome::fail(FailureCode::NotFound, "Session not found.")
@@ -42,13 +55,54 @@ fn number_or_null(value: Option<u32>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from)
 }
 
+/// Long text as kept: trimmed, cut to `limit` characters with an ellipsis.
+fn clip(text: Option<&str>, limit: usize) -> Option<String> {
+    let text = text?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if text.chars().count() <= limit {
+        return Some(text.to_owned());
+    }
+    let cut: String = text.chars().take(limit.saturating_sub(1)).collect();
+    Some(format!("{}…", cut.trim_end()))
+}
+
 /// What a session's heartbeat may change, tidied.
+#[derive(Default)]
 struct Fields {
     issue: Option<u32>,
     pull: Option<u32>,
     branch: Option<String>,
     head_commit: Option<String>,
     title: Option<String>,
+    agent_type: Option<String>,
+    task: Option<String>,
+    prompt: Option<String>,
+    model: Option<String>,
+    result: Option<String>,
+}
+
+impl Fields {
+    fn binds(&self) -> Vec<JsValue> {
+        vec![
+            number_or_null(self.issue),
+            number_or_null(self.pull),
+            text_or_null(&self.branch),
+            text_or_null(&self.head_commit),
+            text_or_null(&self.title),
+            text_or_null(&self.agent_type),
+            text_or_null(&self.task),
+            text_or_null(&self.prompt),
+            text_or_null(&self.model),
+            text_or_null(&self.result),
+        ]
+    }
+
+    /// The text whose `#N` tie the session to issues and pull requests.
+    fn named(&self) -> String {
+        [&self.title, &self.task, &self.prompt].into_iter().flatten().cloned().collect::<Vec<_>>().join("\n")
+    }
 }
 
 #[derive(Deserialize)]
@@ -64,8 +118,8 @@ pub(crate) fn insert_session_sql() -> String {
     format!(
         "INSERT INTO sessions
            (id, repo_id, issue, pull, branch, actor_id, actor_name, harness, harness_session_id,
-            title, state, head_commit, started_at, last_seen_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12, ?13)
+            title, state, head_commit, started_at, last_seen_at, parent_id, agent_type, task, prompt, model)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
          ON CONFLICT (repo_id, actor_id, harness, harness_session_id)
            WHERE harness_session_id IS NOT NULL DO NOTHING
          RETURNING {SESSION_COLUMNS}"
@@ -80,18 +134,36 @@ pub(crate) fn harness_session_sql() -> String {
     )
 }
 
-/// A heartbeat: seen now (`?6`), active again, with whichever fields are
-/// given.
+/// The fields `?1`–`?10` of [`Fields::binds`], each kept when not given.
+const SET_FIELDS: &str = "issue = COALESCE(?1, issue), pull = COALESCE(?2, pull), branch = COALESCE(?3, branch),
+     head_commit = COALESCE(?4, head_commit), title = COALESCE(?5, title),
+     agent_type = COALESCE(?6, agent_type), task = COALESCE(?7, task), prompt = COALESCE(?8, prompt),
+     model = COALESCE(?9, model), result = COALESCE(?10, result)";
+
+/// A heartbeat: seen now (`?11`), active again, with whichever fields are
+/// given, of session `?12`.
 pub(crate) fn resume_sql() -> String {
     format!(
         "UPDATE sessions
-         SET issue = COALESCE(?1, issue), pull = COALESCE(?2, pull), branch = COALESCE(?3, branch),
-             head_commit = COALESCE(?4, head_commit), title = COALESCE(?5, title),
-             last_seen_at = ?6, state = 'active', ended_at = NULL, end_reason = NULL
-         WHERE id = ?7
+         SET {SET_FIELDS},
+             last_seen_at = ?11, state = 'active', ended_at = NULL, end_reason = NULL
+         WHERE id = ?12
          RETURNING {SESSION_COLUMNS}"
     )
 }
+
+/// The fields of session `?12`, changed without bringing it back: for a
+/// subagent's late hooks (`?11` unused, so the binds are the same).
+pub(crate) fn refresh_sql() -> String {
+    format!(
+        "UPDATE sessions SET {SET_FIELDS}
+         WHERE id = ?12 AND ?11 IS NOT NULL
+         RETURNING {SESSION_COLUMNS}"
+    )
+}
+
+/// A subagent's heartbeat keeps its parent `?2` seen at `?1`.
+pub(crate) const SEE_PARENT: &str = "UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2 AND state = 'active' AND last_seen_at < ?1";
 
 /// Records one entry in session `?7`, and in pull request `?1` when it
 /// is on one. Each takes the next number of the session, and of its pull
@@ -118,11 +190,21 @@ pub(crate) const MOVE_ENTRIES: &str = "UPDATE session_entries SET pull_id = ?1, 
 /// Renews active claim `?2` to `?1`.
 pub(crate) const RENEW_CLAIM: &str = "UPDATE claims SET expires_at = ?1 WHERE id = ?2 AND state = 'active'";
 
+/// Marks session `?2` as announced at `?1` when it was last announced at
+/// or before `?3` (or never): a row back means it is time to announce.
+pub(crate) const MARK_PROGRESS: &str = "UPDATE sessions SET progressed_at = ?1
+     WHERE id = ?2 AND (progressed_at IS NULL OR progressed_at <= ?3) RETURNING progressed_at";
+
 /// When a claim of `minutes` renewed at `now` lapses, if that is later
 /// than it does already (`expires_at`): a heartbeat never shortens one.
 pub(crate) fn renewal(now: u64, minutes: u32, expires_at: &str) -> Option<String> {
     let renewed = after_minutes(now, minutes);
     (renewed.as_str() > expires_at).then_some(renewed)
+}
+
+/// Whether a session is a subagent that ended on purpose: it stays ended.
+fn finished_subagent(row: &SessionRow) -> bool {
+    row.parent_id.is_some() && row.state == "ended" && row.end_reason.as_deref() != Some("timed_out")
 }
 
 impl Work {
@@ -148,15 +230,46 @@ impl Work {
         Ok(Outcome::Ok((issue, pull)))
     }
 
+    /// Ties a session to what it said it is on, and what its text names.
+    async fn link_fields(&self, session: &Session, fields: &Fields) -> Result<()> {
+        if let Some(number) = fields.issue {
+            self.link(&session.id, &session.repo_id, LinkKind::Issue, number, LinkVia::Attached).await;
+        }
+        if let Some(number) = fields.pull {
+            self.link(&session.id, &session.repo_id, LinkKind::Pull, number, LinkVia::Attached).await;
+        }
+        if let Some(branch) = &fields.branch {
+            self.link_branch(&session.id, &session.repo_id, branch).await?;
+        }
+        let named = fields.named();
+        if !named.is_empty() {
+            self.link_refs(&session.id, &session.repo_id, &named).await?;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn start_session(&self, a: StartSessionArgs) -> Result<Outcome<Session>> {
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
+        // A subagent's parent: one of the actor's sessions here.
+        let parent = match a.parent_id.as_deref().map(str::trim).filter(|id| !id.is_empty()) {
+            Some(id) => match self.session_row(&repo.id, id).await? {
+                Some(row) if row.actor_id == a.actor.id => Some(row),
+                _ => return Ok(Outcome::fail(FailureCode::Invalid, "parent_id is not one of your sessions in this repository.")),
+            },
+            None => None,
+        };
         let (issue, pull) = unwrap_or_fail!(self.session_subjects(&repo, a.issue, a.pull).await?);
-        let fields = Fields {
+        let mut fields = Fields {
             issue,
             pull,
             branch: tidy(a.branch.as_deref(), MAX_BRANCH_CHARS),
             head_commit: tidy(a.head_commit.as_deref(), MAX_COMMIT_CHARS),
             title: tidy(a.title.as_deref(), MAX_TITLE_CHARS),
+            agent_type: tidy(a.agent_type.as_deref(), MAX_AGENT_CHARS),
+            task: clip(a.task.as_deref(), MAX_TASK_CHARS),
+            prompt: clip(a.prompt.as_deref(), MAX_PROMPT_CHARS),
+            model: tidy(a.model.as_deref(), MAX_MODEL_CHARS),
+            result: None,
         };
         let harness_session_id = tidy(a.harness_session_id.as_deref(), MAX_ID_CHARS);
         let now = now_ms();
@@ -167,6 +280,14 @@ impl Work {
         {
             return self.resume(&repo, row, &a.actor, fields).await;
         }
+        // A subagent works on what its parent does unless it says.
+        if let Some(parent) = &parent {
+            fields.issue = fields.issue.or(parent.issue);
+            fields.pull = fields.pull.or(parent.pull);
+            fields.branch = fields.branch.clone().or(parent.branch.clone());
+            fields.head_commit = fields.head_commit.clone().or(parent.head_commit.clone());
+        }
+        let parent_id = parent.as_ref().map(|parent| parent.id.clone());
         let inserted = self
             .db
             .prepare(insert_session_sql())
@@ -184,6 +305,11 @@ impl Work {
                 text_or_null(&fields.head_commit),
                 at.as_str().into(),
                 at.as_str().into(),
+                text_or_null(&parent_id),
+                text_or_null(&fields.agent_type),
+                text_or_null(&fields.task),
+                text_or_null(&fields.prompt),
+                text_or_null(&fields.model),
             ])?
             .first::<SessionRow>(None)
             .await?;
@@ -198,6 +324,10 @@ impl Work {
             };
         };
         let session = row.at(now);
+        self.link_fields(&session, &fields).await?;
+        if let Some(parent) = &parent_id {
+            self.db.prepare(SEE_PARENT).bind(&[at.as_str().into(), parent.as_str().into()])?.run().await?;
+        }
         self.publish("session.started", &repo.id, &a.actor, SessionEvent::of(&session)).await?;
         Ok(Outcome::Ok(session))
     }
@@ -213,32 +343,33 @@ impl Work {
     /// A heartbeat, with whatever `fields` change: the session is seen now,
     /// brought back if it had ended (announced as started again), its
     /// claims renewed, and entries recorded before it named its pull
-    /// request moved onto it.
+    /// request moved onto it. A subagent that finished only takes the
+    /// fields, and stays ended.
     async fn resume(&self, repo: &Repo, row: SessionRow, actor: &User, fields: Fields) -> Result<Outcome<Session>> {
         let now = now_ms();
         let was_ended = row.state == "ended";
+        let finished = finished_subagent(&row);
         let had_pull = row.pull;
+        let parent_id = row.parent_id.clone();
         let id = row.id.clone();
         let at = rfc3339(now);
-        let updated = self
-            .db
-            .prepare(resume_sql())
-            .bind(&[
-                number_or_null(fields.issue),
-                number_or_null(fields.pull),
-                text_or_null(&fields.branch),
-                text_or_null(&fields.head_commit),
-                text_or_null(&fields.title),
-                at.as_str().into(),
-                id.as_str().into(),
-            ])?
-            .first::<SessionRow>(None)
-            .await?;
+        let mut binds = fields.binds();
+        binds.push(at.as_str().into());
+        binds.push(id.as_str().into());
+        let sql = if finished { refresh_sql() } else { resume_sql() };
+        let updated = self.db.prepare(sql).bind(&binds)?.first::<SessionRow>(None).await?;
         let Some(updated) = updated else {
             return Ok(not_found());
         };
         let session = updated.at(now);
+        self.link_fields(&session, &fields).await?;
+        if finished {
+            return Ok(Outcome::Ok(session));
+        }
         self.renew_claims(&id, now).await?;
+        if let Some(parent) = &parent_id {
+            self.db.prepare(SEE_PARENT).bind(&[at.as_str().into(), parent.as_str().into()])?.run().await?;
+        }
         if let Some(number) = session.pull
             && had_pull != Some(number)
         {
@@ -309,7 +440,7 @@ impl Work {
     pub(crate) async fn update_session(&self, a: UpdateSessionArgs) -> Result<Outcome<Session>> {
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
         let row = unwrap_or_fail!(self.own_session(&repo, &a.actor, &a.id).await?);
-        if row.state == "ended" && row.end_reason.as_deref() != Some("timed_out") {
+        if row.state == "ended" && row.end_reason.as_deref() != Some("timed_out") && !finished_subagent(&row) {
             return Ok(Outcome::fail(FailureCode::Conflict, "This session has ended. Start a new one."));
         }
         let (issue, pull) = unwrap_or_fail!(self.session_subjects(&repo, a.issue, a.pull).await?);
@@ -319,6 +450,11 @@ impl Work {
             branch: tidy(a.branch.as_deref(), MAX_BRANCH_CHARS),
             head_commit: tidy(a.head_commit.as_deref(), MAX_COMMIT_CHARS),
             title: tidy(a.title.as_deref(), MAX_TITLE_CHARS),
+            agent_type: tidy(a.agent_type.as_deref(), MAX_AGENT_CHARS),
+            task: clip(a.task.as_deref(), MAX_TASK_CHARS),
+            prompt: clip(a.prompt.as_deref(), MAX_PROMPT_CHARS),
+            model: tidy(a.model.as_deref(), MAX_MODEL_CHARS),
+            result: clip(a.result.as_deref(), MAX_RESULT_CHARS),
         };
         self.resume(&repo, row, &a.actor, fields).await
     }
@@ -327,19 +463,34 @@ impl Work {
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
         let row = unwrap_or_fail!(self.own_session(&repo, &a.actor, &a.id).await?);
         let now = now_ms();
+        let at = rfc3339(now);
+        let result = clip(a.result.as_deref(), MAX_RESULT_CHARS);
         if row.state == "ended" {
+            // Ended already: it keeps what it reported, or takes it now.
+            if row.result.is_none()
+                && let Some(result) = &result
+            {
+                let updated = self
+                    .db
+                    .prepare(format!("UPDATE sessions SET result = ? WHERE id = ? RETURNING {SESSION_COLUMNS}"))
+                    .bind(&[result.as_str().into(), row.id.as_str().into()])?
+                    .first::<SessionRow>(None)
+                    .await?;
+                if let Some(updated) = updated {
+                    return Ok(Outcome::Ok(updated.at(now)));
+                }
+            }
             return Ok(Outcome::Ok(row.at(now)));
         }
         let reason = tidy(a.reason.as_deref(), MAX_NOTE_CHARS).unwrap_or_else(|| "ended".to_owned());
-        let at = rfc3339(now);
         let ended = self
             .db
             .prepare(format!(
-                "UPDATE sessions SET state = 'ended', ended_at = ?, end_reason = ?, last_seen_at = ?
+                "UPDATE sessions SET state = 'ended', ended_at = ?, end_reason = ?, last_seen_at = ?, result = COALESCE(?, result)
                  WHERE id = ? AND state = 'active'
                  RETURNING {SESSION_COLUMNS}"
             ))
-            .bind(&[at.as_str().into(), reason.into(), at.as_str().into(), row.id.as_str().into()])?
+            .bind(&[at.as_str().into(), reason.into(), at.as_str().into(), text_or_null(&result), row.id.as_str().into()])?
             .first::<SessionRow>(None)
             .await?;
         let Some(ended) = ended else {
@@ -350,7 +501,21 @@ impl Work {
             });
         };
         let session = ended.at(now);
+        if let Some(result) = &result {
+            self.link_refs(&session.id, &session.repo_id, &result.chars().take(MAX_REF_TEXT).collect::<String>()).await?;
+        }
         self.publish("session.ended", &repo.id, &a.actor, SessionEvent::of(&session)).await?;
+        // The subagents it left going end with it.
+        let orphans = self
+            .db
+            .prepare(end_tree_sql())
+            .bind(&[session.id.as_str().into(), at.as_str().into(), "parent ended".into()])?
+            .all()
+            .await?
+            .results::<SessionRow>()?;
+        for orphan in orphans {
+            self.publish("session.ended", &repo.id, &a.actor, SessionEvent::of(&orphan.at(now))).await?;
+        }
         Ok(Outcome::Ok(session))
     }
 
@@ -359,6 +524,7 @@ impl Work {
         let Some(row) = self.session_row(&repo.id, a.id.trim()).await? else {
             return Ok(not_found());
         };
+        let now = now_ms();
         let entries = self
             .db
             .prepare(
@@ -372,7 +538,28 @@ impl Work {
             .into_iter()
             .map(SessionEntry::from)
             .collect();
-        Ok(Outcome::Ok(SessionDetail { session: row.at(now_ms()), entries }))
+        let mut session = row.at(now);
+        let children = self.subagents_of(&session.id, now).await?;
+        session.subagents = children.iter().filter(|child| child.parent_id.as_deref() == Some(session.id.as_str())).count() as u32;
+        // A subagent's page names the session at the top of its tree.
+        let root = match &session.parent_id {
+            Some(_) => {
+                let mut top = None;
+                let mut at = session.parent_id.clone();
+                for _ in 0..8 {
+                    let Some(id) = at else { break };
+                    let Some(found) = self.session_row(&repo.id, &id).await? else { break };
+                    at = found.parent_id.clone();
+                    top = Some(found.at(now));
+                }
+                top
+            }
+            None => None,
+        };
+        let mut ids: Vec<String> = vec![session.id.clone()];
+        ids.extend(children.iter().map(|child| child.id.clone()));
+        let (touched, links, skills) = self.tree_facts(&repo.id, &ids).await?;
+        Ok(Outcome::Ok(SessionDetail { session, entries, children, touched, links, skills, root }))
     }
 
     pub(crate) async fn list_work_sessions(&self, a: ListWorkSessionsArgs) -> Result<Outcome<Vec<Session>>> {
@@ -386,12 +573,40 @@ impl Work {
             Some(SessionState::Idle) => "AND state = 'active' AND last_seen_at <= ?2",
             Some(SessionState::Ended) => "AND state = 'ended' AND ?2 IS NOT NULL",
         };
+        // On an issue or pull request: attached, or tied to it any way.
+        let mut linked: Vec<String> = Vec::new();
+        if let Some(number) = a.issue {
+            linked.extend(self.linked_sessions(&repo.id, LinkKind::Issue, number).await?);
+            // And those on its pull requests.
+            let pulls: Vec<u32> = self
+                .db
+                .prepare("SELECT number AS n FROM pulls WHERE repo_id = ? AND issue_number = ?")
+                .bind(&[repo.id.as_str().into(), number.into()])?
+                .all()
+                .await?
+                .results::<NumberRow>()?
+                .into_iter()
+                .map(|row| row.n)
+                .collect();
+            for pull in &pulls {
+                linked.extend(self.linked_sessions(&repo.id, LinkKind::Pull, *pull).await?);
+            }
+            linked.extend(self.branch_sessions(&repo.id, &pulls).await?);
+        }
+        if let Some(number) = a.pull {
+            linked.extend(self.linked_sessions(&repo.id, LinkKind::Pull, number).await?);
+            linked.extend(self.branch_sessions(&repo.id, &[number]).await?);
+        }
         let rows = self
             .db
             .prepare(format!(
                 "SELECT {SESSION_COLUMNS} FROM sessions
                  WHERE repo_id = ?1 {state}
-                   AND (?3 IS NULL OR issue = ?3) AND (?4 IS NULL OR pull = ?4)
+                   AND (?6 = 1 OR parent_id IS NULL OR id IN (SELECT value FROM json_each(?7)))
+                   AND (?3 IS NULL OR issue = ?3 OR id IN (SELECT value FROM json_each(?7)))
+                   AND (?4 IS NULL OR pull = ?4 OR id IN (SELECT value FROM json_each(?7)))
+                   AND (?8 IS NULL OR id IN (SELECT session_id FROM session_touches WHERE repo_id = ?1 AND kind = 'file'
+                     AND (value = ?8 OR (substr(?8, -1) = '/' AND substr(value, 1, length(?8)) = ?8))))
                  ORDER BY last_seen_at DESC LIMIT ?5"
             ))
             .bind(&[
@@ -400,11 +615,36 @@ impl Work {
                 number_or_null(a.issue),
                 number_or_null(a.pull),
                 LIST_LIMIT.into(),
+                u32::from(a.subagents).into(),
+                serde_json::to_string(&linked)?.into(),
+                text_or_null(&tidy(a.path.as_deref().map(|path| path.trim_start_matches("./")), MAX_TOUCH_CHARS)),
             ])?
             .all()
             .await?
             .results::<SessionRow>()?;
-        Ok(Outcome::Ok(rows.into_iter().map(|row| row.at(now)).collect()))
+        let mut sessions: Vec<Session> = rows.into_iter().map(|row| row.at(now)).collect();
+        // With subagents, each tree whole: its subagents, and its top.
+        if a.subagents {
+            let mut more: Vec<Session> = Vec::new();
+            for session in sessions.iter().filter(|session| session.parent_id.is_none()).take(20) {
+                more.extend(self.subagents_of(&session.id, now).await?);
+            }
+            let parents: Vec<String> = sessions
+                .iter()
+                .filter_map(|session| session.parent_id.clone())
+                .filter(|parent| !sessions.iter().any(|session| &session.id == parent))
+                .collect();
+            more.extend(self.sessions_by_id(&repo.id, &parents).await?);
+            for session in more {
+                if !sessions.iter().any(|known| known.id == session.id) {
+                    sessions.push(session);
+                }
+            }
+            count_subagents(&mut sessions);
+        } else {
+            self.fill_subagents(&mut sessions).await?;
+        }
+        Ok(Outcome::Ok(sessions))
     }
 
     /// Notes `text` (from g1t) in the live harness sessions on `pull` or
@@ -455,15 +695,21 @@ impl Work {
                 format!("Send at most {} entries at a time.", crate::MAX_ENTRY_BATCH),
             ));
         }
+        if a.touched.len() > MAX_TOUCHES {
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("Say at most {MAX_TOUCHES} things touched at a time.")));
+        }
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
         let row = unwrap_or_fail!(self.own_session(&repo, &a.actor, &a.id).await?);
         if row.state == "ended" && row.end_reason.as_deref() != Some("timed_out") {
             return Ok(Outcome::fail(FailureCode::Conflict, "This session has ended. Start a new one."));
         }
         // Recording is a heartbeat too.
-        let fields = Fields { issue: None, pull: None, branch: None, head_commit: None, title: None };
-        let session = unwrap_or_fail!(self.resume(&repo, row, &a.actor, fields).await?);
+        let session = unwrap_or_fail!(self.resume(&repo, row, &a.actor, Fields::default()).await?);
+        let touched = self.record_touches(&session, &a.touched).await?;
         if a.entries.is_empty() {
+            if touched > 0 {
+                self.announce_progress(&session).await?;
+            }
             return Ok(Outcome::Ok(Recorded::default()));
         }
         let pull = match session.pull {
@@ -474,10 +720,19 @@ impl Work {
         let at = rfc3339(now_ms());
         let total = a.entries.len() as u32;
         let mut statements = Vec::with_capacity(a.entries.len());
+        let mut prompts = String::new();
         for keyed in a.entries {
             let entry = keyed.entry;
             let kind = serde_json::to_value(entry.kind)?;
-            let text: String = entry.text.chars().take(crate::MAX_ENTRY_CHARS).collect();
+            let mut text: String = entry.text.chars().take(crate::MAX_ENTRY_CHARS).collect();
+            if entry.kind == SessionEntryKind::Skill {
+                // A skill is its name, nothing more.
+                text = text.trim().chars().take(MAX_AGENT_CHARS).collect();
+            }
+            if entry.kind == SessionEntryKind::Prompt && prompts.len() < MAX_REF_TEXT {
+                prompts.push_str(&text);
+                prompts.push('\n');
+            }
             let key = tidy(keyed.key.as_deref(), MAX_KEY_CHARS);
             // Each takes the next number of the session, and of its pull
             // request when it has one, itself, so two batches at once
@@ -501,6 +756,9 @@ impl Work {
         for result in self.db.batch(statements).await? {
             recorded += result.results::<NumberRow>()?.len() as u32;
         }
+        if !prompts.is_empty() && recorded > 0 {
+            self.link_refs(&session.id, &repo.id, &prompts).await?;
+        }
         if let Some(pull) = pull
             && recorded > 0
         {
@@ -512,6 +770,43 @@ impl Work {
             )
             .await?;
         }
+        if recorded > 0 || touched > 0 {
+            self.announce_progress(&session).await?;
+        }
         Ok(Outcome::Ok(Recorded { recorded, duplicates: total - recorded }))
+    }
+
+    /// `session.progressed`, at most every [`PROGRESS_EVERY_MS`] for a
+    /// session, so the pages showing it follow along.
+    async fn announce_progress(&self, session: &Session) -> Result<()> {
+        let now = now_ms();
+        let due = self
+            .db
+            .prepare(MARK_PROGRESS)
+            .bind(&[rfc3339(now).into(), session.id.as_str().into(), rfc3339(now.saturating_sub(PROGRESS_EVERY_MS)).into()])?
+            .first::<serde_json::Value>(None)
+            .await?;
+        if due.is_none() {
+            return Ok(());
+        }
+        let mut root_id = None;
+        let mut up = session.parent_id.clone();
+        for _ in 0..8 {
+            let Some(id) = up else { break };
+            up = self.session_row(&session.repo_id, &id).await?.and_then(|row| row.parent_id);
+            root_id = Some(id);
+        }
+        self.publish_as(
+            "session.progressed",
+            &session.repo_id,
+            Some(session.actor.id.clone()),
+            SessionProgressed {
+                repo_id: session.repo_id.clone(),
+                number: session.pull.or(session.issue),
+                session_id: session.id.clone(),
+                root_id,
+            },
+        )
+        .await
     }
 }

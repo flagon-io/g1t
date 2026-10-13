@@ -17,11 +17,13 @@ export function MemberAvatar({
   presence = false,
   ring,
 }: {
-  member: { kind: "user" | "agent"; id?: string; name: string; avatar: string | null };
+  member: { kind: "user" | "agent" | "system"; id?: string; name: string; avatar: string | null };
   size?: number;
   presence?: boolean;
   ring?: string;
 }) {
+  // @g1t: the g1t mark, with the agent marker.
+  if (member.kind === "system") return <Avatar name="g1t" system agent size={size} ring={ring} />;
   if (member.kind === "agent") return <AgentAvatar agent={member} size={size} ring={ring} />;
   const avatar = <Avatar name={member.name} image={member.avatar} size={size} />;
   if (!presence) return avatar;

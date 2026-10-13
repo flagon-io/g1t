@@ -7,6 +7,7 @@ mod access;
 mod account_deletion;
 mod admin;
 mod aliases;
+mod ask_tokens;
 mod avatars;
 mod crypto;
 mod deletion;
@@ -1039,6 +1040,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "revoke_run_credentials" => reply(&identity.revoke_run_credentials(args(body)?).await?),
         "create_job_token" => reply(&identity.create_job_token(args(body)?).await?),
         "revoke_job_tokens" => reply(&identity.revoke_job_tokens(args(body)?).await?),
+        // Ask g1t's per-answer, read-only credential (ask_tokens.rs). Only
+        // the integrations service calls these.
+        "create_ask_token" => reply(&identity.create_ask_token(args(body)?).await?),
+        "revoke_ask_token" => reply(&identity.revoke_ask_token(args(body)?).await?),
         "remove_access_token" => reply(&identity.remove_access_token(args(body)?).await?),
         // Invites; see invites.rs.
         "check_invite" => reply(&identity.check_invite(args(body)?).await?),

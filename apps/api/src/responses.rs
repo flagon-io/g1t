@@ -248,6 +248,7 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Coordination(CoordinationOp::ReleaseClaim | CoordinationOp::HandOffIssue) => through::<work::Claim>(op, sent),
         Op::Coordination(CoordinationOp::ListClaims) => through::<Vec<work::Claim>>(op, sent),
         Op::Coordination(CoordinationOp::GetWork) => through::<work::WorkContext>(op, sent),
+        Op::Coordination(CoordinationOp::StartAgentSession) => through::<g1t_contracts::agent_sessions::AgentSessionStarted>(op, sent),
         _ => sent,
     }
 }

@@ -61,14 +61,19 @@ recorded as yours and is as visible as the repository it is in.
 | A session starts or resumes | `g1t session start --harness claude_code --harness-session-id ID` | A session for this Claude Code session. Starting the same session again, as a resume does, finds it rather than making another. |
 | You send a prompt | `g1t session log --kind prompt TEXT` | Your prompt's first 2,000 characters. |
 | Claude uses a tool | `g1t session log --kind tool_call TEXT` | The tool's name and one line on what it was called with: the command, file, pattern or address, up to 200 characters, with anything that looks like a token or password replaced by `…`. |
-| A `git push` reaches the remote | `g1t api update_session -f id=ID -f head_commit=SHA` | The commit you pushed, so the session's entries line up with the code. |
+| Claude uses a skill | `g1t session log --kind skill NAME` | The skill's name, nothing more. |
+| Claude writes a file, makes a branch or a commit, or claims an issue | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--issue`) | What it touched: the path from the repository's root, the branch, the commit, the issue. g1t ties the session to the pull requests and issues these lead to, and tells two sessions that touch the same file. |
+| A `git push` reaches the remote | `g1t api update_session -f id=ID -f head_commit=SHA` and `g1t session touch --commit SHA --branch BRANCH` | The commit you pushed and its branch, so the session's entries line up with the code and it is tied to the branch's pull request. |
+| Claude starts a subagent | `g1t session start --parent SESSION --agent-type TYPE --task TASK --prompt PROMPT` | A session of its own for the subagent, under this one, with its kind and the task it was given (its prompt's first 4,000 characters). See [Subagents](#subagents). |
+| A subagent finishes | `g1t session end --result MESSAGE` | Its final message, up to 8,000 characters: what it reported to Claude. |
 | Claude finishes a turn | `g1t session heartbeat` | That the session is still active, which also renews its claims. |
 | The session ends | `g1t session end --reason REASON` | That it ended, and why: you exited, cleared it or logged out. |
 
 It never records:
 
 - what a tool returned: command output, file contents, search results and
-  web pages are never read or sent;
+  web pages are never sent (an Agent call's answer is the one thing read,
+  for its subagent's final message and id);
 - Claude's replies or reasoning;
 - your files, environment or transcript.
 
@@ -91,6 +96,44 @@ recorded on it and the last integration failure. If the answer takes longer
 than a second, Claude is told to load it itself.
 
 With no issue in sight, Claude is told how to load and claim one.
+
+Claude is also told to put the trailer `G1t-Session: $G1T_SESSION` on the
+commits it makes, so g1t ties them, and the pull request they land in, to
+the session.
+
+A session started from a hand-off (**Start a session** without an
+Anthropic connection, or `g1t work dispatch N --handoff`) runs as
+`G1T_ISSUE=N claude '…'`: the plugin attaches it to issue N as it starts.
+
+## Subagents
+
+Each subagent Claude Code starts is recorded as a session of its own,
+under the session that started it, so if Claude hands parts of an issue to
+twelve subagents, g1t shows twelve sessions and they see each other.
+
+- **When it starts** (`SubagentStart`), the plugin starts its session with
+  the parent's session as `--parent`, its kind (`Explore`, your own
+  subagents' names) and the task Claude gave it: the description and
+  prompt of the Agent call, kept from the moment Claude made it
+  (`PreToolUse`). The subagent is told it has a session of its own, to
+  look at its siblings with `g1t session list --issue N --subagents`
+  before changing anything, and to claim only what it takes.
+- **While it works**, what it does is recorded in its own session, not its
+  parent's: its tool calls, the skills it uses and the files it touches.
+  Its `g1t` commands and g1t MCP claims act as its own session: the
+  plugin sets `G1T_SESSION` for its shell commands and `session_id` for
+  its claims. Each subagent's claim is its own, so siblings see each
+  other's, and when two touch the same file both are told
+  (`overlap.detected`).
+- **When it finishes** (`SubagentStop`), its session ends with its final
+  message as its result. A background subagent's, or a late hook's, order
+  does not matter: starting a subagent again finds the same session, and
+  an ended one stays ended.
+
+Subagents use g1t's MCP tools as Claude does: Claude Code gives a
+subagent the MCP servers of the session that started it, including the
+plugin's g1t server, unless the subagent's own definition leaves them
+out.
 
 ## Skills
 
@@ -135,7 +178,10 @@ settings, for example in `~/.claude/settings.json`:
 { "env": { "G1T_RECORD_PROMPTS": "0" } }
 ```
 
-A recorded session can be read on the pull request's **Session** tab.
+A recorded session can be read on its own page, linked from the issue, the
+pull request's **Session** tab and the repository's **Work** page: who ran
+it, its subagents as a tree, the skills used, what it touched, and the
+issues and pull requests it worked on.
 
 ## The earlier hook installer
 

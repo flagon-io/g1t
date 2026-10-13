@@ -8,8 +8,11 @@
 //! answered at once, and acted on afterwards, so a slow step never makes
 //! the sender give up and send it again.
 
+mod agent_sessions;
 mod alerts;
 mod ask;
+mod ask_loop;
+mod ask_tools;
 mod github;
 mod github_jwt;
 mod http;
@@ -20,7 +23,7 @@ mod sentry;
 mod trackers;
 
 use g1t_contracts::events::Event;
-use g1t_contracts::identity::{SlugArgs, Workspace};
+use g1t_contracts::identity::{AskToken, CreateAskTokenArgs, RevokeAskTokenArgs, SlugArgs, Workspace};
 use g1t_contracts::integrations::*;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::rfc3339;
@@ -200,6 +203,8 @@ struct Integrations {
     api_url: String,
     /// Where the site is, for links back to issues and pull requests.
     site_url: String,
+    /// g1t's MCP server, which Ask reads g1t through as the person asking.
+    mcp_url: String,
 }
 
 impl Integrations {
@@ -212,6 +217,7 @@ impl Integrations {
             work: env.service("WORK")?,
             api_url: var("API_URL", "https://api.g1t.sh"),
             site_url: var("SITE_URL", "https://g1t.sh"),
+            mcp_url: var("MCP_URL", "https://mcp.g1t.sh"),
         })
     }
 
@@ -681,8 +687,14 @@ impl Integrations {
         Ok(facts)
     }
 
-    /// One answer, streamed: see [`AskArgs`].
+    /// One answer, streamed: see [`AskArgs`] and ask_loop.rs.
+    ///
+    /// Before the provider is asked, identity makes the answer's read-only
+    /// credential for the person asking, and g1t's MCP server lists the
+    /// tools it may use. Without them the answer still comes, from the page
+    /// alone, and says so.
     async fn ask(&self, a: AskArgs) -> Result<Response> {
+        let started = now_ms();
         let workspace = a.workspace.to_lowercase();
         if !a.actor.is_member(&workspace) {
             return ask_refusal("Only members can use Ask in this workspace.");
@@ -698,18 +710,74 @@ impl Integrations {
         let provider = row.provider();
         let config = row.config();
         let key = self.secrets(&row).secret;
-        let (named, facts) = futures_util::future::join(
+        let (named, facts, credential) = futures_util::future::join3(
             g1t_kit::call::<_, Option<Workspace>>(&self.identity, "get_workspace", &SlugArgs { slug: workspace.clone() }),
             self.ask_facts(&a.actor, &a.page),
+            g1t_kit::call::<_, Outcome<AskToken>>(
+                &self.identity,
+                "create_ask_token",
+                &CreateAskTokenArgs { actor: a.actor.clone(), workspace: workspace.clone() },
+            ),
         )
         .await;
         let name = named.ok().flatten().map(|found| found.name).unwrap_or_default();
         // Without what the page is about, the answer can still come.
         let facts = facts.unwrap_or_default();
-        let system = ask::system_prompt(&workspace, &name, &a.page, &facts);
-        let built = match ask::build(provider, &config, key.as_deref(), &model, &system, &messages, ASK_MAX_OUTPUT_TOKENS) {
+        let credential = match credential {
+            Ok(Outcome::Ok(credential)) => Some(credential),
+            Ok(Outcome::Fail(refused)) => {
+                worker::console_error!("ask: no credential for the tools: {}", refused.message);
+                None
+            }
+            Err(error) => {
+                worker::console_error!("ask: no credential for the tools: {error}");
+                None
+            }
+        };
+        let mcp = credential.as_ref().map(|credential| ask_tools::Mcp { url: self.mcp_url.clone(), token: credential.token.clone() });
+        let listed = match &mcp {
+            Some(mcp) => mcp.list().await.unwrap_or_else(|problem| {
+                worker::console_error!("ask: g1t's tools could not be listed: {problem}");
+                Vec::new()
+            }),
+            None => Vec::new(),
+        };
+        let toolbox = ask_tools::Toolbox::new(listed, ask_tools::native());
+        let now = rfc3339(started);
+        let today: String = now.chars().take(10).collect();
+        let now: String = format!("{}Z", now.chars().take(19).collect::<String>());
+        let username = a.actor.display_username.clone().unwrap_or_else(|| a.actor.username.clone());
+        let system = ask::system_prompt(&ask::Context {
+            slug: &workspace,
+            name: &name,
+            username: &username,
+            site: &self.site_url,
+            today: &today,
+            now: &now,
+            page: &a.page,
+            facts: &facts,
+            tools: !toolbox.is_empty(),
+        });
+        let mut answering = ask_loop::Answering::new(
+            provider,
+            config,
+            key,
+            model.clone(),
+            system,
+            messages,
+            ASK_MAX_OUTPUT_TOKENS,
+            toolbox,
+            mcp,
+            self.site_url.clone(),
+            self.identity.clone(),
+            credential.map(|credential| credential.id),
+            started,
+        );
+        // The first round is asked here, so a provider that refuses is a
+        // refusal with its reason, and the connection notes it.
+        let built = match answering.request() {
             Ok(built) => built,
-            Err(problem) => return ask_refusal(&problem),
+            Err(problem) => return self.ask_refused(answering, &problem).await,
         };
         let headers: Vec<(&str, &str)> = built.headers.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
         let mut response = match http::open(Method::Post, &built.url, &headers, Some(built.body)).await {
@@ -717,18 +785,14 @@ impl Integrations {
             Err(error) => {
                 let problem = format!("{} could not be reached: {error}", provider.label());
                 self.note(&row.id, Some(&problem)).await?;
-                return ask_refusal(&problem);
+                return self.ask_refused(answering, &problem).await;
             }
         };
         let status = response.status_code();
         if !(200..300).contains(&status) {
-            let answer = http::Answer {
-                status,
-                body: response.text().await.unwrap_or_default(),
-            };
-            let problem = answer.problem(provider.label());
+            let problem = ask_loop::refused_by(provider, status, response.text().await.unwrap_or_default());
             self.note(&row.id, Some(&problem)).await?;
-            return ask_refusal(&problem);
+            return self.ask_refused(answering, &problem).await;
         }
         self.note(&row.id, None).await?;
         let meta = ask::line(&AskEvent::Meta {
@@ -736,32 +800,23 @@ impl Integrations {
             provider_label: provider.label().to_owned(),
             model,
         });
-        let upstream = response.stream()?;
-        let relay = ask::Relay::new(provider);
-        let label = provider.label();
-        let lines = futures_util::stream::unfold((upstream, relay, Some(meta)), move |(mut upstream, mut relay, mut first)| async move {
-            use futures_util::StreamExt;
-            if let Some(meta) = first.take() {
-                return Some((Ok::<Vec<u8>, worker::Error>(meta.into_bytes()), (upstream, relay, None)));
-            }
-            loop {
-                if relay.over() {
-                    return None;
-                }
-                let out = match upstream.next().await {
-                    Some(Ok(bytes)) => relay.feed(&bytes),
-                    Some(Err(error)) => relay.broke(&format!("The answer from {label} broke off: {error}")),
-                    None => relay.end(),
-                };
-                if !out.is_empty() {
-                    return Some((Ok(out.into_bytes()), (upstream, relay, None)));
-                }
-            }
+        answering.streaming(response.stream()?, meta);
+        let lines = futures_util::stream::unfold(answering, |mut answering| async move {
+            let line = answering.next().await?;
+            Some((Ok::<Vec<u8>, worker::Error>(line.into_bytes()), answering))
         });
         let headers = Headers::new();
         headers.set("content-type", ASK_CONTENT_TYPE)?;
         headers.set("cache-control", "no-store")?;
         Ok(Response::from_stream(lines)?.with_headers(headers))
+    }
+
+    /// An answer that never started: its credential ends now.
+    async fn ask_refused(&self, mut answering: ask_loop::Answering, problem: &str) -> Result<Response> {
+        if let Some(id) = answering.credential.take() {
+            let _: Result<bool> = g1t_kit::call(&self.identity, "revoke_ask_token", &RevokeAskTokenArgs { id }).await;
+        }
+        ask_refusal(problem)
     }
 
     // --- Acting in g1t --------------------------------------------------------
@@ -1385,7 +1440,18 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "ask_settings" => reply(&service.ask_settings(args(body)?).await?),
         "set_ask_settings" => reply(&service.set_ask_settings(args(body)?).await?),
         "ask" => service.ask(args(body)?).await,
+        // Sessions started on the workspace's own Anthropic account (agent_sessions.rs).
+        method if agent_sessions::METHODS.contains(&method) => agent_sessions::route(&service, method, body).await,
         _ => Response::error("Unknown method", 404),
+    }
+}
+
+/// Every minute: the sessions started on workspaces' Anthropic accounts
+/// that are still going are followed (agent_sessions.rs).
+#[event(scheduled)]
+async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+    if let Ok(service) = Integrations::new(&env) {
+        agent_sessions::scheduled(&service).await;
     }
 }
 

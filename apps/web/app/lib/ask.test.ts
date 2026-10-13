@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { EMPTY_ASK, type AskState, askPage, askReducer, cutOff, history, readLines, restorable } from "./ask.ts";
+import { askPage, askWhere, foldAnswer, proposalTitle } from "./ask.ts";
 
 test("the page says which repository, issue or pull request the person is on", () => {
   assert.deepEqual(askPage("/Acme/web/issues/12"), { path: "/Acme/web/issues/12", repo: { namespace: "acme", name: "web" }, issue: 12 });
@@ -15,82 +15,46 @@ test("the page says which repository, issue or pull request the person is on", (
   assert.deepEqual(askPage(""), { path: "/" });
 });
 
-function run(...actions: Parameters<typeof askReducer>[1][]): AskState {
-  return actions.reduce(askReducer, EMPTY_ASK);
-}
-
-test("an answer streams into the turn after the question", () => {
-  const state = run(
-    { type: "ask", question: "  What broke?  ", id: "1" },
-    { type: "event", event: { type: "meta", provider: "anthropic", provider_label: "Anthropic", model: "claude-x" } },
-    { type: "event", event: { type: "text", text: "The " } },
-    { type: "event", event: { type: "text", text: "login." } },
-  );
-  assert.equal(state.busy, true);
-  assert.equal(state.turns[0]!.content, "What broke?");
-  assert.deepEqual(
-    { content: state.turns[1]!.content, provider: state.turns[1]!.provider, model: state.turns[1]!.model, status: state.turns[1]!.status },
-    { content: "The login.", provider: "Anthropic", model: "claude-x", status: "streaming" },
-  );
-  const done = askReducer(state, { type: "event", event: { type: "done", stop_reason: "max_tokens" } });
-  assert.equal(done.busy, false);
-  assert.equal(done.turns[1]!.status, "done");
-  assert.ok(cutOff(done.turns[1]!));
+test("the composer says where the question is asked from", () => {
+  assert.equal(askWhere(askPage("/acme/web/issues/12")), "On issue #12");
+  assert.equal(askWhere(askPage("/acme/web/pull/3")), "On pull request #3");
+  assert.equal(askWhere(askPage("/acme/web")), "In web");
+  assert.equal(askWhere(askPage("/acme/-/chat")), null);
 });
 
-test("one question at a time; empty ones are not asked", () => {
-  const asking = run({ type: "ask", question: "a", id: "1" });
-  assert.equal(askReducer(asking, { type: "ask", question: "b", id: "2" }), asking);
-  assert.equal(askReducer(EMPTY_ASK, { type: "ask", question: "   ", id: "1" }), EMPTY_ASK);
-});
-
-test("stopping keeps what came; an error says what went wrong; new conversation starts over", () => {
-  const stopped = run({ type: "ask", question: "a", id: "1" }, { type: "event", event: { type: "text", text: "par" } }, { type: "stop" });
-  assert.equal(stopped.busy, false);
-  assert.deepEqual([stopped.turns[1]!.status, stopped.turns[1]!.content], ["stopped", "par"]);
-  // Nothing after the stop lands on the answer.
-  assert.equal(askReducer(stopped, { type: "event", event: { type: "text", text: "tial" } }).turns[1]!.content, "par");
-
-  const failed = run({ type: "ask", question: "a", id: "1" }, { type: "event", event: { type: "error", message: "Anthropic did not accept the credentials." } });
-  assert.equal(failed.turns[1]!.error, "Anthropic did not accept the credentials.");
-  assert.equal(failed.busy, false);
-  assert.equal(run({ type: "ask", question: "a", id: "1" }, { type: "failed", message: "Too many questions." }).turns[1]!.status, "error");
-  assert.equal(askReducer(failed, { type: "reset" }), EMPTY_ASK);
-});
-
-test("what is sent alternates, leaving out questions whose answer failed", () => {
-  const state = run(
-    { type: "ask", question: "one", id: "1" },
-    { type: "event", event: { type: "text", text: "first" } },
-    { type: "event", event: { type: "done", stop_reason: "end_turn" } },
-    { type: "ask", question: "two", id: "2" },
-    { type: "event", event: { type: "error", message: "no" } },
-    { type: "ask", question: "three", id: "3" },
-    { type: "event", event: { type: "text", text: "cut" } },
-    { type: "stop" },
-  );
-  assert.deepEqual(history(state.turns, " four "), [
-    { role: "user", content: "one" },
-    { role: "assistant", content: "first" },
-    { role: "user", content: "three" },
-    { role: "assistant", content: "cut" },
-    { role: "user", content: "four" },
+test("an answer's kept lines fold into its steps, each as it last was, and its sources", () => {
+  const started = {
+    type: "tool" as const,
+    id: "step_0_0",
+    name: "workspace",
+    action: "activity",
+    label: "Read activity in acme since 2026-10-12",
+    status: "running" as const,
+    summary: null,
+    link: "https://g1t.sh/acme",
+  };
+  const folded = foldAnswer([
+    started,
+    { ...started, id: "step_0_1", name: "repository", action: "list", label: "Listed repositories" },
+    { ...started, status: "done", summary: "12 results" },
+    { type: "text", text: "ignored" },
+    null,
+    { type: "sources", sources: [{ title: "#7 Fix login", url: "https://g1t.sh/acme/web/pull/7", cited: true }, { url: 3 }] },
   ]);
+  assert.deepEqual(
+    folded.steps.map((step) => [step.id, step.status, step.summary]),
+    [
+      ["step_0_0", "done", "12 results"],
+      ["step_0_1", "running", null],
+    ],
+  );
+  assert.equal(folded.sources.length, 1);
+  assert.equal(folded.sources[0]!.url, "https://g1t.sh/acme/web/pull/7");
+  assert.deepEqual(foldAnswer("junk"), { steps: [], sources: [], proposals: [] });
 });
 
-test("lines are read as they arrive, across chunks", () => {
-  const first = readLines("", '{"type":"meta","provider":"openai","provider_label":"OpenAI","model":"gpt-5"}\n{"type":"te');
-  assert.equal(first.events.length, 1);
-  assert.equal(first.rest, '{"type":"te');
-  const second = readLines(first.rest, 'xt","text":"Hi"}\nnot json\n{"type":"other"}\n');
-  assert.deepEqual(second.events, [{ type: "text", text: "Hi" }]);
-  assert.equal(second.rest, "");
-});
-
-test("a conversation kept in the tab comes back stopped where it was", () => {
-  const kept = restorable({ turns: [{ id: "1-q", role: "user", content: "a", status: "done" }, { id: "1-a", role: "assistant", content: "b", status: "streaming" }], busy: true });
-  assert.equal(kept.busy, false);
-  assert.equal(kept.turns[1]!.status, "stopped");
-  assert.deepEqual(restorable("junk"), EMPTY_ASK);
-  assert.deepEqual(restorable({ turns: [{ role: "system", content: "x" }] }).turns, []);
+test("a proposed session is kept once and says what it will do", () => {
+  const proposal = { type: "proposal" as const, id: "proposal_0_0", repo: "acme/web", issue: 12, title: null, body: null, mode: "implement" as const, instruction: null };
+  const folded = foldAnswer([proposal, proposal, { ...proposal, id: "proposal_0_1", issue: null, title: "Add a route", mode: "plan" }, { type: "proposal", id: "x", repo: "acme/web" }]);
+  assert.deepEqual(folded.proposals.map(proposalTitle), ["Implement #12 in acme/web", "Plan “Add a route” in acme/web"]);
 });

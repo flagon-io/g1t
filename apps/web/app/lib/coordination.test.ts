@@ -10,11 +10,17 @@ import {
   feedLine,
   harnessName,
   liveByIssue,
+  duration,
+  mergeSessions,
   numberedParts,
   parseBlockedBy,
   resolutionOf,
+  sessionTree,
   span,
   standingFailure,
+  touchedByKind,
+  treeSize,
+  viaLabel,
 } from "./coordination.ts";
 
 const ana = { id: "usr_ana", username: "ana" };
@@ -82,6 +88,7 @@ const event = (type: string, data: unknown): G1tEvent =>
 test("harnesses are named as people know them", () => {
   assert.equal(harnessName("claude_code"), "Claude Code");
   assert.equal(harnessName("codex"), "Codex");
+  assert.equal(harnessName("claude_managed_agents"), "Claude Managed Agents");
   assert.equal(harnessName(null), null);
 });
 
@@ -163,10 +170,78 @@ test("coordination events read as lines of the feed", () => {
 
   const overlap = feedLine(event("overlap.detected", { repoId: "rep_1", number: 5, pull: 5, otherPull: 4, files: ["src/auth.rs"] }))!;
   assert.equal(overlap.text, "#5 and #4 change the same file: src/auth.rs");
+  assert.equal(overlap.session, undefined);
+
+  const sessions = feedLine(
+    event("overlap.detected", { repoId: "rep_1", sessionId: "ses_a", otherSessionId: "ses_b", otherActor: "bo", files: ["a.rs", "b.rs", "c.rs", "d.rs"], issue: 2 }),
+  )!;
+  assert.equal(sessions.who, "bo");
+  assert.equal(sessions.text, "touched the same files in a session as another session: a.rs, b.rs, c.rs and 1 more");
+  assert.equal(sessions.session, "ses_a");
+  assert.equal(sessions.number, 2);
+  assert.equal(feedLine(event("session.progressed", { repoId: "rep_1", number: 2, sessionId: "ses_a" })), null);
 
   const started = feedLine(event("session.started", { repoId: "rep_1", session: session("ses_a", { issue: 2 }) }))!;
   assert.equal(started.text, "started a session on #2");
   assert.equal(feedLine(event("session.appended", { repoId: "rep_1", number: 5, pullId: "p", count: 3 })), null);
+});
+
+test("sessions become trees by their parents; one whose parent is missing is a root", () => {
+  const roots = sessionTree([
+    session("ses_root"),
+    session("ses_a", { parentId: "ses_root" }),
+    session("ses_a1", { parentId: "ses_a" }),
+    session("ses_b", { parentId: "ses_root" }),
+    session("ses_orphan", { parentId: "ses_gone" }),
+    session("ses_other"),
+  ]);
+  const shape = (nodes: ReturnType<typeof sessionTree>): unknown[] => nodes.map((node) => [node.session.id, shape(node.children)]);
+  assert.deepEqual(shape(roots), [
+    ["ses_root", [["ses_a", [["ses_a1", []]]], ["ses_b", []]]],
+    ["ses_orphan", []],
+    ["ses_other", []],
+  ]);
+  assert.equal(treeSize(roots[0]!), 3);
+  // A child listed before its parent still lands under it.
+  assert.deepEqual(shape(sessionTree([session("ses_c", { parentId: "ses_p" }), session("ses_p")])), [["ses_p", [["ses_c", []]]]]);
+  // A cycle does not lose sessions.
+  const cycle = sessionTree([session("ses_x", { parentId: "ses_y" }), session("ses_y", { parentId: "ses_x" })]);
+  assert.equal(cycle.length + cycle.reduce((n, node) => n + treeSize(node), 0), 2);
+  assert.deepEqual(sessionTree([]), []);
+  assert.deepEqual(
+    mergeSessions([session("ses_a"), session("ses_b")], null, [session("ses_b", { title: "later" }), session("ses_c")]).map((one) => [one.id, one.title]),
+    [
+      ["ses_a", null],
+      ["ses_b", null],
+      ["ses_c", null],
+    ],
+  );
+});
+
+test("how a session was tied to its work, what it touched, and how long it ran", () => {
+  assert.equal(viaLabel("attached"), "attached");
+  assert.equal(viaLabel("claim"), "claimed");
+  assert.equal(viaLabel("branch"), "its branch");
+  assert.equal(viaLabel("commit"), "its commit");
+  assert.equal(viaLabel("trailer"), "commit trailer");
+  assert.equal(viaLabel("opened"), "opened it");
+  assert.equal(viaLabel("ref"), "named it");
+  assert.deepEqual(
+    touchedByKind([
+      { kind: "commit", value: "abc" },
+      { kind: "file", value: "b.rs" },
+      { kind: "file", value: "a.rs" },
+      { kind: "file", value: "b.rs" },
+    ]),
+    [
+      { kind: "file", values: ["b.rs", "a.rs"] },
+      { kind: "commit", values: ["abc"] },
+    ],
+  );
+  const now = Date.parse("2026-10-12T10:30:00Z");
+  assert.equal(duration(session("ses_a"), now), "30m");
+  assert.equal(duration(session("ses_a", { state: "ended", endedAt: "2026-10-12T10:00:42Z" }), now), "42s");
+  assert.equal(duration(session("ses_a", { state: "ended", endedAt: null }), now), "5m");
 });
 
 test("numbers in a sentence are found for linking", () => {

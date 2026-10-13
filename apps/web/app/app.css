@@ -76,7 +76,25 @@
   --animate-sheet-out-right: sheet-out-right 0.16s ease-in forwards;
   --animate-sheet-in-left: sheet-in-left 0.24s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-sheet-out-left: sheet-out-left 0.16s ease-in forwards;
+  /* "Thinking…" before g1t's first words: lavender sweeping across (components/ai-elements/loader.tsx). */
+  --animate-shimmer: shimmer 2.2s linear infinite;
 }
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/*
+ * g1t's answers are drawn with Streamdown (components/ai-elements/response.tsx),
+ * which draws every element through g1t's own components; only its caret,
+ * the block that follows the words as they stream, comes from its classes.
+ */
+@source "../../../node_modules/streamdown/dist";
 
 @keyframes sheet-in-bottom {
   from {

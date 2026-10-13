@@ -70,9 +70,19 @@ pub(crate) struct Facts {
     status: Option<String>,
     #[serde(default)]
     admin: Option<f64>,
+    /// What g1t made it for, when g1t made it for itself (migration 0048).
+    #[serde(default)]
+    purpose: Option<String>,
 }
 
 impl Facts {
+    /// Ask g1t's credential for one answer (ask_tokens.rs): no one holds
+    /// it, so a workspace's rules for the tokens people hold do not apply.
+    /// Revoking it still ends it.
+    fn asks(&self) -> bool {
+        self.purpose.as_deref() == Some(g1t_contracts::identity::ASK_TOKEN_PURPOSE)
+    }
+
     fn selection(&self) -> RepositorySelection {
         self.repository_selection.as_deref().and_then(RepositorySelection::parse).unwrap_or_default()
     }
@@ -203,6 +213,14 @@ pub(crate) fn blocked_by(
     None
 }
 
+/// Why Ask g1t's credential does not reach its workspace: only revoked.
+/// The workspace's rules for tokens (which kinds, approval, lifetime) are
+/// for the tokens people hold; this one nobody holds, it is read-only and
+/// it lives minutes.
+pub(crate) fn ask_blocked_by(status: TokenStatus, revoked: bool) -> Option<&'static str> {
+    (revoked || status == TokenStatus::Revoked).then_some("revoked")
+}
+
 fn text(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from)
 }
@@ -289,7 +307,12 @@ impl Identity {
                 made_for = Some(rule.slug.clone());
             }
             let revoked = rule.revoked.is_some_and(|revoked| revoked >= 1.0);
-            if blocked_by(&rule.policy(), one, status, revoked, created, expires).is_none() {
+            let blocked = if facts.asks() {
+                ask_blocked_by(status, revoked)
+            } else {
+                blocked_by(&rule.policy(), one, status, revoked, created, expires)
+            };
+            if blocked.is_none() {
                 keep.insert(rule.slug.clone());
             }
         }
@@ -1242,6 +1265,18 @@ mod tests {
     use std::collections::BTreeMap;
 
     const DAY: u64 = 86_400_000;
+
+    #[test]
+    fn asks_credential_skips_the_rules_for_held_tokens_but_not_revoking() {
+        let closed = TokenPolicy { allow_tokens_for_this_workspace: false, ..TokenPolicy::default() };
+        assert!(blocked_by(&closed, true, TokenStatus::Active, false, 0, Some(DAY)).is_some());
+        assert_eq!(ask_blocked_by(TokenStatus::Active, false), None);
+        assert_eq!(ask_blocked_by(TokenStatus::Active, true), Some("revoked"));
+        assert_eq!(ask_blocked_by(TokenStatus::Revoked, false), Some("revoked"));
+        let facts: Facts = serde_json::from_value(serde_json::json!({ "purpose": "ask" })).unwrap();
+        assert!(facts.asks());
+        assert!(!Facts::default().asks());
+    }
 
     #[test]
     fn tokens_for_every_workspace_follow_the_workspace_rules() {

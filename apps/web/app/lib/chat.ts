@@ -197,8 +197,14 @@ export function sections(entries: ChatSidebarEntry[]): {
   return {
     pinned: entries.filter((e) => e.starred).sort(byName),
     channels: entries.filter((e) => !e.starred && e.channel.kind === "channel").sort(byName),
-    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm").sort(byRecent),
+    // Your direct message with @g1t heads the list, whenever you last talked.
+    dms: entries.filter((e) => !e.starred && e.channel.kind === "dm").sort((a, b) => Number(g1tEntry(b)) - Number(g1tEntry(a)) || byRecent(a, b)),
   };
+}
+
+/** Whether a sidebar entry is the viewer's direct message with @g1t. */
+export function g1tEntry(entry: { channel: { kind: "channel" | "dm" }; others: readonly Pick<MemberProfile, "kind" | "id">[] }): boolean {
+  return entry.channel.kind === "dm" && entry.others.length === 1 && entry.others[0]!.kind === "system" && entry.others[0]!.id === "g1t";
 }
 
 /**

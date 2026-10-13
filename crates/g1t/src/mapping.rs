@@ -247,6 +247,7 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "session end", ops: &["end_session"] },
     Mapping { command: "session list", ops: &["list_sessions"] },
     Mapping { command: "session view", ops: &["get_session"] },
+    Mapping { command: "session touch", ops: &["record_session_entries"] },
     Mapping { command: "work context", ops: &["get_work"] },
     Mapping { command: "work claim", ops: &["claim_issue"] },
     Mapping { command: "work release", ops: &["release_claim"] },
@@ -255,6 +256,7 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "work block", ops: &["get_issue", "update_issue"] },
     Mapping { command: "work unblock", ops: &["get_issue", "update_issue"] },
     Mapping { command: "work events", ops: &["list_events"] },
+    Mapping { command: "work dispatch", ops: &["start_agent_session"] },
     Mapping { command: "why", ops: &["why"] },
     // Every operation, by name: the table generated from the OpenAPI document.
     Mapping {

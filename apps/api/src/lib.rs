@@ -5,6 +5,9 @@
 //! the data. This Worker holds none.
 
 mod about;
+mod activity;
+mod commits;
+mod contents;
 mod run_artifacts;
 mod caches;
 mod archives;

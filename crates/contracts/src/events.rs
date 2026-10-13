@@ -571,6 +571,11 @@ pub struct Published {
 pub struct ListArgs {
     #[serde(default)]
     pub repo_id: Option<String>,
+    /// Only events of these repositories, by id: a workspace's activity
+    /// across its repositories. The caller has checked the viewer may read
+    /// each. At most [`MAX_LIST_REPOS`] are read.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repo_ids: Vec<String>,
     /// Only these types; all types when empty.
     #[serde(default)]
     pub types: Vec<String>,
@@ -596,6 +601,9 @@ pub struct ListArgs {
     #[serde(default)]
     pub limit: Option<u32>,
 }
+
+/// The most repositories one `list` reads with `repo_ids`.
+pub const MAX_LIST_REPOS: usize = 100;
 
 /// `workspace.renamed`: a workspace's slug changed from `from` to `to`.
 /// Every service that stores a slug moves its rows to the workspace's

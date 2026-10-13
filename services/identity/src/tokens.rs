@@ -162,7 +162,7 @@ impl Identity {
             .prepare(format!(
                 "SELECT id, user_id, workspace_id, last_used_at, agent_scope, scopes, name,
                    repo, job_id, job_run_id, job_pulls, created_at, expires_at,
-                   owner_workspace_id, repository_selection, status, admin, website
+                   owner_workspace_id, repository_selection, status, admin, website, purpose
                  FROM access_tokens
                  WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > {SQL_NOW})"
             ))
@@ -384,6 +384,15 @@ impl Identity {
             Owner::User(&a.user.id)
         };
         let created = self.mint(owner, &a.name, a.ttl_seconds, &Grant::asked(&a.scopes), a.listed).await?;
+        // One repository only, as a workflow job's token is held to its
+        // own: a session g1t starts on someone's Anthropic account.
+        if let Some(repo) = a.repo.as_deref().map(str::trim).filter(|repo| repo.contains('/')) {
+            self.db
+                .prepare("UPDATE access_tokens SET repo = ? WHERE id = ?")
+                .bind(&[repo.to_lowercase().into(), created.info.id.as_str().into()])?
+                .run()
+                .await?;
+        }
         // A person's lasting token: in their security log and their
         // workspaces' audit logs. Short-lived ones (agents' runs, OAuth
         // access tokens) are recorded where they are made.

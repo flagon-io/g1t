@@ -6,6 +6,8 @@ import {
   Ellipsis,
   Link2,
   Pencil,
+  RotateCcw,
+  Square,
   Trash2,
   BellOff,
   Hash,
@@ -29,6 +31,7 @@ import {
   type MemberProfile,
   type Result,
   hasCodeAccess,
+  isG1t,
   shownUsername,
 } from "@g1t/contracts";
 
@@ -43,6 +46,11 @@ import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-
 import { localTime } from "../../lib/time-zone";
 import { BottomSheet, SheetRow, useBack, useSwipeBack } from "../mobile";
 import { MessageText, type TextContext } from "./text";
+// @g1t's answers and its direct message (lib/g1t-chat.ts, components/chat/answer.tsx).
+import { ConversationMark, G1tAnswer } from "./answer";
+import type { ResponseContext } from "../ai-elements/response";
+import { Suggestion, Suggestions } from "../ai-elements/suggestion";
+import { anyAnswering, applyLive, fromG1t, suggestions } from "../../lib/g1t-chat";
 import { FolioUnfurls } from "../folios/unfurl";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { threadLink } from "../../lib/write-up";
@@ -207,6 +215,20 @@ export function ChannelView({ data }: { data: Loaded }) {
   const isDm = data.channel.kind === "dm";
   // An old direct message with an agent alone opens read-only: a note stands where the composer was (lib/chat.ts).
   const formerAgent = isDm ? formerAgentDm({ channel: data.channel, others }) : null;
+  // Your direct message with @g1t: it answers what you write here, as in Ask at the top of every page.
+  const withG1t = isDm && others.length === 1 && isG1t(others[0]);
+  const g1tBusy = withG1t && anyAnswering(messages);
+  // References in g1t's answers point into the repository the latest question was asked from, if any.
+  const askedRepo = useMemo(() => [...messages].reverse().find((m) => m.page)?.page?.repo ?? null, [messages]);
+  const answerContext = useMemo<ResponseContext>(() => ({ slug, repo: askedRepo }), [slug, askedRepo]);
+  const lastAnswer = withG1t ? ([...messages].reverse().find((m) => !m.deleted_at && !m.pending) ?? null) : null;
+  const g1tSend = useCallback(
+    async (intent: "g1t_retry" | "g1t_stop" | "g1t_reset") => {
+      const done = await send<ChatMessage | null>({ intent, channel_id: data.channel.id });
+      if (done.ok && done.value && intent === "g1t_reset") setMessages((now) => mergeMessages(now, [done.value as ChatMessage]));
+    },
+    [send, data.channel.id],
+  );
 
   // The details panel: open by default on a wide screen, as last left.
   useEffect(() => {
@@ -335,6 +357,10 @@ export function ChannelView({ data }: { data: Loaded }) {
           next.delete(key);
           return next;
         });
+      } else if (event.type === "message.streaming") {
+        // @g1t's answer as it is written: the text so far, in place (lib/g1t-chat.ts).
+        if (event.channel_id !== data.channel.id) return;
+        setMessages((now) => applyLive(now, event, data.channel.id) as ShownMessage[]);
       } else if (event.type === "message.deleted") {
         if (event.channel_id !== data.channel.id) return;
         const gone = (m: ShownMessage) => (m.id === event.id ? { ...m, deleted_at: new Date().toISOString() } : m);
@@ -348,6 +374,8 @@ export function ChannelView({ data }: { data: Loaded }) {
       } else if (event.type === "typing") {
         if (event.channel_id !== data.channel.id) return;
         if (event.member.kind === "user" && event.member.id === me?.id) return;
+        // @g1t shows it is thinking in its answer itself.
+        if (event.member.kind === "system") return;
         setTyping((now) => new Map(now).set(`${event.member.kind}:${event.member.id}`, { member: event.member, until: new Date(event.until).getTime() }));
       } else if (event.type === "channel.updated") {
         // Renamed, a new topic, archived or back: everyone looking sees it at once.
@@ -632,6 +660,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           info={info}
           onStar={() => void toggleStar()}
           onInfo={toggleInfo}
+          onNewConversation={withG1t ? () => void g1tSend("g1t_reset") : undefined}
         />
         <div
           ref={scroller}
@@ -655,11 +684,13 @@ export function ChannelView({ data }: { data: Loaded }) {
                 </Button>
               </div>
             ) : (
-              <ConversationStart data={view} others={others} />
+              <ConversationStart data={view} others={others} onAsk={withG1t ? (text) => void post(text, null) : undefined} />
             )}
             {rows.map((row) =>
               row.kind === "day" ? (
                 <DayRule key={row.key} label={row.label} />
+              ) : row.message.reset && fromG1t(row.message) ? (
+                <ConversationMark key={row.key} />
               ) : (
                 <MessageRow
                   key={row.key}
@@ -676,6 +707,11 @@ export function ChannelView({ data }: { data: Loaded }) {
                   onEdit={mine(row.message) ? () => setEditing({ id: row.message.id, body: row.message.body, inline: true }) : undefined}
                   editor={editing?.inline && editing.id === row.message.id ? editor(editing) : undefined}
                   threadOpen={row.message.id === threadId}
+                  answer={
+                    row.message.answer
+                      ? { context: answerContext, onRetry: !g1tBusy && lastAnswer?.id === row.message.id ? () => void g1tSend("g1t_retry") : undefined }
+                      : undefined
+                  }
                 />
               ),
             )}
@@ -684,6 +720,14 @@ export function ChannelView({ data }: { data: Loaded }) {
         <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] in-data-[keyboard=open]:pb-2">
           <div className="mx-auto max-w-4xl">
             <TypingLine typers={typers} />
+            {g1tBusy && (
+              <div className="mb-2 flex justify-center">
+                <Button type="button" variant="outline" size="xs" onClick={() => void g1tSend("g1t_stop")} className="rounded-full bg-surface">
+                  <Square size={10} className="fill-current" />
+                  Stop answering
+                </Button>
+              </div>
+            )}
             {archived ? (
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="flex items-center gap-2 text-sm text-muted">
@@ -710,7 +754,7 @@ export function ChannelView({ data }: { data: Loaded }) {
                 <span>{formerAgentLine(formerAgent)}</span>
               </Card>
             ) : joined ? (
-              <Composer draftKey={data.channel.id} placeholder={placeholder} people={people} onSend={(body) => void post(body, null)} onTyping={onTyping} autoFocus />
+              <Composer draftKey={data.channel.id} placeholder={withG1t ? "Ask g1t about your work" : placeholder} people={people} onSend={(body) => void post(body, null)} onTyping={onTyping} autoFocus />
             ) : (
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="text-sm text-muted">
@@ -810,7 +854,10 @@ function ChannelHeader({
   info,
   onStar,
   onInfo,
+  onNewConversation,
 }: {
+  /** In your direct message with @g1t: start a new conversation. */
+  onNewConversation?: () => void;
   /** A phone: back to the list of conversations. */
   onBack: () => void;
   data: Loaded;
@@ -900,6 +947,14 @@ function ChannelHeader({
           </Button>
         </Hint>
       )}
+      {onNewConversation && (
+        <Hint label="New conversation: g1t reads only what comes next">
+          <Button variant="ghost" size="sm" onClick={onNewConversation} className="text-muted max-md:h-11">
+            <RotateCcw size={14} />
+            <span className="max-sm:sr-only">New conversation</span>
+          </Button>
+        </Hint>
+      )}
       {channel.kind === "dm" && (
         <Hint label={info ? "Hide details" : "Details"}>
           <Button variant="ghost" size="icon-bar" onClick={onInfo} aria-pressed={info} aria-label="Details">
@@ -938,8 +993,24 @@ function StarButton({ starred, onClick }: { starred: boolean; onClick: () => voi
 }
 
 /** How a conversation begins, above its first message. */
-function ConversationStart({ data, others }: { data: Loaded; others: MemberProfile[] }) {
+function ConversationStart({ data, others, onAsk }: { data: Loaded; others: MemberProfile[]; onAsk?: (text: string) => void }) {
   const channel = data.channel;
+  if (channel.kind === "dm" && onAsk) {
+    return (
+      <div className="px-2 pb-6 sm:px-3">
+        <MemberAvatar member={others[0]!} size={56} />
+        <h2 className="mt-3 text-xl font-semibold tracking-tight">g1t</h2>
+        <p className="mt-1 max-w-xl text-sm text-muted">
+          Ask about your work. g1t answers with your workspace&apos;s own AI provider, here and in Ask at the top of every page: it is one conversation.
+        </p>
+        <Suggestions className="mt-4 max-w-xl">
+          {suggestions({}).map((text) => (
+            <Suggestion key={text} suggestion={text} onPick={onAsk} />
+          ))}
+        </Suggestions>
+      </div>
+    );
+  }
   if (channel.kind === "dm") {
     const agent = others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
     return (
@@ -1191,7 +1262,10 @@ function MessageRow({
   inThread,
   onEdit,
   editor,
+  answer,
 }: {
+  /** An answer from @g1t: drawn as one (components/chat/answer.tsx), with Answer again on the latest. */
+  answer?: { context: ResponseContext; onRetry?: () => void };
   /** Your own message: "Edit message" in the "⋯", and the composer in its place while editing. */
   onEdit?: () => void;
   editor?: ReactNode;
@@ -1250,8 +1324,16 @@ function MessageRow({
           </div>
         )}
         <div className={message.pending && !message.failed ? "opacity-60" : undefined}>
-          {editor ? <div className="py-1">{editor}</div> : message.body && <MessageText body={message.body} context={context} />}
-          {!editor && message.body && !message.pending && <FolioUnfurls slug={slug} body={message.body} />}
+          {editor ? (
+            <div className="py-1">{editor}</div>
+          ) : answer && message.answer ? (
+            <div className="pt-0.5">
+              <G1tAnswer message={message} context={answer.context} onRetry={answer.onRetry} />
+            </div>
+          ) : (
+            message.body && <MessageText body={message.body} context={context} />
+          )}
+          {!editor && !answer && message.body && !message.pending && <FolioUnfurls slug={slug} body={message.body} />}
           {message.card && (
             <CardBox card={message.card} slug={slug} code={code} />
           )}

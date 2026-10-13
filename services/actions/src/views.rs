@@ -461,8 +461,34 @@ impl Actions {
         let Some((_, log_id, done)) = self.job_for_log(&a.repo, &a.job).await? else {
             return Ok(fail(FailureCode::NotFound, "No such job."));
         };
-        let chunks = self.log_chunks(&log_id, a.after, 500).await?;
+        let chunks = match a.tail {
+            // Its end: where a failed job says why.
+            Some(tail) => self.log_tail(&log_id, tail.clamp(1, g1t_contracts::actions::MAX_LOG_PAGE)).await?,
+            None => self.log_chunks(&log_id, a.after, g1t_contracts::actions::MAX_LOG_PAGE).await?,
+        };
         Ok(Outcome::Ok(JobLog { chunks, done }))
+    }
+
+    /// The last `limit` chunks of a log, in order.
+    async fn log_tail(&self, log_id: &str, limit: u32) -> Result<Vec<LogChunk>> {
+        #[derive(Deserialize)]
+        struct Row {
+            seq: u64,
+            step: u32,
+            text: String,
+        }
+        let mut chunks: Vec<LogChunk> = self
+            .db
+            .prepare("SELECT seq, step, text FROM logs WHERE job_id = ? ORDER BY seq DESC LIMIT ?")
+            .bind(&[log_id.into(), limit.into()])?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| LogChunk { seq: row.seq, step: row.step, text: row.text })
+            .collect();
+        chunks.reverse();
+        Ok(chunks)
     }
 
     /// `job_log_text`: a job's whole log, to download.

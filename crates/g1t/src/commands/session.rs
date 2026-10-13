@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use crate::cli::{
     SessionAttachArgs, SessionCommand, SessionEndArgs, SessionListArgs, SessionLogArgs,
-    SessionStartArgs, SessionState, SessionViewArgs,
+    SessionStartArgs, SessionState, SessionTouchArgs, SessionViewArgs,
 };
 use crate::client::Client;
 use crate::context::Ctx;
@@ -28,6 +28,7 @@ pub fn run(ctx: &Ctx, command: SessionCommand) -> Result<()> {
         SessionCommand::End(args) => end(ctx, args),
         SessionCommand::List(args) => list(ctx, args),
         SessionCommand::View(args) => view(ctx, args),
+        SessionCommand::Touch(args) => touch(ctx, args),
     }
 }
 
@@ -101,13 +102,21 @@ fn start(ctx: &Ctx, args: SessionStartArgs) -> Result<()> {
         .field_opt("branch", branch)
         .field_opt("title", args.title.clone())
         .field_opt("head_commit", head)
+        .field_opt("parent_id", args.parent.clone())
+        .field_opt("agent_type", args.agent_type.clone())
+        .field_opt("task", args.task.clone())
+        .field_opt("prompt", args.prompt.clone())
+        .field_opt("model", args.model.clone())
         .send()?;
     let session = session_of(found);
     let id = s(&session, "id").to_owned();
     if id.is_empty() {
         return Err(Error::failed("The API did not say which session it started."));
     }
-    remember(&id)?;
+    // A subagent's session is its harness's to keep: the working copy's stays its parent's.
+    if !args.no_remember && args.parent.is_none() {
+        remember(&id)?;
+    }
     if ctx.out.structured() {
         return ctx.out.emit(&session);
     }
@@ -194,12 +203,21 @@ fn attach(ctx: &Ctx, args: SessionAttachArgs) -> Result<()> {
 
 fn end(ctx: &Ctx, args: SessionEndArgs) -> Result<()> {
     let id = required()?;
+    let result = match args.result.as_deref() {
+        Some("-") => {
+            let mut text = String::new();
+            std::io::stdin().read_to_string(&mut text)?;
+            Some(text)
+        }
+        other => other.map(str::to_owned),
+    };
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     let found = client
         .op("end_session")
         .repo(&repo)
         .arg("id", &id)
         .field_opt("reason", args.reason.clone())
+        .field_opt("result", result.filter(|text| !text.trim().is_empty()))
         .send()?;
     forget(&id);
     if ctx.out.structured() {
@@ -209,12 +227,14 @@ fn end(ctx: &Ctx, args: SessionEndArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn fetch_list(
+pub fn fetch_filtered(
     client: &Client,
     repo: &Repo,
     state: Option<&str>,
     issue: Option<u64>,
     pull: Option<u64>,
+    path: Option<&str>,
+    subagents: bool,
 ) -> Result<Vec<Value>> {
     let found = client
         .op("list_sessions")
@@ -222,6 +242,8 @@ pub fn fetch_list(
         .query_opt("state", state)
         .query_opt("issue", issue)
         .query_opt("pull", pull)
+        .query_opt("path", path)
+        .query_opt("subagents", subagents.then_some("true"))
         .send()?;
     Ok(super::items(found, "sessions"))
 }
@@ -233,7 +255,7 @@ fn list(ctx: &Ctx, args: SessionListArgs) -> Result<()> {
         SessionState::Idle => "idle",
         SessionState::Ended => "ended",
     });
-    let mut sessions = fetch_list(&client, &repo, state, args.issue, args.pull)?;
+    let mut sessions = fetch_filtered(&client, &repo, state, args.issue, args.pull, args.path.as_deref(), args.subagents)?;
     sessions.truncate(args.limit);
     if ctx.out.structured() {
         return ctx.out.emit(&Value::Array(sessions));
@@ -251,6 +273,11 @@ pub fn print_list(out: &Output, sessions: &[Value], mine: Option<&str>) -> Resul
         .map(|session| {
             let id = s(session, "id");
             let marked = if Some(id) == mine { format!("{id} *") } else { id.to_owned() };
+            // A subagent is shown under what started it.
+            let marked = match session["parent_id"].as_str() {
+                Some(_) => format!("↳ {marked} {}", s(session, "agent_type")).trim_end().to_owned(),
+                None => marked,
+            };
             vec![
                 Cell::new(marked),
                 Cell::styled(s(session, "state"), out.state(s(session, "state"))),
@@ -264,6 +291,34 @@ pub fn print_list(out: &Output, sessions: &[Value], mine: Option<&str>) -> Resul
     out.table(&["session", "state", "who", "harness", "on", "last seen"], &rows)
 }
 
+/// What `g1t session touch` says, as `touched` items.
+fn touches(args: &SessionTouchArgs) -> Vec<Value> {
+    let mut touched = Vec::new();
+    let mut add = |kind: &str, value: String| touched.push(json!({ "kind": kind, "value": value }));
+    args.file.iter().for_each(|file| add("file", file.clone()));
+    args.commit.iter().for_each(|commit| add("commit", commit.clone()));
+    args.branch.iter().for_each(|branch| add("branch", branch.clone()));
+    args.pull.iter().for_each(|pull| add("pull", pull.to_string()));
+    args.issue.iter().for_each(|issue| add("issue", issue.to_string()));
+    touched
+}
+
+fn touch(ctx: &Ctx, args: SessionTouchArgs) -> Result<()> {
+    let id = required()?;
+    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
+    let found = client
+        .op("record_session_entries")
+        .repo(&repo)
+        .arg("id", &id)
+        .field("entries", json!([]))
+        .field("touched", Value::Array(touches(&args)))
+        .send()?;
+    if ctx.out.structured() {
+        return ctx.out.emit(&found);
+    }
+    Ok(())
+}
+
 fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     let id = match args.id {
         Some(id) => id,
@@ -271,13 +326,14 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     };
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     let found = client.op("get_session").repo(&repo).arg("id", &id).send()?;
-    let entries = found
-        .get("entries")
-        .cloned()
-        .unwrap_or_else(|| json!([]));
-    let mut session = session_of(found);
+    let mut session = session_of(found.clone());
     if let Some(map) = session.as_object_mut() {
-        map.insert("entries".into(), entries);
+        map.insert("entries".into(), found.get("entries").cloned().unwrap_or_else(|| json!([])));
+        for key in ["children", "touched", "links", "skills", "root"] {
+            if let Some(value) = found.get(key) {
+                map.insert(key.into(), value.clone());
+            }
+        }
     }
     if ctx.out.structured() {
         return ctx.out.emit(&session);
@@ -298,7 +354,7 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     if let Some(seen) = session["last_seen_at"].as_str() {
         facts.push(format!("last seen {}", ago(seen)));
     }
-    println!("{}", facts.join(" · "));
+    println!("{}", facts.join(" Â· "));
     let on = place(&session);
     if !on.is_empty() {
         println!("{} {on}", out.dim("On:"));
@@ -312,6 +368,33 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     let entries = session["entries"].as_array().cloned().unwrap_or_default();
     if !entries.is_empty() {
         println!();
+    }
+    let children = session["children"].as_array().cloned().unwrap_or_default();
+    if !children.is_empty() {
+        println!("{}", out.dim("Subagents:"));
+        for child in &children {
+            let depth = if child["parent_id"].as_str() == Some(s(&session, "id")) { "  " } else { "    " };
+            let task = child["task"].as_str().unwrap_or("");
+            println!("{depth}{} {} {} {task}", s(child, "id"), out.state(s(child, "state")), s(child, "agent_type"));
+            if let Some(result) = child["result"].as_str() {
+                println!("{depth}  {}", out.dim(result.lines().next().unwrap_or("")));
+            }
+        }
+    }
+    let links = session["links"].as_array().cloned().unwrap_or_default();
+    if !links.is_empty() {
+        let named: Vec<String> = links
+            .iter()
+            .map(|link| {
+                let kind = if s(link, "kind") == "pull" { "pull " } else { "" };
+                format!("{kind}#{} {}", link["number"], s(link, "title"))
+            })
+            .collect();
+        println!("{} {}", out.dim("Worked on:"), named.join(", "));
+    }
+    let skills: Vec<String> = session["skills"].as_array().cloned().unwrap_or_default().iter().map(|skill| s(skill, "name").to_owned()).collect();
+    if !skills.is_empty() {
+        println!("{} {}", out.dim("Skills:"), skills.join(", "));
     }
     for entry in &entries {
         let kind = s(entry, "kind");
@@ -343,6 +426,25 @@ mod tests {
         assert_eq!(chosen(None, Some(path)).as_deref(), None);
         assert_eq!(chosen(None, None), None);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn touches_go_as_kinds_and_values() {
+        let args = SessionTouchArgs {
+            file: vec!["src/lib.rs".into()],
+            commit: vec![],
+            branch: vec!["12-fix".into()],
+            pull: vec![14],
+            issue: vec![],
+        };
+        assert_eq!(
+            Value::Array(touches(&args)),
+            json!([
+                { "kind": "file", "value": "src/lib.rs" },
+                { "kind": "branch", "value": "12-fix" },
+                { "kind": "pull", "value": "14" },
+            ])
+        );
     }
 
     #[test]

@@ -19,7 +19,7 @@ use crate::Work;
 use crate::rows::{PULL_COLUMNS, PullRow};
 
 /// How many sessions, decisions and events `get_work` gives at most.
-const SESSIONS: u32 = 20;
+const SESSIONS: u32 = 50;
 const DECISIONS: u32 = 20;
 const EVENTS: u32 = 20;
 
@@ -79,22 +79,31 @@ impl Work {
 
     /// Sessions on an issue or its pull requests, most recently heard from
     /// first.
+    /// Subagents are listed beside the sessions that started them, so
+    /// sibling agents on one issue see each other; so are sessions tied to
+    /// it any other way (a claim, a branch, a trailer, `#N`).
     async fn work_sessions(&self, repo_id: &str, issue: u32, pulls: &[u32]) -> Result<Vec<Session>> {
         let now = now_ms();
-        Ok(self
+        let pushed = self.branch_sessions(repo_id, pulls).await?;
+        let mut sessions: Vec<Session> = self
             .db
             .prepare(format!(
                 "SELECT {SESSION_COLUMNS} FROM sessions
-                 WHERE repo_id = ? AND (issue = ? OR pull IN (SELECT value FROM json_each(?)))
-                 ORDER BY last_seen_at DESC LIMIT ?"
+                 WHERE repo_id = ?1 AND (issue = ?2 OR pull IN (SELECT value FROM json_each(?3))
+                   OR id IN (SELECT value FROM json_each(?5))
+                   OR id IN (SELECT session_id FROM session_links WHERE repo_id = ?1
+                     AND ((kind = 'issue' AND number = ?2) OR (kind = 'pull' AND number IN (SELECT value FROM json_each(?3))))))
+                 ORDER BY state = 'ended', last_seen_at DESC LIMIT ?4"
             ))
-            .bind(&[repo_id.into(), issue.into(), serde_json::to_string(pulls)?.into(), SESSIONS.into()])?
+            .bind(&[repo_id.into(), issue.into(), serde_json::to_string(pulls)?.into(), SESSIONS.into(), serde_json::to_string(&pushed)?.into()])?
             .all()
             .await?
             .results::<SessionRow>()?
             .into_iter()
             .map(|row| row.at(now))
-            .collect())
+            .collect();
+        self.fill_subagents(&mut sessions).await?;
+        Ok(sessions)
     }
 
     /// The latest events of `types` about `numbers`, newest first.

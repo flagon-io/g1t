@@ -228,6 +228,7 @@ impl Identity {
                 ttl_seconds: Some(ACCESS_TTL_SECONDS),
                 scopes: scopes.clone(),
                 listed: false,
+                repo: None,
             })
             .await?;
         let refresh_token = format!("{REFRESH_PREFIX}{}", crypto::random_hex(32));

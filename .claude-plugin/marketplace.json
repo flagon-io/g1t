@@ -7,7 +7,7 @@
       "name": "g1t",
       "source": "./plugins/claude-code",
       "description": "Work on g1t issues from Claude Code: records your sessions on g1t, loads an issue's work context, claims and hands off work, and connects g1t's MCP server.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "development"
     }
   ]

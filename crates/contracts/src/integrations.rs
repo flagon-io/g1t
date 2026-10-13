@@ -527,9 +527,15 @@ pub struct AskPage {
 }
 
 /// `ask`: one answer, streamed as newline-delimited JSON [`AskEvent`]s:
-/// `meta` first, then `text` as it comes, then `done`, or `error` at any
-/// point. Members only. The conversation alternates, starting and ending
-/// with the person.
+/// `meta` first, then `text` as it comes and a `tool` line as each step
+/// starts and ends, then `sources` and `done`, or `error` at any point.
+/// Members only. The conversation alternates, starting and ending with the
+/// person; its turns are text only, since the steps of an answer live in
+/// that answer alone.
+///
+/// The provider reads g1t with the MCP server's own tools, as the person
+/// asking, on a read-only credential identity makes for the answer
+/// (`create_ask_token`), so it sees what they may see and changes nothing.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AskArgs {
     pub actor: User,
@@ -537,6 +543,47 @@ pub struct AskArgs {
     pub messages: Vec<AskMessage>,
     #[serde(default)]
     pub page: AskPage,
+}
+
+/// The most rounds of tool calls one answer takes before it must answer
+/// with what it has.
+pub const ASK_MAX_TOOL_ROUNDS: usize = 10;
+/// The most tool calls one answer makes, across its rounds.
+pub const ASK_MAX_TOOL_CALLS: usize = 30;
+/// The most characters of one tool's result the model is given; more is
+/// trimmed, long texts and lists first, with a note saying so.
+pub const ASK_MAX_TOOL_RESULT_CHARS: usize = 16_000;
+/// The most characters of tool results one answer gives the model in all.
+pub const ASK_MAX_TOOL_TOTAL_CHARS: usize = 120_000;
+/// How long one answer may spend calling tools, in seconds. After it, the
+/// model answers with what it has.
+pub const ASK_MAX_TOOL_SECONDS: u64 = 120;
+/// The most sources one answer lists.
+pub const ASK_MAX_SOURCES: usize = 12;
+
+/// Where a step of an answer is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskToolStatus {
+    /// Started; its result has not come.
+    Running,
+    Done,
+    /// The tool answered with a refusal or an error: `summary` says what.
+    Failed,
+    /// Ask did not run it: it is not something Ask does (it only reads, and
+    /// hands work off), or the answer had used its tool calls.
+    Refused,
+}
+
+/// A page on g1t an answer drew on.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AskSource {
+    pub title: String,
+    /// An absolute address on the site, such as
+    /// `https://g1t.sh/acme/web/pull/7`.
+    pub url: String,
+    /// Whether the answer links to it, rather than only having read it.
+    pub cited: bool,
 }
 
 /// One line of an `ask` answer.
@@ -547,6 +594,36 @@ pub enum AskEvent {
     Meta { provider: Provider, provider_label: String, model: String },
     /// The next piece of the answer.
     Text { text: String },
+    /// A step taken to answer: one of g1t's tools, run as the person
+    /// asking. Sent when it starts, `running`, and again with the same `id`
+    /// when it ends, with what it found in `summary` and the page it was
+    /// about in `link`.
+    Tool {
+        id: String,
+        /// The tool, such as `pull_request`, and its `action`, such as `list`.
+        name: String,
+        action: Option<String>,
+        /// What it does, for a person: "Read pull requests in acme/web".
+        label: String,
+        status: AskToolStatus,
+        summary: Option<String>,
+        link: Option<String>,
+    },
+    /// What the answer drew on, cited first. Sent once, before `done`.
+    Sources { sources: Vec<AskSource> },
+    /// Work Ask proposes to hand to a session in the person's own harness:
+    /// on an issue, or on a new one with `title` and `body`. Nothing has
+    /// started; the person starts it, or copies the command, from the card
+    /// the answer shows. `mode` is `plan`, `implement` or `review`.
+    Proposal {
+        id: String,
+        repo: String,
+        issue: Option<u64>,
+        title: Option<String>,
+        body: Option<String>,
+        mode: String,
+        instruction: Option<String>,
+    },
     /// The answer is complete. `stop_reason` as the provider said it, such
     /// as `end_turn`, `stop` or `max_tokens`.
     Done { stop_reason: Option<String> },
@@ -609,5 +686,33 @@ mod tests {
         );
         let page: AskPage = serde_json::from_str("{}").unwrap();
         assert_eq!(page, AskPage::default());
+    }
+
+    #[test]
+    fn ask_steps_and_sources_are_snake_case_lines() {
+        let step = AskEvent::Tool {
+            id: "t1".into(),
+            name: "pull_request".into(),
+            action: Some("list".into()),
+            label: "Read pull requests in acme/web".into(),
+            status: AskToolStatus::Done,
+            summary: Some("12 results".into()),
+            link: Some("https://g1t.sh/acme/web/pulls".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(&step).unwrap(),
+            serde_json::json!({
+                "type": "tool", "id": "t1", "name": "pull_request", "action": "list",
+                "label": "Read pull requests in acme/web", "status": "done",
+                "summary": "12 results", "link": "https://g1t.sh/acme/web/pulls",
+            })
+        );
+        let sources = AskEvent::Sources {
+            sources: vec![AskSource { title: "Fix login".into(), url: "https://g1t.sh/acme/web/pull/7".into(), cited: true }],
+        };
+        let line = serde_json::to_string(&sources).unwrap();
+        assert_eq!(line, r#"{"type":"sources","sources":[{"title":"Fix login","url":"https://g1t.sh/acme/web/pull/7","cited":true}]}"#);
+        assert_eq!(serde_json::from_str::<AskEvent>(&line).unwrap(), sources);
+        assert_eq!(serde_json::to_string(&AskToolStatus::Refused).unwrap(), r#""refused""#);
     }
 }

@@ -1373,6 +1373,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "form_urlencoded",
+ "futures-util",
  "g1t-contracts",
  "g1t-kit",
  "serde",

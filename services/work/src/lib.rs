@@ -2620,6 +2620,7 @@ impl Work {
             );
         }
         // What each now changes, so overlaps show while the work is under way.
+        let mut moved_pulls = Vec::new();
         for moved in &pulls {
             if let Some(mut pull) = self.pull_by_id(&moved.id).await? {
                 pull.files = self.refresh_files(&pull).await?;
@@ -2627,7 +2628,14 @@ impl Work {
                 self.refresh_code_owners(&pull).await;
                 // A new overlap with another pull request is announced.
                 self.announce_overlaps(&pull, event.actor.clone()).await;
+                moved_pulls.push(pull);
             }
+        }
+        // The harness sessions that pushed the branch, or that its new
+        // commits name in trailers, are tied to its pull requests.
+        if let Some(branch) = git_ref.strip_prefix("refs/heads/") {
+            let commits = event.data["commits"].as_u64().and_then(|n| u32::try_from(n).ok());
+            self.link_push(repo_id, branch, after, commits, &moved_pulls).await;
         }
         // A merge that was waiting for this push to bring it up to date.
         for moved in &pulls {

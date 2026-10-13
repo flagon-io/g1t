@@ -169,6 +169,7 @@ impl Identity {
                 // be narrowed under Settings, Access tokens like the rest.
                 scopes: Some(g1t_contracts::scopes::everything().iter().map(|scope| scope.as_str().to_owned()).collect()),
                 listed: false,
+                repo: None,
             })
             .await?;
         Ok(DeviceClaim::Approved {

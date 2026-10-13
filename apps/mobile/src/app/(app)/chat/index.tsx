@@ -130,7 +130,7 @@ function Conversation({ entry }: { entry: ChatSidebarEntry }) {
     >
       <View>
         {dm && other ? (
-          <Avatar name={other.display_name} uri={other.avatar ? `${server.site}/avatars/${other.avatar}` : null} agent={other.kind === "agent"} size={40} />
+          <Avatar name={other.display_name} uri={other.avatar ? `${server.site}/avatars/${other.avatar}` : null} agent={other.kind !== "user"} size={40} />
         ) : (
           <View style={[styles.icon, { backgroundColor: colors.raised }]}>
             {channel.private ? <Lock size={18} color={colors.muted} /> : <Hash size={18} color={colors.muted} />}

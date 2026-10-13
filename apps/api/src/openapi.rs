@@ -66,7 +66,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     (
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
-        &[Op::GetWorkspace, Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace],
+        &[Op::GetWorkspace, Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace, Op::GetWorkspaceActivity],
     ),
     (
         "Personal access tokens",
@@ -115,6 +115,8 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ListRepos,
             Op::CreateRepo,
             Op::GetRepo,
+            Op::GetContents,
+            Op::ListCommits,
             Op::Archives(ArchiveOp::DownloadTarball),
             Op::Archives(ArchiveOp::DownloadZipball),
             Op::UpdateRepo,
@@ -386,7 +388,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Sessions",
-        "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to an issue and a pull request, and recording prompts, reasoning and the tools that ran. A pull request's session shows what was recorded on it.",
+        "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to an issue and a pull request, and recording prompts, reasoning, the tools that ran, the skills used and what it touched. Each subagent is a session of its own under the one that started it. A pull request's session shows what was recorded on it. A session can also be started on an issue in your own Claude, on the workspace's Anthropic account.",
         &[
             Op::Coordination(CoordinationOp::StartSession),
             Op::Coordination(CoordinationOp::UpdateSession),
@@ -394,6 +396,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Coordination(CoordinationOp::GetSession),
             Op::Coordination(CoordinationOp::ListSessions),
             Op::Coordination(CoordinationOp::RecordSessionEntries),
+            Op::Coordination(CoordinationOp::StartAgentSession),
             Op::ReadSession,
             Op::RecordSession,
         ],
@@ -776,6 +779,9 @@ fn title(op: Op) -> &'static str {
         Op::UnpinProject => "Unpin a project",
         Op::ReorderPinnedProjects => "Reorder your pinned projects",
         Op::ListProjects => "List a workspace's projects",
+        Op::GetWorkspaceActivity => "Get a workspace's activity",
+        Op::GetContents => "Get repository contents",
+        Op::ListCommits => "List commits",
         Op::GetProject => "Get a project",
         Op::UpdateProject => "Update a project",
         Op::ListTeams => "List teams",

@@ -785,7 +785,8 @@ class Docs {
         const key = memberKey(m.principal);
         if (key?.kind === "team") return { key: m.principal, kind: "team", name: key.id, display_name: `@${workspace.slug}/${key.id}`, avatar: null, role: m.role };
         const p = people.get(m.principal)!;
-        return { key: m.principal, kind: p.kind, name: p.name, display_name: p.display_name, avatar: p.avatar, avatar_seed: p.avatar_seed ?? null, role: m.role };
+        // Spaces hold people (and agents of the past); never g1t itself.
+        return { key: m.principal, kind: p.kind === "user" ? "user" : "agent", name: p.name, display_name: p.display_name, avatar: p.avatar, avatar_seed: p.avatar_seed ?? null, role: m.role };
       })
       .sort((x, y) => RANK[y.role] - RANK[x.role] || x.display_name.localeCompare(y.display_name));
   }

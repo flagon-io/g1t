@@ -1,145 +1,193 @@
-import { ArrowUp, CircleAlert, RotateCcw, Settings2, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { ArrowUp, MessageSquare, RotateCcw, Settings2, Square } from "lucide-react";
+import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
-import { ASK_MAX_MESSAGE_CHARS, type AskEvent, type AskSetup } from "@g1t/contracts";
+import { type AskSetup, type ChatLiveEvent, type ChatMessage, type Result } from "@g1t/contracts";
 
-import { EMPTY_ASK, type Turn, askPage, askReducer, cutOff, history, readLines } from "../lib/ask";
-import { MessageText, type TextContext } from "./chat/text";
+import { askPage, askWhere } from "../lib/ask";
+import { anyAnswering, applyLive, fromG1t, suggestions } from "../lib/g1t-chat";
+import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "./ai-elements/conversation";
+import { Message, MessageContent } from "./ai-elements/message";
+import type { ResponseContext } from "./ai-elements/response";
+import { Suggestion, Suggestions } from "./ai-elements/suggestion";
+import { G1tAnswer } from "./chat/answer";
+import { useChatLive } from "./chat/live";
 import { MarkGlyph } from "./logo";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
+import { Kbd } from "./ui/kbd";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { Skeleton } from "./ui/skeleton";
+import { Textarea } from "./ui/textarea";
 
 /**
- * Ask g1t: a conversation with g1t about your work, from the top bar. The
- * answers come from the AI provider and model an owner chose for the
- * workspace (Integrations → Your AI providers), on the workspace's own key:
- * g1t hosts no model for it. Each question goes to `-/ask`
- * (routes/workspace/ask.ts) with the page you are on, and the answer
- * streams back.
+ * Ask g1t: a conversation with g1t about your work, from the top bar. It
+ * is your direct message with @g1t in Chat: the same messages, the same
+ * answers, whichever you write in. The answers come from the AI provider
+ * and model an owner chose for the workspace (Integrations → Your AI
+ * providers → Ask g1t), on the workspace's own key: g1t hosts no model.
  *
- * The conversation lives in this browser tab (session storage), so it
- * survives moving between pages and reloading, and goes with the tab.
- * Keeping conversations on the server comes later.
+ * Each question carries the page you are on, which g1t is told. The chat
+ * service has g1t answer, and the answer streams into the direct message
+ * over its live socket, so it shows here and in Chat at once. The panel
+ * shows the current conversation, since the latest "New conversation";
+ * everything before it stays in Chat.
  */
 
 type Setup = AskSetup & { owner: boolean };
 type SetupAnswer = { ok: boolean; value?: AskSetup; error?: { message: string }; owner: boolean };
+type Shown = ChatMessage & { pending?: boolean; failed?: boolean };
 
-const storageKey = (slug: string) => `g1t:ask:${slug}`;
+const channelKey = (slug: string) => `g1t:ask-dm:${slug}`;
 
-function load(slug: string) {
+function rememberedChannel(slug: string): string | null {
   try {
-    const kept = sessionStorage.getItem(storageKey(slug));
-    return kept ? (JSON.parse(kept) as unknown) : null;
+    return sessionStorage.getItem(channelKey(slug));
   } catch {
     return null;
   }
 }
 
-function save(slug: string, value: unknown) {
+function rememberChannel(slug: string, id: string) {
   try {
-    sessionStorage.setItem(storageKey(slug), JSON.stringify(value));
+    sessionStorage.setItem(channelKey(slug), id);
   } catch {
-    // Storage full or blocked: the conversation stays for this page.
+    // Not kept: it is asked for again next time.
   }
 }
 
-/**
- * The conversation and what it can do. It belongs to the top bar's button,
- * not the panel, so closing the panel keeps an answer coming.
- */
-function useAskConversation(slug: string) {
-  const { pathname } = useLocation();
-  const [state, dispatch] = useReducer(askReducer, EMPTY_ASK);
-  const [draft, setDraft] = useState("");
-  const controller = useRef<AbortController | null>(null);
-  const restored = useRef(false);
-
-  // The conversation kept in this tab, once; then kept as it changes.
-  useEffect(() => {
-    if (!restored.current) {
-      restored.current = true;
-      const kept = load(slug);
-      if (kept) dispatch({ type: "restore", state: kept as never });
-      return;
-    }
-    save(slug, state);
-  }, [slug, state]);
-
-  // Leaving the workspace stops an answer still coming.
-  useEffect(() => () => controller.current?.abort(), []);
-
-  const ask = useCallback(
-    async (question: string) => {
-      const text = question.trim();
-      if (!text || state.busy) return;
-      const messages = history(state.turns, text);
-      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      dispatch({ type: "ask", question: text, id });
-      setDraft("");
-      const abort = new AbortController();
-      controller.current = abort;
-      let ended = false;
-      const take = (events: AskEvent[]) => {
-        for (const event of events) {
-          dispatch({ type: "event", event });
-          if (event.type === "done" || event.type === "error") ended = true;
-        }
-      };
-      try {
-        const response = await fetch(`/${slug}/-/ask`, {
-          method: "POST",
-          headers: { "content-type": "application/json", accept: "application/x-ndjson" },
-          body: JSON.stringify({ messages, page: askPage(pathname) }),
-          signal: abort.signal,
-        });
-        if (!response.body) throw new Error("no body");
-        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-        let rest = "";
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          const read = readLines(rest, value);
-          rest = read.rest;
-          take(read.events);
-        }
-        take(readLines(rest, "\n").events);
-        if (!ended) dispatch({ type: "failed", message: "The answer broke off. Ask again." });
-      } catch {
-        if (abort.signal.aborted) dispatch({ type: "stop" });
-        else dispatch({ type: "failed", message: "Ask could not be reached. Check your connection and ask again." });
-      } finally {
-        if (controller.current === abort) controller.current = null;
-      }
-    },
-    [pathname, slug, state.busy, state.turns],
-  );
-
-  const stop = useCallback(() => {
-    controller.current?.abort();
-    dispatch({ type: "stop" });
-  }, []);
-
-  const fresh = useCallback(() => {
-    controller.current?.abort();
-    dispatch({ type: "reset" });
-    setDraft("");
-  }, []);
-
-  return { state, draft, setDraft, ask, stop, fresh };
+async function chatApi<T>(slug: string, body: Record<string, unknown>): Promise<Result<T>> {
+  try {
+    const response = await fetch(`/${slug}/-/chat/api`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return (await response.json()) as Result<T>;
+  } catch {
+    return { ok: false, error: { code: "conflict", message: "g1t could not be reached. Check your connection and try again." } };
+  }
 }
 
-type Conversation = ReturnType<typeof useAskConversation>;
+/** Oldest first, the newest message from each id. */
+function byId(list: Shown[]): Shown[] {
+  return [...new Map(list.map((m) => [m.id, m])).values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
+ * The viewer's direct message with @g1t, as the panel shows it. It belongs
+ * to the top bar's button, not the panel, so what was said stays while the
+ * panel is closed; the answer itself is kept by chat either way.
+ */
+function useG1tConversation(slug: string, open: boolean) {
+  const [channelId, setChannelId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Shown[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const opening = useRef<Promise<string | null> | null>(null);
+
+  const channel = useCallback(async (): Promise<string | null> => {
+    if (channelId) return channelId;
+    opening.current ??= (async () => {
+      const remembered = rememberedChannel(slug);
+      if (remembered) return remembered;
+      const opened = await chatApi<{ channel: { id: string } }>(slug, { intent: "g1t_dm" });
+      if (!opened.ok) {
+        setProblem(opened.error.message);
+        return null;
+      }
+      rememberChannel(slug, opened.value.channel.id);
+      return opened.value.channel.id;
+    })().finally(() => {
+      opening.current = null;
+    });
+    const id = await opening.current;
+    if (id) setChannelId(id);
+    return id;
+  }, [channelId, slug]);
+
+  const load = useCallback(async () => {
+    const id = await channel();
+    if (!id) return;
+    try {
+      const response = await fetch(`/${slug}/-/chat/api?channel=${encodeURIComponent(id)}&limit=60`, { headers: { accept: "application/json" } });
+      const page = (await response.json()) as Result<{ messages: ChatMessage[] }>;
+      if (page.ok) {
+        setMessages((now) => byId([...now.filter((m) => m.pending), ...page.value.messages.filter((m) => !m.deleted_at && !m.thread_root)]));
+        setProblem(null);
+      } else if (page.error.code === "not_found") {
+        // Kept from another session that no longer has it: open it again.
+        try {
+          sessionStorage.removeItem(channelKey(slug));
+        } catch {
+          // Nothing kept.
+        }
+        setChannelId(null);
+      } else setProblem(page.error.message);
+    } catch {
+      setProblem("g1t could not be reached. Check your connection and try again.");
+    }
+    setLoaded(true);
+  }, [channel, slug]);
+
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
+
+  const onEvent = useCallback((event: ChatLiveEvent) => {
+    if (!channelId) return;
+    setMessages((now) => applyLive(now, event, channelId) as Shown[]);
+  }, [channelId]);
+
+  const ask = useCallback(
+    async (text: string, pathname: string) => {
+      const body = text.trim();
+      if (!body) return;
+      const id = await channel();
+      if (!id) return;
+      const pendingId = `~pending-${Date.now().toString(36)}`;
+      const pending: Shown = {
+        id: pendingId,
+        channel_id: id,
+        author: { kind: "user", id: "", name: "", display_name: "", avatar: null, role: null },
+        kind: "text",
+        body,
+        card: null,
+        thread_root: null,
+        reply_count: 0,
+        last_reply_at: null,
+        created_at: new Date().toISOString(),
+        edited_at: null,
+        deleted_at: null,
+        pending: true,
+      };
+      setMessages((now) => [...now, pending]);
+      const saved = await chatApi<ChatMessage>(slug, { intent: "post", channel_id: id, body, page: askPage(pathname) });
+      setMessages((now) => (saved.ok ? byId([...now.filter((m) => m.id !== pendingId), saved.value]) : now.map((m) => (m.id === pendingId ? { ...m, failed: true } : m))));
+      // The answer arrives over the socket; should it have opened late, ask once more.
+      if (saved.ok) setTimeout(() => void load(), 1_500);
+    },
+    [channel, slug, load],
+  );
+
+  const act = useCallback(
+    async (intent: "g1t_stop" | "g1t_reset" | "g1t_retry") => {
+      const id = await channel();
+      if (!id) return;
+      const done = await chatApi<ChatMessage | null>(slug, { intent, channel_id: id });
+      if (!done.ok) setProblem(done.error.message);
+      else if (intent === "g1t_reset" && done.value) setMessages((now) => byId([...now, done.value as ChatMessage]));
+    },
+    [channel, slug],
+  );
+
+  return { channelId, messages, loaded, problem, ask, act, load, onEvent };
+}
+
+type G1tConversation = ReturnType<typeof useG1tConversation>;
 
 /** The top bar's Ask: the lavender pixel 1 beside its words. Opens the conversation beside the page. */
 export function AskButton({ slug }: { slug: string }) {
   const [open, setOpen] = useState(false);
-  const conversation = useAskConversation(slug);
+  const conversation = useG1tConversation(slug, open);
+  const busy = anyAnswering(conversation.messages);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <Hint label="Ask g1t about your work">
@@ -150,19 +198,34 @@ export function AskButton({ slug }: { slug: string }) {
           </Button>
         </SheetTrigger>
       </Hint>
-      <SheetContent side="right" className="sm:max-w-lg">
+      <SheetContent
+        side="right"
+        className="sm:max-w-xl"
+        // Esc stops an answer still coming first; pressed again, it closes the panel.
+        onEscapeKeyDown={(event) => {
+          if (!busy) return;
+          event.preventDefault();
+          void conversation.act("g1t_stop");
+        }}
+      >
         <AskPanel slug={slug} open={open} conversation={conversation} />
       </SheetContent>
     </Sheet>
   );
 }
 
-function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; conversation: Conversation }) {
+/** The live socket of the direct message, while the panel is open. */
+function LiveSocket({ slug, channelId, onEvent, onReconnect }: { slug: string; channelId: string; onEvent: (event: ChatLiveEvent) => void; onReconnect: () => void }) {
+  useChatLive(slug, channelId, onEvent, onReconnect);
+  return null;
+}
+
+function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; conversation: G1tConversation }) {
   const { pathname } = useLocation();
-  const { state, draft, setDraft, ask, stop } = conversation;
+  const { channelId, messages, loaded, problem, ask, act, load, onEvent } = conversation;
   const [setup, setSetup] = useState<Setup | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
-  const end = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
 
   // What Ask answers with, each time it opens: an owner may have changed it.
@@ -188,52 +251,75 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
     if (open) requestAnimationFrame(() => input.current?.focus());
   }, [open]);
 
-  // Keep the newest words in view as they come.
-  const last = state.turns.at(-1);
+  // ⌘K or Ctrl+K, while the panel is open, goes to its box rather than the command palette.
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [state.turns.length, last?.content.length]);
+    if (!open) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        input.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [open]);
 
-  const fresh = () => {
-    conversation.fresh();
-    input.current?.focus();
+  // The current conversation: what came after the latest "New conversation".
+  const shown = useMemo(() => {
+    let start = 0;
+    messages.forEach((m, index) => {
+      if (m.reset && fromG1t(m)) start = index + 1;
+    });
+    return messages.slice(start);
+  }, [messages]);
+  const earlier = shown.length < messages.length;
+  const busy = anyAnswering(messages);
+  const ready = setup != null && setup.problem == null;
+  const where = askPage(pathname);
+  const lastAnswer = [...shown].reverse().find((m) => !m.pending);
+  const context = useMemo<ResponseContext>(() => ({ slug, repo: where.repo ?? null }), [slug, where.repo?.namespace, where.repo?.name]);
+
+  const send = (text: string) => {
+    if (!ready || busy || !text.trim()) return;
+    setDraft("");
+    void ask(text, pathname);
   };
-
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void ask(draft);
+    send(draft);
   };
-
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      void ask(draft);
+      send(draft);
     }
   };
-
-  const ready = setup != null && setup.problem == null;
-  const context: TextContext = useMemo(() => ({ slug, me: null, channels: new Set(), project: null }), [slug]);
-  const where = askPage(pathname);
+  const fresh = () => {
+    void act("g1t_reset");
+    input.current?.focus();
+  };
 
   return (
     <>
-      <SheetHeader className="gap-1">
+      {open && channelId && <LiveSocket slug={slug} channelId={channelId} onEvent={onEvent} onReconnect={() => void load()} />}
+      <SheetHeader className="gap-1 border-b border-line pb-3">
         <SheetTitle className="flex items-center gap-2">
           <MarkGlyph className="h-3.5" />
           Ask g1t
         </SheetTitle>
-        <SheetDescription className="sr-only">A conversation with g1t about your work in {slug}.</SheetDescription>
-        <div className="flex min-h-6 flex-wrap items-center gap-2 text-xs text-muted">
+        <SheetDescription className="sr-only">A conversation with g1t about your work in {slug}. It is your direct message with g1t in Chat.</SheetDescription>
+        <div className="flex min-h-7 flex-wrap items-center gap-2 text-xs text-muted">
           {setup == null && !setupError ? (
             <Skeleton className="h-4 w-40" />
           ) : ready ? (
-            <span className="truncate">
+            <span className="min-w-0 truncate">
               Answers with {setup.connection_name} · <span className="font-mono">{setup.model}</span>
             </span>
           ) : (
             <span>Not set up yet</span>
           )}
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ml-auto flex items-center gap-0.5">
             {setup?.owner && (
               <Hint label="Choose the provider and model">
                 <Button asChild variant="ghost" size="icon-xs" aria-label="Choose the provider and model">
@@ -243,55 +329,113 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
                 </Button>
               </Hint>
             )}
-            <Button variant="ghost" size="xs" onClick={fresh} disabled={state.turns.length === 0}>
-              <RotateCcw size={13} />
-              New conversation
-            </Button>
+            {channelId && (
+              <Hint label="Open this conversation in Chat">
+                <Button asChild variant="ghost" size="icon-xs" aria-label="Open in Chat">
+                  <Link to={`/${slug}/-/chat/dm/${channelId}`}>
+                    <MessageSquare size={14} />
+                  </Link>
+                </Button>
+              </Hint>
+            )}
+            <Hint label="New conversation: g1t reads only what comes next">
+              <Button variant="ghost" size="xs" onClick={fresh} disabled={shown.length === 0}>
+                <RotateCcw size={13} />
+                New conversation
+              </Button>
+            </Hint>
           </span>
         </div>
       </SheetHeader>
 
-      <div className="min-h-0 grow overflow-y-auto px-5 py-4" aria-live="polite" aria-busy={state.busy}>
-        {setupError && (
-          <Alert tone="danger">
-            <AlertDescription className="text-danger">{setupError}</AlertDescription>
-          </Alert>
-        )}
-        {setup && setup.problem && <NotSetUp slug={slug} setup={setup} />}
-        {state.turns.length === 0 && ready && <Welcome where={where.repo ? `${where.repo.namespace}/${where.repo.name}` : null} />}
-        <ol className="space-y-5">
-          {state.turns.map((turn) => (
-            <li key={turn.id}>{turn.role === "user" ? <Question turn={turn} /> : <Answer turn={turn} context={context} />}</li>
-          ))}
-        </ol>
-        <div ref={end} />
-      </div>
+      <Conversation aria-busy={busy}>
+        <ConversationContent>
+          {setupError && (
+            <Alert tone="danger">
+              <AlertDescription className="text-danger">{setupError}</AlertDescription>
+            </Alert>
+          )}
+          {problem && (
+            <Alert tone="danger">
+              <AlertDescription className="text-danger">{problem}</AlertDescription>
+            </Alert>
+          )}
+          {setup && setup.problem && <NotSetUp slug={slug} setup={setup} />}
+          {earlier && channelId && (
+            <p className="text-center text-xs text-faint">
+              Earlier conversations are in{" "}
+              <Link to={`/${slug}/-/chat/dm/${channelId}`} className="text-accent hover:underline">
+                your direct message with g1t
+              </Link>
+              .
+            </p>
+          )}
+          {!loaded && open ? (
+            <div className="space-y-3" aria-busy="true">
+              <Skeleton className="ml-auto h-9 w-2/3 rounded-2xl" />
+              <Skeleton className="h-4 w-11/12" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ) : shown.length === 0 && ready ? (
+            <ConversationEmptyState className="pt-16">
+              <MarkGlyph className="h-7" />
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-fg">Ask about your work</h3>
+                <p className="max-w-sm text-sm text-muted">
+                  {where.repo
+                    ? `g1t is told you're in ${where.repo.namespace}/${where.repo.name}${where.issue ? `, on issue #${where.issue}` : where.pull ? `, on pull request #${where.pull}` : ""}.`
+                    : "g1t is told which page you're on, and reads the issue or pull request in front of you."}
+                </p>
+              </div>
+              <Suggestions className="mt-3 max-w-md justify-center">
+                {suggestions(where).map((text) => (
+                  <Suggestion key={text} suggestion={text} onPick={send} />
+                ))}
+              </Suggestions>
+            </ConversationEmptyState>
+          ) : (
+            shown.map((m) =>
+              fromG1t(m) ? (
+                m.reset ? null : (
+                  <Message key={m.id} from="assistant">
+                    <G1tAnswer message={m} context={context} onRetry={!busy && lastAnswer?.id === m.id ? () => void act("g1t_retry") : undefined} />
+                  </Message>
+                )
+              ) : (
+                <Message key={m.id} from="user">
+                  <MessageContent className={m.pending && !m.failed ? "opacity-70" : undefined}>{m.body}</MessageContent>
+                  {m.failed && <span className="text-xs text-danger">Not sent. Ask again.</span>}
+                </Message>
+              ),
+            )
+          )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
-      <form onSubmit={submit} className="border-t border-line px-4 py-3">
-        <div className="rounded-lg border border-line bg-bg focus-within:border-accent-dim focus-within:ring-2 focus-within:ring-accent/25">
+      <form onSubmit={submit} className="border-t border-line px-4 pt-3 pb-3">
+        <div className="rounded-xl border border-line bg-bg transition-shadow focus-within:border-accent-dim focus-within:ring-2 focus-within:ring-accent/25">
           <label htmlFor="ask-g1t" className="sr-only">
             Ask g1t
           </label>
-          <textarea
+          <Textarea
             id="ask-g1t"
             ref={input}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
             rows={2}
-            maxLength={ASK_MAX_MESSAGE_CHARS}
+            maxLength={16_000}
             disabled={!ready}
             placeholder={ready ? "Ask about this page, a repository, or your work" : "Ask is not set up yet"}
-            className="block max-h-48 min-h-14 w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm text-fg placeholder:text-faint focus:outline-none disabled:cursor-not-allowed"
+            className="max-h-48 min-h-14 resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 shadow-none focus-visible:ring-0"
           />
           <div className="flex items-center gap-2 px-2 pb-2">
-            <span className="truncate pl-1 text-xs text-faint">
-              {where.issue ? `On issue #${where.issue}` : where.pull ? `On pull request #${where.pull}` : where.repo ? `In ${where.repo.name}` : null}
-            </span>
+            <span className="truncate pl-1 text-xs text-faint">{askWhere(where)}</span>
             <span className="ml-auto" />
-            {state.busy ? (
-              <Hint label="Stop the answer">
-                <Button type="button" variant="outline" size="icon-sm" onClick={stop} aria-label="Stop">
+            {busy ? (
+              <Hint label="Stop the answer (Esc)">
+                <Button type="button" variant="outline" size="icon-sm" onClick={() => void act("g1t_stop")} aria-label="Stop">
                   <Square size={12} className="fill-current" />
                 </Button>
               </Hint>
@@ -304,8 +448,11 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
             )}
           </div>
         </div>
-        <p className="mt-2 px-1 text-[0.6875rem] text-faint">
-          Answers come from your workspace's own AI provider and can be wrong. Kept in this tab only.
+        <p className="mt-2 px-1 text-[0.6875rem] leading-relaxed text-faint">
+          Answers come from your workspace&apos;s own AI provider and can be wrong. Kept in your direct message with g1t.{" "}
+          <span className="whitespace-nowrap max-sm:hidden">
+            <Kbd>Shift</Kbd> <Kbd>Enter</Kbd> for a new line.
+          </span>
         </p>
       </form>
     </>
@@ -314,8 +461,8 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
 
 function NotSetUp({ slug, setup }: { slug: string; setup: Setup }) {
   return (
-    <Alert tone="info" className="mb-4">
-      <AlertTitle>Ask needs one of your workspace's AI providers</AlertTitle>
+    <Alert tone="info">
+      <AlertTitle>Ask needs one of your workspace&apos;s AI providers</AlertTitle>
       <AlertDescription>
         <p>{setup.problem}</p>
         <p className="mt-2">
@@ -330,56 +477,5 @@ function NotSetUp({ slug, setup }: { slug: string; setup: Setup }) {
         </p>
       </AlertDescription>
     </Alert>
-  );
-}
-
-function Welcome({ where }: { where: string | null }) {
-  return (
-    <div className="mb-4 rounded-lg border border-dashed border-line px-4 py-5 text-sm text-muted">
-      <p className="font-medium text-fg">Ask about your work</p>
-      <p className="mt-1">
-        g1t tells the model which page you are on{where ? `, here ${where}` : ""}, and the issue or pull request you are looking at, so you can ask
-        about it directly.
-      </p>
-    </div>
-  );
-}
-
-function Question({ turn }: { turn: Turn }) {
-  return (
-    <div className="ml-auto w-fit max-w-[85%] rounded-lg bg-raised px-3 py-2 text-[0.9375rem] leading-[1.55] wrap-break-word whitespace-pre-wrap text-fg">
-      {turn.content}
-    </div>
-  );
-}
-
-function Answer({ turn, context }: { turn: Turn; context: TextContext }) {
-  const waiting = turn.status === "streaming" && !turn.content;
-  return (
-    <div className="space-y-2">
-      {waiting ? (
-        <div className="flex items-center gap-2 text-sm text-muted" role="status">
-          <MarkGlyph className="h-3 animate-pulse motion-reduce:animate-none" />
-          Thinking…
-        </div>
-      ) : (
-        turn.content && <MessageText body={turn.content} context={context} />
-      )}
-      {turn.status === "error" && (
-        <Alert tone="danger" className="flex items-start gap-2">
-          <CircleAlert size={14} className="mt-0.5 shrink-0" />
-          <span>{turn.error}</span>
-        </Alert>
-      )}
-      <div className="flex flex-wrap items-center gap-1.5 text-xs text-faint">
-        {turn.provider && (
-          <Badge className="px-1.5 py-0 font-normal">
-            {turn.provider} · <span className="font-mono">{turn.model}</span>
-          </Badge>
-        )}
-        {turn.status === "stopped" && <span>Stopped</span>}
-        {turn.status === "done" && cutOff(turn) && <span>Cut off at the length limit</span>}
-      </div>
-    </div>
   );
 }

@@ -901,6 +901,12 @@ g1t session start [OPTIONS]
 | `--harness-session-id <ID>` | The harness's own id for the run, which makes starting again return the same session. |
 | `-t, --title <TITLE>` |  |
 | `-b, --branch <BRANCH>` | The branch it works on; the current one when left out. |
+| `--parent <SESSION>` | For a subagent: the session that started it (ses_…). |
+| `--agent-type <AGENT_TYPE>` | For a subagent: its kind (Explore, security-reviewer). |
+| `--task <TASK>` | For a subagent: the task it was given, in a few words. |
+| `--prompt <PROMPT>` | For a subagent: the prompt its parent gave it. |
+| `--model <MODEL>` | The model it runs on. |
+| `--no-remember` | Do not remember it as this working copy's session (a subagent's, kept by its harness). |
 
 ```text
 The id is kept in .git/g1t/session (each worktree has its own); G1T_SESSION overrides it.
@@ -930,7 +936,7 @@ g1t session log [OPTIONS] <TEXT>
 | Argument or flag | |
 | --- | --- |
 | `<TEXT>` | What to record; - reads it from stdin. |
-| `-k, --kind <KIND>` | One of `note`, `prompt`, `message`, `tool-call`. Default: `note`. |
+| `-k, --kind <KIND>` | One of `note`, `prompt`, `message`, `tool-call`, `skill`. Default: `note`. |
 | `--tool <TOOL>` | The tool, for a tool_call. |
 | `--key <KEY>` | A key that makes recording it again do nothing. |
 
@@ -964,6 +970,7 @@ g1t session end [OPTIONS]
 | Argument or flag | |
 | --- | --- |
 | `-r, --reason <REASON>` | Why it ended: done, abandoned, handed_off... |
+| `--result <RESULT>` | What it reported when it finished (a subagent's final message); - reads it from stdin. |
 
 Calls [`end_session`](/reference/api/sessions/end-session/).
 
@@ -981,6 +988,8 @@ g1t session list [OPTIONS]
 | `-i, --issue <ISSUE>` |  |
 | `-p, --pull <PULL>` |  |
 | `-L, --limit <LIMIT>` | Default: `20`. |
+| `--path <PATH>` | Only sessions that touched this file, or any under it when it ends in /. |
+| `--subagents` | List subagents too, under the sessions that started them. |
 
 Calls [`list_sessions`](/reference/api/sessions/list-sessions/).
 
@@ -997,6 +1006,29 @@ g1t session view [OPTIONS] [ID]
 | `[ID]` | The session's id (ses_…); the current one when left out. |
 
 Calls [`get_session`](/reference/api/sessions/get-session/).
+
+### g1t session touch
+
+Say what the current session touched: files, commits, branches, pull requests, issues.
+
+```text
+g1t session touch [OPTIONS] <--file <FILE>|--commit <COMMIT>|--branch <BRANCH>|--pull <PULL>|--issue <ISSUE>>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `--file <FILE>` | A file it wrote, from the repository's root. Repeat for more. |
+| `--commit <COMMIT>` | A commit it made. |
+| `--branch <BRANCH>` | A branch it pushed. |
+| `--pull <PULL>` | A pull request it opened. |
+| `--issue <ISSUE>` | An issue it named. |
+
+```text
+Each is kept once. A file another active session touched too (a sibling subagent's included)
+is an overlap.detected event for both. Pull requests and issues tie the session to them.
+```
+
+Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/).
 
 ## g1t work
 
@@ -1128,6 +1160,36 @@ With --json, each event is one JSON object on a line of its own.
 ```
 
 Calls [`list_events`](/reference/api/repositories/list-events/).
+
+### g1t work dispatch
+
+Start work on an issue in a session on your own Claude, or print the Claude Code command for it.
+
+```text
+g1t work dispatch [OPTIONS] <NUMBER|--title <TITLE>>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[NUMBER]` | The issue's number. |
+| `--title <TITLE>` | Open a new issue with this title and work on it. |
+| `--body <BODY>` | The new issue's description. |
+| `-i, --instruction <INSTRUCTION>` | What to do beyond what the issue says. |
+| `-m, --mode <MODE>` | What kind of work. One of `plan`, `implement`, `review`. |
+| `--handoff` | Print the Claude Code command to run yourself; start nothing. |
+| `--managed` | Start it on the workspace's Anthropic account, or fail. |
+
+```text
+With the workspace's Anthropic connection, a Claude Managed Agents session starts on that
+account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
+to run with g1t's plugin, whose session attaches to the issue as it starts.
+Examples:
+  g1t work dispatch 12
+  g1t work dispatch 12 --mode plan --instruction "Keep the old flag"
+  g1t work dispatch --title "Add a healthcheck" --handoff
+```
+
+Calls [`start_agent_session`](/reference/api/sessions/start-agent-session/).
 
 ## g1t why
 

@@ -525,6 +525,8 @@ export function workClient(service: ServiceBinding): WorkApi {
         state: filter.state ?? null,
         issue: filter.issue ?? null,
         pull: filter.pull ?? null,
+        path: filter.path ?? null,
+        subagents: filter.subagents ?? false,
       }),
     getWorkSession: (repo, id, viewer, afterSeq = 0) =>
       call("get_work_session", { repo, id, viewer, after_seq: afterSeq }),

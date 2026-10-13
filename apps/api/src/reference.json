@@ -2256,7 +2256,52 @@
       "ended_at": null,
       "end_reason": null
     },
-    "notes": "Idempotent on `harness_session_id`: a second start with it returns this session, so call it from a hook without checking first. `state` is `active`, `idle` (no heartbeat for 15 minutes) or `ended` (ended, or no heartbeat for 2 hours: `end_reason` `timed_out`). See [Sessions](/guides/sessions/)."
+    "notes": "Idempotent on `harness_session_id`: a second start with it returns this session, so call it from a hook without checking first. `state` is `active`, `idle` (no heartbeat for 15 minutes) or `ended` (ended, or no heartbeat for 2 hours: `end_reason` `timed_out`). A subagent gives `parent_id`, `agent_type`, `task` and `prompt`. See [Sessions](/guides/sessions/)."
+  },
+  "start_agent_session": {
+    "request": {
+      "issue": 12,
+      "mode": "implement",
+      "instruction": "Keep the old greeting behind a flag."
+    },
+    "response": {
+      "issue": 12,
+      "session": {
+        "id": "ses_01m4c9a8b7c6d5e4f3g2h1j0k9",
+        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+        "issue": 12,
+        "pull": null,
+        "branch": null,
+        "actor": {
+          "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+          "username": "syntaqx"
+        },
+        "harness": "claude_managed_agents",
+        "harness_session_id": "sesn_011CZkZAtmR3yMPDzynEDxu7",
+        "title": "#12 Make the greeting name the caller",
+        "state": "active",
+        "head_commit": null,
+        "started_at": "2026-10-12T15:10:02.117Z",
+        "last_seen_at": "2026-10-12T15:10:02.117Z",
+        "ended_at": null,
+        "end_reason": null,
+        "parent_id": null,
+        "agent_type": null,
+        "task": null,
+        "prompt": null,
+        "result": null,
+        "model": "claude-opus-5-5",
+        "subagents": 0
+      },
+      "session_url": "https://g1t.sh/syntaqx/hello/work/sessions/ses_01m4c9a8b7c6d5e4f3g2h1j0k9",
+      "provider": "anthropic",
+      "provider_session_id": "sesn_011CZkZAtmR3yMPDzynEDxu7",
+      "provider_session_url": "https://platform.claude.com/workspaces/default/sessions/sesn_011CZkZAtmR3yMPDzynEDxu7",
+      "handoff": false,
+      "command": null,
+      "prompt": "Work on issue #12 in syntaqx/hello: Make the greeting name the caller.\n\n…"
+    },
+    "notes": "Runs on the workspace's own Anthropic key: g1t runs no model and bills nothing for it. Without an Anthropic connection (or with `handoff: true`) nothing is started and `command` is a Claude Code command line to run with g1t's plugin. See [Sessions](/guides/sessions/#start-a-session-on-your-anthropic-account)."
   },
   "update_session": {
     "request": {
@@ -2352,9 +2397,78 @@
           "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
           "at": "2026-10-12T14:30:12.660Z"
         }
-      ]
+      ],
+      "children": [
+        {
+          "id": "ses_01m4b2d8x1y2z3a4b5c6d7e8f9",
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "issue": 12,
+          "pull": null,
+          "branch": "greet-caller",
+          "actor": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx"
+          },
+          "harness": "claude_code",
+          "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13/agent/a4d2c8f1e0b3a297",
+          "title": null,
+          "state": "ended",
+          "head_commit": null,
+          "started_at": "2026-10-12T14:05:40.112Z",
+          "last_seen_at": "2026-10-12T14:07:02.930Z",
+          "ended_at": "2026-10-12T14:07:02.930Z",
+          "end_reason": "done",
+          "parent_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "agent_type": "Explore",
+          "task": "Find where the greeting is built",
+          "prompt": "Find every place the greeting text is built and say which file to change.",
+          "result": "The greeting is built in src/greet.rs (greet) and nowhere else.",
+          "model": "claude-sonnet-5-5",
+          "subagents": 0
+        }
+      ],
+      "touched": [
+        {
+          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "kind": "file",
+          "value": "src/greet.rs",
+          "at": "2026-10-12T14:12:30.004Z"
+        },
+        {
+          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "kind": "branch",
+          "value": "greet-caller",
+          "at": "2026-10-12T14:30:40.871Z"
+        }
+      ],
+      "links": [
+        {
+          "kind": "pull",
+          "number": 14,
+          "title": "Name the caller in the greeting",
+          "state": "open",
+          "via": ["attached", "branch"],
+          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2"]
+        },
+        {
+          "kind": "issue",
+          "number": 12,
+          "title": "Make the greeting name the caller",
+          "state": "open",
+          "via": ["attached", "claim"],
+          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2", "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"]
+        }
+      ],
+      "skills": [
+        {
+          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "name": "work-on-issue",
+          "uses": 1
+        }
+      ],
+      "root": null
     },
-    "notes": "Entries are numbered within the session and come 500 at a time; send the last `seq` you have as `after` for the next page."
+    "notes": "Entries are numbered within the session and come 500 at a time; send the last `seq` you have as `after` for the next page. `children` are the session's subagents and theirs; `touched`, `links` and `skills` cover the whole tree."
   },
   "list_sessions": {
     "query": {
@@ -2397,11 +2511,20 @@
           "text": "cargo test",
           "tool": "Bash",
           "key": "tool-7"
+        },
+        {
+          "kind": "skill",
+          "text": "work-on-issue",
+          "key": "skill-3"
         }
+      ],
+      "touched": [
+        { "kind": "file", "value": "src/greet.rs" },
+        { "kind": "branch", "value": "greet-caller" }
       ]
     },
     "response": {
-      "recorded": 2,
+      "recorded": 3,
       "duplicates": 0
     },
     "notes": "Up to 200 entries a request. An entry whose `key` the session recorded before is counted in `duplicates` and not recorded again. Entries of a session on a pull request show in that pull request's session too (read_session)."
@@ -6888,6 +7011,116 @@
       }
     ],
     "notes": "Name every pinned project once; anything else is refused with `422 invalid`."
+  },
+  "list_commits": {
+    "notes": "With `path`, `last_changed` is the commit that last changed that file or directory.",
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "query": {
+      "path": "scripts/deploy/npm-ci.mjs",
+      "limit": "1"
+    },
+    "response": {
+      "repo": "flagon-io/g1t",
+      "commits": [
+        {
+          "sha": "85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5",
+          "message": "The runner's broker test reads the relayed answer's body as chunks.",
+          "author": { "name": "Chase Pierce" },
+          "authored_at": "2026-10-12T22:04:11Z",
+          "parents": ["75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809"],
+          "html_url": "https://g1t.sh/flagon-io/g1t/commit/85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5"
+        }
+      ],
+      "path": "scripts/deploy/npm-ci.mjs",
+      "last_changed": {
+        "sha": "5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e",
+        "message": "Installs in cloud jobs retry when npm's download breaks off.",
+        "author": { "name": "Chase Pierce" },
+        "authored_at": "2026-10-13T01:12:40Z",
+        "parents": ["0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3"],
+        "html_url": "https://g1t.sh/flagon-io/g1t/commit/5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"
+      }
+    }
+  },
+  "get_contents": {
+    "notes": "A file's text, or with no `path` (or a directory's) the entries and README. `ref` is a branch, tag or commit; the default branch when left out.",
+    "params": {
+      "owner": "flagon-io",
+      "name": "g1t"
+    },
+    "query": {
+      "path": "CONTRIBUTING.md"
+    },
+    "response": {
+      "type": "file",
+      "repo": "flagon-io/g1t",
+      "ref": "main",
+      "path": "CONTRIBUTING.md",
+      "size": 412,
+      "binary": false,
+      "text": "# Contributing\n\nRun the tests before you push:\n\n```sh\ncargo test --workspace\nnpm test --workspaces --if-present\n```\n",
+      "html_url": "https://g1t.sh/flagon-io/g1t/blob/main/CONTRIBUTING.md"
+    }
+  },
+  "get_workspace_activity": {
+    "notes": "What shipped today across a workspace: `since` at midnight UTC and `kinds=merged,releases,deployments,pushes`. Each event links to its page on g1t (`url`). Ask g1t reads this to answer questions about a workspace.",
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "query": {
+      "since": "2026-10-12T00:00:00Z",
+      "kinds": "merged,releases,deployments"
+    },
+    "response": {
+      "workspace": "flagon-io",
+      "since": "2026-10-12T00:00:00Z",
+      "until": "2026-10-12T21:40:00Z",
+      "repositories": 4,
+      "summary": {
+        "merged_pull_requests": 1,
+        "releases": 1,
+        "production_deployments": 1,
+        "failed_deployments": 0,
+        "default_branch_pushes": 0,
+        "failed_runs": 0
+      },
+      "events": [
+        {
+          "kind": "deployment_succeeded",
+          "time": "2026-10-12T21:12:04Z",
+          "repo": "flagon-io/g1t",
+          "actor": "syntaqx",
+          "environment": "production",
+          "project": "g1t",
+          "branch": "main",
+          "commit": "75c6704f2b1a",
+          "url": "https://g1t.sh/flagon-io/g1t/deployments/dpl_01kkp3m8w2f6t9qh4c7d1r5n0x"
+        },
+        {
+          "kind": "release_published",
+          "time": "2026-10-12T19:30:51Z",
+          "repo": "flagon-io/runner",
+          "actor": "syntaqx",
+          "tag": "v0.3.3",
+          "title": "Runner 0.3.3",
+          "url": "https://g1t.sh/flagon-io/runner/releases/tag/v0.3.3"
+        },
+        {
+          "kind": "pull_merged",
+          "time": "2026-10-12T18:02:17Z",
+          "repo": "flagon-io/g1t",
+          "actor": "syntaqx",
+          "number": 412,
+          "title": "Ask g1t answers with the workspace's own AI provider",
+          "url": "https://g1t.sh/flagon-io/g1t/pull/412",
+          "issue": 398
+        }
+      ],
+      "complete": true
+    }
   },
   "list_projects": {
     "params": {

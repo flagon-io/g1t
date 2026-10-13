@@ -152,21 +152,15 @@ fn server_timing(steps: &[(&str, u64)], parts: &[(&str, u64)], notes: &[(&str, &
         .join(", ")
 }
 
-/// The user named by an HTTP Basic `Authorization` header, as git sends it.
+/// The user named by an HTTP Basic `Authorization` header, as git sends it,
+/// or by a token sent as `Authorization: Bearer` (`git -c
+/// http.extraHeader=…`), which is how a sandbox that holds the token only
+/// as a placeholder, swapped for it on the way out, sends it.
 pub async fn viewer(request: &Request, identity: &Fetcher) -> Result<Viewer> {
     let Some(header) = request.headers().get("authorization")? else {
         return Ok(None);
     };
-    let Some((scheme, encoded)) = header.split_once(' ') else {
-        return Ok(None);
-    };
-    if !scheme.eq_ignore_ascii_case("basic") {
-        return Ok(None);
-    }
-    let Some(decoded) = decode_base64(encoded.trim()) else {
-        return Ok(None);
-    };
-    let Some((username, secret)) = decoded.split_once(':') else {
+    let Some((username, secret)) = credentials(&header) else {
         return Ok(None);
     };
     g1t_kit::call(
@@ -178,6 +172,23 @@ pub async fn viewer(request: &Request, identity: &Fetcher) -> Result<Viewer> {
         },
     )
     .await
+}
+
+/// The username and secret an `Authorization` header gives: Basic's pair,
+/// or a g1t token sent as Bearer (with no username, as a token alone
+/// names its user).
+fn credentials(header: &str) -> Option<(String, String)> {
+    let (scheme, value) = header.trim().split_once(' ')?;
+    if scheme.eq_ignore_ascii_case("bearer") {
+        let token = value.trim();
+        return token.starts_with("g1t_").then(|| ("x-access-token".to_owned(), token.to_owned()));
+    }
+    if !scheme.eq_ignore_ascii_case("basic") {
+        return None;
+    }
+    let decoded = decode_base64(value.trim())?;
+    let (username, secret) = decoded.split_once(':')?;
+    Some((username.to_owned(), secret.to_owned()))
 }
 
 /// Standard base64 to a UTF-8 string, or `None` if either step fails.
@@ -1248,7 +1259,18 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
-    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, deleted_refs, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace, with_no_thin};
+    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, credentials, deleted_refs, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace, with_no_thin};
+
+    #[test]
+    fn a_token_comes_as_basic_or_bearer() {
+        // ana:g1t_abc
+        assert_eq!(credentials("Basic YW5hOmcxdF9hYmM="), Some(("ana".to_owned(), "g1t_abc".to_owned())));
+        assert_eq!(credentials("Bearer g1t_abc"), Some(("x-access-token".to_owned(), "g1t_abc".to_owned())));
+        assert_eq!(credentials("bearer  g1t_abc "), Some(("x-access-token".to_owned(), "g1t_abc".to_owned())));
+        // Only a g1t token is taken as Bearer; a password never is.
+        assert_eq!(credentials("Bearer hunter2"), None);
+        assert_eq!(credentials("Digest x"), None);
+    }
 
     #[test]
     fn server_timing_names_each_step_and_the_total() {

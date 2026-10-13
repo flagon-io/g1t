@@ -960,6 +960,30 @@ Starting again with the same --harness-session-id returns the same session.")]
     List(SessionListArgs),
     /// Show a session and what it recorded; the current one when left out.
     View(SessionViewArgs),
+    /// Say what the current session touched: files, commits, branches, pull requests, issues.
+    #[command(after_help = "\nEach is kept once. A file another active session touched too (a sibling subagent's included)
+is an overlap.detected event for both. Pull requests and issues tie the session to them.")]
+    Touch(SessionTouchArgs),
+}
+
+#[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["file", "commit", "branch", "pull", "issue"])))]
+pub struct SessionTouchArgs {
+    /// A file it wrote, from the repository's root. Repeat for more.
+    #[arg(long)]
+    pub file: Vec<String>,
+    /// A commit it made.
+    #[arg(long)]
+    pub commit: Vec<String>,
+    /// A branch it pushed.
+    #[arg(long)]
+    pub branch: Vec<String>,
+    /// A pull request it opened.
+    #[arg(long)]
+    pub pull: Vec<u64>,
+    /// An issue it named.
+    #[arg(long)]
+    pub issue: Vec<u64>,
 }
 
 #[derive(Debug, Args)]
@@ -981,6 +1005,24 @@ pub struct SessionStartArgs {
     /// The branch it works on; the current one when left out.
     #[arg(short, long)]
     pub branch: Option<String>,
+    /// For a subagent: the session that started it (ses_…).
+    #[arg(long, value_name = "SESSION")]
+    pub parent: Option<String>,
+    /// For a subagent: its kind (Explore, security-reviewer).
+    #[arg(long)]
+    pub agent_type: Option<String>,
+    /// For a subagent: the task it was given, in a few words.
+    #[arg(long)]
+    pub task: Option<String>,
+    /// For a subagent: the prompt its parent gave it.
+    #[arg(long)]
+    pub prompt: Option<String>,
+    /// The model it runs on.
+    #[arg(long)]
+    pub model: Option<String>,
+    /// Do not remember it as this working copy's session (a subagent's, kept by its harness).
+    #[arg(long)]
+    pub no_remember: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -989,6 +1031,8 @@ pub enum EntryKind {
     Prompt,
     Message,
     ToolCall,
+    /// A skill the session used: give its name.
+    Skill,
 }
 
 impl EntryKind {
@@ -998,6 +1042,7 @@ impl EntryKind {
             EntryKind::Prompt => "prompt",
             EntryKind::Message => "message",
             EntryKind::ToolCall => "tool_call",
+            EntryKind::Skill => "skill",
         }
     }
 }
@@ -1035,6 +1080,9 @@ pub struct SessionEndArgs {
     /// Why it ended: done, abandoned, handed_off...
     #[arg(short, long)]
     pub reason: Option<String>,
+    /// What it reported when it finished (a subagent's final message); - reads it from stdin.
+    #[arg(long)]
+    pub result: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -1055,6 +1103,12 @@ pub struct SessionListArgs {
     pub pull: Option<u64>,
     #[arg(short = 'L', long, default_value_t = 20)]
     pub limit: usize,
+    /// Only sessions that touched this file, or any under it when it ends in /.
+    #[arg(long)]
+    pub path: Option<String>,
+    /// List subagents too, under the sessions that started them.
+    #[arg(long)]
+    pub subagents: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1088,6 +1142,57 @@ Examples:
   g1t work events --follow --type integration.failed --type overlap.detected --json
 With --json, each event is one JSON object on a line of its own.")]
     Events(WorkEventsArgs),
+    /// Start work on an issue in a session on your own Claude, or print the Claude Code command for it.
+    #[command(after_help = "\nWith the workspace's Anthropic connection, a Claude Managed Agents session starts on that
+account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
+to run with g1t's plugin, whose session attaches to the issue as it starts.
+Examples:
+  g1t work dispatch 12
+  g1t work dispatch 12 --mode plan --instruction \"Keep the old flag\"
+  g1t work dispatch --title \"Add a healthcheck\" --handoff")]
+    Dispatch(WorkDispatchArgs),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum DispatchMode {
+    Plan,
+    Implement,
+    Review,
+}
+
+impl DispatchMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            DispatchMode::Plan => "plan",
+            DispatchMode::Implement => "implement",
+            DispatchMode::Review => "review",
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("which").required(true).args(["number", "title"])))]
+pub struct WorkDispatchArgs {
+    /// The issue's number.
+    pub number: Option<u64>,
+    /// Open a new issue with this title and work on it.
+    #[arg(long, conflicts_with = "number")]
+    pub title: Option<String>,
+    /// The new issue's description.
+    #[arg(long, requires = "title")]
+    pub body: Option<String>,
+    /// What to do beyond what the issue says.
+    #[arg(short, long)]
+    pub instruction: Option<String>,
+    /// What kind of work.
+    #[arg(short, long, value_enum)]
+    pub mode: Option<DispatchMode>,
+    /// Print the Claude Code command to run yourself; start nothing.
+    #[arg(long, conflicts_with = "managed")]
+    pub handoff: bool,
+    /// Start it on the workspace's Anthropic account, or fail.
+    #[arg(long)]
+    pub managed: bool,
 }
 
 #[derive(Debug, Args)]

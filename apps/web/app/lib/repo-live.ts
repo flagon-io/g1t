@@ -68,6 +68,9 @@ export function isCheck(change: RepoChange): boolean {
   return ["status", "check_run", "check_suite", "checks", "workflow", "run"].includes(family(change));
 }
 
+/** A harness session starting, going on and ending (not a pull request's recorded session). */
+const SESSION_KINDS = ["session.started", "session.progressed", "session.ended"];
+
 const ALERTS = ["secret_scanning_alert", "code_scanning_alert", "vulnerability_alert"];
 
 /** What each kind of repository page shows. */
@@ -119,14 +122,21 @@ export const repoPages = {
   /**
    * The Work page: claims, sessions starting and ending, dependencies,
    * overlaps, what the merge queue finds and decisions, the queue moving,
-   * and merges.
+   * and merges; and sessions going on (heard from, so still active).
    */
   work(): RepoMatch {
     return (change) =>
       ["work", "dependency", "overlap", "integration", "decision", "queue"].includes(family(change)) ||
-      change.kind === "session.started" ||
-      change.kind === "session.ended" ||
+      SESSION_KINDS.includes(change.kind) ||
       change.kind === "pull.merged";
+  },
+  /**
+   * A harness session's page: any session starting, going on or ending
+   * (its subagents are sessions too), claims and overlaps. A change names
+   * no session, so every session's activity in the repository counts.
+   */
+  session(): RepoMatch {
+    return (change) => family(change) === "session" || family(change) === "work" || change.kind === "overlap.detected";
   },
   /** The runs list: runs starting, moving and finishing, and what starts them. */
   runs(): RepoMatch {

@@ -17,6 +17,7 @@ worker.workspace = true
 base64 = "0.22"
 sha2 = "0.10"
 form_urlencoded = "1"
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.

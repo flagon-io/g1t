@@ -1,5 +1,5 @@
 {
-  "description": "Records the session on g1t through the g1t CLI: prompts, tool names and what they were called with (never what they returned), pushes, and when it starts and ends. Gives Claude the current issue's work context at the start.",
+  "description": "Records the session on g1t through the g1t CLI: prompts, tool names and what they were called with (never what they returned), the skills used, the files, commits and branches touched, pushes, each subagent as a session of its own with its task and final message, and when it starts and ends. Gives Claude the current issue's work context at the start, and each subagent its own g1t session.",
   "hooks": {
     "SessionStart": [
       {
@@ -11,9 +11,25 @@
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/g1t.mjs\"", "timeout": 5 }]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task|Bash|mcp__plugin_g1t_g1t__issue|mcp__g1t__issue",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/g1t.mjs\"", "timeout": 5 }]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "*",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/g1t.mjs\"", "timeout": 5 }]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/g1t.mjs\"", "timeout": 5 }]
+      }
+    ],
+    "SubagentStop": [
+      {
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/g1t.mjs\"", "timeout": 5 }]
       }
     ],

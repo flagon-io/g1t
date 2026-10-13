@@ -986,6 +986,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
     // A repository's files, as clone and fetch need.
+    // A file or directory of a repository, as clone and fetch would give it.
+    ("get_contents", Scope::CodeRead),
+    ("list_commits", Scope::CodeRead),
     ("download_tarball_archive", Scope::CodeRead),
     ("download_zipball_archive", Scope::CodeRead),
     ("why", Scope::CodeRead),
@@ -994,6 +997,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_project", Scope::RepoRead),
     ("search", Scope::RepoRead),
     ("list_events", Scope::RepoRead),
+    // A workspace's activity: the events of its repositories the caller can read.
+    ("get_workspace_activity", Scope::RepoRead),
     // What the default branch says about a repository, who starred it, and
     // its releases.
     ("get_languages", Scope::RepoRead),
@@ -1136,6 +1141,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_session", Scope::PullRequestsWrite),
     ("end_session", Scope::PullRequestsWrite),
     ("record_session_entries", Scope::PullRequestsWrite),
+    ("start_agent_session", Scope::PullRequestsWrite),
     // Workflows.
     ("list_workflows", Scope::WorkflowsRead),
     ("get_workflow", Scope::WorkflowsRead),
@@ -1388,10 +1394,10 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
         match input["repo"].as_str() {
             Some(repo) if access.reaches(repo) => {}
             Some(repo) => {
-                return Decision::deny("token:repository", format!("This token is a workflow job's in {only}: it cannot reach {repo}."));
+                return Decision::deny("token:repository", format!("{} {only}: it cannot reach {repo}.", one_repository(access)));
             }
             None => {
-                return Decision::deny("token:repository", format!("This token is a workflow job's: it reaches only {only}, and {operation} is not about one repository."));
+                return Decision::deny("token:repository", format!("{} {only}, and {operation} is not about one repository.", one_repository(access)));
             }
         }
     }
@@ -1427,6 +1433,11 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
     Decision::allow(rule)
 }
 
+/// What a token held to one repository is, for saying why it was refused.
+fn one_repository(access: &TokenAccess) -> &'static str {
+    if access.job.is_some() { "This token is a workflow job's in" } else { "This token reaches only" }
+}
+
 /// Whether a token may use the repository `owner/name` at all: a refusal
 /// for a workflow job's token or a deploy key in another repository,
 /// else `None`. Git and
@@ -1437,7 +1448,7 @@ pub fn decide_repo(access: &TokenAccess, repo: &str) -> Option<Decision> {
     let why = if access.deploy_key.is_some() {
         format!("This deploy key is for {only}: it cannot reach {repo}.")
     } else {
-        format!("This token is a workflow job's in {only}: it cannot reach {repo}.")
+        format!("{} {only}: it cannot reach {repo}.", one_repository(access))
     };
     (!access.reaches(repo)).then(|| Decision::deny("token:repository", why))
 }

@@ -13,7 +13,7 @@ import { PersonStatusEmoji } from "../presence";
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Skeleton } from "../ui/skeleton";
-import { type ChatFilter, agentsOnlyDm, channelPath, filterEntries, sections } from "../../lib/chat";
+import { type ChatFilter, agentsOnlyDm, channelPath, filterEntries, g1tEntry, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
 import { setMutedConversations } from "../../lib/sound-events";
@@ -210,6 +210,12 @@ export function ChatSidebar({ slug, heading = true }: { slug: string; heading?: 
               action={<NewMessageButton slug={slug} />}
               keep={dms.filter(keepShown).map(conversation)}
             >
+              {/* @g1t, before the first word to it: its direct message opens on first use. */}
+              {filter === "all" && !query && !entries.some(g1tEntry) && (
+                <ExtraRow to={`/${slug}/-/chat/dm/g1t`} icon={<MemberAvatar member={{ kind: "system", id: "g1t", name: "g1t", avatar: null }} size={18} ring="var(--chat-sidebar-bg)" />}>
+                  g1t
+                </ExtraRow>
+              )}
               {dms.map(conversation)}
               {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
             </Section>

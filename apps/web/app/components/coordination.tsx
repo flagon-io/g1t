@@ -7,6 +7,7 @@
 import {
   Activity,
   ArrowRightLeft,
+  Bot,
   CircleCheck,
   CircleDot,
   CircleX,
@@ -19,23 +20,26 @@ import {
   MessageSquare,
   Pencil,
   Play,
+  Sparkles,
   Square,
   Timer,
   TriangleAlert,
 } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 
-import type {
-  Blocker,
-  Claim,
-  Decision,
-  DecisionConfidence,
-  Harness,
-  SessionState,
-  State,
-  WorkContext,
-  WorkSession,
+import {
+  AGENT_MODES,
+  type AgentSessionsSetup,
+  type Blocker,
+  type Claim,
+  type Decision,
+  type DecisionConfidence,
+  type Harness,
+  type SessionState,
+  type State,
+  type WorkContext,
+  type WorkSession,
 } from "@g1t/contracts";
 
 import {
@@ -44,11 +48,14 @@ import {
   DECISION_KINDS,
   type FeedLine,
   SESSION_STATES,
+  type SessionNode,
   checkHref,
   evidenceOf,
   expiresIn,
   harnessName,
+  mergeSessions,
   numberedParts,
+  sessionTree,
 } from "../lib/coordination";
 import { Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -56,9 +63,13 @@ import { Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
+import { Field, FieldError, FieldLabel, FieldLegend, FieldSet } from "./ui/field";
 import { Hint } from "./ui/hint";
 import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { RadioGroup, RadioOption } from "./ui/radio-group";
+import { Textarea } from "./ui/textarea";
 import { PersonLink } from "./work";
 import { IssueIcon } from "./work-icons";
 
@@ -202,6 +213,120 @@ export function SessionLine({
         </p>
       </div>
     </div>
+  );
+}
+
+/** A subagent in a line: its kind, its task, where it stands, linked to its page. */
+export function SubagentLine({ session, base }: { session: WorkSession; base: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 text-xs">
+      <Bot size={12} className="shrink-0 text-faint" />
+      <Link to={`${base}/work/sessions/${session.id}`} prefetch="intent" className="shrink-0 font-medium text-fg hover:text-accent">
+        {session.agentType ?? "Subagent"}
+      </Link>
+      {session.task && (
+        <Hint label={session.task}>
+          <span className="min-w-0 truncate text-muted">{session.task}</span>
+        </Hint>
+      )}
+      <SessionStateBadge state={session.state} />
+    </div>
+  );
+}
+
+/** Subagents under a session, and theirs under them, indented on a rule. */
+function SubagentBranch({ nodes, base }: { nodes: SessionNode[]; base: string }) {
+  return (
+    <ul className="mt-1.5 space-y-1.5 border-l border-line pl-3">
+      {nodes.map((node) => (
+        <li key={node.session.id}>
+          <SubagentLine session={node.session} base={base} />
+          {node.children.length > 0 && <SubagentBranch nodes={node.children} base={base} />}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Sessions as trees: each one's line, with its subagents in a compact list under it. */
+export function SessionTreeList({
+  nodes,
+  base,
+  showWhere,
+  showBranch,
+  className,
+}: {
+  nodes: SessionNode[];
+  base: string;
+  showWhere?: boolean;
+  showBranch?: boolean;
+  className?: string;
+}) {
+  return (
+    <ul className={className ?? "space-y-3"}>
+      {nodes.map((node) => (
+        <li key={node.session.id}>
+          <SessionLine session={node.session} base={base} showWhere={showWhere} showBranch={showBranch} />
+          {node.children.length > 0 && (
+            <div className="pl-7.5">
+              <SubagentBranch nodes={node.children} base={base} />
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Starting a session on the issue on the workspace's Anthropic account: a
+ * button opening a dialog that asks what kind of work and for anything to
+ * add, posting `start-session` to the issue's action.
+ */
+export function StartSessionDialog({ setup, error }: { setup: AgentSessionsSetup; error?: string | null }) {
+  const [open, setOpen] = useState(Boolean(error));
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="xs">
+          <Sparkles size={12} />
+          Start a session
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <Form method="post" className="grid gap-5">
+          <input type="hidden" name="action" value="start-session" />
+          <DialogHeader>
+            <DialogTitle>Start a session on this issue</DialogTitle>
+            <DialogDescription>
+              Claude works on it on {setup.connectionName ? `the ${setup.connectionName} connection` : "your workspace's Anthropic account"}
+              {setup.model ? `, with ${setup.model}` : ""}. It shows on this issue as it goes, with its subagents.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldSet>
+            <FieldLegend className="mb-0">What to do</FieldLegend>
+            <RadioGroup name="mode" defaultValue="implement">
+              {AGENT_MODES.map((mode) => (
+                <RadioOption key={mode.mode} value={mode.mode} label={mode.label} description={mode.hint} />
+              ))}
+            </RadioGroup>
+          </FieldSet>
+          <Field>
+            <FieldLabel htmlFor="start-session-instruction">Anything to add</FieldLabel>
+            <Textarea id="start-session-instruction" name="instruction" rows={3} maxLength={4000} placeholder="Optional: what to keep in mind" />
+            <FieldError>{error}</FieldError>
+          </Field>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <SubmitButton match={{ action: "start-session" }} pending="Starting…">
+              Start
+            </SubmitButton>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -427,6 +552,14 @@ export function CoordinationFeed({ lines, base }: { lines: FeedLine[]; base: str
               <PersonLink name={line.who ?? "g1t"} className="font-medium text-fg hover:underline" />
               {line.harness && <span className="text-faint"> via {harnessName(line.harness)}</span>}{" "}
               <NumberedText text={line.text} base={base} />
+              {line.session && (
+                <>
+                  {" · "}
+                  <Link to={`${base}/work/sessions/${line.session}`} className="text-fg hover:text-accent">
+                    the session
+                  </Link>
+                </>
+              )}
             </p>
             <span className="shrink-0 text-xs text-faint">
               <TimeAgo at={line.time} />
@@ -494,6 +627,8 @@ export function IssueWorkPanel({
   now,
   canEdit,
   error,
+  sessions: all,
+  start,
 }: {
   work: WorkContext;
   /** Claims on it that ended lately, shown muted. */
@@ -502,9 +637,14 @@ export function IssueWorkPanel({
   now: number;
   canEdit: boolean;
   error?: string | null;
+  /** The sessions tied to it with their subagents, when they could be read; else its own sessions. */
+  sessions?: WorkSession[] | null;
+  /** Starting a session on it, for those who may. */
+  start?: ReactNode;
 }) {
   const open = work.issue.state === "open";
-  const sessions = work.sessions.slice(0, 5);
+  const trees = sessionTree(mergeSessions(work.sessions, all));
+  const sessions = trees.slice(0, 5);
   const waiting = work.blockedBy.filter((blocker) => blocker.state === "open").length;
   return (
     <Card asChild className="space-y-4 p-4">
@@ -536,18 +676,16 @@ export function IssueWorkPanel({
           )}
         </div>
 
-        {sessions.length > 0 && (
-          <PanelPart title="Sessions">
-            <ul className="space-y-3">
-              {sessions.map((session) => (
-                <li key={session.id}>
-                  <SessionLine session={session} base={base} showBranch={false} />
-                </li>
-              ))}
-            </ul>
-            {work.sessions.length > sessions.length && (
+        {(sessions.length > 0 || start) && (
+          <PanelPart title="Sessions" action={start}>
+            {sessions.length === 0 ? (
+              <p className="text-xs text-faint">None yet.</p>
+            ) : (
+              <SessionTreeList nodes={sessions} base={base} showBranch={false} />
+            )}
+            {trees.length > sessions.length && (
               <Link to={`${base}/work`} className="mt-2 inline-block text-xs text-muted hover:text-fg">
-                {work.sessions.length - sessions.length} more on the Work page
+                {trees.length - sessions.length} more on the Work page
               </Link>
             )}
           </PanelPart>

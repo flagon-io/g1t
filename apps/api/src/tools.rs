@@ -75,6 +75,8 @@ pub const TOOLS: &[Tool] = &[
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
             a("get", Op::GetRepo, "One repository"),
+            a("commits", Op::ListCommits, "A branch's commits with their messages (why each was made); with path, the commit that last changed it"),
+            a("contents", Op::GetContents, "A file's text, or a directory's entries and README, at a branch, tag or commit"),
             a("tarball", Op::Archives(ArchiveOp::DownloadTarball), "A 10-minute link to a branch, tag or commit as a .tar.gz"),
             a("zipball", Op::Archives(ArchiveOp::DownloadZipball), "A 10-minute link to a branch, tag or commit as a .zip"),
             a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
@@ -190,7 +192,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "session",
         title: "Sessions",
-        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id), `update` as a heartbeat or to attach an issue, pull request, branch or head commit, `record` prompts, reasoning and tool calls (idempotent on key), `end` when done. A session goes idle after 15 minutes without a heartbeat and ends after 2 hours.",
+        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id; a subagent starts its own with parent_id), `update` as a heartbeat or to attach an issue, pull request, branch or head commit, `record` prompts, reasoning, tool calls, skills used and what it touched (idempotent on key), `end` when done with what it reported. `list` with an issue, or a path, shows who else (sibling subagents too) is on the same work. `dispatch` starts work on an issue in a session on the person's own Claude. A session goes idle after 15 minutes without a heartbeat and ends after 2 hours.",
         default_action: None,
         actions: &[
             a("start", Op::Coordination(CoordinationOp::StartSession), "Start one, or get the one started with this harness_session_id"),
@@ -198,7 +200,8 @@ pub const TOOLS: &[Tool] = &[
             a("record", Op::Coordination(CoordinationOp::RecordSessionEntries), "Record prompts, reasoning and tool calls; a key makes each idempotent"),
             a("end", Op::Coordination(CoordinationOp::EndSession), "End it"),
             a("get", Op::Coordination(CoordinationOp::GetSession), "One session and its entries"),
-            a("list", Op::Coordination(CoordinationOp::ListSessions), "A repository's sessions: active, idle or ended, by issue or pull request"),
+            a("list", Op::Coordination(CoordinationOp::ListSessions), "A repository's sessions: active, idle or ended, by issue, pull request or file touched; with subagents, each tree whole"),
+            a("dispatch", Op::Coordination(CoordinationOp::StartAgentSession), "Start work on an issue in a session on the person's own Claude (Managed Agents with the workspace's Anthropic key), or get a Claude Code hand-off"),
         ],
     },
     Tool {
@@ -221,7 +224,7 @@ pub const TOOLS: &[Tool] = &[
             a("get", Op::GetWorkflow, "One workflow by id, file or name, with its file on a branch or tag"),
             a("list_runs", Op::ListWorkflowRuns, "Runs, newest first"),
             a("get_run", Op::GetWorkflowRun, "One run with its jobs and steps; an earlier attempt with attempt"),
-            a("job_logs", Op::GetJobLogs, "A job's log after a sequence number"),
+            a("job_logs", Op::GetJobLogs, "A job's log after a sequence number, or its last lines with tail (why it failed)"),
             a("dispatch", Op::DispatchWorkflow, "Run a workflow_dispatch workflow"),
             a("cancel", Op::CancelWorkflowRun, "Cancel a run, letting its jobs clean up; force stops them outright"),
             a("rerun", Op::RerunWorkflowRun, "Run a finished run again: all, failed_only, or one job; debug for debug logging"),
@@ -404,7 +407,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): create, update or delete one, invite members, connect integrations, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): read what happened across its repositories (`activity`: what merged, shipped and deployed, by whom, over a span), create, update or delete one, invite members, connect integrations, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
         default_action: None,
         actions: &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
@@ -424,6 +427,7 @@ pub const TOOLS: &[Tool] = &[
             a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),
             a("disconnect_integration", Op::DisconnectIntegration, "Remove one"),
             a("test_integration", Op::TestIntegration, "Check its credentials"),
+            a("activity", Op::GetWorkspaceActivity, "What happened across its repositories over a span: merged pull requests, releases, deployments, pushes, issues; what shipped"),
             a("list_projects", Op::ListProjects, "Its projects you can see: what each is, where it runs, its links"),
             a("get_project", Op::GetProject, "One project"),
             a("update_project", Op::UpdateProject, "Change a project's name, description, kind, where it runs or its links"),

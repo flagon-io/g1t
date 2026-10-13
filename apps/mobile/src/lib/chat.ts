@@ -321,6 +321,12 @@ export function useChannelLive(channelId: string) {
           case "message.deleted":
             removeMessage(queries, slug, live.channel_id, live.id);
             break;
+          case "message.streaming":
+            // @g1t's answer as it is written: the text so far, in place.
+            updatePages(queries, chatKeys.messages(slug, live.channel_id, null), (messages) =>
+              messages.map((one) => (one.id === live.id ? { ...one, body: live.body, answer: live.answer } : one)),
+            );
+            break;
           case "reaction.added":
           case "reaction.removed":
             if (live.member.id !== me.id) applyReaction(queries, slug, live.channel_id, live.message_id, live.emoji, live.member, live.type === "reaction.added", false);

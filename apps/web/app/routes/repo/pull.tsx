@@ -64,8 +64,8 @@ import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { TabStrip } from "../../components/ui/tab-strip";
-import { DecisionList, IntegrationFailure, SessionLine } from "../../components/coordination";
-import { resolutionOf, standingFailure } from "../../lib/coordination";
+import { DecisionList, IntegrationFailure, SessionTreeList } from "../../components/coordination";
+import { resolutionOf, sessionTree, standingFailure } from "../../lib/coordination";
 import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import { AttemptsBox } from "../../components/attempts";
@@ -161,8 +161,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Its decision records: what the merge queue found when it was combined
     // with others, and the reasons kept on it (decisions.rs).
     tab !== "changes" ? work.listDecisions(path, number, viewer).catch(() => null) : null,
-    // The harness sessions working on it, for the Session tab.
-    tab === "session" ? work.listWorkSessions(path, viewer, { pull: number }).catch(() => null) : null,
+    // The harness sessions tied to it in any way, with their subagents, for the Session tab.
+    tab === "session" ? work.listWorkSessions(path, viewer, { pull: number, subagents: true }).catch(() => null) : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -533,7 +533,9 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
               ? "Prompt"
               : entry.kind === "note"
                 ? "Note"
-                : agent}
+                : entry.kind === "skill"
+                  ? `${agent} used a skill`
+                  : agent}
           </p>
           {entry.kind === "message" ? (
             <div className="mt-1">
@@ -946,14 +948,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 {harnessSessions.length > 0 && (
                   <section aria-label="Harness sessions">
                     <h3 className="text-sm font-medium">Sessions on it</h3>
-                    <Card asChild divided className="mt-3">
-                      <ul>
-                        {harnessSessions.map((one) => (
-                          <li key={one.id} className="px-4 py-3">
-                            <SessionLine session={one} base={base} showWhere={false} />
-                          </li>
-                        ))}
-                      </ul>
+                    <Card className="mt-3 p-4">
+                      <SessionTreeList nodes={sessionTree(harnessSessions)} base={base} showWhere={false} className="space-y-4" />
                     </Card>
                   </section>
                 )}

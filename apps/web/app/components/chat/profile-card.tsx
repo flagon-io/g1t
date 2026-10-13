@@ -160,7 +160,7 @@ export function MemberCard({
   className = "",
   label,
 }: {
-  member: { kind: "user" | "agent"; name: string; id?: string; display_name?: string; avatar?: string | null };
+  member: { kind: "user" | "agent" | "system"; name: string; id?: string; display_name?: string; avatar?: string | null };
   children: ReactNode;
   className?: string;
   label?: string;
@@ -168,7 +168,8 @@ export function MemberCard({
   const ctx = useContext(CardContext);
   const [open, setOpen] = useState(false);
   const [sheet, setSheet] = useState(false);
-  if (member.kind === "agent") {
+  // An old agent, or @g1t: no profile to open.
+  if (member.kind !== "user") {
     return (
       <span className={className} aria-label={label}>
         {children}

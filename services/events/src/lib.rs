@@ -29,7 +29,7 @@ mod live;
 mod security_digest;
 mod subscriptions;
 
-use g1t_contracts::events::{Event, ListArgs, PublishArgs};
+use g1t_contracts::events::{Event, ListArgs, MAX_LIST_REPOS, PublishArgs};
 use g1t_contracts::new_id;
 use g1t_contracts::time::rfc3339;
 use g1t_kit::{args, js, now_ms, reply, rpc_method};
@@ -473,6 +473,13 @@ fn list_filter(a: &ListArgs) -> (String, Vec<Bind>) {
         conditions.push("repo_id = ?".to_owned());
         values.push(Bind::Text(repo_id.clone()));
     }
+    if !a.repo_ids.is_empty() {
+        // A workspace's activity across its repositories: one list, bound
+        // as JSON so the statement stays small however many there are.
+        let ids: Vec<&String> = a.repo_ids.iter().take(MAX_LIST_REPOS).collect();
+        conditions.push("repo_id IN (SELECT value FROM json_each(?))".to_owned());
+        values.push(Bind::Text(serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_owned())));
+    }
     if !a.types.is_empty() {
         let marks = vec!["?"; a.types.len()].join(", ");
         conditions.push(format!("type IN ({marks})"));
@@ -535,6 +542,22 @@ mod tests {
         assert!(filter.starts_with("WHERE repo_id = ? AND type NOT IN ("));
         assert_eq!(binds[0], Bind::Text("rep_1".into()));
         assert_eq!(binds.len(), 1 + REPORTING.len());
+    }
+
+    #[test]
+    fn a_workspaces_repositories_are_read_as_one_list() {
+        let many: Vec<String> = (0..150).map(|n| format!("rep_{n}")).collect();
+        let (filter, binds) = list_filter(&ListArgs {
+            repo_ids: many,
+            types: vec!["pull.merged".into(), "release.published".into()],
+            since: Some("2026-10-12T00:00:00Z".into()),
+            ..ListArgs::default()
+        });
+        assert_eq!(filter, "WHERE repo_id IN (SELECT value FROM json_each(?)) AND type IN (?, ?) AND time >= ?");
+        let Bind::Text(ids) = &binds[0] else { panic!("the ids are one JSON text") };
+        let ids: Vec<String> = serde_json::from_str(ids).unwrap();
+        assert_eq!(ids.len(), MAX_LIST_REPOS);
+        assert_eq!(ids[0], "rep_0");
     }
 
     #[test]

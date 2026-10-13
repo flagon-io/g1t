@@ -61,7 +61,7 @@ pub struct RepoChangedArgs {
 /// The events a repository page shows: exact types, and families ending
 /// in a dot. Anything else (reads, fetches, settings, audit) changes no
 /// page anyone is looking at.
-const LIVE: [&str; 27] = [
+const LIVE: [&str; 28] = [
     "git.push",
     "git.deleted",
     "branch.renamed",
@@ -86,6 +86,9 @@ const LIVE: [&str; 27] = [
     "work.",
     "session.started",
     "session.ended",
+    // A session recorded more: at most every few seconds each, for the
+    // pages showing it (not every entry, which `session.appended` is).
+    "session.progressed",
     "dependency.changed",
     "overlap.detected",
     "integration.",
@@ -245,6 +248,9 @@ mod tests {
         }
         // Each recorded step of a session changes no page anyone is watching live.
         assert!(change_of(&event("session.appended", Some("rep_1"), json!({ "number": 12 }))).is_none());
+        // Its progress, at most every few seconds, does: the session's page follows it.
+        let progressed = change_of(&event("session.progressed", None, json!({ "repoId": "rep_1", "number": 12, "sessionId": "ses_1" }))).unwrap();
+        assert_eq!((progressed.kind.as_str(), progressed.number), ("session.progressed", Some(12)));
     }
 
     #[test]

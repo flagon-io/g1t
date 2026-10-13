@@ -4,6 +4,7 @@ import {
   accountsClient,
   actionsClient,
   advisoriesClient,
+  agentSessionsClient,
   agentsClient,
   billingClient,
   chatClient,
@@ -59,6 +60,8 @@ export const events = eventsClient(EVENTS);
 /** Each person's inbox, which the events service keeps. */
 export const inbox = inboxClient(EVENTS);
 export const integrations = integrationsClient(INTEGRATIONS);
+/** Sessions on a workspace's own Anthropic account: the integrations service's agent_sessions.rs. */
+export const agentSessions = agentSessionsClient(INTEGRATIONS);
 export const webhooks = webhooksClient(WEBHOOKS);
 export const actions = actionsClient(ACTIONS);
 export const deployments = deploymentsClient(DEPLOYMENTS);

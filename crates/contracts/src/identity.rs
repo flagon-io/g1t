@@ -215,6 +215,11 @@ pub struct CreateAccessTokenArgs {
     /// themselves, with an expiry.
     #[serde(default)]
     pub listed: bool,
+    /// The one repository it reaches, as `owner/name`: every other is
+    /// refused, whatever its owner could reach. Used for a session g1t
+    /// starts on someone's Anthropic account (`start_agent_session`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
 }
 
 /// `create_job_token`: a workflow job's `G1T_TOKEN`. It acts as the
@@ -246,6 +251,59 @@ pub struct CreateJobTokenArgs {
 #[serde(rename_all = "camelCase")]
 pub struct RevokeJobTokensArgs {
     pub job_id: String,
+}
+
+/// `create_ask_token`: the credential Ask g1t reads g1t with while it
+/// answers one question, through the MCP server, as the person asking.
+///
+/// It is that person's own token, so every read is checked exactly as
+/// theirs would be, cut down three ways: it holds the read scopes only
+/// ([`ask_token_scopes`]), so every change is refused whatever the person's
+/// role; it is made for `workspace` alone (its repositories, and public
+/// ones); and it expires in [`ASK_TOKEN_TTL_SECONDS`]. It is never listed,
+/// never shown to the model or the browser, and the integrations service
+/// revokes it when the answer ends (`revoke_ask_token`). A workspace's
+/// rules for personal access tokens do not apply to it: g1t makes it, for
+/// a feature the workspace's owner turned on, and nobody ever holds it.
+///
+/// Only the integrations service calls it, over its service binding.
+/// Returns `Outcome<AskToken>`: refused for anyone but a person who belongs
+/// to the workspace.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAskTokenArgs {
+    pub actor: User,
+    pub workspace: String,
+}
+
+/// What `create_ask_token` returns. The plaintext token is returned once
+/// and never stored.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskToken {
+    pub token: String,
+    /// Its id, to revoke it with.
+    pub id: String,
+}
+
+/// `revoke_ask_token`: ends an Ask credential at once. Only Ask's tokens
+/// are touched. Returns `bool`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokeAskTokenArgs {
+    pub id: String,
+}
+
+/// How long an Ask credential lives at most: longer than any one answer.
+pub const ASK_TOKEN_TTL_SECONDS: u64 = 5 * 60;
+/// What an Ask credential is named, in audit entries and logs.
+pub const ASK_TOKEN_NAME: &str = "Ask g1t";
+/// Marks a token as Ask's in identity's records (`access_tokens.purpose`).
+pub const ASK_TOKEN_PURPOSE: &str = "ask";
+
+/// What an Ask credential holds: every read scope and nothing else.
+pub fn ask_token_scopes() -> Vec<crate::scopes::Scope> {
+    crate::scopes::Preset::ReadOnly.scopes().unwrap_or_default()
 }
 
 /// The plaintext token is returned once and never stored.

@@ -37,6 +37,8 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
   const { server } = useSignedIn();
   const { author } = message;
   const agent = author.kind === "agent";
+  // @g1t: its answers, with the agent marker but never a Deleted agent badge.
+  const g1t = author.kind === "system";
   const failed = message.local === "failed";
 
   const openThread = () =>
@@ -55,7 +57,7 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
     >
       <View style={styles.gutter}>
         {head ? (
-          <Avatar name={author.display_name} uri={author.avatar ? `${server.site}/avatars/${author.avatar}` : null} agent={agent} size={36} />
+          <Avatar name={author.display_name} uri={author.avatar ? `${server.site}/avatars/${author.avatar}` : null} agent={agent || g1t} size={36} />
         ) : null}
       </View>
       <View style={{ flex: 1, gap: 4, opacity: message.local === "sending" ? 0.6 : 1 }}>
@@ -70,7 +72,7 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
             </Text>
           </View>
         ) : null}
-        {message.body ? <Markdown text={message.body} /> : null}
+        {message.body ? <Markdown text={message.body} /> : g1t && message.answer && (message.answer.state === "thinking" || message.answer.state === "streaming") ? <Text tone="muted">Thinking…</Text> : null}
         {message.edited_at ? (
           <Text size="small" tone="faint">
             (edited)

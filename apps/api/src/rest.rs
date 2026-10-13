@@ -143,6 +143,13 @@ pub const ROUTES: &[Route] = &[
     route("DELETE", "/user/memberships/:workspace", Op::LeaveWorkspace, &[]),
     // A workspace's projects: what each is, where it runs, its links.
     route("GET", "/workspaces/:workspace/projects", Op::ListProjects, &[]),
+    // What happened across its repositories: merged pull requests, releases, deployments, pushes.
+    route(
+        "GET",
+        "/workspaces/:workspace/activity",
+        Op::GetWorkspaceActivity,
+        &[("since", "since"), ("until", "until"), ("kinds", "kinds"), ("limit", "limit")],
+    ),
     route("GET", "/workspaces/:workspace/projects/:project", Op::GetProject, &[]),
     route("PATCH", "/workspaces/:workspace/projects/:project", Op::UpdateProject, &[]),
     // A project's observability: what its software did, and how it is collected.
@@ -343,6 +350,9 @@ pub const ROUTES: &[Route] = &[
     ),
     route("POST", "/repos", Op::CreateRepo, &[]),
     route("GET", "/repos/:owner/:name", Op::GetRepo, &[]),
+    // A file's text or a directory's entries: `path` and `ref` in the query.
+    route("GET", "/repos/:owner/:name/contents", Op::GetContents, &[("path", "path"), ("ref", "ref")]),
+    route("GET", "/repos/:owner/:name/commits", Op::ListCommits, &[("ref", "ref"), ("path", "path"), ("limit", "limit")]),
     // A branch, tag or commit as one archive: a redirect to a link good for
     // ten minutes, as GitHub's go to codeload.
     route("GET", "/repos/:owner/:name/tarball/:ref", Op::Archives(ArchiveOp::DownloadTarball), &[]),
@@ -611,8 +621,9 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/repos/:owner/:name/sessions",
         Op::Coordination(CoordinationOp::ListSessions),
-        &[("state", "state"), ("issue", "issue"), ("pull", "pull")],
+        &[("state", "state"), ("issue", "issue"), ("pull", "pull"), ("path", "path"), ("subagents", "subagents")],
     ),
+    route("POST", "/repos/:owner/:name/agent-sessions", Op::Coordination(CoordinationOp::StartAgentSession), &[]),
     route("GET", "/repos/:owner/:name/sessions/:id", Op::Coordination(CoordinationOp::GetSession), &[("after", "after")]),
     route("PATCH", "/repos/:owner/:name/sessions/:id", Op::Coordination(CoordinationOp::UpdateSession), &[]),
     route("POST", "/repos/:owner/:name/sessions/:id/end", Op::Coordination(CoordinationOp::EndSession), &[]),
@@ -836,7 +847,7 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/repos/:owner/:name/actions/jobs/:job/logs",
         Op::GetJobLogs,
-        &[("after", "after")],
+        &[("after", "after"), ("tail", "tail")],
     ),
     // Packages, at GitHub's addresses with the workspace in place of the
     // organization. A name with a slash is one URL-encoded segment.

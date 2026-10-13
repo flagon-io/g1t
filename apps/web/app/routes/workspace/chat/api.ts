@@ -1,6 +1,6 @@
 import { data } from "react-router";
 
-import { type Result, parsePrincipalKey } from "@g1t/contracts";
+import { type AskPage, type Result, parsePrincipalKey } from "@g1t/contracts";
 
 import type { Route } from "./+types/api";
 import { RESERVED_CHANNEL_NAMES, channelName, channelPath } from "../../../lib/chat";
@@ -55,6 +55,8 @@ type Sent = {
   message_id?: string;
   emoji?: string;
   archived?: boolean;
+  /** A question for @g1t asked from a page (the top bar's Ask): where they were. */
+  page?: unknown;
 };
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -69,8 +71,21 @@ export async function action({ params, context, request }: Route.ActionArgs) {
       case "post": {
         const body = (sent.body ?? "").trim();
         if (!body) return { ok: false, error: { code: "invalid", message: "Write something to send." } };
-        return chat.post(slug, channel, viewer, { body, thread_root: sent.thread_root ?? null });
+        // The chat service keeps `page` only on a question in a direct message with @g1t, and only what Ask reads of it.
+        const page = sent.page && typeof sent.page === "object" ? (sent.page as AskPage) : null;
+        return chat.post(slug, channel, viewer, { body, thread_root: sent.thread_root ?? null, page });
       }
+      // @g1t: the viewer's direct message with g1t, and what Ask's panel and Chat do in it.
+      case "g1t_dm": {
+        const opened = await chat.g1tDm(slug, viewer);
+        return opened.ok ? { ok: true, value: { channel: opened.value, to: channelPath(slug, opened.value) } } : opened;
+      }
+      case "g1t_reset":
+        return chat.g1tReset(slug, channel, viewer);
+      case "g1t_retry":
+        return chat.g1tRetry(slug, channel, viewer);
+      case "g1t_stop":
+        return chat.g1tStop(slug, channel, viewer);
       case "edit":
         return chat.edit(slug, channel, viewer, sent.id ?? "", (sent.body ?? "").trim());
       case "remove":

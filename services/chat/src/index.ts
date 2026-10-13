@@ -14,6 +14,8 @@
 
 import {
   CHAT_VIEWER_HEADER,
+  G1T_KEY,
+  G1T_PRINCIPAL,
   fail,
   identityClient,
   idFloor,
@@ -67,6 +69,21 @@ import {
   type ReactionTally,
 } from "./emoji.ts";
 import { shownCard } from "./cards.ts";
+// @g1t: the direct message every member has with g1t (src/g1t.ts, src/answer.ts).
+import {
+  G1T_PROFILE,
+  type MessageMeta,
+  type SaidRow,
+  conversation,
+  g1tDmPerson,
+  latestPage,
+  metaColumn,
+  pageFrom,
+  parseMeta,
+  shownAnswer,
+  startsAnswer,
+} from "./g1t.ts";
+import { internalAnswer } from "./internal.ts";
 import { mentionedHandles, mentionsColumn } from "./mentions.ts";
 import { messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 import { GENERAL, MAX_DM_MEMBERS, channelName, dmKey, dmMembers } from "./names.ts";
@@ -86,6 +103,8 @@ type Env = {
   AVATARS: KVNamespace;
   /** Live notifications and unread counts (services/notify); absent, nobody is told. */
   NOTIFY?: ServiceBinding;
+  /** Ask (services/integrations): @g1t's answers, which the channel's room asks for. */
+  INTEGRATIONS?: ServiceBinding;
 };
 
 type EmojiRow = {
@@ -148,6 +167,8 @@ type MessageRow = {
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
+  /** On @g1t's answers, questions asked from a page and new-conversation marks (src/g1t.ts `MessageMeta`). */
+  meta: string | null;
 };
 
 /**
@@ -296,7 +317,10 @@ class Chat {
     for (const [id, username] of Object.entries(named)) this.usernames.set(id, username);
     const out = new Map<string, MemberProfile>();
     for (const p of principals) {
-      if (p.kind === "user") {
+      if (p.kind === "system") {
+        // @g1t: the one system member there is.
+        out.set(principalKey(p), G1T_PROFILE);
+      } else if (p.kind === "user") {
         const username = this.usernames.get(p.id) ?? null;
         const person = username ? people.get(username) : undefined;
         out.set(principalKey(p), {
@@ -411,9 +435,17 @@ class Chat {
     const reactions = await this.reactionsOf(rows.filter((r) => !r.deleted_at).map((r) => r.id), me);
     const reactors = [...reactions.values()].flatMap((list) => list.flatMap((r) => r.by));
     const profiles = await this.profiles(slug, workspace, [...rows.map((r) => r.author), ...reactors]);
+    const at = Date.now();
     return rows.map((row) => {
       const gone = !!row.deleted_at;
+      // @g1t's answers, questions asked from a page, new-conversation marks (src/g1t.ts).
+      const meta = gone ? {} : parseMeta(row.meta);
+      const extra: Pick<ChatMessage, "answer" | "page" | "reset"> = {};
+      if (meta.answer) extra.answer = shownAnswer(meta.answer, row.created_at, at);
+      if (meta.page) extra.page = meta.page;
+      if (meta.reset) extra.reset = true;
       return {
+        ...extra,
         reactions: gone
           ? []
           : (reactions.get(row.id) ?? []).map((r) => ({ ...r, by: r.by.map((key) => profiles.get(key)!).filter(Boolean) })),
@@ -756,10 +788,14 @@ class Chat {
     const principals: Principal[] = [];
     for (const member of asked) {
       const p = member && parsePrincipalKey(`${member.kind}:${member.id}`);
-      if (!p || p.kind !== "user") return fail("invalid", "Each member is a person of the workspace, by id.");
+      // A person of the workspace, or @g1t.
+      if (!p || (p.kind !== "user" && principalKey(p) !== G1T_KEY)) return fail("invalid", "Each member is a person of the workspace, by id.");
       principals.push(p);
     }
     const members = dmMembers(me, principals.map(principalKey));
+    if (members.includes(G1T_KEY) && !g1tDmPerson(members)) {
+      return fail("invalid", "A direct message with g1t is just you and g1t.");
+    }
     if (members.length > MAX_DM_MEMBERS) {
       return fail("invalid", `A direct message has at most ${MAX_DM_MEMBERS} people. Make a private channel instead.`);
     }
@@ -771,7 +807,8 @@ class Chat {
     if (existing) return ok(toChannel(existing));
 
     for (const member of members) {
-      if (member === me) continue;
+      // g1t is in every workspace.
+      if (member === me || member === G1T_KEY) continue;
       const p = parsePrincipalKey(member)!;
       if (!(await this.belongs(slug, workspace, p))) {
         return fail("not_found", "That person is not in this workspace.");
@@ -1080,6 +1117,7 @@ class Chat {
     place: Place,
     author: string,
     input: { body: string; card: MessageCard | null; thread_root: string | null },
+    options: { meta?: MessageMeta; notify?: boolean } = {},
   ): Promise<Result<ChatMessage>> {
     const { channel, workspace } = place;
     if (channel.archived_at) return fail("invalid", "This channel is archived.");
@@ -1107,13 +1145,14 @@ class Chat {
       created_at: at,
       edited_at: null,
       deleted_at: null,
+      meta: metaColumn(options.meta ?? {}),
     };
     const statements = [
       this.db
         .prepare(
-          "INSERT INTO messages (id, channel_id, author, kind, body, card, mentions, thread_root, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO messages (id, channel_id, author, kind, body, card, mentions, thread_root, created_at, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(row.id, row.channel_id, author, row.kind, row.body, row.card, row.mentions, threadRoot, at),
+        .bind(row.id, row.channel_id, author, row.kind, row.body, row.card, row.mentions, threadRoot, at, row.meta),
       this.db.prepare("UPDATE channels SET last_message_at = ? WHERE id = ?").bind(at, channel.id),
       // What you wrote, you have read.
       this.db
@@ -1138,6 +1177,8 @@ class Chat {
     const [message] = await this.toMessages(place.slug, workspace, [row]);
     this.broadcast(channel.id, { type: "message.created", message });
     if (threadRoot) this.rebroadcast(place, threadRoot);
+    // An answer from @g1t notifies when it ends (src/room.ts), not while it is empty.
+    if (options.notify === false) return ok(message);
     // Notify: counts for everyone in the conversation, a notification for those it is for.
     this.defer(
       notifyMessage(this.db, this.env.NOTIFY, (keys) => this.profiles(place.slug, workspace, keys), { slug: place.slug, channel, row, handles }).catch(
@@ -1160,11 +1201,149 @@ class Chat {
       await this.joinStatement(place.channel.id, me, "member", now()).run();
       place = { ...place, member: { channel_id: place.channel.id, principal: me } as MemberRow };
     }
-    return this.write(
-      place,
-      me,
-      { body: body.body, card: null, thread_root: a.message?.thread_root ?? null },
-    );
+    const input = { body: body.body, card: null, thread_root: a.message?.thread_root ?? null };
+    const members = place.channel.kind === "dm" ? await this.memberKeys(place.channel.id) : [];
+    if (!startsAnswer({ channelKind: place.channel.kind, members, author: me, threadRoot: input.thread_root, card: false, body: input.body })) {
+      return this.write(place, me, input);
+    }
+    // A question for @g1t: kept with the page it was asked from, then answered.
+    const page = pageFrom(a.message?.page);
+    const written = await this.write(place, me, input, { meta: page ? { page } : {} });
+    if (written.ok) this.defer(this.startAnswer(place, a.viewer!).catch((error) => console.error("g1t could not start an answer in", place.channel.id, error)));
+    return written;
+  }
+
+  private async memberKeys(channelId: string): Promise<string[]> {
+    const rows = await this.db.prepare("SELECT principal FROM channel_members WHERE channel_id = ?").bind(channelId).all<{ principal: string }>();
+    return rows.results.map((row) => row.principal);
+  }
+
+  // ── @g1t (src/g1t.ts, src/answer.ts) ────────────────────────────────────
+
+  /**
+   * Starts @g1t's answer to what was last said in its direct message: an
+   * empty message from g1t, `thinking`, which the channel's room writes the
+   * answer into as it streams (src/room.ts `startAnswer`).
+   */
+  private async startAnswer(place: Place, viewer: User): Promise<void> {
+    const recent = await this.db
+      .prepare("SELECT id, author, kind, body, meta, deleted_at FROM messages WHERE channel_id = ? AND thread_root IS NULL ORDER BY id DESC LIMIT 120")
+      .bind(place.channel.id)
+      .all<SaidRow>();
+    const rows = recent.results.reverse();
+    const messages = conversation(rows);
+    if (!messages.length) return;
+    const written = await this.write(place, G1T_KEY, { body: "", card: null, thread_root: null }, { meta: { answer: { state: "thinking" } }, notify: false });
+    if (!written.ok) return;
+    const { channel } = place;
+    await this.room(channel.id).startAnswer({
+      slug: place.slug,
+      channel: { id: channel.id, kind: channel.kind, name: channel.name },
+      actor: viewer,
+      messages,
+      page: latestPage(rows) ?? { path: `/${place.slug}/-/chat/dm/${channel.id}` },
+      message: written.value,
+    });
+  }
+
+  /** The viewer's direct message with @g1t, checked: theirs, and with g1t. */
+  private async g1tPlace(slug: string, channelId: string, viewer: Viewer): Promise<Result<Place>> {
+    const found = await this.place(slug, channelId, viewer, "member");
+    if (!found.ok) return found;
+    if (found.value.channel.kind !== "dm" || g1tDmPerson(await this.memberKeys(found.value.channel.id)) !== userKey(viewer!)) {
+      return fail("invalid", "That is not a direct message with g1t.");
+    }
+    return found;
+  }
+
+  async g1tDm(a: { workspace: string; viewer: Viewer }): Promise<Result<Channel>> {
+    return this.openDm({ workspace: a.workspace, viewer: a.viewer, members: [G1T_PRINCIPAL] });
+  }
+
+  /**
+   * "New conversation": stops an answer still coming, and leaves a mark
+   * after which g1t reads only what is said next. Everything before stays
+   * to read.
+   */
+  async g1tReset(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<ChatMessage>> {
+    const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
+    if (!found.ok) return found;
+    await this.room(found.value.channel.id).stopAnswer();
+    const written = await this.write(found.value, G1T_KEY, { body: "New conversation", card: null, thread_root: null }, { meta: { reset: true }, notify: false });
+    if (written.ok) {
+      // Their own mark is read.
+      await this.db
+        .prepare("UPDATE channel_members SET last_read_id = ? WHERE channel_id = ? AND principal = ?")
+        .bind(written.value.id, found.value.channel.id, userKey(a.viewer!))
+        .run();
+    }
+    return written;
+  }
+
+  /** Answers the latest question again: g1t's last answer goes, and a new one is written. */
+  async g1tRetry(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<null>> {
+    const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
+    if (!found.ok) return found;
+    const place = found.value;
+    const last = await this.db
+      .prepare("SELECT * FROM messages WHERE channel_id = ? AND thread_root IS NULL AND deleted_at IS NULL ORDER BY id DESC LIMIT 1")
+      .bind(place.channel.id)
+      .first<MessageRow>();
+    if (!last || (last.author === G1T_KEY && parseMeta(last.meta).reset)) return fail("invalid", "There is no question to answer again.");
+    if (last.author === G1T_KEY) {
+      await this.room(place.channel.id).stopAnswer();
+      await this.db.prepare("UPDATE messages SET deleted_at = ?, body = '', meta = NULL WHERE id = ?").bind(now(), last.id).run();
+      this.broadcast(place.channel.id, { type: "message.deleted", channel_id: place.channel.id, id: last.id });
+    }
+    await this.startAnswer(place, a.viewer!);
+    return ok(null);
+  }
+
+  async g1tStop(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<null>> {
+    const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
+    if (!found.ok) return found;
+    await this.room(found.value.channel.id).stopAnswer();
+    return ok(null);
+  }
+
+  /**
+   * For g1t's own services (`POST /internal/g1t_post`): says something as
+   * @g1t in a direct message with it. Never reached from the site.
+   */
+  async internalG1tPost(a: { workspace: string; channel_id: string; body: string }): Promise<Result<ChatMessage>> {
+    const found = await this.internalPlace(a.workspace, a.channel_id);
+    if (!found.ok) return found;
+    const body = messageBody(a.body);
+    if (!body.ok) return fail("invalid", body.message);
+    return this.write(found.value, G1T_KEY, { body: body.body, card: null, thread_root: null });
+  }
+
+  /** `POST /internal/g1t_edit`: changes one of @g1t's messages in a direct message with it. */
+  async internalG1tEdit(a: { workspace: string; channel_id: string; id: string; body: string }): Promise<Result<ChatMessage>> {
+    const found = await this.internalPlace(a.workspace, a.channel_id);
+    if (!found.ok) return found;
+    const place = found.value;
+    const row = await this.messageRow(place.channel.id, a.id);
+    if (!row || row.deleted_at || row.author !== G1T_KEY) return fail("not_found", "No such message from g1t.");
+    const body = messageBody(a.body);
+    if (!body.ok) return fail("invalid", body.message);
+    const at = now();
+    await this.db.prepare("UPDATE messages SET body = ?, edited_at = ? WHERE id = ?").bind(body.body, at, row.id).run();
+    const [message] = await this.toMessages(place.slug, place.workspace, [{ ...row, body: body.body, edited_at: at }]);
+    this.broadcast(place.channel.id, { type: "message.updated", message });
+    return ok(message);
+  }
+
+  /** A direct message with @g1t, by the workspace's slug and the channel's id, for g1t's own services. */
+  private async internalPlace(slug: string, channelId: string): Promise<Result<Place>> {
+    const workspace = await this.workspace(String(slug ?? ""));
+    if (!workspace) return fail("not_found", "No such workspace.");
+    const channel = await this.db
+      .prepare("SELECT * FROM channels WHERE id = ? AND workspace_id = ?")
+      .bind(String(channelId ?? ""), workspace.id)
+      .first<ChannelRow>();
+    if (!channel || channel.kind !== "dm" || !g1tDmPerson(await this.memberKeys(channel.id))) return fail("not_found", "No such direct message with g1t.");
+    return ok({ slug: workspace.slug.toLowerCase(), workspace, channel, member: null });
   }
 
   async edit(a: { workspace: string; channel_id: string; viewer: Viewer; id: string; body: string }): Promise<Result<ChatMessage>> {
@@ -1194,7 +1373,10 @@ class Chat {
     const place = found.value;
     const row = await this.messageRow(place.channel.id, a.id);
     if (!row || row.deleted_at) return fail("not_found", "No such message.");
-    if (row.author !== userKey(a.viewer!) && !isOwner(a.viewer, a.workspace)) {
+    const me = userKey(a.viewer!);
+    // In your direct message with @g1t, g1t's messages are yours to delete too.
+    const g1tsInMine = row.author === G1T_KEY && place.channel.kind === "dm" && g1tDmPerson(await this.memberKeys(place.channel.id)) === me;
+    if (row.author !== me && !isOwner(a.viewer, a.workspace) && !g1tsInMine) {
       return fail("forbidden", "Only its author or a workspace owner can delete a message.");
     }
     const statements = [
@@ -1572,6 +1754,14 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.removeEmoji(args));
     case "set_emoji_upload":
       return Response.json(await service.setEmojiUpload(args));
+    case "g1t_dm":
+      return Response.json(await service.g1tDm(args));
+    case "g1t_reset":
+      return Response.json(await service.g1tReset(args));
+    case "g1t_retry":
+      return Response.json(await service.g1tRetry(args));
+    case "g1t_stop":
+      return Response.json(await service.g1tStop(args));
     default:
       return new Response("Unknown method\n", { status: 404 });
   }
@@ -1583,7 +1773,12 @@ export default {
     if (request.method === "GET" && url.pathname === "/live") {
       return new Chat(env, (work) => ctx.waitUntil(work)).live(request);
     }
-    const match = url.pathname.match(/^\/rpc\/([a-z_]+)$/);
+    const internal = url.pathname.match(/^\/internal\/([a-z0-9_]+)$/);
+    if (request.method === "POST" && internal) {
+      // Only g1t's own services (src/internal.ts).
+      return internalAnswer(new Chat(env, (work) => ctx.waitUntil(work)), request, internal[1]!);
+    }
+    const match = url.pathname.match(/^\/rpc\/([a-z0-9_]+)$/);
     if (request.method !== "POST" || !match) return new Response("Not found\n", { status: 404 });
     // A replica near the caller when it asks for one (@g1t/contracts d1.ts).
     const opened = openD1(env.DB, request);
