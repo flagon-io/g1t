@@ -273,7 +273,7 @@ the pull request, or anything landing on the target branch.
 2. **With a short probe.** If they share files, a sandbox merges the two
    commits and pushes nothing, and reports the files that
    conflict. Meanwhile the box says **Checking whether this merges cleanly**,
-   and the merge button waits. Probes are metered as sandbox time; each
+   and the merge button waits. Probes are charged as runner minutes; each
    pair of commits is probed once, and a repository runs at most
    three at a time, the rest following in turn.
 

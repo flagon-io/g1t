@@ -15,6 +15,7 @@
 //!   waits for staff in sudo, so one odd day of data cannot reprice
 //!   everything.
 
+use g1t_contracts::actions::{InstanceType, STANDARD_INSTANCE, runner_minutes};
 use g1t_contracts::billing::{MICROS_PER_DOLLAR, Price, PriceBook, PriceChange};
 
 use g1t_contracts::time::rfc3339;
@@ -232,6 +233,33 @@ pub(crate) fn sandbox_second_micros(usage: ContainerUsage, memory: f64, disk: f6
 pub(crate) fn base_scale(memory_gib: f64, disk_gb: f64) -> f64 {
     let base = |memory: f64, disk: f64| memory * LIST_MEMORY_GIB_SECOND + disk * LIST_DISK_GB_SECOND + SANDBOX_DO_GB * LIST_DO_GB_SECOND;
     base(memory_gib, disk_gb) / base(SANDBOX_GIB, SANDBOX_DISK_GB)
+}
+
+/// How much more a second of a machine costs g1t than the standard
+/// sandbox's with every vCPU of each as busy, at Cloudflare's list rates: 1
+/// for the standard machine. What a run that did not report its CPU is
+/// costed at, against the measured `sandbox_second`.
+pub(crate) fn busy_scale(instance: &InstanceType) -> f64 {
+    let busy = |i: &InstanceType| {
+        i.memory_gib * LIST_MEMORY_GIB_SECOND + i.disk_gb * LIST_DISK_GB_SECOND + i.vcpu * LIST_VCPU_SECOND + SANDBOX_DO_GB * LIST_DO_GB_SECOND
+    };
+    busy(instance) / busy(&STANDARD_INSTANCE)
+}
+
+/// What a job on g1t's machines is charged before the account's terms:
+/// its minutes, rounded up (`runner_minutes`), at its machine's rate a
+/// minute. The rates cover a machine with every vCPU busy at Cloudflare's
+/// list prices; should what a job cost g1t ever come to more (a dearer
+/// bill), it is charged that cost instead, so g1t never sells a minute
+/// below cost. Returns the minutes and the price.
+pub(crate) fn runner_charge(seconds: i64, instance: &InstanceType, cost: i64) -> (i64, i64) {
+    let minutes = runner_minutes(seconds);
+    (minutes, (minutes * instance.micros_per_minute).max(cost.max(0)))
+}
+
+/// `1 minute`, `12 minutes`.
+pub(crate) fn minutes_text(minutes: i64) -> String {
+    format!("{minutes} minute{}", if minutes == 1 { "" } else { "s" })
 }
 
 /// What a run that reported its own CPU cost g1t: its base for every
@@ -606,17 +634,41 @@ mod tests {
         // A larger machine's base: its memory and disk, not its CPU.
         assert!((base_scale(SANDBOX_GIB, SANDBOX_DISK_GB) - 1.0).abs() < 1e-12);
         assert!((base_scale(12.0, 20.0) - 1.45).abs() < 0.01, "{}", base_scale(12.0, 20.0));
-        // Each machine in the contracts, priced from its own memory and
-        // disk. Its price scale is at least its base's, so a job that does
-        // not report its CPU (charged the average sandbox second, which is
-        // never under the base, times the price scale) still pays for the
-        // memory and disk it held, idle or not.
+        // Each machine in the contracts is costed from its own memory and
+        // disk, and with its CPU unknown, at its vCPUs as busy: at least its
+        // base's share, so an idle job's cost still has the memory and disk
+        // it held.
         for instance in g1t_contracts::actions::INSTANCE_TYPES {
             let scale = base_scale(instance.memory_gib, instance.disk_gb);
-            assert!(scale >= 1.0 - 1e-12 && scale <= instance.price_scale + 1e-9, "{}: {scale}", instance.label);
+            assert!(scale >= 1.0 - 1e-12 && scale <= busy_scale(&instance) + 1e-9, "{}: {scale}", instance.label);
         }
-        let standard = g1t_contracts::actions::STANDARD_INSTANCE;
-        assert_eq!((standard.memory_gib, standard.disk_gb), (SANDBOX_GIB, SANDBOX_DISK_GB));
+        assert!((busy_scale(&STANDARD_INSTANCE) - 1.0).abs() < 1e-12);
+        let four = g1t_contracts::actions::machine_named("4-core").unwrap();
+        assert!((busy_scale(&four) - 1.80).abs() < 0.01, "{}", busy_scale(&four));
+        assert_eq!((STANDARD_INSTANCE.memory_gib, STANDARD_INSTANCE.disk_gb), (SANDBOX_GIB, SANDBOX_DISK_GB));
+    }
+
+    #[test]
+    fn a_job_is_charged_its_minutes_rounded_up_at_its_machines_rate() {
+        let four = g1t_contracts::actions::machine_named("4-core").unwrap();
+        // 61 seconds is 2 minutes; a job that ran is at least 1.
+        assert_eq!(runner_charge(61, &STANDARD_INSTANCE, 2_000), (2, 8_000));
+        assert_eq!(runner_charge(1, &STANDARD_INSTANCE, 30), (1, 4_000));
+        assert_eq!(runner_charge(60, &four, 4_000), (1, 7_000));
+        assert_eq!(runner_charge(0, &STANDARD_INSTANCE, 0), (0, 0));
+        // A full hour, every vCPU busy, at list prices: still over cost.
+        for machine in g1t_contracts::actions::machines() {
+            let busy_second = machine.memory_gib * 2.5 + machine.disk_gb * 0.07 + 0.125 * 12.5 + machine.vcpu * 20.0;
+            let cost = (3_600.0 * busy_second).ceil() as i64;
+            let (minutes, price) = runner_charge(3_600, &machine, cost);
+            assert_eq!((minutes, price), (60, 60 * machine.micros_per_minute), "{}", machine.machine);
+            assert!(price > cost, "{}: {price} {cost}", machine.machine);
+        }
+        // Should a job ever cost more than its minutes at the rate (a dearer
+        // Cloudflare bill), it is charged that cost instead.
+        assert_eq!(runner_charge(60, &STANDARD_INSTANCE, 10_000), (1, 10_000));
+        assert_eq!(minutes_text(1), "1 minute");
+        assert_eq!(minutes_text(12), "12 minutes");
     }
 
     #[test]

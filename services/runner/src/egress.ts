@@ -312,7 +312,8 @@ export function jobHosts(
 /**
  * The Durable Object namespace behind each sandbox class, by its binding:
  * a sandbox's outbound handlers are told its class, and report back to its
- * own object. Larger machines are classes of their own (wrangler.jsonc).
+ * own object. Each label in the machine catalogue (`INSTANCE_TYPES`) has a
+ * class of its own (wrangler.jsonc), named by its `sandboxClass`.
  */
 export const SANDBOX_BINDINGS: Record<string, string> = {
   AttemptSandbox: "SANDBOX",
@@ -325,6 +326,17 @@ export function sandboxNamespace(env: object, className: string | undefined): Du
   const bindings = env as Record<string, DurableObjectNamespace | undefined>;
   const binding = (className && SANDBOX_BINDINGS[className]) || "SANDBOX";
   return (bindings[binding] ?? bindings.SANDBOX) as DurableObjectNamespace;
+}
+
+/**
+ * The namespace a workflow job on `instance` starts in: its catalogue class's
+ * binding. Null when the class or its binding is missing here (a self-hosted
+ * g1t that did not deploy that class), so the job says so rather than
+ * running on another machine.
+ */
+export function jobNamespaceOf(env: object, instance: { sandboxClass: string }): DurableObjectNamespace | null {
+  const binding = SANDBOX_BINDINGS[instance.sandboxClass];
+  return (binding && (env as Record<string, DurableObjectNamespace | undefined>)[binding]) || null;
 }
 
 /**

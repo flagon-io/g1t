@@ -410,10 +410,11 @@ pub mod deployment_costs {
 
 /// `record_sandbox`: how long one sandbox ran for a workspace, reported by
 /// the runner when it stops. Every sandbox g1t starts for a workspace
-/// (agents, reviews, checks, the merge queue, workflow jobs) is metered by
-/// the second, from the first: recorded once per `reference`, with what it
-/// cost g1t, and charged at the price book's `sandbox_second` price unless
-/// `FREE_WHILE_BUILDING`. Deploy builds are charged by the Deployments plan
+/// (checks, the merge queue, workflow jobs) is recorded once per
+/// `reference`, with what it cost g1t (from the price book's
+/// `sandbox_second`), and charged in runner minutes: its time rounded up to
+/// the minute, at the rate of its machine (`actions::INSTANCE_TYPES`), and
+/// never under that cost. Deploy builds are charged by the Deployments plan
 /// instead.
 /// Returns `Outcome<bool>`: false if that reference was recorded before.
 #[derive(Debug, Serialize, Deserialize)]
@@ -446,7 +447,8 @@ pub struct RecordSandboxArgs {
     #[serde(default, alias = "self_hosted")]
     pub self_hosted: bool,
     /// The machine it ran on, by label (`g1t-4core`); absent, the standard
-    /// one. A larger machine's memory and disk cost more each second.
+    /// one. Its row in the machine catalogue sets the rate a minute and the
+    /// machine its minutes are reported under.
     #[serde(default)]
     pub instance: Option<String>,
 }
@@ -1741,6 +1743,10 @@ pub struct StatementLine {
     /// refund gave back). Never in `charged_micros` or the balance.
     #[serde(default)]
     pub passed_micros: i64,
+    /// On a `Runner minutes, <machine>` line: the minutes charged, each
+    /// job's time rounded up to the minute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minutes: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

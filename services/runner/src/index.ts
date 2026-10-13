@@ -28,6 +28,7 @@ import {
   type InstanceType,
   STANDARD_INSTANCE,
   instanceNamed,
+  priceScale,
 } from "@g1t/contracts";
 
 import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandboxName, systemActor, registryHosts } from "./bump";
@@ -60,7 +61,7 @@ import {
 import { newlyMisdirected } from "./broker";
 import { relay, relayDeps } from "./broker-relay";
 import { forward } from "./forward";
-import { EGRESS_ENV } from "./egress";
+import { EGRESS_ENV, jobNamespaceOf } from "./egress";
 
 // Outbound interception, which network guardrails use, needs this exported.
 export { ContainerProxy } from "@cloudflare/containers";
@@ -897,7 +898,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     if (route) return { ok: true, held: null, limits: limitsOf(ent), route };
     const [standardMicros, isPublic] = await Promise.all([compute.microsPerSecond(), this.isPublic(repo)]);
     // A larger machine is reserved for at what it costs with every vCPU busy.
-    const microsPerSecond = standardMicros * instance.estimateScale;
+    const microsPerSecond = standardMicros * priceScale(instance);
     const admission = await compute.admit(
       { workspace, repo, public: isPublic, kind, estimateMicros: sandboxEstimateMicros(estimateMinutes(minutes, ent), microsPerSecond) },
       ent,
@@ -992,11 +993,9 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     return ok(true);
   }
 
-  /** The sandboxes of a machine size: each instance type is a class of its own. */
+  /** The sandboxes of a label: the class the catalogue names for it, by its binding. */
   private jobNamespace(instance: InstanceType): DurableObjectNamespace<AttemptSandbox> | null {
-    if (instance === STANDARD_INSTANCE) return this.env.SANDBOX;
-    const bound = instance.label === "g1t-4core" ? this.env.SANDBOX_4CORE : instance.label === "g1t-2core" ? this.env.SANDBOX_2CORE : undefined;
-    return (bound as DurableObjectNamespace<AttemptSandbox> | undefined) ?? null;
+    return jobNamespaceOf(this.env, instance) as DurableObjectNamespace<AttemptSandbox> | null;
   }
 
   /**

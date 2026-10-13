@@ -158,7 +158,7 @@ What the workspace spent over the span, from its
 [statement](/guides/usage-and-billing/), with each line at its price: what
 was charged plus what your plan's included usage, a trial, a pool or a
 discount paid of it. The lines are the statement's kinds of charge, such
-as **Sandbox time**, **Self-hosted runner time** and
+as **Runner minutes, 2-core**, **Self-hosted runner time** and
 **Deployments**, most first. Payments, credits, refunds, tax and card fees
 are money in, not spend, and are left out. Under the total are the days
 counted and the month so far, at price.

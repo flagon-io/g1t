@@ -539,11 +539,11 @@ say; see [the job's token](#the-jobs-token). The
 
 A job runs on the standard machine unless its `runs-on` is `g1t-4core`:
 
-| `runs-on` | vCPUs | Memory | Disk |
-| --- | --- | --- | --- |
-| `ubuntu-latest`, or any other Linux label | 2 | 8 GiB | 16 GB |
-| `g1t-2core` (a name of the standard machine) | 2 | 8 GiB | 16 GB |
-| `g1t-4core` | 4 | 12 GiB | 20 GB |
+| `runs-on` | vCPUs | Memory | Disk | A minute |
+| --- | --- | --- | --- | --- |
+| `ubuntu-latest`, or any other Linux label | 2 | 8 GiB | 16 GB | $0.004 |
+| `g1t-2core` (a name of the standard machine) | 2 | 8 GiB | 16 GB | $0.004 |
+| `g1t-4core` | 4 | 12 GiB | 20 GB | $0.007 |
 
 ```yaml
 jobs:
@@ -555,8 +555,12 @@ jobs:
 large TypeScript project, image builds and databases. `g1t-2core` is kept
 as a name of the standard machine, so workflows that ask for it keep
 working. The label can come from the matrix or the run's inputs
-(`runs-on: ${{ matrix.big && 'g1t-4core' || 'ubuntu-latest' }}`). What
-each costs is in [usage and billing](/guides/usage-and-billing/#machines).
+(`runs-on: ${{ matrix.big && 'g1t-4core' || 'ubuntu-latest' }}`).
+
+Each job is charged its time rounded up to the whole minute (61 seconds
+is 2 minutes, and a job that ran is at least 1), at its machine's rate:
+see [runner minutes](/guides/usage-and-billing/#runner-minutes). Jobs on
+[self-hosted runners](/guides/self-hosted-runners/) are free.
 
 A job on g1t's machines runs for at most 60 minutes, whatever its
 `timeout-minutes`, and the workflow's page warns about a job that asks
@@ -1999,10 +2003,10 @@ On a public repository,
 runs them too, after a card check, until the month's pool is spent.
 
 Before each job starts, g1t reserves what it may cost (its time limit at
-the sandbox price) with billing, and settles what it really cost when it
-ends; each job's sandbox is charged as
-[sandbox time](/guides/usage-and-billing/#sandbox-time), from the first
-second. A job billing refuses does not start: it is recorded as failed
+its machine's price) with billing, and settles what it really cost when
+it ends; each job is charged in
+[runner minutes](/guides/usage-and-billing/#runner-minutes), its time
+rounded up to the whole minute, at the rate of the machine it ran on. A job billing refuses does not start: it is recorded as failed
 with "Not started:" and the reason, such as "Workflows run in g1t's
 sandboxes, which cost real money, so they need the g1t plan ($20 a month)
 or a card check", and what to do about it. The

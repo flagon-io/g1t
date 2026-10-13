@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { AgentRun, Price, RunnerActivity, UsageReport } from "@g1t/contracts";
+import type { AgentRun, RunnerActivity, UsageReport } from "@g1t/contracts";
 
 import { cloudNow, cloudPrices, machineTime, ownWaiting, perMinute, runnerCost } from "./runners.ts";
 
@@ -74,24 +74,39 @@ test("this month's time adds agent sandbox and sandbox time for g1t cloud, and s
     free: false,
     products: [
       { key: "agent", label: "Agent", micros: 0, meters: [meter("agent_sandbox", 600, 1_000_000), meter("agent_models", 9, 5_000_000)] },
-      { key: "sandboxes", label: "Sandboxes", micros: 0, meters: [meter("sandbox", 120, 200_000), meter("self_hosted", 3600, 0)] },
+      {
+        key: "sandboxes",
+        label: "Sandboxes",
+        micros: 0,
+        meters: [
+          meter("runner_2-core", 10, 40_000),
+          meter("runner_4-core", 2, 14_000),
+          meter("sandbox", 120, 200_000),
+          meter("self_hosted", 3600, 0),
+        ],
+      },
     ],
   } as unknown as UsageReport;
-  assert.deepEqual(runnerCost(report), { from: "2026-10-01", until: "2026-10-10", cloudSeconds: 720, cloudMicros: 1_200_000, ownSeconds: 3600, free: false });
+  // Runner minutes count as their minutes; older sandbox time by the second.
+  assert.deepEqual(runnerCost(report), {
+    from: "2026-10-01",
+    until: "2026-10-10",
+    cloudSeconds: 720 + 12 * 60,
+    cloudMicros: 1_254_000,
+    ownSeconds: 3600,
+    free: false,
+  });
 });
 
-test("prices are the sandbox's parts when both are priced, else the one price, per minute", () => {
-  const price = (meter: string, unit: string, priceMicros: number) => ({ meter, title: meter, unit, priceMicros }) as Price;
+test("prices are each machine's rate a minute, from the catalogue", () => {
   assert.deepEqual(
-    cloudPrices([price("sandbox_second", "second", 25), price("sandbox_base_second", "second", 14.5), price("sandbox_cpu_second", "vCPU-second", 24)])!.map((p) => [p.meter, p.unit, p.perMinuteMicros]),
+    cloudPrices().map((p) => [p.machine, p.perMinuteMicros, p.title]),
     [
-      ["sandbox_base_second", "minute", 870],
-      ["sandbox_cpu_second", "vCPU-minute", 1440],
+      ["2-core", 4000, "2-core: 2 vCPU, 8 GiB, 16 GB"],
+      ["4-core", 7000, "4-core: 4 vCPU, 12 GiB, 20 GB"],
     ],
   );
-  assert.deepEqual(cloudPrices([price("sandbox_second", "second", 25)])!.map((p) => p.perMinuteMicros), [1500]);
-  assert.equal(cloudPrices([]), null);
-  assert.equal(cloudPrices(null), null);
+  assert.equal(perMinute(4000), "$0.004");
 });
 
 test("machine time and prices read as people say them", () => {

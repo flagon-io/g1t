@@ -10,11 +10,12 @@
  *   (`runner_activity`'s `handed_over`), and its workflow jobs running in
  *   g1t's sandboxes (`cloud_jobs`).
  * - **This month** is billing's usage report from the first of the month:
- *   sandbox time is g1t's cloud, at price (older months may also name
- *   agent sandbox time);
+ *   runner minutes by machine are g1t's cloud, at price (older months
+ *   name sandbox time by the second, and agent sandbox time);
  *   self-hosted runner time is the workspace's own, at $0.
  */
-import type { AgentRun, MeterLine, Price, RunnerActivity, UsageReport } from "@g1t/contracts";
+import type { AgentRun, MeterLine, RunnerActivity, UsageReport } from "@g1t/contracts";
+import { machineSize, machines } from "@g1t/contracts/instances";
 
 /** One thing running in one of g1t's sandboxes. */
 export type CloudWork = {
@@ -55,16 +56,17 @@ export type RunnerCost = {
   free: boolean;
 };
 
-/** A price for time on g1t's cloud, per minute, from the price book. */
-export type CloudPrice = { meter: string; title: string; unit: string; perMinuteMicros: number };
+/** A machine on g1t's cloud and its price a minute, from the machine catalogue. */
+export type CloudPrice = { machine: string; title: string; perMinuteMicros: number };
 
-/** Billing's meters for machine time (`METERS` in services/billing/src/report.rs); `agent_sandbox` is in older months' reports. */
-export const CLOUD_METERS = ["agent_sandbox", "sandbox"] as const;
+/**
+ * Billing's meters for machine time (`meters()` in services/billing/src/report.rs):
+ * runner minutes by machine (`runner_2-core`), and by the second, sandbox time
+ * from before minutes (`agent_sandbox` in still older months' reports).
+ */
+export const RUNNER_METER_PREFIX = "runner_";
+export const CLOUD_SECOND_METERS = ["agent_sandbox", "sandbox"] as const;
 export const OWN_METER = "self_hosted";
-
-/** The price book's meters for a sandbox's time: its parts when both are priced, else the one price. */
-const PRICE_PARTS = ["sandbox_base_second", "sandbox_cpu_second"] as const;
-const PRICE_WHOLE = "sandbox_second";
 
 /** Where a sandbox run (checks, the merge queue) shows: its pull request, else the repository's pull requests. */
 export function sandboxRunHref(repo: string, number?: number | null): string {
@@ -126,29 +128,25 @@ export function runnerCost(report: UsageReport | null): RunnerCost | null {
   const meters: MeterLine[] = report.products.flatMap((product) => product.meters);
   const sum = (keys: readonly string[], pick: (meter: MeterLine) => number) =>
     meters.filter((meter) => keys.includes(meter.key)).reduce((total, meter) => total + pick(meter), 0);
+  const runnerKeys = meters.filter((meter) => meter.key.startsWith(RUNNER_METER_PREFIX)).map((meter) => meter.key);
   return {
     from: report.from,
     until: report.until,
-    cloudSeconds: sum(CLOUD_METERS, (meter) => meter.quantity),
-    cloudMicros: sum(CLOUD_METERS, (meter) => meter.micros + (meter.pendingMicros ?? 0)),
+    // Minutes as charged, and sandbox time from before them.
+    cloudSeconds: sum(runnerKeys, (meter) => meter.quantity * 60) + sum(CLOUD_SECOND_METERS, (meter) => meter.quantity),
+    cloudMicros: sum([...runnerKeys, ...CLOUD_SECOND_METERS], (meter) => meter.micros + (meter.pendingMicros ?? 0)),
     ownSeconds: sum([OWN_METER], (meter) => meter.quantity),
     free: report.free,
   };
 }
 
-/** The price of a minute on g1t's cloud, as the price book has it; null when it has none. */
-export function cloudPrices(prices: Price[] | null): CloudPrice[] | null {
-  if (!prices) return null;
-  const perMinute = (price: Price): CloudPrice => ({
-    meter: price.meter,
-    title: price.title,
-    unit: price.unit.replace(/second$/, "minute"),
-    perMinuteMicros: price.priceMicros * 60,
-  });
-  const parts = PRICE_PARTS.map((meter) => prices.find((price) => price.meter === meter));
-  if (parts.every(Boolean)) return parts.map((price) => perMinute(price!));
-  const whole = prices.find((price) => price.meter === PRICE_WHOLE);
-  return whole ? [perMinute(whole)] : null;
+/** Each machine on g1t's cloud and its price a minute, from the machine catalogue. */
+export function cloudPrices(): CloudPrice[] {
+  return machines().map((instance) => ({
+    machine: instance.machine,
+    title: `${instance.machine}: ${machineSize(instance)}`,
+    perMinuteMicros: instance.microsPerMinute,
+  }));
 }
 
 /** Seconds as people read machine time: "45s", "12 min", "3.4 h". */
