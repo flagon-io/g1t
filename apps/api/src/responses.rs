@@ -190,6 +190,7 @@ fn sample(op: Op, example: &Value) -> Value {
             through::<work::Pull>(op, sent)
         }
         Op::ListWorkflows => through::<Vec<actions::Workflow>>(op, sent),
+        Op::GetWorkflow => through::<actions::WorkflowDetail>(op, sent),
         Op::ListWorkflowRuns => through::<Vec<actions::WorkflowRun>>(op, sent),
         Op::GetWorkflowRun => through::<actions::RunDetail>(op, sent),
         Op::GetJobLogs => through::<actions::JobLog>(op, sent),

@@ -392,6 +392,7 @@ deployments; and the self-hosted runners workflows run on. See
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/actions/list-workflows/) | The workflows, with their events, state, problems, notes on what runs differently, manual-run inputs and last run. | `repo` | `workflows:read` |
+| [`get`](/reference/api/actions/get-workflow/) | One workflow by its id, file name, path or name, as `list` gives it, with `source`, its file on `ref` (the default branch unless given). | `repo`, `workflow` | `workflows:read` |
 | [`list_runs`](/reference/api/actions/list-runs-of-workflow/) | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull` or `sha`. | `repo` | `workflows:read` |
 | [`get_run`](/reference/api/actions/get-workflow-run/) | A run with its jobs, their steps and annotations, and its `attempts`; `attempt` reads an earlier attempt, with the jobs it had then. | `repo`, `id` | `workflows:read` |
 | [`job_logs`](/reference/api/actions/get-job-logs/) | A job's log after `after`; `done` says if more will come. | `repo`, `job` | `workflows:read` |

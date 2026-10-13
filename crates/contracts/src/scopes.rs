@@ -1122,6 +1122,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("remove_requested_reviewers", Scope::PullRequestsWrite),
     // Workflows.
     ("list_workflows", Scope::WorkflowsRead),
+    ("get_workflow", Scope::WorkflowsRead),
     ("list_workflow_runs", Scope::WorkflowsRead),
     ("get_workflow_run", Scope::WorkflowsRead),
     ("get_job_logs", Scope::WorkflowsRead),

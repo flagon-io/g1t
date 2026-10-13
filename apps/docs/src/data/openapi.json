@@ -429,6 +429,7 @@
       "description": "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
       "x-tools": [
         "list_workflows",
+        "get_workflow",
         "list_workflow_runs",
         "get_workflow_run",
         "get_job_logs",
@@ -44602,6 +44603,290 @@
         }
       }
     },
+    "/repos/{owner}/{name}/actions/workflows/{workflow}": {
+      "get": {
+        "operationId": "get_workflow",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Get a workflow",
+        "description": "One workflow, named by its id, its file name (ci.yml), its path or its name (CI): what list_workflows says of it, with `source`, its file as written on `ref` (the default branch unless you give a branch or tag), and `ref`, the branch or tag read.\n\n`workflow` is the workflow's id, file name, path or name. `source` is its file as written on `ref`; `404` when the file is not on that branch or tag.",
+        "x-operation": "get_workflow",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "workflow",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workflow's id, file name (ci.yml), path or name."
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A branch or tag to read its file on. The default branch if not given."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nr",
+                  "path": ".g1t/workflows/release.yml",
+                  "name": "Release",
+                  "events": [
+                    "workflow_dispatch"
+                  ],
+                  "state": "active",
+                  "error": null,
+                  "notes": [],
+                  "dispatch": {
+                    "channel": {
+                      "type": "choice",
+                      "options": [
+                        "beta",
+                        "stable"
+                      ],
+                      "default": "beta"
+                    }
+                  },
+                  "last_run": null,
+                  "ref": "main",
+                  "source": "name: Release\non:\n  workflow_dispatch:\n    inputs:\n      channel:\n        type: choice\n        options: [beta, stable]\n        default: beta\njobs:\n  release:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/release.sh ${{ inputs.channel }}\n"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workflow": "release.yml"
+        },
+        "x-example-query": {
+          "ref": "main"
+        }
+      },
+      "patch": {
+        "operationId": "update_workflow",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Turn a workflow on or off",
+        "description": "Turn a workflow on or off without changing its file. Needs the Maintain role or higher.",
+        "x-operation": "update_workflow",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "update",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "workflow",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workflow's id or file name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
+                  "path": ".g1t/workflows/nightly.yml",
+                  "name": "Nightly",
+                  "events": [
+                    "schedule"
+                  ],
+                  "state": "disabled",
+                  "error": null,
+                  "notes": [],
+                  "dispatch": null,
+                  "last_run": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "example": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workflow": "nightly.yml"
+        }
+      }
+    },
     "/repos/{owner}/{name}/actions/workflows/{workflow}/runs": {
       "get": {
         "operationId": "list_runs_of_workflow",
@@ -44913,153 +45198,6 @@
         },
         "x-example-params": {
           "workflow": "ci.yml"
-        }
-      }
-    },
-    "/repos/{owner}/{name}/actions/workflows/{workflow}": {
-      "patch": {
-        "operationId": "update_workflow",
-        "tags": [
-          "Actions"
-        ],
-        "summary": "Turn a workflow on or off",
-        "description": "Turn a workflow on or off without changing its file. Needs the Maintain role or higher.",
-        "x-operation": "update_workflow",
-        "x-mcp-tool": "workflow",
-        "x-mcp-action": "update",
-        "x-scope": "workflows:write",
-        "security": [
-          {
-            "token": [
-              "workflows:write"
-            ]
-          }
-        ],
-        "parameters": [
-          {
-            "name": "owner",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "The workspace that owns the repository."
-          },
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "The repository's name."
-          },
-          {
-            "name": "workflow",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "The workflow's id or file name."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
-                  "path": ".g1t/workflows/nightly.yml",
-                  "name": "Nightly",
-                  "events": [
-                    "schedule"
-                  ],
-                  "state": "disabled",
-                  "error": null,
-                  "notes": [],
-                  "dispatch": null,
-                  "last_run": null
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "A token is required, or the one sent is not valid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "It does not exist, or you cannot see it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request conflicts with the current state.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "The input is not valid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "enabled"
-                ]
-              },
-              "example": {
-                "enabled": false
-              }
-            }
-          }
-        },
-        "x-example-params": {
-          "workflow": "nightly.yml"
         }
       }
     },

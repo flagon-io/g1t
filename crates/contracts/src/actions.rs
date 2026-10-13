@@ -629,6 +629,31 @@ pub struct WorkflowsArgs {
     pub viewer: Viewer,
 }
 
+/// `workflow`: one workflow, named by its id (`wfl_…`), its file name
+/// (`ci.yml`), its path or its name, with its file as of `ref` (the
+/// default branch when absent). Returns `Outcome<WorkflowDetail>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkflowArgs {
+    pub repo: RepoPath,
+    pub viewer: Viewer,
+    pub workflow: String,
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
+}
+
+/// A workflow with its file.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowDetail {
+    #[serde(flatten)]
+    pub workflow: Workflow,
+    /// The branch or tag the file was read from.
+    #[serde(rename = "ref")]
+    pub git_ref: String,
+    /// The file, as written on `ref`.
+    pub source: String,
+}
+
 /// `runs`: newest first. Returns `Outcome<Vec<WorkflowRun>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunsArgs {

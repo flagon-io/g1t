@@ -489,6 +489,7 @@ export const OPERATION_SCOPES = [
   ["request_reviewers", "pull_requests:write"],
   ["remove_requested_reviewers", "pull_requests:write"],
   ["list_workflows", "workflows:read"],
+  ["get_workflow", "workflows:read"],
   ["list_workflow_runs", "workflows:read"],
   ["get_workflow_run", "workflows:read"],
   ["get_job_logs", "workflows:read"],

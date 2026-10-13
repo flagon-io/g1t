@@ -391,6 +391,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
         &[
             Op::ListWorkflows,
+            Op::GetWorkflow,
             Op::ListWorkflowRuns,
             Op::GetWorkflowRun,
             Op::GetJobLogs,
@@ -679,6 +680,7 @@ fn title(op: Op) -> &'static str {
         Op::ListWebhookDeliveries => "List webhook deliveries",
         Op::RedeliverWebhook => "Redeliver a webhook delivery",
         Op::ListWorkflows => "List workflows",
+        Op::GetWorkflow => "Get a workflow",
         Op::ListWorkflowRuns => "List workflow runs",
         Op::GetWorkflowRun => "Get a workflow run",
         Op::GetJobLogs => "Get a job's log",

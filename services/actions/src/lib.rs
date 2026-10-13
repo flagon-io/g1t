@@ -234,6 +234,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let service = Actions::new(&env)?;
     match method.as_str() {
         "workflows" => reply(&service.workflows(args(body)?).await?),
+        "workflow" => reply(&service.workflow(args(body)?).await?),
         "runs" => reply(&service.runs(args(body)?).await?),
         "run" => reply(&service.run(args(body)?).await?),
         "logs" => reply(&service.logs(args(body)?).await?),

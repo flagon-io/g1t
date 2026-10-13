@@ -474,6 +474,21 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[],
     },
     Operation {
+        id: "get_workflow",
+        method: "GET",
+        path: "/repos/{owner}/{name}/actions/workflows/{workflow}",
+        tag: "Actions",
+        summary: "Get a workflow",
+        scope: Some("workflows:read"),
+        params: &[
+            Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "workflow", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "ref", location: In::Query, kind: "string", required: false, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
         id: "get_workflow_run",
         method: "GET",
         path: "/repos/{owner}/{name}/actions/runs/{id}",

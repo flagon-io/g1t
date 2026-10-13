@@ -206,6 +206,7 @@ pub enum Op {
     ListWebhookDeliveries,
     RedeliverWebhook,
     ListWorkflows,
+    GetWorkflow,
     ListWorkflowRuns,
     GetWorkflowRun,
     GetJobLogs,
@@ -686,7 +687,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 353] = [
+    pub const ALL: [Op; 354] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -783,6 +784,7 @@ impl Op {
         Op::ListWebhookDeliveries,
         Op::RedeliverWebhook,
         Op::ListWorkflows,
+        Op::GetWorkflow,
         Op::ListWorkflowRuns,
         Op::GetWorkflowRun,
         Op::GetJobLogs,
@@ -1145,6 +1147,7 @@ impl Op {
             Op::ListWebhookDeliveries => "list_webhook_deliveries",
             Op::RedeliverWebhook => "redeliver_webhook",
             Op::ListWorkflows => "list_workflows",
+            Op::GetWorkflow => "get_workflow",
             Op::ListWorkflowRuns => "list_workflow_runs",
             Op::GetWorkflowRun => "get_workflow_run",
             Op::GetJobLogs => "get_job_logs",
@@ -1503,6 +1506,9 @@ impl Op {
             Op::RedeliverWebhook => "Send a delivery's payload again, as a new delivery.",
             Op::ListWorkflows => {
                 "A repository's GitHub Actions workflows, read from .g1t/workflows (GitHub's format, so a repository moves by renaming .github to .g1t) on its default branch: the events that start each, whether it is on, any problem with its file, notes on anything that runs differently on g1t, its manual-run inputs, and its last run."
+            }
+            Op::GetWorkflow => {
+                "One workflow, named by its id, its file name (ci.yml), its path or its name (CI): what list_workflows says of it, with `source`, its file as written on `ref` (the default branch unless you give a branch or tag), and `ref`, the branch or tag read."
             }
             Op::ListWorkflowRuns => {
                 "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, or a commit."
@@ -2470,6 +2476,14 @@ impl Op {
             ),
             Op::ListWebhooks => object(hook_owner(json!({})), &[]),
             Op::ListWorkflows => repo_only(),
+            Op::GetWorkflow => object(
+                json!({
+                    "repo": repo_schema(),
+                    "workflow": { "type": "string", "description": "The workflow's id, file name (ci.yml), path or name." },
+                    "ref": { "type": "string", "description": "A branch or tag to read its file on. The default branch if not given." },
+                }),
+                &["repo", "workflow"],
+            ),
             Op::ListWorkflowRuns => object(
                 json!({
                     "repo": repo_schema(),
@@ -4503,6 +4517,14 @@ impl Op {
                 .await
             }
             Op::ListWorkflows => pass(actions, "workflows", &json!({ "repo": repo, "viewer": viewer })).await,
+            Op::GetWorkflow => {
+                pass(
+                    actions,
+                    "workflow",
+                    &json!({ "repo": repo, "viewer": viewer, "workflow": text(input, "workflow"), "ref": optional_text(input, "ref") }),
+                )
+                .await
+            }
             Op::ListWorkflowRuns => {
                 pass(
                     actions,
