@@ -228,8 +228,6 @@ export function parseAllowances(form: FormData): Parsed<Allowances> {
       ossRepoMicros: oss.value,
       trialMicros: trial.value,
       maxConcurrentAgents: null,
-      runCapMicros: null,
-      issueCapMicros: null,
       auditRetentionDays,
       hold: hold || null,
     },

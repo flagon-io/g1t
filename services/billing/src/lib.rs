@@ -1213,7 +1213,6 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "request_limit" => reply(&billing.request_limit(args(body)?).await?),
         "limit_requests" => reply(&billing.limit_requests(args(body)?).await?),
         "confirm_spike" => reply(&billing.confirm_spike(args(body)?).await?),
-        "set_caps" => reply(&billing.set_caps(args(body)?).await?),
         "admin_limit_requests" => reply(&billing.admin_limit_requests(args(body)?).await?),
         "admin_decide_limit_request" => reply(&billing.admin_decide_limit_request(args(body)?).await?),
         "admin_overages" => reply(&billing.admin_overages(args(body)?).await?),

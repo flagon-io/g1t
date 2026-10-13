@@ -72,9 +72,6 @@ export type RunGuard = {
 export function harnessEnv(guard: RunGuard, sandboxEnv: Record<string, string>): Record<string, string> {
   return {
     GUARDRAILS: JSON.stringify({
-      rules: guard.policy.rules,
-      deny: guard.policy.deny,
-      budgetUsd: guard.policy.budgetUsd,
       minutes: guard.minutes,
       defaultBranch: sandboxEnv.UPSTREAM_BRANCH ?? null,
     }),
@@ -152,17 +149,11 @@ function lower(a: number | null | undefined, b: number | null | undefined): numb
   return caps.length ? Math.min(...caps) : null;
 }
 
-/** A plan's caps on one run, from its entitlements; null where it sets none. */
-export type PlanLimits = { minutes?: number | null; budgetUsd?: number | null };
+/** A plan's cap on one run, from its entitlements; null where it sets none. */
+export type PlanLimits = { minutes?: number | null };
 
-/**
- * A run's guardrails under its workspace's plan: the time and cost caps are
- * each the lower of the two.
- */
+/** A run's guardrails under its workspace's plan: the time cap is the lower of the two. */
 export function withPlanLimits(guard: RunGuard, limits: PlanLimits | null | undefined): RunGuard {
   if (!limits) return guard;
-  return {
-    policy: { ...guard.policy, budgetUsd: lower(guard.policy.budgetUsd, limits.budgetUsd) },
-    minutes: lower(guard.minutes, limits.minutes) ?? guard.minutes,
-  };
+  return { policy: guard.policy, minutes: lower(guard.minutes, limits.minutes) ?? guard.minutes };
 }

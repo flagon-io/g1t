@@ -795,14 +795,6 @@ pub struct Allowances {
     /// the trial, then 10). None: the default.
     #[serde(default)]
     pub max_concurrent_agents: Option<u32>,
-    /// One run's spend cap, in place of `RUN_CAP_MICROS` and the owners'
-    /// own. None: theirs, or the default.
-    #[serde(default)]
-    pub run_cap_micros: Option<i64>,
-    /// What the agents on one issue may spend in all, in place of
-    /// `ISSUE_CAP_MICROS` and the owners' own. None: theirs, or the default.
-    #[serde(default)]
-    pub issue_cap_micros: Option<i64>,
     /// Days of audit log its workspaces keep, in place of the plan's (7
     /// free, 90 on the plan), longer or shorter. None: the plan's.
     #[serde(default)]
@@ -980,12 +972,6 @@ pub struct Entitlements {
     /// The longest one run may take: 60 minutes in the first month or on
     /// the trial; otherwise the guardrails' own caps (`MAX_MINUTES`).
     pub max_run_minutes: u32,
-    /// One run's spend cap (`RUN_CAP_MICROS`, $2 by default); staff can
-    /// override it.
-    pub run_cap_micros: i64,
-    /// What agents may spend on one issue in all (`ISSUE_CAP_MICROS`, $10
-    /// by default); the owners can set it (`set_caps`), and staff override.
-    pub issue_cap_micros: i64,
     /// Where on-demand work stops: g1t's ceiling on usage not yet paid
     /// for. `UNLIMITED_MICROS` for g1t's own workspaces; 0 for a free one,
     /// which has no on-demand usage.
@@ -1240,21 +1226,6 @@ pub struct ConfirmSpikeArgs {
     pub workspace: String,
     #[serde(alias = "keep_going")]
     pub keep_going: bool,
-}
-
-/// `set_caps`: the owners' own caps on agents: one run's spend ($0.10 to
-/// $100) and what the agents on one issue may spend in all ($1 to $1,000).
-/// None goes back to the default ($2 and $10). A cap g1t staff set for the
-/// account wins over both. Owners only. Returns `Outcome<Entitlements>`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetCapsArgs {
-    pub actor: User,
-    pub workspace: String,
-    #[serde(default, alias = "run_cap_micros")]
-    pub run_cap_micros: Option<i64>,
-    #[serde(default, alias = "issue_cap_micros")]
-    pub issue_cap_micros: Option<i64>,
 }
 
 /// What staff see beside a request: the workspace's history with g1t.

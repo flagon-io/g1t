@@ -25,10 +25,6 @@ use crate::{User, Viewer};
 /// The longest any run may be allowed to take, in minutes.
 pub const MAX_MINUTES: u32 = 240;
 
-/// One run's spend cap unless an owner or g1t staff set another, in
-/// micro-dollars: billing's spend cap per run.
-pub const DEFAULT_RUN_CAP_MICROS: i64 = 2_000_000;
-
 /// How long each kind of run may take unless the workspace says otherwise.
 pub fn default_minutes(kind: RunKind) -> u32 {
     match kind {
@@ -65,14 +61,6 @@ pub struct GuardrailSettings {
 pub struct Guardrails {
     /// Every kind of run.
     pub minutes: BTreeMap<String, u32>,
-    /// Always false, and `hosts` always empty: sent for a runner deployed
-    /// before network rules were removed, which reads them to start its
-    /// sandboxes with an open network rather than failing to start them.
-    /// Never read. Remove once the runner after this change is deployed.
-    #[serde(skip_deserializing)]
-    pub restrict_network: bool,
-    #[serde(skip_deserializing)]
-    pub hosts: Vec<String>,
 }
 
 impl Guardrails {
@@ -83,8 +71,6 @@ impl Guardrails {
                 .into_iter()
                 .map(|kind| (kind.as_str().to_owned(), default_minutes(kind)))
                 .collect(),
-            restrict_network: false,
-            hosts: Vec::new(),
         }
     }
 
@@ -316,14 +302,8 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(old.minutes_for(RunKind::Implement), 90);
-        assert!(!old.restrict_network && old.hosts.is_empty());
-    }
-
-    #[test]
-    fn a_runner_from_before_reads_an_open_network() {
         let sent = serde_json::to_value(Guardrails::defaults()).unwrap();
-        assert_eq!(sent["restrictNetwork"], false);
-        assert_eq!(sent["hosts"], serde_json::json!([]));
+        assert!(sent.get("restrictNetwork").is_none() && sent.get("hosts").is_none());
     }
 
     #[test]

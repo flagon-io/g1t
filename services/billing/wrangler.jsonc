@@ -88,12 +88,6 @@
 		"LIMIT_PAID_START_MICROS": "100000000",
 		"LIMIT_PAID_MIN_MICROS": "25000000",
 		"LIMIT_PAID_MAX_MICROS": "1000000000",
-		// Caps on agents (src/compute.rs): what the agents on one issue may
-		// spend in all. One run's spend cap is DEFAULT_RUN_CAP_MICROS in
-		// crates/contracts (guardrails.rs), shared with the guardrails' cost
-		// per run; RUN_CAP_MICROS here would override it. Owners and staff
-		// can change both.
-		"ISSUE_CAP_MICROS": "10000000",
 		// A spike: an hour's spend above 5 times the usual hour over the last
 		// week, and at least $5, pauses new compute until an owner confirms.
 		"SPIKE_FACTOR": "5",

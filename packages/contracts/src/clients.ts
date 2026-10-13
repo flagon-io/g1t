@@ -598,7 +598,6 @@ export function billingClient(service: ServiceBinding): BillingApi {
     requestLimit: (actor, workspace, request) => call("request_limit", { actor, workspace, ...request }),
     limitRequests: (workspace, viewer) => call("limit_requests", { workspace, viewer }),
     confirmSpike: (actor, workspace, keepGoing) => call("confirm_spike", { actor, workspace, keepGoing }),
-    setCaps: (actor, workspace, caps) => call("set_caps", { actor, workspace, ...caps }),
     usageReport: (workspace, viewer, range) =>
       call("usage_report", { workspace, viewer, from: range.from, until: range.until, products: range.products ?? [], projects: range.projects ?? [] }),
     setBudget: (actor, workspace, budget) => call("set_budget", { actor, workspace, ...budget }),

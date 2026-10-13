@@ -28,7 +28,6 @@ function ent(change: Partial<ComputeEntitlements> = {}): ComputeEntitlements {
     trialVerified: true,
     firstMonth: false,
     maxRunMinutes: 0,
-    runCapMicros: 2_000_000,
     ceilingMicros: 100_000_000,
     exposureMicros: 0,
     paused: null,
@@ -233,14 +232,10 @@ test("the gate reads the sandbox price from the price book", async () => {
 
 // ---- Caps -------------------------------------------------------------------------------
 
-test("caps are the lower of the guardrails' and the plan's", () => {
-  const guard = { policy: { budgetUsd: 5 } as never, minutes: 90 };
-  const limited = withPlanLimits(guard as never, { minutes: 60, budgetUsd: 2 });
-  assert.equal(limited.minutes, 60);
-  assert.equal((limited.policy as { budgetUsd: number }).budgetUsd, 2);
-  const unlimited = withPlanLimits(guard as never, { minutes: null, budgetUsd: null });
-  assert.equal(unlimited.minutes, 90);
-  assert.equal((unlimited.policy as { budgetUsd: number }).budgetUsd, 5);
+test("the time cap is the lower of the guardrails' and the plan's", () => {
+  const guard = { policy: { minutes: {} }, minutes: 90 };
+  assert.equal(withPlanLimits(guard, { minutes: 60 }).minutes, 60);
+  assert.equal(withPlanLimits(guard, { minutes: null }).minutes, 90);
 });
 
 // ---- Sandboxes' network ------------------------------------------------------------------

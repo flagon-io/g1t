@@ -19,14 +19,6 @@ export type GuardrailSettings = {
 
 /** What a run actually gets. */
 export type Guardrails = {
-  /**
-   * No longer sent: command rules, deny patterns and the cost cap were for
-   * g1t's own agents. Kept optional for the runner, which still passes
-   * them on (and a plan's cost cap) when they are there.
-   */
-  rules?: Record<string, boolean>;
-  deny?: string[];
-  budgetUsd?: number | null;
   minutes: Record<string, number>;
 };
 

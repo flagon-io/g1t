@@ -27,9 +27,9 @@
 //! stop. Runs already under way finish. g1t's own workspaces are watched
 //! but never paused.
 
-use futures_util::future::{try_join, try_join4, try_join5};
+use futures_util::future::{try_join, try_join4};
 use g1t_contracts::billing::{
-    BillingAccount, ComputeKind, ConfirmSpikeArgs, SetCapsArgs, Entitlements, EntitlementsArgs, LimitState, PaidBy, PlanKind, Reservation,
+    BillingAccount, ComputeKind, ConfirmSpikeArgs, Entitlements, EntitlementsArgs, LimitState, PaidBy, PlanKind, Reservation,
     ReserveArgs, SettleArgs, Spike, UNLIMITED_MICROS, UsageAlert, RESERVATION_HOURS,
 };
 use g1t_contracts::time::rfc3339;
@@ -473,15 +473,14 @@ impl Billing {
             };
             Ok::<_, worker::Error>((checked, grant))
         };
-        let counts = try_join5(
-            self.owner_caps(&workspace),
+        let counts = try_join4(
             self.private_storage(&workspace),
             self.oss_paid(&workspace, &month),
             self.held(&account.workspaces),
             async { if has_plan { self.allowance_used("plan_credit", &workspace, &month).await } else { Ok(0) } },
         );
         let more = try_join(self.allowance_used("build_seconds", &workspace, &month), self.git_operations_this_month(&workspace));
-        let ((limit, (paused, spike, _)), (verified, grant), (owners, stored, oss, held, included_used), (build_seconds, git_operations)) =
+        let ((limit, (paused, spike, _)), (verified, grant), (stored, oss, held, included_used), (build_seconds, git_operations)) =
             try_join4(standing, trial, counts, more).await?;
         let trial_left = grant.as_ref().map_or(0, |g| left(g.granted_micros, g.used_micros));
         let first_month = limit.first_month;
@@ -500,8 +499,6 @@ impl Billing {
             first_month,
             max_concurrent_agents: max_agents,
             max_run_minutes: max_minutes,
-            run_cap_micros: account.allowances.run_cap_micros.or(owners.0).unwrap_or(self.plans.run_cap_micros),
-            issue_cap_micros: account.allowances.issue_cap_micros.or(owners.1).unwrap_or(self.plans.issue_cap_micros),
             ceiling_micros: ceiling,
             exposure_micros: limit.exposure_micros,
             paused,
@@ -742,53 +739,6 @@ impl Billing {
         Ok(Outcome::Ok(self.entitlements(EntitlementsArgs { workspace }).await?))
     }
 
-    /// The owners' own run and issue caps, if they set them.
-    async fn owner_caps(&self, workspace: &str) -> Result<(Option<i64>, Option<i64>)> {
-        #[derive(Deserialize)]
-        struct Row {
-            run_cap_micros: Option<i64>,
-            issue_cap_micros: Option<i64>,
-        }
-        Ok(self
-            .db
-            .prepare("SELECT run_cap_micros, issue_cap_micros FROM limits WHERE workspace = ?")
-            .bind(&[workspace.into()])?
-            .first::<Row>(None)
-            .await?
-            .map_or((None, None), |r| (r.run_cap_micros, r.issue_cap_micros)))
-    }
-
-    /// `set_caps`: the owners' own run and issue caps.
-    pub(crate) async fn set_caps(&self, a: SetCapsArgs) -> Result<Outcome<Entitlements>> {
-        let workspace = a.workspace.to_lowercase();
-        if !a.actor.manages_billing(&workspace) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can set the workspace's caps."));
-        }
-        if let Err(why) = cap_bounds(a.run_cap_micros, a.issue_cap_micros) {
-            return Ok(Outcome::fail(FailureCode::Invalid, why));
-        }
-        let opt = |m: Option<i64>| m.map_or(JsValue::NULL, |m| (m as f64).into());
-        let now = rfc3339(now_ms());
-        self.db
-            .prepare(
-                "INSERT INTO limits (workspace, run_cap_micros, issue_cap_micros, updated_at) VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT (workspace) DO UPDATE SET run_cap_micros = ?2, issue_cap_micros = ?3, updated_at = ?4",
-            )
-            .bind(&[workspace.as_str().into(), opt(a.run_cap_micros), opt(a.issue_cap_micros), now.into()])?
-            .run()
-            .await?;
-        let account = self.account_of(&workspace).await?;
-        let shown = |m: Option<i64>| m.map_or_else(|| "the default".to_owned(), dollars);
-        self.audit(
-            &account.id,
-            "caps",
-            &format!("{workspace}: run cap {}, issue cap {}", shown(a.run_cap_micros), shown(a.issue_cap_micros)),
-            &a.actor.username,
-        )
-        .await?;
-        Ok(Outcome::Ok(self.entitlements(EntitlementsArgs { workspace }).await?))
-    }
-
     /// Emails owners about spikes that paused their workspace, once each.
     pub(crate) async fn tell_spikes(&self, identity: &worker::Fetcher) -> Result<()> {
         #[derive(Deserialize)]
@@ -859,16 +809,6 @@ impl Billing {
 
 /// Whether owners' caps are in bounds: a run $0.10 to $100 (the
 /// guardrails' most), an issue $1 to $1,000.
-pub(crate) fn cap_bounds(run: Option<i64>, issue: Option<i64>) -> std::result::Result<(), String> {
-    if run.is_some_and(|m| !(100_000..=100_000_000).contains(&m)) {
-        return Err("A run's cap is between $0.10 and $100.".to_owned());
-    }
-    if issue.is_some_and(|m| !(1_000_000..=1_000_000_000).contains(&m)) {
-        return Err("An issue's cap is between $1 and $1,000.".to_owned());
-    }
-    Ok(())
-}
-
 pub(crate) fn paid_by_text(paid_by: PaidBy) -> &'static str {
     match paid_by {
         PaidBy::Credit => "credit",
@@ -1032,16 +972,6 @@ mod tests {
         // A day later: watched afresh.
         assert!(!still_continued(Some(until), "2026-10-06T12:00:01Z", 6_000_000, 1_000_000));
         assert!(!still_continued(None, "2026-10-06T11:00:00Z", 6_000_000, 1));
-    }
-
-    #[test]
-    fn owners_caps_stay_in_bounds() {
-        assert!(cap_bounds(None, None).is_ok());
-        assert!(cap_bounds(Some(5_000_000), Some(50_000_000)).is_ok());
-        assert!(cap_bounds(Some(50_000), None).is_err());
-        assert!(cap_bounds(Some(101_000_000), None).is_err());
-        assert!(cap_bounds(None, Some(500_000)).is_err());
-        assert!(cap_bounds(None, Some(2_000_000_000)).is_err());
     }
 
     #[test]
