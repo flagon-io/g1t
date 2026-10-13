@@ -94,6 +94,9 @@ pub enum Command {
     /// Secrets for workflows and deployments, a repository's or a workspace's.
     #[command(subcommand)]
     Secret(SecretCommand),
+    /// The repository's actions/cache entries: list, usage, delete.
+    #[command(subcommand)]
+    Cache(CacheCommand),
     /// Deployments: list and view.
     #[command(subcommand)]
     Deploy(DeployCommand),
@@ -723,6 +726,57 @@ pub struct SecretDeleteArgs {
     pub name: String,
     #[command(flatten)]
     pub scope: SecretScope,
+}
+
+// --- cache ------------------------------------------------------------
+
+#[derive(Debug, Subcommand)]
+pub enum CacheCommand {
+    /// List the repository's cache entries, least recently used last.
+    List(CacheListArgs),
+    /// What the repository's cache entries hold, against its quota.
+    Usage,
+    /// Delete cache entries: one by its id, or every entry with a key.
+    Delete(CacheDeleteArgs),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum CacheSort {
+    /// When it was last restored or looked up.
+    LastAccessedAt,
+    CreatedAt,
+    SizeInBytes,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum SortOrder {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Args)]
+pub struct CacheListArgs {
+    /// Only entries whose key starts with this.
+    #[arg(short, long)]
+    pub key: Option<String>,
+    /// Only entries saved by this ref's runs, e.g. refs/heads/main.
+    #[arg(short, long = "ref", value_name = "REF")]
+    pub git_ref: Option<String>,
+    #[arg(short = 'S', long, value_enum, default_value_t = CacheSort::LastAccessedAt)]
+    pub sort: CacheSort,
+    #[arg(short = 'O', long, value_enum, default_value_t = SortOrder::Desc)]
+    pub order: SortOrder,
+    #[arg(short = 'L', long, default_value_t = 30)]
+    pub limit: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct CacheDeleteArgs {
+    /// An entry's id (a number, from `g1t cache list`), or a key: every entry with exactly that key.
+    pub entry: String,
+    /// With a key, only the entries this ref's runs saved.
+    #[arg(short, long = "ref", value_name = "REF")]
+    pub git_ref: Option<String>,
 }
 
 // --- deploy -----------------------------------------------------------

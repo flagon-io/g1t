@@ -6,6 +6,7 @@
 
 mod about;
 mod run_artifacts;
+mod caches;
 mod archives;
 mod addresses;
 mod alerts;

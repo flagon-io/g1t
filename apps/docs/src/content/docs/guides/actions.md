@@ -825,6 +825,38 @@ how long it took. A workspace on the plan pays for what its caches and
 at R2's price plus the margin; see
 [usage and billing](/guides/usage-and-billing/#actions-cache).
 
+### Seeing and deleting entries
+
+To see what a repository's cache holds against its 10 GiB, and which
+entries take the most:
+
+```sh
+g1t cache usage
+g1t cache list --sort size-in-bytes --limit 10
+g1t cache list --key cargo- --ref refs/heads/main
+```
+
+Each entry shows its id, key, the ref whose run saved it (a pull request
+from outside the repository saves under `untrusted:<ref>`), its size, and
+when it was saved and last restored. To delete one, or every entry with a
+key (on one ref with `--ref`):
+
+```sh
+g1t cache delete 9184
+g1t cache delete cargo-test-Linux-1.99.0-5f1c3a9e7b2d --ref refs/pull/412/merge
+```
+
+A deleted entry's bytes go at once, and a run that restores its key finds
+nothing until one saves it again. Listing needs the Read role, deleting
+the Write role.
+
+| `workflow` action | Route |
+| --- | --- |
+| `list_caches` | `GET /repos/{owner}/{repo}/actions/caches`, with `key` (a prefix), `ref`, `sort` (`last_accessed_at`, `created_at` or `size_in_bytes`), `direction`, `page`, `per_page` |
+| `cache_usage` | `GET /repos/{owner}/{repo}/actions/cache/usage`: `active_caches_size_in_bytes`, `active_caches_count`, and `quota_bytes` |
+| `delete_caches` | `DELETE /repos/{owner}/{repo}/actions/caches?key=…`, with `ref`: answers with the entries deleted |
+| `delete_cache` | `DELETE /repos/{owner}/{repo}/actions/caches/{id}`: `204` |
+
 ## Artifacts
 
 `actions/upload-artifact` keeps files a job made with its run, for later
@@ -1022,6 +1054,7 @@ What to expect:
 | What is compiled each time | What rustc links: binaries, `cdylib` crates, proc macros, build scripts and test harnesses. |
 | Its entries | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's 10 GiB like any other entry, and the ones not restored for 7 days are deleted. |
 | Branches | A pull request reads what the default branch saved. Run the workflow on pushes to the default branch too, as above, or each pull request's first run starts with an empty cache. |
+| Releases from tags | A tag's run reads the default branch's entries, but what it saves only that tag would ever read. Set `SCCACHE_GHA_RW_MODE: READ_ONLY` on a tag's run (`if [ "$GITHUB_REF_TYPE" = tag ]`) so it saves nothing: it still looks every crate up. |
 | Starting over | Set `SCCACHE_GHA_VERSION` to any new value. A new sccache release starts over by itself. |
 | If the cache cannot be reached | sccache refuses to start. Set `SCCACHE_IGNORE_SERVER_IO_ERROR: "1"` to have rustc run without it instead. |
 
@@ -2012,6 +2045,7 @@ usually work once they point at `https://api.g1t.sh`.
 | `download_artifact` | `GET …/actions/artifacts/{artifact_id}/zip`: a `302` to a link good for 10 minutes |
 | `delete_artifact` | `DELETE …/actions/artifacts/{artifact_id}` |
 | `artifact_retention`, `set_artifact_retention` | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept for 90 days) |
+| `list_caches`, `cache_usage`, `delete_caches`, `delete_cache` | `…/actions/caches` and `…/actions/cache/usage`; see [Seeing and deleting entries](#seeing-and-deleting-entries) |
 
 Secrets and variables have a tool of their own, `secret`:
 

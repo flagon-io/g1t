@@ -1075,3 +1075,61 @@ fn events_follow_from_the_newest_and_resume_from_the_last() {
     assert!(seen[1].target.contains("types=work.claimed%2Cwork.released"), "{}", seen[1].target);
     assert!(seen[2].target.contains("wait=25"), "{}", seen[2].target);
 }
+
+fn cache(id: u64, key: &str, size: u64) -> Value {
+    json!({
+        "id": id, "key": key, "ref": "refs/heads/main", "version": "", "size_in_bytes": size,
+        "created_at": "2026-10-12T10:00:00.000Z", "last_accessed_at": "2026-10-12T11:00:00.000Z",
+    })
+}
+
+#[test]
+fn cache_list_pages_through_the_entries_largest_first() {
+    // 150 entries: a first page of 100, then the 50 the limit still wants.
+    let mock = Mock::start(|r| {
+        let ids = if r.target.contains("page=2") { 101..=150 } else { 1..=100 };
+        (200, json!({ "total_count": 150, "actions_caches": ids.map(|n| cache(n, "cargo-x", 1024)).collect::<Vec<_>>() }))
+    });
+    let out = run(
+        &mock,
+        &["cache", "list", "-R", "acme/web", "--key", "cargo-", "--sort", "size-in-bytes", "--limit", "120", "--json", "id"],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let list: Vec<Value> = serde_json::from_str(&out.stdout).unwrap();
+    assert_eq!(list.len(), 120);
+    let seen = mock.requests();
+    assert_eq!(seen.len(), 2);
+    assert_eq!(seen[0].path(), "/repos/acme/web/actions/caches");
+    for want in ["key=cargo-", "sort=size_in_bytes", "direction=desc", "per_page=100", "page=1"] {
+        assert!(seen[0].target.contains(want), "{want} in {}", seen[0].target);
+    }
+    assert!(seen[1].target.contains("page=2"), "{}", seen[1].target);
+}
+
+#[test]
+fn cache_usage_says_how_full_the_repository_is() {
+    let mock = Mock::start(|_| {
+        (200, json!({ "full_name": "acme/web", "active_caches_size_in_bytes": 5_368_709_120u64, "active_caches_count": 12, "quota_bytes": 10_737_418_240u64 }))
+    });
+    let out = run(&mock, &["cache", "usage", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(out.stdout, "acme/web: 12 entries holding 5.0 GiB of 10.0 GiB (50%)\n");
+    assert_eq!(mock.requests()[0].target, "/repos/acme/web/actions/cache/usage");
+}
+
+#[test]
+fn cache_delete_takes_an_id_or_a_key() {
+    let mock = Mock::start(|r| match r.path() {
+        "/repos/acme/web/actions/caches/9184" => (204, Value::Null),
+        _ => (200, json!({ "total_count": 2, "actions_caches": [cache(1, "npm-full-Linux-abc", 1), cache(2, "npm-full-Linux-abc", 1)] })),
+    });
+    let out = run(&mock, &["cache", "delete", "9184", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = run(&mock, &["cache", "delete", "npm-full-Linux-abc", "--ref", "refs/heads/main", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("Deleted 2 cache entries with the key npm-full-Linux-abc"), "{}", out.stderr);
+    let seen = mock.requests();
+    assert_eq!((seen[0].method.as_str(), seen[0].path()), ("DELETE", "/repos/acme/web/actions/caches/9184"));
+    assert_eq!(seen[1].method, "DELETE");
+    assert!(seen[1].target.starts_with("/repos/acme/web/actions/caches?key=npm-full-Linux-abc&ref=refs"), "{}", seen[1].target);
+}

@@ -9,6 +9,7 @@ use serde_json::{Map, Value, json};
 
 use crate::about::AboutOp;
 use crate::run_artifacts::ArtifactsOp;
+use crate::caches::CachesOp;
 use crate::archives::ArchiveOp;
 use crate::deploy_keys::DeployKeysOp;
 use crate::deployments::DeploymentsOp;
@@ -414,7 +415,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Actions",
-        "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
+        "GitHub Actions workflows in .g1t/workflows, their runs, their jobs' logs, their artifacts, and the repository's actions/cache entries.",
         &[
             Op::ListWorkflows,
             Op::ListWorkflowRuns,
@@ -431,6 +432,10 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Artifacts(ArtifactsOp::DeleteArtifact),
             Op::Artifacts(ArtifactsOp::GetArtifactRetention),
             Op::Artifacts(ArtifactsOp::SetArtifactRetention),
+            Op::Caches(CachesOp::ListCaches),
+            Op::Caches(CachesOp::GetCacheUsage),
+            Op::Caches(CachesOp::DeleteCachesByKey),
+            Op::Caches(CachesOp::DeleteCache),
         ],
     ),
     (
@@ -797,6 +802,7 @@ fn title(op: Op) -> &'static str {
         Op::Protection(op) => op.title(),
         Op::Tokens(op) => op.title(),
         Op::Artifacts(op) => op.title(),
+        Op::Caches(op) => op.title(),
         Op::Archives(op) => op.title(),
         Op::DeployKeys(op) => op.title(),
         Op::Packages(op) => op.title(),

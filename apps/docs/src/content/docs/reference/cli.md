@@ -674,6 +674,53 @@ g1t secret delete [OPTIONS] <NAME>
 
 Calls [`delete_actions_secret`](/reference/api/secrets-and-variables/delete-actions-secret/), [`delete_actions_secret_for_workspace`](/reference/api/secrets-and-variables/delete-actions-secret-for-workspace/).
 
+## g1t cache
+
+The repository's actions/cache entries: list, usage, delete.
+
+### g1t cache list
+
+List the repository's cache entries, least recently used last.
+
+```text
+g1t cache list [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-k, --key <KEY>` | Only entries whose key starts with this. |
+| `-g, --ref <REF>` | Only entries saved by this ref's runs, e.g. refs/heads/main. |
+| `-S, --sort <SORT>` | One of `last-accessed-at`, `created-at`, `size-in-bytes`. Default: `last-accessed-at`. |
+| `-O, --order <ORDER>` | One of `asc`, `desc`. Default: `desc`. |
+| `-L, --limit <LIMIT>` | Default: `30`. |
+
+Calls [`list_caches`](/reference/api/actions/list-caches/).
+
+### g1t cache usage
+
+What the repository's cache entries hold, against its quota.
+
+```text
+g1t cache usage [OPTIONS]
+```
+
+Calls [`get_cache_usage`](/reference/api/actions/get-cache-usage/).
+
+### g1t cache delete
+
+Delete cache entries: one by its id, or every entry with a key.
+
+```text
+g1t cache delete [OPTIONS] <ENTRY>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<ENTRY>` | An entry's id (a number, from `g1t cache list`), or a key: every entry with exactly that key. |
+| `-g, --ref <REF>` | With a key, only the entries this ref's runs saved. |
+
+Calls [`delete_cache`](/reference/api/actions/delete-cache/), [`delete_caches_by_key`](/reference/api/actions/delete-caches-by-key/).
+
 ## g1t deploy
 
 Deployments: list and view.

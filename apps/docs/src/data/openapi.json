@@ -452,7 +452,7 @@
     },
     {
       "name": "Actions",
-      "description": "GitHub Actions workflows in .g1t/workflows, their runs, and their jobs' logs.",
+      "description": "GitHub Actions workflows in .g1t/workflows, their runs, their jobs' logs, their artifacts, and the repository's actions/cache entries.",
       "x-tools": [
         "list_workflows",
         "list_workflow_runs",
@@ -468,7 +468,11 @@
         "download_artifact",
         "delete_artifact",
         "get_artifact_retention",
-        "set_artifact_retention"
+        "set_artifact_retention",
+        "list_caches",
+        "get_cache_usage",
+        "delete_caches_by_key",
+        "delete_cache"
       ]
     },
     {
@@ -52454,6 +52458,550 @@
         "x-example-params": {
           "owner": "flagon-io",
           "name": "g1t"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/caches": {
+      "get": {
+        "operationId": "list_caches",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "List a repository's caches",
+        "description": "List the entries actions/cache has saved in a repository (total_count, actions_caches): each with its id (a number), key, ref (the ref whose run saved it; a pull request from outside saves under untrusted:<ref>), version (the hash of its paths; empty for one g1t's own actions/cache saved), size_in_bytes, created_at and last_accessed_at (its last restore or lookup). Narrow with key (entries whose key starts with it) and ref; order with sort (last_accessed_at, created_at or size_in_bytes; last_accessed_at by default) and direction (asc or desc; desc by default); page with page and per_page (30 by default, at most 100). Needs the Read role.\n\n`key` matches keys that start with it. Entries past their 28 days, or unused for 7, are swept within the hour and are not listed once they are.",
+        "x-operation": "list_caches",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "list_caches",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only entries whose key starts with this."
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A full ref, e.g. refs/heads/main or refs/pull/7/merge."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "last_accessed_at",
+                "created_at",
+                "size_in_bytes"
+              ]
+            },
+            "description": "What to order by: last_accessed_at unless you say."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "description": "desc unless you say."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The page, from 1."
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Entries a page: 30 unless you say, at most 100."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "total_count": 3,
+                  "actions_caches": [
+                    {
+                      "id": 9184,
+                      "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+                      "ref": "refs/heads/main",
+                      "version": "",
+                      "size_in_bytes": 1687203840,
+                      "created_at": "2026-10-12T09:14:02.511Z",
+                      "last_accessed_at": "2026-10-12T15:40:19.087Z"
+                    },
+                    {
+                      "id": 9102,
+                      "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+                      "ref": "refs/pull/412/merge",
+                      "version": "",
+                      "size_in_bytes": 702545920,
+                      "created_at": "2026-10-12T11:02:44.930Z",
+                      "last_accessed_at": "2026-10-12T11:02:44.930Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        },
+        "x-example-query": {
+          "key": "cargo-test-",
+          "sort": "size_in_bytes",
+          "per_page": "2"
+        }
+      },
+      "delete": {
+        "operationId": "delete_caches_by_key",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Delete caches by key",
+        "description": "Delete every cache entry whose key is exactly key, or only ref's when you give ref. Answers with the entries deleted, in list_caches' shape. Their bytes go at once, and a run that restores the key finds nothing until one saves it again. Needs the Write role.\n\nThe key is matched exactly. Without `ref`, the key's entries on every ref are deleted.",
+        "x-operation": "delete_caches_by_key",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "delete_caches",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "total_count": 1,
+                  "actions_caches": [
+                    {
+                      "id": 9102,
+                      "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+                      "ref": "refs/pull/412/merge",
+                      "version": "",
+                      "size_in_bytes": 702545920,
+                      "created_at": "2026-10-12T11:02:44.930Z",
+                      "last_accessed_at": "2026-10-12T11:02:44.930Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "The key, exactly."
+                  },
+                  "ref": {
+                    "type": "string",
+                    "description": "A full ref, e.g. refs/heads/main or refs/pull/7/merge."
+                  }
+                },
+                "required": [
+                  "key"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        },
+        "x-example-query": {
+          "key": "cargo-test-Linux-rustc-1.99.0-5f1c3a9e7b2d",
+          "ref": "refs/pull/412/merge"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/cache/usage": {
+      "get": {
+        "operationId": "get_cache_usage",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Get a repository's cache usage",
+        "description": "What a repository's saved cache entries hold together: active_caches_size_in_bytes and active_caches_count, and quota_bytes, the most they may hold (10 GiB). Saving past it evicts the entries restored longest ago. Needs the Read role.\n\nSaving past `quota_bytes` evicts the entries restored longest ago.",
+        "x-operation": "get_cache_usage",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "cache_usage",
+        "x-scope": "workflows:read",
+        "security": [
+          {
+            "token": [
+              "workflows:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "full_name": "flagon-io/g1t",
+                  "active_caches_size_in_bytes": 8813275136,
+                  "active_caches_count": 41,
+                  "quota_bytes": 10737418240
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/actions/caches/{id}": {
+      "delete": {
+        "operationId": "delete_cache",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Delete a cache by id",
+        "description": "Delete one cache entry by its id, as list_caches gives it. Over REST it answers 204 with no body, as GitHub does. Needs the Write role.\n\nAnswers `204` with no body.",
+        "x-operation": "delete_cache",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "delete_cache",
+        "x-scope": "workflows:write",
+        "security": [
+          {
+            "token": [
+              "workflows:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "description": "The entry's id, a number."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success. There is no body."
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "g1t",
+          "id": "9102"
         }
       }
     },

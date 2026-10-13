@@ -287,6 +287,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "cache_commit" => reply(&service.cache_commit(args(body)?).await?),
         "cache_abort" => reply(&service.cache_abort(args(body)?).await?),
         "cache_upload" => reply(&service.cache_upload(args(body)?).await?),
+        // The cache: people's side, listing what is saved and deleting it.
+        "caches" => reply(&service.caches(args(body)?).await?),
+        "cache_usage" => reply(&service.cache_usage(args(body)?).await?),
+        "delete_caches" => reply(&service.delete_caches(args(body)?).await?),
         // Artifacts: a job's side, with its token or its runtime token.
         "artifact_reserve" => reply(&service.artifact_reserve(args(body)?).await?),
         "artifact_commit" => reply(&service.artifact_commit(args(body)?).await?),
