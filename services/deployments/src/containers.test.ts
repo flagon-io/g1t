@@ -77,13 +77,13 @@ test("the container application runs one instance of the app's image at its size
   assert.deepEqual(applicationRequest("g1t-web", image, "basic", "ns1"), {
     name: "g1t-web",
     scheduling_policy: "default",
-    configuration: { image, instance_type: "basic" },
+    configuration: { image, instance_type: "basic", observability: { logs: { enabled: true } } },
     instances: 0,
     max_instances: 1,
     durable_objects: { namespace_id: "ns1" },
   });
   const rollout = rolloutRequest(image, "nonsense", "dpl_1");
-  assert.deepEqual(rollout.target_configuration, { image, instance_type: "lite" });
+  assert.deepEqual(rollout.target_configuration, { image, instance_type: "lite", observability: { logs: { enabled: true } } });
   assert.equal(rollout.step_percentage, 100);
 });
 
@@ -213,6 +213,34 @@ test("the app's Worker starts its container with the project's entries, meters i
   assert.equal(reports.at(-1)?.month, "2026-11");
   assert.equal(reports.at(-1)?.epoch, epoch);
   assert.equal(reports.at(-2)?.month, "2026-10", "the month that ended is reported first");
+});
+
+test("an app that stops before it answers says how it ended", async (t) => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("{}")) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = realFetch;
+  });
+  const { G1tApp } = await appWorker();
+  const { ctx, container } = runtime();
+  // It exits at once, with an error, and never listens.
+  let exit: (error: unknown) => void = () => {};
+  Object.assign(container, {
+    monitor: () => new Promise((_, reject) => (exit = reject)),
+    getTcpPort: () => ({
+      fetch: async () => {
+        throw new Error("connection refused");
+      },
+    }),
+  });
+  const app = new G1tApp(ctx, { G1T_MODE: "serve", G1T_PORT: "3000", G1T_METER_URL: "https://api.g1t.sh/m", APP: {} });
+  const answer = app.fetch(new Request("https://web.g1t.page/"));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  exit(Object.assign(new Error("exited"), { exitCode: 1 }));
+  container.running = false;
+  const response = await answer;
+  assert.equal(response.status, 503);
+  assert.match(await response.text(), /It stopped \(exit code 1\) before it answered on port 3000/);
 });
 
 test("a paused app answers with a notice and its container stops", async () => {

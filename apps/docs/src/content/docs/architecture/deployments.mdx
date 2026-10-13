@@ -25,8 +25,16 @@ The sandbox works out what the app is, in this order:
 
 1. a Workers project, from `wrangler deploy --dry-run`;
 2. a framework it knows, such as Vite, Astro, Next.js or SvelteKit;
-3. a container, which g1t.sh does not run yet (`CONTAINERS` is `off`);
+3. a container: a `Dockerfile` that runs a server, even beside a site, or a
+   server it recognises, for which it writes one
+   ([Docker deployments](/guides/deployments/#docker-deployments));
 4. a static site.
+
+A container's image is pushed to Cloudflare's registry with a push-only
+login `deployments` mints for the build, and runs on Cloudflare
+Containers behind a Worker of g1t's own in the same namespace. A
+self-hosted g1t whose account has no Containers sets `CONTAINERS` to
+`off`.
 
 The sandbox is given a key that can upload the app's static files and
 nothing else. `deployments` uploads the built Worker itself to the Workers

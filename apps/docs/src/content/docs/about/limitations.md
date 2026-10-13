@@ -365,22 +365,6 @@ A workflow on g1t can't publish to npm with trusted publishing, or with
 
 ## Deployments
 
-### Containers are not switched on yet
-
-[Docker deployments](/guides/deployments/#docker-deployments) are built,
-but off on g1t.page: a project that runs as a container fails to deploy,
-saying so, and one with a site besides its `Dockerfile` is built as that
-site.
-
-- **Why.** Cloudflare's container APIs (applications in a Workers for
-  Platforms namespace, registry logins) have to be checked against g1t's
-  own account first.
-- **Instead.** Build a framework app as a static export or with its
-  Cloudflare adapter, as [Frameworks](/guides/deployments/#frameworks)
-  lists, or set **Build as** to Static site. Or deploy the server from a
-  workflow to wherever it runs today, with its credentials in
-  [secrets](/guides/secrets-and-variables/).
-
 ### A container is one instance, and keeps nothing
 
 A container app runs one instance at a time, sleeps after five minutes

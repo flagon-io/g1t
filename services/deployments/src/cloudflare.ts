@@ -51,6 +51,71 @@ const TAKEN_DOWN = `export default {
 };
 `;
 
+/** The manifests the registry is asked for: an image or an index of them, in either format. */
+const MANIFEST_TYPES =
+  "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json";
+
+/**
+ * A request to Cloudflare's registry with a login of g1t's own: sent with
+ * it as Basic, as wrangler does, and again with a token for `scope` when
+ * the registry answers with the token exchange registries use
+ * (`WWW-Authenticate: Bearer`).
+ */
+async function registryFetch(
+  login: { username: string; password: string },
+  path: string,
+  method: string,
+  scope: string,
+  body?: string,
+): Promise<Response> {
+  const basic = `Basic ${btoa(`${login.username}:${login.password}`)}`;
+  const url = `https://${REGISTRY_HOST}${path}`;
+  const headers = (authorization: string): Record<string, string> => ({
+    authorization,
+    accept: MANIFEST_TYPES,
+    ...(body === undefined ? {} : { "content-type": "application/json" }),
+  });
+  const response = await fetch(url, { method, headers: headers(basic), body });
+  const challenge = response.headers.get("www-authenticate") ?? "";
+  if (response.status !== 401 || !/^bearer /i.test(challenge)) return response;
+  const params = Object.fromEntries([...challenge.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
+  if (!params.realm) return response;
+  const token = new URL(params.realm);
+  if (params.service) token.searchParams.set("service", params.service);
+  token.searchParams.set("scope", params.scope ?? scope);
+  const answer = (await (await fetch(token, { headers: { authorization: basic } })).json().catch(() => null)) as {
+    token?: string;
+    access_token?: string;
+  } | null;
+  const bearer = answer?.token ?? answer?.access_token;
+  if (!bearer) return response;
+  return fetch(url, { method, headers: headers(`Bearer ${bearer}`), body });
+}
+
+/**
+ * The tags in `repository` (`<account>/<image>`): from the registry's tag
+ * list, else from its catalog with tags, which is what Cloudflare's own
+ * tools read (its names there may lack the account, or start with `/`).
+ */
+async function listTags(login: { username: string; password: string }, repository: string, account: string): Promise<string[]> {
+  const scope = `repository:${repository}:pull`;
+  const listed = await registryFetch(login, `/v2/${repository}/tags/list`, "GET", scope);
+  if (listed.ok) {
+    const answer = (await listed.json().catch(() => null)) as { tags?: string[] | null } | null;
+    return answer?.tags ?? [];
+  }
+  if (listed.status === 404) return [];
+  const catalog = await registryFetch(login, "/v2/_catalog?tags=true", "GET", "registry:catalog:*");
+  if (!catalog.ok) throw new Error(`The registry would not list ${repository}'s images (${listed.status}, ${catalog.status}).`);
+  const answer = (await catalog.json().catch(() => null)) as { repositories?: Record<string, string[]> } | null;
+  const image = repository.slice(account.length + 1);
+  for (const [name, tags] of Object.entries(answer?.repositories ?? {})) {
+    const bare = name.replace(/^\/+/, "");
+    if (bare === repository || bare === image) return tags ?? [];
+  }
+  return [];
+}
+
 const HTML_HANDLING =["auto-trailing-slash", "force-trailing-slash", "drop-trailing-slash", "none"];
 const NOT_FOUND_HANDLING = ["single-page-application", "404-page", "none"];
 
@@ -188,25 +253,33 @@ export class Cloudflare {
    */
   async hasImage(repository: string, digest: string): Promise<boolean> {
     const login = await this.registryLogin(["pull"]);
-    const basic = `Basic ${btoa(`${login.username}:${login.password}`)}`;
-    const url = `https://${REGISTRY_HOST}/v2/${repository}/manifests/${digest}`;
-    const accept = "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json";
-    let response = await fetch(url, { method: "HEAD", headers: { authorization: basic, accept } });
-    const challenge = response.headers.get("www-authenticate") ?? "";
-    if (response.status === 401 && /^bearer /i.test(challenge)) {
-      const params = Object.fromEntries([...challenge.matchAll(/(\w+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
-      const token = new URL(params.realm);
-      if (params.service) token.searchParams.set("service", params.service);
-      token.searchParams.set("scope", params.scope ?? `repository:${repository}:pull`);
-      const answer = (await (await fetch(token, { headers: { authorization: basic } })).json().catch(() => null)) as {
-        token?: string;
-        access_token?: string;
-      } | null;
-      const bearer = answer?.token ?? answer?.access_token;
-      if (!bearer) return false;
-      response = await fetch(url, { method: "HEAD", headers: { authorization: `Bearer ${bearer}`, accept } });
-    }
+    const response = await registryFetch(login, `/v2/${repository}/manifests/${digest}`, "HEAD", `repository:${repository}:pull`);
     return response.ok;
+  }
+
+  /**
+   * Deletes the images in `repository` whose tags are not in `keep`, then
+   * has the registry collect the layers no image uses any more: an app
+   * keeps its running image and the one before it, so the account stays
+   * under Containers' image storage limit (`IMAGE_STORAGE_GB`). With
+   * `keep` empty, every image of the app goes, as when it is taken down.
+   * Returns the tags deleted. Asked with a login of g1t's own that can pull
+   * and push, as `wrangler containers images delete` is.
+   */
+  async pruneImages(repository: string, keep: string[]): Promise<string[]> {
+    const login = await this.registryLogin(["pull", "push"]);
+    const scope = `repository:${repository}:pull,push,delete`;
+    const tags = await listTags(login, repository, this.account);
+    const gone = tags.filter((tag) => !keep.includes(tag));
+    for (const tag of gone) {
+      const response = await registryFetch(login, `/v2/${repository}/manifests/${encodeURIComponent(tag)}`, "DELETE", scope);
+      if (!response.ok && response.status !== 404) throw new Error(`The registry would not delete ${repository}:${tag} (${response.status}).`);
+    }
+    if (gone.length > 0) {
+      const collected = await registryFetch(login, "/v2/gc/layers", "PUT", scope, "{}");
+      if (!collected.ok) console.error("the registry did not collect unused layers", collected.status);
+    }
+    return gone;
   }
 
   /** Puts a container app's Worker (`APP_WORKER`, g1t's own) in the namespace, with `metadata`. */
@@ -217,14 +290,28 @@ export class Cloudflare {
     await this.call("PUT", this.scriptPath(script), form);
   }
 
-  /** The Durable Object namespace of a container app's Worker: what its Container application is attached to. */
+  /**
+   * The Durable Object namespace of a container app's Worker: what its
+   * Container application is attached to. Read from the Worker's own
+   * `APP` binding, which names it; else looked for among the account's
+   * namespaces, by class and script (a namespace there is matched to this
+   * dispatch namespace when Cloudflare says which it is in, which its
+   * documented schema does not promise).
+   */
   async appNamespace(script: string): Promise<string> {
+    const bindings = await this.call<{ type: string; name: string; namespace_id?: string }[]>("GET", `${this.scriptPath(script)}/bindings`).catch(
+      () => [],
+    );
+    const bound = bindings.find((b) => b.type === "durable_object_namespace" && b.name === "APP" && b.namespace_id);
+    if (bound?.namespace_id) return bound.namespace_id;
     for (let page = 1; page <= 20; page++) {
       const namespaces = await this.call<{ id: string; class: string; script: string; dispatch_namespace?: string }[]>(
         "GET",
         `/accounts/${this.account}/workers/durable_objects/namespaces?per_page=1000&page=${page}`,
       );
-      const found = namespaces.find((n) => n.class === APP_CLASS && n.script === script && n.dispatch_namespace === this.namespace);
+      const found = namespaces.find(
+        (n) => n.class === APP_CLASS && n.script === script && (n.dispatch_namespace === undefined || n.dispatch_namespace === this.namespace),
+      );
       if (found) return found.id;
       if (namespaces.length < 1000) break;
     }

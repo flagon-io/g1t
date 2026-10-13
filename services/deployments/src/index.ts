@@ -141,9 +141,9 @@ type Env = {
   /** The g1t.page zone, where custom hostnames are added (Cloudflare for SaaS). */
   CUSTOM_HOSTNAMES_ZONE_ID?: string;
   /**
-   * `on` runs container apps (Docker deployments, src/containers.ts); off
-   * until Cloudflare's container APIs are checked against g1t's account.
-   * While off, a container build is refused at its `registry` step with
+   * `on` runs container apps (Docker deployments, src/containers.ts), as
+   * g1t.sh does; `off` where the account has no Containers (a self-hosted
+   * g1t). While off, a container build is refused at its `registry` step with
    * `not_enabled`, and a project with a site besides its Dockerfile is
    * built as that site.
    */
@@ -339,6 +339,8 @@ type AppRow = {
   runtime?: string | null;
   container_app_id?: string | null;
   instance_type?: string | null;
+  /** The build it serves (migration 0015). */
+  deployment_id?: string | null;
 };
 
 function toDeployment(row: DeploymentRow): Deployment {
@@ -1254,7 +1256,7 @@ class Deployments {
         if (!this.containersOn) {
           // Its own code, which the build reads to build the site the
           // project is without its Dockerfile, when it is one.
-          const error = { code: "not_enabled", message: "Docker deployments are not switched on for g1t.page yet." };
+          const error = { code: "not_enabled", message: "Docker deployments are switched off on this g1t." };
           return Response.json({ ok: false, error }, { status: 409 });
         }
         const instanceType = instanceTypeOf((await this.settingsRow(row.project_id))?.instance_type);
@@ -1285,6 +1287,7 @@ class Deployments {
         const tags = [`workspace:${row.workspace}`, `project:${row.workspace}/${row.slug}`, row.kind, ...telemetryTags(row.project_id, id)];
         const app: AppTelemetry = { project: row.project_id, deployment: id, environment: row.kind, service: row.slug, commit: row.commit_sha };
         let container: { appId: string; instanceType: string; meterHash: string; image: string } | null = null;
+        let before: AppRow | null = null;
         try {
           // Running apps' secrets and variables are bound here, by g1t:
           // they never pass through the build's sandbox.
@@ -1299,7 +1302,7 @@ class Deployments {
             app,
             row.trusted ? await this.telemetryToken(row.project_id) : null,
           );
-          const before = await this.db.prepare("SELECT runtime, container_app_id FROM apps WHERE script = ?").bind(row.script).first<AppRow>();
+          before = await this.db.prepare("SELECT runtime, container_app_id, deployment_id FROM apps WHERE script = ?").bind(row.script).first<AppRow>();
           if (detected === "container") {
             container = await this.runContainer(cloudflare, row, body.container, runtime, tags);
           } else {
@@ -1308,6 +1311,7 @@ class Deployments {
             if (before?.runtime === "container") {
               await cloudflare.deleteContainer(row.script, before.container_app_id);
               await cloudflare.deleteScript(row.script);
+              await this.dropImages(cloudflare, row.script, []);
             }
             await cloudflare.putScript(row.script, worker, typeof body.completionJwt === "string" ? body.completionJwt : null, tags, runtime);
           }
@@ -1377,6 +1381,8 @@ class Deployments {
         if (row.kind === "production") {
           await this.domains.follow(row.project_id, row.script).catch((error) => console.error("could not point domains", error));
         }
+        // Its images but this one and the one it replaced go.
+        if (container) await this.dropImages(cloudflare, row.script, [id, before?.deployment_id ?? null]);
         await this.chargeBuild(row, seconds);
         await this.notePeak(row.workspace);
         await this.statusFor(row, "success", row.kind === "preview" ? "Preview is live" : "Production is live", appUrl(row.script));
@@ -1412,7 +1418,7 @@ class Deployments {
     runtime: { secrets: Record<string, string>; variables: Record<string, string> },
     tags: string[],
   ): Promise<{ appId: string; instanceType: string; meterHash: string; image: string }> {
-    if (!this.containersOn) throw new Error("Docker deployments are not switched on for g1t.page yet.");
+    if (!this.containersOn) throw new Error("Docker deployments are switched off on this g1t.");
     const repository = repositoryFor(this.env.CLOUDFLARE_ACCOUNT_ID, row.script);
     const pushed = pushedImage(report, repository);
     if (!pushed) throw new Error(`the build did not report an image by digest in ${REGISTRY_HOST}/${repository}.`);
@@ -1423,6 +1429,27 @@ class Deployments {
     await cloudflare.putContainerWorker(row.script, appWorkerMetadata(settings, runtime, [...tags, "container"]));
     const appId = await cloudflare.runContainer(row.script, pushed.image, instanceType, `${row.id}: ${row.commit_sha.slice(0, 7)}`);
     return { appId, instanceType, meterHash: await sha256(meterToken), image: pushed.image };
+  }
+
+  /**
+   * Deletes an app's images but those its builds still use: the tags in
+   * `keep`, and those of its builds under way, which may have pushed an
+   * image they have yet to report. Containers holds an account's images
+   * to `IMAGE_STORAGE_GB` in all, so nothing is kept that will not run.
+   * A failure is logged: the app's next deploy or removal tries again.
+   */
+  private async dropImages(cloudflare: Cloudflare, script: string, keep: (string | null | undefined)[]): Promise<void> {
+    try {
+      const building = await this.db
+        .prepare("SELECT id FROM deployments WHERE script = ? AND status IN ('queued', 'building')")
+        .bind(script)
+        .all<{ id: string }>();
+      const held = [...keep, ...building.results.map((b) => b.id)].filter((tag): tag is string => !!tag);
+      const gone = await cloudflare.pruneImages(repositoryFor(this.env.CLOUDFLARE_ACCOUNT_ID, script), held);
+      if (gone.length) console.log("deleted images", script, gone.join(", "));
+    } catch (error) {
+      console.error("could not delete images", script, error);
+    }
   }
 
   /** Where a container app's Worker reports its running time: the API, which forwards it here. */
@@ -1737,9 +1764,11 @@ class Deployments {
       .prepare("SELECT runtime, container_app_id FROM apps WHERE script = ?")
       .bind(script)
       .first<{ runtime: string | null; container_app_id: string | null }>();
-    // A container app's container goes first, with any instance it has up.
+    // A container app's container goes first, with any instance it has up,
+    // and its images after it.
     if (app?.runtime === "container") await this.cloudflare?.deleteContainer(script, app.container_app_id);
     await this.cloudflare?.deleteScript(script);
+    if (app?.runtime === "container" && this.cloudflare) await this.dropImages(this.cloudflare, script, []);
     await this.db.batch([
       this.db.prepare("DELETE FROM apps WHERE script = ?").bind(script),
       // Its build is no longer live anywhere.
@@ -2597,6 +2626,7 @@ class Deployments {
         // Container application still: it goes too.
         await cloudflare.deleteContainer(script.id).catch((error) => console.error("could not remove container", script.id, error));
         await cloudflare.deleteScript(script.id);
+        if (this.containersOn) await this.dropImages(cloudflare, script.id, []);
       }
     }
   }

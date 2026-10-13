@@ -99,8 +99,9 @@ You do not configure anything for the common cases.
 | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
 | A framework from the table below | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**. |
 | A framework set up to need a server (Next.js without a static export, Astro's `@astrojs/node`, SvelteKit's `adapter-node`, a server-rendered React Router or Remix app) | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it. |
-| A `Dockerfile` or `Containerfile`, and no framework above | Builds the image and runs it as a **container**. |
-| A Node.js, Python, Go, Ruby or PHP server, with no `Dockerfile` | Writes a Dockerfile for it, shows it in the build's log, and runs it as a **container**. See [Docker deployments](#docker-deployments). |
+| A `Dockerfile` or `Containerfile` that runs a server (`CMD`, `ENTRYPOINT` or `EXPOSE`), even beside a site or a framework above | Builds the image and runs it as a **container**. |
+| A `Dockerfile` and nothing else to serve | Builds the image and runs it as a **container**. |
+| A Node.js, Python, Go, Ruby, PHP or Rust server, with no `Dockerfile` | Writes a Dockerfile for it, shows it in the build's log, and runs it as a **container**. See [Docker deployments](#docker-deployments). |
 | A `build` script in `package.json` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
 | An `index.html` and nothing to build | Serves it as it is. |
 | Nothing g1t recognises | Fails, saying to add a `Dockerfile`. |
@@ -211,36 +212,45 @@ age: give it a `Dockerfile`, or let g1t write one. It runs on
 behind the app's Worker, at the same addresses, custom domains and
 previews as any other app.
 
-:::caution[Not switched on yet]
-Docker deployments are built but off on g1t.page until Cloudflare's
-container APIs are checked against g1t's account. Until then a container
-build fails with "Docker deployments are not switched on for g1t.page
-yet", and a project that is a container only for having a `Dockerfile`,
-beside a site g1t could serve, is built as that site, as before.
-:::
-
-What a project is built as is decided in this order:
+There is nothing to set: push a project with a `Dockerfile`, or a server
+g1t recognises, and it deploys as a container. What a project is built as
+is decided in this order:
 
 1. **Build as**, under **Settings → Deployments**: **Static site**,
    **Workers** or **Docker** is what it is built as, whatever else it has.
 2. **Auto** (the default) finds it from its files:
-   1. A Wrangler config is a Workers project.
-   2. A framework that builds a static site or a Worker is that, even
-      beside a `Dockerfile`: it costs nothing while no one visits.
-   3. A framework set up to need a server is a container, from its
+   1. A Wrangler config, or a framework's Cloudflare adapter, is a
+      Workers project.
+   2. A site (a framework that builds one, a `build` script, or an
+      `index.html`) beside a `Dockerfile` is a container when the
+      Dockerfile runs a server: its last stage has `CMD` or `ENTRYPOINT`,
+      or `EXPOSE` on an image that is not only a file server. A
+      Dockerfile that only copies the site into `nginx`, `httpd`, `caddy`,
+      `lighttpd`, `busybox` or another file server, or says none of those,
+      leaves it a site, which g1t serves itself for nothing while no one
+      visits.
+   3. A framework that builds a static site, with no such Dockerfile, is
+      that site.
+   4. A framework set up to need a server is a container, from its
       `Dockerfile`, or one g1t writes for it.
-   4. A project with no framework g1t knows is a container when it has a
+   5. A project with no framework g1t knows is a container when it has a
       `Dockerfile` (or `Containerfile`, or the path set as its
       **Dockerfile**), or is a server g1t recognises.
-   5. Otherwise a static site or plain HTML, as above; with nothing to
+   6. Otherwise a static site or plain HTML, as above; with nothing to
       serve, the build fails, saying to add a `Dockerfile`.
+
+When a project could be either, the build's log says which it chose and
+why, near its top: for example, "Building it as a container from
+Dockerfile, not as the static site it also has: its Dockerfile starts a
+server of its own (`CMD`). Set **Build as** to Static site to serve the
+site instead."
 
 g1t writes a Dockerfile for these, when there is none:
 
 | The project has | Runs with |
 | --- | --- |
 | `package.json` with a `start` script, or a server package (`express`, `fastify`, `koa`, `@nestjs/core`, `@hono/node-server` and others) and a main file | `npm start`, or `node <main>`, on `node:22-slim` (or the major release in `.nvmrc` or `.node-version`), after `npm run build` when there is one |
-| Next.js, Astro with `@astrojs/node`, SvelteKit with `adapter-node`, React Router or Remix | `next start`, `node ./dist/server/entry.mjs`, `node build`, `react-router-serve` or `remix-serve`, after the build |
+| Next.js, Astro with `@astrojs/node`, SvelteKit with `adapter-node`, React Router or Remix | `next start` (or `node .next/standalone/server.js`, with its static files beside it, for `output: 'standalone'`), `node ./dist/server/entry.mjs`, `node build`, `react-router-serve` or `remix-serve`, after the build |
 | `requirements.txt`, `pyproject.toml` or `Pipfile`, and `manage.py` (Django) | `gunicorn <project>.wsgi` on `python:3.12-slim` |
 | The same, with Flask and an `app.py`, `main.py`, `server.py`, `wsgi.py` or `asgi.py` | `gunicorn <module>:app` |
 | The same, with FastAPI or Starlette | `uvicorn <module>:app` |
@@ -249,6 +259,7 @@ g1t writes a Dockerfile for these, when there is none:
 | A `Gemfile` with Rails | `rails server`, after `assets:precompile`, on `ruby:3.3-slim` |
 | A `Gemfile` and a `config.ru` | `rackup` |
 | `composer.json`, and `artisan` with `public/index.php` (Laravel), or an `index.php` | Apache with PHP 8.3, after `composer install` |
+| `Cargo.toml` with one program and `axum`, `actix-web`, `rocket`, `warp`, `poem`, `salvo` or `tide` | The program, built with `rust:1` into `debian:bookworm-slim` |
 
 The Dockerfile g1t writes is printed whole in the build's log. To change
 how the app is built or run, commit it as `Dockerfile` and edit it. It
@@ -257,7 +268,9 @@ leaves `.git`, `node_modules`, `.venv` and `__pycache__` out of the image.
 What a container gets, and what it must do:
 
 - **Listen on `0.0.0.0` at `PORT`.** `PORT` is the port its Dockerfile's
-  first `EXPOSE` names (in its last stage), else `8080`. The first request
+  first `EXPOSE` names (in its last stage), else the `PORT` it sets with
+  `ENV`, else `8080`. A Dockerfile g1t writes sets `HOST` and `HOSTNAME`
+  to `0.0.0.0` too. The first request
   waits up to 90 seconds for it to answer there; one that never does gets
   a 503 page saying so.
 - **The project's [secrets and variables](#secrets-and-variables)** are
@@ -271,7 +284,9 @@ What a container gets, and what it must do:
 - **Its size** is **Container size** under **Settings → Deployments**:
   `lite` (the default) to `standard-4`, as [What it costs](#what-it-costs)
   lists. The image may be as large as the size's disk, 2 GB for `lite`;
-  a larger image fails the build, saying how large it was.
+  a larger image fails the build, saying how large it was. An app keeps
+  the image it runs and the one before it; older ones are deleted once a
+  deploy is live, and all of them when the app is taken down.
 - **Built for `linux/amd64`**, with Docker, in the build's sandbox (or the
   workflow job's Docker, for [`g1t-runner deploy`](#deploying-from-a-workflow)),
   with network access as any build has. **Build command** is not used:
@@ -864,7 +879,7 @@ own code (October 2026):
 | A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing. |
 | "Stopped: unusual CPU use" | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining). |
 | "found nothing to serve" | Add a `Dockerfile`, a `build` script, an `index.html`, or a Workers config; or set **Output directory**. |
-| "Docker deployments are not switched on for g1t.page yet" | The project is a container, which g1t.page does not run yet. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments). |
+| "Docker deployments are switched off on this g1t" | The project is a container, and this g1t (a self-hosted one) runs none. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments). |
 | "**Build as** is Docker, but this project has no Dockerfile" | Add a `Dockerfile`, or set **Dockerfile** to its path. |
 | "The image is 2.4 GB, more than the 2.0 GB an app of its size (lite) can hold" | Make the image smaller (a slim base image, a multi-stage build), or choose a larger **Container size**. |
 | A container app says "The app did not start" | It did not answer on its port within 90 seconds. Make it listen on `0.0.0.0` at `PORT`, or `EXPOSE` the port it uses in its Dockerfile. Its output is in the build's log only while it builds; run the image locally with `docker run -e PORT=8080 -p 8080:8080` to see it start. |
@@ -894,11 +909,12 @@ Deployments need a Workers for Platforms namespace and a zone for apps:
    `npx wrangler secret put CLOUDFLARE_API_TOKEN` in `services/deployments`.
 4. Deploy `services/deployments`, `services/pages`, and the runner.
 
-Docker deployments also need the token to have **Containers: Edit**, a
-Workers Paid plan with Containers, and `CONTAINERS` set to `on` in
-`services/deployments/wrangler.jsonc`; see
+Docker deployments also need the token to have **Containers: Edit** and
+a Workers Paid plan with Containers; `CONTAINERS` in
+`services/deployments/wrangler.jsonc` is `on`, and `off` turns them off
+for an account without Containers. See
 [Docker deployments](/guides/deploy-to-cloudflare/#docker-deployments)
-for what to check first.
+for what to check on a new account.
 
 Custom domains also need Cloudflare for SaaS on the apps' zone. Turn it on
 under the zone's **SSL/TLS → Custom Hostnames**, give the token **SSL and
