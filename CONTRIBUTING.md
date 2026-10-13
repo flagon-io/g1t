@@ -164,6 +164,51 @@ setup.
   `/-/notify`, notify's phone push) deploys with the site and services.
   The guide is [The phone app](https://docs.g1t.sh/guides/mobile/).
 
+## How g1t's own CI caches
+
+g1t's workflows cache with `actions/cache` against g1t's own cache
+([the Actions guide](https://docs.g1t.sh/guides/actions/#the-cache) has its
+rules). Three of them shape everything here: a run restores from its own
+ref, its pull request's base, then `main`, so a release tag never reads
+another tag's entries; a key is written once; and a repository holds
+10 GiB, past which the entries restored longest ago go. So:
+
+- **`main` saves; pull requests and tags restore.** CI's Rust and desktop
+  jobs keep their caches on each push to `main`, and the Caches workflow
+  (`.g1t/workflows/caches.yml`) builds and saves what only releases use,
+  when its key is missing. Release workflows only restore.
+- **Rust caches are keyed by the toolchain and the dependencies**, from
+  `node scripts/deploy/ci-cache.mjs keys`: `rustc -V`, and a hash of the
+  packages `Cargo.lock` takes from crates.io and git. A release bumping a
+  workspace crate's version changes neither. A restore key never crosses
+  toolchains.
+- **A Cargo target restored from an older entry is pruned before it is
+  saved** (`ci-cache.mjs prune`), to what this build used.
+- **A partial install never saves a whole-install key.** npm's downloads
+  and the crates are saved only by jobs that fetch all of them.
+- **One set of paths per entry.** An entry's version is the hash of its
+  paths, so every step that names it, in every workflow, names the same
+  ones. `crates/actions/tests/repository_workflows.rs` holds all of this.
+
+| Entry | Key | Saved by | Restored by |
+| --- | --- | --- | --- |
+| npm's downloads | `npm-full-<os>-<package-lock.json>` | Caches (`npm`) | every npm install |
+| Crates and their index | `cargo-crates-<os>-<deps>` | CI Rust (`cargo fetch` of the whole lockfile) | Deploy, the runner release |
+| The test build | `cargo-test-<os>-<rust>-<deps>` | CI Rust | CI Rust on pull requests |
+| Workers' builds | `cargo-workers-<os>-<rust>-<group>-<deps>` | Deploy | Deploy |
+| The runner's image build | `runner-musl-<os>-<rust>-<deps>` | Deploy | Deploy |
+| worker-build and its tools | `worker-build-…`, `worker-build-tools-…` | Deploy | Deploy |
+| Compiled crates | sccache's, one per crate | every Rust job | every Rust job |
+| The desktop app's check | `desktop-check-<os>-<rust>-<desktop deps>` | CI desktop | CI desktop on pull requests |
+| apt for Tauri | `apt-tauri-<os>-<scripts/apt-install.sh>` | CI desktop | the desktop release |
+| The runner release | `runner-release-<os>-<target>-<rust>-<deps>`, zig | Caches (`runner`) | the runner release |
+| The desktop release | `desktop-release-linux-…`, `desktop-release-windows-…`, `xwin-…`, `apt-tauri-windows-…` | Caches (`desktop-linux`, `desktop-windows`) | the desktop release |
+
+To see whether a change helped, read a run's cache steps: `Cache restored
+from key` names the entry (the key itself is a hit; another is a start),
+`Cache Size` and the step's time say what it cost, and the post step says
+whether it saved. `sccache's hits and misses` is on each Rust job's summary.
+
 ## Speed
 
 Pages are a few rounds of service calls, and each round costs a trip to

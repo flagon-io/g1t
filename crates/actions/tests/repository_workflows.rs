@@ -187,23 +187,7 @@ fn deploy_runs_on_main_and_by_hand_one_at_a_time() {
     assert_eq!(concurrency.cancel_in_progress, json!(false));
     assert_eq!(
         deploy.job_order(),
-        [
-            "check",
-            "npm-cache",
-            "plan",
-            "migrate",
-            "core",
-            "edge",
-            "front",
-            "smoke"
-        ]
-    );
-    // Nothing waits for npm's downloads to be saved.
-    assert!(
-        deploy
-            .jobs
-            .iter()
-            .all(|job| !job.needs.iter().any(|n| n == "npm-cache"))
+        ["check", "plan", "migrate", "core", "edge", "front", "smoke"]
     );
     // The stages share their steps (a YAML alias), and read the token only
     // where they deploy.
@@ -274,11 +258,250 @@ fn npm_downloads_are_cached_whole_and_only_whole_installs_save_them() {
             }
         }
     }
-    // main's whole cache is kept by the deploy workflow, beside its check.
-    assert!(
-        saving.contains(&"deploy.yml npm-cache".to_owned()),
-        "{saving:?}"
+    // main's whole cache is kept by the Caches workflow.
+    assert!(saving.contains(&"caches.yml npm".to_owned()), "{saving:?}");
+}
+
+/// Every `actions/cache` step of every workflow: (file, job, step).
+fn cache_steps() -> Vec<(String, workflow::Job, workflow::Step)> {
+    let mut out = Vec::new();
+    let mut names: Vec<String> = std::fs::read_dir(workflows_dir())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".yml"))
+        .collect();
+    names.sort();
+    for name in names {
+        for job in read(&name).jobs {
+            for step in &job.steps {
+                if step
+                    .uses
+                    .as_deref()
+                    .is_some_and(|u| u.starts_with("actions/cache"))
+                {
+                    out.push((name.clone(), job.clone(), step.clone()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// What a cache step's key starts with before its first expression: the
+/// entry it is, whatever its inputs (`cargo-test-`, `apt-tauri-windows-`).
+fn family(key: &str) -> String {
+    key.split("${{").next().unwrap_or_default().to_owned()
+}
+
+fn saves(step: &workflow::Step) -> bool {
+    let uses = step.uses.as_deref().unwrap_or_default();
+    (uses.starts_with("actions/cache@") || uses.starts_with("actions/cache/save@"))
+        && step.raw["with"]["lookup-only"] != json!(true)
+}
+
+fn paths(step: &workflow::Step) -> Vec<String> {
+    let text = step.raw["with"]["path"].as_str().unwrap_or_default();
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn each_cache_has_one_set_of_paths_wherever_it_is_used() {
+    // An entry's version is the hash of its paths: a step that names the
+    // same key with other paths finds nothing, silently. So every step of
+    // an entry, in every workflow, names the same paths.
+    let mut seen: std::collections::BTreeMap<String, (Vec<String>, String)> = Default::default();
+    for (file, job, step) in cache_steps() {
+        let key = step.raw["with"]["key"].as_str().unwrap_or_default();
+        let family = family(key);
+        assert!(!family.is_empty(), "{file} {}: a key starts with its name", job.id);
+        let here = format!("{file} {}", job.id);
+        match seen.get(&family) {
+            Some((first, at)) => assert_eq!(
+                &paths(&step),
+                first,
+                "{here} names other paths for {family} than {at}"
+            ),
+            None => {
+                seen.insert(family, (paths(&step), here));
+            }
+        }
+    }
+    for family in [
+        "npm-full-",
+        "cargo-crates-",
+        "cargo-test-",
+        "cargo-workers-",
+        "runner-musl-",
+        "runner-release-",
+        "desktop-check-",
+        "desktop-release-linux-",
+        "desktop-release-windows-",
+        "apt-tauri-",
+        "apt-tauri-windows-",
+        "xwin-",
+        "zig-0.13.0-zigbuild-",
+    ] {
+        assert!(seen.contains_key(family), "{family}: {:?}", seen.keys());
+    }
+}
+
+#[test]
+fn main_saves_every_cache_that_pull_requests_and_releases_restore() {
+    // A run restores from its own ref, its pull request's base and main;
+    // a release tag's run never reads another tag's entries. So every
+    // entry any step restores is saved by a workflow that runs on pushes
+    // to main, and the release workflows only restore.
+    let on_main = ["ci.yml", "caches.yml", "deploy.yml"];
+    for file in on_main {
+        let push = read(file).trigger("push").cloned().unwrap();
+        assert!(push.branches.allows("main"), "{file}");
+    }
+    let releases = [
+        "cli-release.yml",
+        "desktop-release.yml",
+        "mobile-build.yml",
+        "mobile-release.yml",
+        "runner-release.yml",
+    ];
+    let steps = cache_steps();
+    let saved_on_main: std::collections::BTreeSet<String> = steps
+        .iter()
+        .filter(|(file, _, step)| on_main.contains(&file.as_str()) && saves(step))
+        .map(|(_, _, step)| family(step.raw["with"]["key"].as_str().unwrap_or_default()))
+        .collect();
+    for (file, job, step) in &steps {
+        let family = family(step.raw["with"]["key"].as_str().unwrap_or_default());
+        // The conformance run restores what its own first job saved.
+        if family == "conformance-" {
+            continue;
+        }
+        assert!(
+            saved_on_main.contains(&family),
+            "{file} {}: nothing on main saves {family}",
+            job.id
+        );
+        if releases.contains(&file.as_str()) {
+            assert!(!saves(step), "{file} {}: a release saves {family}, which only its own tag would read", job.id);
+        }
+    }
+}
+
+#[test]
+fn rust_caches_are_keyed_by_the_toolchain_and_the_dependencies() {
+    // Not by Cargo.lock as a whole: 25 of its 31 changes in a week were a
+    // release's version bump, and each saved every Rust cache again.
+    for (file, job, step) in cache_steps() {
+        let key = step.raw["with"]["key"].as_str().unwrap_or_default();
+        assert!(
+            !key.contains("Cargo.lock") && !key.contains("base.json"),
+            "{file} {}: {key}",
+            job.id
+        );
+        let target = paths(&step).iter().any(|p| p.contains("target"));
+        if target {
+            assert!(key.contains("steps.keys.outputs.rust"), "{file} {}: {key}", job.id);
+            // A restore key never reaches another toolchain's entries.
+            for prefix in step.raw["with"]["restore-keys"]
+                .as_str()
+                .unwrap_or_default()
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+            {
+                assert!(prefix.contains("steps.keys.outputs.rust"), "{file} {}: {prefix}", job.id);
+            }
+        }
+        if key.contains("steps.keys.outputs.") {
+            let at = job.steps.iter().position(|s| s == &step).unwrap();
+            let keys = job
+                .steps
+                .iter()
+                .position(|s| s.id.as_deref() == Some("keys"))
+                .unwrap_or_else(|| panic!("{file} {}: no keys step", job.id));
+            assert!(keys < at, "{file} {}", job.id);
+            assert_eq!(
+                job.steps[keys].run.as_deref(),
+                Some("node scripts/deploy/ci-cache.mjs keys")
+            );
+        }
+    }
+}
+
+#[test]
+fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
+    // Otherwise the old versions of what changed ride along forever: CI's
+    // test build grew from 671 MB to 1,687 MB in a day.
+    for (file, id, cache) in [
+        ("ci.yml", "rust", "test-build"),
+        ("ci.yml", "desktop", "desktop-build"),
+        ("caches.yml", "runner", "runner-build"),
+    ] {
+        let workflow = read(file);
+        let job = workflow.jobs.iter().find(|j| j.id == id).unwrap();
+        let at = job
+            .steps
+            .iter()
+            .position(|s| s.id.as_deref() == Some(cache))
+            .unwrap();
+        assert!(saves(&job.steps[at]), "{file} {id}");
+        let prune = job
+            .steps
+            .iter()
+            .position(|s| {
+                s.run
+                    .as_deref()
+                    .is_some_and(|r| r.starts_with("node scripts/deploy/ci-cache.mjs prune "))
+            })
+            .unwrap_or_else(|| panic!("{file} {id}: no prune"));
+        assert!(at < prune, "{file} {id}");
+        assert_eq!(
+            job.steps[prune].condition.as_deref().map(str::trim),
+            Some(format!("${{{{ steps.{cache}.outputs.cache-hit != 'true' }}}}").as_str()),
+            "{file} {id}"
+        );
+    }
+    let ci = read("ci.yml");
+    let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
+    assert_eq!(
+        rust.raw["env"]["CARGO_PROFILE_DEV_DEBUG"],
+        json!("line-tables-only")
     );
+}
+
+#[test]
+fn the_caches_workflow_builds_only_what_is_missing() {
+    let caches = read("caches.yml");
+    let push = caches.trigger("push").unwrap();
+    assert!(push.branches.allows("main"));
+    assert!(!push.branches.allows("feature"));
+    // Never cut off halfway: a build half done saves nothing.
+    assert_eq!(
+        caches.concurrency.as_ref().unwrap().cancel_in_progress,
+        json!(false)
+    );
+    let look = caches.jobs.iter().find(|j| j.id == "look").unwrap();
+    // Looked up, not downloaded.
+    for step in &look.steps {
+        if step.uses.as_deref().is_some_and(|u| u.starts_with("actions/cache")) {
+            assert_eq!(step.uses.as_deref(), Some("actions/cache/restore@v4"));
+            assert_eq!(step.raw["with"]["lookup-only"], json!(true), "{:?}", step.id);
+        }
+    }
+    for job in &caches.jobs {
+        if job.id != "look" {
+            assert_eq!(job.needs, ["look"], "{}", job.id);
+            assert!(
+                job.condition
+                    .as_deref()
+                    .is_some_and(|c| c.contains("needs.look.outputs.")),
+                "{}",
+                job.id
+            );
+        }
+    }
 }
 
 #[test]

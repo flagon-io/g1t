@@ -8,9 +8,12 @@
 #               deploy and ops scripts, and the deploy manifest
 #   build       the site, sudo and the docs build as they deploy
 #
-# On a push to main only `rust` runs, to keep main's caches current: a pull
-# request's run restores from main's cache, never from another pull
-# request's, so without it each pull request would start from nothing.
+# On a push to main `rust` and `desktop` run, keeping main's caches current:
+# a pull request's run restores from main's cache, never from another pull
+# request's, so without them each pull request would start from nothing.
+# What each cache holds, its key and which job saves it: CONTRIBUTING.md,
+# "How g1t's own CI caches". The Caches workflow (caches.yml) keeps the
+# ones only releases build.
 name: CI
 
 on:
@@ -37,30 +40,58 @@ jobs:
     name: Rust
     runs-on: g1t-4core
     timeout-minutes: 45
+    env:
+      # Line tables, not full debug info: a panic still names its file and
+      # line, and the test build is a fraction of the size to link, keep
+      # and restore (at full debug info its cache entry reached 1.7 GB of
+      # the 2 GB an entry may hold).
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v5
+      # rust: the toolchain; cargo: Cargo.lock's crates.io and git packages,
+      # not the workspace's own versions (scripts/deploy/ci-cache.mjs).
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      # Every crate the lockfile names, for every target (the fetch below):
+      # saved by this job alone, and only restored by Deploy and the
+      # releases, which each download part of it.
       - name: Cache crates
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry/cache
-          key: cargo-crates-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
           restore-keys: cargo-crates-${{ runner.os }}-
+      - name: Every crate the lockfile names
+        run: cargo fetch --locked
+      # The compiled dependencies and workspace crates. Saved when the
+      # dependencies or the toolchain change; otherwise the last entry for
+      # this toolchain is a start, and only this build's files go into the
+      # new one (the prune step below).
       - name: Cache the test build
+        id: test-build
         uses: actions/cache@v4
         with:
           path: |
             target/debug
             !target/debug/incremental
-          key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'services/runner/base.json') }}
-          restore-keys: cargo-test-${{ runner.os }}-
-      # The workspace's library crates, which Cargo compiles again on every
-      # checkout, come back from the repository's Actions cache when their
-      # inputs did not change (scripts/sccache.sh). Test harnesses and
-      # Workers' own crates are linked, and still compiled.
+          key: cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+      # The workspace's library crates that Cargo compiles again come back
+      # from the repository's Actions cache when their inputs did not change
+      # (scripts/sccache.sh). Test harnesses and Workers' own crates are
+      # linked, and still compiled.
       - name: sccache
         run: bash scripts/sccache.sh install
       - name: Tests
         run: cargo test --workspace --locked --quiet
+      # A restored target keeps the old versions of whatever changed beside
+      # the new ones; only what this build used goes into the new entry.
+      - name: Only this build's files are saved
+        if: ${{ steps.test-build.outputs.cache-hit != 'true' }}
+        run: node scripts/deploy/ci-cache.mjs prune target/debug -- test --workspace --locked --no-run
       - name: sccache's hits and misses
         if: ${{ always() }}
         run: bash scripts/sccache.sh stats
@@ -127,24 +158,36 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - name: Cache keys
+        id: keys
+        run: node scripts/deploy/ci-cache.mjs keys
+      # apt's lists and downloads (scripts/apt-install.sh): 110 s of every
+      # run before, mostly fetching 335 MB. Saved here, on main; the desktop
+      # release's Linux build restores the same entry.
+      - name: Cache apt's downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/apt/tauri
+          key: apt-tauri-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: What Tauri needs on Linux
-        # Tried three times: the mirror has answered with a mismatched package before.
-        run: |
-          ok=0
-          for try in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev; then ok=1; break; fi
-            sudo apt-get clean; sleep 15
-          done
-          [ "$ok" = 1 ]
-      - uses: actions/cache@v4
+        run: bash scripts/apt-install.sh tauri
+      - name: Cache the desktop app's build
+        id: desktop-build
+        uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            apps/desktop/src-tauri/target
-          key: desktop-check-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            apps/desktop/src-tauri/target/debug
+            !apps/desktop/src-tauri/target/debug/incremental
+          key: desktop-check-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.desktop }}
+          restore-keys: desktop-check-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
       # Outside the workspace on purpose (Cargo.toml says why): checked and
       # tested here, built into installers by desktop-release.yml.
       - name: Check and test
         run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --quiet
+      - name: Only this build's files are saved
+        if: ${{ steps.desktop-build.outputs.cache-hit != 'true' }}
+        run: node scripts/deploy/ci-cache.mjs prune apps/desktop/src-tauri/target/debug -- test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --no-run
       - name: The release scripts' tests
         run: node --test scripts/desktop-release.test.mjs scripts/mobile-release.test.mjs scripts/cli-release.test.mjs
