@@ -172,6 +172,26 @@ pub static COMMANDS: &[Mapping] = &[
         ops: &["cancel_workflow_run"],
     },
     Mapping {
+        command: "workflow list",
+        ops: &["list_workflows"],
+    },
+    Mapping {
+        command: "workflow view",
+        ops: &["list_workflows", "get_workflow", "list_workflow_runs"],
+    },
+    Mapping {
+        command: "workflow run",
+        ops: &["list_workflows", "dispatch_workflow", "list_workflow_runs"],
+    },
+    Mapping {
+        command: "workflow enable",
+        ops: &["list_workflows", "enable_workflow"],
+    },
+    Mapping {
+        command: "workflow disable",
+        ops: &["list_workflows", "disable_workflow"],
+    },
+    Mapping {
         command: "secret list",
         ops: &["list_actions_secrets", "list_actions_secrets_for_workspace"],
     },
@@ -314,6 +334,7 @@ mod tests {
             ("issue", include_str!("commands/issue.rs")),
             ("pr", include_str!("commands/pr.rs")),
             ("run", include_str!("commands/run.rs")),
+            ("workflow", include_str!("commands/workflow.rs")),
             ("secret", include_str!("commands/secret.rs")),
             ("deploy", include_str!("commands/deploy.rs")),
             ("logs", include_str!("commands/logs.rs")),
