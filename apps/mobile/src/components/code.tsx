@@ -97,14 +97,22 @@ export function Diff({ changes }: { changes: ApiChanges }) {
             <Text size="mono" style={{ flex: 1 }} numberOfLines={1}>
               {file.path}
             </Text>
-            <Text size="mono" tone="success">
-              +{file.additions}
-            </Text>
-            <Text size="mono" tone="danger">
-              −{file.deletions}
-            </Text>
+            {!file.omitted && (
+              <>
+                <Text size="mono" tone="success">
+                  +{file.additions}
+                </Text>
+                <Text size="mono" tone="danger">
+                  −{file.deletions}
+                </Text>
+              </>
+            )}
           </View>
-          {file.binary ? (
+          {file.omitted ? (
+            <Text tone="muted" size="small" style={{ padding: space.md }}>
+              Not shown here: this change is too large. Open it on the web to read this file.
+            </Text>
+          ) : file.binary ? (
             <Text tone="muted" size="small" style={{ padding: space.md }}>
               A binary file.
             </Text>

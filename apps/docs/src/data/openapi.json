@@ -59857,7 +59857,7 @@
           "Pull requests"
         ],
         "summary": "Get a pull request's changes",
-        "description": "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue.\n\nA file's `status` is `added`, `modified` or `deleted`. A binary file has no `hunks`. In a line, `old` is `null` when it was added and `new` is `null` when it was deleted.",
+        "description": "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue. A large one lists every file (up to 300; truncated says when there were more) but has the lines of only the first, about 20,000 lines read: the files after that come with omitted true and no lines or counts. Ask again with paths (up to 50 at a time) to have those files' lines.\n\nA file's `status` is `added`, `modified` or `deleted`. A binary file has no `hunks`. In a line, `old` is `null` when it was added and `new` is `null` when it was deleted.",
         "x-operation": "get_pull_request_changes",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "changes",
@@ -59897,6 +59897,18 @@
               "type": "integer"
             },
             "description": "The number shown after the #. Issues and pull requests share one sequence."
+          },
+          {
+            "name": "paths",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Only these files, with their lines (at most 50): how a file listed with omitted true is read. Comma-separated in a query string."
           }
         ],
         "responses": {

@@ -175,6 +175,20 @@ act on all of them yet:
   act on. See [Dependency updates](/guides/dependency-updates/#options).
 - **Status.** Planned.
 
+### Very large changes are shown in parts
+
+A pull request, commit or comparison lists at most 300 changed files. Of
+those, lines are read for the first ones until about 20,000 lines; the
+rest are listed without their counts and load one batch at a time as you
+scroll to them. A single file over 512 KB is not shown at all, and one
+with a diff over 1,000 lines waits for **Load diff**.
+
+- **Instead.** For a change of more than 300 files, compare the commits
+  with git (`git diff --stat base...head`). From the API, ask for the files
+  a large answer left out by `paths`.
+  See [Files changed](/guides/pull-requests/#files-changed).
+- **Status.** Not planned to change.
+
 ### No conflict resolution in the browser
 
 You can't resolve a merge conflict on the pull request's page.

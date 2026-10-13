@@ -5,6 +5,7 @@ import { Await, Link, data, redirect } from "react-router";
 import type { Comparison, Pull } from "@g1t/contracts";
 
 import { parseCommitMessage } from "../../lib/commit-message";
+import { firstScreens } from "../../lib/diff";
 import type { Route } from "./+types/commit";
 import { page } from "../../lib/meta";
 import { CommitChecksBadge } from "../../components/commit-checks";
@@ -75,6 +76,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return data(
     {
       ...loaded,
+      // Its first screens with their lines; the rest load as they are reached.
+      comparison: firstScreens(loaded.comparison),
       commit,
       // Streamed: the page shows the commit while this is worked out.
       pull: pullForCommit(path, viewer, loaded.commit.hash),
@@ -211,7 +214,7 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
         </section>
       </Card>
       <div className="mt-6">
-        <DiffView comparison={comparison} empty="This commit changes no files." fileBase={`${base}/blob/${commit.hash}`} />
+        <DiffView comparison={comparison} repo={base} empty="This commit changes no files." fileBase={`${base}/blob/${commit.hash}`} />
       </div>
     </div>
   );

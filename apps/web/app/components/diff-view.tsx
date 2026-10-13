@@ -14,14 +14,19 @@ import {
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { Comment, Comparison, DiffLine } from "@g1t/contracts";
+import type { Comment, Comparison, DiffLine, FileDiff } from "@g1t/contracts";
 
+import { loadFile, peekFile } from "../lib/diff-files";
 import {
+  type Deferred,
   type FileHtml,
+  type HighlightedComparison,
   type HighlightedFile,
   type HighlightedLine,
+  LARGE_FILE_LINES,
   diffContent,
   htmlOfFile,
+  linkedFile,
   withHtml,
 } from "../lib/diff";
 import { Markdown } from "./markdown";
@@ -374,8 +379,74 @@ function HunkGap({ colSpan }: { colSpan: number }) {
   );
 }
 
+/** How tall a line of a diff is (`leading-5`): a file not loaded yet holds its place at its height. */
+const LINE_PX = 20;
+
+/** Where a file sent without its lines shows them: a note and "Load diff", or room for them while they load. */
+function NotLoaded({
+  deferred,
+  failed,
+  waiting,
+  onLoad,
+}: {
+  deferred: Deferred;
+  failed: boolean;
+  /** A large file nobody has asked for yet. */
+  waiting: boolean;
+  onLoad: () => void;
+}) {
+  if (failed || waiting) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4 text-sm text-muted">
+        <span className="grow">
+          {failed
+            ? "This file's diff could not be loaded."
+            : `A large diff (${(deferred.lines ?? 0).toLocaleString("en-US")} lines) is not shown until you ask for it.`}
+        </span>
+        <Button type="button" variant="outline" size="sm" onClick={onLoad}>
+          {failed ? "Try again" : "Load diff"}
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div
+      aria-busy="true"
+      className="px-4 py-3 text-xs text-faint"
+      style={{ height: Math.max(3, Math.min(deferred.lines ?? 3, LARGE_FILE_LINES)) * LINE_PX }}
+    >
+      Loading the diff…
+    </div>
+  );
+}
+
+/** How many files waiting after one are fetched with it, and about how many lines that may come to. */
+const AHEAD_FILES = 7;
+const AHEAD_LINES = 3_000;
+
+/** For each file sent without its lines, the ones after it to fetch in the same request. */
+function filesAhead(files: HighlightedFile[]): Map<string, string[]> {
+  const waiting = files.filter((file) => file.deferred && !file.deferred.large);
+  const ahead = new Map<string, string[]>();
+  waiting.forEach((file, index) => {
+    const next: string[] = [];
+    let lines = file.deferred!.lines ?? 0;
+    for (const later of waiting.slice(index + 1, index + 1 + AHEAD_FILES)) {
+      // One the comparison left out is counted as a small file.
+      lines += later.deferred!.lines ?? 100;
+      if (lines > AHEAD_LINES) break;
+      next.push(later.path);
+    }
+    ahead.set(file.path, next);
+  });
+  return ahead;
+}
+
 function FileSection({
-  file,
+  file: given,
+  source,
+  wanted,
+  ahead,
   review,
   layout,
   collapsed,
@@ -385,6 +456,12 @@ function FileSection({
   fileBase,
 }: {
   file: HighlightedFile;
+  /** Where a file sent without its lines fetches them (lib/diff-files.ts). */
+  source: string | null;
+  /** Linked to from the address: its lines load at once, however large. */
+  wanted: boolean;
+  /** The files waiting after it, fetched with it. */
+  ahead?: string[];
   review?: LineReview;
   layout: Layout;
   collapsed: boolean;
@@ -394,14 +471,86 @@ function FileSection({
   /** Where the file can be read as of the change, e.g. `/acme/web/blob/<hash>`. */
   fileBase?: string;
 }) {
-  const Icon = fileIcon(file.status);
+  const section = useRef<HTMLElement>(null);
+  // Sent without its lines (lib/diff.ts firstScreens): fetched as it comes
+  // near the screen, at once when it has comments or is linked to, and a
+  // large one when asked for. What was fetched stays through a refresh.
+  const deferred = given.deferred ?? null;
+  const fetchKey = deferred && source ? `${source}\n${given.path}` : null;
+  const [fetched, setFetched] = useState<{ key: string; file: FileDiff | null } | null>(() => {
+    const hit = fetchKey ? peekFile(source!, given.path) : undefined;
+    return hit === undefined ? null : { key: fetchKey!, file: hit };
+  });
+  const [failed, setFailed] = useState(false);
+  const [asked, setAsked] = useState(false);
+  const got = fetched && fetched.key === fetchKey ? fetched : null;
+  const ready = !deferred || got != null;
+  const file: HighlightedFile = got?.file ?? given;
   const comments = review?.comments.filter((comment) => comment.path === file.path) ?? [];
+  const eager = wanted || asked || comments.length > 0;
+  useEffect(() => {
+    if (!fetchKey || got || collapsed || failed || !source) return;
+    if (deferred?.large && !eager) return;
+    const path = given.path;
+    const load = () =>
+      loadFile(source, path, { also: ahead }).then(
+        (found) => setFetched({ key: fetchKey, file: found }),
+        () => setFailed(true),
+      );
+    if (eager) {
+      void load();
+      return;
+    }
+    const element = section.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        observer.disconnect();
+        void load();
+      },
+      // Further ahead than the colours: a file's lines are a round trip away.
+      { rootMargin: "2000px 0px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+    // The file's identity is its key; a refresh's new `deferred` object changes nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchKey, got != null, collapsed, failed, eager, deferred?.large]);
+  // Linked to: once its lines are in, it is kept at the top while the files
+  // above it load and change its place, until the reader scrolls or a
+  // moment has passed.
+  const linkedReady = wanted && (!deferred || got != null);
+  useEffect(() => {
+    const element = section.current;
+    if (!linkedReady || !element) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const align = () => {
+      element.scrollIntoView({ block: "start" });
+      // Kept there until nothing has moved it for a moment.
+      clearTimeout(timer);
+      timer = setTimeout(stop, 1500);
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(align);
+    observer?.observe(document.body);
+    const stop = () => {
+      observer?.disconnect();
+      for (const type of ["wheel", "touchstart", "keydown"]) window.removeEventListener(type, stop);
+    };
+    for (const type of ["wheel", "touchstart", "keydown"]) window.addEventListener(type, stop, { passive: true });
+    align();
+    return () => {
+      clearTimeout(timer);
+      stop();
+    };
+  }, [linkedReady]);
+  const Icon = fileIcon(file.status);
   const shown = new Set(file.hunks.flatMap((hunk) => hunk.lines.map((line) => line.new)));
-  // Made against an earlier version of the change, on a line no longer in it.
-  const outdated = comments.filter((comment) => comment.line == null || !shown.has(comment.line));
+  // Made against an earlier version of the change, on a line no longer in
+  // it. Not known until a file sent without its lines has them.
+  const outdated = ready ? comments.filter((comment) => comment.line == null || !shown.has(comment.line)) : [];
   // Shown plain at once, and highlighted in the browser when it comes near
   // the screen: the page never waits for colours.
-  const section = useRef<HTMLElement>(null);
   const [highlighted, setHighlighted] = useState<{ content: string; html: FileHtml } | null>(null);
   // What the colours depend on. A refresh hands the page a new `file` with
   // the same lines: it keeps its colours rather than going plain and being
@@ -416,7 +565,7 @@ function FileSection({
     const file = latest.current;
     // Highlighted by the server already: one of the change's first files.
     const done = file.hunks.some((hunk) => hunk.lines.some((line) => (line as HighlightedLine).html != null));
-    if (!element || collapsed || done || kept) return;
+    if (!element || collapsed || done || kept || file.hunks.length === 0) return;
     let cancelled = false;
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -481,7 +630,8 @@ function FileSection({
               {comments.length}
             </span>
           )}
-          <Stat additions={file.additions} deletions={file.deletions} />
+          {/* Not counted until its lines are read: one the comparison left out. */}
+          {!(deferred && deferred.lines == null && !ready) && <Stat additions={file.additions} deletions={file.deletions} />}
           {fileBase && file.status !== "deleted" && (
             <span className="hidden items-center gap-0.5 text-xs sm:flex">
               <Link to={`${fileBase}/${file.path}`} className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg">
@@ -518,7 +668,19 @@ function FileSection({
                 ))}
               </div>
             )}
-            {file.binary ? (
+            {deferred && !ready ? (
+              <NotLoaded
+                deferred={deferred}
+                failed={failed}
+                waiting={deferred.large && !eager}
+                onLoad={() => {
+                  setFailed(false);
+                  setAsked(true);
+                }}
+              />
+            ) : deferred && got?.file === null ? (
+              <p className="px-4 py-6 text-sm text-muted">This file is no longer part of the change; reload the page to see it as it is now.</p>
+            ) : file.binary ? (
               <p className="px-4 py-6 text-sm text-muted">Binary or large file; its contents are not shown.</p>
             ) : file.hunks.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted">No line changes{file.status === "added" ? ": an empty file" : ""}.</p>
@@ -633,15 +795,26 @@ export function DiffView({
   review,
   empty,
   fileBase,
+  repo,
 }: {
-  comparison: Comparison;
+  comparison: Comparison | HighlightedComparison;
   review?: LineReview;
   /** What to say when nothing changed. */
   empty?: React.ReactNode;
   /** Where each file can be read as of the change, to link to it. */
   fileBase?: string;
+  /** The repository's address, `/owner/name`: files sent without their lines are fetched from it. */
+  repo?: string;
 }) {
-  const { files, truncated } = comparison;
+  const { truncated } = comparison;
+  const files: HighlightedFile[] = comparison.files;
+  // The commits compared, so a file fetched later is the same change's.
+  const source = repo
+    ? `${repo}/diff-files.json?base=${comparison.base ?? ""}&head=${encodeURIComponent(comparison.head)}`
+    : null;
+  // A file linked to (`#file-<path>`) loads at once and opens, wherever it is.
+  const [wanted, setWanted] = useState<string | null>(null);
+  const ahead = useMemo(() => filesAhead(files), [files]);
   const [chosenLayout, setLayout] = useState<Layout>("unified");
   // Side by side has no room on a phone.
   const narrow = useNarrow();
@@ -721,7 +894,7 @@ export function DiffView({
   }, [files, filter]);
   const tree = useMemo(() => treeOf(shownFiles), [shownFiles]);
 
-  const jump = useCallback((path: string) => {
+  const jump = useCallback((path: string, behavior: ScrollBehavior = "smooth") => {
     setCollapsed((previous) => {
       if (!previous.has(path)) return previous;
       const next = new Set(previous);
@@ -730,9 +903,25 @@ export function DiffView({
     });
     setActive(path);
     requestAnimationFrame(() =>
-      document.getElementById(`file-${path}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      document.getElementById(`file-${path}`)?.scrollIntoView({ behavior, block: "start" }),
     );
   }, []);
+
+  // After the viewed files are folded away (above), so a linked one opens.
+  useEffect(() => {
+    const follow = () => {
+      const path = linkedFile(window.location.hash, files);
+      if (!path) return;
+      setWanted(path);
+      // At once: a long smooth scroll would race the files loading on the way.
+      jump(path, "instant");
+    };
+    follow();
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+    // The address is read when the page arrives and when it changes, not on every refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump]);
 
   // The file at the top of the screen is the current one.
   useEffect(() => {
@@ -785,6 +974,8 @@ export function DiffView({
   const additions = files.reduce((sum, file) => sum + file.additions, 0);
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
   const allCollapsed = files.every((file) => collapsed.has(file.path));
+  // Files the comparison left out have no counts until they are read.
+  const uncounted = files.filter((file) => file.omitted).length;
   return (
     <div ref={frame}>
       <div ref={toolbar} className="sticky top-(--topbar-h) z-30 -mx-1 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 bg-bg/90 px-1 py-2 backdrop-blur">
@@ -792,6 +983,11 @@ export function DiffView({
           <span className="font-medium text-fg">{files.length}</span> {files.length === 1 ? "file" : "files"}
         </span>
         <Stat additions={additions} deletions={deletions} />
+        {uncounted > 0 && (
+          <span className="text-xs text-faint">
+            {uncounted} {uncounted === 1 ? "file" : "files"} not counted
+          </span>
+        )}
         <span className="flex items-center gap-2 text-xs text-muted">
           <span className="h-1.5 w-20 overflow-hidden rounded-full bg-line">
             <span
@@ -938,6 +1134,9 @@ export function DiffView({
             <FileSection
               key={file.path}
               file={file}
+              source={source}
+              wanted={wanted === file.path}
+              ahead={ahead.get(file.path)}
               review={review}
               layout={layout}
               collapsed={collapsed.has(file.path)}
@@ -948,7 +1147,9 @@ export function DiffView({
             />
           ))}
           {shownFiles.length === 0 && <p className="py-8 text-center text-sm text-muted">No file matches.</p>}
-          {truncated && <p className="text-center text-sm text-muted">This change is too large to show in full.</p>}
+          {truncated && (
+            <p className="text-center text-sm text-muted">More files changed than one page lists: these are the first {files.length}.</p>
+          )}
         </div>
       </div>
     </div>

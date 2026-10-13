@@ -200,13 +200,21 @@ fn line_diff(old: &str, new: &str) -> (Vec<Hunk>, u32, u32) {
 }
 
 /// The files that differ between two trees, with their line changes.
-/// Returns the files and whether the result was cut short.
+/// Returns the files and whether the list of files was cut short.
+///
+/// Files are read in order until about `MAX_LINES` lines have been read;
+/// the ones after that are listed without their lines, marked `omitted`,
+/// and are read by asking for them by path (`only`), which reads just them.
 pub async fn compare_trees<R: GitRepo>(
     repo: &R,
     old_tree: Option<&str>,
     new_tree: &str,
+    only: Option<&[String]>,
 ) -> Result<(Vec<FileDiff>, bool)> {
-    let (changes, mut truncated) = changed_files(repo, old_tree, new_tree).await?;
+    let (mut changes, truncated) = changed_files(repo, old_tree, new_tree).await?;
+    if let Some(only) = only {
+        changes.retain(|change| only.contains(&change.path));
+    }
     let mut files = Vec::with_capacity(changes.len());
     let mut lines = 0;
     // Contents are read a batch at a time, all of a batch at once.
@@ -239,19 +247,18 @@ pub async fn compare_trees<R: GitRepo>(
             (_, None) => FileStatus::Deleted,
             _ => FileStatus::Modified,
         };
-        let texts = match texts_read.next() {
-            Some(texts) if lines < MAX_LINES => texts,
-            _ => {
-                truncated = true;
-                None
-            }
+        // Past the limit (not read at all), or read: its two sides, or
+        // nothing when it is binary or too large.
+        let (texts, omitted) = match texts_read.next() {
+            Some(texts) if lines < MAX_LINES => (texts, false),
+            _ => (None, true),
         };
         let (hunks, additions, deletions, binary) = match texts {
             Some((old, new)) => {
                 let (hunks, additions, deletions) = line_diff(&old, &new);
                 (hunks, additions, deletions, false)
             }
-            None => (Vec::new(), 0, 0, true),
+            None => (Vec::new(), 0, 0, !omitted),
         };
         lines += hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
         files.push(FileDiff {
@@ -261,7 +268,111 @@ pub async fn compare_trees<R: GitRepo>(
             deletions,
             binary,
             hunks,
+            omitted,
         });
     }
     Ok((files, truncated))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::future::Future;
+    use std::pin::pin;
+    use std::task::{Context, Poll, Waker};
+
+    use g1t_contracts::repos::{Branch, Commit, GitAccess};
+
+    use super::*;
+    use crate::store::Scope;
+
+    fn run<F: Future>(future: F) -> F::Output {
+        match pin!(future).as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+            Poll::Ready(output) => output,
+            Poll::Pending => panic!("the fake store never waits"),
+        }
+    }
+
+    #[derive(Default)]
+    struct Fake {
+        trees: HashMap<String, Vec<TreeEntry>>,
+        blobs: HashMap<String, Vec<u8>>,
+    }
+
+    impl GitRepo for Fake {
+        async fn access(&self, _scope: Scope) -> Result<GitAccess> {
+            unimplemented!()
+        }
+        async fn branches(&self) -> Result<Vec<Branch>> {
+            Ok(Vec::new())
+        }
+        async fn log(&self, _git_ref: &str, _limit: u32) -> Result<Vec<Commit>> {
+            Ok(Vec::new())
+        }
+        async fn parents(&self, _commit_hash: &str) -> Result<Option<Vec<String>>> {
+            Ok(None)
+        }
+        async fn read_tree(&self, tree_hash: &str) -> Result<Option<Vec<TreeEntry>>> {
+            Ok(self.trees.get(tree_hash).cloned())
+        }
+        async fn read_blob(&self, blob_hash: &str) -> Result<Option<Vec<u8>>> {
+            Ok(self.blobs.get(blob_hash).cloned())
+        }
+        async fn read_file(&self, _git_ref: &str, _path: &str) -> Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+        async fn fork(&self, _target_key: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A tree that adds `count` files of `lines` lines each, f000 onward,
+    /// then a binary one, `zz.bin`.
+    fn added(count: usize, lines: usize) -> Fake {
+        let mut fake = Fake::default();
+        let mut entries = Vec::new();
+        for n in 0..count {
+            let hash = format!("b{n}");
+            fake.blobs.insert(hash.clone(), "line\n".repeat(lines).into_bytes());
+            entries.push(TreeEntry { name: format!("f{n:03}"), hash, kind: EntryKind::Blob });
+        }
+        fake.blobs.insert("bin".into(), vec![0, 1, 2]);
+        entries.push(TreeEntry { name: "zz.bin".into(), hash: "bin".into(), kind: EntryKind::Blob });
+        fake.trees.insert("root".into(), entries);
+        fake
+    }
+
+    #[test]
+    fn a_small_change_has_every_files_lines() {
+        let fake = added(3, 10);
+        let (files, truncated) = run(compare_trees(&fake, None, "root", None)).unwrap();
+        assert!(!truncated);
+        assert_eq!(files.len(), 4);
+        assert!(files[..3].iter().all(|f| !f.omitted && !f.binary && f.additions == 10));
+        assert!(files[3].binary && !files[3].omitted);
+    }
+
+    #[test]
+    fn files_past_the_line_limit_are_listed_as_omitted_not_binary() {
+        // 40 files of 1,000 lines: about 20 of them fit.
+        let fake = added(40, 1_000);
+        let (files, truncated) = run(compare_trees(&fake, None, "root", None)).unwrap();
+        assert!(!truncated, "every file is listed");
+        assert_eq!(files.len(), 41);
+        let read = files.iter().filter(|f| !f.omitted).count();
+        assert!((MAX_LINES / 1_000..=MAX_LINES / 1_000 + READS_AT_ONCE).contains(&read), "{read} read");
+        let last = files.last().unwrap();
+        assert!(last.omitted && !last.binary && last.hunks.is_empty() && last.additions == 0);
+    }
+
+    #[test]
+    fn an_omitted_file_is_read_when_asked_for_by_path() {
+        let fake = added(40, 1_000);
+        let only = ["f039".to_owned(), "missing".to_owned()];
+        let (files, _) = run(compare_trees(&fake, None, "root", Some(&only))).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "f039");
+        assert!(!files[0].omitted);
+        assert_eq!(files[0].additions, 1_000);
+    }
 }

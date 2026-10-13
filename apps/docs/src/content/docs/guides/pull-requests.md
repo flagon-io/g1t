@@ -1,6 +1,6 @@
 ---
 title: Pull requests and checks
-description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, drafts, closing and reopening, editing and deleting comments, and conflicts found before anyone tries to merge.
+description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, how a large change's files load, drafts, closing and reopening, editing and deleting comments, and conflicts found before anyone tries to merge.
 ---
 
 At the foot of an open pull request's conversation, the **merge box** says
@@ -186,6 +186,38 @@ change, entry by entry, with the `pull_request` tool's `record_session`
 action. Read it on the pull request's **Session** tab, or with
 `read_session`. Blame uses it to say why a line is the way it is. See
 [sessions and why-blame](/guides/why-blame/).
+
+## Files changed
+
+The **Files changed** tab lists every file the pull request changes, with
+a tree of them beside the diffs and how many lines each adds and removes.
+A commit's page and a comparison of two branches show their changes the
+same way.
+
+A large change opens quickly however many files it has. The page arrives
+with the first files' lines, about 2,000 of them, and the rest of the list
+with their counts; each later file's lines load as you scroll near it.
+Files with comments on their lines arrive with the page wherever they are,
+so their comments are there at once.
+
+A file whose diff is longer than 1,000 lines (a lockfile or generated
+code, usually) waits until you press **Load diff**. A link to a file
+(`#file-` and its path, such as `…/pull/12?tab=changes#file-src/app.ts`)
+opens it and loads its lines at once, however long.
+
+Some changes are too large to read in one go:
+
+- A comparison lists at most 300 files. When more changed, the page says
+  so under the last one.
+- Lines are read for the first files until about 20,000 have been read.
+  The files after that are listed without their counts and load the same
+  way as you reach them; until then the toolbar says how many files are
+  not counted.
+- A file over 512 KB, or a binary one, is listed without its contents.
+
+From the API, `get_pull_request_changes` works the same way: a file left
+out has `omitted: true`, and asking again with its path in `paths` (up to
+50 at a time) returns its lines.
 
 ## Drafts, closing and reopening
 

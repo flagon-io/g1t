@@ -236,6 +236,7 @@ impl Actions {
                 base,
                 head: Some(head),
                 base_branch: None,
+                paths: None,
             },
         )
         .await?;

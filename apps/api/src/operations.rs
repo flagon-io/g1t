@@ -401,6 +401,17 @@ fn integer(input: &Value, key: &str) -> Option<u32> {
     }
 }
 
+/// A list given as an array, or comma-separated (from a query string); none when empty.
+fn path_list(input: &Value, key: &str) -> Option<Vec<String>> {
+    let items: Vec<String> = match &input[key] {
+        Value::Array(items) => items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect(),
+        Value::String(text) => text.split(',').map(str::to_owned).collect(),
+        _ => Vec::new(),
+    };
+    let items: Vec<String> = items.into_iter().map(|item| item.trim().to_owned()).filter(|item| !item.is_empty()).collect();
+    (!items.is_empty()).then_some(items)
+}
+
 fn strings(input: &Value, key: &str) -> Option<Vec<String>> {
     input[key].as_array().map(|items| {
         items
@@ -1539,7 +1550,7 @@ impl Op {
             Op::ReopenPullRequest => "Reopen a closed pull request. It comes back as the draft it was if it was closed as one, and ready for review otherwise; a merged pull request cannot be reopened, nor one whose branch was deleted. Its author may reopen their own, and whoever asked g1t for one may reopen that one; anyone else needs the Triage role or higher. Publishes pull.reopened with its head commit.",
             Op::ConvertPullRequestToDraft => "Turn a pull request that is ready for review back into a draft. A draft cannot be merged until it is marked ready again; it leaves the merge queue, and a merge waiting for it to catch up is called off. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. Publishes pull.converted_to_draft.",
             Op::GetPullRequestChanges => {
-                "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue."
+                "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue. A large one lists every file (up to 300; truncated says when there were more) but has the lines of only the first, about 20,000 lines read: the files after that come with omitted true and no lines or counts. Ask again with paths (up to 50 at a time) to have those files' lines."
             }
             Op::MergePullRequest => {
                 "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
@@ -2331,8 +2342,17 @@ impl Op {
             | Op::GetPullRequest
             | Op::ClosePullRequest
             | Op::ReopenPullRequest
-            | Op::ConvertPullRequestToDraft
-            | Op::GetPullRequestChanges => just_numbered(),
+            | Op::ConvertPullRequestToDraft => just_numbered(),
+            Op::GetPullRequestChanges => object(
+                numbered(json!({
+                    "paths": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Only these files, with their lines (at most 50): how a file listed with omitted true is read. Comma-separated in a query string.",
+                    },
+                })),
+                &["repo", "number"],
+            ),
             Op::CreateIssue => object(
                 json!({
                     "repo": repo_schema(),
@@ -4704,7 +4724,9 @@ impl Op {
                 let found: Outcome<PullDetail> = call(work, "get_pull", &view()).await?;
                 match found {
                     Outcome::Ok(detail) => {
-                        pass(repos, "compare", &detail.pull.comparison(viewer)).await
+                        let mut asked = detail.pull.comparison(viewer);
+                        asked.paths = path_list(input, "paths");
+                        pass(repos, "compare", &asked).await
                     }
                     Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
                 }

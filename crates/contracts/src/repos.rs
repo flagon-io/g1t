@@ -477,6 +477,11 @@ pub struct FileDiff {
     /// True when the file is binary or too large, so no lines are shown.
     pub binary: bool,
     pub hunks: Vec<Hunk>,
+    /// True when the comparison reached its limit on lines before this
+    /// file, so it is listed without its lines (and with no counts): ask
+    /// `compare` again with its path in `paths` to have them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub omitted: bool,
 }
 
 /// What changed between two commits.
@@ -486,7 +491,8 @@ pub struct Comparison {
     pub base: Option<String>,
     pub head: String,
     pub files: Vec<FileDiff>,
-    /// True when the change was too large to return in full.
+    /// True when more files changed than are listed. A listed file whose
+    /// lines were left out says so itself (`FileDiff::omitted`).
     pub truncated: bool,
 }
 
@@ -511,6 +517,10 @@ pub struct CompareArgs {
     /// another branch is compared this way.
     #[serde(default)]
     pub base_branch: Option<String>,
+    /// Only these files, with their lines: how a file left out of a large
+    /// comparison is read on its own. At most 50.
+    #[serde(default)]
+    pub paths: Option<Vec<String>>,
 }
 
 /// Lines `start` to `end` of a file, inclusive and counted from 1, last

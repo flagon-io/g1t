@@ -349,7 +349,9 @@ export interface ReposApi {
    */
   /**
    * With no `base`, a branch is compared from where it left `baseBranch`
-   * (the default branch when absent).
+   * (the default branch when absent). With `paths`, only those files (at
+   * most 50), with their lines: how a file a large comparison lists as
+   * `omitted` is read.
    */
   compare(
     repoId: string,
@@ -357,6 +359,7 @@ export interface ReposApi {
     base?: string | null,
     head?: string | null,
     baseBranch?: string | null,
+    paths?: string[] | null,
   ): Promise<Result<Comparison>>;
 
   /**
@@ -480,6 +483,12 @@ export type FileDiff = {
   /** True when the file is binary or too large, so no lines are shown. */
   binary: boolean;
   hunks: Hunk[];
+  /**
+   * True when the comparison reached its limit on lines before this file,
+   * so it is listed without its lines or counts: `compare` with its path
+   * in `paths` has them.
+   */
+  omitted?: boolean;
 };
 
 /** What changed between two commits. */
@@ -487,6 +496,6 @@ export type Comparison = {
   base: string | null;
   head: string;
   files: FileDiff[];
-  /** True when the change was too large to return in full. */
+  /** True when more files changed than are listed. */
   truncated: boolean;
 };

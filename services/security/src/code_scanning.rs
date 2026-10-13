@@ -408,7 +408,7 @@ impl Security {
         let compared: Outcome<Comparison> = g1t_kit::call(
             &self.repos,
             "compare",
-            &CompareArgs { repo_id, viewer: Some(User::system(&repo.namespace)), base: None, head, base_branch: pull.base.clone() },
+            &CompareArgs { repo_id, viewer: Some(User::system(&repo.namespace)), base: None, head, base_branch: pull.base.clone(), paths: None },
         )
         .await?;
         Ok(compared.into_result().ok())
@@ -566,6 +566,7 @@ mod tests {
                 additions: 1,
                 deletions: 0,
                 binary: false,
+                omitted: false,
                 hunks: vec![Hunk { lines: vec![line(LineKind::Context, Some(11)), line(LineKind::Add, Some(12)), line(LineKind::Delete, None)] }],
             }],
         }

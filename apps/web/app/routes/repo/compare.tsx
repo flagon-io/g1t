@@ -1,8 +1,6 @@
 import { ArrowLeft, GitCommitHorizontal, GitPullRequest } from "lucide-react";
 import { Form, Link } from "react-router";
 
-import type { Comparison } from "@g1t/contracts";
-
 import type { Route } from "./+types/compare";
 import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
@@ -11,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { type HighlightedComparison, firstScreens } from "../../lib/diff";
 import { page } from "../../lib/meta";
 import { showCommits } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
@@ -69,7 +68,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // that point is past what was read, the two tips are compared.
   const mergeBase = shared === -1 ? base : headLog.value[shared]!.hash;
   const compared = await repos.compare(found.id, viewer, mergeBase, head);
-  const comparison: Comparison | null = compared.ok ? compared.value : null;
+  // Its first screens with their lines; the rest load as they are reached.
+  const comparison: HighlightedComparison | null = compared.ok ? firstScreens(compared.value) : null;
   return { base, head, branches, comparison, commits, same: false };
 }
 
@@ -167,7 +167,7 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
             </Card>
           </section>
           {comparison ? (
-            <DiffView comparison={comparison} fileBase={`${repoBase}/blob/${encodeURIComponent(head)}`} empty="The two sides have the same files." />
+            <DiffView comparison={comparison} repo={repoBase} fileBase={`${repoBase}/blob/${encodeURIComponent(head)}`} empty="The two sides have the same files." />
           ) : (
             <p className="text-sm text-muted">The changes could not be read just now. The commits above are what {head} adds.</p>
           )}
