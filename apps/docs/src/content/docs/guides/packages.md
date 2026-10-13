@@ -184,7 +184,7 @@ nothing is refused and storage past those amounts is charged instead:
 
 - What the workspace's packages hold is measured each day, public and
   private apart, each past its own free amount.
-- A month's GB-months are those days added up, divided by 30, charged at
+- A month's GB-months are those days added up, divided by the days in the month, charged at
   $0.018 a GB-month as **Package storage** on the
   [bill](/guides/usage-and-billing/).
 - Deleted packages and versions, kept for 30 days, do not count.

@@ -6814,13 +6814,13 @@
             }
           ],
           "created_at": "2026-10-01T00:05:00.000Z",
-          "fee_micros": 1600000,
+          "fee_micros": 0,
           "tax_micros": 3510000
         }
       ],
       "upcoming": {
         "closes_at": "2026-11-01T00:00:00.000Z",
-        "subscriptions_micros": 20000000,
+        "subscriptions_micros": 21000000,
         "usage_micros": 10210000,
         "total_micros": 30210000
       },

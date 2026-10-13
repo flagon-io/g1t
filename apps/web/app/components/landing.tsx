@@ -374,16 +374,16 @@ const PRICES: { name: string; price: string; unit?: string; about: string }[] =
     },
     {
       name: "The g1t plan",
-      price: "$20",
+      price: "$21",
       unit: "a month per workspace",
       about:
         "$10 of usage included. Unlimited members. Checks, workflows, the merge queue and deployments.",
     },
     {
       name: "Usage",
-      price: "Cost + 20%",
+      price: "From cost + 20%",
       about:
-        "Checks, workflows, deployments and storage at what they cost g1t, plus 20%. Time on your own runners costs nothing.",
+        "Checks, workflows, deployments and storage, priced from what they cost g1t plus 20%. Time on your own runners costs nothing.",
     },
   ];
 
@@ -981,7 +981,7 @@ export function Landing() {
                 },
                 {
                   icon: <Wallet size={15} />,
-                  text: "One bill, at cost plus 20%",
+                  text: "One bill, priced from cost plus 20%",
                 },
               ].map((item) => (
                 <li

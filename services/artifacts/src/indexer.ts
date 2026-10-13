@@ -16,6 +16,7 @@
  * on the queue (`docs.index` jobs, on the artifacts service's own events queue).
  */
 import { chunkId, chunkMarkdown, embedText, repoFileId, textHash } from "./chunks.ts";
+import { overFreeBudget } from "./embed-billing.ts";
 import { scopesOf, type FolioRow, FOLIO_COLUMNS } from "./folios/access-store.ts";
 import { kindModel } from "./kinds/index.ts";
 import { cloudflareEmbedder, cloudflareVectors, type Embedder, type VectorMetadata, type VectorStore } from "./vectors.ts";
@@ -73,8 +74,15 @@ function metadataOf(doc: IndexDoc): VectorMetadata {
     : { workspace_id: doc.workspace_id, space_id: doc.space_id, kind: "repo_file", repo_file_id: doc.doc_id, repo_id: doc.repo_id ?? "" };
 }
 
-/** Passages the workspace may still embed this hour. */
+/**
+ * Passages the workspace may still embed this hour; none once a workspace
+ * without the plan has used its free month (src/embed-billing.ts).
+ */
 async function allowance(db: D1Database, workspaceId: string, now: Date): Promise<number> {
+  if (await overFreeBudget(db, workspaceId, now)) {
+    console.log("embedding budget of a free workspace used for the month", workspaceId);
+    return 0;
+  }
   const used = await db.prepare("SELECT chunks FROM doc_embed_usage WHERE workspace_id = ? AND hour = ?").bind(workspaceId, hourOf(now)).first<{ chunks: number }>();
   return Math.max(0, EMBED_PER_HOUR - (used?.chunks ?? 0));
 }

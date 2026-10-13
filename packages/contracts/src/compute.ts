@@ -203,16 +203,16 @@ export function refusalMessage(
       const oss = OSS_KINDS.has(kind)
         ? " Public repositories can use g1t's open-source pool instead, after a card check."
         : "";
-      return `${WHAT[kind]} a paid workspace.${oss} Start the $20 plan or try it with $5 of free usage after a card check: ${link}`;
+      return `${WHAT[kind]} a paid workspace.${oss} Start the $21 plan or try it with $5 of free usage after a card check: ${link}`;
     }
     case "trial_used":
-      return `This workspace has used its $5 of free usage. Start the $20 plan to keep going: ${link}`;
+      return `This workspace has used its $5 of free usage. Start the $21 plan to keep going: ${link}`;
     case "limit":
       return `This workspace reached its spend limit for the month, so nothing new starts. An owner can raise it: ${link}#limit`;
     case "paused":
       return `g1t paused compute for this workspace${detail ? `: ${detail.replace(/.$/, "")}` : ""}. Contact support@g1t.sh to have it looked at.`;
     case "oss_pool_empty":
-      return `g1t's open-source pool is used up for this month, so checks and workflows on public repositories wait until next month. Start the $20 plan to run them now: ${link}`;
+      return `g1t's open-source pool is used up for this month, so checks and workflows on public repositories wait until next month. Start the $21 plan to run them now: ${link}`;
     case "billing_unavailable":
       return "g1t could not reach its billing service, so it did not start this. Try again in a minute.";
   }

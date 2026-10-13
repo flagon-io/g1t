@@ -44,6 +44,7 @@ pub(crate) const KIND_SQL: &str = "CASE
     WHEN task = 'gateway' THEN 'AI Gateway'
     WHEN task = 'domains' THEN 'Custom domains'
     WHEN task = 'package_storage' THEN 'Package storage'
+    WHEN task = 'telemetry' THEN 'Observability data'
     WHEN reference LIKE 'run%' THEN 'Agent runs'
     ELSE 'Other usage' END";
 
@@ -82,6 +83,7 @@ pub(crate) fn kind_order(kind: &str) -> u8 {
         "Security scans" => 7,
         "Custom domains" => 3,
         "Package storage" => 4,
+        "Observability data" => 4,
         "Payments" => 8,
         "AI credit" => 8,
         "Credits from g1t" => 9,
@@ -117,7 +119,7 @@ pub(crate) const METERS: [(&str, &str); 6] = [
 pub(crate) const METER_SQL: &str = "CASE
     WHEN task = 'deployments' AND reference LIKE 'deploy/%' THEN 'builds'
     WHEN task = 'deployments' THEN 'requests'
-    WHEN task IN ('storage', 'git', 'cache') THEN 'git_storage'
+    WHEN task IN ('storage', 'git', 'cache', 'package_storage', 'telemetry') THEN 'git_storage'
     WHEN task IN ('security', 'context') THEN 'search_scans'
     ELSE 'agents' END";
 
@@ -126,7 +128,7 @@ pub(crate) fn meter_of_source(source: &str) -> &'static str {
     match source {
         "deployments" => "requests",
         "domains" => "domains",
-        "storage" | "git" | "cache" => "git_storage",
+        "storage" | "git" | "cache" | "package_storage" | "telemetry" => "git_storage",
         _ => "search_scans",
     }
 }
@@ -417,7 +419,11 @@ impl Billing {
         }
         let pending = self
             .db
-            .prepare("SELECT source, cost_micros, detail FROM pending_usage WHERE workspace = ? AND month = ? AND charged_at IS NULL")
+            // Less what was metered before a test-mode detach: never charged.
+            .prepare(format!(
+                "SELECT source, {} AS cost_micros, detail FROM pending_usage WHERE workspace = ? AND month = ? AND charged_at IS NULL",
+                crate::storage::NET_COST
+            ))
             .bind(&[workspace.as_str().into(), month.as_str().into()])?
             .all()
             .await?

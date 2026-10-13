@@ -144,13 +144,13 @@ pub(crate) fn refusal(code: FailureCode, workspace: &str, kind: ComputeKind, det
     };
     let message = match code {
         FailureCode::NotPaid if kind.open_source_pool() => format!(
-            "{what} run in g1t's sandboxes, which cost real money, so they need the g1t plan ($20 a month) or a card check. A card check gives public repositories g1t's open-source pool and starts the $5 trial; it is never charged. Both are at {link}."
+            "{what} run in g1t's sandboxes, which cost real money, so they need the g1t plan ($21 a month) or a card check. A card check gives public repositories g1t's open-source pool and starts the $5 trial; it is never charged. Both are at {link}."
         ),
         FailureCode::NotPaid => format!(
-            "{what} cost real money to run, so they need the g1t plan ($20 a month, with $10 of usage included) or the one-time $5 trial, which starts with a card check that is never charged. Both are at {link}."
+            "{what} cost real money to run, so they need the g1t plan ($21 a month, with $10 of usage included) or the one-time $5 trial, which starts with a card check that is never charged. Both are at {link}."
         ),
         FailureCode::TrialUsed => format!(
-            "This workspace has used its $5 trial. Start the g1t plan ($20 a month, with $10 of usage included) to keep going: {link}."
+            "This workspace has used its $5 trial. Start the g1t plan ($21 a month, with $10 of usage included) to keep going: {link}."
         ),
         FailureCode::OssPoolEmpty => format!(
             "g1t's open-source pool for this month is used up{detail}, so checks and workflows on public repositories wait until the 1st. The g1t plan runs them now: {link}."
@@ -252,7 +252,7 @@ impl Billing {
             && (spike.status == "open" || spike.status == "stopped") {
                 return Ok(latest);
             }
-        if plan == PlanKind::Internal || self.stripe.is_none() {
+        if plan == PlanKind::Internal || !self.charging {
             return Ok(None);
         }
         let pace = self.pace(workspace).await?;
@@ -424,7 +424,7 @@ impl Billing {
             return Ok((Some(why), Some(spike.clone()), Some(FailureCode::Paused)));
         }
         let latest = self.latest_spike(workspace).await?;
-        if plan != PlanKind::Internal && self.stripe.is_some() {
+        if plan != PlanKind::Internal && self.charging {
             let worked_out;
             let limit = match limit {
                 Some(limit) => limit,
@@ -539,7 +539,7 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::Paused, why));
         }
         // A g1t that does not charge holds nothing.
-        if self.stripe.is_none() {
+        if !self.charging {
             return Ok(Outcome::Ok(Reservation { id: new_id("rsv", now), paid_by: PaidBy::OnDemand, held_micros: 0, expires_at }));
         }
         let account = self.account_of(&workspace).await?;

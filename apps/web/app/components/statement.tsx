@@ -144,8 +144,9 @@ export function StatementView({
 
       {((totals.taxMicros ?? 0) !== 0 || (totals.cardFeeMicros ?? 0) !== 0) && (
         <p className="mt-2 text-xs text-faint">
-          Paid with this month's payments on top of what they credited: tax {money(totals.taxMicros ?? 0)}, card processing fees{" "}
-          {money(totals.cardFeeMicros ?? 0)}. Prices exclude tax; neither comes from your balance.
+          Paid with this month's payments on top of what they credited: tax {money(totals.taxMicros ?? 0)}
+          {(totals.cardFeeMicros ?? 0) !== 0 ? `, and card processing fees on earlier payments ${money(totals.cardFeeMicros ?? 0)}` : ""}. Prices
+          exclude tax, and it never comes from your balance.
         </p>
       )}
       {((totals.covered?.length ?? 0) > 0 || (totals.carriedMicros ?? 0) > 0) && (

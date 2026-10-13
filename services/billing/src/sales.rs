@@ -541,6 +541,10 @@ impl Billing {
                           WHEN task = 'context' THEN 'Search embeddings'
                           WHEN task = 'storage' THEN 'Private storage'
                           WHEN task = 'git' THEN 'Git operations'
+                          WHEN task = 'cache' THEN 'Actions cache storage'
+                          WHEN task = 'domains' THEN 'Custom domains'
+                          WHEN task = 'package_storage' THEN 'Package storage'
+                          WHEN task = 'telemetry' THEN 'Observability data'
                           WHEN billed_to = 'workspace' THEN 'Own-provider runs'
                           ELSE 'Models' END AS kind,
                         -SUM(amount_micros) AS charged,

@@ -18420,7 +18420,7 @@
           "Billing"
         ],
         "summary": "List a workspace's invoices",
-        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, usage and any AI credit bought earlier), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and the card processing fee (`fee_micros`) and tax (`tax_micros`) are on top. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Members of the workspace only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
+        "description": "A workspace's invoices, newest first. `invoices` is every invoice billed to it (the plan, usage and any AI credit bought earlier), each with its `status`, `total_cents`, `currency` and links to view it and its PDF. `usage_invoices` are g1t's itemised invoices for usage, one when each month closes and one each time the card is charged near the limit, with their `lines` in millionths of a dollar; `amount_micros` is the usage, and tax (`tax_micros`) is on top; there is no card fee, so `fee_micros` is 0 except on invoices from before g1t's prices included it. Prices exclude tax: Stripe adds it where it applies. `upcoming` is what the next invoice comes to so far. `unavailable` says why `invoices` could not be read just now, when it could not. Owners and billing managers only.\n\n`invoices` are in cents (`total_cents`); `usage_invoices` and `upcoming` in millionths of a dollar. A usage invoice's `reason` is `month` (the month closed) or `threshold` (charged near the limit), and its `status` `paid`, `open`, `failed` or `void`. An invoice's `status` is `paid`, `open`, `void`, `uncollectible` or `draft`.",
         "x-operation": "list_invoices",
         "x-mcp-tool": "billing",
         "x-mcp-action": "invoices",
@@ -18505,13 +18505,13 @@
                         }
                       ],
                       "created_at": "2026-10-01T00:05:00.000Z",
-                      "fee_micros": 1600000,
+                      "fee_micros": 0,
                       "tax_micros": 3510000
                     }
                   ],
                   "upcoming": {
                     "closes_at": "2026-11-01T00:00:00.000Z",
-                    "subscriptions_micros": 20000000,
+                    "subscriptions_micros": 21000000,
                     "usage_micros": 10210000,
                     "total_micros": 30210000
                   },

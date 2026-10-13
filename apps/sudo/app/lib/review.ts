@@ -31,6 +31,8 @@ export const DONE: Record<string, string> = {
   revoked: "What was left of the credit was taken back. It is on the statement and in the audit log.",
   reset: "Billing reset. The workspace starts again as a new customer, and the costs analysis ran again, so every figure is fresh.",
   "reset-stale": "Billing reset. The workspace starts again as a new customer; the costs analysis did not finish, so press Run the analysis now on Costs & margin.",
+  "test-detach": "Detached from Stripe's test mode. What changed is in the audit log; the ledger keeps every line.",
+  "test-detach-none": "Nothing from Stripe's test mode was left on this workspace: nothing changed.",
   created: "Enterprise created.",
   "billing-email": "Saved where the enterprise's invoices go.",
   "billing-address": "Billing address saved on its Stripe customer. Its invoices are taxed from it.",

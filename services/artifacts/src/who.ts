@@ -28,6 +28,7 @@ import {
 
 import { roleOf, type Person, type SpaceRules } from "./access.ts";
 import { freeSlug } from "./slugs.ts";
+import { rememberWorkspace } from "./embed-billing.ts";
 
 export type WhoEnv = { DB: D1Database; IDENTITY: ServiceBinding };
 
@@ -108,7 +109,11 @@ export class Who {
       const kept = workspaces.get(key);
       if (kept && Date.now() - kept.at < WORKSPACE_TTL_MS) found = kept.value;
       else {
-        found = identityClient(this.env.IDENTITY).getWorkspace(key).catch(() => null);
+        found = identityClient(this.env.IDENTITY)
+          .getWorkspace(key)
+          .catch(() => null)
+          // Its slug, for reporting its embeddings to billing (src/embed-billing.ts).
+          .then(async (w) => (await rememberWorkspace(this.env.DB, w), w));
         workspaces.set(key, { at: Date.now(), value: found });
         // Only an answer is kept: a miss or a failure is asked again next time.
         void found.then((w) => {

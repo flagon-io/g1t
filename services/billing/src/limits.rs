@@ -53,7 +53,7 @@ use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{Env, Result};
 
-use crate::charged::{PendingLine, PendingSplit, month_totals, pending_split};
+use crate::charged::{PendingSplit, cover_with_included, month_totals, pending_split};
 use crate::features::dollars as dollars_plain;
 use crate::{Billing, members_only};
 
@@ -107,6 +107,31 @@ pub(crate) fn state(exposure: i64, ceiling: Option<i64>) -> LimitState {
     }
 }
 
+/// A limit as the services that run things read it (`check_limit`): a
+/// staff hold (abuse, a suspension) stops the workspace's running apps as
+/// well as new compute, so it reads as stopped, with the reason.
+pub(crate) fn held(mut limit: Limit, hold: Option<&str>) -> Limit {
+    if let Some(why) = hold_message(&limit.workspace, hold) {
+        limit.state = LimitState::Stopped;
+        limit.message = Some(why);
+    }
+    limit
+}
+
+/// Why a hold stops the workspace, if there is one.
+pub(crate) fn hold_message(workspace: &str, hold: Option<&str>) -> Option<String> {
+    hold.map(str::trim).filter(|h| !h.is_empty()).map(|hold| {
+        format!("g1t staff put a hold on {workspace} ({hold}), so its sandboxes, builds and apps are stopped. Write to g1t support to have it lifted.")
+    })
+}
+
+/// Whether autopay charges the card now: something is owed on the ledger
+/// (`collectable`, the exposure less usage not entered until the month
+/// closes), and it is within a fifth of the ceiling.
+pub(crate) fn autopay_due(collectable: i64, ceiling: Option<i64>) -> bool {
+    collectable > 0 && ceiling.is_some_and(|ceiling| collectable * 5 >= ceiling * 4)
+}
+
 /// The automatic monthly spend limit's floor: $200.
 pub(crate) const DEFAULT_SPEND_MICROS: i64 = 200_000_000;
 /// Established workspaces' ceiling: three times their steady monthly
@@ -157,6 +182,16 @@ pub(crate) fn in_first_cycle(started_at: &str, period_end: Option<&str>, now: &s
     match period_end {
         Some(end) => days(end) - days(started_at) <= 32 && days(now) <= days(end),
         None => days(now) - days(started_at) <= 31,
+    }
+}
+
+/// When a workspace's history as a payer starts: its first live plan
+/// payment ever (`first_paid`), or this plan's start if that is earlier or
+/// it has paid none yet.
+pub(crate) fn trust_start<'a>(started_at: &'a str, first_paid: Option<&'a str>) -> &'a str {
+    match first_paid {
+        Some(paid) if paid < started_at => paid,
+        _ => started_at,
     }
 }
 
@@ -311,6 +346,13 @@ impl Billing {
     /// The workspace's limit, from the account and plan already read for
     /// it, so a caller that has them does not read them again.
     pub(crate) async fn limit_with(&self, workspace: &str, account: &BillingAccount, plan: PlanKind) -> Result<Limit> {
+        Ok(self.limit_parts(workspace, account, plan).await?.0)
+    }
+
+    /// `limit_with`, and how much of its exposure is usage metered this
+    /// month and not on the ledger yet: counted against the ceiling, but
+    /// nothing a card can be charged for until the month closes.
+    async fn limit_parts(&self, workspace: &str, account: &BillingAccount, plan: PlanKind) -> Result<(Limit, i64)> {
         let workspace = workspace.to_lowercase();
         let now = rfc3339(now_ms());
         let month_start = format!("{}-01", &now[..7]);
@@ -372,17 +414,24 @@ impl Billing {
         // month is not a fresh allowance for an account that never pays),
         // or paid in advance. Credits g1t gave count; test-mode payments
         // do not.
-        let mut before = members.clone();
+        // Payments count only from the day payments went live
+        // (`payments_live_since`): test-mode ones from before the switch
+        // pay nothing off. None counts until that day is set.
+        let live_since = if live { self.payments_live_since().await? } else { None };
+        // In the statement's order: the day, the workspaces, the month.
+        let mut before: Vec<JsValue> = vec![live_since.as_deref().unwrap_or("9999").into()];
+        before.extend(members.iter().cloned());
         before.push(month_start.as_str().into());
         let balance_before = async {
             Ok::<i64, worker::Error>(
                 self.db
                     .prepare(format!(
                         "SELECT SUM(CASE WHEN kind = 'usage' THEN amount_micros
-                                         WHEN kind = 'top_up' AND ({live} = 1 OR reference LIKE 'crd%') THEN amount_micros
+                                         WHEN kind = 'top_up' AND reference LIKE 'crd%' THEN amount_micros
+                                         WHEN kind = 'top_up' AND {live} = 1 AND created_at >= ? THEN amount_micros
                                          ELSE 0 END) AS paid
                          FROM ledger WHERE workspace IN ({marks}) AND created_at < ?",
-                        live = u8::from(live)
+                        live = u8::from(live_since.is_some())
                     ))
                     .bind(&before)?
                     .first::<Paid>(None)
@@ -420,19 +469,43 @@ impl Billing {
         // This month's charges on the ledger, measured as every page
         // measures them, and last month's, for the automatic spend limit.
         let charges = self.month_charges(&members, &month_start);
+        // What each workspace's plan still has of its included usage this
+        // month: the close pays pending usage from it first.
+        let included = try_join_all(names.iter().map(|name| {
+            let month = &month_start[..7];
+            async move {
+                if plan == PlanKind::Free {
+                    return Ok::<_, worker::Error>((name.clone(), 0));
+                }
+                let used = self.allowance_used("plan_credit", name, month).await?;
+                Ok((name.clone(), crate::credits::left(self.plans.plan_included_micros, used)))
+            }
+        }));
         // None of these reads needs another's answer, so they go to D1 at
         // once: the limit is on every signed-in page.
-        let ((row, month, balance_before, charges), (pending, credits), (trust, trust_ceiling, first_month)) =
-            try_join3(try_join4(row, month, balance_before, charges), try_join(pending, credits), trust).await?;
+        let ((row, month, balance_before, charges), (pending, credits, included), (trust, trust_ceiling, first_month)) =
+            try_join3(try_join4(row, month, balance_before, charges), try_join3(pending, credits, included), trust).await?;
         // Charged this month: the one definition (`charged`), so this is
         // the Billing page's and Usage's figure, to the micro.
         let percent = account.terms.percent_off();
-        let splits: Vec<PendingSplit> = pending.iter().map(|p| pending_split(p.cost(), p.charge(), self.margin_percent, percent)).collect();
+        let mut splits: Vec<PendingSplit> = pending.iter().map(|p| pending_split(p.cost(), p.charge(), self.margin_percent, percent)).collect();
+        // Pending usage is paid from what is left of each workspace's
+        // included usage before anything of it is charged.
+        let mut paid_by_plan = vec![0; splits.len()];
+        for (name, left) in &included {
+            let at: Vec<usize> = (0..pending.len()).filter(|i| pending[*i].workspace == *name).collect();
+            let mut theirs: Vec<PendingSplit> = at.iter().map(|i| splits[*i]).collect();
+            for (k, pay) in cover_with_included(&mut theirs, *left).into_iter().enumerate() {
+                splits[at[k]] = theirs[k];
+                paid_by_plan[at[k]] = pay;
+            }
+        }
         let totals = month_totals(charges.price, charges.discount, charges.covered, credits.into_iter().sum(), &splits);
         let spent = totals.charged_micros;
         let last_month = charges.last_month;
         let (used, paid_month) = month.map_or((0, 0), |m| (m.used.unwrap_or(0), m.paid.unwrap_or(0)));
-        let used = used + pending.iter().map(PendingLine::charge).sum::<i64>();
+        let pending_unpaid: i64 = pending.iter().zip(&paid_by_plan).map(|(p, plan_pays)| (p.charge() - plan_pays).max(0)).sum();
+        let used = used + pending_unpaid;
         let (exposure, prepaid) = exposure(used, if live { paid_month } else { 0 }, balance_before);
 
         // A ceiling g1t granted is a floor under the trust ceiling.
@@ -542,7 +615,7 @@ impl Billing {
             Trust::Established => Some("Follows your monthly spend, up to $10,000, by itself. Prepaying raises it at once, and you can ask for more.".to_owned()),
             Trust::Reviewed | Trust::Internal => None,
         };
-        Ok(Limit {
+        Ok((Limit {
             workspace,
             account: account.id.clone(),
             account_name: account.name.clone(),
@@ -565,15 +638,30 @@ impl Billing {
             alert_levels: alert_levels(row.as_ref().and_then(|row| row.alert_levels.as_deref())),
             pause_at_limit: pause,
             budget_webhook: row.as_ref().and_then(|row| row.budget_webhook.clone()),
-        })
+        }, pending_unpaid.min(exposure)))
     }
 
     /// Whether the workspace's plan is in its first billing cycle.
+    /// Counted from the first live plan payment ever, not from this
+    /// subscription's start: a workspace that paid before, ended its plan
+    /// and came back keeps its history rather than starting over.
     pub(crate) async fn first_month(&self, workspace: &str) -> Result<bool> {
-        Ok(match self.plan_cycle(workspace).await? {
-            Some((started_at, period_end)) => in_first_cycle(&started_at, period_end.as_deref(), &rfc3339(now_ms())),
-            None => false,
-        })
+        let Some((started_at, period_end)) = self.plan_cycle(workspace).await? else { return Ok(false) };
+        let first_paid = if self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
+            #[derive(Deserialize)]
+            struct First {
+                paid_at: Option<String>,
+            }
+            self.db
+                .prepare("SELECT MIN(paid_at) AS paid_at FROM plan_payments WHERE workspace = ? AND amount_micros > 0")
+                .bind(&[workspace.into()])?
+                .first::<First>(None)
+                .await?
+                .and_then(|first| first.paid_at)
+        } else {
+            None
+        };
+        Ok(in_first_cycle(trust_start(&started_at, first_paid.as_deref()), period_end.as_deref(), &rfc3339(now_ms())))
     }
 
     /// Real money the workspaces have paid g1t, cleared: usage payments and
@@ -583,21 +671,29 @@ impl Billing {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(0);
         }
+        // Only what was paid since payments went live: test-mode payments
+        // from before the switch are not money. Nothing until the day is set.
+        let Some(live_since) = self.payments_live_since().await? else { return Ok(0) };
         let marks = vec!["?"; members.len().max(1)].join(", ");
         let settled = rfc3339(now_ms() - SETTLE_DAYS * 24 * 60 * 60 * 1000);
+        let mut bound = members.to_vec();
+        bound.push(live_since.as_str().into());
+        bound.extend_from_slice(members);
+        bound.push(live_since.as_str().into());
         Ok(self
             .db
             .prepare(format!(
                 "SELECT
                    (SELECT COALESCE(SUM(amount_micros), 0) FROM ledger
-                     WHERE workspace IN ({marks}) AND kind = 'top_up' AND reference NOT LIKE 'crd%'
+                     WHERE workspace IN ({marks}) AND kind = 'top_up' AND reference NOT LIKE 'crd%' AND created_at >= ?
                        AND (amount_micros < 0
                             OR (disputed = 0 AND COALESCE(funding, '') <> 'prepaid'
                                 AND created_at <= '{settled}')))
                  + (SELECT COALESCE(SUM(amount_micros), 0) FROM plan_payments
-                     WHERE workspace IN ({marks}) AND paid_at <= '{settled}') AS paid"
+                     WHERE workspace IN ({marks}) AND paid_at >= ?
+                       AND (amount_micros < 0 OR paid_at <= '{settled}')) AS paid"
             ))
-            .bind(&[members, members].concat())?
+            .bind(&bound)?
             .first::<Paid>(None)
             .await?
             .and_then(|row| row.paid)
@@ -717,9 +813,12 @@ impl Billing {
         Ok(Outcome::Ok(self.limit_of(&workspace).await?))
     }
 
-    /// What a source cost so far this month. `security`, `context`,
-    /// `storage` and `git` are charged by billing once the month is over
-    /// (see `storage`); `deployments` charges its own.
+    /// What a source cost so far in a month: the month the reporter names
+    /// (this one, or the one before while it is still open, see
+    /// `pending_month`), else this one. `security`, `context`, `storage`
+    /// and `git` are charged by billing once the month is over (see
+    /// `storage`); `deployments` charges its own. A report refused is
+    /// logged and answered `false`; nothing else is touched.
     pub(crate) async fn note_pending(&self, a: NotePendingArgs) -> Result<bool> {
         // The actions cache is the plan's to pay for; free workspaces are
         // held to its quota instead.
@@ -727,8 +826,35 @@ impl Billing {
             return Ok(false);
         }
         let now = rfc3339(now_ms());
+        let (month, previous) = match pending_month(a.month.as_deref(), &now[..7]) {
+            Ok(month) => month,
+            Err(why) => {
+                worker::console_warn!("note_pending refused for {} ({}): {why}", a.workspace, a.source);
+                return Ok(false);
+            }
+        };
+        if previous {
+            let workspace = a.workspace.to_lowercase();
+            #[derive(Deserialize)]
+            struct Open {
+                charged: Option<i64>,
+                closed: Option<i64>,
+            }
+            let open = self
+                .db
+                .prepare(PREVIOUS_OPEN)
+                .bind(&[workspace.as_str().into(), a.source.as_str().into(), month.as_str().into()])?
+                .first::<Open>(None)
+                .await?;
+            let (charged, closed) = open.map_or((0, 0), |o| (o.charged.unwrap_or(0), o.closed.unwrap_or(0)));
+            if charged > 0 || closed > 0 {
+                let why = if closed > 0 { "the month is closed" } else { "the month's figure is charged already" };
+                worker::console_warn!("note_pending refused for {workspace} ({}) in {month}: {why}", a.source);
+                return Ok(false);
+            }
+        }
         let detail = a.detail.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(|d| d.chars().take(200).collect::<String>());
-        self.set_pending(&a.workspace, &a.source, &now[..7], a.cost_micros, detail.as_deref()).await?;
+        self.set_pending(&a.workspace, &a.source, &month, a.cost_micros, detail.as_deref()).await?;
         Ok(true)
     }
 
@@ -776,25 +902,39 @@ impl Billing {
             .prepare(
                 "SELECT accounts.workspace AS workspace
                  FROM accounts LEFT JOIN limits ON limits.workspace = accounts.workspace
-                 WHERE accounts.customer_id IS NOT NULL AND limits.autopay_failed_at IS NULL",
+                 WHERE accounts.customer_id IS NOT NULL AND limits.autopay_failed_at IS NULL
+                 ORDER BY accounts.workspace",
             )
             .all()
             .await?
             .results::<Candidate>()?
             .into_iter()
             .filter(|candidate| users.contains(&candidate.workspace));
+        // Each workspace on its own: one the card processor fails for is
+        // logged and tried again next run, and never stops the rest.
         for candidate in candidates {
-            let limit = self.limit_of(&candidate.workspace).await?;
-            // Near g1t's ceiling on what is unpaid; the spend limit is the
-            // owners' and stops work by itself, but what is owed is still owed.
-            let near = limit.ceiling_micros.is_some_and(|ceiling| limit.exposure_micros * 5 >= ceiling * 4);
-            if !near || limit.trust == Trust::Internal || limit.account.starts_with("ent_") {
-                continue;
-            }
-            let today = rfc3339(now_ms())[..10].to_owned();
-            match self.invoice_workspace(&candidate.workspace, "threshold", &today).await? {
-                Ok(_) => {}
-                Err(why) => worker::console_log!("{}: no threshold invoice: {why}", candidate.workspace),
+            let workspace = candidate.workspace.as_str();
+            let charged = async {
+                let account = self.account_of(workspace).await?;
+                let plan = self.plan_kind_for(workspace, &account).await?;
+                let (limit, pending) = self.limit_parts(workspace, &account, plan).await?;
+                // Near g1t's ceiling on what is unpaid; the spend limit is the
+                // owners' and stops work by itself, but what is owed is still owed.
+                // Only what is on the ledger can be charged now: usage metered
+                // and not entered until the month closes does not count toward
+                // it, and with nothing owed there is nothing to charge.
+                let collectable = limit.exposure_micros - pending;
+                if !autopay_due(collectable, limit.ceiling_micros) || limit.trust == Trust::Internal || limit.account.starts_with("ent_") {
+                    return Ok(());
+                }
+                let today = rfc3339(now_ms())[..10].to_owned();
+                if let Err(why) = self.invoice_workspace(workspace, "threshold", &today).await? {
+                    worker::console_log!("{workspace}: no threshold invoice: {why}");
+                }
+                Ok::<(), worker::Error>(())
+            };
+            if let Err(error) = charged.await {
+                worker::console_error!("{workspace}: paying at the limit failed; tried again next run: {error}");
             }
         }
         Ok(())
@@ -817,28 +957,47 @@ impl Billing {
             workspace: String,
             balance: Option<i64>,
         }
+        // Twenty a run, in a stable order: those never tried first, then
+        // those retrying, tried longest ago first, so one the card processor
+        // keeps failing for never holds the others back. Not while a month
+        // that is over still has metered usage to go on the ledger
+        // (`charge_pending`, a few at a tick): the close would charge
+        // without it and the rest would wait a month.
+        let sources = crate::storage::CHARGED_HERE.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(", ");
         let open = self
             .db
-            .prepare(
+            .prepare(format!(
                 "SELECT accounts.workspace AS workspace,
                         (SELECT SUM(amount_micros) FROM ledger
                           WHERE ledger.workspace = accounts.workspace AND ledger.created_at < ?1) AS balance
                  FROM accounts
+                 LEFT JOIN month_closes retrying ON retrying.workspace = accounts.workspace AND retrying.month = ?2
+                   AND retrying.status = 'retrying'
                  WHERE accounts.customer_id IS NOT NULL
                    AND NOT EXISTS (SELECT 1 FROM month_closes
-                                    WHERE month_closes.workspace = accounts.workspace AND month_closes.month = ?2)
-                 LIMIT 20",
-            )
-            .bind(&[month_start.as_str().into(), closing.as_str().into()])?
+                                    WHERE month_closes.workspace = accounts.workspace AND month_closes.month = ?2
+                                      AND month_closes.status <> 'retrying')
+                   AND NOT EXISTS (SELECT 1 FROM pending_usage
+                                    WHERE pending_usage.workspace = accounts.workspace AND pending_usage.month < ?3
+                                      AND pending_usage.charged_at IS NULL AND pending_usage.source IN ({sources}))
+                 ORDER BY retrying.closed_at IS NOT NULL, retrying.closed_at, accounts.workspace
+                 LIMIT 20"
+            ))
+            .bind(&[month_start.as_str().into(), closing.as_str().into(), now[..7].into()])?
             .all()
             .await?
             .results::<Open>()?;
         for account in open {
+            // Once a month is closed it stays as closed; only a retry is
+            // replaced, by the next attempt's outcome.
             let record = |status: &str, amount: i64, payment: Option<&str>, error: Option<&str>| {
                 self.db
                     .prepare(
-                        "INSERT OR IGNORE INTO month_closes (workspace, month, status, amount_micros, payment_id, error, closed_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO month_closes (workspace, month, status, amount_micros, payment_id, error, closed_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)
+                         ON CONFLICT (workspace, month) DO UPDATE SET status = excluded.status, amount_micros = excluded.amount_micros,
+                           payment_id = excluded.payment_id, error = excluded.error, closed_at = excluded.closed_at
+                         WHERE month_closes.status = 'retrying'",
                     )
                     .bind(&[
                         account.workspace.as_str().into(),
@@ -850,35 +1009,52 @@ impl Billing {
                         now.as_str().into(),
                     ])
             };
-            let payer = self.account_of(&account.workspace).await?;
-            if payer.terms.full_discount() || payer.id.starts_with("ent_") {
-                record("skipped", 0, None, None)?.run().await?;
-                continue;
-            }
-            // AI credit left at the month's end pays only for models: not
-            // money for anything else that is owed (ai.rs).
-            let ai_left = self.models_left_before(&account.workspace, &month_start).await?;
-            let owed = (ai_left - account.balance.unwrap_or(0)).max(0);
-            if owed == 0 {
-                record("nothing", 0, None, None)?.run().await?;
-                continue;
-            }
-            if !worth_charging(owed, self.plans.min_charge_micros) {
-                // Under the minimum charge: a card payment's fee would be
-                // too much of it. It stays owed and goes on the next
-                // invoice that reaches the minimum.
-                record("carried", owed, None, None)?.run().await?;
-                continue;
-            }
-            match self.invoice_workspace(&account.workspace, "month", &closing).await? {
-                Ok(invoice) if invoice.status == "paid" => {
-                    record("paid", invoice.amount_micros, Some(&invoice.invoice_id), None)?.run().await?;
+            // Each workspace on its own: a failure is logged and kept as a
+            // retry, and the rest still close.
+            let closed = async {
+                let payer = self.account_of(&account.workspace).await?;
+                if payer.terms.full_discount() || payer.id.starts_with("ent_") {
+                    record("skipped", 0, None, None)?.run().await?;
+                    return Ok(());
                 }
-                Ok(invoice) => {
-                    record("failed", invoice.amount_micros, Some(&invoice.invoice_id), Some("the card was declined"))?.run().await?;
+                // AI credit left at the month's end pays only for models: not
+                // money for anything else that is owed (ai.rs).
+                let ai_left = self.models_left_before(&account.workspace, &month_start).await?;
+                let owed = (ai_left - account.balance.unwrap_or(0)).max(0);
+                if owed == 0 {
+                    record("nothing", 0, None, None)?.run().await?;
+                    return Ok(());
                 }
-                Err(why) => {
-                    record("nothing", 0, None, Some(&why))?.run().await?;
+                if !worth_charging(owed, self.plans.min_charge_micros) {
+                    // Under the minimum charge: a card payment's fee would be
+                    // too much of it. It stays owed and goes on the next
+                    // invoice that reaches the minimum.
+                    record("carried", owed, None, None)?.run().await?;
+                    return Ok(());
+                }
+                // Stripe failing to answer is an `Err`: the month is not
+                // recorded as owing nothing, and the next run tries again.
+                match self.invoice_workspace(&account.workspace, "month", &closing).await? {
+                    Ok(invoice) if invoice.status == "paid" => {
+                        record("paid", invoice.amount_micros, Some(&invoice.invoice_id), None)?.run().await?;
+                    }
+                    Ok(invoice) => {
+                        // Declined, or no card Stripe can charge: the
+                        // reason as the decline recorded it.
+                        let why = self.autopay_error(&account.workspace).await?.unwrap_or_else(|| "the card was declined".to_owned());
+                        record("failed", invoice.amount_micros, Some(&invoice.invoice_id), Some(&why))?.run().await?;
+                    }
+                    Err(why) => {
+                        record("nothing", 0, None, Some(&why))?.run().await?;
+                    }
+                }
+                Ok::<(), worker::Error>(())
+            };
+            if let Err(error) = closed.await {
+                worker::console_error!("{}: closing {closing} failed; tried again next run: {error}", account.workspace);
+                let why: String = error.to_string().chars().take(300).collect();
+                if let Err(error) = async { record("retrying", 0, None, Some(&why))?.run().await }.await {
+                    worker::console_error!("{}: the retry for {closing} was not kept: {error}", account.workspace);
                 }
             }
         }
@@ -892,7 +1068,7 @@ impl Billing {
     ///
     /// `users` are the workspaces with usage this month ([`Self::month_users`]).
     pub(crate) async fn warn_limits(&self, identity: &worker::Fetcher, users: &BTreeSet<String>) -> Result<()> {
-        if self.stripe.is_none() {
+        if !self.charging {
             return Ok(());
         }
         let now = rfc3339(now_ms());
@@ -997,7 +1173,11 @@ impl Billing {
     }
 
     pub(crate) async fn check_limit(&self, a: CheckLimitArgs) -> Result<Outcome<Limit>> {
-        Ok(Outcome::Ok(self.limit_of(&a.workspace).await?))
+        let workspace = a.workspace.to_lowercase();
+        let account = self.account_of(&workspace).await?;
+        let plan = self.plan_kind_for(&workspace, &account).await?;
+        let limit = self.limit_with(&workspace, &account, plan).await?;
+        Ok(Outcome::Ok(held(limit, account.allowances.hold.as_deref())))
     }
 
     /// The owners' spend limit: anywhere up to what is available without
@@ -1221,6 +1401,36 @@ pub(crate) async fn notify_with(
     }
 }
 
+/// Whether a source's figure for the month before is still open: charged
+/// already (`charged`) or the month closed for the workspace (`closed`).
+/// `?1` workspace, `?2` source, `?3` month.
+pub(crate) const PREVIOUS_OPEN: &str = "SELECT
+     (SELECT COUNT(*) FROM pending_usage WHERE workspace = ?1 AND source = ?2 AND month = ?3 AND charged_at IS NOT NULL) AS charged,
+     (SELECT COUNT(*) FROM month_closes WHERE workspace = ?1 AND month = ?3) AS closed";
+
+/// The month a pending report is filed under, from the month the reporter
+/// says its total belongs to and this month (`YYYY-MM`, UTC), with whether
+/// it is the month before (still to be checked open, `PREVIOUS_OPEN`).
+/// None is this month, as before reporters named one; any other month is
+/// refused, so a stale or wrong report never lands in this month.
+pub(crate) fn pending_month(given: Option<&str>, current: &str) -> std::result::Result<(String, bool), String> {
+    let Some(given) = given.map(str::trim).filter(|m| !m.is_empty()) else {
+        return Ok((current.to_owned(), false));
+    };
+    let b = given.as_bytes();
+    let shaped = b.len() == 7 && b[4] == b'-' && b.iter().enumerate().all(|(i, c)| i == 4 || c.is_ascii_digit());
+    if !shaped || !(1..=12).contains(&given[5..7].parse::<u32>().unwrap_or(0)) {
+        return Err(format!("{given:?} is not a month (YYYY-MM)"));
+    }
+    if given == current {
+        return Ok((current.to_owned(), false));
+    }
+    if given == previous_month(current) {
+        return Ok((given.to_owned(), true));
+    }
+    Err(format!("{given} is neither this month ({current}) nor the one before"))
+}
+
 /// `2026-09` for `2026-10`, and `2025-12` for `2026-01`.
 pub(crate) fn previous_month(month: &str) -> String {
     let year: i32 = month[..4].parse().unwrap_or(1970);
@@ -1235,6 +1445,25 @@ pub(crate) fn previous_month(month: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pending_report_lands_in_its_own_month_or_none() {
+        // Unnamed: this month, as before reporters named one.
+        assert_eq!(pending_month(None, "2026-11"), Ok(("2026-11".to_owned(), false)));
+        assert_eq!(pending_month(Some(" "), "2026-11"), Ok(("2026-11".to_owned(), false)));
+        assert_eq!(pending_month(Some("2026-11"), "2026-11"), Ok(("2026-11".to_owned(), false)));
+        // The month before: only once it is checked open.
+        assert_eq!(pending_month(Some("2026-10"), "2026-11"), Ok(("2026-10".to_owned(), true)));
+        assert_eq!(pending_month(Some("2025-12"), "2026-01"), Ok(("2025-12".to_owned(), true)));
+        // Anything else is refused, never filed under this month.
+        for bad in ["2026-09", "2026-12", "2026-1", "2026/10", "2026-13", "2026-00", "abcd-ef", "2026-10-01"] {
+            assert!(pending_month(Some(bad), "2026-11").is_err(), "{bad}");
+        }
+        // Charged or closed: refused; a charged row is never rewritten.
+        assert!(PREVIOUS_OPEN.contains("charged_at IS NOT NULL") && PREVIOUS_OPEN.contains("FROM month_closes"));
+        assert!(crate::storage::SET_PENDING.contains("WHERE pending_usage.charged_at IS NULL"));
+        assert!(crate::storage::SET_PENDING.contains("NOT EXISTS (SELECT 1 FROM month_closes"));
+    }
 
     #[test]
     fn a_budget_alerts_at_the_levels_chosen_and_pauses_only_if_asked() {
@@ -1265,6 +1494,44 @@ mod tests {
         assert!(!webhook_ok("https://a b.test/"));
         assert!(!webhook_ok(&format!("https://acme.test/{}", "x".repeat(600))));
     }
+    #[test]
+    fn autopay_charges_only_what_is_owed_on_the_ledger() {
+        let ceiling = Some(100_000_000);
+        // $85 owed on the ledger, near the $100 ceiling: charged.
+        assert!(autopay_due(85_000_000, ceiling));
+        // $85 of exposure that is all metered usage not entered until the
+        // month closes: nothing to charge, so no invoice.
+        assert!(!autopay_due(85_000_000 - 85_000_000, ceiling));
+        assert!(!autopay_due(-5, ceiling));
+        // Owed but well under the ceiling, or no ceiling: not yet.
+        assert!(!autopay_due(10_000_000, ceiling));
+        assert!(!autopay_due(85_000_000, None));
+    }
+
+    #[test]
+    fn a_staff_hold_stops_running_apps_with_its_reason() {
+        let why = hold_message("acme", Some(" mining ")).unwrap();
+        assert!(why.contains("acme") && why.contains("(mining)") && why.contains("stopped"), "{why}");
+        assert_eq!(hold_message("acme", Some("  ")), None);
+        assert_eq!(hold_message("acme", None), None);
+    }
+
+    #[test]
+    fn a_returning_payer_keeps_its_history() {
+        let now = "2026-10-13T00:00:00Z";
+        // New: first paid as the plan started: still its first month.
+        let start = trust_start("2026-10-01T00:00:00Z", Some("2026-10-01T00:05:00Z"));
+        assert_eq!(start, "2026-10-01T00:00:00Z");
+        assert!(in_first_cycle(start, Some("2026-11-01T00:00:00Z"), now));
+        // Paid first in March, left, back this month: not a first month.
+        let start = trust_start("2026-10-01T00:00:00Z", Some("2026-03-04T00:00:00Z"));
+        assert_eq!(start, "2026-03-04T00:00:00Z");
+        assert!(!in_first_cycle(start, Some("2026-11-01T00:00:00Z"), now));
+        assert!(!in_first_cycle(start, None, now));
+        // Never paid yet: from the plan's start, as before.
+        assert_eq!(trust_start("2026-10-01T00:00:00Z", None), "2026-10-01T00:00:00Z");
+    }
+
     #[test]
     fn the_automatic_spend_limit_follows_last_month() {
         assert_eq!(automatic_spend_limit(0), 200_000_000);

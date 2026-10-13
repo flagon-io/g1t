@@ -4,7 +4,7 @@
 //! way, and then for real, just before it deletes anything. A workspace can
 //! be closed when nothing is left between it and g1t:
 //!
-//! - no invoice of its failed and is still unpaid;
+//! - no invoice of its is still unpaid (open, or failed);
 //! - no prepaid credit is left (it would be lost);
 //! - what it owes can be charged now, to its card, with no minimum;
 //! - no usage this month is still being metered (storage and git
@@ -43,7 +43,8 @@ pub(crate) struct Facts {
     /// The enterprise that pays for it, by name.
     pub enterprise: Option<String>,
     pub comped: bool,
-    pub failed_invoices: u32,
+    /// Invoices sent and not paid: open, or failed.
+    pub unpaid_invoices: u32,
     /// Positive is credit, negative is owed.
     pub balance_micros: i64,
     pub has_card: bool,
@@ -71,7 +72,7 @@ pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
     if facts.comped {
         return Ok(Settle::Nothing);
     }
-    if facts.failed_invoices > 0 {
+    if facts.unpaid_invoices > 0 {
         return Err(format!(
             "{ws} has an unpaid invoice. Pay it from the workspace's Billing page first."
         ));
@@ -102,6 +103,11 @@ pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
     Ok(Settle::Nothing)
 }
 
+/// The workspace's invoices sent and not paid: open (sent, or being
+/// charged) or failed. Either is money already asked for that closing must
+/// not ask for again.
+pub(crate) const UNPAID_INVOICES_SQL: &str = "SELECT count(*) AS n FROM workspace_invoices WHERE workspace = ? AND status IN ('open', 'failed')";
+
 #[derive(Deserialize)]
 struct Count {
     n: Option<f64>,
@@ -119,7 +125,7 @@ impl Billing {
         let row = self.row(workspace).await?;
         let failed = self
             .db
-            .prepare("SELECT count(*) AS n FROM workspace_invoices WHERE workspace = ? AND status = 'failed'")
+            .prepare(UNPAID_INVOICES_SQL)
             .bind(&[workspace.into()])?
             .first::<Count>(None)
             .await?
@@ -129,10 +135,11 @@ impl Billing {
         let month = crate::credits::month_of(&now);
         let metering = self
             .db
-            .prepare(
-                "SELECT SUM(charge_micros) AS n FROM pending_usage
+            .prepare(format!(
+                "SELECT SUM({}) AS n FROM pending_usage
                  WHERE workspace = ? AND charged_at IS NULL AND month >= ?",
-            )
+                crate::storage::NET_CHARGE
+            ))
             .bind(&[workspace.into(), month.as_str().into()])?
             .first::<Count>(None)
             .await?
@@ -142,7 +149,7 @@ impl Billing {
             workspace: workspace.to_owned(),
             enterprise: account.id.starts_with("ent_").then(|| account.name.clone()),
             comped: account.terms.full_discount(),
-            failed_invoices: failed,
+            unpaid_invoices: failed,
             balance_micros: row.as_ref().map_or(0, |r| r.balance_micros),
             has_card: row.as_ref().is_some_and(|r| r.customer_id.is_some()) && self.stripe.is_some(),
             metering_micros: metering,
@@ -169,7 +176,18 @@ impl Billing {
         }
         if let Settle::Charge(owed) = settle {
             let period = rfc3339(now_ms())[..10].to_owned();
-            match self.invoice_workspace(&workspace, "close", &period).await? {
+            let invoiced = match self.invoice_workspace(&workspace, "close", &period).await {
+                Ok(invoiced) => invoiced,
+                // Stripe did not finish: nothing is closed, and it can be tried again.
+                Err(error) => {
+                    worker::console_error!("{workspace}: not invoiced on closing: {error}");
+                    return Ok(Outcome::fail(
+                        FailureCode::Conflict,
+                        "The card processor did not finish the payment. Nothing was closed; try again in a minute.",
+                    ));
+                }
+            };
+            match invoiced {
                 Ok(invoice) if invoice.status == "paid" => {}
                 Ok(_) => {
                     return Ok(Outcome::fail(
@@ -286,9 +304,11 @@ mod tests {
     }
 
     #[test]
-    fn credit_metering_and_failed_invoices_wait() {
+    fn credit_metering_and_unpaid_invoices_wait() {
         assert!(decide(&Facts { balance_micros: 5_000_000, ..facts() }).unwrap_err().contains("prepaid credit"));
-        assert!(decide(&Facts { failed_invoices: 1, ..facts() }).unwrap_err().contains("unpaid invoice"));
+        assert!(decide(&Facts { unpaid_invoices: 1, ..facts() }).unwrap_err().contains("unpaid invoice"));
+        // An invoice still open counts as unpaid, as a failed one does.
+        assert!(UNPAID_INVOICES_SQL.contains("status IN ('open', 'failed')"), "{UNPAID_INVOICES_SQL}");
         let metering = decide(&Facts { metering_micros: 10_000, ..facts() }).unwrap_err();
         assert!(metering.contains("2026-11-01"), "{metering}");
     }

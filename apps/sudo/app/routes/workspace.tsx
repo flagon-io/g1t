@@ -21,6 +21,7 @@ import {
 } from "~/components/billing";
 import { MonthsChart } from "~/components/charts";
 import { SalesSection, StageBadge, WorkspaceInvoicesSection } from "~/components/sales";
+import { WorkspaceTestDetachSection } from "~/components/test-detach";
 import {
   Avatar,
   Badge,
@@ -48,6 +49,7 @@ import { goodwillWarning, spikeLabel } from "~/lib/pricing";
 import { admin, entitlements as entitlementsOf, identity, priceBook } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
+import { WORKSPACE_DETACH_INTENT, type WorkspaceDetachData, workspaceDetachAction } from "~/lib/test-detach.server";
 import { fullDiscount } from "~/lib/terms";
 import type { Enterprise } from "~/lib/workspaces";
 
@@ -147,6 +149,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const path = `/workspaces/${encodeURIComponent(slug)}`;
   const form = await request.clone().formData();
   if (SALES_INTENTS.has(text(form, "intent"))) return salesAction(form, staff, slug, path);
+  if (text(form, "intent") === WORKSPACE_DETACH_INTENT) return workspaceDetachAction(form, staff, slug, path);
   return billingAction(request, staff, subject, path);
 }
 
@@ -193,6 +196,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
   const result = actionData as ActionData | undefined;
   const review = result && "review" in result ? result.review : null;
   const link = result && "link" in result ? result.link : null;
+  const detachPreview = actionData && typeof actionData === "object" && "testDetach" in actionData ? (actionData as WorkspaceDetachData).testDetach : null;
   const error = (section: string): SectionError => (result && "error" in result && result.section === section ? result : null);
   const owners = person?.members.filter((member) => member.role === "owner") ?? [];
 
@@ -373,6 +377,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
           <PaymentForm workspace={slug} pathname={pathname} error={error("payment")} />
           <CreditForm workspaces={[slug]} pathname={pathname} error={error("credit")} />
           {!billedTo && !fullDiscount(terms) && <ResetBillingForm workspace={slug} pathname={pathname} error={error("reset")} />}
+          {!billedTo && <WorkspaceTestDetachSection workspace={slug} pathname={pathname} preview={detachPreview} error={error("test-detach")} />}
           <div id="audit" className="scroll-mt-20">
             <AuditSection
               audit={audit}

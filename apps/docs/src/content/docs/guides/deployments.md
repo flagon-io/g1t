@@ -88,8 +88,10 @@ one that was deployed elsewhere. A project set to be a library, a tool or
 something else cannot have deployments turned on until that setting
 changes.
 
-While payments on g1t are in test mode, no real card is charged: use the
-test card `4242 4242 4242 4242` with any future date and any code.
+On a g1t whose payments use Stripe's test mode, such as a self-hosted one
+set up with test keys, no real card is charged: use the test card
+`4242 4242 4242 4242` with any future date and any code. With live
+payments, the card you enter is charged.
 
 ## What deploys
 
@@ -761,7 +763,7 @@ key.
 ## What it costs
 
 Deployments come with the
-[g1t plan](/guides/usage-and-billing/#the-g1t-plan), $20 a month per
+[g1t plan](/guides/usage-and-billing/#the-g1t-plan), $21 a month per
 workspace with $10 of usage included. There are **no quotas**: as many
 projects and previews as you like, and no count of builds, requests or
 domains ever stops or pauses an app. What deployments cost g1t is metered

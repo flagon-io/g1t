@@ -108,7 +108,7 @@ test("a refusal without words gets g1t's, with what to do and where", async () =
   });
   const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("deploy"));
   assert.equal(!admitted.ok && admitted.message, refusalMessage("not_paid", "acme", "deploy"));
-  assert.match(refusalMessage("not_paid", "acme", "deploy"), /^Deployments need a paid workspace\. Start the \$20 plan or try it with \$5 of free usage after a card check: \/acme\/-\/billing$/);
+  assert.match(refusalMessage("not_paid", "acme", "deploy"), /^Deployments need a paid workspace\. Start the \$21 plan or try it with \$5 of free usage after a card check: \/acme\/-\/billing$/);
 });
 
 test("a paused workspace starts nothing, and billing is not asked to reserve", async () => {

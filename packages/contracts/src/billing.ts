@@ -414,6 +414,10 @@ export type StripeStatus = {
   missingEvents: string[];
   recentEvents: { id: string; kind: string; outcome: string; receivedAt: string }[];
   error: string | null;
+  /** Stripe Tax for the key's mode: `active`, or `pending` with the settings it still needs. Null when it could not be read. */
+  tax?: { status: "active" | "pending" | string; missingFields: string[] } | null;
+  /** The customer portal configuration billing makes (`metadata[g1t]=billing`). Null until the first portal session makes it. */
+  portal?: { configurationId: string; active: boolean } | null;
 };
 
 /** An enterprise's invoice: one line per workspace, paid on Stripe's page. */
@@ -439,7 +443,7 @@ export type WorkspaceInvoice = {
   pdfUrl: string | null;
   lines: { description: string; amountMicros: number }[];
   createdAt: string;
-  /** The card processing fee on top of `amountMicros` when charged to a card, and the tax Stripe added once known. */
+  /** The card processing fee on top of `amountMicros` (only on invoices from before g1t's prices included it), and the tax Stripe added once known. */
   feeMicros?: number;
   taxMicros?: number;
 };
@@ -612,6 +616,12 @@ export interface BillingAdminApi {
   revokeCredit(id: string, note: string, by: string): Promise<Result<CreditGrant>>;
   /** A test workspace's billing wiped, to start again as a new customer. Only on Stripe's test key; never comped or enterprise. Logged. */
   resetBilling(workspace: string, confirm: string, note: string, by: string): Promise<Result<BillingReset>>;
+  /**
+   * Test-mode Stripe data made inert before the live key, history kept: one
+   * workspace (any but an enterprise's), or every workspace not comped, not an
+   * enterprise's and not excluded (default syntaqx, flagon-io). Refused on a live key. Logged.
+   */
+  detachTestStripe(args: DetachTestStripeArgs): Promise<Result<TestStripeDetach>>;
   /** The workspace's Stripe billing page, to send to the customer. Logged. */
   billingLink(workspace: string, by: string): Promise<Result<BillingLink>>;
   /** Where billing stands with Stripe; with `setup`, registers the webhook first. */
@@ -645,8 +655,15 @@ export interface BillingAdminApi {
   decideLimitRequest(id: string, decision: "approve" | "decline", amountMicros: number | null, note: string, by: string): Promise<Result<LimitRequest>>;
   /** The Overages queue. */
   overages(): Promise<Overage[]>;
-  /** A goodwill credit; no amount is the one-click credit. Larger, or a second in 12 months, needs a reason. */
-  goodwill(workspace: string, amountMicros: number | null, reason: string, by: string, day?: string | null): Promise<Result<LedgerEntry>>;
+  /** A goodwill credit; no amount is the one-click credit. Larger, or a second in 12 months, needs a reason. `requestKey`, made once per form, makes a double click or a retry one credit. */
+  goodwill(
+    workspace: string,
+    amountMicros: number | null,
+    reason: string,
+    by: string,
+    day?: string | null,
+    requestKey?: string | null,
+  ): Promise<Result<LedgerEntry>>;
   /** Workspaces spending in the last day, fastest first. */
   velocity(): Promise<Velocity[]>;
   /** Money that reached g1t outside the card pages, such as a bank transfer: entered as a payment. */
@@ -871,10 +888,8 @@ export const DEPLOYMENT_COSTS = {
 export type FeaturePlan = {
   feature: Feature;
   title: string;
-  /** Charged every month while the plan is on, in cents, excluding tax. */
+  /** Charged every month while the plan is on, in cents, excluding tax: all of it, with no card fee on top. */
   monthlyCents: number;
-  /** The card processing fee on top each month, in cents (0 when off), excluding tax. */
-  cardFeeCents?: number;
   /** What the price includes, one line each. */
   includes: string[];
   /** How usage past the allowance is charged. */
@@ -974,14 +989,23 @@ export interface BillingApi {
    * What a source cost g1t so far this month, so the workspace's limit
    * counts it now. Replaces the last report. Billing charges `context`
    * and `security` itself once the month is over; `deployments` charges
-   * its own.
+   * its own. `context` is search embeddings (services/artifacts) and
+   * `telemetry` is observability ingest past the free amount
+   * (services/telemetry), both at cost.
    */
   notePending(
     workspace: string,
-    source: "deployments" | "domains" | "context" | "security",
+    source: "deployments" | "domains" | "context" | "security" | "telemetry",
     costMicros: number,
     /** How much of it, for the Billing page: `1.2 million requests and 3.4 million CPU ms`. */
     detail?: string | null,
+    /**
+     * The month (`YYYY-MM`, UTC) the total belongs to, read when it was
+     * worked out. Billing takes this month, or the month before while its
+     * figure for the source is not charged and the month is not closed.
+     * Left out: the month the report arrives in.
+     */
+    month?: string | null,
   ): Promise<boolean>;
   /**
    * This month's usage, one line per kind of meter, at what it is charged
@@ -1036,7 +1060,7 @@ export interface BillingApi {
     /** Use the one-time raise: up to twice the highest ceiling, once per workspace. */
     raiseOnce?: boolean,
   ): Promise<Result<Limit>>;
-  /** The workspace's invoices from g1t, newest first. Members only. */
+  /** The workspace's invoices from g1t, newest first. Owners and billing managers only. */
   invoices(workspace: string, viewer: Viewer): Promise<Result<WorkspaceInvoice[]>>;
   /**
    * How long a sandbox ran for a workspace, reported when it stops. Its
@@ -1072,7 +1096,7 @@ export interface BillingApi {
     workspace: string,
     budget: { amountMicros: number | null; alerts: number[]; pauseAtLimit: boolean; webhook: string | null; keepLimit?: boolean },
   ): Promise<Result<Limit>>;
-  /** Invoice details from the Stripe customer, the default payment method, invoices and the next invoice. Members only. */
+  /** Invoice details from the Stripe customer, the default payment method, invoices and the next invoice: owners and billing managers. Any other member gets the next invoice only. */
   billingDetails(workspace: string, viewer: Viewer): Promise<Result<BillingDetails>>;
   /** Saves invoice details on the Stripe customer; absent fields stay, empty clears. Owners only. */
   setBillingDetails(actor: User, workspace: string, details: BillingDetailsInput): Promise<Result<BillingDetails>>;
@@ -1253,6 +1277,62 @@ export type PriceVersion = {
   basis?: "cost" | "rate" | "weight" | "";
 };
 
+/** `detachTestStripe`'s arguments. `confirm`: the slug, or "detach" for every workspace; not needed for a dry run. */
+export type DetachTestStripeArgs = {
+  workspace?: string | null;
+  exclude?: string[] | null;
+  dryRun: boolean;
+  cancelAtStripe?: boolean;
+  confirm?: string;
+  by: string;
+};
+
+/** One workspace's detach (snake_case, as billing sends it). */
+export type WorkspaceDetach = {
+  workspace: string;
+  done: boolean;
+  customer: boolean;
+  card: string | null;
+  card_cached: boolean;
+  subscriptions: number;
+  card_checks: number;
+  checkouts: number;
+  ai_reload: boolean;
+  autopay_cleared: boolean;
+  invoices_voided: number;
+  months_skipped: string[];
+  credit_grants_closed: number;
+  credit_closed_micros: number;
+  payments_reversed_micros: number;
+  plan_payments_reversed_micros: number;
+  written_off_micros: number;
+  balance_before_micros: number;
+  balance_after_micros: number;
+  stripe_canceled: number;
+  stripe_errors: string[];
+  /** Metered figures of months before this one marked charged without a charge, and what they came to. */
+  pending_months_marked: number;
+  pending_marked_micros: number;
+  /** This month's metered figures kept as the baseline later reports are charged past. */
+  pending_baselined: number;
+  pending_baselined_micros: number;
+  /** This month's draws on the plan's included usage removed. */
+  plan_credit_cleared_micros: number;
+  /** What lost test-mode disputes left owed, cleared. */
+  dispute_owed_cleared_micros: number;
+  /** Open test-mode disputes closed. */
+  disputes_closed: number;
+};
+
+/** What `detachTestStripe` changed, or would change. */
+export type TestStripeDetach = {
+  dry_run: boolean;
+  workspaces: WorkspaceDetach[];
+  skipped: { workspace: string; reason: string }[];
+  /** Workspaces left for another call (25 a call). */
+  remaining: number;
+};
+
 /** What `resetBilling` removed. */
 export type BillingReset = { workspace: string; rows: number; refreshed?: boolean };
 
@@ -1304,8 +1384,6 @@ export type CostSettings = {
   minDailyCostMicros: number;
   anomalyFactor: number;
   anomalyFloorMicros: number;
-  /** Pass Stripe's card fee on as its own line when AI credit is bought by card. */
-  cardFee: boolean;
 };
 
 export type CostsReport = {
@@ -1503,6 +1581,7 @@ export const PRODUCTS = [
   { key: "packages", label: "Packages" },
   { key: "security", label: "Security & quality" },
   { key: "search", label: "Search" },
+  { key: "observability", label: "Observability" },
 ] as const;
 
 export type ProductKey = (typeof PRODUCTS)[number]["key"];
@@ -1514,7 +1593,7 @@ export type UsageTotals = {
   discountMicros: number;
   /** Paid by the plan's included usage, the trial and g1t's pools. */
   includedMicros: number;
-  /** Paid by AI credit and credit from g1t. */
+  /** Paid by credit from g1t, and AI credit bought before g1t stopped selling it. */
   creditsMicros: number;
   /** Left for the workspace to pay. */
   chargedMicros: number;

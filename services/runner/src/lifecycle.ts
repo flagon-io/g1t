@@ -100,3 +100,56 @@ export function describeError(error: unknown): string {
     return String(error);
   }
 }
+
+/**
+ * Sandbox time billing has not confirmed yet, kept in the sandbox's
+ * storage until it does. `usage` is fixed when the sandbox stopped, so a
+ * later try records the same seconds under the same reference, which
+ * billing records once whatever it is sent (`record_sandbox`).
+ */
+export type Owed<U extends { reference: string }> = {
+  usage: U;
+  /** Tries so far that billing did not confirm. */
+  attempts: number;
+  /** When the sandbox stopped, in ms. */
+  since: number;
+};
+
+/** The longest wait between tries: an hour. */
+export const OWED_MAX_DELAY_SECONDS = 60 * 60;
+/** How long sandbox time is tried for before it is logged as lost: a week. */
+export const OWED_GIVE_UP_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** The wait before the next try, after `attempts` failed ones: 30 seconds, doubling, at most an hour. */
+export function owedDelaySeconds(attempts: number): number {
+  return Math.min(OWED_MAX_DELAY_SECONDS, 30 * 2 ** Math.min(16, Math.max(0, attempts - 1)));
+}
+
+/**
+ * Tries to record each owed usage once. Returns what billing confirmed
+ * (to forget), what to keep for another try (with its attempts counted),
+ * what has been tried for too long (to log and forget), and the wait before
+ * the next try, or null when nothing is kept. `record` resolves true only
+ * when billing confirmed it; a throw is a failure like any other.
+ */
+export async function recordOwed<U extends { reference: string }>(
+  owed: Owed<U>[],
+  record: (usage: U) => Promise<boolean>,
+  now: number,
+): Promise<{ recorded: Owed<U>[]; kept: Owed<U>[]; lost: Owed<U>[]; retryInSeconds: number | null }> {
+  const recorded: Owed<U>[] = [];
+  const kept: Owed<U>[] = [];
+  const lost: Owed<U>[] = [];
+  for (const entry of owed) {
+    const ok = await record(entry.usage).catch(() => false);
+    if (ok) {
+      recorded.push(entry);
+      continue;
+    }
+    const next = { ...entry, attempts: entry.attempts + 1 };
+    if (now - entry.since >= OWED_GIVE_UP_MS) lost.push(next);
+    else kept.push(next);
+  }
+  const retryInSeconds = kept.length ? Math.min(...kept.map((entry) => owedDelaySeconds(entry.attempts))) : null;
+  return { recorded, kept, lost, retryInSeconds };
+}

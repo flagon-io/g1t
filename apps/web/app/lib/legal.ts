@@ -104,7 +104,7 @@ export const POLICY_HISTORY: { date: string; change: string }[] = [
   {
     date: "2026-10-13",
     change:
-      "Terms of Service and Privacy Policy: g1t no longer runs agents of its own. Section 6 of the terms covers the coding agents you connect and Ask g1t, which answers with your workspace's own AI provider; agents are no longer billed compute. Subprocessors: your workspace's AI provider listed among the integrations you choose.",
+      "Terms of Service and Privacy Policy: g1t no longer runs agents of its own. Section 6 of the terms covers the coding agents you connect and Ask g1t, which answers with your workspace's own AI provider; agents are no longer billed compute. Subprocessors: your workspace's AI provider listed among the integrations you choose. Terms and Refunds, for paid plans: the g1t plan is $21 a month with $10 of usage included and no card fee on anything; how the plan and usage are billed, taxes, failed payments, disputes, price-change notice and spend limits; card, billing address, tax IDs, invoices and cancelling are managed on Stripe's billing page; deleting a workspace or account is self-serve. Privacy Policy: audit log kept 7 days on Free and 90 on the plan; push devices, observability data and search embeddings disclosed. Subprocessors: Expo (phone notifications) and Google (Google Workspace mail) added; Stripe also works out tax.",
   },
   {
     date: "2026-10-09",

@@ -23,7 +23,8 @@
  * project; and `GET /live?project_id=…`, a project's live tail.
  */
 import { type RateLimitBinding, clientAddress, isLimited } from "@g1t/contracts/rate-limits";
-import { dailyCap, freeMonthlyBytes, overCapMessage } from "./quota.ts";
+import { type Standing, capOf, dailyCap, freeMonthlyBytes, overCapMessage } from "./quota.ts";
+import type { WorkspaceMeter } from "./meter.ts";
 import { TELEMETRY_TOKEN_PREFIX, type ErrorGroup } from "@g1t/contracts/telemetry";
 
 import { emptyBatch, type Batch } from "./batch.ts";
@@ -32,54 +33,108 @@ import { OTLP_DOOR, type Door } from "./otlp/normalize.ts";
 import type { Store } from "./store.ts";
 import { readTail, type RequestHalf } from "./tail.ts";
 
-export { TelemetryStore } from "./durable.ts";
+export { TelemetryMeter, TelemetryStore } from "./durable.ts";
 
 type Env = {
   STORES: DurableObjectNamespace;
+  /** One meter per workspace, by slug (./meter.ts): its daily share, month total and last known plan. */
+  METERS?: DurableObjectNamespace;
   /** Hostname to app, written by the deployments service (as the dispatcher reads it). */
   DOMAINS?: KVNamespace;
   /** The secret Cloudflare's OpenTelemetry export sends, as `x-g1t-export-key`. */
   CLOUDFLARE_EXPORT_KEY?: string;
   /** OTLP requests per client address (RATE_LIMITS in packages/contracts). Fails open without it. */
   TELEMETRY_INGEST_LIMIT?: RateLimitBinding;
-  /** Whether a project's workspace has the plan, for the free cap (./quota.ts). Without it, no cap. */
+  /**
+   * Whether a project's workspace has the plan, for the free cap
+   * (./quota.ts), and where the plan's month total goes. Without it, no cap.
+   */
   BILLING?: { fetch: typeof fetch };
-  /** A free workspace's project's observability a month, in bytes (./quota.ts); 0 is no cap. */
+  /** What a workspace's projects send free a month between them, in bytes (./quota.ts); 0 is no cap. */
   FREE_TELEMETRY_BYTES_PER_MONTH?: string;
 };
 
-/** Each project's daily cap (null: none), kept ten minutes in this isolate. */
-const caps = new Map<string, { at: number; cap: number | null }>();
+/** A project's workspace and its daily cap (null: none). */
+type Quota = { workspace: string | null; cap: number | null };
+
+/** Each project's quota, kept ten minutes in this isolate. */
+const caps = new Map<string, { at: number; quota: Quota }>();
 const CAP_TTL_MS = 10 * 60_000;
 
 /**
- * The day's share a project may send, or null: only for a project whose
- * workspace (as the site last told its store) is on the free plan, and 0
- * for one g1t staff put a hold on (or suspended). A project whose
- * workspace is not known yet, or a billing that does not answer, gets
- * none, so nobody's telemetry stops on g1t's account.
+ * A project's workspace (as the site last told its store) and the day's
+ * share the workspace's projects may send between them: none on the plan,
+ * a thirtieth of the free amount on the free plan, and 0 for a workspace
+ * g1t staff put a hold on (or suspended). When billing does not answer,
+ * the plan it last said holds (the workspace's meter keeps it), and a
+ * workspace it never said anything about is free. A project whose
+ * workspace is not known yet is neither capped nor metered; deployed apps'
+ * stores learn theirs from the deployments service.
  */
-async function capFor(env: Env, projectId: string): Promise<number | null> {
+async function quotaFor(env: Env, projectId: string): Promise<Quota> {
   const cached = caps.get(projectId);
-  if (cached && Date.now() - cached.at < CAP_TTL_MS) return cached.cap;
-  let cap: number | null = null;
-  const daily = dailyCap(freeMonthlyBytes(env.FREE_TELEMETRY_BYTES_PER_MONTH));
-  if (env.BILLING) {
+  if (cached && Date.now() - cached.at < CAP_TTL_MS) return cached.quota;
+  let quota: Quota = { workspace: null, cap: null };
+  const workspace = await store(env, projectId)
+    .workspaceOf()
+    .catch((error: unknown) => {
+      console.error("could not read the project's workspace", projectId, error);
+      return null;
+    });
+  // Without billing (self-hosted without it) there is no plan, and no cap.
+  if (workspace && env.BILLING) {
+    const meter = env.METERS ? meterOf(env, workspace) : null;
+    let standing: Standing | null = null;
     try {
-      const workspace = await store(env, projectId).workspaceOf();
-      if (workspace) {
-        const { billingClient } = await import("@g1t/contracts");
-        const standing = await billingClient(env.BILLING as never).entitlements(workspace);
-        if (standing.held) cap = 0;
-        else if (standing.plan === "free" && daily) cap = daily;
-      }
+      const { billingClient } = await import("@g1t/contracts");
+      const entitlements = await billingClient(env.BILLING as never).entitlements(workspace);
+      standing = entitlements.held ? "held" : entitlements.plan === "free" ? "free" : "paid";
+      await meter?.setStanding(standing).catch((error: unknown) => console.error("could not remember the workspace's plan", workspace, error));
     } catch (error) {
-      console.error("could not tell whether the project's workspace is free", projectId, error);
+      console.error("could not tell whether the project's workspace is free; keeping the plan it was last on", projectId, error);
+      standing = (await meter?.standing().catch(() => null)) ?? null;
     }
+    quota = { workspace, cap: capOf(standing, dailyCap(freeMonthlyBytes(env.FREE_TELEMETRY_BYTES_PER_MONTH))) };
+  } else if (workspace) {
+    quota = { workspace, cap: null };
   }
-  caps.set(projectId, { at: Date.now(), cap });
+  caps.set(projectId, { at: Date.now(), quota });
   if (caps.size > 5000) caps.delete(caps.keys().next().value!);
-  return cap;
+  return quota;
+}
+
+/** Whether the workspace's projects are past today's share with `adding` more. Never over without a cap. */
+async function overQuota(env: Env, quota: Quota, adding: number): Promise<boolean> {
+  if (!quota.workspace || quota.cap == null) return false;
+  // A held workspace takes nothing, whatever its meter says.
+  if (quota.cap === 0) return true;
+  if (!env.METERS) return adding > quota.cap;
+  return meterOf(env, quota.workspace)
+    .over(adding, quota.cap)
+    .catch((error: unknown) => {
+      // The meter could not say: the cap still holds, on this request alone.
+      console.error("could not read the workspace's meter", quota.workspace, error);
+      return adding > (quota.cap ?? 0);
+    });
+}
+
+/** Counts what a project kept on its workspace's meter. */
+async function meterKept(env: Env, quota: Quota, bytes: number | undefined): Promise<void> {
+  if (!quota.workspace || !env.METERS || !bytes) return;
+  await meterOf(env, quota.workspace)
+    .add(quota.workspace, bytes)
+    .catch((error: unknown) => console.error("could not meter the workspace's telemetry", quota.workspace, bytes, error));
+}
+
+type MeterStub = {
+  [K in keyof WorkspaceMeter as WorkspaceMeter[K] extends (...args: any[]) => any ? K : never]: WorkspaceMeter[K] extends (...args: infer A) => infer R
+    ? (...args: A) => Promise<Awaited<R>>
+    : never;
+};
+
+function meterOf(env: Env, workspace: string): MeterStub {
+  if (!env.METERS) throw new Error("No METERS binding.");
+  return env.METERS.get(env.METERS.idFromName(workspace)) as unknown as MeterStub;
 }
 
 const DEPLOYMENTS_DOMAIN = "g1t.page";
@@ -153,11 +208,16 @@ async function onTail(events: readonly TraceItem[], env: Env): Promise<void> {
     byProject.set(project, into);
   }
   await Promise.all(
-    [...byProject].map(async ([project, { batch, halves }]) =>
-      store(env, project)
-        .ingest(batch, halves, undefined, await capFor(env, project))
-        .catch((error: unknown) => console.error("could not keep tail events", project, error)),
-    ),
+    [...byProject].map(async ([project, { batch, halves }]) => {
+      const quota = await quotaFor(env, project);
+      const done = await store(env, project)
+        .ingest(batch, halves, undefined, await overQuota(env, quota, batch.bytes))
+        .catch((error: unknown) => {
+          console.error("could not keep tail events", project, error);
+          return null;
+        });
+      if (done?.accepted) await meterKept(env, quota, done.bytes);
+    }),
   );
 }
 
@@ -189,10 +249,11 @@ async function otlp(request: Request, env: Env, signal: Signal): Promise<Respons
     if (error instanceof IngestError) return refused(error.status, error.message);
     throw error;
   }
-  const cap = await capFor(env, project);
-  const done = await store(env, project).ingest(read.batch, [], token, cap);
-  if (!done.accepted && done.reason === "quota" && cap != null) return refused(429, overCapMessage(cap));
+  const quota = await quotaFor(env, project);
+  const done = await store(env, project).ingest(read.batch, [], token, await overQuota(env, quota, read.batch.bytes));
+  if (!done.accepted && done.reason === "quota") return refused(429, overCapMessage(quota.cap ?? 0));
   if (!done.accepted) return refused(401, "That token is not one of the project's, or it was revoked.");
+  await meterKept(env, quota, done.bytes);
   return accepted(read.protobuf);
 }
 
@@ -231,7 +292,10 @@ async function cloudflareExport(request: Request, env: Env, signal: Signal): Pro
           : null,
     };
     const read = await readOtlp(request.clone(), signal, door);
-    await store(env, app.project).ingest({ ...read.batch, requests: [], metrics: [], bytes: Math.round(read.batch.bytes / known.size) }, []);
+    // Not capped (Cloudflare sends it whatever g1t answers), but counted
+    // on the workspace's meter like everything kept.
+    const done = await store(env, app.project).ingest({ ...read.batch, requests: [], metrics: [], bytes: Math.round(read.batch.bytes / known.size) }, []);
+    if (done.accepted) await meterKept(env, await quotaFor(env, app.project), done.bytes);
   }
   return accepted(false);
 }
@@ -244,8 +308,10 @@ async function rpc(env: Env, method: string, args: Record<string, any>): Promise
   if (!projectId) throw new IngestError(400, "No project_id.");
   const s = store(env, projectId);
   // The site says which workspace the project is in when it shows its
-  // settings and makes a token: the store keeps it, for the free cap.
-  if (typeof args.workspace === "string" && (method === "settings" || method === "create_token" || method === "usage")) {
+  // settings and makes a token, and the deployments service when it deploys
+  // one of its apps: the store keeps it, for the workspace's cap and meter.
+  const tellsWorkspace = ["settings", "create_token", "usage", "deployment_token"].includes(method);
+  if (typeof args.workspace === "string" && tellsWorkspace) {
     await s.setWorkspace(args.workspace);
     caps.delete(projectId);
   }

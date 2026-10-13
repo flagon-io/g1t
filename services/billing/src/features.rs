@@ -127,6 +127,20 @@ pub(crate) fn per_units(each: f64, units: f64) -> String {
     dollars((each * units).round() as i64)
 }
 
+/// Runner minutes' flat rates, one per machine in the catalogue's order:
+/// "$0.004 a minute on 2-core, $0.007 on 4-core".
+pub(crate) fn runner_rates() -> String {
+    g1t_contracts::actions::machines()
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let each = if i == 0 { " a minute" } else { "" };
+            format!("{}{each} on {}", dollars(m.micros_per_minute), m.machine)
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The price book's meter for the Security and quality activation.
 pub(crate) const SECURITY_METER: &str = "security_activation";
 /// Its price when the price book cannot be read: none, as the book says.
@@ -139,7 +153,6 @@ pub(crate) fn security_plan_at(book: &std::collections::BTreeMap<&str, f64>) -> 
         feature: Feature::Security,
         title: Feature::Security.title().to_owned(),
         monthly_cents: (micros / 10_000.0).round().max(0.0) as u32,
-        card_fee_cents: 0,
         includes: vec![
             "With the g1t plan, for every private repository in the workspace; public repositories have it free".to_owned(),
             "Custom secret patterns, validity checks with issuers, and delegated push protection bypass".to_owned(),
@@ -166,10 +179,10 @@ impl SubscriptionRow {
 impl Billing {
     /// What the g1t plan costs and includes, as it is sold now, at the
     /// price book's prices (the same figures as the pricing page's table).
-    /// With the card fee on top of its monthly price, as it is charged.
+    /// Its monthly price is all of it, before tax: no card fee on top.
     pub(crate) async fn plan(&self, feature: Feature) -> Result<Plan> {
         let mut book = std::collections::BTreeMap::new();
-        let mut plan = if feature == Feature::Security {
+        let plan = if feature == Feature::Security {
             if let Some((_, price)) = self.price(SECURITY_METER).await? {
                 book.insert(SECURITY_METER, price);
             }
@@ -182,7 +195,6 @@ impl Billing {
             }
             self.plan_at(&book)
         };
-        plan.card_fee_cents = self.card_fee_on(i64::from(plan.monthly_cents)).await? as u32;
         Ok(plan)
     }
 
@@ -197,10 +209,9 @@ impl Billing {
             feature: Feature::Plan,
             title: Feature::Plan.title().to_owned(),
             monthly_cents: p.plan_monthly_cents,
-            card_fee_cents: 0,
             includes: vec![
                 format!(
-                    "{} of usage each month, used first: everything g1t runs at cost plus {}%",
+                    "{} of usage each month, used first: runner minutes at their flat rate, everything else g1t runs at cost plus {}%",
                     dollars(p.plan_included_micros),
                     self.margin_percent
                 ),
@@ -213,7 +224,8 @@ impl Billing {
                 ),
             ],
             overage: format!(
-                "Everything g1t runs is metered from the first unit at what it costs g1t plus {}%: sandbox time and deploy builds by the second ({} a build minute), {} per million app requests, {} per million CPU milliseconds, {} a month per custom domain, private storage past the free {} at {} per GB-month, and git operations past the free {} a month at {} per 1,000. Unused included usage does not roll over.",
+                "Runner minutes are a flat rate per machine ({}), each job rounded up to the minute. Everything else g1t runs is metered from the first unit at what it costs g1t plus {}%: deploy builds by the second ({} a build minute), {} per million app requests, {} per million CPU milliseconds, {} a month per custom domain, private storage past the free {} at {} per GB-month, and git operations past the free {} a month at {} per 1,000. Unused included usage does not roll over.",
+                runner_rates(),
                 self.margin_percent,
                 price_of("build_second", costs::MICROS_PER_BUILD_SECOND, 60.0),
                 price_of("app_requests", costs::MICROS_PER_MILLION_REQUESTS, 1.0),
@@ -320,7 +332,7 @@ impl Billing {
             let included = self.security_included(workspace).await? || self.has_plan(workspace).await?;
             return Ok(FeatureState {
                 plan: self.plan(Feature::Security).await?,
-                on: included || self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
+                on: included || !self.charging || subscription.as_ref().is_some_and(|s| s.status.on()),
                 subscription,
                 included,
             });
@@ -337,7 +349,7 @@ impl Billing {
         let included = self.included(workspace).await?;
         Ok(FeatureState {
             plan: self.plan(Feature::Plan).await?,
-            on: included || self.stripe.is_none() || subscription.as_ref().is_some_and(|s| s.status.on()),
+            on: included || !self.charging || subscription.as_ref().is_some_and(|s| s.status.on()),
             subscription,
             included,
         })
@@ -526,15 +538,22 @@ impl Billing {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("{name} is already on for {workspace}.")));
         }
         let plan = self.plan(feature).await?;
-        let customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
+        let mut customer = self.row(&workspace).await?.and_then(|row| row.customer_id);
         // The card from the card check, or else the customer's default
         // payment method (one added on Stripe's billing page counts): the
         // plan starts on it at once, with no second page. A card that needs
         // the bank's approval again goes through Stripe's page instead.
         let saved = match (customer.as_deref(), self.checked_card(&workspace).await?) {
             (Some(_), Some(method)) => Some(method),
-            (Some(customer), None) => match stripe.default_payment_method(customer).await {
+            (Some(found), None) => match stripe.default_payment_method(found).await {
                 Ok(method) => method.map(|m| m.id),
+                // Deleted at Stripe, or from another account: forgotten,
+                // and Stripe's page makes a new customer.
+                Err(error) if is_missing(&error) => {
+                    self.forget_customer(&workspace).await?;
+                    customer = None;
+                    None
+                }
                 Err(error) => {
                     worker::console_log!("{workspace}: the default payment method could not be read: {error}");
                     None
@@ -544,7 +563,7 @@ impl Billing {
         };
         if let (Some(customer), Some(method)) = (customer.as_deref(), saved) {
             match stripe
-                .subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, plan.card_fee_cents, customer, &method)
+                .subscribe_with_card(&workspace, feature.as_str(), &plan.title, plan.monthly_cents, customer, &method)
                 .await
             {
                 Ok(subscription) if matches!(subscription.status.as_str(), "active" | "trialing") => {
@@ -578,7 +597,6 @@ impl Billing {
                         feature.as_str(),
                         &plan.title,
                         plan.monthly_cents,
-                        plan.card_fee_cents,
                         customer.as_deref(),
                         return_url,
                     )
@@ -608,7 +626,7 @@ impl Billing {
                 id: &session.id,
                 workspace: &workspace,
                 amount_cents: plan.monthly_cents,
-                fee_cents: plan.card_fee_cents,
+                fee_cents: 0,
                 created_by: &a.actor.username,
                 feature: Some(feature.as_str()),
             })
@@ -732,7 +750,7 @@ impl Billing {
             return Ok(Outcome::fail(
                 FailureCode::PaymentRequired,
                 format!(
-                    "Security and quality on private repositories comes with the g1t plan ($20 a month for the workspace, with $10 of usage included; scans at cost plus 20%), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
+                    "Security and quality on private repositories comes with the g1t plan ($21 a month for the workspace, with $10 of usage included; scans at cost plus 20%), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
                 ),
             ));
         }
@@ -746,13 +764,13 @@ impl Billing {
         Ok(Outcome::fail(
             FailureCode::PaymentRequired,
             format!(
-                "{what} ($20 a month for the workspace, with $10 of usage included), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
+                "{what} ($21 a month for the workspace, with $10 of usage included), and {workspace} does not have it. An owner can start it at /{workspace}/-/billing."
             ),
         ))
     }
 
     pub(crate) async fn charge_feature(&self, a: ChargeFeatureArgs) -> Result<Outcome<bool>> {
-        if self.stripe.is_none() || a.cost_micros <= 0 {
+        if !self.charging || a.cost_micros <= 0 {
             return Ok(Outcome::Ok(false));
         }
         let workspace = a.workspace.to_lowercase();
@@ -787,7 +805,9 @@ impl Billing {
         let (charge, discount) = self.terms_of(&workspace).await?.discounted(crate::margin_on(cost_micros, self.margin_percent));
         let drawn = self.draw(&workspace, charge, &month, &crate::credits::Eligible::default()).await?;
         description.push_str(&drawn.note());
-        self.post_usage(crate::storage::UsageLine {
+        // The ledger's unique reference decides between duplicate
+        // deliveries: the one that loses gives back what it drew.
+        let posted = self.post_usage(crate::storage::UsageLine {
             workspace: &workspace,
             charged: charge - drawn.total(),
             description: &description,
@@ -798,7 +818,18 @@ impl Billing {
             created_at: &timestamp,
             drawn,
         })
-        .await?;
+        .await;
+        match posted {
+            Ok(true) => {}
+            Ok(false) => {
+                self.undraw(&workspace, &month, &drawn, None).await?;
+                return Ok(Outcome::Ok(false));
+            }
+            Err(error) => {
+                self.undraw(&workspace, &month, &drawn, None).await?;
+                return Err(error);
+            }
+        }
         self.record_discount(&a.reference, discount).await?;
         self.count_spend(&workspace, cost_micros, charge - drawn.total(), &drawn).await;
         Ok(Outcome::Ok(true))
@@ -883,6 +914,11 @@ mod tests {
         assert_eq!(cents(3_986_990), "$3.99");
         assert_eq!(cents(5_000_000), "$5.00");
         assert_eq!(cents(4_000), "$0.00");
+    }
+
+    #[test]
+    fn runner_minutes_are_quoted_at_their_flat_rate_per_machine() {
+        assert_eq!(runner_rates(), "$0.004 a minute on 2-core, $0.007 on 4-core");
     }
 
     #[test]

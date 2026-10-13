@@ -208,8 +208,8 @@ function selfHosted(service) {
   }
 
   // Self-hosted g1t charges nothing: billing records usage at cost and never
-  // stops work for it.
-  if (hosted.name === "g1t-billing") config.vars.FREE_WHILE_BUILDING = "true";
+  // stops work for it (CHARGING off: nothing gated, nothing charged).
+  if (hosted.name === "g1t-billing") Object.assign(config.vars, { FREE_WHILE_BUILDING: "true", CHARGING: "off" });
   // How many friends each person may invite to g1t by email (20 unless
   // set; 0 turns Invite a friend off). Never needed to sign up.
   if (hosted.name === "g1t-identity" && process.env.INVITES_PER_USER) config.vars.INVITES_PER_USER = process.env.INVITES_PER_USER;

@@ -75,11 +75,11 @@ impl Security {
     /// Records what scanning cost, and tells billing the month's total so
     /// the workspace's limit counts it.
     pub async fn meter(&self, workspace: &str, reads: u32, commits: u32, osv_calls: u32, cost_micros: i64) -> Result<()> {
-        let total = self.store.meter(workspace, reads, commits, osv_calls, cost_micros).await?;
+        let (month, total) = self.store.meter(workspace, reads, commits, osv_calls, cost_micros).await?;
         let noted: Result<bool> = g1t_kit::call(
             &self.billing,
             "note_pending",
-            &NotePendingArgs { workspace: workspace.to_owned(), source: "security".to_owned(), cost_micros: total, detail: None },
+            &NotePendingArgs { workspace: workspace.to_owned(), source: "security".to_owned(), cost_micros: total, detail: None, month: Some(month) },
         )
         .await;
         if let Err(error) = noted {

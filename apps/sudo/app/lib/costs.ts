@@ -232,7 +232,6 @@ export function parseCostSettings(form: FormData): Parsed<CostSettings> {
       minDailyCostMicros: minDaily,
       anomalyFactor,
       anomalyFloorMicros: anomalyFloor,
-      cardFee: form.get("cardFee") === "on",
     },
   };
 }

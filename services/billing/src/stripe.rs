@@ -24,8 +24,7 @@ const API: &str = "https://api.stripe.com/v1";
 pub(crate) const STRIPE_VERSION: &str = "2025-02-24.acacia";
 
 /// Stripe Tax's code for what g1t sells, on every product, price and
-/// invoice line: software as a service, for business use. A card fee line
-/// carries it too, since a fee for paying for a sale is taxed as the sale.
+/// invoice line: software as a service, for business use.
 pub(crate) const TAX_CODE: &str = "txcd_10103001";
 
 /// What every payment page (payment or subscription mode) asks of Stripe
@@ -158,6 +157,8 @@ pub struct CheckedCard {
 pub struct PortalConfiguration {
     pub id: String,
     #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
     pub login_page: Option<LoginPage>,
     #[serde(default)]
     pub metadata: Option<std::collections::HashMap<String, String>>,
@@ -224,7 +225,8 @@ fn encode(value: &str) -> String {
 /// Requests that carry `automatic_tax`: payment pages, invoices and
 /// subscriptions. When Stripe Tax is not active for the key's mode (a test
 /// account where it was never turned on), Stripe refuses them outright, so
-/// the field is left out and the payment goes through untaxed.
+/// in test mode the field is left out and the payment goes through untaxed;
+/// with a live key the request is refused instead (`untaxed_body`).
 pub(crate) fn taxed_path(path: &str) -> bool {
     path == "/checkout/sessions" || path == "/invoices" || path == "/subscriptions"
 }
@@ -234,12 +236,114 @@ pub(crate) fn without_automatic_tax(body: &str) -> String {
     body.split('&').filter(|pair| !pair.starts_with("automatic_tax")).collect::<Vec<_>>().join("&")
 }
 
+/// What a request asking for tax becomes when Stripe Tax is not active.
+/// In test mode, the body without `automatic_tax`: the payment goes through
+/// untaxed. With a live key, nothing is sent: charging real money without
+/// the tax owed on it would under-collect, so the charge, page or invoice
+/// is refused, loudly, until Stripe Tax is turned on.
+pub(crate) fn untaxed_body(live: bool, body: &str) -> Result<String> {
+    if live {
+        return Err(Error::RustError(format!(
+            "the card processor answered 400: {}",
+            serde_json::json!({ "error": { "type": "g1t_tax_not_active", "message": "Payments are paused while g1t sets up sales tax. Try again later" } })
+        )));
+    }
+    Ok(without_automatic_tax(body))
+}
+
 /// How long whether Stripe Tax is active is believed, in milliseconds.
 const TAX_ACTIVE_FOR_MS: u64 = 10 * 60 * 1000;
 
 thread_local! {
     /// Whether Stripe Tax is active for the key, and when that was read.
     static TAX_ACTIVE: std::cell::Cell<Option<(bool, u64)>> = const { std::cell::Cell::new(None) };
+    /// When g1t's portal configuration was last brought in line with
+    /// `portal_fields` in this isolate.
+    static PORTAL_SYNCED: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
+/// How long a portal configuration brought in line is taken to stay so.
+const PORTAL_SYNCED_FOR_MS: u64 = 60 * 60 * 1000;
+
+/// The `metadata[g1t]` of the portal configuration billing makes.
+pub(crate) const PORTAL_TAG: &str = "billing";
+
+/// Why a customer can end a plan on Stripe's page: Stripe asks for the
+/// list whenever it asks for a reason.
+const CANCELLATION_REASONS: [&str; 8] =
+    ["too_expensive", "missing_features", "switched_service", "unused", "customer_service", "too_complex", "low_quality", "other"];
+
+/// g1t's settings for Stripe's hosted billing page (the customer portal),
+/// where every card, billing detail, tax ID, invoice and receipt is
+/// managed, and the plan ended: the customer's details (email, address,
+/// name, tax IDs, phone), the card, the invoice history, and ending the
+/// plan at the end of the period with a reason. Never changing the plan
+/// there: g1t has one.
+pub(crate) fn portal_fields() -> Vec<(&'static str, String)> {
+    let mut fields = vec![
+        ("business_profile[headline]", "g1t billing: your card, billing details, tax IDs and invoices".to_owned()),
+        ("business_profile[privacy_policy_url]", "https://g1t.sh/policies/privacy".to_owned()),
+        ("business_profile[terms_of_service_url]", "https://g1t.sh/policies/terms".to_owned()),
+        ("features[customer_update][enabled]", "true".to_owned()),
+        ("features[customer_update][allowed_updates][0]", "email".to_owned()),
+        ("features[customer_update][allowed_updates][1]", "address".to_owned()),
+        ("features[customer_update][allowed_updates][2]", "name".to_owned()),
+        ("features[customer_update][allowed_updates][3]", "tax_id".to_owned()),
+        ("features[customer_update][allowed_updates][4]", "phone".to_owned()),
+        ("features[payment_method_update][enabled]", "true".to_owned()),
+        ("features[invoice_history][enabled]", "true".to_owned()),
+        ("features[subscription_cancel][enabled]", "true".to_owned()),
+        ("features[subscription_cancel][mode]", "at_period_end".to_owned()),
+        ("features[subscription_cancel][cancellation_reason][enabled]", "true".to_owned()),
+        ("features[subscription_update][enabled]", "false".to_owned()),
+        ("login_page[enabled]", "true".to_owned()),
+        ("metadata[g1t]", PORTAL_TAG.to_owned()),
+    ];
+    const OPTION_KEYS: [&str; 8] = [
+        "features[subscription_cancel][cancellation_reason][options][0]",
+        "features[subscription_cancel][cancellation_reason][options][1]",
+        "features[subscription_cancel][cancellation_reason][options][2]",
+        "features[subscription_cancel][cancellation_reason][options][3]",
+        "features[subscription_cancel][cancellation_reason][options][4]",
+        "features[subscription_cancel][cancellation_reason][options][5]",
+        "features[subscription_cancel][cancellation_reason][options][6]",
+        "features[subscription_cancel][cancellation_reason][options][7]",
+    ];
+    fields.extend(OPTION_KEYS.iter().zip(CANCELLATION_REASONS).map(|(key, reason)| (*key, reason.to_owned())));
+    fields
+}
+
+/// g1t's portal configuration among Stripe's, by its tag: an active one
+/// first.
+pub(crate) fn ours(configurations: Vec<PortalConfiguration>) -> Option<PortalConfiguration> {
+    let mut tagged: Vec<PortalConfiguration> = configurations
+        .into_iter()
+        .filter(|c| c.metadata.as_ref().and_then(|m| m.get("g1t")).map(String::as_str) == Some(PORTAL_TAG))
+        .collect();
+    tagged.sort_by_key(|c| !c.active);
+    tagged.into_iter().next()
+}
+
+/// Stripe Tax's settings, for the go-live checklist: `active` once it can
+/// collect tax, else `pending` with what is missing (`head_office`, …).
+#[derive(Debug, Default, Deserialize)]
+pub struct TaxSettings {
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub status_details: TaxStatusDetails,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct TaxStatusDetails {
+    #[serde(default)]
+    pub pending: Option<TaxPending>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct TaxPending {
+    #[serde(default)]
+    pub missing_fields: Option<Vec<String>>,
 }
 
 pub(crate) fn form(fields: &[(&str, String)]) -> String {
@@ -313,7 +417,12 @@ impl Stripe {
     ) -> Result<T> {
         let body = match body {
             Some(body) if matches!(method, Method::Post) && taxed_path(path) && body.contains("automatic_tax") && !self.tax_active().await => {
-                Some(without_automatic_tax(&body))
+                if self.live() {
+                    worker::console_error!(
+                        "STRIPE TAX IS NOT ACTIVE for the live key: refused {path} rather than charge without tax. Turn it on in Stripe (Tax → Settings)."
+                    );
+                }
+                Some(untaxed_body(self.live(), &body)?)
             }
             body => body,
         };
@@ -337,6 +446,7 @@ impl Stripe {
         if body.is_some() {
             headers.set("content-type", "application/x-www-form-urlencoded")?;
         }
+        let deleting = matches!(method, Method::Delete);
         let mut init = RequestInit::new();
         init.with_method(method).with_headers(headers);
         if let Some(body) = body {
@@ -351,7 +461,14 @@ impl Stripe {
                 response.text().await.unwrap_or_default()
             )));
         }
-        response.json().await
+        let found: serde_json::Value = response.json().await?;
+        // A deleted customer is read back with a 200 and `deleted: true`:
+        // as good as missing, so every caller that forgets a missing
+        // customer forgets this one too.
+        if !deleting && is_deleted_customer(&found) {
+            return Err(Error::RustError(DELETED_CUSTOMER.to_owned()));
+        }
+        serde_json::from_value(found).map_err(|error| Error::RustError(format!("the card processor's answer to {path} was unexpected: {error}")))
     }
 
     /// Whether Stripe Tax is active for this key's mode (`GET /tax/settings`,
@@ -380,17 +497,17 @@ impl Stripe {
         active
     }
 
-    /// A customer for a workspace that has none yet.
-    pub async fn create_customer(&self, workspace: &str) -> Result<String> {
+    /// A customer for a workspace that has none yet, with the email its
+    /// receipts go to and the billing page signs in with. Two asking at once
+    /// make one customer (`customer_key`).
+    pub async fn create_customer(&self, workspace: &str, email: Option<&str>) -> Result<String> {
         #[derive(Deserialize)]
         struct Customer {
             id: String,
         }
-        let fields = [
-            ("name", workspace.to_owned()),
-            ("metadata[workspace]", workspace.to_owned()),
-        ];
-        let customer: Customer = self.call(Method::Post, "/customers", Some(form(&fields))).await?;
+        let fields = customer_fields(workspace, email);
+        let key = customer_key(workspace, email, g1t_kit::now_ms());
+        let customer: Customer = self.send(Method::Post, "/customers", Some(form(&fields)), Some(&key)).await?;
         Ok(customer.id)
     }
 
@@ -411,36 +528,41 @@ impl Stripe {
         Ok(portal.url)
     }
 
-    /// g1t's billing page settings at Stripe, made the first time they are
-    /// needed: cards, invoices, billing details, and a sign-in page.
+    /// g1t's billing page settings at Stripe (`portal_fields`), made the
+    /// first time they are needed, and an existing one (`metadata[g1t]` =
+    /// `billing`) brought in line with them rather than a second made: at
+    /// most once an hour in an isolate.
     pub async fn portal_configuration(&self) -> Result<PortalConfiguration> {
+        let now = crate::now_ms();
+        let existing = self.our_portal().await?;
+        let fresh = PORTAL_SYNCED.with(|cell| cell.get()).is_some_and(|at| now.saturating_sub(at) < PORTAL_SYNCED_FOR_MS);
+        let configuration: PortalConfiguration = match existing {
+            Some(existing) if fresh && existing.active => existing,
+            Some(existing) => {
+                let mut fields = portal_fields();
+                fields.push(("active", "true".to_owned()));
+                self.call(Method::Post, &format!("/billing_portal/configurations/{}", encode(&existing.id)), Some(form(&fields))).await?
+            }
+            None => self.call(Method::Post, "/billing_portal/configurations", Some(form(&portal_fields()))).await?,
+        };
+        PORTAL_SYNCED.with(|cell| cell.set(Some(now)));
+        Ok(configuration)
+    }
+
+    /// g1t's portal configuration as Stripe has it, without making or
+    /// changing it. None when there is none yet.
+    pub async fn our_portal(&self) -> Result<Option<PortalConfiguration>> {
         #[derive(Deserialize)]
         struct List {
             data: Vec<PortalConfiguration>,
         }
-        let list: List = self
-            .call(Method::Get, "/billing_portal/configurations?active=true&limit=20", None)
-            .await?;
-        if let Some(existing) = list
-            .data
-            .into_iter()
-            .find(|c| c.metadata.as_ref().and_then(|m| m.get("g1t")).is_some())
-        {
-            return Ok(existing);
-        }
-        let fields = [
-            ("business_profile[headline]", "g1t billing: your card, invoices and billing details".to_owned()),
-            ("features[payment_method_update][enabled]", "true".to_owned()),
-            ("features[invoice_history][enabled]", "true".to_owned()),
-            ("features[customer_update][enabled]", "true".to_owned()),
-            ("features[customer_update][allowed_updates][0]", "email".to_owned()),
-            ("features[customer_update][allowed_updates][1]", "address".to_owned()),
-            ("features[customer_update][allowed_updates][2]", "name".to_owned()),
-            ("features[customer_update][allowed_updates][3]", "tax_id".to_owned()),
-            ("login_page[enabled]", "true".to_owned()),
-            ("metadata[g1t]", "billing".to_owned()),
-        ];
-        self.call(Method::Post, "/billing_portal/configurations", Some(form(&fields))).await
+        let list: List = self.call(Method::Get, "/billing_portal/configurations?limit=100", None).await?;
+        Ok(ours(list.data))
+    }
+
+    /// Stripe Tax's settings for this key's mode, read now.
+    pub async fn tax_settings(&self) -> Result<TaxSettings> {
+        self.send_raw(Method::Get, "/tax/settings", None, None).await
     }
 
     /// The customer's email at Stripe, if they gave one.
@@ -462,39 +584,36 @@ impl Stripe {
         &self,
         workspace: &str,
         amount_cents: u32,
-        fee_cents: u32,
         customer: Option<&str>,
         return_url: &str,
         bank_transfer: bool,
     ) -> Result<Session> {
-        let fields = prepay_fields(workspace, amount_cents, fee_cents, customer, return_url, bank_transfer);
+        let fields = prepay_fields(workspace, amount_cents, customer, return_url, bank_transfer);
         let key = page_key(
             "prepay",
             workspace,
-            &format!("{amount_cents}/{fee_cents}/{bank_transfer}/{}", customer.unwrap_or("new")),
+            &format!("{amount_cents}/{bank_transfer}/{}", customer.unwrap_or("new")),
             g1t_kit::now_ms(),
         );
         self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
     }
 
     /// Starts a page on which a feature's monthly plan is paid for by card,
-    /// with the card fee as a monthly line of its own.
-    #[allow(clippy::too_many_arguments)]
+    /// at its price and nothing more, tax added where it applies.
     pub async fn start_subscription(
         &self,
         workspace: &str,
         feature: &str,
         title: &str,
         monthly_cents: u32,
-        fee_cents: u32,
         customer: Option<&str>,
         return_url: &str,
     ) -> Result<Session> {
-        let fields = subscription_fields(workspace, feature, title, monthly_cents, fee_cents, customer, return_url);
+        let fields = subscription_fields(workspace, feature, title, monthly_cents, customer, return_url);
         let key = page_key(
             "plan",
             workspace,
-            &format!("{feature}/{monthly_cents}/{fee_cents}/{}", customer.unwrap_or("new")),
+            &format!("{feature}/{monthly_cents}/{}", customer.unwrap_or("new")),
             g1t_kit::now_ms(),
         );
         self.send(Method::Post, "/checkout/sessions", Some(form(&fields)), Some(&key)).await
@@ -625,6 +744,25 @@ impl SavedMethod {
     }
 }
 
+/// A new customer's fields: the workspace, and the email receipts go to
+/// when there is one.
+pub(crate) fn customer_fields(workspace: &str, email: Option<&str>) -> Vec<(&'static str, String)> {
+    let mut fields = vec![("name", workspace.to_owned()), ("metadata[workspace]", workspace.to_owned())];
+    if let Some(email) = email.map(str::trim).filter(|e| e.contains('@')) {
+        fields.push(("email", email.to_owned()));
+    }
+    fields
+}
+
+/// The idempotency key for a workspace's customer: one per workspace in ten
+/// minutes, however many pages ask at once. Ten minutes, not for ever: a
+/// customer deleted at Stripe is forgotten (`forget_customer`), and the
+/// next must be new. The email is part of it, as Stripe refuses a key
+/// reused with other fields.
+pub(crate) fn customer_key(workspace: &str, email: Option<&str>, now_ms: u64) -> String {
+    format!("customer/{workspace}/{}/{}", email.map_or("-", str::trim), now_ms / 600_000)
+}
+
 /// The idempotency key for a payment page: the same workspace, purpose and
 /// details within ten minutes is one page, however often it is asked for (a
 /// double click, two tabs).
@@ -639,39 +777,28 @@ fn back_to(return_url: &str, name: &str) -> String {
     format!("{return_url}{separator}{name}={{CHECKOUT_SESSION_ID}}")
 }
 
-/// The name of the card fee's line everywhere it appears: Checkout pages,
-/// subscriptions and invoices. Revenue figures find it by this name.
+/// The name of the card fee's line on payments from before the fee was
+/// folded into g1t's prices. Nothing new carries it; paid invoices that do
+/// still have it counted apart by this name (`invoice_split`).
 pub(crate) const CARD_FEE_LINE: &str = "Card processing fee";
 
-/// The form keys of one line on a payment page, for the first two lines
-/// (what is bought, and the card fee).
-const LINE_KEYS: [[&str; 8]; 2] = [
-    [
-        "line_items[0][quantity]",
-        "line_items[0][price_data][currency]",
-        "line_items[0][price_data][unit_amount]",
-        "line_items[0][price_data][tax_behavior]",
-        "line_items[0][price_data][product_data][name]",
-        "line_items[0][price_data][product_data][tax_code]",
-        "line_items[0][price_data][product_data][description]",
-        "line_items[0][price_data][recurring][interval]",
-    ],
-    [
-        "line_items[1][quantity]",
-        "line_items[1][price_data][currency]",
-        "line_items[1][price_data][unit_amount]",
-        "line_items[1][price_data][tax_behavior]",
-        "line_items[1][price_data][product_data][name]",
-        "line_items[1][price_data][product_data][tax_code]",
-        "line_items[1][price_data][product_data][description]",
-        "line_items[1][price_data][recurring][interval]",
-    ],
+/// The form keys of the one line on a payment page: what is bought.
+const LINE_KEYS: [&str; 8] = [
+    "line_items[0][quantity]",
+    "line_items[0][price_data][currency]",
+    "line_items[0][price_data][unit_amount]",
+    "line_items[0][price_data][tax_behavior]",
+    "line_items[0][price_data][product_data][name]",
+    "line_items[0][price_data][product_data][tax_code]",
+    "line_items[0][price_data][product_data][description]",
+    "line_items[0][price_data][recurring][interval]",
 ];
 
-/// One line on a payment page at g1t's tax code, its price excluding tax;
-/// monthly when `monthly`.
-fn page_line(index: usize, cents: u32, name: String, description: Option<String>, monthly: bool) -> Vec<(&'static str, String)> {
-    let keys = LINE_KEYS[index.min(1)];
+/// The one line on a payment page at g1t's tax code, its price excluding
+/// tax; monthly when `monthly`. g1t's prices include Stripe's fee, so there
+/// is never a second line for it.
+fn page_line(cents: u32, name: String, description: Option<String>, monthly: bool) -> Vec<(&'static str, String)> {
+    let keys = LINE_KEYS;
     let mut fields = vec![
         (keys[0], "1".to_owned()),
         (keys[1], "usd".to_owned()),
@@ -689,20 +816,11 @@ fn page_line(index: usize, cents: u32, name: String, description: Option<String>
     fields
 }
 
-/// The card fee's line on a payment page, when there is a fee.
-fn fee_line(fee_cents: u32, monthly: bool) -> Vec<(&'static str, String)> {
-    if fee_cents == 0 {
-        return vec![];
-    }
-    page_line(1, fee_cents, CARD_FEE_LINE.to_owned(), Some("Stripe's fee for taking the payment by card, passed on at cost".to_owned()), monthly)
-}
-
-/// A prepayment page's fields. By card, the card fee is its own line; by
-/// bank transfer there is none.
+/// A prepayment page's fields: the amount prepaid as the one line, by card
+/// or by bank transfer alike, tax added where it applies.
 pub(crate) fn prepay_fields(
     workspace: &str,
     amount_cents: u32,
-    fee_cents: u32,
     customer: Option<&str>,
     return_url: &str,
     bank_transfer: bool,
@@ -727,10 +845,7 @@ pub(crate) fn prepay_fields(
         ("client_reference_id", workspace.to_owned()),
         ("metadata[workspace]", workspace.to_owned()),
     ]);
-    fields.extend(page_line(0, amount_cents, format!("g1t usage paid in advance for {workspace}"), None, false));
-    if !bank_transfer {
-        fields.extend(fee_line(fee_cents, false));
-    }
+    fields.extend(page_line(amount_cents, format!("g1t usage paid in advance for {workspace}"), None, false));
     fields.extend(checkout_tax_fields(customer));
     match customer {
         Some(customer) => fields.push(("customer", customer.to_owned())),
@@ -739,8 +854,8 @@ pub(crate) fn prepay_fields(
     fields
 }
 
-/// A plan's page's fields: the plan, and the card fee as a monthly line of
-/// its own. In subscription mode Stripe makes the customer itself when
+/// A plan's page's fields: the plan at its price, as its only line. In
+/// subscription mode Stripe makes the customer itself when
 /// there is none; `customer_creation` is for payment mode only. The
 /// subscription it starts keeps `automatic_tax`, so every renewal is taxed.
 pub(crate) fn subscription_fields(
@@ -748,7 +863,6 @@ pub(crate) fn subscription_fields(
     feature: &str,
     title: &str,
     monthly_cents: u32,
-    fee_cents: u32,
     customer: Option<&str>,
     return_url: &str,
 ) -> Vec<(&'static str, String)> {
@@ -763,8 +877,7 @@ pub(crate) fn subscription_fields(
         ("subscription_data[metadata][workspace]", workspace.to_owned()),
         ("subscription_data[metadata][feature]", feature.to_owned()),
     ];
-    fields.extend(page_line(0, monthly_cents, format!("g1t {title} for {workspace}"), None, true));
-    fields.extend(fee_line(fee_cents, true));
+    fields.extend(page_line(monthly_cents, format!("g1t {title} for {workspace}"), None, true));
     fields.extend(checkout_tax_fields(customer));
     if let Some(customer) = customer {
         fields.push(("customer", customer.to_owned()));
@@ -806,8 +919,9 @@ pub(crate) fn item_tax_fields() -> Vec<(&'static str, String)> {
 }
 
 /// What a paid Stripe invoice comes to, as billing counts it: the tax
-/// (`tax`, in this API version), the card fee (its lines, by name), and
-/// what is left for what was sold, all in cents.
+/// (`tax`, in this API version), any card fee (its lines, by name, on
+/// invoices from before the fee was folded into prices), and what is left
+/// for what was sold, all in cents.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct InvoiceSplit {
     pub tax_cents: i64,
@@ -821,16 +935,14 @@ pub(crate) struct SavedPlan<'a> {
     pub feature: &'a str,
     pub title: &'a str,
     pub monthly_cents: u32,
-    pub fee_cents: u32,
     pub customer: &'a str,
     pub payment_method: &'a str,
 }
 
-/// A subscription's fields, started on a saved card: the plan, the card
-/// fee as a monthly item when there is one, each excluding tax, and Stripe
-/// Tax on.
-pub(crate) fn saved_subscription_fields(p: &SavedPlan<'_>, product: &str, fee_product: Option<&str>) -> Vec<(&'static str, String)> {
-    let mut fields = vec![
+/// A subscription's fields, started on a saved card: the plan as its only
+/// item, excluding tax, and Stripe Tax on.
+pub(crate) fn saved_subscription_fields(p: &SavedPlan<'_>, product: &str) -> Vec<(&'static str, String)> {
+    vec![
         ("customer", p.customer.to_owned()),
         ("default_payment_method", p.payment_method.to_owned()),
         ("payment_behavior", "error_if_incomplete".to_owned()),
@@ -843,17 +955,7 @@ pub(crate) fn saved_subscription_fields(p: &SavedPlan<'_>, product: &str, fee_pr
         ("metadata[workspace]", p.workspace.to_owned()),
         ("metadata[feature]", p.feature.to_owned()),
         ("description", format!("{} plan for {}", p.title, p.workspace)),
-    ];
-    if let (Some(fee_product), true) = (fee_product, p.fee_cents > 0) {
-        fields.extend([
-            ("items[1][price_data][currency]", "usd".to_owned()),
-            ("items[1][price_data][product]", fee_product.to_owned()),
-            ("items[1][price_data][unit_amount]", p.fee_cents.to_string()),
-            ("items[1][price_data][recurring][interval]", "month".to_owned()),
-            ("items[1][price_data][tax_behavior]", "exclusive".to_owned()),
-        ]);
-    }
-    fields
+    ]
 }
 
 pub(crate) fn invoice_split(invoice: &serde_json::Value, amount_paid: i64) -> InvoiceSplit {
@@ -928,7 +1030,7 @@ impl Stripe {
     }
 
     /// One of g1t's products at Stripe, tagged `metadata[g1t]` (the plan's
-    /// is `plan`, the card fee's `card_fee`), made the first time it is
+    /// is `plan`), made the first time it is
     /// needed, with g1t's tax code. One made before Stripe Tax was on is
     /// given the code when it is found.
     async fn product(&self, tag: &str, name: &str) -> Result<String> {
@@ -988,9 +1090,8 @@ impl Stripe {
         Ok(())
     }
 
-    /// Starts the monthly plan on a saved card, at once, with tax worked
-    /// out by Stripe Tax on every invoice and the card fee as a monthly item
-    /// of its own. Fails rather than leaving it half-started when the card's
+    /// Starts the monthly plan on a saved card, at once, at its price with
+    /// tax worked out by Stripe Tax on every invoice. Fails rather than leaving it half-started when the card's
     /// bank wants the person again, or when Stripe Tax cannot place the
     /// customer (no billing address yet); the caller then sends them to
     /// Stripe's page, which asks for the address.
@@ -1001,15 +1102,13 @@ impl Stripe {
         feature: &str,
         title: &str,
         monthly_cents: u32,
-        fee_cents: u32,
         customer: &str,
         payment_method: &str,
     ) -> Result<StripeSubscription> {
         let product = self.product(feature, &format!("{title} plan")).await?;
-        let fee_product = if fee_cents > 0 { Some(self.product("card_fee", CARD_FEE_LINE).await?) } else { None };
-        let plan = SavedPlan { workspace, feature, title, monthly_cents, fee_cents, customer, payment_method };
-        let fields = saved_subscription_fields(&plan, &product, fee_product.as_deref());
-        let key = plan_key(workspace, feature, &format!("{payment_method}/{monthly_cents}/{fee_cents}"), g1t_kit::now_ms());
+        let plan = SavedPlan { workspace, feature, title, monthly_cents, customer, payment_method };
+        let fields = saved_subscription_fields(&plan, &product);
+        let key = plan_key(workspace, feature, &format!("{payment_method}/{monthly_cents}"), g1t_kit::now_ms());
         self.send(Method::Post, "/subscriptions", Some(form(&fields)), Some(&key)).await
     }
 
@@ -1046,9 +1145,19 @@ impl Stripe {
 
 /// Whether the processor said an id it was given does not exist, as when
 /// g1t moves to another Stripe account and ids saved from the old one stay
-/// behind.
+/// behind, or the customer was deleted there.
 pub(crate) fn is_missing(error: &Error) -> bool {
     error.to_string().contains("resource_missing")
+}
+
+/// What reading a deleted customer comes to: Stripe's own shape for an id
+/// it does not have, so `is_missing` and `friendly` read it as one.
+const DELETED_CUSTOMER: &str = r#"the card processor answered 404: {"error": {"type": "invalid_request_error", "code": "resource_missing", "message": "The customer was deleted at Stripe."}}"#;
+
+/// Whether Stripe answered with a deleted customer (`{"id": "cus_…",
+/// "object": "customer", "deleted": true}`), which it does with a 200.
+pub(crate) fn is_deleted_customer(found: &serde_json::Value) -> bool {
+    found["deleted"].as_bool() == Some(true) && found["object"].as_str() == Some("customer")
 }
 
 pub(crate) fn is_live(key: &str) -> bool {
@@ -1065,6 +1174,29 @@ mod tax_mode_tests {
         assert_eq!(without_automatic_tax(&body), form(&[("mode", "payment".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]));
         assert!(taxed_path("/checkout/sessions") && taxed_path("/invoices") && taxed_path("/subscriptions"));
         assert!(!taxed_path("/invoices/in_1/finalize") && !taxed_path("/payment_intents"));
+    }
+
+    #[test]
+    fn without_stripe_tax_a_live_key_charges_nothing_and_test_mode_goes_untaxed() {
+        let body = form(&[("mode", "payment".to_owned()), ("automatic_tax[enabled]", "true".to_owned())]);
+        assert_eq!(untaxed_body(false, &body).unwrap(), form(&[("mode", "payment".to_owned())]));
+        let refused = untaxed_body(true, &body).unwrap_err();
+        // Refused as Stripe would, never a decline, with a sentence for the page.
+        assert!(friendly(&refused).contains("sales tax"));
+        assert!(!crate::invoices::is_decline(&refused.to_string()));
+    }
+
+    #[test]
+    fn a_workspace_gets_one_customer_with_its_owners_email() {
+        let fields = customer_fields("acme", Some(" ana@acme.test "));
+        assert!(fields.contains(&("email", "ana@acme.test".to_owned())));
+        assert!(customer_fields("acme", None).iter().all(|(name, _)| *name != "email"));
+        assert!(customer_fields("acme", Some("not an email")).iter().all(|(name, _)| *name != "email"));
+        let at = 1_791_000_000_000;
+        // Two asking at once make one; another workspace, or later, another.
+        assert_eq!(customer_key("acme", Some("a@b.c"), at), customer_key("acme", Some("a@b.c"), at + 1_000));
+        assert_ne!(customer_key("acme", Some("a@b.c"), at), customer_key("other", Some("a@b.c"), at));
+        assert_ne!(customer_key("acme", Some("a@b.c"), at), customer_key("acme", Some("a@b.c"), at + 600_000));
     }
 }
 
@@ -1119,7 +1251,7 @@ mod tests {
     fn the_plans_page_is_a_subscription_without_payment_mode_fields() {
         let url = "https://g1t.sh/acme/-/billing?plan=plan";
         for customer in [None, Some("cus_1")] {
-            let fields = subscription_fields("acme", "plan", "g1t", 2_000, 92, customer, url);
+            let fields = subscription_fields("acme", "plan", "g1t", 2_100, customer, url);
             assert_eq!(has(&fields, "mode").as_deref(), Some("subscription"));
             // customer_creation is for payment mode; Stripe refuses it here.
             assert!(has(&fields, "customer_creation").is_none());
@@ -1127,13 +1259,10 @@ mod tests {
             assert_eq!(has(&fields, "customer").as_deref(), customer);
             assert_eq!(has(&fields, "success_url").unwrap(), "https://g1t.sh/acme/-/billing?plan=plan&session={CHECKOUT_SESSION_ID}");
             assert_eq!(has(&fields, "line_items[0][price_data][recurring][interval]").as_deref(), Some("month"));
-            // The card fee is a monthly line of its own.
-            assert_eq!(has(&fields, "line_items[1][price_data][unit_amount]").as_deref(), Some("92"));
-            assert_eq!(has(&fields, "line_items[1][price_data][recurring][interval]").as_deref(), Some("month"));
-            assert_eq!(has(&fields, "line_items[1][price_data][product_data][name]").as_deref(), Some(CARD_FEE_LINE));
+            // The plan at its price is the only line: no card fee.
+            assert_eq!(has(&fields, "line_items[0][price_data][unit_amount]").as_deref(), Some("2100"));
+            assert!(has(&fields, "line_items[1][quantity]").is_none());
         }
-        let fields = subscription_fields("acme", "plan", "g1t", 2_000, 0, None, url);
-        assert!(has(&fields, "line_items[1][quantity]").is_none());
     }
 
     /// Every field a page must carry for Stripe Tax: tax on top of the
@@ -1141,17 +1270,17 @@ mod tests {
     /// line at g1t's tax code, excluding tax. With a customer, what is
     /// entered is saved on it (Checkout refuses `automatic_tax` and
     /// `tax_id_collection` for a customer otherwise).
-    fn assert_taxed_page(fields: &[(&str, String)], customer: Option<&str>, lines: usize) {
+    fn assert_taxed_page(fields: &[(&str, String)], customer: Option<&str>) {
         assert_eq!(has(fields, "automatic_tax[enabled]").as_deref(), Some("true"));
         assert_eq!(has(fields, "billing_address_collection").as_deref(), Some("required"));
         assert_eq!(has(fields, "tax_id_collection[enabled]").as_deref(), Some("true"));
         let saved = if customer.is_some() { Some("auto") } else { None };
         assert_eq!(has(fields, "customer_update[address]").as_deref(), saved);
         assert_eq!(has(fields, "customer_update[name]").as_deref(), saved);
-        for (line, keys) in LINE_KEYS.iter().enumerate().take(lines) {
-            assert_eq!(has(fields, keys[3]).as_deref(), Some("exclusive"), "line {line}");
-            assert_eq!(has(fields, keys[5]).as_deref(), Some(TAX_CODE), "line {line}");
-        }
+        assert_eq!(has(fields, LINE_KEYS[3]).as_deref(), Some("exclusive"));
+        assert_eq!(has(fields, LINE_KEYS[5]).as_deref(), Some(TAX_CODE));
+        // One line, never a second for a card fee.
+        assert!(fields.iter().all(|(n, _)| !n.starts_with("line_items[1]")));
         // No key twice: Stripe takes the last, silently.
         let mut names: Vec<&str> = fields.iter().map(|(n, _)| *n).collect();
         names.sort_unstable();
@@ -1165,11 +1294,11 @@ mod tests {
         let url = "https://g1t.sh/acme/-/billing";
         for customer in [None, Some("cus_1")] {
             // The plan and Security and quality.
-            assert_taxed_page(&subscription_fields("acme", "plan", "g1t", 2_000, 92, customer, url), customer, 2);
-            assert_taxed_page(&subscription_fields("acme", "security", "Security and quality", 1_000, 61, customer, url), customer, 2);
-            // Prepaying by card, with its fee, and by bank transfer, without.
-            assert_taxed_page(&prepay_fields("acme", 5_000, 185, customer, url, false), customer, 2);
-            assert_taxed_page(&prepay_fields("acme", 100_000, 0, customer, url, true), customer, 1);
+            assert_taxed_page(&subscription_fields("acme", "plan", "g1t", 2_100, customer, url), customer);
+            assert_taxed_page(&subscription_fields("acme", "security", "Security and quality", 1_000, customer, url), customer);
+            // Prepaying by card and by bank transfer alike.
+            assert_taxed_page(&prepay_fields("acme", 5_000, customer, url, false), customer);
+            assert_taxed_page(&prepay_fields("acme", 100_000, customer, url, true), customer);
         }
         // tax_id_collection and customer_update are for payment and
         // subscription mode; a card check charges nothing, so it is not
@@ -1180,25 +1309,87 @@ mod tests {
     }
 
     #[test]
-    fn a_bank_transfer_has_no_card_fee() {
-        let fields = prepay_fields("acme", 100_000, 3_100, Some("cus_1"), "https://g1t.sh/acme/-/billing", true);
-        assert!(has(&fields, "line_items[1][quantity]").is_none());
-        let fields = prepay_fields("acme", 5_000, 185, None, "https://g1t.sh/acme/-/billing", false);
-        assert_eq!(has(&fields, "line_items[1][price_data][unit_amount]").as_deref(), Some("185"));
-        assert_eq!(has(&fields, "line_items[1][price_data][product_data][name]").as_deref(), Some(CARD_FEE_LINE));
+    fn the_portal_manages_details_cards_invoices_and_ending_the_plan() {
+        let fields = portal_fields();
+        let updates: Vec<&str> =
+            fields.iter().filter(|(n, _)| n.starts_with("features[customer_update][allowed_updates]")).map(|(_, v)| v.as_str()).collect();
+        assert_eq!(updates, ["email", "address", "name", "tax_id", "phone"]);
+        for (name, value) in [
+            ("features[customer_update][enabled]", "true"),
+            ("features[payment_method_update][enabled]", "true"),
+            ("features[invoice_history][enabled]", "true"),
+            ("features[subscription_cancel][enabled]", "true"),
+            ("features[subscription_cancel][mode]", "at_period_end"),
+            ("features[subscription_cancel][cancellation_reason][enabled]", "true"),
+            ("features[subscription_update][enabled]", "false"),
+            ("business_profile[privacy_policy_url]", "https://g1t.sh/policies/privacy"),
+            ("business_profile[terms_of_service_url]", "https://g1t.sh/policies/terms"),
+            ("metadata[g1t]", "billing"),
+        ] {
+            assert_eq!(has(&fields, name).as_deref(), Some(value), "{name}");
+        }
+        assert!(has(&fields, "business_profile[headline]").is_some());
+        // Stripe wants the reasons whenever it asks for one.
+        assert_eq!(has(&fields, "features[subscription_cancel][cancellation_reason][options][7]").as_deref(), Some("other"));
+        let mut names: Vec<&str> = fields.iter().map(|(n, _)| *n).collect();
+        names.sort_unstable();
+        let count = names.len();
+        names.dedup();
+        assert_eq!(names.len(), count);
     }
 
     #[test]
-    fn a_plan_on_a_saved_card_is_taxed_with_its_card_fee() {
-        let plan = SavedPlan { workspace: "acme", feature: "plan", title: "g1t", monthly_cents: 2_000, fee_cents: 92, customer: "cus_1", payment_method: "pm_1" };
-        let fields = saved_subscription_fields(&plan, "prod_plan", Some("prod_fee"));
+    fn our_portal_configuration_is_found_by_its_tag_not_made_twice() {
+        let config = |id: &str, active: bool, tag: Option<&str>| PortalConfiguration {
+            id: id.to_owned(),
+            active,
+            login_page: None,
+            metadata: tag.map(|t| std::collections::HashMap::from([("g1t".to_owned(), t.to_owned())])),
+        };
+        assert_eq!(ours(vec![config("a", true, None), config("b", false, Some("billing")), config("c", true, Some("billing"))]).map(|c| c.id).as_deref(), Some("c"));
+        assert_eq!(ours(vec![config("b", false, Some("billing"))]).map(|c| c.id).as_deref(), Some("b"));
+        assert!(ours(vec![config("a", true, None), config("d", true, Some("other"))]).is_none());
+    }
+
+    #[test]
+    fn stripe_taxs_settings_say_what_is_missing() {
+        let settings: TaxSettings =
+            serde_json::from_value(serde_json::json!({ "status": "pending", "status_details": { "pending": { "missing_fields": ["head_office"] } } })).unwrap();
+        assert_eq!(settings.status, "pending");
+        assert_eq!(settings.status_details.pending.and_then(|p| p.missing_fields), Some(vec!["head_office".to_owned()]));
+        let active: TaxSettings = serde_json::from_value(serde_json::json!({ "status": "active", "status_details": { "active": {} } })).unwrap();
+        assert!(active.status_details.pending.is_none());
+    }
+
+    #[test]
+    fn a_deleted_customer_reads_as_missing() {
+        let deleted = serde_json::json!({ "id": "cus_1", "object": "customer", "deleted": true });
+        assert!(is_deleted_customer(&deleted));
+        assert!(is_missing(&Error::RustError(DELETED_CUSTOMER.to_owned())));
+        assert_eq!(friendly(&Error::RustError(DELETED_CUSTOMER.to_owned())), "Stripe refused it: The customer was deleted at Stripe.");
+        // A customer as usual, and a deleted thing that is not a customer.
+        assert!(!is_deleted_customer(&serde_json::json!({ "id": "cus_1", "object": "customer", "email": null })));
+        assert!(!is_deleted_customer(&serde_json::json!({ "id": "txi_1", "object": "tax_id", "deleted": true })));
+    }
+
+    #[test]
+    fn no_prepayment_has_a_card_fee_line() {
+        for bank_transfer in [true, false] {
+            let fields = prepay_fields("acme", 5_000, Some("cus_1"), "https://g1t.sh/acme/-/billing", bank_transfer);
+            assert_eq!(has(&fields, "line_items[0][price_data][unit_amount]").as_deref(), Some("5000"));
+            assert!(has(&fields, "line_items[1][quantity]").is_none());
+            assert!(fields.iter().all(|(_, v)| !v.contains(CARD_FEE_LINE)));
+        }
+    }
+
+    #[test]
+    fn a_plan_on_a_saved_card_is_taxed_at_its_price_alone() {
+        let plan = SavedPlan { workspace: "acme", feature: "plan", title: "g1t", monthly_cents: 2_100, customer: "cus_1", payment_method: "pm_1" };
+        let fields = saved_subscription_fields(&plan, "prod_plan");
         assert_eq!(has(&fields, "automatic_tax[enabled]").as_deref(), Some("true"));
         assert_eq!(has(&fields, "items[0][price_data][tax_behavior]").as_deref(), Some("exclusive"));
-        assert_eq!(has(&fields, "items[1][price_data][product]").as_deref(), Some("prod_fee"));
-        assert_eq!(has(&fields, "items[1][price_data][unit_amount]").as_deref(), Some("92"));
-        assert_eq!(has(&fields, "items[1][price_data][tax_behavior]").as_deref(), Some("exclusive"));
-        let fields = saved_subscription_fields(&SavedPlan { fee_cents: 0, ..plan }, "prod_plan", None);
-        assert!(has(&fields, "items[1][price_data][product]").is_none());
+        assert_eq!(has(&fields, "items[0][price_data][unit_amount]").as_deref(), Some("2100"));
+        assert!(fields.iter().all(|(n, _)| !n.starts_with("items[1]")));
     }
 
     #[test]

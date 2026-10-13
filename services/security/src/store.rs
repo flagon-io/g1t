@@ -1144,9 +1144,10 @@ impl Store {
         Ok(())
     }
 
-    /// Adds to a workspace's scanning this month; returns what the month
-    /// has cost so far, in millionths of a dollar.
-    pub async fn meter(&self, workspace: &str, reads: u32, commits: u32, osv_queries: u32, cost_micros: i64) -> Result<i64> {
+    /// Adds to a workspace's scanning this month; returns the month
+    /// (`YYYY-MM`) with what it has cost so far, in millionths of a dollar,
+    /// so the total is reported under the month it was counted in.
+    pub async fn meter(&self, workspace: &str, reads: u32, commits: u32, osv_queries: u32, cost_micros: i64) -> Result<(String, i64)> {
         let month = now()[..7].to_owned();
         self.db
             .prepare(
@@ -1165,13 +1166,14 @@ impl Store {
             ])?
             .run()
             .await?;
-        Ok(self
+        let total = self
             .db
             .prepare("SELECT cost_micros AS n FROM usage WHERE workspace = ? AND month = ?")
-            .bind(&[workspace.into(), month.into()])?
+            .bind(&[workspace.into(), month.as_str().into()])?
             .first::<NumberRow>(None)
             .await?
-            .map_or(0, |row| row.n))
+            .map_or(0, |row| row.n);
+        Ok((month, total))
     }
 }
 

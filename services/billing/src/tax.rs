@@ -1,25 +1,23 @@
-//! Tax and the card processing fee: what is paid with a payment on top of
-//! what reaches the workspace's balance.
+//! Tax: what is paid with a payment on top of what reaches the workspace's
+//! balance.
 //!
 //! - **Tax.** Stripe Tax works it out on every Checkout page, subscription,
 //!   invoice and off-session charge (`stripe::checkout_tax_fields`,
 //!   `invoice_tax_fields`, `tax_calculation`), at g1t's tax code, every
 //!   price excluding tax. Prices on g1t are shown before tax.
-//! - **The card fee.** Stripe's fee, grossed up (`card_fee_cents`), as a
-//!   line of its own on every card payment: the plan and Security and
-//!   quality (a monthly item), prepaying and invoices charged to a card. Never on a bank transfer or an invoice
-//!   sent to be paid (an enterprise's). Switched by the `card_fee` cost
-//!   setting, on by default. Tax applies to it as to what it is paid with.
-//! - **Neither is revenue.** A payment's balance credit is what it paid
-//!   less its tax and fee; each is kept in `tax_and_fees`, shown as its own
-//!   line on the statement, and in sudo's Costs as tax collected, never as
-//!   cash.
+//! - **No card fee.** Stripe's fee for taking a card is part of g1t's
+//!   prices (the plan's price and the margin on usage), never a line of its
+//!   own on anything. Payments from before that may still carry a
+//!   `card_fee` row in `tax_and_fees`; those are kept and shown as they
+//!   were, and every new payment records none.
+//! - **Tax is not revenue.** A payment's balance credit is what it paid
+//!   less its tax; tax is kept in `tax_and_fees`, shown as its own line on
+//!   the statement, and in sudo's Costs as tax collected, never as cash.
 //! - **No address.** When Stripe Tax cannot place a customer, g1t does not
 //!   charge: it marks the account (`accounts.tax_address_needed_at`), tells
 //!   the owners once, and the Billing page asks for the address. Saving
 //!   billing details with one clears it.
 
-use g1t_contracts::billing::{CardFee, MICROS_PER_DOLLAR};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -27,7 +25,9 @@ use worker::Result;
 
 use crate::Billing;
 
-/// A payment's tax and card fee, in cents, apart from what it paid for.
+/// A payment's tax and card fee, in cents, apart from what it paid for. The
+/// fee is only ever non-zero on payments from before it was folded into
+/// prices.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Extras {
     pub tax_cents: i64,
@@ -53,33 +53,23 @@ pub(crate) fn refund_split(refunded_cents: i64, paid_cents: i64, tax_cents: i64,
     (refunded - tax - fee, tax, fee)
 }
 
-/// The card fee on `credit_cents`, so that what is left after Stripe's fee
-/// is the credit: the total is `(credit + fixed) / (1 − percent)`, rounded
-/// up to the cent. None when the fee is off.
-pub(crate) fn card_fee_cents(credit_cents: u32, fee: &CardFee) -> u32 {
-    if !fee.on || credit_cents == 0 {
-        return 0;
+/// What a payment's ledger line says was paid with it besides what it
+/// credited: its tax, and a card fee only on payments from before the fee
+/// was folded into prices. Nothing when there was neither.
+pub(crate) fn paid_with(extras: Extras) -> String {
+    let money = |cents: i64| crate::features::cents(cents * 10_000);
+    match (extras.tax_cents > 0, extras.fee_cents > 0) {
+        (false, false) => String::new(),
+        (true, false) => format!(" (tax {} paid with it)", money(extras.tax_cents)),
+        (false, true) => format!(" (card fee {} paid with it)", money(extras.fee_cents)),
+        (true, true) => format!(" (tax {} and card fee {} paid with it)", money(extras.tax_cents), money(extras.fee_cents)),
     }
-    let rate = fee.percent_micros / MICROS_PER_DOLLAR as f64;
-    if !(0.0..0.5).contains(&rate) {
-        return 0;
-    }
-    let total = ((f64::from(credit_cents) + f64::from(fee.fixed_cents)) / (1.0 - rate)).ceil();
-    (total as u32).saturating_sub(credit_cents)
-}
-
-/// The card fee on a card payment of `cents`, when the setting is on.
-pub(crate) fn fee_for(cents: i64, fee: &CardFee) -> i64 {
-    if cents <= 0 {
-        return 0;
-    }
-    i64::from(card_fee_cents(u32::try_from(cents).unwrap_or(u32::MAX), fee))
 }
 
 /// What the owners are told when Stripe Tax cannot place the workspace.
 pub(crate) fn address_needed_message(workspace: &str) -> String {
     format!(
-        "Add {workspace}'s billing address under Invoice details on the Billing page (/{workspace}/-/billing#details). Stripe needs it to work out tax, so g1t did not charge the card; nothing is lost, and the charge goes through once the address is there."
+        "Add {workspace}'s billing address in Stripe: on the Billing page (/{workspace}/-/billing#stripe), choose Manage billing. Stripe needs it to work out tax, so g1t did not charge the card; nothing is lost, and the charge goes through once the address is there."
     )
 }
 
@@ -162,29 +152,6 @@ impl Billing {
         Ok((extras, transaction))
     }
 
-    /// The card fee, as the price book and the `card_fee` setting have it.
-    pub(crate) async fn card_fee(&self) -> Result<CardFee> {
-        #[derive(Deserialize)]
-        struct Row {
-            value: String,
-        }
-        let on = self
-            .db
-            .prepare("SELECT value FROM cost_settings WHERE key = 'card_fee'")
-            .first::<Row>(None)
-            .await?
-            .is_none_or(|row| row.value.trim() != "off");
-        let percent = self.price("card_fee_percent").await?.map_or(29_000.0, |(_, price)| price);
-        let fixed = self.price("card_fee_fixed").await?.map_or(300_000.0, |(_, price)| price);
-        Ok(CardFee { on, percent_micros: percent, fixed_cents: (fixed / 10_000.0).round().max(0.0) as u32 })
-    }
-
-    /// The card fee on a card payment, as the price book and the `card_fee`
-    /// setting have it now.
-    pub(crate) async fn card_fee_on(&self, cents: i64) -> Result<i64> {
-        Ok(fee_for(cents, &self.card_fee().await?))
-    }
-
     /// Marks that Stripe Tax could not place the workspace, and tells its
     /// owners the first time.
     pub(crate) async fn tax_address_needed(&self, workspace: &str) -> Result<()> {
@@ -208,7 +175,7 @@ impl Billing {
                 &format!("g1t: add a billing address for {workspace}"),
                 &address_needed_message(workspace),
                 "Add the address",
-                &format!("https://g1t.sh/{workspace}/-/billing#details"),
+                &format!("https://g1t.sh/{workspace}/-/billing#stripe"),
                 "You get this because you own this workspace on g1t. Tax is explained at https://docs.g1t.sh/guides/usage-and-billing/#tax",
             )
             .await;
@@ -264,24 +231,6 @@ impl Billing {
 mod tests {
     use super::*;
 
-    fn fee(on: bool) -> CardFee {
-        CardFee { on, percent_micros: 29_000.0, fixed_cents: 30 }
-    }
-
-    #[test]
-    fn the_card_fee_is_stripes_fee_grossed_up_and_off_when_switched_off() {
-        // $25: ($25 + $0.30) / 0.971 = $26.06, so a $1.06 fee.
-        assert_eq!(card_fee_cents(2_500, &fee(true)), 106);
-        // What is left after Stripe's 2.9% + 30¢ is at least the amount.
-        for credit in [1_000u32, 2_500, 5_000, 10_000, 100_000] {
-            let total = credit + card_fee_cents(credit, &fee(true));
-            let net = f64::from(total) - (f64::from(total) * 0.029).round() - 30.0;
-            assert!(net >= f64::from(credit) - 1.0, "{credit}: {total} leaves {net}");
-        }
-        assert_eq!(card_fee_cents(2_500, &fee(false)), 0);
-        assert_eq!(card_fee_cents(0, &fee(true)), 0);
-    }
-
     #[test]
     fn a_prepayment_credits_what_it_bought_never_its_tax_or_fee() {
         // $50 bought, $1.85 card fee, $4 tax: $50 credited.
@@ -303,20 +252,16 @@ mod tests {
     }
 
     #[test]
-    fn the_card_fee_is_on_card_payments_unless_switched_off() {
-        // A $20 plan: $0.91, so that $20 is left after Stripe's 2.9% + 30¢.
-        assert_eq!(fee_for(2_000, &fee(true)), 91);
-        assert_eq!(fee_for(2_000, &fee(false)), 0);
-        assert_eq!(fee_for(0, &fee(true)), 0);
-        assert_eq!(fee_for(-500, &fee(true)), 0);
-        // The default is on: a setting never written reads as on.
-        assert!(g1t_contracts::billing::CostSettings::default().card_fee);
+    fn a_payments_line_names_a_card_fee_only_when_there_was_one() {
+        assert_eq!(paid_with(Extras::default()), "");
+        assert_eq!(paid_with(Extras { tax_cents: 180, fee_cents: 0 }), " (tax $1.80 paid with it)");
+        assert_eq!(paid_with(Extras { tax_cents: 180, fee_cents: 92 }), " (tax $1.80 and card fee $0.92 paid with it)");
     }
 
     #[test]
     fn the_owners_are_told_where_to_add_the_address() {
         let message = address_needed_message("acme");
-        assert!(message.contains("/acme/-/billing#details"));
+        assert!(message.contains("/acme/-/billing#stripe") && message.contains("Manage billing"));
         assert!(message.contains("tax"));
     }
 }

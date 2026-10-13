@@ -21,6 +21,7 @@
  */
 
 import { type QuotaEnv, uploadRefused } from "./quota.ts";
+import { billingFor, rememberWorkspace, reportEmbeddings } from "./embed-billing.ts";
 import {
   DOCS_VIEWER_HEADER,
   DOC_MAX_FILE_BYTES,
@@ -123,6 +124,9 @@ type Env = FileStoreEnv & QuotaEnv & {
   /** Folios' semantic index, Vectorize `g1t-folios`; optional (words only without it). */
   FOLIO_VECTORS?: Vectorize;
 };
+
+/** The daily cron (wrangler.jsonc `triggers`); the other one reports embeddings every quarter hour. */
+const DAILY_CRON = "17 3 * * *";
 
 /** Queries' embeddings, a minute per isolate (src/recall.ts). */
 const queryVectors = new QueryCache();
@@ -279,7 +283,11 @@ class Docs {
     const key = String(slug ?? "").toLowerCase();
     let found = this.workspaces.get(key);
     if (!found) {
-      found = identityClient(this.env.IDENTITY).getWorkspace(key).catch(() => null);
+      found = identityClient(this.env.IDENTITY)
+        .getWorkspace(key)
+        .catch(() => null)
+        // Its slug, for reporting its embeddings to billing (src/embed-billing.ts).
+        .then(async (w) => (await rememberWorkspace(this.db, w), w));
       this.workspaces.set(key, found);
     }
     return found;
@@ -2291,8 +2299,21 @@ export default {
     }
   },
 
-  /** Daily (wrangler.jsonc `triggers`): folios in the trash for over 30 days are deleted for good. */
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  /**
+   * Every quarter hour (wrangler.jsonc `triggers`): each workspace's month
+   * of search embeddings goes to billing (src/embed-billing.ts). Daily:
+   * folios in the trash for over 30 days are deleted for good.
+   */
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (env.BILLING) {
+      const billing = env.BILLING;
+      ctx.waitUntil(
+        billingFor(billing)
+          .then((client) => reportEmbeddings(env.DB, client))
+          .catch((error: unknown) => console.error("embedding usage not reported", String(error))),
+      );
+    }
+    if (controller.cron !== DAILY_CRON) return;
     ctx.waitUntil(
       purgeTrash(env)
         .then((n) => {

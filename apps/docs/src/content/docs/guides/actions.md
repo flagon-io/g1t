@@ -1975,7 +1975,7 @@ it ends; each job is charged in
 [runner minutes](/guides/usage-and-billing/#runner-minutes), its time
 rounded up to the whole minute, at the rate of the machine it ran on. A job billing refuses does not start: it is recorded as failed
 with "Not started:" and the reason, such as "Workflows run in g1t's
-sandboxes, which cost real money, so they need the g1t plan ($20 a month)
+sandboxes, which cost real money, so they need the g1t plan ($21 a month)
 or a card check", and what to do about it. The
 Actions page tells people with Write on a repository whose workspace
 cannot run jobs before the first run.

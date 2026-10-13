@@ -39,11 +39,12 @@ pub(crate) const MIN_CHANGE: f64 = 0.02;
 /// is proposed for a person to look at, never applied on its own.
 pub(crate) const MAX_FACTOR: f64 = 4.0;
 
-/// Meters from when g1t ran agents and sold model access: the agent rate,
-/// its weights, models at the provider's price, and the AI Gateway. They
-/// stay in the tables for the statements that name them, but are never
-/// shown as prices, proposed or charged again.
-pub(crate) const RETIRED_METERS: [&str; 8] = [
+/// Meters from when g1t ran agents and sold model access (the agent rate,
+/// its weights, models at the provider's price, and the AI Gateway), and
+/// the card fee from before it was folded into g1t's prices. They stay in
+/// the tables for the statements that name them, but are never shown as
+/// prices, proposed or charged again.
+pub(crate) const RETIRED_METERS: [&str; 10] = [
     "agent_models",
     "agent_tokens",
     "agent_tokens_own",
@@ -52,6 +53,8 @@ pub(crate) const RETIRED_METERS: [&str; 8] = [
     "agent_token_weight_cache_read",
     "agent_token_weight_cache_write",
     "gateway_models",
+    "card_fee_percent",
+    "card_fee_fixed",
 ];
 
 /// Whether `meter` is one of the [`RETIRED_METERS`].
@@ -61,7 +64,17 @@ pub(crate) fn retired(meter: &str) -> bool {
 
 /// Meters charged once a month from the month's total (`storage`). A rise
 /// in one takes effect at the start of a month.
-pub(crate) const MONTHLY: [&str; 7] = ["git_operations", "private_storage", "actions_cache", "custom_domain_month", "embedding_tokens", "scan_cpu", "scan_rows"];
+pub(crate) const MONTHLY: [&str; 9] = [
+    "git_operations",
+    "private_storage",
+    "actions_cache",
+    "custom_domain_month",
+    "embedding_tokens",
+    "scan_cpu",
+    "scan_rows",
+    "package_storage",
+    "telemetry_gb",
+];
 
 /// The price meters a month-end source is charged at, for the ledger's
 /// `price_version`.
@@ -73,6 +86,8 @@ pub(crate) fn meters_of(source: &str) -> &'static [&'static str] {
         "security" => &["scan_cpu", "scan_rows"],
         "domains" => &["custom_domain_month"],
         "cache" => &["actions_cache"],
+        "package_storage" => &["package_storage"],
+        "telemetry" => &["telemetry_gb"],
         _ => &[],
     }
 }
@@ -208,7 +223,6 @@ pub(crate) fn settings_from(rows: &[(String, String)]) -> CostSettings {
             "min_daily_cost_micros" => s.min_daily_cost_micros = value.parse().unwrap_or(s.min_daily_cost_micros),
             "anomaly_factor" => s.anomaly_factor = value.parse().unwrap_or(s.anomaly_factor),
             "anomaly_floor_micros" => s.anomaly_floor_micros = value.parse().unwrap_or(s.anomaly_floor_micros),
-            "card_fee" => s.card_fee = value != "off",
             _ => {}
         }
     }
@@ -312,7 +326,6 @@ impl Billing {
             ("min_daily_cost_micros", s.min_daily_cost_micros.to_string()),
             ("anomaly_factor", s.anomaly_factor.to_string()),
             ("anomaly_floor_micros", s.anomaly_floor_micros.to_string()),
-            ("card_fee", if s.card_fee { "on" } else { "off" }.to_owned()),
         ];
         let mut statements = Vec::new();
         for (key, value) in &pairs {

@@ -296,8 +296,7 @@ alone. When it did, Cloudflare replaces sandboxes on the new image but
 leaves any that started within the last two hours
 (`rollout_active_grace_period` in `services/runner/wrangler.jsonc`) to
 finish first. A workflow job on g1t's machines runs for at most 60
-minutes, so a deploy never cuts one short; an agent run whose guardrails
-allow more than two hours can be.
+minutes, so a deploy never cuts one short.
 
 The standard sandbox is the instance type `standard-3` (2 vCPU, 8 GiB,
 16 GB), and so is `runs-on: g1t-2core`, in a class of its own; jobs that

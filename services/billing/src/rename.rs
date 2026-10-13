@@ -72,6 +72,14 @@ pub(crate) const STATEMENTS: &[&str] = &[
        charged_at = COALESCE(pending_usage.charged_at, excluded.charged_at),
        updated_at = MAX(pending_usage.updated_at, excluded.updated_at)",
     "DELETE FROM pending_usage WHERE workspace = ?2",
+    // What a test-mode detach kept as never charged: the larger stays, so
+    // a rename never charges what was written off.
+    "INSERT INTO pending_baselines (workspace, source, month, cost_micros, charge_micros, created_at)
+     SELECT ?1, source, month, cost_micros, charge_micros, created_at FROM pending_baselines WHERE workspace = ?2
+     ON CONFLICT (workspace, source, month) DO UPDATE SET
+       cost_micros = MAX(pending_baselines.cost_micros, excluded.cost_micros),
+       charge_micros = MAX(pending_baselines.charge_micros, excluded.charge_micros)",
+    "DELETE FROM pending_baselines WHERE workspace = ?2",
     // Monthly allowances drawn by the workspace (its plan's included usage,
     // its build time) add up; a repository's share of the open-source pool
     // follows the repository's new name.
@@ -122,6 +130,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE spikes SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE limit_requests SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE plan_payments SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE disputes SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE tax_and_fees SET workspace = ?1 WHERE workspace = ?2",
     // One card check per workspace; alerts sent, one per level a month.
     "UPDATE OR IGNORE card_checks SET workspace = ?1 WHERE workspace = ?2",
@@ -133,12 +142,13 @@ pub(crate) const STATEMENTS: &[&str] = &[
     // declined card stays, and the highest warning this month is kept.
     "INSERT INTO limits (workspace, ceiling_micros, spend_limit_micros, spend_limit_full, autopay_failed_at,
                          autopay_error, warned_month, warned_level, declined_told_at, updated_at,
-                         max_ceiling_micros, granted_ceiling_micros, raised_at)
+                         max_ceiling_micros, granted_ceiling_micros, raised_at, dispute_owed_micros)
      SELECT ?1, ceiling_micros, spend_limit_micros, spend_limit_full, autopay_failed_at,
             autopay_error, warned_month, warned_level, declined_told_at, updated_at,
-            max_ceiling_micros, granted_ceiling_micros, raised_at
+            max_ceiling_micros, granted_ceiling_micros, raised_at, dispute_owed_micros
      FROM limits WHERE workspace = ?2
      ON CONFLICT (workspace) DO UPDATE SET
+       dispute_owed_micros = limits.dispute_owed_micros + excluded.dispute_owed_micros,
        ceiling_micros = COALESCE(limits.ceiling_micros, excluded.ceiling_micros),
        max_ceiling_micros = MAX(COALESCE(limits.max_ceiling_micros, 0), COALESCE(excluded.max_ceiling_micros, 0)),
        granted_ceiling_micros = MAX(COALESCE(limits.granted_ceiling_micros, 0), COALESCE(excluded.granted_ceiling_micros, 0)),
@@ -314,7 +324,7 @@ mod tests {
         let all = STATEMENTS.join("\n");
         for table in [
             "ledger", "runs", "checkouts", "workspace_invoices", "sales_notes", "accounts",
-            "pending_usage", "limits", "subscriptions", "month_closes", "account_members", "sales_records",
+            "pending_usage", "pending_baselines", "limits", "subscriptions", "month_closes", "account_members", "sales_records",
             "enterprise_invoice_lines", "billing_accounts", "admin_actions", "enterprise_invoices",
             "allowance_use", "trial_grants", "credit_grants", "storage_days",
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",

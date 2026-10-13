@@ -10,8 +10,8 @@
 //! owner ([`last_owner_refusal`]).
 //!
 //! **Roles that add to a member** ([`OrgRole`]). A billing manager manages
-//! the workspace's billing as an owner does: the budget, AI credit, cards,
-//! invoices and billing details. It gives nothing on repositories. A
+//! the workspace's billing as an owner does: the plan, the spend limit and
+//! budget, prepaying, cards, invoices and billing details. It gives nothing on repositories. A
 //! security manager reads every repository and sees and manages every
 //! security alert and security setting on them, as
 //! `access::SECURITY_MANAGER` lists. Owners have both already.
@@ -36,8 +36,9 @@ use crate::{Role, User};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OrgRole {
-    /// Manages billing: budget, AI credit, payment, invoices and billing
-    /// details. Nothing on repositories by itself.
+    /// Manages billing: the plan, spend limit and budget, prepaying,
+    /// payment, invoices and billing details. Nothing on repositories by
+    /// itself.
     BillingManager,
     /// Reads every repository, and sees and manages every security alert
     /// and security setting on them.

@@ -377,7 +377,7 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         <div>
           <dt className="text-xs text-muted">Card fees passed on</dt>
           <dd className="tabular text-fg">{usd(o.cardFeesMicros ?? 0, { cents: true })}</dd>
-          <dd className="text-xs text-faint">Paid Stripe&apos;s card fees; not revenue either.</dd>
+          <dd className="text-xs text-faint">Only payments from before the fee was folded into prices; not revenue either.</dd>
         </div>
       </dl>
     </>

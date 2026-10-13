@@ -1,4 +1,4 @@
-These terms are the agreement between you and Flagon, Inc. ("Flagon", "we", "us") when you use g1t: the website at g1t.sh, its API at api.g1t.sh, its MCP server at mcp.g1t.sh, git over g1t.sh, the documentation, apps deployed to g1t.page, and the sandboxes g1t runs for you (together, "g1t" or "the service").
+These terms are the agreement between you and Flagon, Inc. ("Flagon", "we", "us") when you use g1t: the website at g1t.sh, its API at api.g1t.sh, its MCP server at mcp.g1t.sh, git over g1t.sh, the documentation, apps deployed to g1t.page, and the runners and sandboxes g1t runs for you (together, "g1t" or "the service").
 
 We've tried to write them the way we'd want to read them: plainly. If anything here is unclear, write to [hey@flagon.io](mailto:hey@flagon.io) and we'll explain it.
 
@@ -35,7 +35,7 @@ To run g1t, we need your permission to handle your content. You give Flagon a wo
 
 This license ends when your content is deleted from g1t, except for copies in backups (which expire on their own schedule) and content others have a right to keep under section 5.
 
-**We don't sell your content, and we don't use your private content to train AI models.** g1t itself doesn't send your content to any model provider: Ask g1t uses the AI provider your workspace connects, under your agreement with them.
+**We don't sell your content, and we don't use your private content to train AI models.** g1t doesn't send your content to any outside model provider of its own: Ask g1t and sessions started from g1t use the AI provider your workspace connects, under your agreement with them. The only models g1t runs itself are the embedding models that index your content for search, on our hosting provider.
 
 You're responsible for your content: that you have the right to put it on g1t, and that it doesn't break the law or someone else's rights.
 
@@ -47,13 +47,15 @@ By making something public, you let every g1t user view it and fork it on g1t. A
 
 A fork someone else made of your public repository while it was public is theirs to keep, under your license, even if you later make yours private or delete it.
 
-## 6. Agents act on your behalf
+## 6. Agents you bring
 
 The coding agents you connect to g1t (through the MCP server, the API, the g1t CLI or a plugin) work with your access: they read and change what you let them, and open issues and pull requests, record their sessions and claim work as you.
 
 - **An agent acts on behalf of the person whose credentials it uses**, within the limits of that person's access, the token's scopes and the workspace's rules. Its actions are recorded as such in the audit log.
 - **You're responsible for what you ask agents to do**, and for checking what they produce before you rely on it, merge it or deploy it, as you would for a teammate's work. Agents make mistakes. Their output can be wrong, insecure, or similar to code that exists elsewhere, and you're responsible for making sure your use of it complies with the licenses and laws that apply.
+- **Guardrails** (token scopes, branch protection, required checks and spend limits) reduce risk. They're a safety net, not a guarantee that an agent won't do something you didn't intend.
 - **What agents produce for you is your content.** As between you and us, Flagon claims no rights in it.
+- **Your model provider bills you for model use, not g1t.** What your agents, Ask g1t and sessions started from g1t cost in model use is between you and your provider, under your agreement with them. What g1t itself charges for, such as the runner minutes your agents' checks and workflows use, is in section 8.
 
 **Ask g1t** answers questions about your workspace with the AI provider your workspace connects. To answer, we send that provider the question and the content it needs (such as the issue, pull request or files it reads), under your agreement with them. Its answers can be wrong too.
 
@@ -64,13 +66,16 @@ You can connect g1t to other services: your own model providers, issue trackers,
 ## 8. Paying for g1t
 
 - **The forge is free.** Repositories, git, issues, pull requests and review cost nothing, within the free limits described on [pricing](/pricing).
-- **Compute is paid.** Sandboxes, checks, workflows, the merge queue, deployments and the other metered items on [pricing](/pricing) are charged to the workspace, at what they cost us plus the markup shown there. **The g1t plan** is a monthly subscription per workspace, with some usage included.
-- **Usage prices follow our costs.** They move when what we pay our providers moves, and every change is listed on the pricing page with its reason. We'll give owners at least 30 days' notice by email before we raise the plan's own monthly price.
-- **Payment.** Payments are processed by Stripe. You authorize us to charge the workspace's card, or another payment method on file, for the plan, for usage as it is billed, and when the workspace nears its limit. Invoices are available from the Billing page. Card numbers never reach g1t.
-- **Taxes.** Prices don't include taxes unless we say so. You're responsible for the taxes that apply to your purchases, other than taxes on our income.
-- **Unpaid amounts.** If a payment fails or is disputed, new work stops until it's resolved, and we may suspend the workspace if it stays unpaid.
+- **Compute is paid.** Hosted runner minutes (for checks, workflows and the merge queue), deploy builds, deployed apps (requests, CPU time, custom domains and containers), storage and git operations past the free amounts, package and actions cache storage, search indexing, observability data past the free amount, and the other metered items on [pricing](/pricing) are charged to the workspace that owns the repository or project. Most are priced at what they cost us plus 20%; runner minutes are a fixed rate for each machine, set from what a minute of it costs us. Jobs on your own runners aren't charged. There is no price per person.
+- **The g1t plan** is $21 a month per workspace, with $10 of usage included each month. Included usage doesn't roll over. There is no separate card or processing fee, on the plan or on anything else.
+- **When you're billed.** The plan is billed monthly in advance, at the start of each billing period. Usage is billed in arrears: what a workspace used is invoiced when each month (UTC) closes, or sooner when the workspace nears our limit on unpaid usage (below). What a workspace owes when it is deleted is charged then.
+- **Price changes.** Usage prices follow our costs. A price that goes down changes at once. When a usage price goes up, it's listed on [pricing](/pricing) with its reason and the day it takes effect, and owners of workspaces on the plan are emailed, **at least 14 days before** it applies. We'll give owners **at least 30 days' notice** by email before we raise the plan's own monthly price. Nothing already charged is repriced.
+- **Payment.** Payments are processed by Stripe. You authorize us to charge the workspace's card, or another payment method on file, for the plan each period, for usage as it is billed, and when the workspace nears our limit on unpaid usage. Invoices and receipts are on the Billing page. Card numbers never reach g1t.
+- **Taxes.** Prices don't include taxes. Where the law requires it, sales tax, VAT or GST is added, worked out by Stripe from the workspace's billing address, and shown as its own line before you pay and on every invoice. Without a billing address we can't work tax out, so we don't charge the card until one is added. You're responsible for the taxes that apply to your purchases, other than taxes on our income.
+- **Failed payments.** If a card is declined, new paid work stops until the workspace pays; if a renewal fails, the plan's features stop too. What the workspace owes stays owed, and if it stays unpaid we may suspend the workspace (section 11).
+- **Disputes and chargebacks.** Please write to us before disputing a charge with your bank (see [Refunds and Cancellation](/policies/refunds)). While a payment is disputed, the workspace's paid work stops. If the dispute is decided against us, it stays stopped until what the bank took back is paid.
+- **Limits are yours to set.** Owners set the workspace's spend limit and budget alerts, and choose whether usage pauses at the limit. We also keep a limit of our own on usage not yet paid for, which starts at $100 in a workspace's first month on the plan and grows with its payment history, and we pause new compute when spending suddenly spikes, until an owner answers. Both are described in the [documentation](https://docs.g1t.sh/guides/usage-and-billing/). They're safety nets, not a promise: work already under way when a limit is reached finishes, so usage can go slightly past it, and you're responsible for paying for all usage your workspace runs, including past a limit you chose not to pause at.
 - **Trials and credits** (the trial, the open-source pool, goodwill credits and other credits we give) have no cash value, can't be transferred, and may change or end. Each card gets one trial.
-- **Limits.** Workspaces have spend limits and caps, described in the [documentation](https://docs.g1t.sh/guides/usage-and-billing/). They protect you and us, but usage already under way can go slightly past a limit, and you're responsible for paying for it.
 - **Refunds and goodwill credits** are covered by the [Refunds and Cancellation](/policies/refunds) policy.
 
 Some customers have custom terms (such as invoicing or an enterprise account) agreed with us in writing. Where those conflict with these terms, the written agreement wins.
@@ -79,9 +84,10 @@ Some customers have custom terms (such as invoicing or an enterprise account) ag
 
 You can stop using g1t whenever you like.
 
-- **Ending the plan.** An owner can end the plan from the Billing page. It stays on until the end of the period you've paid for, and nothing more is charged for it after. Usage until then is still billed.
+- **Ending the plan.** An owner can end the plan from the Billing page. It stays on until the end of the period you've paid for, and nothing more is charged for it after. The rest of a period isn't refunded or prorated. Usage until then is still billed, on the final invoice.
 - **Your data is yours to take.** Clone your repositories with git, use the API for issues, pull requests and everything else, and export the audit log and statements from the app, at any time, on any plan.
-- **Deleting your account or a workspace.** Write to [hey@flagon.io](mailto:hey@flagon.io) from your account's email address. We'll confirm, give you a chance to export, and delete it within 30 days, except what we must keep by law (such as billing records) and backups, which expire on their own schedule. We'll settle any amount the workspace owes first.
+- **Deleting a workspace.** An owner can delete a workspace from its settings. What it owes is charged at once, and its plan ends at once, without a refund for the rest of the period. Usage still being metered for the current month must be charged first, so a workspace with some can be deleted from the 1st of the next month. A deleted workspace is kept for 30 days, so a deletion you didn't mean can be undone by writing to us, then purged, except what we must keep by law (such as invoices and billing records) and backups, which expire on their own schedule.
+- **Deleting your account.** You can delete your account from your account settings, once every workspace you own alone has another owner or is deleted. It's kept for 30 days so it can be restored, then purged the same way.
 
 ## 10. Our responsibilities
 
@@ -100,7 +106,7 @@ We may suspend or close an account or workspace, or remove content, if:
 
 Some of this is automatic: a sandbox that looks like it's mining cryptocurrency is stopped at once, and a workspace whose spending spikes is paused until an owner answers. When we act, we'll tell you why, unless the law stops us or telling you would help someone abuse g1t. If you think we got it wrong, reply or write to [hey@flagon.io](mailto:hey@flagon.io) and a person will look at it.
 
-When an account or workspace is closed, we'll keep its content for 30 days so it can be exported, unless it was closed for illegal content or serious abuse, then delete it.
+When we close an account or workspace, we'll keep its content for 30 days so it can be exported, unless it was closed for illegal content or serious abuse, then delete it. What it owed for the plan and usage before it closed is still owed.
 
 ## 12. Disclaimers
 

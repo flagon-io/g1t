@@ -598,6 +598,13 @@ pub struct NotePendingArgs {
     /// 3.4 million CPU ms`, `2 custom domains`.
     #[serde(default)]
     pub detail: Option<String>,
+    /// The month (`YYYY-MM`, UTC) the total belongs to, read when the total
+    /// was worked out rather than when it arrives. Billing takes this
+    /// month, or the month before only while that month's figure for the
+    /// source is not charged and the month is not closed; anything else is
+    /// refused. None: the month the report arrives in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub month: Option<String>,
 }
 
 /// `usage_meters`: this month's usage for a workspace, one line per kind
@@ -1362,6 +1369,12 @@ pub struct AdminGoodwillArgs {
     #[serde(default)]
     pub day: Option<String>,
     pub by: String,
+    /// The form's own key, made once when it is shown: the same key twice
+    /// (a double click, a retry) gives one credit. Without it, the same
+    /// workspace, day and amount within the same few minutes is the same
+    /// credit.
+    #[serde(default)]
+    pub request_key: Option<String>,
 }
 
 /// One workspace's recent pace, for sudo's velocity view.
@@ -1519,6 +1532,32 @@ pub struct StripeStatus {
     pub recent_events: Vec<StripeEventSummary>,
     /// What went wrong reading or fixing the destination, if it did.
     pub error: Option<String>,
+    /// Stripe Tax for this key's mode, as Stripe has it; None when it
+    /// could not be read (or payments are off).
+    #[serde(default)]
+    pub tax: Option<StripeTaxStatus>,
+    /// The customer portal configuration billing makes (`metadata[g1t]` =
+    /// `billing`); None until the first portal session makes it.
+    #[serde(default)]
+    pub portal: Option<StripePortalStatus>,
+}
+
+/// Stripe Tax's settings: `active` once it can collect tax, else
+/// `pending`, with the settings it still needs.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StripeTaxStatus {
+    pub status: String,
+    #[serde(default)]
+    pub missing_fields: Vec<String>,
+}
+
+/// g1t's customer portal configuration at Stripe.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StripePortalStatus {
+    pub configuration_id: String,
+    pub active: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1615,8 +1654,8 @@ pub struct WorkspaceInvoice {
     pub pdf_url: Option<String>,
     pub lines: Vec<InvoiceItem>,
     pub created_at: String,
-    /// The card processing fee on top of `amount_micros`, when the invoice
-    /// is charged to a card; never part of the usage it pays for.
+    /// The card processing fee on top of `amount_micros`, on invoices from
+    /// before g1t's prices included it; 0 on every invoice since.
     #[serde(default)]
     pub fee_micros: i64,
     /// The tax Stripe added on top, once it is known (after paying).
@@ -1631,8 +1670,8 @@ pub struct InvoiceItem {
     pub amount_micros: i64,
 }
 
-/// `invoices`: a workspace's invoices from g1t, newest first. Members
-/// only. Returns `Outcome<Vec<WorkspaceInvoice>>`.
+/// `invoices`: a workspace's invoices from g1t, newest first. Owners and
+/// billing managers only. Returns `Outcome<Vec<WorkspaceInvoice>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InvoicesArgs {
     pub workspace: String,
@@ -1744,8 +1783,9 @@ pub struct StatementTotals {
     /// carries over to the next invoice. Zero when nothing carried.
     #[serde(default)]
     pub carried_micros: i64,
-    /// Tax and card processing fees paid with the month's payments, on top
-    /// of `paid_micros`.
+    /// Tax paid with the month's payments, on top of `paid_micros`, and
+    /// card processing fees paid with payments from before g1t's prices
+    /// included them.
     #[serde(default)]
     pub tax_micros: i64,
     #[serde(default)]
@@ -2337,6 +2377,119 @@ pub struct BillingReset {
     pub refreshed: bool,
 }
 
+/// `admin_detach_test_stripe`: workspaces moved off what Stripe's test mode
+/// left behind, before billing takes a live key, without wiping their
+/// history (that is `admin_reset_billing`). Plans canceled, cached cards and
+/// customers forgotten, open invoices void, past months marked closed, test
+/// payments reversed and what was owed written off as goodwill. Refused on a
+/// live key. Snake_case both ways. Returns `Outcome<TestStripeDetach>`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AdminDetachTestStripeArgs {
+    /// One workspace (any but an enterprise's, comped ones included), or
+    /// none for every workspace not comped, not an enterprise's and not in
+    /// `exclude`.
+    #[serde(default)]
+    pub workspace: Option<String>,
+    /// For every workspace: slugs left alone. None: `syntaqx` and `flagon-io`.
+    #[serde(default)]
+    pub exclude: Option<Vec<String>>,
+    /// What would change, changing nothing.
+    #[serde(default)]
+    pub dry_run: bool,
+    /// Also cancel each plan's subscription at Stripe: only on a test key.
+    #[serde(default)]
+    pub cancel_at_stripe: bool,
+    /// The workspace's slug, or `detach` for every workspace. Not needed
+    /// for a dry run.
+    #[serde(default)]
+    pub confirm: String,
+    pub by: String,
+}
+
+/// What a detach changed, or would change, for each workspace.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct TestStripeDetach {
+    pub dry_run: bool,
+    /// Workspaces with something to change, by slug.
+    pub workspaces: Vec<WorkspaceDetach>,
+    /// Workspaces holding billing rows that were left alone, and why.
+    pub skipped: Vec<DetachSkipped>,
+    /// Workspaces with something to change that this call did not reach
+    /// (a call detaches at most 25): run it again.
+    pub remaining: u32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct DetachSkipped {
+    pub workspace: String,
+    pub reason: String,
+}
+
+/// One workspace's detach.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct WorkspaceDetach {
+    pub workspace: String,
+    /// Whether it was done (false on a dry run).
+    pub done: bool,
+    /// A Stripe customer id, cleared.
+    pub customer: bool,
+    /// The cached card, such as `visa 4242`, cleared.
+    pub card: Option<String>,
+    /// Cached card or tax-address fields cleared.
+    pub card_cached: bool,
+    /// Plans set to canceled.
+    pub subscriptions: u32,
+    /// Card checks removed (the trial grant stays: no second trial).
+    pub card_checks: u32,
+    /// Open checkouts removed.
+    pub checkouts: u32,
+    /// AI credit auto-reload turned off.
+    pub ai_reload: bool,
+    /// A declined autopay cleared.
+    pub autopay_cleared: bool,
+    /// Open or failed invoices set to void.
+    pub invoices_voided: u32,
+    /// Past months marked closed as skipped, so the first live close does
+    /// not charge them.
+    pub months_skipped: Vec<String>,
+    /// AI or purchased credit closed, and what was left of it.
+    pub credit_grants_closed: u32,
+    pub credit_closed_micros: i64,
+    /// Test-mode payments reversed on the ledger.
+    pub payments_reversed_micros: i64,
+    /// Test-mode plan payments reversed.
+    pub plan_payments_reversed_micros: i64,
+    /// What was owed, written off as goodwill credit.
+    pub written_off_micros: i64,
+    pub balance_before_micros: i64,
+    pub balance_after_micros: i64,
+    /// Subscriptions canceled at Stripe, and what Stripe refused.
+    pub stripe_canceled: u32,
+    pub stripe_errors: Vec<String>,
+    /// Metered figures of months before this one marked charged without a
+    /// charge, and what they would have been charged.
+    #[serde(default)]
+    pub pending_months_marked: u32,
+    #[serde(default)]
+    pub pending_marked_micros: i64,
+    /// This month's metered figures kept as the baseline later reports are
+    /// charged past, and what they come to.
+    #[serde(default)]
+    pub pending_baselined: u32,
+    #[serde(default)]
+    pub pending_baselined_micros: i64,
+    /// This month's draws on the plan's included usage removed, so a live
+    /// plan this month has all of it.
+    #[serde(default)]
+    pub plan_credit_cleared_micros: i64,
+    /// What lost test-mode disputes left owed, cleared.
+    #[serde(default)]
+    pub dispute_owed_cleared_micros: i64,
+    /// Open test-mode disputes closed.
+    #[serde(default)]
+    pub disputes_closed: u32,
+}
+
 /// One change made in sudo.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -2355,12 +2508,9 @@ pub struct AdminAction {
 pub struct Plan {
     pub feature: Feature,
     pub title: String,
-    /// Charged every month while the plan is on, in cents, excluding tax.
+    /// Charged every month while the plan is on, in cents, excluding tax:
+    /// all of it, with no card fee on top.
     pub monthly_cents: u32,
-    /// The card processing fee on top each month, in cents (0 when the
-    /// fee is off). Excluding tax, like the price.
-    #[serde(default)]
-    pub card_fee_cents: u32,
     /// What the monthly price includes, one line each, for people to read.
     pub includes: Vec<String>,
     /// How usage past the allowance is charged, for people to read.
@@ -2671,8 +2821,9 @@ pub struct OverallMargin {
     /// the tax authorities, never in cash or revenue.
     #[serde(default)]
     pub tax_collected_micros: i64,
-    /// Card processing fees passed on with card payments, net of refunds:
-    /// they pay Stripe's fee, so they are not revenue either.
+    /// Card processing fees passed on with card payments from before g1t's
+    /// prices included them, net of refunds: they paid Stripe's fee, so
+    /// they are not revenue either.
     #[serde(default)]
     pub card_fees_micros: i64,
     /// Cloudflare's subscriptions over the range: each day's share of the
@@ -2837,13 +2988,6 @@ pub struct CostSettings {
     /// and at least `anomaly_floor_micros`, is flagged.
     pub anomaly_factor: f64,
     pub anomaly_floor_micros: i64,
-    /// Pass Stripe's card fee on as its own line on every card payment (the
-    /// plan, Security and quality, prepaying, AI credit, auto-reload and
-    /// invoices charged to a card), never on a bank transfer or an invoice
-    /// sent to be paid (`card_fee_percent` and `card_fee_fixed` in the
-    /// price book). On by default.
-    #[serde(default = "yes")]
-    pub card_fee: bool,
 }
 
 impl Default for CostSettings {
@@ -2857,7 +3001,6 @@ impl Default for CostSettings {
             min_daily_cost_micros: 100_000,
             anomaly_factor: 1.0,
             anomaly_floor_micros: 1_000_000,
-            card_fee: true,
         }
     }
 }
@@ -3304,13 +3447,14 @@ pub struct CostsRun {
 
 /// The product families the Usage page groups meters into, in order, with
 /// their names.
-pub const PRODUCTS: [(&str, &str); 6] = [
+pub const PRODUCTS: [(&str, &str); 7] = [
     ("sandboxes", "Sandboxes"),
     ("deployments", "Deployments"),
     ("git_storage", "Git & storage"),
     ("packages", "Packages"),
     ("security", "Security & quality"),
     ("search", "Search"),
+    ("observability", "Observability"),
 ];
 
 /// `usage_report`: a workspace's usage over a range of days, at price, by
@@ -3347,7 +3491,8 @@ pub struct UsageTotals {
     pub discount_micros: i64,
     /// What the plan's included usage, the trial and g1t's pools paid.
     pub included_micros: i64,
-    /// What credit paid: AI credit, credit from g1t.
+    /// What credit paid: credit from g1t, and AI credit bought before g1t
+    /// stopped selling it.
     pub credits_micros: i64,
     /// What is left for the workspace to pay.
     pub charged_micros: i64,
@@ -3462,18 +3607,6 @@ pub struct UsageReport {
     pub free: bool,
 }
 
-// --- Card fee -------------------------------------------------------------------
-
-/// The card fee passed on when a payment is made by card.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CardFee {
-    pub on: bool,
-    /// Per dollar charged, in millionths: 29,000 is 2.9%.
-    pub percent_micros: f64,
-    pub fixed_cents: u32,
-}
-
 // --- Budgets ------------------------------------------------------------------
 
 /// `set_budget`: the monthly budget on usage after included usage: the
@@ -3574,8 +3707,10 @@ pub struct UpcomingInvoice {
 }
 
 /// `billing_details` (`AccountArgs`): who the invoices are for, the default
-/// payment method, and the invoices, from the Stripe customer. Members see
-/// it; owners change it. Returns `Outcome<BillingDetails>`.
+/// payment method, and the invoices, from the Stripe customer. Owners and
+/// billing managers see and change it; any other member gets only the
+/// upcoming invoice and the tax-address notice. Returns
+/// `Outcome<BillingDetails>`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BillingDetails {

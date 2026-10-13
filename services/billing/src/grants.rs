@@ -67,8 +67,8 @@ pub(crate) struct Grant {
 
 /// The tasks that are not a model's work: sandbox and runner time,
 /// deployments, and the month-end meters.
-const NOT_MODELS: [&str; 10] = [
-    "sandbox", "self_hosted", "deployments", "security", "context", "storage", "git", "cache", "domains", "package_storage",
+const NOT_MODELS: [&str; 11] = [
+    "sandbox", "self_hosted", "deployments", "security", "context", "storage", "git", "cache", "domains", "package_storage", "telemetry",
 ];
 
 /// Whether a usage line is model usage (an agent run's model cost), which

@@ -2,9 +2,9 @@ We'd rather you pay for what you use and feel good about it than argue over a bi
 
 ## What is charged, and why
 
-The forge is free. What costs money is compute (sandboxes, checks, workflows, the merge queue, deployments, and storage and git traffic past what is included) at what it costs us plus 20%, and the g1t plan, $20 a month per workspace with $10 of usage included. Because usage is charged at close to what it costs us, most of it can't be given back once it has run: we've already paid for it.
+The forge is free. What costs money is compute, and the g1t plan, $21 a month per workspace with $10 of usage included, with no separate card or processing fee. Compute is hosted runner minutes (for checks, workflows and the merge queue), deploy builds, deployed apps (requests, CPU time, custom domains and containers), storage and git operations past what is included, search indexing, and observability data past the free amount. Most of it is charged at what it costs us plus 20%; runner minutes are a fixed rate for each machine, set from what a minute of it costs us. Model use isn't on g1t's bill: your agents, Ask g1t and sessions you start from g1t use your own AI provider, which bills you. The plan is billed monthly in advance; usage is billed when each month closes, or sooner as the workspace nears its limit on unpaid usage. Because usage is charged at close to what it costs us, most of it can't be given back once it has run: we've already paid for it.
 
-That's why g1t works hard to keep spending from surprising you: a $5 trial that never turns into a charge, a spend limit you set, caps per run and per issue, alerts at 50%, 75%, 90% and 100%, and a pause when spending suddenly spikes until an owner says to keep going.
+That's why g1t works hard to keep spending from surprising you: a $5 trial that never turns into a charge, a spend limit you set, budget alerts at 50%, 75%, 90% and 100%, and a pause when spending suddenly spikes until an owner says to keep going.
 
 ## Spent more than you meant to
 
@@ -20,27 +20,27 @@ The credit appears on your statement with the day it happened, such as *Credit f
 ## When we refund to your card
 
 - **Charged in error.** If we charged you twice, charged the wrong amount, or charged for something that didn't run because of a fault on our side, we refund it to the card it was paid with.
-- **Unused prepaid balance**, when you close the workspace: write to us and we'll refund what's left to the card or account it came from.
+- **Unused prepaid balance**, when you close the workspace: write to us **before you delete it**, and we'll refund what's left to the card or account it came from.
 - **Anything else** is up to us, case by case. Write to [hey@flagon.io](mailto:hey@flagon.io) and we'll be fair about it.
 
-Refunds appear on the statement under **Refunds** and take as long as your bank takes to show them, usually 5 to 10 business days.
+Refunds appear on the statement under **Refunds** and take as long as your bank takes to show them, usually 5 to 10 business days. Tax paid on a refunded amount is refunded in proportion.
 
 We don't refund for part of a month on the plan, or for usage that ran as asked. The plan's included usage doesn't roll over, and isn't refunded if unused.
 
 ## Ending the plan
 
-- **An owner can end the plan at any time** from **Settings → Billing and plans**: choose **End at the end of the period**. The plan stays on until then, and nothing more is charged for it after. **Keep the plan** takes it back until the period ends.
+- **An owner or billing manager can end the plan at any time** from **Settings → Billing and plans**: **Manage billing** opens Stripe's billing page, where you cancel it. The plan stays on until the end of the period you've paid for, and nothing more is charged for it after; the rest of the period isn't prorated. Until the period ends, you can renew it from the same page.
 - **Usage until the plan ends is still billed**, on the final invoice.
 - **When the plan ends**, the workspace goes back to free. Repositories, issues, pull requests and the audit log stay. Compute stops unless the trial or the open-source pool pays for it, and private storage past the free amount stops taking pushes until it's back under, though nothing is deleted.
 - **If a renewal payment fails**, the plan's features stop until it's paid. Update the card from the Billing page.
 
 ## Closing a workspace or account
 
-Write to [hey@flagon.io](mailto:hey@flagon.io) from the account's email address. We'll settle what the workspace owes or is owed, give you time to export, and delete it within 30 days. See [cancelling](/policies/terms#cancelling-and-taking-your-data-with-you) in the terms.
+An owner deletes a workspace from its **Settings → General**. What it owes is charged at once, and its plan ends at once, without a refund for the rest of the period. If it has prepaid balance left, write to [hey@flagon.io](mailto:hey@flagon.io) first (see above). A deleted workspace can be restored for 30 days, then it is purged. You delete your own account from your account settings. See [cancelling](/policies/terms#cancelling-and-taking-your-data-with-you) in the terms.
 
 ## Disputes
 
-If a charge looks wrong, please write to [hey@flagon.io](mailto:hey@flagon.io) before disputing it with your bank. We'll answer within one business day, and we can usually fix it faster. A disputed payment stops the workspace's compute until it's resolved, as described in the [usage and billing guide](https://docs.g1t.sh/guides/usage-and-billing/#your-card-and-billing-details).
+If a charge looks wrong, please write to [hey@flagon.io](mailto:hey@flagon.io) before disputing it with your bank. We'll answer within one business day, and we can usually fix it faster. While a payment is disputed, the workspace's paid work stops. If the dispute is decided against us, it stays stopped until what the bank took back is paid. See the [usage and billing guide](https://docs.g1t.sh/guides/usage-and-billing/#your-card-and-billing-details).
 
 ## Custom terms
 

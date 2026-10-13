@@ -582,7 +582,8 @@ export function billingClient(service: ServiceBinding): BillingApi {
     limit: (workspace, viewer) => call("limit", { workspace, viewer }),
     checkLimit: (workspace) => call("check_limit", { workspace }),
     prices: () => call("prices", {}),
-    notePending: (workspace, source, costMicros, detail = null) => call("note_pending", { workspace, source, costMicros, detail }),
+    notePending: (workspace, source, costMicros, detail = null, month = null) =>
+      call("note_pending", { workspace, source, costMicros, detail, ...(month ? { month } : {}) }),
     usageMeters: (workspace, viewer) => call("usage_meters", { workspace, viewer }),
     setSpendLimit: (actor, workspace, spendLimitMicros, useFullLimit = false, raiseOnce = false) =>
       call("set_spend_limit", { actor, workspace, spendLimitMicros, use_full_limit: useFullLimit, raise_once: raiseOnce }),
@@ -632,6 +633,15 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
       }),
     revokeCredit: (id, note, by) => call("admin_revoke_credit", { id, note, by }),
     resetBilling: (workspace, confirm, note, by) => call("admin_reset_billing", { workspace, confirm, note, by }),
+    detachTestStripe: (a) =>
+      call("admin_detach_test_stripe", {
+        workspace: a.workspace ?? null,
+        exclude: a.exclude ?? null,
+        dry_run: a.dryRun,
+        cancel_at_stripe: a.cancelAtStripe ?? false,
+        confirm: a.confirm ?? "",
+        by: a.by,
+      }),
     billingLink: (workspace, by) => call("admin_billing_link", { workspace, by }),
     stripe: (fix = false, by) => call("admin_stripe", { fix, by: by ?? null }),
     enterpriseBilling: (id, email, by) => call("admin_enterprise_billing", { id, email, by }),
@@ -659,8 +669,8 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     decideLimitRequest: (id, decision, amountMicros, note, by) =>
       call("admin_decide_limit_request", { id, decision, amount_micros: amountMicros, note, by }),
     overages: () => call("admin_overages", {}),
-    goodwill: (workspace, amountMicros, reason, by, day = null) =>
-      call("admin_goodwill", { workspace, amount_micros: amountMicros, reason, by, day }),
+    goodwill: (workspace, amountMicros, reason, by, day = null, requestKey = null) =>
+      call("admin_goodwill", { workspace, amount_micros: amountMicros, reason, by, day, request_key: requestKey }),
     velocity: () => call("admin_velocity", {}),
     recordPayment: (workspace, amountMicros, reference, note, by) =>
       call("admin_record_payment", { workspace, amount_micros: amountMicros, reference, note, by }),

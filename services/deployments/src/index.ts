@@ -287,6 +287,8 @@ type DeploymentRow = {
   /** What it was built with, and a container's image by digest (migration 0014). */
   framework?: string | null;
   image?: string | null;
+  /** When billing confirmed its seconds (migration 0016); null until then. */
+  build_charged_at?: string | null;
 };
 
 /** What opening any build takes; see `open`. */
@@ -441,10 +443,11 @@ class Deployments {
    * telemetry service; null when it cannot be had, and the app goes up
    * without it (its requests and logs still arrive as tail events).
    */
-  private async telemetryToken(projectId: string): Promise<string | null> {
+  private async telemetryToken(projectId: string, workspace: string): Promise<string | null> {
     if (!this.env.TELEMETRY) return null;
     try {
-      return (await telemetryClient(this.env.TELEMETRY).deploymentToken({ project_id: projectId })).secret;
+      // The workspace, so the project's telemetry is capped and metered with the rest of the workspace's.
+      return (await telemetryClient(this.env.TELEMETRY).deploymentToken({ project_id: projectId, workspace })).secret;
     } catch (error) {
       console.error("could not get the project's telemetry token", projectId, error);
       return null;
@@ -1310,7 +1313,7 @@ class Deployments {
               !!row.trusted,
             ),
             app,
-            row.trusted ? await this.telemetryToken(row.project_id) : null,
+            row.trusted ? await this.telemetryToken(row.project_id, row.workspace) : null,
           );
           before = await this.db.prepare("SELECT runtime, container_app_id, deployment_id FROM apps WHERE script = ?").bind(row.script).first<AppRow>();
           if (detected === "container") {
@@ -1654,35 +1657,89 @@ class Deployments {
   /**
    * Each build is charged by the second, from the first, at the container
    * price plus the margin. A build a workflow job ran is not: the job's
-   * time is charged as Actions time.
+   * time is charged as Actions time. Never throws: a build whose charge
+   * billing did not confirm keeps `build_charged_at` empty and the sweep
+   * tries again (`chargeBuilds`), so a billing failure never keeps a
+   * build's status or announcement from going out.
    */
   private async chargeBuild(row: DeploymentRow, seconds: number): Promise<void> {
-    if (row.run_id) return;
+    const charged = await this.tryChargeBuild(row, seconds).catch((error: unknown) => {
+      console.error("build not charged yet", row.id, String(error));
+      return false;
+    });
+    if (!charged) console.log("build charge left for the sweep", row.id, Math.ceil(seconds));
+  }
+
+  /**
+   * Charges a build's seconds once: billing records `deploy/<id>` once
+   * whatever it is sent, and the month's meter counts the build only in
+   * the write that marks it charged. True once it is charged (or had
+   * nothing to charge).
+   */
+  private async tryChargeBuild(row: DeploymentRow, seconds: number): Promise<boolean> {
+    if (row.run_id) return true;
     const costs = await this.costs();
     const cost = Math.ceil(Math.ceil(seconds) * costs.buildSecond);
-    if (cost <= 0) return;
-    const what =
-      row.kind === "preview"
-        ? `the ${row.branch} preview of ${row.workspace}/${row.slug}`
-        : `${row.workspace}/${row.slug} to production`;
-    await billingClient(this.env.BILLING).chargeFeature({
-      workspace: row.workspace,
-      feature: "deployments",
-      costMicros: cost,
-      description: `Building ${what} (${Math.ceil(seconds)} s)`,
-      repo: row.repo,
-      reference: `deploy/${row.id}`,
-      // Every second is metered; billing prices it from its price book and
-      // tallies the month's build time.
-      buildSeconds: Math.ceil(seconds),
-    });
-    await this.db
+    if (cost > 0) {
+      const what =
+        row.kind === "preview"
+          ? `the ${row.branch} preview of ${row.workspace}/${row.slug}`
+          : `${row.workspace}/${row.slug} to production`;
+      const charged = await billingClient(this.env.BILLING).chargeFeature({
+        workspace: row.workspace,
+        feature: "deployments",
+        costMicros: cost,
+        description: `Building ${what} (${Math.ceil(seconds)} s)`,
+        repo: row.repo,
+        reference: `deploy/${row.id}`,
+        // Every second is metered; billing prices it from its price book and
+        // tallies the month's build time.
+        buildSeconds: Math.ceil(seconds),
+      });
+      if (!charged.ok) {
+        console.error("build not charged yet", row.id, charged.error.message);
+        return false;
+      }
+    }
+    // Counted in the month it finished in, however late billing took it.
+    const finished = row.finished_at ? new Date(row.finished_at) : null;
+    const at = finished && !Number.isNaN(finished.getTime()) ? finished : new Date();
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO meters (namespace, month, build_seconds, build_micros)
+           SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM deployments WHERE id = ?5 AND build_charged_at IS NULL)
+           ON CONFLICT (namespace, month) DO UPDATE SET build_seconds = build_seconds + ?3, build_micros = build_micros + ?4`,
+        )
+        .bind(row.workspace, month(at), Math.ceil(seconds), Math.max(0, cost), row.id),
+      this.db.prepare("UPDATE deployments SET build_charged_at = ? WHERE id = ? AND build_charged_at IS NULL").bind(now(), row.id),
+    ]);
+    return true;
+  }
+
+  /**
+   * Charges the sandbox builds of the last five weeks whose charge billing
+   * has not confirmed, a few at a time: each build's finish tries once,
+   * and this catches up what billing could not take then.
+   */
+  private async chargeBuilds(): Promise<void> {
+    const since = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
+    const owed = await this.db
       .prepare(
-        `INSERT INTO meters (namespace, month, build_seconds, build_micros) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT (namespace, month) DO UPDATE SET build_seconds = build_seconds + ?3, build_micros = build_micros + ?4`,
+        `SELECT * FROM deployments
+         WHERE build_charged_at IS NULL AND build_seconds > 0 AND run_id IS NULL
+           AND status NOT IN ('queued', 'building') AND finished_at >= ?
+         ORDER BY finished_at LIMIT 50`,
       )
-      .bind(row.workspace, month(), Math.ceil(seconds), cost)
-      .run();
+      .bind(since)
+      .all<DeploymentRow>();
+    for (const row of owed.results) {
+      const charged = await this.tryChargeBuild(row, row.build_seconds ?? 0).catch((error: unknown) => {
+        console.error("build not charged yet", row.id, String(error));
+        return false;
+      });
+      if (charged) console.log("build charged late", row.id, row.build_seconds);
+    }
   }
 
   /**
@@ -2505,6 +2562,7 @@ class Deployments {
     });
     await step("taking down previews no pull request holds", () => this.takeDownUnheld());
     await step("taking down idle previews", () => this.takeDownIdle());
+    await step("charging builds", () => this.chargeBuilds());
     await step("charging months", () => this.chargeMonths());
 
     let apps = (await this.db.prepare("SELECT * FROM apps").all<AppRow>()).results;
@@ -2695,12 +2753,15 @@ class Deployments {
     // it now rather than when the month closes, and its Billing page shows it.
     const costs = await this.costs();
     const billing = billingClient(this.env.BILLING);
+    // One month for the whole report, sent with it: a sweep that runs over
+    // midnight on the 1st still files these totals under the month they are.
+    const reporting = month();
     const meters = await this.db
       .prepare("SELECT namespace, requests, cpu_ms, peak_domains FROM meters WHERE month = ?")
-      .bind(month())
+      .bind(reporting)
       .all<{ namespace: string; requests: number; cpu_ms: number; peak_domains: number | null }>();
     // Container time is the same feature's, noted with its traffic.
-    const containers = await this.containerMonth(month());
+    const containers = await this.containerMonth(reporting);
     const seen = new Set(meters.results.map((meter) => meter.namespace));
     const rows = [
       ...meters.results,
@@ -2711,11 +2772,11 @@ class Deployments {
       const container = containers.get(meter.namespace);
       const detail = [cost.traffic.detail, container?.detail].filter(Boolean).join("; ") || null;
       await billing
-        .notePending(meter.namespace, "deployments", cost.traffic.micros + (container?.micros ?? 0), detail)
+        .notePending(meter.namespace, "deployments", cost.traffic.micros + (container?.micros ?? 0), detail, reporting)
         .catch((error) => console.error("could not note pending usage", error));
       if ((meter.peak_domains ?? 0) > 0) {
         await billing
-          .notePending(meter.namespace, "domains", cost.domains.micros, cost.domains.detail)
+          .notePending(meter.namespace, "domains", cost.domains.micros, cost.domains.detail, reporting)
           .catch((error) => console.error("could not note pending usage", error));
       }
     }

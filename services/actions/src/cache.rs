@@ -667,7 +667,15 @@ impl Actions {
             let noted: Result<bool> = g1t_kit::call(
                 &self.billing,
                 "note_pending",
-                &NotePendingArgs { workspace: workspace.clone(), source: "cache".to_owned(), cost_micros: cost, detail: Some(format!("{months:.2} GB-months")) },
+                &NotePendingArgs {
+                    workspace: workspace.clone(),
+                    source: "cache".to_owned(),
+                    cost_micros: cost,
+                    detail: Some(format!("{months:.2} GB-months")),
+                    // The month these days are in, not the one the report
+                    // arrives in.
+                    month: Some(month.to_owned()),
+                },
             )
             .await;
             if let Err(error) = noted {

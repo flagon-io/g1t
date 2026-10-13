@@ -1,4 +1,4 @@
-This policy explains what information g1t collects, why, where it goes, how long we keep it, and what you can do about it. It covers g1t.sh, api.g1t.sh, mcp.g1t.sh, docs.g1t.sh, g1t.page and the sandboxes g1t runs. g1t is run by Flagon, Inc. ("Flagon", "we"), which is responsible for your information.
+This policy explains what information g1t collects, why, where it goes, how long we keep it, and what you can do about it. It covers g1t.sh, api.g1t.sh, mcp.g1t.sh, docs.g1t.sh, g1t.page and the runners and sandboxes g1t runs. g1t is run by Flagon, Inc. ("Flagon", "we"), which is responsible for your information.
 
 The short version: we collect what we need to run a git platform for you and your agents, we don't sell it, we don't advertise, we don't use your private content to train AI models, and the only analytics on g1t.sh counts how pages are used without reading what is in your workspaces.
 
@@ -14,6 +14,7 @@ The short version: we collect what we need to run a git platform for you and you
 | Avatar, if you upload one | Shown next to your name. Stored by its content's hash and served publicly at `g1t.sh/avatars/…`. |
 | Sessions, access tokens, SSH keys, and apps you've approved through sign-in with g1t | To keep you signed in and let your tools act for you. Session and token secrets are stored only as hashes. |
 | Whether your email address is confirmed | Unconfirmed accounts can't create repositories or push. |
+| Devices you turn notifications on for | To send them notifications: a browser's push subscription, or the phone app's push token, platform and device name. Removed when the device stops taking them. |
 
 ### Your workspaces and content
 
@@ -22,6 +23,8 @@ The short version: we collect what we need to run a git platform for you and you
 - **Issues, pull requests, reviews, comments, plans and labels**, with who wrote them and when.
 - **Secrets and variables, integration credentials and webhook signing secrets.** Secrets are encrypted at rest (AES-256-GCM) and never shown again after you save them.
 - **Deployments**: the apps you deploy, their builds and logs, and a screenshot of each production site for your project's overview.
+- **Observability**: the logs, traces and metrics your apps and projects send to g1t, kept for the retention you choose for the project (1 to 30 days).
+- **Search index**: to search by meaning, g1t turns the text of repositories, issues and pull requests into embeddings with models it runs on Cloudflare (Workers AI). They are used only for your search, never to train a model.
 
 ### What agents do
 
@@ -31,11 +34,11 @@ To catch cryptocurrency mining, every sandbox samples its own CPU use, disk and 
 
 ### The audit log
 
-Every action through the API, the MCP server and git is recorded in your workspace's audit log: who did it (a person, or an agent on a person's behalf), what they did, to what, through which surface, whether it was allowed, and under which rule. The audit log does not store IP addresses. It is kept for **90 days**, then deleted. Members can read and export it.
+Every action through the API, the MCP server and git is recorded in your workspace's audit log: who did it (a person, or an agent on a person's behalf), what they did, to what, through which surface, whether it was allowed, and under which rule. The audit log does not store IP addresses. It is kept for **7 days** on a free workspace and **90 days** on the g1t plan (up to 400 days where agreed in writing), then deleted. Members can read and export it.
 
 ### Billing
 
-Payments are handled by Stripe. **Card numbers never reach g1t.** From Stripe we keep the workspace's customer reference, the card's brand, last four digits and expiry date, whether it is a prepaid card, and a fingerprint of the card that Stripe gives us, so that each card gets only one trial. Your billing email, address and tax ID are held by Stripe. We keep the workspace's statement: usage, charges, credits, payments and invoices.
+Payments are handled by Stripe. **Card numbers never reach g1t.** From Stripe we keep the workspace's customer reference, the card's brand, last four digits and expiry date, whether it is a prepaid card, and a fingerprint of the card that Stripe gives us, so that each card gets only one trial. Your billing email, address and tax ID are held by Stripe, which also uses the address to work out the sales tax or VAT on what you pay. We keep the workspace's statement: usage, charges, credits, payments and invoices.
 
 ### How the site is used
 
@@ -53,7 +56,7 @@ HeyCatch stores these events with PostHog in the United States, under its [data 
 
 ### When you write to us
 
-If you email support, security, privacy or billing, we keep the conversation, so we can help you and remember what we said.
+If you email support, security, privacy or billing, we keep the conversation, so we can help you and remember what we said. Our mailboxes are hosted by Google Workspace.
 
 ### Technical information
 
@@ -99,7 +102,7 @@ If you're in the European Economic Area or the United Kingdom, our legal bases a
 
 We share information only to run g1t, at your direction, or when the law requires it.
 
-- **Service providers ("subprocessors")** that run parts of g1t for us, under contracts that limit them to doing so: Cloudflare (hosting, storage, databases, sandboxes, email and search), Stripe (payments) and HeyCatch (site analytics). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
+- **Service providers ("subprocessors")** that run parts of g1t for us, under contracts that limit them to doing so: Cloudflare (hosting, storage, databases, sandboxes, sending email and search), Stripe (payments and tax), HeyCatch (site analytics), Expo (notifications to the phone app) and Google (our mailboxes). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
 - **Services you connect.** When you connect an AI provider, an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
 - **Other people on g1t**, as your settings allow: your workspace's members, and everyone for public projects and your public profile.
 - **Vulnerability databases.** To find vulnerable dependencies, we send the names and versions of packages in your lockfiles to OSV.dev, an open database run by Google. Nothing else about you or your repository is sent.
@@ -110,13 +113,14 @@ We share information only to run g1t, at your direction, or when the law require
 
 | What | How long |
 | --- | --- |
-| Your account, profile and content | While your account or workspace exists. Deleted within 30 days of deleting it. |
+| Your account, profile and content | While your account or workspace exists. After you delete it, kept 30 days so it can be restored, then purged. |
 | Agent sessions and logs | As long as their project, unless you delete them. |
-| The audit log | 90 days. |
+| Observability data | The project's retention, 1 to 30 days. |
+| The audit log | 7 days on a free workspace, 90 on the g1t plan, longer where agreed. |
 | Billing records | As long as tax and accounting law requires. |
 | Email to us | As long as we need it to help you, then deleted. |
 | Request logs | 7 days. |
-| Database history | g1t's databases keep 30 days of point-in-time history (Cloudflare D1 Time Travel), so deleted data leaves it within 30 days. |
+| Database history | g1t's databases keep 30 days of point-in-time history (Cloudflare D1 Time Travel), so purged data leaves it within 30 days of being purged. |
 
 Some content can stay after you leave because it is part of someone else's work: forks others made of your public repositories, and comments and reviews you left in other people's projects. Ask us, and we'll remove your name from what stays where we can.
 

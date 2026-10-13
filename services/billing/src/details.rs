@@ -215,13 +215,33 @@ pub(crate) const TAX_ID_TYPES: &[&str] = &[
 ];
 
 impl Billing {
-    /// `billing_details`: members only.
+    /// `billing_details`: members only. Who invoices are made out to (the
+    /// address, tax ID, PO number and invoice email), the payment method
+    /// and the invoices are for owners and billing managers; any other
+    /// member gets the upcoming invoice from g1t's own ledger, and whether
+    /// a billing address is needed, with the rest left empty.
     pub(crate) async fn billing_details(&self, a: AccountArgs) -> Result<Outcome<BillingDetails>> {
         let workspace = a.workspace.to_lowercase();
-        if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
+        let Some(viewer) = a.viewer.as_ref().filter(|viewer| viewer.is_member(&workspace)) else {
             return Ok(members_only());
+        };
+        if !viewer.manages_billing(&workspace) {
+            return Ok(Outcome::Ok(self.ledger_details_of(&workspace).await?));
         }
         Ok(Outcome::Ok(self.details_of(&workspace).await?))
+    }
+
+    /// What any member may see of the details: nothing from Stripe's
+    /// customer, only the upcoming invoice and the tax-address notice.
+    async fn ledger_details_of(&self, workspace: &str) -> Result<BillingDetails> {
+        let row = self.row(workspace).await?;
+        let upcoming = self.upcoming(workspace, row.as_ref().map_or(0, |r| r.balance_micros)).await?;
+        Ok(BillingDetails {
+            customer: row.is_some_and(|r| r.customer_id.is_some()),
+            upcoming,
+            tax_address_needed_at: self.tax_address_needed_at(workspace).await?,
+            ..BillingDetails::default()
+        })
     }
 
     async fn details_of(&self, workspace: &str) -> Result<BillingDetails> {
@@ -244,6 +264,12 @@ impl Billing {
                 details.upcoming = upcoming;
                 details.tax_address_needed_at = self.tax_address_needed_at(workspace).await?;
                 Ok(details)
+            }
+            // Deleted at Stripe, or from another account: forgotten, so the
+            // next card saved makes a new one.
+            Err(error) if crate::stripe::is_missing(&error) => {
+                self.forget_customer(workspace).await?;
+                Ok(BillingDetails { upcoming, tax_address_needed_at: self.tax_address_needed_at(workspace).await?, ..BillingDetails::default() })
             }
             Err(error) => {
                 worker::console_error!("{workspace}: Stripe's customer could not be read: {error}");
@@ -274,7 +300,7 @@ impl Billing {
         for feature in [Feature::Plan, Feature::Security] {
             if self.plan_on(workspace, feature).await? {
                 let plan = self.plan(feature).await?;
-                subscriptions += i64::from(plan.monthly_cents + plan.card_fee_cents) * 10_000;
+                subscriptions += i64::from(plan.monthly_cents) * 10_000;
             }
         }
         let terms = self.terms_of(workspace).await?;
@@ -287,7 +313,11 @@ impl Billing {
         }
         let pending = self
             .db
-            .prepare("SELECT SUM(cost_micros) AS cost FROM pending_usage WHERE workspace = ? AND month = ? AND charged_at IS NULL")
+            // Less what was metered before a test-mode detach: never charged.
+            .prepare(format!(
+                "SELECT SUM({}) AS cost FROM pending_usage WHERE workspace = ? AND month = ? AND charged_at IS NULL",
+                crate::storage::NET_COST
+            ))
             .bind(&[workspace.into(), month.as_str().into()])?
             .first::<Pending>(None)
             .await?

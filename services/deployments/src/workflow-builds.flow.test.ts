@@ -73,6 +73,8 @@ function world() {
     collaborator: "write",
     plan: true,
     limit: "ok",
+    /** Billing does not take charges (it is down, say). */
+    chargeFails: false,
     /** What other services were asked, as `SERVICE method`. */
     calls: [] as string[],
     /** What `resolve_settings` was asked for. */
@@ -116,6 +118,7 @@ function world() {
       if (method === "has_feature") return state.plan ? ok(true) : { ok: false, error: { code: "payment_required", message: "Deployments need the Team plan." } };
       if (method === "check_limit") return ok({ state: state.limit, message: state.limit === "stopped" ? "The workspace reached its spend limit." : null });
       if (method === "prices") return { prices: [] };
+      if (method === "charge_feature" && state.chargeFails) return { ok: false, error: { code: "unavailable", message: "billing is down" } };
       return ok(null);
     }),
     WORK: service("WORK", (method) => {
@@ -254,6 +257,36 @@ test("a sandbox's build is still charged by the second; a workflow job's never i
     { script: "web-acme", kind: "production" },
     { script: "web-git-other-acme", kind: "preview" },
   ]);
+});
+
+test("a build billing cannot charge still goes live and is announced; the sweep charges it once, later", async () => {
+  const { createHash } = await import("node:crypto");
+  const token = "e".repeat(64);
+  w.state.sqlite
+    .prepare(
+      `INSERT INTO deployments (id, project_id, workspace, slug, repo_id, repo, kind, branch, number, commit_sha, script, status,
+         token_hash, trusted, created_by, created_at)
+       VALUES ('dpl_owed', ?, 'acme', 'web', ?, 'acme/web', 'preview', 'other', NULL, ?, 'web-git-other-acme', 'building', ?, 1, 'g1t', '2026-10-12T00:00:00Z')`,
+    )
+    .run(PROJECT, REPO, SHA, createHash("sha256").update(token).digest("hex"));
+  w.state.chargeFails = true;
+  const finished = await post("/jobs/dpl_owed/finish", { token, worker: { compatibilityDate: "2026-09-26", vars: {} }, completionJwt: "done", buildSeconds: 30 });
+  assert.equal(finished.ok, true, JSON.stringify(finished));
+  // Live and said so, though billing refused the charge.
+  assert.deepEqual(rows("SELECT status, build_seconds, build_charged_at FROM deployments"), [{ status: "ready", build_seconds: 30, build_charged_at: null }]);
+  assert.ok(w.state.calls.includes("WORK set_commit_status"));
+  assert.deepEqual(rows("SELECT build_seconds FROM meters WHERE build_seconds > 0"), []);
+  // Still down: the sweep tries and keeps it.
+  await worker.scheduled({} as never, w.env as never);
+  assert.equal(rows("SELECT build_charged_at FROM deployments")[0].build_charged_at, null);
+  // Back: charged once, counted once, and never again.
+  w.state.chargeFails = false;
+  const before = w.state.calls.filter((call) => call === "BILLING charge_feature").length;
+  await worker.scheduled({} as never, w.env as never);
+  await worker.scheduled({} as never, w.env as never);
+  assert.equal(w.state.calls.filter((call) => call === "BILLING charge_feature").length, before + 1);
+  assert.notEqual(rows("SELECT build_charged_at FROM deployments")[0].build_charged_at, null);
+  assert.deepEqual(rows("SELECT build_seconds FROM meters WHERE build_seconds > 0"), [{ build_seconds: 30 }]);
 });
 
 test("another branch builds its preview; a pull request's run builds the pull request's", async () => {

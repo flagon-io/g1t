@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { linkPaths } from "./compute.ts";
 
 test("the page a refusal names becomes a link, without its full stop", () => {
-  assert.deepEqual(linkPaths("Deployments need a paid workspace. Start the $20 plan: /acme/-/billing"), [
-    { text: "Deployments need a paid workspace. Start the $20 plan: " },
+  assert.deepEqual(linkPaths("Deployments need a paid workspace. Start the $21 plan: /acme/-/billing"), [
+    { text: "Deployments need a paid workspace. Start the $21 plan: " },
     { text: "/acme/-/billing", href: "/acme/-/billing" },
   ]);
   assert.deepEqual(linkPaths("An owner can raise it: /acme/-/billing. Then try again."), [

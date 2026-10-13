@@ -46,7 +46,7 @@ import { fingerprint } from "./errors.ts";
 import { exportEndpointProblem, otlpBodies, send } from "./export.ts";
 import { addInto, bucketOf, decode, emptyHistogram, encode, percentiles } from "./histogram.ts";
 import { FTS, MIGRATIONS, ROLLUP_DAYS } from "./schema.ts";
-import { overCap, sizeOf } from "./quota.ts";
+import { sizeOf } from "./quota.ts";
 import { SEVERITY_FLOOR, randomId, severityOf } from "./shape.ts";
 import type { RequestHalf } from "./tail.ts";
 
@@ -273,14 +273,20 @@ export class Store {
    * tail events come from Cloudflare and need none. Returns false for a
    * token that is not this project's, or when this kind of telemetry is off.
    *
-   * `dailyCap`, for a project of a workspace without the plan, is the
-   * day's share of its free observability (../quota.ts): past it, OTLP is
-   * refused (`quota`), and tail events keep their requests without logs.
+   * `overQuota`: the project's workspace is past its day's share of its
+   * free observability (its meter says so, ../meter.ts and ../quota.ts):
+   * OTLP is refused (`quota`), and tail events keep their requests without
+   * logs. Returns the bytes kept, for the workspace's meter.
    */
-  async ingest(batch: Batch, halves: RequestHalf[] = [], token?: string, dailyCap?: number | null): Promise<{ accepted: boolean; reason?: string }> {
+  async ingest(
+    batch: Batch,
+    halves: RequestHalf[] = [],
+    token?: string,
+    overQuota = false,
+  ): Promise<{ accepted: boolean; reason?: string; bytes?: number }> {
     if (token !== undefined && !(await this.checkToken(token))) return { accepted: false, reason: "token" };
     if (token === undefined && !this.settings().deployments) return { accepted: false, reason: "off" };
-    if (overCap(this.todayBytes(), batch.bytes, dailyCap)) {
+    if (overQuota) {
       if (token !== undefined) return { accepted: false, reason: "quota" };
       batch = { ...batch, logs: [], spans: [], metrics: [], errors: [], bytes: sizeOf(halves) + sizeOf(batch.requests) };
     }
@@ -350,7 +356,7 @@ export class Store {
     // Requests are sent on when they are counted (`roll`), once both halves are in.
     this.state.waitUntil(this.forward({ ...batch, requests: [] }, []));
     await this.ensureAlarm();
-    return { accepted: true };
+    return { accepted: true, bytes: batch.bytes };
   }
 
   /** One half of a request (./tail.ts), merged with the other. */

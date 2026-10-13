@@ -103,7 +103,7 @@ const PAGES: Record<string, Card> = {
     eyebrow: "Pricing",
     title: "What it costs us, plus a markup",
     description:
-      "The forge is free. One plan, $20 a month per workspace with $10 of usage included, and usage at what it costs g1t plus 20%. No seats.",
+      "The forge is free. One plan, $21 a month per workspace with $10 of usage included, and usage at what it costs g1t plus 20%. No seats.",
   },
   explore: {
     kind: "page",

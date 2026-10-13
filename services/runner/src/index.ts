@@ -36,7 +36,7 @@ import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandbox
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { holdCredentials, revokeCredentials, runCredential } from "./credentials";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
-import { answered, capReached, describeError, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle";
+import { answered, capReached, describeError, type Owed, recordOwed, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle";
 import {
   ABUSE_EXIT_CODE,
   ABUSE_HOST,
@@ -150,6 +150,8 @@ type Meter = {
   description: string;
   instance?: string | null;
 };
+/** A stopped sandbox's time, as billing records it (`recordSandbox`). */
+type SandboxUsage = Parameters<ReturnType<typeof billingClient>["recordSandbox"]>[0];
 /**
  * What billing reserved for a sandbox's work (`ComputeGate.admit`), settled
  * when it stops at what it cost: its seconds.
@@ -606,29 +608,68 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     return closed?.ok ? closed.value : null;
   }
 
-  /** Reports how long the sandbox ran, once, whatever it exited with. */
+  /**
+   * Reports how long the sandbox ran, once, whatever it exited with. The
+   * usage is fixed now and kept (`owed:<reference>`) until billing
+   * confirms it, tried again from the object's alarm while it does not: a
+   * re-run in this object writes a new `meter`, never over what is owed.
+   * Billing records a reference once, so a try whose answer was lost
+   * cannot charge twice. The reservation is settled apart (`settleStopped`).
+   */
   private async meterStop(): Promise<void> {
     const metered = await this.ctx.storage.get<Meter & { started: number }>("meter");
     if (!metered) return;
-    await this.ctx.storage.delete("meter");
     const seconds = Math.max(1, Math.ceil((Date.now() - metered.started) / 1000));
     const run = await this.ctx.storage.get<Run>("run");
     // On the workspace's own runner: its minutes, at $0.
     const selfHosted = (await this.ctx.storage.get<boolean>("selfHostedEnded")) ?? false;
-    const recorded = await billingClient(this.env.BILLING)
-      .recordSandbox({
-        workspace: metered.workspace,
-        seconds,
-        description: selfHosted ? `${metered.description} on a self-hosted runner` : metered.description,
-        repo: metered.repo,
-        reference: `sandbox/${this.ctx.id.toString()}/${metered.started}`,
-        // Whether g1t's open-source pool may pay for it.
-        kind: run ? computeKindOf(run.kind) : null,
-        selfHosted,
-        instance: metered.instance ?? null,
-      })
-      .catch((error: unknown) => ({ ok: false as const, error: { message: String(error) } }));
-    if (!recorded.ok) console.log("sandbox time not recorded", metered.workspace, seconds, recorded.error.message);
+    const usage: SandboxUsage = {
+      workspace: metered.workspace,
+      seconds,
+      description: selfHosted ? `${metered.description} on a self-hosted runner` : metered.description,
+      repo: metered.repo,
+      reference: `sandbox/${this.ctx.id.toString()}/${metered.started}`,
+      // Whether g1t's open-source pool may pay for it.
+      kind: run ? computeKindOf(run.kind) : null,
+      selfHosted,
+      instance: metered.instance ?? null,
+    };
+    // One write: the meter becomes what is owed.
+    await this.ctx.storage.put<Owed<SandboxUsage>>(`owed:${usage.reference}`, { usage, attempts: 0, since: Date.now() });
+    await this.ctx.storage.delete("meter");
+    await this.recordOwedTime();
+  }
+
+  /**
+   * Records the sandbox time billing has not confirmed, and schedules the
+   * next try for what it still has not. Never throws: it runs in the stop
+   * hook and in the object's alarm.
+   */
+  async recordOwedTime(): Promise<void> {
+    const owed = [...(await this.ctx.storage.list<Owed<SandboxUsage>>({ prefix: "owed:" })).values()];
+    if (!owed.length) return;
+    const billing = billingClient(this.env.BILLING);
+    const result = await recordOwed(
+      owed,
+      async (usage) => {
+        const recorded = await billing.recordSandbox(usage);
+        if (!recorded.ok) console.log("sandbox time not recorded yet", usage.workspace, usage.seconds, recorded.error.message);
+        return recorded.ok;
+      },
+      Date.now(),
+    );
+    for (const entry of result.recorded) await this.ctx.storage.delete(`owed:${entry.usage.reference}`);
+    for (const entry of result.kept) await this.ctx.storage.put(`owed:${entry.usage.reference}`, entry);
+    for (const entry of result.lost) {
+      console.error("sandbox time not recorded, given up", entry.usage.reference, entry.usage.workspace, entry.usage.seconds, `after ${entry.attempts} tries`);
+      await this.ctx.storage.delete(`owed:${entry.usage.reference}`);
+    }
+    this.deleteSchedules("recordOwedTime");
+    if (result.retryInSeconds !== null) {
+      await this.schedule(result.retryInSeconds, "recordOwedTime").catch((error: unknown) =>
+        console.error("sandbox time retry not scheduled", this.ctx.id.toString(), describeError(error)),
+      );
+    }
   }
 
   override async onStop({ exitCode, reason }: StopParams): Promise<void> {

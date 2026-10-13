@@ -40,7 +40,8 @@ use crate::features::dollars;
 /// variables, each with its default.
 #[derive(Clone, Debug)]
 pub(crate) struct Config {
-    /// `PLAN_MONTHLY_CENTS`: the plan's price, per workspace: $20.
+    /// `PLAN_MONTHLY_CENTS`: the plan's price, per workspace: $21, all in
+    /// before tax (Stripe's card fee is part of it, never a line of its own).
     pub plan_monthly_cents: u32,
     /// `PLAN_INCLUDED_MICROS`: its included usage each month: $10.
     pub plan_included_micros: i64,
@@ -92,7 +93,7 @@ pub(crate) struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            plan_monthly_cents: 2_000,
+            plan_monthly_cents: 2_100,
             plan_included_micros: 10_000_000,
             oss_pool_micros: 25_000_000,
             oss_repo_micros: 2_000_000,
@@ -229,16 +230,20 @@ pub(crate) fn next_month_start(month: &str) -> String {
 /// The last second of `month`, for a charge that belongs to a month that
 /// is over.
 pub(crate) fn month_end(month: &str) -> String {
-    let year: i32 = month[..4].parse().unwrap_or(1970);
-    let number: u32 = month[5..7].parse().unwrap_or(1);
+    format!("{month}-{:02}T23:59:59Z", days_in(month))
+}
+
+/// How many days `month` (`YYYY-MM`) has.
+pub(crate) fn days_in(month: &str) -> u32 {
+    let year: i32 = month.get(..4).and_then(|y| y.parse().ok()).unwrap_or(1970);
+    let number: u32 = month.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(1);
     let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    let days = match number {
+    match number {
         2 if leap => 29,
         2 => 28,
         4 | 6 | 9 | 11 => 30,
         _ => 31,
-    };
-    format!("{month}-{days:02}T23:59:59Z")
+    }
 }
 
 /// What a trial grant would be: the account's own amount from sudo, or the
@@ -283,7 +288,7 @@ impl Billing {
         if account.kind == g1t_contracts::billing::AccountKind::Enterprise {
             return Ok(PlanKind::Enterprise);
         }
-        if self.stripe.is_none() || account.allowances.plan {
+        if !self.charging || account.allowances.plan {
             return Ok(PlanKind::Paid);
         }
         // Both subscriptions are asked for at once; either one is the plan.
@@ -596,6 +601,15 @@ impl Billing {
             return Ok(Drawn::default());
         }
         let plan = self.has_plan(workspace).await?;
+        self.draw_as(workspace, gross, month, eligible, plan).await
+    }
+
+    /// `draw`, for a workspace that had the plan (`plan`) or not in
+    /// `month`: a month that is over is paid for as it was then.
+    pub(crate) async fn draw_as(&self, workspace: &str, gross: i64, month: &str, eligible: &Eligible, plan: bool) -> Result<Drawn> {
+        if gross <= 0 {
+            return Ok(Drawn::default());
+        }
         let credit_left = if plan {
             left(self.plans.plan_included_micros, self.allowance_used("plan_credit", workspace, month).await?)
         } else {
@@ -628,6 +642,26 @@ impl Billing {
             drawn.given = (gross - drawn.credit - drawn.trial - drawn.oss).max(0);
         }
         Ok(drawn)
+    }
+
+    /// Gives back what `draw` took for an entry that was not written: a
+    /// duplicate delivery of usage already on the ledger, or a write that
+    /// failed. `repo` is the eligible repository the open-source pool paid
+    /// for, if any. What g1t covered was never taken from anything.
+    pub(crate) async fn undraw(&self, workspace: &str, month: &str, drawn: &Drawn, repo: Option<&str>) -> Result<()> {
+        self.return_allowance("plan_credit", workspace, month, drawn.credit).await?;
+        if drawn.trial > 0 {
+            self.db
+                .prepare("UPDATE trial_grants SET used_micros = MAX(0, used_micros - ?2) WHERE workspace = ?1")
+                .bind(&[workspace.into(), (drawn.trial as f64).into()])?
+                .run()
+                .await?;
+        }
+        if let (true, Some(repo)) = (drawn.oss > 0, repo) {
+            self.return_allowance("oss_pool", "", month, drawn.oss).await?;
+            self.return_allowance("oss_repo", &repo.to_lowercase(), month, drawn.oss).await?;
+        }
+        Ok(())
     }
 
     /// g1t's pools this month, for sudo.
@@ -763,7 +797,7 @@ mod tests {
     #[test]
     fn the_defaults_are_the_published_ones() {
         let c = Config::default();
-        assert_eq!(c.plan_monthly_cents, 2_000);
+        assert_eq!(c.plan_monthly_cents, 2_100);
         assert_eq!(c.plan_included_micros, 10_000_000);
         assert_eq!(c.oss_pool_micros, 25_000_000);
         assert_eq!(c.oss_repo_micros, 2_000_000);

@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { answered, capReached, describeError, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle.ts";
+import {
+  answered,
+  capReached,
+  describeError,
+  OWED_GIVE_UP_MS,
+  OWED_MAX_DELAY_SECONDS,
+  owedDelaySeconds,
+  recordOwed,
+  stoppedShort,
+  tellStopped,
+  withinTimeCap,
+} from "./lifecycle.ts";
 
 const quiet = { waitMs: 0 };
 
@@ -111,4 +122,47 @@ test("a sandbox g1t stopped fails even when its exit code says 0", () => {
   assert.equal(stoppedShort(0, "It ran into its time cap of 60 minutes."), true);
   assert.equal(stoppedShort(137, null), true);
   assert.equal(stoppedShort(1, "why"), true);
+});
+
+test("sandbox time billing confirms is forgotten; the rest is kept and tried again later", async () => {
+  const now = 1_000_000_000;
+  const owed = [
+    { usage: { reference: "sandbox/a/1" }, attempts: 0, since: now },
+    { usage: { reference: "sandbox/b/2" }, attempts: 2, since: now - 1000 },
+  ];
+  const sent: string[] = [];
+  const result = await recordOwed(
+    owed,
+    async (usage) => {
+      sent.push(usage.reference);
+      if (usage.reference === "sandbox/b/2") throw new Error("billing answered 503");
+      return true;
+    },
+    now,
+  );
+  assert.deepEqual(sent, ["sandbox/a/1", "sandbox/b/2"]);
+  assert.deepEqual(result.recorded.map((entry) => entry.usage.reference), ["sandbox/a/1"]);
+  // The same usage, under the same reference: billing records it once.
+  assert.deepEqual(result.kept, [{ usage: { reference: "sandbox/b/2" }, attempts: 3, since: now - 1000 }]);
+  assert.deepEqual(result.lost, []);
+  assert.equal(result.retryInSeconds, owedDelaySeconds(3));
+});
+
+test("nothing kept means no retry; time tried for a week is given up", async () => {
+  const now = 1_000_000_000;
+  const done = await recordOwed([{ usage: { reference: "r" }, attempts: 0, since: now }], async () => true, now);
+  assert.equal(done.retryInSeconds, null);
+  const old = await recordOwed([{ usage: { reference: "r" }, attempts: 40, since: now - OWED_GIVE_UP_MS }], async () => false, now);
+  assert.deepEqual(old.kept, []);
+  assert.equal(old.lost.length, 1);
+  assert.equal(old.retryInSeconds, null);
+});
+
+test("tries back off from 30 seconds to an hour", () => {
+  assert.equal(owedDelaySeconds(0), 30);
+  assert.equal(owedDelaySeconds(1), 30);
+  assert.equal(owedDelaySeconds(2), 60);
+  assert.equal(owedDelaySeconds(5), 480);
+  assert.equal(owedDelaySeconds(8), OWED_MAX_DELAY_SECONDS);
+  assert.equal(owedDelaySeconds(1000), OWED_MAX_DELAY_SECONDS);
 });

@@ -102,7 +102,24 @@ impl Billing {
         let Some(stripe) = &self.stripe else { return Ok(None) };
         // The card invoices are charged to (the default), not merely the
         // newest: what Stripe's billing page made the default is the one.
-        let card = stripe.default_payment_method(customer).await?.filter(|m| m.kind == "card").and_then(|m| {
+        let method = match stripe.default_payment_method(customer).await {
+            Ok(method) => method,
+            // Deleted at Stripe, or from another account: every account
+            // with it forgets it, so the next card saved makes a new one.
+            Err(error) if crate::stripe::is_missing(&error) => {
+                self.db
+                    .prepare(
+                        "UPDATE accounts SET customer_id = NULL, card_brand = NULL, card_last4 = NULL, card_exp_month = NULL,
+                           card_exp_year = NULL, card_synced_at = NULL WHERE customer_id = ?",
+                    )
+                    .bind(&[customer.into()])?
+                    .run()
+                    .await?;
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
+        let card = method.filter(|m| m.kind == "card").and_then(|m| {
             Some(Card { brand: m.brand?, last4: m.last4?, exp_month: m.exp_month?, exp_year: m.exp_year? })
         });
         self.db

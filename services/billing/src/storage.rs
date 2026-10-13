@@ -36,7 +36,8 @@
 //! records what each workspace's private repositories hold and what is
 //! free that day (`FREE_PRIVATE_STORAGE_BYTES`, 1 GB, for everyone). Like
 //! Cloudflare's own storage billing, a month's GB-months are the days'
-//! amounts past the free one, added up and divided by 30, and only the
+//! amounts past the free one, added up and divided by the month's days
+//! (28 to 31), and only the
 //! plan is charged for them. A free workspace is never charged for
 //! storage: pushes to its private repositories stop once they hold its
 //! free amount. Public repositories are never charged.
@@ -52,8 +53,52 @@ use worker::Result;
 use crate::credits::{self, Drawn, Eligible};
 use crate::{Billing, optional};
 
-/// Sources billing charges itself when the month is over.
-pub(crate) const CHARGED_HERE: [&str; 5] = ["security", "context", "storage", "git", "cache"];
+/// Sources billing charges itself when the month is over: those billing
+/// measures (storage, git operations, package storage) and those other
+/// services note through the month (`note_pending`: security scans, search
+/// embeddings, the actions cache, observability data).
+pub(crate) const CHARGED_HERE: [&str; 7] = ["security", "context", "storage", "git", "cache", "package_storage", "telemetry"];
+
+/// A `pending_usage` column less what the workspace had of it when its
+/// test-mode data was detached (`pending_baselines`, migration 0060),
+/// never below nothing. Reads `pending_usage` unaliased.
+macro_rules! net_of_baseline {
+    ($column:literal) => {
+        concat!(
+            "MAX(0, COALESCE(pending_usage.", $column, ", 0) - COALESCE((SELECT b.", $column,
+            " FROM pending_baselines b WHERE b.workspace = pending_usage.workspace AND b.source = pending_usage.source",
+            " AND b.month = pending_usage.month), 0))"
+        )
+    };
+}
+
+/// What a pending row cost g1t since the detach (all of it without one):
+/// what everything that values or charges pending usage reads.
+pub(crate) const NET_COST: &str = net_of_baseline!("cost_micros");
+/// What a pending row will be charged since the detach, before terms.
+pub(crate) const NET_CHARGE: &str = net_of_baseline!("charge_micros");
+
+/// A month's figure for a source, as `note_pending` writes it. Never into
+/// a month closed for the workspace, and the update leaves a row already
+/// charged as it was: a late report of a month that is over never
+/// rewrites what was charged.
+pub(crate) const SET_PENDING: &str = "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, detail)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+     WHERE NOT EXISTS (SELECT 1 FROM month_closes WHERE month_closes.workspace = ?1 AND month_closes.month = ?3)
+     ON CONFLICT (workspace, source, month) DO UPDATE SET
+       charge_micros = ?4, cost_micros = ?5, updated_at = ?6, detail = COALESCE(?7, detail)
+     WHERE pending_usage.charged_at IS NULL";
+
+/// Whether a workspace had the plan in a month by what it paid or drew:
+/// a plan payment in the month that a test-mode detach has not reversed
+/// (its `_test_detach` row nets it to nothing), or the plan's included
+/// usage drawn in it. `?1` workspace, `?2` the month's first day, `?3` the
+/// next month's, `?4` the month.
+pub(crate) const PLAN_EVIDENCE: &str = "SELECT (EXISTS (SELECT 1 FROM plan_payments p WHERE p.workspace = ?1 AND p.paid_at >= ?2 AND p.paid_at < ?3
+                        AND p.amount_micros > 0 AND substr(p.invoice_id, -12) <> '_test_detach'
+                        AND p.amount_micros + COALESCE((SELECT SUM(q.amount_micros) FROM plan_payments q
+                                                        WHERE q.invoice_id = p.invoice_id || '_test_detach'), 0) > 0)
+          OR EXISTS (SELECT 1 FROM allowance_use WHERE kind = 'plan_credit' AND scope = ?1 AND month = ?4 AND used > 0)) AS had";
 
 /// Sources only the plan is charged for: a free workspace's are not kept.
 pub(crate) const PLAN_ONLY: [&str; 1] = ["cache"];
@@ -98,20 +143,21 @@ pub(crate) fn git_since(month: &str) -> String {
 pub(crate) const GB: f64 = 1_000_000_000.0;
 
 /// GB-months from a month's daily measures, each `(private, free)` bytes:
-/// what was past the free amount each day, over 30 days.
-pub(crate) fn storage_gb_months(days: &[(i64, i64)]) -> f64 {
-    days.iter().map(|(private, free)| (private - free).max(0) as f64).sum::<f64>() / GB / 30.0
+/// what was past the free amount each day, over the month's `month_days`.
+pub(crate) fn storage_gb_months(days: &[(i64, i64)], month_days: u32) -> f64 {
+    days.iter().map(|(private, free)| (private - free).max(0) as f64).sum::<f64>() / GB / f64::from(month_days.max(1))
 }
 
 /// GB-months of package storage past the free amounts from a month's
 /// daily measures, each `(public, private, public_free, private_free)`:
-/// public and private past their own amounts, over 30 days.
-pub(crate) fn package_gb_months(days: &[(i64, i64, i64, i64)]) -> f64 {
+/// public and private past their own amounts, over the month's
+/// `month_days`.
+pub(crate) fn package_gb_months(days: &[(i64, i64, i64, i64)], month_days: u32) -> f64 {
     days.iter()
         .map(|(public, private, public_free, private_free)| ((public - public_free).max(0) + (private - private_free).max(0)) as f64)
         .sum::<f64>()
         / GB
-        / 30.0
+        / f64::from(month_days.max(1))
 }
 
 /// What R2 charges g1t a GB-month, when the price book cannot be read.
@@ -132,7 +178,22 @@ pub(crate) fn title(source: &str) -> &'static str {
         "git" => "Git operations past the free amount",
         "cache" => "Actions cache storage",
         "domains" => "Custom domains",
+        "telemetry" => "Observability data past the free amount",
         _ => "Metered usage",
+    }
+}
+
+/// Whether a batch's first statement, an insert `RETURNING id`, wrote its
+/// row: none comes back when `ON CONFLICT … DO NOTHING` skipped it.
+pub(crate) fn posted(results: &[worker::D1Result]) -> Result<bool> {
+    #[derive(Deserialize)]
+    struct Row {
+        #[allow(dead_code)]
+        id: String,
+    }
+    match results.first() {
+        Some(result) => Ok(!result.results::<Row>()?.is_empty()),
+        None => Ok(false),
     }
 }
 
@@ -152,47 +213,69 @@ pub(crate) struct UsageLine<'a> {
 
 impl Billing {
     /// Puts a usage entry on the ledger and takes it off the balance, as
-    /// one write.
-    pub(crate) async fn post_usage(&self, line: UsageLine<'_>) -> Result<()> {
+    /// one write. False when an entry with its reference is already there
+    /// (another delivery of the same usage wrote it first): nothing is
+    /// written, and the caller gives back what it drew (`undraw`).
+    pub(crate) async fn post_usage(&self, line: UsageLine<'_>) -> Result<bool> {
+        self.post_usage_with(line, vec![]).await
+    }
+
+    /// `post_usage`, with `also` written in the same batch, whether or not
+    /// the entry was new.
+    pub(crate) async fn post_usage_with(&self, line: UsageLine<'_>, also: Vec<worker::D1PreparedStatement>) -> Result<bool> {
         // The price versions it was charged at (pricing.rs).
         let mut versions = Vec::new();
         for meter in crate::pricing::meters_of(line.task) {
             versions.extend(self.version_now(meter).await?);
         }
         let price_version = versions.join(",");
+        let id = new_id("led", now_ms());
+        // The ledger's unique reference is the guard: the entry goes in
+        // only if no other has it, and the balance moves only if it did.
+        let mut statements = vec![
+            self.db
+                .prepare(
+                    "INSERT INTO ledger
+                       (id, workspace, kind, amount_micros, description, repo, task, cost_micros, reference,
+                        created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version)
+                     VALUES (?, ?, 'usage', ?, ?, ?, ?, ?, ?, ?, 'g1t', ?, ?, ?, ?, ?)
+                     ON CONFLICT (reference) DO NOTHING RETURNING id",
+                )
+                .bind(&[
+                    id.as_str().into(),
+                    line.workspace.into(),
+                    (-(line.charged as f64)).into(),
+                    line.description.into(),
+                    optional(line.repo),
+                    line.task.into(),
+                    (line.cost as f64).into(),
+                    line.reference.into(),
+                    line.created_at.into(),
+                    (line.drawn.credit as f64).into(),
+                    (line.drawn.trial as f64).into(),
+                    (line.drawn.oss as f64).into(),
+                    // What g1t covered itself (a free workspace's scans and
+                    // embeddings): given, never margin lost.
+                    (line.drawn.given as f64).into(),
+                    optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
+                ])?,
+            self.balance_if_posted(line.workspace, line.charged, &id)?,
+        ];
+        statements.extend(also);
+        let results = self.db.batch(statements).await?;
+        posted(&results)
+    }
+
+    /// Takes `charged` off the workspace's balance, only if the ledger entry
+    /// `id` was written in the same batch.
+    pub(crate) fn balance_if_posted(&self, workspace: &str, charged: i64, id: &str) -> Result<worker::D1PreparedStatement> {
         self.db
-            .batch(vec![
-                self.db
-                    .prepare(
-                        "INSERT INTO ledger
-                           (id, workspace, kind, amount_micros, description, repo, task, cost_micros, reference,
-                            created_at, billed_to, credit_micros, trial_micros, oss_micros, price_version)
-                         VALUES (?, ?, 'usage', ?, ?, ?, ?, ?, ?, ?, 'g1t', ?, ?, ?, ?)",
-                    )
-                    .bind(&[
-                        new_id("led", now_ms()).into(),
-                        line.workspace.into(),
-                        (-(line.charged as f64)).into(),
-                        line.description.into(),
-                        optional(line.repo),
-                        line.task.into(),
-                        (line.cost as f64).into(),
-                        line.reference.into(),
-                        line.created_at.into(),
-                        (line.drawn.credit as f64).into(),
-                        (line.drawn.trial as f64).into(),
-                        (line.drawn.oss as f64).into(),
-                        optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
-                    ])?,
-                self.db
-                    .prepare(
-                        "INSERT INTO accounts (workspace, balance_micros, created_at) VALUES (?1, ?2, ?3)
-                         ON CONFLICT (workspace) DO UPDATE SET balance_micros = balance_micros + ?2",
-                    )
-                    .bind(&[line.workspace.into(), (-(line.charged as f64)).into(), rfc3339(now_ms()).into()])?,
-            ])
-            .await?;
-        Ok(())
+            .prepare(
+                "INSERT INTO accounts (workspace, balance_micros, created_at)
+                 SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM ledger WHERE id = ?4)
+                 ON CONFLICT (workspace) DO UPDATE SET balance_micros = balance_micros + ?2",
+            )
+            .bind(&[workspace.into(), (-(charged as f64)).into(), rfc3339(now_ms()).into(), id.into()])
     }
 
     /// Writes down what a source cost g1t so far in `month`, what it will
@@ -211,12 +294,7 @@ impl Billing {
         let covered = COVERED_FOR_FREE.contains(&source) && !self.has_plan(&workspace.to_lowercase()).await?;
         let charge = if covered { 0 } else { credits::with_margin(cost_micros, self.margin_percent) };
         self.db
-            .prepare(
-                "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, detail)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                 ON CONFLICT (workspace, source, month) DO UPDATE SET
-                   charge_micros = ?4, cost_micros = ?5, updated_at = ?6, detail = COALESCE(?7, detail)",
-            )
+            .prepare(SET_PENDING)
             .bind(&[
                 workspace.to_lowercase().into(),
                 source.into(),
@@ -234,7 +312,7 @@ impl Billing {
     /// Charges every month that is over for the usage billing charges
     /// itself, once each.
     pub(crate) async fn charge_pending(&self) -> Result<()> {
-        if self.stripe.is_none() {
+        if !self.charging {
             return Ok(());
         }
         let now = rfc3339(now_ms());
@@ -249,8 +327,9 @@ impl Billing {
         let marks = CHARGED_HERE.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(", ");
         let due = self
             .db
+            // Less what was metered before a test-mode detach: not charged.
             .prepare(format!(
-                "SELECT workspace, source, month, cost_micros FROM pending_usage
+                "SELECT workspace, source, month, {NET_COST} AS cost_micros FROM pending_usage
                  WHERE month < ? AND charged_at IS NULL AND source IN ({marks}) ORDER BY month LIMIT 50"
             ))
             .bind(&[current.as_str().into()])?
@@ -258,24 +337,31 @@ impl Billing {
             .await?
             .results::<Row>()?;
         for row in due {
-            // Claimed first, so two crons never charge it twice.
-            let claimed = self
-                .db
-                .prepare(
-                    "UPDATE pending_usage SET charged_at = ?1
-                     WHERE workspace = ?2 AND source = ?3 AND month = ?4 AND charged_at IS NULL RETURNING workspace",
-                )
-                .bind(&[now.as_str().into(), row.workspace.as_str().into(), row.source.as_str().into(), row.month.as_str().into()])?
-                .first::<serde_json::Value>(None)
-                .await?;
+            // Marked charged in the same batch as its ledger entry, never
+            // before: a failure in between leaves it to the next tick, and
+            // the ledger's unique reference keeps two crons from charging
+            // it twice.
+            let mark = || {
+                self.db
+                    .prepare(
+                        "UPDATE pending_usage SET charged_at = ?1
+                         WHERE workspace = ?2 AND source = ?3 AND month = ?4 AND charged_at IS NULL",
+                    )
+                    .bind(&[now.as_str().into(), row.workspace.as_str().into(), row.source.as_str().into(), row.month.as_str().into()])
+            };
             let cost = row.cost_micros.unwrap_or(0);
-            if claimed.is_none() || cost <= 0 {
+            if cost <= 0 {
+                mark()?.run().await?;
                 continue;
             }
             let base = credits::with_margin(cost, self.margin_percent);
             let (charge, terms_note, discount) = self.charged(&row.workspace, base).await?;
-            let plan = self.has_plan(&row.workspace).await?;
-            let drawn = self.draw(&row.workspace, charge, &row.month, &month_end_eligible(&row.source, plan)).await?;
+            // The plan as it was in that month, not as it is now: a plan
+            // started since does not pay for it, and one ended since still
+            // does.
+            let plan = self.had_plan_in(&row.workspace, &row.month).await?;
+            let eligible = month_end_eligible(&row.source, plan);
+            let drawn = self.draw_as(&row.workspace, charge, &row.month, &eligible, plan).await?;
             let detail = if row.source == "storage" {
                 let gb_months = self.gb_months(&row.workspace, &row.month).await?;
                 format!(": {gb_months:.2} GB-months")
@@ -285,7 +371,7 @@ impl Billing {
             let description = format!("{} in {}{detail}{terms_note}{}", title(&row.source), row.month, drawn.note());
             let reference = format!("{}/{}/{}", row.source, row.workspace, row.month);
             let created_at = credits::month_end(&row.month);
-            self.post_usage(UsageLine {
+            let line = UsageLine {
                 workspace: &row.workspace,
                 charged: charge - drawn.total(),
                 description: &description,
@@ -295,11 +381,56 @@ impl Billing {
                 reference: &reference,
                 created_at: &created_at,
                 drawn,
-            })
-            .await?;
+            };
+            let posted = match self.post_usage_with(line, vec![mark()?]).await {
+                Ok(posted) => posted,
+                Err(error) => {
+                    // Nothing was written: what was drawn goes back.
+                    self.undraw(&row.workspace, &row.month, &drawn, None).await?;
+                    return Err(error);
+                }
+            };
+            if !posted {
+                // Charged already (another tick won): give back the draw.
+                self.undraw(&row.workspace, &row.month, &drawn, None).await?;
+                continue;
+            }
             self.record_discount(&reference, discount).await?;
         }
         Ok(())
+    }
+
+    /// Whether the workspace had the plan in `month`: g1t's own,
+    /// enterprises and a plan staff gave by their terms; otherwise a plan
+    /// invoice paid in the month and not reversed by a test-mode detach,
+    /// the plan's included usage drawn in it, or a plan on now that
+    /// started before the month ended (`PLAN_EVIDENCE`).
+    pub(crate) async fn had_plan_in(&self, workspace: &str, month: &str) -> Result<bool> {
+        let account = self.account_of(workspace).await?;
+        let now = self.plan_kind_for(workspace, &account).await?;
+        if matches!(now, PlanKind::Internal | PlanKind::Enterprise) || account.allowances.plan || !self.charging {
+            return Ok(now != PlanKind::Free);
+        }
+        let next = credits::next_month_start(month);
+        if now == PlanKind::Paid
+            && let Some((started_at, _)) = self.plan_cycle(workspace).await?
+            && started_at.as_str() < next.as_str()
+        {
+            return Ok(true);
+        }
+        #[derive(Deserialize)]
+        struct Evidence {
+            had: Option<i64>,
+        }
+        Ok(self
+            .db
+            .prepare(PLAN_EVIDENCE)
+            .bind(&[workspace.into(), format!("{month}-01").into(), next.as_str().into(), month.into()])?
+            .first::<Evidence>(None)
+            .await?
+            .and_then(|e| e.had)
+            .unwrap_or(0)
+            == 1)
     }
 
     /// A workspace's private storage past the free amount in `month`.
@@ -316,7 +447,7 @@ impl Billing {
             .all()
             .await?
             .results::<Day>()?;
-        Ok(storage_gb_months(&days.iter().map(|d| (d.private_bytes, d.free_bytes)).collect::<Vec<_>>()))
+        Ok(storage_gb_months(&days.iter().map(|d| (d.private_bytes, d.free_bytes)).collect::<Vec<_>>(), credits::days_in(month)))
     }
 
     /// Once a day: what each workspace's private repositories hold, and
@@ -409,6 +540,7 @@ impl Billing {
                 .results::<Day>()?;
             let gb_months = package_gb_months(
                 &days.iter().map(|d| (d.public_bytes, d.private_bytes, d.public_free_bytes, d.private_free_bytes)).collect::<Vec<_>>(),
+                credits::days_in(&month),
             );
             if gb_months > 0.0 {
                 let detail = format!(
@@ -488,17 +620,31 @@ mod tests {
     fn storage_past_the_free_amount_is_counted_by_the_day() {
         // 3 GB private with 1 GB free, every day of a 30-day month: 2 GB-months.
         let month = vec![(3_000_000_000, 1_000_000_000); 30];
-        assert!((storage_gb_months(&month) - 2.0).abs() < 1e-9);
+        assert!((storage_gb_months(&month, 30) - 2.0).abs() < 1e-9);
         // Under the free amount: nothing.
-        assert_eq!(storage_gb_months(&[(500_000_000, 1_000_000_000); 30]), 0.0);
+        assert_eq!(storage_gb_months(&[(500_000_000, 1_000_000_000); 30], 30), 0.0);
         // The plan has the same 1 GB free: 11 GB on it all month is 10
         // GB-months, $5.00 to g1t, $6.00 charged, from its included usage.
         let days = vec![(11_000_000_000, 1_000_000_000); 30];
-        assert!((storage_gb_months(&days) - 10.0).abs() < 1e-9);
-        assert_eq!(credits::with_margin(storage_cost(storage_gb_months(&days), STORAGE_MICROS_PER_GB_MONTH as f64), 20), 6_000_000);
+        assert!((storage_gb_months(&days, 30) - 10.0).abs() < 1e-9);
+        assert_eq!(credits::with_margin(storage_cost(storage_gb_months(&days, 30), STORAGE_MICROS_PER_GB_MONTH as f64), 20), 6_000_000);
         // Ten days of 4 GB past it: a third of 4 GB-months.
         let days = vec![(5_000_000_000, 1_000_000_000); 10];
-        assert!((storage_gb_months(&days) - 4.0 / 3.0).abs() < 1e-9);
+        assert!((storage_gb_months(&days, 30) - 4.0 / 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_month_of_storage_is_its_own_days_not_thirty() {
+        // 2 GB past the free amount every day of a 31-day month is 2
+        // GB-months, not 2.07; every day of February, 2 too, not 1.87.
+        let october = vec![(3_000_000_000, 1_000_000_000); 31];
+        assert!((storage_gb_months(&october, credits::days_in("2026-10")) - 2.0).abs() < 1e-9);
+        let february = vec![(3_000_000_000, 1_000_000_000); 28];
+        assert!((storage_gb_months(&february, credits::days_in("2026-02")) - 2.0).abs() < 1e-9);
+        assert_eq!(credits::days_in("2028-02"), 29);
+        let gb = GB as i64;
+        let packages = vec![(11 * gb, 0, 10 * gb, 0); 31];
+        assert!((package_gb_months(&packages, 31) - 1.0).abs() < 1e-9);
     }
 
     #[test]
@@ -506,9 +652,9 @@ mod tests {
         let gb = GB as i64;
         // 12 GB public with 10 free, 0.5 GB private with 0.5 free: 2 GB past, for 15 days.
         let days = vec![(12 * gb, gb / 2, 10 * gb, gb / 2); 15];
-        assert!((package_gb_months(&days) - 1.0).abs() < 1e-9);
+        assert!((package_gb_months(&days, 30) - 1.0).abs() < 1e-9);
         // Under both amounts: nothing.
-        assert_eq!(package_gb_months(&[(gb, gb / 4, 10 * gb, gb / 2)]), 0.0);
+        assert_eq!(package_gb_months(&[(gb, gb / 4, 10 * gb, gb / 2)], 30), 0.0);
         // At R2's rate, a GB-month is $0.015.
         assert_eq!(storage_cost(1.0, PACKAGE_MICROS_PER_GB_MONTH as f64), 15_000);
     }
@@ -531,6 +677,16 @@ mod tests {
         assert_eq!(title("security"), "Security scans");
         assert!(CHARGED_HERE.contains(&"storage") && !CHARGED_HERE.contains(&"deployments"));
         assert!(CHARGED_HERE.contains(&"git"));
+        // Package storage and observability data are charged when the month
+        // closes, like storage, and each is named on the statement.
+        for source in ["package_storage", "telemetry"] {
+            assert!(CHARGED_HERE.contains(&source), "{source}");
+            assert_ne!(title(source), "Metered usage", "{source}");
+            assert!(!crate::pricing::meters_of(source).is_empty(), "{source}");
+            assert!(crate::pricing::meters_of(source).iter().all(|m| crate::pricing::MONTHLY.contains(m)), "{source}");
+            assert!(!COVERED_FOR_FREE.contains(&source) && !PLAN_ONLY.contains(&source), "{source}");
+        }
+        assert_eq!(title("telemetry"), "Observability data past the free amount");
     }
 
     #[test]

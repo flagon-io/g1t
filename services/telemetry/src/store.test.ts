@@ -313,21 +313,23 @@ test("search text, FTS queries and chart steps", () => {
   assert.equal(aggregate([]).length, 0);
 });
 
-test("a free workspace's project is refused past its day's share, and tail events keep only their requests", async () => {
+test("a project of a workspace past its day's share is refused, and tail events keep only their requests", async () => {
   const store = new Store(state());
   const { secret } = await store.createToken("prj_1", "ci", "u1");
   const batch = (bytes: number) => ({ ...emptyBatch(), bytes });
-  assert.equal((await store.ingest(batch(60), [], secret, 100)).accepted, true);
+  assert.deepEqual(await store.ingest(batch(60), [], secret, false), { accepted: true, bytes: 60 });
   assert.equal(store.todayBytes(), 60);
-  const refused = await store.ingest(batch(50), [], secret, 100);
+  const refused = await store.ingest(batch(50), [], secret, true);
   assert.deepEqual(refused, { accepted: false, reason: "quota" });
   assert.equal(store.todayBytes(), 60, "nothing refused is counted");
-  // Without a cap (the plan, or a workspace not known yet) nothing is refused.
-  assert.equal((await store.ingest(batch(5000), [], secret, null)).accepted, true);
-  // Tail events past the share keep their requests, not their logs.
+  // Not over (the plan, or a workspace not known yet): nothing is refused.
+  assert.equal((await store.ingest(batch(5000), [], secret)).accepted, true);
+  // Tail events past the share keep their requests, not their logs, and count only what they kept.
   const tail = { ...emptyBatch(), bytes: 10_000 };
   tail.logs.push({ id: "l1", time_us: 1, severity: "info", severity_number: 9, body: "x".repeat(9000), trace_id: null, span_id: null, request_id: null, attributes: {}, service: "web", environment: null, deployment_id: null, commit_sha: null, source: "cloudflare" });
-  assert.equal((await store.ingest(tail, [], undefined, 100)).accepted, true);
+  const kept = await store.ingest(tail, [], undefined, true);
+  assert.equal(kept.accepted, true);
+  assert.ok((kept.bytes ?? 0) < 100);
   assert.equal(store.logs({}).items.length, 0);
   assert.equal(store.usage().today_bytes, store.todayBytes());
   // The workspace is remembered as the site says it.

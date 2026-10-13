@@ -191,9 +191,10 @@ const MAX_HOLD = 200;
  * the account's share of the open-source pool and of trials, and staff's
  * override of the days of audit log kept. A blank amount means the default
  * (for the audit log, the plan's). A hold is a line saying why new compute
- * is held; blank is no hold. The agent overrides (agents at once, the run
- * and issue caps) are retired with g1t's own agents: they are always sent
- * cleared.
+ * is held; blank is no hold. A run's cap is not staff's to set here: it is
+ * always sent cleared, so the plan's applies. The overrides retired with
+ * g1t's own agents (agents at once, an issue's cap) control nothing and are
+ * not sent; billing keeps them empty.
  */
 export function parseAllowances(form: FormData): Parsed<Allowances> {
   const amount = (name: string, what: string, max: number, maxText: string, min = 0): Parsed<number | null> => {

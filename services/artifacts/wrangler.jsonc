@@ -112,7 +112,9 @@
 			]
 		}
 	],
-	// Daily: folios in the trash for over 30 days are deleted for good.
-	"triggers": { "crons": ["17 3 * * *"] },
+	// Daily: folios in the trash for over 30 days are deleted for good. Every
+	// quarter hour: each workspace's month of search embeddings is reported
+	// to billing (src/embed-billing.ts; DAILY_CRON in src/index.ts).
+	"triggers": { "crons": ["17 3 * * *", "*/15 * * * *"] },
 	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

@@ -18,7 +18,7 @@ use g1t_contracts::billing::{
     AdminGoodwillArgs, AdminOveragesArgs, AdminVelocityArgs, CreditKind, Goodwill, LedgerEntry, Overage, PlanKind, Velocity,
 };
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::{FailureCode, Outcome, new_id};
+use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -35,6 +35,28 @@ const GOODWILL_DAYS: u64 = 365;
 /// Reference prefix of goodwill credits. Starts `crd`, so like every
 /// credit from g1t it never counts as a payment.
 pub(crate) const GOODWILL_PREFIX: &str = "crd_goodwill_";
+
+/// A goodwill credit without a request key, to the same workspace this
+/// soon after another, is taken as the same click again: two minutes.
+const GOODWILL_REPEAT_MS: u64 = 2 * 60 * 1000;
+
+/// A goodwill credit's ledger reference: from the request's key when it
+/// has one (letters, digits, `-` and `_`, up to 64), else from the
+/// workspace and the two minutes it was asked in, so that a request sent
+/// twice gives one credit.
+pub(crate) fn goodwill_reference(workspace: &str, request_key: Option<&str>, now_ms: u64) -> String {
+    let key: String = request_key
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(64)
+        .collect();
+    if key.is_empty() {
+        format!("{GOODWILL_PREFIX}{workspace}_{}", now_ms / GOODWILL_REPEAT_MS)
+    } else {
+        format!("{GOODWILL_PREFIX}{workspace}_k{key}")
+    }
+}
 
 /// The median of the months given; 0 with none.
 pub(crate) fn typical(months: &[i64]) -> i64 {
@@ -113,6 +135,28 @@ impl Billing {
             .map(|m| get(m))
             .collect();
         Ok((get(&this), history))
+    }
+
+    /// A goodwill credit this request already gave: the entry with its
+    /// reference, or, for a request without a key (`recent`), any goodwill
+    /// credit to the workspace in the last `GOODWILL_REPEAT_MS`.
+    async fn goodwill_given(&self, workspace: &str, reference: &str, recent: bool, now: u64) -> Result<Option<LedgerRow>> {
+        let since = rfc3339(now.saturating_sub(GOODWILL_REPEAT_MS));
+        self.db
+            .prepare(
+                "SELECT * FROM ledger WHERE reference = ?1
+                    OR (?2 = 1 AND workspace = ?3 AND reference LIKE ?4 AND created_at >= ?5)
+                 ORDER BY reference = ?1 DESC, created_at DESC LIMIT 1",
+            )
+            .bind(&[
+                reference.into(),
+                (u8::from(recent) as f64).into(),
+                workspace.into(),
+                format!("{GOODWILL_PREFIX}%").into(),
+                since.into(),
+            ])?
+            .first::<LedgerRow>(None)
+            .await
     }
 
     /// When the workspace last had a goodwill credit, if in the last year.
@@ -224,6 +268,14 @@ impl Billing {
         if workspace.is_empty() || a.by.trim().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Name the workspace, and who is giving the credit."));
         }
+        // Once per request: the same key again (a double click, a retry)
+        // answers with the credit already given rather than a second one.
+        let now = now_ms();
+        let reference = goodwill_reference(&workspace, a.request_key.as_deref(), now);
+        let keyless = a.request_key.as_deref().map(str::trim).is_none_or(str::is_empty);
+        if let Some(given) = self.goodwill_given(&workspace, &reference, keyless, now).await? {
+            return Ok(Outcome::Ok(LedgerEntry::from(given)));
+        }
         let Some(overage) = self.overage_of(&workspace, true).await? else {
             return Ok(Outcome::fail(FailureCode::Conflict, "g1t's own workspaces are not charged, so there is nothing to credit."));
         };
@@ -253,11 +305,19 @@ impl Billing {
             .map(str::to_owned)
             .or_else(|| overage.spike.as_ref().map(|s| s.detected_at[..10].to_owned()))
             .unwrap_or_else(|| rfc3339(now_ms())[..10].to_owned());
-        let reference = format!("{GOODWILL_PREFIX}{}", new_id("gw", now_ms()));
         let description = format!("Credit from g1t: accidental usage on {day}");
         let note = if reason.is_empty() { format!("Accidental usage on {day}") } else { format!("Accidental usage on {day}: {reason}") };
-        self.grant_credit(&workspace, CreditKind::Goodwill, amount, &note, a.by.trim(), None, None, None, Some(reference.clone()), Some(description))
-            .await?;
+        // Two at once with the same reference: the grant's own key lets one
+        // in, and the other answers with it.
+        if let Err(error) = self
+            .grant_credit(&workspace, CreditKind::Goodwill, amount, &note, a.by.trim(), None, None, None, Some(reference.clone()), Some(description))
+            .await
+        {
+            return match self.goodwill_given(&workspace, &reference, false, now).await? {
+                Some(given) => Ok(Outcome::Ok(LedgerEntry::from(given))),
+                None => Err(error),
+            };
+        }
         let absorbed = absorbed_by(amount, &quote);
         let account = self.account_of(&workspace).await?;
         self.audit(
@@ -347,6 +407,25 @@ impl Billing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_goodwill_request_sent_twice_is_one_credit() {
+        let now = 1_791_000_000_000;
+        // The same key: the same reference, whenever it comes.
+        let keyed = goodwill_reference("acme", Some("f3a9-1"), now);
+        assert_eq!(keyed, "crd_goodwill_acme_kf3a9-1");
+        assert_eq!(goodwill_reference("acme", Some("f3a9-1"), now + 3_600_000), keyed);
+        // Odd characters never reach the reference.
+        assert_eq!(goodwill_reference("acme", Some("a b'%;"), now), "crd_goodwill_acme_kab");
+        // No key: the same two minutes are the same credit; later, another.
+        let bare = goodwill_reference("acme", None, now);
+        assert!(bare.starts_with(GOODWILL_PREFIX));
+        assert_eq!(goodwill_reference("acme", Some("  "), now), bare);
+        let window_start = now - now % GOODWILL_REPEAT_MS;
+        assert_eq!(goodwill_reference("acme", None, window_start + GOODWILL_REPEAT_MS - 1), goodwill_reference("acme", None, window_start));
+        assert_ne!(goodwill_reference("acme", None, window_start + GOODWILL_REPEAT_MS), goodwill_reference("acme", None, window_start));
+        assert_ne!(goodwill_reference("other", None, now), bare);
+    }
 
     #[test]
     fn a_typical_month_is_the_median() {

@@ -1,29 +1,24 @@
 /**
  * The billing page's sections: the spend-spike banner (also in the app
- * shell), alerts, the g1t plan, the trial, the spend limit and its range,
+ * shell), alerts, the trial, the spend limit and its range,
  * Raise my limit, credits from g1t, Prepay, and "Spent more than you
  * meant to?". Each posts to the billing route's action with an `intent`.
  */
-import { ArrowUpRight, CreditCard, Gauge, Gift, Landmark, ShieldCheck, Sparkles } from "lucide-react";
+import { CreditCard, Gauge, Gift, Landmark, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form } from "react-router";
 
-import type { Credits, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, UsageAlert } from "@g1t/contracts";
+import type { Credits, Entitlements, Limit, LimitRequest, UsageAlert } from "@g1t/contracts";
 
 import {
   CREDIT_KIND,
-  PLUS_TAX,
   PREPAY,
-  type PlanStatus,
   alertText,
   alertTone,
-  cardFeeCents,
   creditLine,
-  gigabytes,
   requestStatus,
   share,
   shortDay,
-  shownMeters,
   spendRange,
 } from "../lib/billing";
 import { money, wholeDollars } from "../lib/money";
@@ -162,207 +157,6 @@ export function Alerts({ alerts }: { alerts: UsageAlert[] }) {
   );
 }
 
-// --- The plan -----------------------------------------------------------------------
-
-const STATUS_TONE: Record<PlanStatus["kind"], "plain" | "accent" | "warn"> = {
-  free: "plain",
-  trial: "plain",
-  paid: "accent",
-  canceling: "warn",
-  past_due: "warn",
-  comped: "accent",
-  enterprise: "accent",
-};
-
-export function PlanCard({
-  state,
-  status,
-  entitlements,
-  owner,
-  enabled,
-  live,
-  meters,
-  error,
-}: {
-  state: FeatureState | null;
-  status: PlanStatus;
-  entitlements: Entitlements | null;
-  owner: boolean;
-  enabled: boolean;
-  live: boolean;
-  /** This month's usage by meter, from billing's `usage_meters`. */
-  meters: MeterUsage[] | null;
-  error?: string;
-}) {
-  const plan = state?.plan;
-  const subscription = state?.subscription ?? null;
-  const on = ["paid", "canceling", "comped", "enterprise"].includes(status.kind);
-  return (
-    <Card
-      id="plan"
-      tone={STATUS_TONE[status.kind]}
-      icon={<Sparkles size={16} />}
-      title={
-        <>
-          {plan?.title ?? "g1t"}
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs ${
-              status.kind === "past_due" || status.kind === "canceling"
-                ? "bg-warn/15 text-warn"
-                : on
-                  ? "bg-success/15 text-success"
-                  : "border border-line text-muted"
-            }`}
-          >
-            {status.label}
-            {status.kind === "canceling" && subscription?.periodEnd ? `, ${new Date(subscription.periodEnd).toLocaleDateString()}` : ""}
-          </span>
-        </>
-      }
-      about={
-        on
-          ? "Everything on g1t for the workspace: checks, workflows, the merge queue, deployments and semantic search."
-          : "The forge is free: repositories, issues, pull requests, reviews, search and the audit log. Anything that runs compute needs the plan, or the trial."
-      }
-      aside={
-        <p className="shrink-0 sm:text-right">
-          <span className="text-2xl font-semibold tabular-nums tracking-tight">${((plan?.monthlyCents ?? 2000) / 100).toFixed(0)}</span>
-          <span className="text-sm text-muted"> / month</span>
-          <span className="block text-xs text-faint">per workspace, never per seat</span>
-          <span className="block text-xs text-faint">
-            {plan?.cardFeeCents ? `+ ${money(plan.cardFeeCents * 10_000)} card processing fee, ${PLUS_TAX}` : "Plus tax where it applies"}
-          </span>
-        </p>
-      }
-    >
-      {plan && (
-        <ul className="mt-4 grid gap-1.5 text-sm text-muted sm:grid-cols-2">
-          {plan.includes.map((line) => (
-            <li key={line} className="flex gap-2">
-              <span className="text-success">✓</span>
-              {line}
-            </li>
-          ))}
-        </ul>
-      )}
-      {plan && <p className="mt-3 text-xs text-faint">{plan.overage}</p>}
-
-      {on && entitlements?.includedMicros ? (
-        <Meter
-          label="Included usage this month"
-          used={entitlements.includedUsedMicros ?? 0}
-          of={entitlements.includedMicros}
-          calm
-          detail="Used first, at cost plus 20%. Past it, usage goes on at the same prices. It starts again on the 1st; what is unused does not carry over."
-        />
-      ) : null}
-      {meters && <MonthUsage meters={meters} on={on} comped={status.kind === "comped"} entitlements={entitlements} />}
-
-      {status.kind === "comped" || status.kind === "enterprise" ? (
-        <p className="mt-4 text-sm text-muted">
-          {status.kind === "comped"
-            ? "This workspace has a 100% discount from g1t: the plan and its usage are shown at their price, and nothing is charged."
-            : "An enterprise pays for this workspace, on its own invoice."}
-        </p>
-      ) : !enabled ? (
-        <p className="mt-4 text-sm text-muted">Payments are not set up on this g1t, so the plan cannot be started here.</p>
-      ) : !owner ? (
-        <p className="mt-4 text-sm text-muted">An owner manages the plan.</p>
-      ) : (
-        <Form method="post" className="mt-5 flex flex-wrap items-center gap-3">
-          <input type="hidden" name="feature" value={plan?.feature ?? "plan"} />
-          {status.kind === "free" || status.kind === "trial" ? (
-            <SubmitButton variant="accent" name="intent" value="subscribe" pending="Opening Stripe…">
-              <CreditCard size={14} />
-              Start the g1t plan
-            </SubmitButton>
-          ) : status.kind === "canceling" ? (
-            <SubmitButton variant="accent" name="intent" value="resume" pending="Saving…">
-              Keep the plan
-            </SubmitButton>
-          ) : null}
-          {(status.kind === "paid" || status.kind === "canceling" || status.kind === "past_due") && (
-            <SubmitButton variant={status.kind === "past_due" ? "accent" : "outline"} name="intent" value="portal" pending="Opening Stripe…">
-              {status.kind === "past_due" ? "Update payment on Stripe" : "Manage on Stripe"}
-              <ArrowUpRight size={14} />
-            </SubmitButton>
-          )}
-          {status.kind === "paid" && subscription && (
-            <SubmitButton variant="outline" name="intent" value="cancel" pending="Saving…">
-              End at the end of the period
-            </SubmitButton>
-          )}
-          {!live && (status.kind === "free" || status.kind === "trial") && (
-            <span className="text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</span>
-          )}
-        </Form>
-      )}
-      <ErrorText>{error}</ErrorText>
-      {(status.kind === "free" || status.kind === "trial") && (
-        <p className="mt-4 text-xs text-faint">
-          Your first month starts at a {wholeDollars(100_000_000)} limit on usage past what is included, so a stolen card cannot run
-          up a bill. It rises as payments clear, and you can prepay or ask to raise it at once.
-        </p>
-      )}
-    </Card>
-  );
-}
-
-/**
- * This month's usage, one line per meter, in dollars at cost plus 20% and
- * in what was used. No quotas: every line is metered from the first unit.
- */
-function MonthUsage({
-  meters,
-  on,
-  comped,
-  entitlements,
-}: {
-  meters: MeterUsage[];
-  on: boolean;
-  comped: boolean;
-  entitlements: Entitlements | null;
-}) {
-  const freeStorage = gigabytes(entitlements?.freePrivateStorageBytes ?? 1_000_000_000);
-  const freeGit = (entitlements?.gitOperationsIncluded ?? 50_000).toLocaleString("en-US");
-  const rows = shownMeters(meters, on);
-  const total = rows.reduce((sum, row) => sum + row.micros, 0);
-  return (
-    <div className="mt-4 rounded-lg border border-line bg-bg/40 p-4">
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="text-xs font-medium text-muted">This month's usage</p>
-        <p className="text-xs text-faint">At cost plus 20%</p>
-      </div>
-      <ul className="mt-2 divide-y divide-line/60">
-        {rows.map((row) => (
-          <li key={row.key} className="flex items-baseline justify-between gap-4 py-2 text-sm">
-            <span className="min-w-0">
-              <span>{row.label}</span>
-              {(row.quantity || row.micros === 0) && (
-                <span className="block truncate text-xs text-faint">{row.quantity ?? "None yet"}</span>
-              )}
-            </span>
-            <span className={`shrink-0 tabular-nums ${row.micros > 0 ? "" : "text-faint"}`}>{money(row.micros)}</span>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-line pt-2.5 text-sm">
-        {/* At price, before the plan's included usage, the trial and the pools paid
-            their part: Usage shows what was charged. */}
-        <span className="font-medium">Total at price</span>
-        <span className="font-medium tabular-nums">{money(total)}</span>
-      </div>
-      <p className="mt-2 text-xs text-faint">
-        {comped
-          ? "What this workspace's usage comes to at price. Its 100% discount takes all of it off."
-          : on
-            ? `Drawn from the included usage first, then charged up to your spend limit. Projects, previews and repositories are never charged, and the first ${freeStorage} of private storage and ${freeGit} git operations a month are free. App traffic, custom domains, storage and git operations are counted through the month and charged when it closes, after the included usage and any discount, like the rest.`
-            : `The forge is free: ${freeStorage} of private storage and ${freeGit} git operations a month. Checks, workflows and the merge queue run from the trial, and on public repositories from the open-source pool; together they pay part of this total: Usage shows what was charged.`}
-      </p>
-    </div>
-  );
-}
-
 // --- The trial -----------------------------------------------------------------------
 
 export function TrialCard({
@@ -452,6 +246,13 @@ export function SpendLimitCard({ limit, owner, error }: { limit: Limit; owner: b
           detail={limit.growth ?? "Charged to the card as it nears the limit, so work keeps going."}
         />
       </div>
+      {limit.firstMonth && spendLimit != null && (limit.trustCeilingMicros ?? limit.ceilingMicros) != null && (
+        <p className="mt-4 text-sm text-muted">
+          In the first month, work waits at whichever comes first: {wholeDollars(spendLimit)} charged this month (your spend
+          limit), or {wholeDollars(limit.trustCeilingMicros ?? limit.ceilingMicros ?? 0)} not yet paid for (the first month's
+          limit). The card is charged as usage nears it, which makes room again.
+        </p>
+      )}
       {limit.message && <p className="mt-4 text-sm">{limit.message}</p>}
 
       <div className="mt-5 rounded-lg border border-line bg-bg/40 p-4 text-sm">
@@ -648,17 +449,13 @@ export function PrepayCard({
   prepaidMicros,
   owner,
   live,
-  cardFee,
   error,
 }: {
   prepaidMicros: number;
   owner: boolean;
   live: boolean;
-  /** The card fee as billing charges it, to show it before paying. */
-  cardFee?: { on: boolean; percentMicros: number; fixedCents: number } | null;
   error?: string;
 }) {
-  const fees = PREPAY.presets.map((amount) => `${money(cardFeeCents(amount * 100, cardFee) * 10_000)} on ${wholeDollars(amount * 1_000_000)}`);
   return (
     <Card
       id="prepay"
@@ -700,8 +497,8 @@ export function PrepayCard({
             </label>
           </RadioGroup>
           <p className="text-xs text-faint">
-            {cardFee?.on ? `By card, a card processing fee is its own line (${fees.join(", ")}); a bank transfer has none. ` : ""}
-            Tax is added where it applies, from your billing address; what you prepay is credited in full.
+            No fee on top, by card or bank transfer. Tax is added where it applies, from your billing address; what you prepay is credited
+            in full.
           </p>
           {!live && <p className="text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</p>}
           <ErrorText>{error}</ErrorText>

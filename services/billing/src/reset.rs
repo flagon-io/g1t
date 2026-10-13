@@ -39,6 +39,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM tax_and_fees WHERE workspace = ?1",
     "DELETE FROM accounts WHERE workspace = ?1",
     "DELETE FROM plan_payments WHERE workspace = ?1",
+    "DELETE FROM disputes WHERE workspace = ?1",
     "DELETE FROM subscriptions WHERE workspace = ?1",
     "DELETE FROM limits WHERE workspace = ?1",
     "DELETE FROM limit_requests WHERE workspace = ?1",
@@ -48,6 +49,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM alerts_sent WHERE workspace = ?1",
     "DELETE FROM price_notices WHERE workspace = ?1",
     "DELETE FROM pending_usage WHERE workspace = ?1",
+    "DELETE FROM pending_baselines WHERE workspace = ?1",
     "DELETE FROM pending_days WHERE workspace = ?1",
     "DELETE FROM month_closes WHERE workspace = ?1",
     "DELETE FROM storage_days WHERE workspace = ?1",
@@ -186,7 +188,7 @@ mod tests {
         }
         for table in [
             "ledger", "runs", "checkouts", "workspace_invoices", "workspace_invoice_lines", "sales_notes", "accounts",
-            "pending_usage", "pending_days", "limits", "subscriptions", "month_closes", "sales_records",
+            "pending_usage", "pending_baselines", "pending_days", "limits", "subscriptions", "month_closes", "sales_records",
             "billing_accounts", "allowance_use", "trial_grants", "credit_grants", "storage_days", "package_storage_days",
             "token_usage", "reservations", "spikes", "limit_requests", "plan_payments",
             "card_checks", "alerts_sent", "price_notices", "closed_workspaces", "workspace_costs",

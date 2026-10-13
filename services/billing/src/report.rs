@@ -26,7 +26,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
-use crate::charged::{charged, pending_split};
+use crate::charged::{charged, cover_with_included, pending_split};
 use crate::statement::PRICE_SQL;
 use crate::{Billing, members_only};
 
@@ -51,6 +51,7 @@ pub(crate) const METER_KEY_SQL: &str = "CASE
     WHEN task = 'package_storage' THEN 'packages'
     WHEN task = 'security' THEN 'security'
     WHEN task = 'context' THEN 'context'
+    WHEN task = 'telemetry' THEN 'telemetry'
     ELSE 'other' END";
 
 /// A meter: key, name, product family and the unit of its quantity.
@@ -73,7 +74,7 @@ pub(crate) fn meters() -> Vec<Meter> {
 
 /// Every meter but the runners': key, name, product family and the unit
 /// of its quantity.
-pub(crate) const METERS: [(&str, &str, &str, &str); 12] = [
+pub(crate) const METERS: [(&str, &str, &str, &str); 13] = [
     // Sandbox lines from before runner minutes, by the second.
     ("sandbox", "Sandbox time", "sandboxes", "seconds"),
     ("self_hosted", "Self-hosted runner time", "sandboxes", "seconds"),
@@ -86,6 +87,7 @@ pub(crate) const METERS: [(&str, &str, &str, &str); 12] = [
     ("packages", "Package storage", "packages", "entries"),
     ("security", "Security scans", "security", "entries"),
     ("context", "Search embeddings", "search", "entries"),
+    ("telemetry", "Observability data", "observability", "entries"),
     // Kept apart so nothing is ever lost: a line whose meter is unknown,
     // and agents' and models' usage from before they were retired.
     ("other", "Other", OTHER, "entries"),
@@ -106,6 +108,7 @@ pub(crate) fn meter_of_pending(source: &str) -> &'static str {
         "package_storage" => "packages",
         "security" => "security",
         "context" => "context",
+        "telemetry" => "telemetry",
         _ => "other",
     }
 }
@@ -323,14 +326,20 @@ impl Billing {
         let ((cells, pending, (credits_paid, credits)), account) =
             try_join(try_join3(cells, pending, credits), self.account_of(&workspace)).await?;
         let percent = account.terms.percent_off();
+        let plan = self.plan_kind_for(&workspace, &account).await?;
         // What is metered so far is entered on the account's terms when the
-        // month closes: its discount, and what g1t covers, come off it now.
+        // month closes: its discount, and what g1t covers, come off it now,
+        // and the plan's included usage still left pays first, as the
+        // limit counts it (`limits::limit_with`).
+        let mut splits: Vec<_> = pending.iter().map(|p| pending_split(p.cost(), p.charge(), self.margin_percent, percent)).collect();
+        if this_month && plan != PlanKind::Free && !splits.is_empty() {
+            let used = self.allowance_used("plan_credit", &workspace, &month).await?;
+            cover_with_included(&mut splits, crate::credits::left(self.plans.plan_included_micros, used));
+        }
         let pending: Vec<Pending> = pending
             .into_iter()
-            .map(|p| {
-                let split = pending_split(p.cost(), p.charge(), self.margin_percent, percent);
-                Pending { meter: meter_of_pending(&p.source), micros: split.price, covered: split.covered, discount: split.discount }
-            })
+            .zip(splits)
+            .map(|(p, split)| Pending { meter: meter_of_pending(&p.source), micros: split.price, covered: split.covered, discount: split.discount })
             .filter(|p| p.micros > 0)
             .collect();
         let (mut products, days_out, mut totals, all_projects) = shape(&days, &cells, &pending, &a.products, &a.projects);
@@ -339,7 +348,6 @@ impl Billing {
         // without a filter is it taken off.
         totals.credits_micros = if filtered { 0 } else { credits_paid.max(0) };
         totals.charged_micros = charged(&totals);
-        let plan = self.plan_kind_for(&workspace, &account).await?;
         // Allowances, for the range that includes this month.
         let mut included = None;
         let mut trial = None;
@@ -429,7 +437,7 @@ mod tests {
         let pending = vec![Pending { meter: "git", micros: 40_000, ..Pending::default() }];
         let (products, by_day, totals, projects) = shape(&days, &cells, &pending, &[], &[]);
         // Every product family with meters, in order; no Other without usage on it.
-        assert_eq!(products.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["sandboxes", "deployments", "git_storage", "packages", "security", "search"]);
+        assert_eq!(products.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["sandboxes", "deployments", "git_storage", "packages", "security", "search", "observability"]);
         let deployments = &products[1];
         assert_eq!(deployments.micros, 3_000_000);
         let requests = deployments.meters.iter().find(|m| m.key == "requests").unwrap();

@@ -1,11 +1,15 @@
 import { Webhook } from "lucide-react";
+import type { ReactNode } from "react";
 
 import type { StripeStatus } from "@g1t/contracts";
 
 import type { Route } from "./+types/stripe";
+import { EveryWorkspaceDetachSection } from "~/components/test-detach";
 import { Badge, Button, EmptyState, Notice, Section, When } from "~/components/ui";
 import { admin } from "~/lib/services.server";
 import { requireStaff } from "~/lib/staff";
+import { EVERY_DETACH_INTENTS, type EveryDetachData, everyDetachAction } from "~/lib/test-detach.server";
+import { text } from "~/lib/forms";
 
 export const meta: Route.MetaFunction = () => [{ title: "Stripe · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
@@ -16,8 +20,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 type ActionData = { status: StripeStatus; fixed: true };
 
-export async function action({ context }: Route.ActionArgs) {
+export async function action({ request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
+  // Detaching workspaces from test mode has its own forms (test-detach.tsx).
+  const form = await request.formData();
+  if (EVERY_DETACH_INTENTS.has(text(form, "intent"))) return everyDetachAction(form, staff);
   return { status: await admin.stripe(true, staff.email), fixed: true } satisfies ActionData;
 }
 
@@ -30,7 +37,8 @@ const MODE: Record<string, { label: string; tone: "warn" | "mint" | "danger" }> 
 const WEBHOOK_URL = "https://api.g1t.sh/stripe/webhook";
 
 export default function Stripe({ loaderData, actionData }: Route.ComponentProps) {
-  const result = actionData as ActionData | undefined;
+  const detach = actionData && "exclude" in actionData ? (actionData as EveryDetachData) : null;
+  const result = actionData && "fixed" in actionData ? (actionData as ActionData) : undefined;
   const status = result?.status ?? loaderData.status;
   const fixed = result != null;
   const mode = MODE[status.mode] ?? { label: status.mode, tone: "warn" as const };
@@ -54,6 +62,8 @@ export default function Stripe({ loaderData, actionData }: Route.ComponentProps)
         {status.mode === "off" && <Notice tone="warn">Billing has no Stripe key (STRIPE_SECRET_KEY), so nothing reaches Stripe.</Notice>}
         {ready && <Notice tone="ok">Ready: Stripe sends to billing, and billing can check what it sends.</Notice>}
       </div>
+
+      <GoLiveChecklist status={status} />
 
       <Section
         title="Webhook"
@@ -124,6 +134,13 @@ export default function Stripe({ loaderData, actionData }: Route.ComponentProps)
         </dl>
       </Section>
 
+      <EveryWorkspaceDetachSection
+        live={status.mode === "live"}
+        result={detach?.everyDetach ?? null}
+        error={detach?.everyDetachError ?? null}
+        exclude={detach?.exclude ?? null}
+      />
+
       <Section title="Recent events" description="What Stripe sent, newest first, and what billing did with it." className="mt-6">
         {status.recentEvents.length === 0 ? (
           <EmptyState title="No events yet" />
@@ -156,5 +173,61 @@ export default function Stripe({ loaderData, actionData }: Route.ComponentProps)
         )}
       </Section>
     </main>
+  );
+}
+
+// --- Go-live checklist ----------------------------------------------------------------
+//
+// Read-only. Stripe Tax and the Customer Portal come from billing's Stripe
+// status: `tax` is Stripe's GET /v1/tax/settings (`active`, or `pending`
+// with `missingFields`), `portal` the configuration billing makes
+// (metadata g1t=billing). Either is null when it could not be read; the
+// row then says what to check in Stripe's dashboard.
+
+function CheckRow({ label, ok, children }: { label: string; ok: boolean | null; children: ReactNode }) {
+  return (
+    <>
+      <dt className="text-muted">{label}</dt>
+      <dd className="flex flex-wrap items-center gap-2 text-fg-soft">
+        <Badge tone={ok == null ? "warn" : ok ? "mint" : "danger"}>{ok == null ? "Check in Stripe" : ok ? "Ready" : "Not ready"}</Badge>
+        <span>{children}</span>
+      </dd>
+    </>
+  );
+}
+
+function GoLiveChecklist({ status }: { status: StripeStatus }) {
+  const webhookOk = status.webhook != null && status.webhook.status === "enabled" && status.missingEvents.length === 0;
+  const tax = status.tax;
+  const portal = status.portal;
+  return (
+    <Section
+      title="Go-live checklist"
+      description="What has to be true before live payments: a live key, the webhook, Stripe Tax and the Customer Portal. Read-only."
+      className="mt-6"
+    >
+      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
+        <CheckRow label="Live key" ok={status.mode === "live"}>
+          {status.mode === "live" ? "Billing uses a live key." : `Billing's key is in ${status.mode === "off" ? "no" : status.mode} mode.`}
+        </CheckRow>
+        <CheckRow label="Webhook" ok={status.secretSet && webhookOk}>
+          {status.secretSet && webhookOk ? "Enabled, signed, and sending every event billing handles." : "See Webhook below."}
+        </CheckRow>
+        <CheckRow label="Stripe Tax" ok={status.mode === "off" || tax == null ? null : tax.status === "active"}>
+          {tax == null
+            ? "Not read. In Stripe: Tax, Settings: status Active, with the head office address and registrations."
+            : tax.status === "active"
+              ? "Active."
+              : `${tax.status}${tax.missingFields.length ? `: missing ${tax.missingFields.join(", ")}` : ""}.`}
+        </CheckRow>
+        <CheckRow label="Customer Portal" ok={status.mode === "off" || portal === undefined ? null : portal != null && portal.active}>
+          {portal === undefined
+            ? "Not read. In Stripe: Settings, Billing, Customer portal: the configuration with metadata g1t=billing, active."
+            : portal
+              ? `${portal.configurationId}: ${portal.active ? "active" : "inactive; billing turns it back on the next time someone opens Manage billing"}.`
+              : "No configuration yet: billing makes one the first time someone opens Manage billing."}
+        </CheckRow>
+      </dl>
+    </Section>
   );
 }

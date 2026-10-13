@@ -15,6 +15,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use serde_json::Value;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::Billing;
 
@@ -64,6 +65,96 @@ pub(crate) fn line_cents(lines: &[InvoiceItem]) -> Vec<i64> {
 /// was busy or failed itself. Only a decline stops a workspace's work.
 pub(crate) fn is_decline(error: &str) -> bool {
     error.contains("answered 402") || error.contains("\"card_error\"")
+}
+
+/// The HTTP status in an error from the card processor ("the card
+/// processor answered 400: …"), if it is one.
+fn answered(error: &str) -> Option<u16> {
+    let rest = error.split_once("the card processor answered ")?.1;
+    rest.get(..3)?.parse().ok()
+}
+
+/// Whether Stripe refused to charge for good, for want of a way to pay:
+/// a 400 or 404 `invalid_request_error` (no default payment method, a
+/// payment method gone or unusable off session, and the like). Trying
+/// again never changes that, so it stops like a decline, with Stripe's
+/// reason. A 5xx, a 429 or no answer at all is tried again, and so is a
+/// 401 or 403: g1t's key, never the payer's card.
+pub(crate) fn needs_card(error: &str) -> bool {
+    matches!(answered(error), Some(400 | 404)) && error.contains("\"invalid_request_error\"")
+}
+
+/// Stripe's own sentence in an error, else the error, short.
+pub(crate) fn stripe_reason(error: &str) -> String {
+    error
+        .split_once(": ")
+        .and_then(|(_, body)| serde_json::from_str::<Value>(body).ok())
+        .and_then(|body| body["error"]["message"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| error.to_owned())
+        .chars()
+        .take(200)
+        .collect()
+}
+
+/// What charging an invoice came to.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PayOutcome {
+    Paid,
+    /// The card said no: work stops until it is paid.
+    Declined,
+    /// Stripe will not charge it at all (no card it can use): work stops
+    /// until one is added and it is paid, as for a decline.
+    NeedsCard,
+    /// Voided or marked uncollectible at Stripe meanwhile: never to be paid.
+    Void,
+    /// Stripe did not answer, or failed: tried again, nobody stopped.
+    Retry,
+}
+
+/// What charging an invoice came to, from the invoice's status after the
+/// attempt and the error the attempt came back with, if any.
+pub(crate) fn pay_outcome(status: Option<&str>, error: Option<&str>) -> PayOutcome {
+    match status {
+        Some("paid") => PayOutcome::Paid,
+        Some("void" | "uncollectible") => PayOutcome::Void,
+        _ => match error {
+            Some(error) if is_decline(error) => PayOutcome::Declined,
+            Some(error) if needs_card(error) => PayOutcome::NeedsCard,
+            _ => PayOutcome::Retry,
+        },
+    }
+}
+
+/// The idempotency key of a workspace invoice's draft and lines: the same
+/// workspace, customer, reason, period and total is the same invoice
+/// however often it is attempted, until one of its invoices is paid
+/// (`paid_today` counts the workspace's invoices paid that day) or voided
+/// (`voided` counts them), when the next is a new one. With the customer
+/// in it, a key never comes back with another customer's fields, which
+/// Stripe refuses.
+pub(crate) fn invoice_key(workspace: &str, customer: &str, reason: &str, period: &str, owed: i64, paid_today: u32, voided: u32) -> String {
+    let key = format!("ws-invoice/{workspace}/{customer}/{reason}/{period}/{}/p{paid_today}", owed / 10_000);
+    if voided == 0 { key } else { format!("{key}/v{voided}") }
+}
+
+/// Whether `viewer` may see a workspace's invoices: its owners and billing
+/// managers, as for its billing details; never any other member.
+pub(crate) fn may_see_invoices(viewer: &g1t_contracts::Viewer, workspace: &str) -> bool {
+    viewer.as_ref().is_some_and(|viewer| viewer.manages_billing(workspace))
+}
+
+/// What settling a workspace's unpaid invoices came to.
+pub(crate) enum Settled {
+    /// None is left unpaid; the last one paid now, if any.
+    Clear(Option<WorkspaceInvoice>),
+    /// One is still unpaid (declined, no card, or Stripe not finished):
+    /// nothing else is invoiced until it is paid.
+    Stop(std::result::Result<WorkspaceInvoice, String>),
+}
+
+#[derive(Deserialize)]
+struct Count {
+    n: Option<f64>,
 }
 
 /// A workspace invoice's draft: charged to the card, taxed by Stripe Tax,
@@ -164,17 +255,38 @@ impl Billing {
         period: &str,
     ) -> Result<std::result::Result<WorkspaceInvoice, String>> {
         let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
+        if self.row(workspace).await?.and_then(|row| row.customer_id).is_none() {
+            return Ok(Err("No card on file.".into()));
+        }
+        // An invoice already sent and not paid is paid (or found paid, or
+        // found voided) before any other is made: two invoices for the same
+        // money would charge it twice. Once all are paid, what is owed
+        // beyond them is invoiced too; one still unpaid stops here.
+        let settled = match self.settle_unpaid_invoices(workspace).await? {
+            Settled::Clear(paid) => paid,
+            Settled::Stop(unpaid) => return Ok(unpaid),
+        };
+        // Read again: paying an earlier invoice credited the balance.
         let Some(account) = self.row(workspace).await? else { return Ok(Err("Nothing billed yet.".into())) };
         let Some(customer) = account.customer_id else { return Ok(Err("No card on file.".into())) };
         // AI credit left (bought before g1t stopped selling it) props up the
         // balance but pays only for models: it is not money for anything else.
         let owed = self.owed_with(workspace, account.balance_micros).await?;
+        // Nothing owed is nothing to invoice, whatever the reason: a limit
+        // reached on usage not entered yet is not a charge. An earlier
+        // invoice paid just now is what this came to.
+        if owed <= 0 {
+            return Ok(settled.ok_or_else(|| "Nothing is owed.".to_owned()));
+        }
         // Only a month's close charges no less than the minimum
         // (`MIN_CHARGE_MICROS`), so a payment's fee is never most of it;
         // less carries over. A charge because a limit was reached always
         // goes through, whatever its size, so a new workspace's limit never
         // strands it.
         if reason == "month" && !crate::limits::worth_charging(owed, self.plans.min_charge_micros) {
+            if let Some(paid) = settled {
+                return Ok(Ok(paid));
+            }
             return Ok(Err(format!(
                 "{} is owed, under the {} minimum charge; it carries over to the next invoice.",
                 crate::features::dollars(owed),
@@ -215,6 +327,7 @@ impl Billing {
                           WHEN task = 'cache' THEN 'Actions cache storage'
                           WHEN task = 'domains' THEN 'Custom domains'
                           WHEN task = 'package_storage' THEN 'Package storage'
+                          WHEN task = 'telemetry' THEN 'Observability data'
                           -- From when g1t ran agents and sold model access.
                           WHEN billed_to = 'workspace' THEN 'Runs on your own model provider'
                           WHEN reference LIKE 'run%' OR task = 'gateway' THEN 'Agents on g1t''s models'
@@ -240,17 +353,36 @@ impl Billing {
                 self.tax_address_needed(workspace).await?;
                 return Ok(Err(crate::tax::address_needed_message(workspace)));
             }
-            Err(error) => return Ok(Err(crate::stripe::friendly(&error))),
+            // A customer Stripe no longer has: forgotten, so the next card
+            // saved makes a new one.
+            Err(error) if crate::stripe::is_missing(&error) => {
+                self.forget_customer(workspace).await?;
+                return Ok(Err("No card on file.".into()));
+            }
+            Err(error) => return Err(error),
         }
+        // Each line in cents; no card fee on top, as g1t's prices include it.
         let cents = line_cents(&lines);
-        // Charged to a card: Stripe's fee is its own line. A bank account
-        // set as the way to pay has no card fee.
-        let by_card = match stripe.default_payment_method(&customer).await {
-            Ok(method) => method.is_none_or(|m| m.kind == "card"),
-            Err(_) => true,
+        // How many of its invoices were voided, and paid today, is part of
+        // the key: one voided at Stripe, or paid, is never handed back for
+        // the same total within the day.
+        let today = &now[..10];
+        let count = |sql: &'static str| async move {
+            Ok::<u32, worker::Error>(
+                self.db
+                    .prepare(sql)
+                    .bind(&[workspace.into(), today.into()])?
+                    .first::<Count>(None)
+                    .await?
+                    .and_then(|c| c.n)
+                    .unwrap_or(0.0) as u32,
+            )
         };
-        let fee_cents = if by_card { self.card_fee_on(cents.iter().sum::<i64>()).await? } else { 0 };
-        let key = format!("ws-invoice/{workspace}/{reason}/{period}/{}/{fee_cents}", owed / 10_000);
+        let voided = count("SELECT COUNT(*) AS n FROM workspace_invoices WHERE workspace = ?1 AND status = 'void' AND ?2 IS NOT NULL").await?;
+        let paid_today =
+            count("SELECT COUNT(*) AS n FROM workspace_invoices WHERE workspace = ?1 AND status = 'paid' AND substr(paid_at, 1, 10) = ?2")
+                .await?;
+        let key = invoice_key(workspace, &customer, reason, period, owed, paid_today, voided);
         let description = match reason {
             "month" => format!("g1t usage for {workspace}, {period}"),
             _ => format!("g1t usage for {workspace}, charged as it neared its limit"),
@@ -264,10 +396,6 @@ impl Billing {
         for (position, (line, cents)) in lines.iter().zip(&cents).enumerate() {
             let fields = item_fields(&customer, &draft.id, workspace, &line.description, *cents);
             let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{position}")).await?;
-        }
-        if fee_cents > 0 {
-            let fields = item_fields(&customer, &draft.id, workspace, crate::stripe::CARD_FEE_LINE, fee_cents);
-            let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/card_fee")).await?;
         }
         // A retry finds it finalized already; that is fine.
         let finalized = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
@@ -285,20 +413,13 @@ impl Billing {
             return Ok(Err(crate::tax::address_needed_message(workspace)));
         }
         self.tax_address_given(workspace).await?;
-        // Charge the card now; a decline comes back as an error.
-        let paid = stripe.post::<StripeInvoice>(&format!("/invoices/{}/pay", draft.id), &[("off_session", "true".to_owned())]).await;
+        // Kept as open before the card is charged: whatever happens to the
+        // charge, the invoice is known here, so paying it later (on Stripe's
+        // page, or by the next attempt) is credited, and no second invoice
+        // is made for the same money while it is open.
         let invoice: StripeInvoice = stripe.get(&format!("/invoices/{}", draft.id)).await?;
         let total = lines.iter().map(|l| l.amount_micros).sum::<i64>();
-        let fee_micros = fee_cents * 10_000;
         let tax_micros = invoice.tax_cents() * 10_000;
-        let status = if invoice.status.as_deref() == Some("paid") { "paid" } else { "failed" };
-        // Only the card saying no is a decline, which stops work until it
-        // is paid. Stripe failing to answer, or answering busy, is g1t's
-        // problem and never stops a payer: the invoice stays as it is, and
-        // the next attempt (the same total finds the same invoice) pays it.
-        if status == "failed" && !paid.as_ref().err().is_some_and(|error| is_decline(&error.to_string())) {
-            return Ok(Err("The card processor did not finish the payment; it is tried again.".into()));
-        }
         let mut writes = vec![self
             .db
             .prepare(
@@ -313,13 +434,14 @@ impl Billing {
                 reason.into(),
                 period.into(),
                 (total as f64).into(),
-                status.into(),
+                "open".into(),
                 crate::optional(invoice.hosted_invoice_url.as_deref()),
                 crate::optional(invoice.invoice_pdf.as_deref()),
                 now.as_str().into(),
                 now.as_str().into(),
-                crate::optional((status == "paid").then_some(now.as_str())),
-                (fee_micros as f64).into(),
+                JsValue::NULL,
+                // No card fee on new invoices; the column keeps old ones'.
+                0.into(),
                 (tax_micros as f64).into(),
             ])?];
         for (position, line) in lines.iter().enumerate() {
@@ -330,26 +452,153 @@ impl Billing {
             );
         }
         self.db.batch(writes).await?;
-        if status == "paid" {
-            self.credit_invoice(workspace, &invoice, fee_cents).await?;
-        } else {
-            let error = paid.err().map_or_else(|| "the card was declined".to_owned(), |e| e.to_string().chars().take(200).collect());
-            self.mark_declined(workspace, &error).await?;
+        self.pay_invoice(workspace, &invoice.id, 0).await
+    }
+
+    /// Charges the card for an invoice kept as open (or declined before),
+    /// and records what came of it. Paid: credited, then marked paid. The
+    /// card saying no, or Stripe refusing for want of a card it can charge:
+    /// marked failed, and work stops until it is paid. Voided at Stripe
+    /// meanwhile: closed here.
+    /// Stripe failing to answer, or answering busy, is g1t's problem and
+    /// never stops a payer: the invoice stays open, an `Err` says so, and
+    /// the next attempt pays this same invoice.
+    async fn pay_invoice(&self, workspace: &str, invoice_id: &str, fee_cents: i64) -> Result<std::result::Result<WorkspaceInvoice, String>> {
+        let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
+        let paid = stripe.post::<StripeInvoice>(&format!("/invoices/{invoice_id}/pay"), &[("off_session", "true".to_owned())]).await;
+        let invoice: StripeInvoice = stripe.get(&format!("/invoices/{invoice_id}")).await?;
+        let error = paid.as_ref().err().map(ToString::to_string);
+        match pay_outcome(invoice.status.as_deref(), error.as_deref()) {
+            PayOutcome::Paid => {
+                self.credit_invoice(workspace, &invoice, fee_cents).await?;
+                self.db
+                    .prepare("UPDATE workspace_invoices SET status = 'paid', paid_at = ?, tax_micros = ? WHERE invoice_id = ?")
+                    .bind(&[rfc3339(now_ms()).into(), ((invoice.tax_cents() * 10_000) as f64).into(), invoice_id.into()])?
+                    .run()
+                    .await?;
+            }
+            PayOutcome::Declined => {
+                self.db
+                    .prepare("UPDATE workspace_invoices SET status = 'failed' WHERE invoice_id = ? AND status <> 'paid'")
+                    .bind(&[invoice_id.into()])?
+                    .run()
+                    .await?;
+                let error = error.map_or_else(|| "the card was declined".to_owned(), |e| e.chars().take(200).collect());
+                self.mark_declined(workspace, &error).await?;
+            }
+            PayOutcome::NeedsCard => {
+                self.db
+                    .prepare("UPDATE workspace_invoices SET status = 'failed' WHERE invoice_id = ? AND status <> 'paid'")
+                    .bind(&[invoice_id.into()])?
+                    .run()
+                    .await?;
+                let why = format!(
+                    "Stripe could not charge the card on file ({}). Add a card on the Billing page.",
+                    stripe_reason(error.as_deref().unwrap_or_default()).trim_end_matches('.')
+                );
+                self.mark_declined(workspace, &why).await?;
+            }
+            PayOutcome::Void => {
+                self.void_row(invoice_id).await?;
+                return Ok(Err(format!("Invoice {invoice_id} was voided at Stripe.")));
+            }
+            PayOutcome::Retry => {
+                let why = error.unwrap_or_else(|| format!("invoice is {}", invoice.status.as_deref().unwrap_or("unknown")));
+                return Err(worker::Error::RustError(format!(
+                    "{workspace}: the card processor did not finish paying invoice {invoice_id}; it is tried again: {}",
+                    why.chars().take(200).collect::<String>()
+                )));
+            }
         }
-        Ok(Ok(WorkspaceInvoice {
-            invoice_id: invoice.id,
-            workspace: workspace.to_owned(),
-            reason: reason.to_owned(),
-            period: period.to_owned(),
-            amount_micros: total,
-            status: status.to_owned(),
-            hosted_url: invoice.hosted_invoice_url,
-            pdf_url: invoice.invoice_pdf,
-            lines,
-            created_at: now,
-            fee_micros,
-            tax_micros,
-        }))
+        Ok(self.workspace_invoice(invoice_id).await?.ok_or_else(|| "The invoice was not recorded.".to_owned()))
+    }
+
+    /// Settles the workspace's invoices that were sent but not paid
+    /// (`open`, or `failed` for a decline) before another is made, oldest
+    /// first: found paid at Stripe, credited; voided or gone, closed here;
+    /// still open, charged again. Each paid goes on to the next; the first
+    /// still unpaid after its charge stops it there.
+    async fn settle_unpaid_invoices(&self, workspace: &str) -> Result<Settled> {
+        let Some(stripe) = &self.stripe else { return Ok(Settled::Clear(None)) };
+        #[derive(Deserialize)]
+        struct Unpaid {
+            invoice_id: String,
+            #[serde(default)]
+            fee_micros: i64,
+        }
+        let unpaid = self
+            .db
+            .prepare("SELECT invoice_id, fee_micros FROM workspace_invoices WHERE workspace = ? AND status IN ('open', 'failed') ORDER BY created_at")
+            .bind(&[workspace.into()])?
+            .all()
+            .await?
+            .results::<Unpaid>()?;
+        let mut last_paid = None;
+        for row in unpaid {
+            let found = match stripe.get::<StripeInvoice>(&format!("/invoices/{}", row.invoice_id)).await {
+                Ok(found) => found,
+                // From another Stripe account: never to be paid here.
+                Err(error) if crate::stripe::is_missing(&error) => {
+                    self.void_row(&row.invoice_id).await?;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            let charged = match found.status.as_deref() {
+                Some("paid") => {
+                    self.workspace_invoice_paid(&row.invoice_id).await?;
+                    last_paid = self.workspace_invoice(&row.invoice_id).await?.or(last_paid);
+                    continue;
+                }
+                Some("void") | Some("uncollectible") => {
+                    self.void_row(&row.invoice_id).await?;
+                    continue;
+                }
+                Some("draft") => {
+                    // Kept before it was finalized: finalize, then charge.
+                    let _ = stripe.post::<Value>(&format!("/invoices/{}/finalize", row.invoice_id), &[]).await;
+                    self.pay_invoice(workspace, &row.invoice_id, row.fee_micros / 10_000).await?
+                }
+                _ => self.pay_invoice(workspace, &row.invoice_id, row.fee_micros / 10_000).await?,
+            };
+            match charged {
+                Ok(invoice) if invoice.status == "paid" => last_paid = Some(invoice),
+                // Voided at Stripe as it was charged: closed, on to the next.
+                Err(_) if self.workspace_invoice(&row.invoice_id).await?.is_some_and(|i| i.status == "void") => {}
+                other => return Ok(Settled::Stop(other)),
+            }
+        }
+        Ok(Settled::Clear(last_paid))
+    }
+
+    async fn void_row(&self, invoice_id: &str) -> Result<()> {
+        self.db
+            .prepare("UPDATE workspace_invoices SET status = 'void' WHERE invoice_id = ? AND status <> 'paid'")
+            .bind(&[invoice_id.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// A late `invoice.payment_failed` for a workspace invoice: the invoice
+    /// is read as it is now, and a decline counts only if it is still
+    /// unpaid (a retry or Stripe's page may have paid it since).
+    pub(crate) async fn workspace_invoice_failed(&self, invoice_id: &str, tagged: &str) -> Result<String> {
+        let Some(stripe) = &self.stripe else { return Ok("ignored: payments off".to_owned()) };
+        let invoice: StripeInvoice = stripe.get(&format!("/invoices/{invoice_id}")).await?;
+        if matches!(invoice.status.as_deref(), Some("paid" | "void" | "uncollectible")) {
+            return Ok(format!("ignored: invoice {invoice_id} is {} now", invoice.status.as_deref().unwrap_or_default()));
+        }
+        // The invoice's own row names the workspace as it is now; the
+        // metadata keeps the slug it was sent under.
+        let workspace = self.workspace_of_invoice(invoice_id).await?.unwrap_or_else(|| tagged.to_owned());
+        self.db
+            .prepare("UPDATE workspace_invoices SET status = 'failed' WHERE invoice_id = ? AND status = 'open'")
+            .bind(&[invoice_id.into()])?
+            .run()
+            .await?;
+        self.mark_declined(&workspace, "the card was declined for an invoice").await?;
+        Ok(format!("{workspace}: invoice payment failed; work stopped"))
     }
 
     /// Enters an invoice's payment once, with the kind of card that paid:
@@ -370,17 +619,13 @@ impl Billing {
         if amount <= 0 {
             return Ok(false);
         }
-        let description = if extras == crate::tax::Extras::default() {
-            format!("Paid invoice {}", invoice.id)
-        } else {
-            format!(
-                "Paid invoice {} (tax {} and card fee {} paid with it)",
-                invoice.id,
-                crate::features::cents(extras.tax_cents * 10_000),
-                crate::features::cents(extras.fee_cents * 10_000)
-            )
-        };
-        self.enter(workspace, EntryKind::TopUp, amount, &description, &invoice.id, None, None, None).await?;
+        let description = format!("Paid invoice {}{}", invoice.id, crate::tax::paid_with(extras));
+        match self.enter(workspace, EntryKind::TopUp, amount, &description, &invoice.id, None, None, None).await {
+            Ok(()) => {}
+            // Credited a moment ago by the event or the charge alongside.
+            Err(error) if crate::is_duplicate(&error) => return Ok(false),
+            Err(error) => return Err(error),
+        }
         self.record_extras(workspace, &invoice.id, invoice.payment_intent.as_deref(), extras, None).await?;
         // Prepaid cards pay, but never raise the limit.
         if let (Some(stripe), Some(charge)) = (&self.stripe, &invoice.charge)
@@ -408,7 +653,27 @@ impl Billing {
         Ok(())
     }
 
-    /// A workspace invoice paid later, on Stripe's page or by a retry.
+    /// Why the workspace's card last could not be charged, while it still
+    /// cannot.
+    pub(crate) async fn autopay_error(&self, workspace: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct Row {
+            autopay_error: Option<String>,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT autopay_error FROM limits WHERE workspace = ? AND autopay_failed_at IS NOT NULL")
+            .bind(&[workspace.into()])?
+            .first::<Row>(None)
+            .await?
+            .and_then(|row| row.autopay_error))
+    }
+
+    /// A workspace invoice paid later, on Stripe's page or by a retry. One
+    /// g1t made but never kept (from before invoices were kept as open
+    /// before they were charged) is found by its `metadata[g1t_workspace]`
+    /// and kept now. Credited first, then marked paid. None when it is not
+    /// a workspace invoice.
     pub(crate) async fn workspace_invoice_paid(&self, invoice_id: &str) -> Result<Option<String>> {
         #[derive(Deserialize)]
         struct Row {
@@ -416,23 +681,65 @@ impl Billing {
             #[serde(default)]
             fee_micros: i64,
         }
-        let Some(row) = self
+        let Some(stripe) = &self.stripe else { return Ok(None) };
+        let kept = self
             .db
             .prepare("SELECT workspace, fee_micros FROM workspace_invoices WHERE invoice_id = ?")
             .bind(&[invoice_id.into()])?
             .first::<Row>(None)
-            .await?
-        else {
-            return Ok(None);
+            .await?;
+        // Read at billing's API version, whatever the event's was.
+        let found: Value = stripe.get(&format!("/invoices/{invoice_id}")).await?;
+        let invoice: StripeInvoice = serde_json::from_value(found.clone()).map_err(|e| worker::Error::RustError(e.to_string()))?;
+        let row = match kept {
+            Some(row) => row,
+            None => {
+                let Some(tagged) = found["metadata"]["g1t_workspace"].as_str().filter(|_| crate::webhooks::invoice_subscription(&found).is_none())
+                else {
+                    return Ok(None);
+                };
+                // Under its slug now, by its customer; else as it was sent.
+                let workspace = match found["customer"].as_str() {
+                    Some(customer) => self.workspace_of_customer(customer).await?,
+                    None => None,
+                }
+                .unwrap_or_else(|| tagged.to_owned());
+                let split = crate::stripe::invoice_split(&found, invoice.amount_paid);
+                let created = rfc3339(found["created"].as_i64().unwrap_or(0).max(0) as u64 * 1000);
+                self.db
+                    .prepare(
+                        "INSERT OR IGNORE INTO workspace_invoices
+                           (invoice_id, workspace, reason, period, amount_micros, status, hosted_url, pdf_url, through_at, created_at, paid_at,
+                            fee_micros, tax_micros)
+                         VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, NULL, ?, ?)",
+                    )
+                    .bind(&[
+                        invoice_id.into(),
+                        workspace.as_str().into(),
+                        found["metadata"]["reason"].as_str().unwrap_or("month").into(),
+                        found["metadata"]["period"].as_str().unwrap_or_default().into(),
+                        ((split.net_cents * 10_000) as f64).into(),
+                        crate::optional(invoice.hosted_invoice_url.as_deref()),
+                        crate::optional(invoice.invoice_pdf.as_deref()),
+                        created.as_str().into(),
+                        created.as_str().into(),
+                        ((split.fee_cents * 10_000) as f64).into(),
+                        ((split.tax_cents * 10_000) as f64).into(),
+                    ])?
+                    .run()
+                    .await?;
+                Row { workspace, fee_micros: split.fee_cents * 10_000 }
+            }
         };
-        let Some(stripe) = &self.stripe else { return Ok(None) };
-        let invoice: StripeInvoice = stripe.get(&format!("/invoices/{invoice_id}")).await?;
+        if invoice.status.as_deref() != Some("paid") {
+            return Ok(Some(format!("ignored: invoice {invoice_id} is {} now", invoice.status.as_deref().unwrap_or("unknown"))));
+        }
+        let credited = self.credit_invoice(&row.workspace, &invoice, row.fee_micros / 10_000).await?;
         self.db
             .prepare("UPDATE workspace_invoices SET status = 'paid', paid_at = ?, tax_micros = ? WHERE invoice_id = ?")
             .bind(&[rfc3339(now_ms()).into(), ((invoice.tax_cents() * 10_000) as f64).into(), invoice_id.into()])?
             .run()
             .await?;
-        let credited = self.credit_invoice(&row.workspace, &invoice, row.fee_micros / 10_000).await?;
         Ok(Some(format!(
             "invoice {invoice_id} for {} paid{}",
             row.workspace,
@@ -450,39 +757,58 @@ impl Billing {
             .results::<InvoiceRow>()?;
         let mut invoices = vec![];
         for row in rows {
-            let lines = self
-                .db
-                .prepare("SELECT description, amount_micros FROM workspace_invoice_lines WHERE invoice_id = ? ORDER BY position")
-                .bind(&[row.invoice_id.as_str().into()])?
-                .all()
-                .await?
-                .results::<LineRow>()?
-                .into_iter()
-                .map(|l| InvoiceItem { description: l.description, amount_micros: l.amount_micros })
-                .collect();
-            invoices.push(WorkspaceInvoice {
-                invoice_id: row.invoice_id,
-                workspace: row.workspace,
-                reason: row.reason,
-                period: row.period,
-                amount_micros: row.amount_micros,
-                status: row.status,
-                hosted_url: row.hosted_url,
-                pdf_url: row.pdf_url,
-                lines,
-                created_at: row.created_at,
-                fee_micros: row.fee_micros,
-                tax_micros: row.tax_micros,
-            });
+            invoices.push(self.with_lines(row).await?);
         }
         Ok(invoices)
     }
 
-    /// `invoices`: for the workspace's members.
+    /// One workspace invoice as kept, with its lines.
+    async fn workspace_invoice(&self, invoice_id: &str) -> Result<Option<WorkspaceInvoice>> {
+        let row = self
+            .db
+            .prepare("SELECT * FROM workspace_invoices WHERE invoice_id = ?")
+            .bind(&[invoice_id.into()])?
+            .first::<InvoiceRow>(None)
+            .await?;
+        Ok(match row {
+            Some(row) => Some(self.with_lines(row).await?),
+            None => None,
+        })
+    }
+
+    async fn with_lines(&self, row: InvoiceRow) -> Result<WorkspaceInvoice> {
+        let lines = self
+            .db
+            .prepare("SELECT description, amount_micros FROM workspace_invoice_lines WHERE invoice_id = ? ORDER BY position")
+            .bind(&[row.invoice_id.as_str().into()])?
+            .all()
+            .await?
+            .results::<LineRow>()?
+            .into_iter()
+            .map(|l| InvoiceItem { description: l.description, amount_micros: l.amount_micros })
+            .collect();
+        Ok(WorkspaceInvoice {
+            invoice_id: row.invoice_id,
+            workspace: row.workspace,
+            reason: row.reason,
+            period: row.period,
+            amount_micros: row.amount_micros,
+            status: row.status,
+            hosted_url: row.hosted_url,
+            pdf_url: row.pdf_url,
+            lines,
+            created_at: row.created_at,
+            fee_micros: row.fee_micros,
+            tax_micros: row.tax_micros,
+        })
+    }
+
+    /// `invoices`: for the workspace's owners and billing managers, as its
+    /// billing details are.
     pub(crate) async fn invoices(&self, a: InvoicesArgs) -> Result<Outcome<Vec<WorkspaceInvoice>>> {
         let workspace = a.workspace.to_lowercase();
-        if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
-            return Ok(Outcome::fail(FailureCode::Forbidden, "Only members can see a workspace's invoices."));
+        if !may_see_invoices(&a.viewer, &workspace) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only an owner or a billing manager can see a workspace's invoices."));
         }
         Ok(Outcome::Ok(self.workspace_invoices(&workspace).await?))
     }
@@ -513,7 +839,7 @@ mod tests {
         assert!(draft.contains(&("pending_invoice_items_behavior", "exclude".to_owned())));
         // Taxed by Stripe Tax, every line at g1t's tax code, excluding tax.
         assert!(draft.contains(&("automatic_tax[enabled]", "true".to_owned())));
-        let line = item_fields("cus_1", "in_1", "acme", crate::stripe::CARD_FEE_LINE, 61);
+        let line = item_fields("cus_1", "in_1", "acme", "Sandbox time", 61);
         assert!(line.contains(&("tax_code", crate::stripe::TAX_CODE.to_owned())));
         assert!(line.contains(&("tax_behavior", "exclusive".to_owned())));
         // Left a draft for want of an address: asked for, never charged.
@@ -533,6 +859,72 @@ mod tests {
         assert!(!is_decline(r#"the card processor answered 500: {"error": {"type": "api_error"}}"#));
         assert!(!is_decline(r#"the card processor answered 429: {"error": {"type": "rate_limit_error"}}"#));
         assert!(!is_decline("Network connection lost."));
+    }
+
+    #[test]
+    fn only_owners_and_billing_managers_see_invoices() {
+        let user = |role: &str, org_roles: &[&str]| -> g1t_contracts::Viewer {
+            Some(
+                serde_json::from_value(serde_json::json!({
+                    "id": "u_1", "username": "ana",
+                    "workspaces": [{ "slug": "acme", "role": role, "org_roles": org_roles }],
+                }))
+                .unwrap(),
+            )
+        };
+        assert!(may_see_invoices(&user("owner", &[]), "acme"));
+        assert!(may_see_invoices(&user("member", &["billing_manager"]), "acme"));
+        assert!(!may_see_invoices(&user("member", &[]), "acme"));
+        assert!(!may_see_invoices(&user("member", &["security_manager"]), "acme"));
+        assert!(!may_see_invoices(&user("owner", &[]), "other"));
+        assert!(!may_see_invoices(&None, "acme"));
+    }
+
+    const DECLINED: &str = r#"the card processor answered 402: {"error": {"code": "card_declined", "type": "card_error"}}"#;
+    const NO_METHOD: &str = r#"the card processor answered 400: {"error": {"message": "This customer has no attached payment source or default payment method.", "type": "invalid_request_error"}}"#;
+
+    #[test]
+    fn only_a_paid_invoice_is_credited_and_only_a_decline_stops_work() {
+        assert_eq!(pay_outcome(Some("paid"), None), PayOutcome::Paid);
+        // Paid after all, whatever the attempt said.
+        assert_eq!(pay_outcome(Some("paid"), Some(DECLINED)), PayOutcome::Paid);
+        assert_eq!(pay_outcome(Some("open"), Some(DECLINED)), PayOutcome::Declined);
+        // Stripe did not answer: kept open, tried again, nobody stopped.
+        assert_eq!(pay_outcome(Some("open"), None), PayOutcome::Retry);
+        assert_eq!(pay_outcome(None, None), PayOutcome::Retry);
+        // Voided at Stripe meanwhile: closed, never charged.
+        assert_eq!(pay_outcome(Some("void"), Some(NO_METHOD)), PayOutcome::Void);
+    }
+
+    #[test]
+    fn a_refusal_for_want_of_a_card_stops_instead_of_retrying_for_ever() {
+        assert!(needs_card(NO_METHOD));
+        assert_eq!(pay_outcome(Some("open"), Some(NO_METHOD)), PayOutcome::NeedsCard);
+        assert_eq!(stripe_reason(NO_METHOD), "This customer has no attached payment source or default payment method.");
+        // Only 5xx, 429 and no answer are tried again.
+        for transient in [
+            r#"the card processor answered 500: {"error": {"type": "api_error"}}"#,
+            r#"the card processor answered 429: {"error": {"type": "invalid_request_error", "code": "rate_limit"}}"#,
+            "Network connection lost.",
+        ] {
+            assert!(!needs_card(transient), "{transient}");
+            assert_eq!(pay_outcome(Some("open"), Some(transient)), PayOutcome::Retry, "{transient}");
+        }
+        // A key problem (401) is g1t's, never the payer's: tried again.
+        assert!(!needs_card(r#"the card processor answered 401: {"error": {"type": "invalid_request_error"}}"#));
+    }
+
+    #[test]
+    fn an_invoice_attempted_again_is_the_same_until_one_is_paid_or_voided() {
+        let key = invoice_key("acme", "cus_1", "month", "2026-09", 40_001_500, 0, 0);
+        assert_eq!(key, "ws-invoice/acme/cus_1/month/2026-09/4000/p0");
+        assert_eq!(key, invoice_key("acme", "cus_1", "month", "2026-09", 40_000_100, 0, 0));
+        // A voided invoice is never handed back for the next.
+        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", 40_001_500, 0, 1));
+        // Nor one paid earlier the same day for the same total.
+        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", 40_001_500, 1, 0));
+        // Nor one made for another customer.
+        assert_ne!(key, invoice_key("acme", "cus_2", "month", "2026-09", 40_001_500, 0, 0));
     }
 
     fn items(micros: &[i64]) -> Vec<InvoiceItem> {

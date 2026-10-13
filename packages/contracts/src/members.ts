@@ -16,7 +16,7 @@ export const ORG_ROLE_LABELS: Record<OrgRole, string> = {
 
 /** One line on what each role gives, as People shows it. */
 export const ORG_ROLE_SUMMARIES: Record<OrgRole, string> = {
-  billing_manager: "Manages the budget, AI credit, payment, invoices and billing details. Nothing on repositories.",
+  billing_manager: "Manages the plan, spend limit, payment, invoices and billing details. Nothing on repositories.",
   security_manager: "Reads every repository, and sees and manages every security alert and security setting.",
 };
 

@@ -249,12 +249,13 @@ pub(crate) fn busy_scale(instance: &InstanceType) -> f64 {
 /// What a job on g1t's machines is charged before the account's terms:
 /// its minutes, rounded up (`runner_minutes`), at its machine's rate a
 /// minute. The rates cover a machine with every vCPU busy at Cloudflare's
-/// list prices; should what a job cost g1t ever come to more (a dearer
-/// bill), it is charged that cost instead, so g1t never sells a minute
-/// below cost. Returns the minutes and the price.
-pub(crate) fn runner_charge(seconds: i64, instance: &InstanceType, cost: i64) -> (i64, i64) {
+/// list prices; should what a job cost g1t plus the margin
+/// (`margin_percent`) ever come to more (a busier job, a dearer bill), it
+/// is charged that instead, so g1t never sells a minute below cost plus
+/// the margin. Returns the minutes and the price.
+pub(crate) fn runner_charge(seconds: i64, instance: &InstanceType, cost: i64, margin_percent: u32) -> (i64, i64) {
     let minutes = runner_minutes(seconds);
-    (minutes, (minutes * instance.micros_per_minute).max(cost.max(0)))
+    (minutes, (minutes * instance.micros_per_minute).max(crate::credits::with_margin(cost.max(0), margin_percent)))
 }
 
 /// `1 minute`, `12 minutes`.
@@ -379,17 +380,12 @@ impl Billing {
             .iter()
             .map(|row| (row.meter.as_str(), Price::price_for(row.cost_micros, row.markup_percent)))
             .collect();
-        // With the card fee on top of each monthly price, as it is charged.
-        let card_fee = self.card_fee().await?;
+        // Each monthly price is all of it, before tax: no card fee on top.
         let plans: Vec<_> = g1t_contracts::billing::Feature::ALL
             .iter()
-            .map(|feature| {
-                let mut plan = match feature {
-                    g1t_contracts::billing::Feature::Security => crate::features::security_plan_at(&book),
-                    _ => self.plan_at(&book),
-                };
-                plan.card_fee_cents = crate::tax::fee_for(i64::from(plan.monthly_cents), &card_fee) as u32;
-                plan
+            .map(|feature| match feature {
+                g1t_contracts::billing::Feature::Security => crate::features::security_plan_at(&book),
+                _ => self.plan_at(&book),
             })
             .collect();
         Ok(PriceBook {
@@ -652,21 +648,29 @@ mod tests {
     fn a_job_is_charged_its_minutes_rounded_up_at_its_machines_rate() {
         let four = g1t_contracts::actions::machine_named("4-core").unwrap();
         // 61 seconds is 2 minutes; a job that ran is at least 1.
-        assert_eq!(runner_charge(61, &STANDARD_INSTANCE, 2_000), (2, 8_000));
-        assert_eq!(runner_charge(1, &STANDARD_INSTANCE, 30), (1, 4_000));
-        assert_eq!(runner_charge(60, &four, 4_000), (1, 7_000));
-        assert_eq!(runner_charge(0, &STANDARD_INSTANCE, 0), (0, 0));
-        // A full hour, every vCPU busy, at list prices: still over cost.
+        assert_eq!(runner_charge(61, &STANDARD_INSTANCE, 2_000, 20), (2, 8_000));
+        assert_eq!(runner_charge(1, &STANDARD_INSTANCE, 30, 20), (1, 4_000));
+        assert_eq!(runner_charge(60, &four, 4_000, 20), (1, 7_000));
+        assert_eq!(runner_charge(0, &STANDARD_INSTANCE, 0, 20), (0, 0));
+        // A full hour at list prices, half the vCPUs busy (what the rates
+        // are set from): the rate, over cost plus the margin. Every vCPU
+        // busy: cost plus the margin, never less.
         for machine in g1t_contracts::actions::machines() {
-            let busy_second = machine.memory_gib * 2.5 + machine.disk_gb * 0.07 + 0.125 * 12.5 + machine.vcpu * 20.0;
-            let cost = (3_600.0 * busy_second).ceil() as i64;
-            let (minutes, price) = runner_charge(3_600, &machine, cost);
+            let second = |busy: f64| machine.memory_gib * 2.5 + machine.disk_gb * 0.07 + 0.125 * 12.5 + machine.vcpu * busy * 20.0;
+            let half = (3_600.0 * second(0.5)).ceil() as i64;
+            let (minutes, price) = runner_charge(3_600, &machine, half, 20);
             assert_eq!((minutes, price), (60, 60 * machine.micros_per_minute), "{}", machine.machine);
-            assert!(price > cost, "{}: {price} {cost}", machine.machine);
+            assert!(price >= crate::credits::with_margin(half, 20), "{}: {price} {half}", machine.machine);
+            let busy = (3_600.0 * second(1.0)).ceil() as i64;
+            let (_, price) = runner_charge(3_600, &machine, busy, 20);
+            assert_eq!(price, (60 * machine.micros_per_minute).max(crate::credits::with_margin(busy, 20)), "{}", machine.machine);
+            assert!(price >= crate::credits::with_margin(busy, 20) && price > busy, "{}: {price} {busy}", machine.machine);
         }
         // Should a job ever cost more than its minutes at the rate (a dearer
-        // Cloudflare bill), it is charged that cost instead.
-        assert_eq!(runner_charge(60, &STANDARD_INSTANCE, 10_000), (1, 10_000));
+        // Cloudflare bill), it is charged that cost plus the margin, never
+        // the bare cost.
+        assert_eq!(runner_charge(60, &STANDARD_INSTANCE, 10_000, 20), (1, 12_000));
+        assert_eq!(runner_charge(60, &STANDARD_INSTANCE, 10_000, 0), (1, 10_000));
         assert_eq!(minutes_text(1), "1 minute");
         assert_eq!(minutes_text(12), "12 minutes");
     }

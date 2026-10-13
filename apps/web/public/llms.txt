@@ -12,8 +12,8 @@
 > everything ahead of it, and deployments put a preview of every pull
 > request and production on g1t.page. Each pull request lives in its own
 > fork and carries a recording of how it was made, with the decisions
-> behind it. The forge is free; compute is priced at
-> what it costs g1t plus 20%, never per seat.
+> behind it. The forge is free; compute is priced from
+> what it costs g1t, plus 20%, never per seat.
 
 This file tells an assistant everything needed to get a person set up on g1t
 and working. You never ask for, see, or send the person's password. Accounts
@@ -574,7 +574,7 @@ https://docs.g1t.sh/guides/security/supply-chain/
 
 ## Deployments
 
-Part of the g1t plan ($20 a month per workspace, started by an owner
+Part of the g1t plan ($21 a month per workspace, started by an owner
 under the workspace's Billing). No quotas: unlimited projects and
 previews (never charged); builds by the second, requests ($0.36/M), CPU
 ($0.024/M ms) and custom domains ($0.12 a month each) metered from the
@@ -674,11 +674,11 @@ https://docs.g1t.sh/guides/search/
   main. Bringing a pull request up to date makes a merge commit on its own
   branch.
 - Pricing (https://g1t.sh/pricing): the forge is free. One plan, g1t, at
-  $20 a month per workspace with unlimited members, includes $10 of usage
+  $21 a month per workspace with unlimited members, includes $10 of usage
   at cost + 20% (unused does not roll over). Compute needs the plan or a
   card check (never charged); the $5 trial needs a credit or debit card,
   not a prepaid one. No quotas on the plan: everything is metered from the
-  first unit at cost + 20%, and only the spend limit stops work. Every
+  first unit (runner minutes at a flat rate per machine, everything else at cost + 20%), and only the spend limit stops work. Every
   workspace has 1 GB of private storage and 50,000 git operations a month
   free; past them, the plan pays ($0.60/GB-month, $0.18/1,000) and a free
   workspace is held (pushes to private repositories stop; git slowed to 60

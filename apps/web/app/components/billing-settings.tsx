@@ -1,23 +1,22 @@
 /**
  * Billing settings' newer sections: the plan at a glance with the upcoming
- * invoice, the budget's alerts, the
- * payment method (kept on Stripe), add-ons, invoice details and the
- * invoices. Cards and payment methods are handled on Stripe's own page:
- * g1t has no card form. Each form posts to the billing route's action with
- * an `intent`.
+ * invoice, the budget's alerts, add-ons, and Billing on Stripe. The card,
+ * billing address, tax IDs, invoices and receipts, and ending the plan, are
+ * all managed on Stripe's own billing page (the customer portal): g1t has
+ * no form for any of them. Each form posts to the billing route's action
+ * with an `intent`.
  */
-import { ArrowUpRight, Bell, CreditCard, FileText, Mail, ReceiptText, Sparkles } from "lucide-react";
+import { ArrowUpRight, Bell, CreditCard, FileText, Mail, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 
 import type { BillingDetails, FeatureState, Limit, UsageReport } from "@g1t/contracts";
 
-import { PLUS_TAX, type PlanStatus } from "../lib/billing";
+import type { PlanStatus } from "../lib/billing";
 import { money, wholeDollars } from "../lib/money";
 import { Card } from "./billing";
 import { ErrorText, SubmitButton } from "./ui";
 import { Checkbox } from "./ui/checkbox";
-import { SelectField } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
 
 const FIELD =
@@ -37,7 +36,9 @@ export function PlanSummary({
   report,
   owner,
   enabled,
+  live,
   staff,
+  firstMonthMicros,
   error,
 }: {
   slug: string;
@@ -47,7 +48,11 @@ export function PlanSummary({
   report: UsageReport | null;
   owner: boolean;
   enabled: boolean;
+  /** False while Stripe is in test mode, where cards are not real. */
+  live: boolean;
   staff: boolean;
+  /** The first month's limit on usage not yet paid for, from the price book. */
+  firstMonthMicros?: number | null;
   error?: string;
 }) {
   const plan = state?.plan;
@@ -67,8 +72,7 @@ export function PlanSummary({
         <>
           {plan?.title ?? "g1t"}
           <span className={`rounded-full px-2 py-0.5 text-xs ${on && status.kind !== "past_due" && status.kind !== "canceling" ? "bg-success/15 text-success" : status.kind === "free" || status.kind === "trial" ? "border border-line text-muted" : "bg-warn/15 text-warn"}`}>
-            {status.label}
-            {status.kind === "canceling" && subscription?.periodEnd ? `, ${new Date(subscription.periodEnd).toLocaleDateString()}` : ""}
+            {status.kind === "canceling" && subscription?.periodEnd ? `Ends on ${endsOn(subscription.periodEnd)}` : status.label}
           </span>
         </>
       }
@@ -79,15 +83,10 @@ export function PlanSummary({
       }
       aside={
         <p className="shrink-0 sm:text-right">
-          <span className="text-2xl font-semibold tabular-nums tracking-tight">${((plan?.monthlyCents ?? 2000) / 100).toFixed(0)}</span>
+          <span className="text-2xl font-semibold tabular-nums tracking-tight">${((plan?.monthlyCents ?? 2100) / 100).toFixed(0)}</span>
           <span className="text-sm text-muted"> / month</span>
           <span className="block text-xs text-faint">with {wholeDollars(report?.included?.of ?? 10_000_000)} of usage included</span>
-          {status.kind !== "comped" && status.kind !== "enterprise" && (
-            <span className="block text-xs text-faint">
-              {plan?.cardFeeCents ? `+ ${money(plan.cardFeeCents * 10_000)} card processing fee, ` : ""}
-              {plan?.cardFeeCents ? PLUS_TAX : "Plus tax where it applies"}
-            </span>
-          )}
+          {status.kind !== "comped" && status.kind !== "enterprise" && <span className="block text-xs text-faint">Plus tax where it applies</span>}
         </p>
       }
     >
@@ -143,44 +142,64 @@ export function PlanSummary({
         <Link to={`/${slug}/-/usage`} className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg">
           <FileText size={14} /> Usage
         </Link>
-        <a href="#invoices" className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg">
-          <ReceiptText size={14} /> Invoices
-        </a>
-        {owner && enabled && (
+        {owner && enabled && (status.kind === "free" || status.kind === "trial") && (
           <Form method="post" className="contents">
             <input type="hidden" name="feature" value="plan" />
-            {status.kind === "free" || status.kind === "trial" ? (
-              <SubmitButton variant="accent" name="intent" value="subscribe" pending="Opening Stripe…">
-                <CreditCard size={14} />
-                Start the g1t plan
-              </SubmitButton>
-            ) : status.kind === "canceling" ? (
-              <SubmitButton variant="accent" name="intent" value="resume" pending="Saving…">
-                Keep the plan
-              </SubmitButton>
-            ) : status.kind === "paid" && subscription ? (
-              <SubmitButton variant="outline" name="intent" value="cancel" pending="Saving…">
-                Downgrade to free at the period's end
-              </SubmitButton>
-            ) : null}
+            <SubmitButton variant="accent" name="intent" value="subscribe" pending="Opening Stripe…">
+              <CreditCard size={14} />
+              Start the g1t plan
+            </SubmitButton>
+          </Form>
+        )}
+        {owner && enabled && subscription && (status.kind === "paid" || status.kind === "canceling" || status.kind === "past_due") && (
+          // Ending the plan, keeping it after all, and the card it renews on
+          // are all on Stripe's billing page.
+          <Form method="post" className="contents">
+            <input type="hidden" name="from" value="plan" />
+            <SubmitButton variant={status.kind === "paid" ? "outline" : "accent"} name="intent" value="portal" pending="Opening Stripe…">
+              {status.kind === "past_due" ? <CreditCard size={14} /> : null}
+              {status.kind === "past_due" ? "Update payment method" : "Manage billing"}
+              <ArrowUpRight size={14} />
+            </SubmitButton>
           </Form>
         )}
         <a href="mailto:sales@g1t.sh?subject=Custom%20needs" className="ml-auto inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
           <Mail size={14} /> Custom needs? Contact us
         </a>
       </div>
-      {staff && enabled && (status.kind === "free" || status.kind === "trial") && (
+      {owner && enabled && subscription && status.kind === "paid" && (
+        <p className="mt-3 text-xs text-faint">To end the plan at the end of the period, use Manage billing. Nothing more is charged for it after that.</p>
+      )}
+      {status.kind === "canceling" && (
+        <p className="mt-3 text-sm text-muted">
+          The plan ends at the end of the period and nothing more is charged for it.{" "}
+          {owner ? "To keep it, use Manage billing." : "An owner or billing manager can keep it from Manage billing."}
+        </p>
+      )}
+      {status.kind === "past_due" && (
+        <p className="mt-3 text-sm text-warn">
+          The last renewal payment failed, so the plan's features are stopped until it is paid.{" "}
+          {owner ? "Update the payment method, and Stripe tries the payment again." : "An owner or billing manager can update the payment method."}
+        </p>
+      )}
+      {staff && enabled && !live && (status.kind === "free" || status.kind === "trial") && (
         <p className="mt-3 text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</p>
       )}
       {(status.kind === "free" || status.kind === "trial") && (
         <p className="mt-3 text-xs text-faint">
-          Your first month starts at a {wholeDollars(100_000_000)} limit on usage past
-          what is included, so a stolen card cannot run up a bill.
+          In its first month on the plan, a workspace can owe at most {wholeDollars(firstMonthMicros ?? 100_000_000)} of usage
+          not yet paid for, past what is included, so a stolen card cannot run up a bill. Work waits at whichever comes first:
+          that limit or your spend limit. After the first month, the limit grows as payments clear.
         </p>
       )}
       <ErrorText>{error}</ErrorText>
     </Card>
   );
+}
+
+/** A plan's last day as people read it: "Nov 12, 2026". */
+export function endsOn(periodEnd: string): string {
+  return new Date(periodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
 // --- Budget alerts --------------------------------------------------------------------------------
@@ -244,21 +263,39 @@ export function BudgetAlerts({ limit, owner, error }: { limit: Limit; owner: boo
   );
 }
 
-// --- Payment method -------------------------------------------------------------------------------
+// --- Billing on Stripe ---------------------------------------------------------------------------
 
-export function PaymentMethodCard({ details, owner, enabled, staff, error }: { details: BillingDetails | null; owner: boolean; enabled: boolean; staff: boolean; error?: string }) {
+/**
+ * Billing on Stripe: the saved card, read-only, and one way to Stripe's
+ * billing page, where the card, the billing address, tax IDs, invoices and
+ * receipts are managed. Owners and billing managers only.
+ */
+export function BillingOnStripeCard({
+  details,
+  enabled,
+  live,
+  staff,
+  error,
+}: {
+  details: BillingDetails | null;
+  enabled: boolean;
+  /** False while Stripe is in test mode, where cards are not real. */
+  live: boolean;
+  staff: boolean;
+  error?: string;
+}) {
   const method = details?.paymentMethod;
   return (
     <Card
-      id="payment"
+      id="stripe"
       icon={<CreditCard size={16} />}
-      title="Payment method"
-      about="Cards are added, removed and made the default on Stripe's billing page. g1t never sees card numbers."
+      title="Billing on Stripe"
+      about="Your card, billing address, tax IDs, invoices and receipts are kept on Stripe's billing page. g1t never sees card numbers."
       aside={
-        owner && enabled ? (
+        enabled ? (
           <Form method="post">
             <SubmitButton variant="outline" name="intent" value="portal" pending="Opening Stripe…">
-              Manage in Stripe
+              Manage billing
               <ArrowUpRight size={14} />
             </SubmitButton>
           </Form>
@@ -279,13 +316,12 @@ export function PaymentMethodCard({ details, owner, enabled, staff, error }: { d
                 · expires {String(method.expMonth).padStart(2, "0")}/{method.expYear}
               </span>
             )}
-            <span className="text-xs text-faint">default</span>
           </p>
         ) : (
-          <p className="text-muted">No payment method yet. Starting the plan saves the card you pay with.</p>
+          <p className="text-muted">No card yet. Starting the plan saves the card you pay with.</p>
         )}
         {details?.unavailable && <p className="mt-2 text-xs text-warn">{details.unavailable}</p>}
-        {staff && <p className="mt-2 text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</p>}
+        {staff && !live && <p className="mt-2 text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</p>}
       </div>
       <ErrorText>{error}</ErrorText>
     </Card>
@@ -342,189 +378,14 @@ export function AddOns({ plan, security, error }: { plan: FeatureState | null; s
   );
 }
 
-// --- Invoice details ------------------------------------------------------------------------------
-
-const TAX_IDS: [string, string][] = [
-  ["", "None"],
-  ["eu_vat", "EU VAT"],
-  ["gb_vat", "UK VAT"],
-  ["us_ein", "US EIN"],
-  ["ca_bn", "Canadian BN"],
-  ["au_abn", "Australian ABN"],
-  ["ch_vat", "Swiss VAT"],
-  ["no_vat", "Norwegian VAT"],
-  ["in_gst", "Indian GST"],
-  ["jp_cn", "Japanese corporate number"],
-  ["br_cnpj", "Brazilian CNPJ"],
-  ["mx_rfc", "Mexican RFC"],
-  ["sg_uen", "Singapore UEN"],
-  ["nz_gst", "New Zealand GST"],
-  ["za_vat", "South African VAT"],
-];
-
-/** What Stripe's check of a tax ID found. */
-const TAX_ID_STATUS: Record<string, string> = {
-  verified: "Verified by Stripe.",
-  pending: "Stripe is checking it.",
-  unverified: "Stripe could not verify it. Check the number.",
-  unavailable: "Stripe cannot check this kind of ID.",
-};
-
-const LANGUAGES: [string, string][] = [
-  ["", "Automatic"],
-  ["en", "English"],
-  ["en-GB", "English (UK)"],
-  ["de", "German"],
-  ["fr", "French"],
-  ["es", "Spanish"],
-  ["it", "Italian"],
-  ["nl", "Dutch"],
-  ["pt-BR", "Portuguese (Brazil)"],
-  ["ja", "Japanese"],
-  ["zh", "Chinese"],
-];
-
-export function InvoiceDetailsCard({ details, owner, enabled, error }: { details: BillingDetails | null; owner: boolean; enabled: boolean; error?: string }) {
-  const a = details?.address;
-  const disabled = !owner || !enabled;
-  return (
-    <Card
-      id="details"
-      icon={<ReceiptText size={16} />}
-      title="Invoice details"
-      about="Who invoices are for. Kept on the workspace's Stripe customer and printed on every invoice. Tax is worked out from the address."
-    >
-      {details?.customer && !details.taxLocation && (
-        <p className={`mt-3 rounded-lg border px-3 py-2 text-sm ${details.taxAddressNeededAt ? "border-warn/40 bg-warn/5" : "border-line bg-bg/40 text-muted"}`}>
-          {details.taxAddressNeededAt
-            ? "Add the billing address: Stripe needs at least the country (and in the US the ZIP code) to work out tax, so g1t is not charging the card until it is here."
-            : "No billing address yet. Stripe needs at least the country (and in the US the ZIP code) to work out tax before g1t charges the card."}
-        </p>
-      )}
-      {(details?.taxExempt === "exempt" || details?.taxExempt === "reverse") && (
-        <p className="mt-3 text-xs text-muted">
-          {details.taxExempt === "exempt" ? "Tax exempt: no tax is added." : "Reverse charge: you account for the tax yourself, and invoices say so."}
-        </p>
-      )}
-      <Form method="post" className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <input type="hidden" name="intent" value="details" />
-        <fieldset disabled={disabled} className="contents">
-          <label className="block">
-            <span className="text-xs text-muted">Invoice email</span>
-            <input name="email" type="email" defaultValue={details?.email ?? ""} className={`mt-1 ${FIELD}`} />
-          </label>
-          <label className="block">
-            <span className="text-xs text-muted">Company name</span>
-            <input name="name" defaultValue={details?.name ?? ""} className={`mt-1 ${FIELD}`} />
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs text-muted">Address</span>
-            <input name="line1" placeholder="Street" defaultValue={a?.line1 ?? ""} className={`mt-1 ${FIELD}`} />
-            <input name="line2" placeholder="Suite, floor (optional)" aria-label="Address line 2" defaultValue={a?.line2 ?? ""} className={`mt-2 ${FIELD}`} />
-          </label>
-          <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-4">
-            <input name="city" placeholder="City" aria-label="City" defaultValue={a?.city ?? ""} className={FIELD} />
-            <input name="state" placeholder="State or region" aria-label="State or region" defaultValue={a?.state ?? ""} className={FIELD} />
-            <input name="postalCode" placeholder="Postal code" aria-label="Postal code" defaultValue={a?.postalCode ?? ""} className={FIELD} />
-            <input name="country" placeholder="Country (US)" aria-label="Country, two letters" maxLength={2} defaultValue={a?.country ?? ""} className={`${FIELD} uppercase`} />
-          </div>
-          <label className="block">
-            <span className="text-xs text-muted">Tax ID</span>
-            <span className="mt-1 flex gap-2">
-              <SelectField
-                name="taxIdType"
-                defaultValue={details?.taxIdType ?? ""}
-                aria-label="Kind of tax ID"
-                className="h-auto w-auto shrink-0 px-2.5 py-1.5"
-                options={TAX_IDS.map(([value, label]) => ({ value, label }))}
-              />
-              <input name="taxId" defaultValue={details?.taxId ?? ""} aria-label="Tax ID" className={FIELD} />
-            </span>
-            {details?.taxId && details.taxIdStatus && (
-              <span className="mt-1 block text-xs text-faint">{TAX_ID_STATUS[details.taxIdStatus] ?? `Stripe's check: ${details.taxIdStatus}`}</span>
-            )}
-          </label>
-          <label className="block">
-            <span className="text-xs text-muted">Purchase order</span>
-            <input name="poNumber" defaultValue={details?.poNumber ?? ""} className={`mt-1 ${FIELD}`} />
-          </label>
-          <label className="block">
-            <span className="text-xs text-muted">Invoice language</span>
-            <SelectField
-              name="language"
-              defaultValue={details?.language ?? ""}
-              aria-label="Invoice language"
-              className="mt-1 h-auto px-2.5 py-1.5"
-              options={LANGUAGES.map(([value, label]) => ({ value, label }))}
-            />
-          </label>
-          {!disabled && (
-            <div className="flex items-end">
-              <SubmitButton variant="outline" match={{ intent: "details" }} pending="Saving…">
-                Save invoice details
-              </SubmitButton>
-            </div>
-          )}
-        </fieldset>
-      </Form>
-      {!owner && <p className="mt-3 text-xs text-faint">An owner changes these.</p>}
-      <ErrorText>{error}</ErrorText>
-    </Card>
-  );
-}
-
-// --- Invoices ---------------------------------------------------------------------------------------
-
-const STATUS: Record<string, string> = { paid: "Paid", open: "Open", void: "Void", uncollectible: "Uncollectible", draft: "Draft" };
-
-export function InvoicesCard({ details }: { details: BillingDetails | null }) {
-  const invoices = details?.invoices ?? [];
-  return (
-    <section id="invoices" className="mb-6 scroll-mt-20 overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="px-5 pt-5">
-        <h2 className="font-medium">Invoices</h2>
-        <p className="mt-1 text-sm text-muted">The plan, add-ons and each month's usage, as Stripe sent them.</p>
-      </div>
-      {invoices.length === 0 ? (
-        <p className="px-5 py-5 text-sm text-faint">No invoices yet.</p>
-      ) : (
-        <ul className="mt-3 divide-y divide-line border-t border-line">
-          {invoices.map((invoice) => (
-            <li key={invoice.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-sm">
-              <span className="w-24 shrink-0 text-muted tabular-nums">{new Date(invoice.createdAt).toLocaleDateString("en-US", { timeZone: "UTC" })}</span>
-              <span className="min-w-0 flex-1 truncate">{invoice.description ?? invoice.number ?? invoice.id}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs ${invoice.status === "paid" ? "bg-success/15 text-success" : invoice.status === "open" ? "bg-warn/15 text-warn" : "border border-line text-muted"}`}>
-                {STATUS[invoice.status] ?? invoice.status}
-              </span>
-              <span className="w-20 text-right tabular-nums">{money(invoice.totalCents * 10_000)}</span>
-              <span className="flex gap-3 text-xs">
-                {invoice.hostedUrl && (
-                  <a href={invoice.hostedUrl} className="text-muted hover:text-fg">
-                    View
-                  </a>
-                )}
-                {invoice.pdfUrl && (
-                  <a href={invoice.pdfUrl} className="text-muted hover:text-fg">
-                    PDF
-                  </a>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/** Stripe's sections while Stripe is asked: the same shapes. */
+/** Billing on Stripe while Stripe is asked: the same shape. */
 export function StripeSkeleton() {
   return (
     <div aria-busy="true">
       <span role="status" className="sr-only">
         Loading from Stripe…
       </span>
-      {[5.5, 14, 8].map((rem, i) => (
+      {[5.5].map((rem, i) => (
         <div key={i} className="mb-6 rounded-xl border border-line bg-surface p-5" aria-hidden="true" style={{ minHeight: `${rem}rem` }}>
           <Skeleton className="h-4 w-36" />
           <Skeleton className="mt-3 h-3 w-72 max-w-full" />

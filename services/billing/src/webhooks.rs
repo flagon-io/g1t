@@ -9,8 +9,11 @@
 //! signature here, untouched.
 //!
 //! - The endpoint is registered by billing itself, from sudo, once per
-//!   mode, and its signing secret is kept in billing's database. It is never
-//!   shown, and nothing can be posted here without it.
+//!   mode. Its signing secret is the worker's `STRIPE_WEBHOOK_SECRET`
+//!   environment secret, never kept in the database or shown, and nothing
+//!   can be posted here without it.
+//! - An event whose `livemode` is not the key's mode is ignored (and
+//!   logged): test events never move live balances, nor the reverse.
 //! - Each event is handled once, by id, and recorded with what was done.
 //! - Every handler is safe alongside the paths that ask Stripe directly:
 //!   both claim the same rows.
@@ -23,7 +26,7 @@
 
 use g1t_contracts::billing::{
     AdminEnterpriseAddressArgs, AdminEnterpriseBillingArgs, AdminInvoiceEnterpriseArgs, AdminStripeArgs, BillingAccount, EnterpriseInvoice,
-    EntryKind, InvoiceLine, StripeEventSummary, StripeStatus, StripeWebhook, StripeWebhookArgs,
+    EntryKind, InvoiceLine, StripeEventSummary, StripePortalStatus, StripeStatus, StripeTaxStatus, StripeWebhook, StripeWebhookArgs,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
@@ -70,6 +73,66 @@ pub(crate) const EVENTS: &[&str] = &[
 pub(crate) fn invoice_subscription(invoice: &Value) -> Option<&str> {
     invoice["subscription"].as_str().or_else(|| invoice["parent"]["subscription_details"]["subscription"].as_str())
 }
+
+/// Why an event is not for this key, when its `livemode` disagrees with the
+/// key's mode (`live` or `test`): a test event never moves real balances,
+/// nor a live one test balances. None when it agrees, or says nothing.
+pub(crate) fn wrong_mode(livemode: Option<bool>, mode: &str) -> Option<String> {
+    let live = livemode?;
+    let key_live = mode == "live";
+    (live != key_live).then(|| format!("a {} event, and the key is in {mode} mode", if live { "live" } else { "test" }))
+}
+
+/// What earlier refunds of a charge (`?1`, `refund/<charge>/%`) took back,
+/// as a positive amount: from the plan's payments and from the ledger alike.
+pub(crate) const ALREADY_REFUNDED_SQL: &str = "SELECT -(COALESCE((SELECT SUM(amount_micros) FROM plan_payments WHERE invoice_id LIKE ?1), 0)
+          + COALESCE((SELECT SUM(amount_micros) FROM ledger WHERE reference LIKE ?1), 0)) AS micros";
+
+/// Why a workspace's work is stopped while one of its payments is disputed.
+const DISPUTE_STOP: &str = "a payment was disputed with the card's bank";
+
+/// Where a dispute stands, from Stripe's `status`: `lost`, `won` (a
+/// warning closed without a dispute counts as won), else `open`.
+pub(crate) fn dispute_state(status: &str) -> &'static str {
+    match status {
+        "lost" => "lost",
+        "won" | "warning_closed" | "prevented" => "won",
+        _ => "open",
+    }
+}
+
+/// Whether a dispute event moves the dispute from where billing has it
+/// (`known`, none for a dispute not seen before) to `state`: an event that
+/// says what billing knows already does nothing. Once lost, only a win
+/// (Stripe reversing it) moves it again; once detached (a test-mode
+/// dispute), nothing does.
+pub(crate) fn dispute_moves(known: Option<&str>, state: &str) -> bool {
+    match known {
+        None => true,
+        Some(known) if known == state => false,
+        // Closed by a test-mode detach: a test dispute, never acted on.
+        Some("detached") => false,
+        Some("lost") => state == "won",
+        Some(_) => true,
+    }
+}
+
+/// What a dispute won after it was lost gives back: what the loss took
+/// (`taken`), only on that move. Nothing for any other.
+pub(crate) fn restore_on_win(known: Option<&str>, state: &str, taken: i64) -> i64 {
+    if known == Some("lost") && state == "won" { taken.max(0) } else { 0 }
+}
+
+/// Where a lost dispute's reversal is given back: `dispute/<id>/won`,
+/// unique, so it is given back once.
+pub(crate) fn won_reference(dispute_id: &str) -> String {
+    format!("dispute/{dispute_id}/won")
+}
+
+/// What a dispute won after it was lost no longer leaves owed: `?1` the
+/// workspace, `?2` what the loss took. Never below nothing.
+pub(crate) const LOWER_DISPUTE_OWED: &str =
+    "UPDATE limits SET dispute_owed_micros = MAX(0, dispute_owed_micros - ?2) WHERE workspace = ?1";
 
 /// Events billing handles that `has` does not include, in billing's order.
 pub(crate) fn missing_events(has: &[String]) -> Vec<String> {
@@ -217,6 +280,24 @@ impl Billing {
             .into_iter()
             .map(|row| StripeEventSummary { id: row.id, kind: row.r#type, outcome: row.outcome, received_at: row.received_at })
             .collect();
+        // Stripe Tax and the customer portal, for the go-live checklist:
+        // read as Stripe has them, never made or changed here.
+        let (mut tax, mut portal) = (None, None);
+        if let Some(stripe) = &self.stripe {
+            match stripe.tax_settings().await {
+                Ok(settings) => {
+                    tax = Some(StripeTaxStatus {
+                        status: settings.status,
+                        missing_fields: settings.status_details.pending.and_then(|p| p.missing_fields).unwrap_or_default(),
+                    })
+                }
+                Err(e) => error = error.or(Some(format!("Stripe Tax's settings could not be read: {e}"))),
+            }
+            match stripe.our_portal().await {
+                Ok(found) => portal = found.map(|c| StripePortalStatus { configuration_id: c.id, active: c.active }),
+                Err(e) => error = error.or(Some(format!("The customer portal's settings could not be read: {e}"))),
+            }
+        }
         Ok(StripeStatus {
             mode: self.mode().to_owned(),
             secret_set: self.webhook_secret.is_some(),
@@ -224,6 +305,8 @@ impl Billing {
             missing_events,
             recent_events,
             error,
+            tax,
+            portal,
         })
     }
 
@@ -280,6 +363,10 @@ impl Billing {
     }
 
     async fn handle(&self, kind: &str, event: &Value) -> Result<String> {
+        if let Some(why) = wrong_mode(event["livemode"].as_bool(), self.mode()) {
+            worker::console_error!("Stripe event {} ({kind}) ignored: {why}", event["id"].as_str().unwrap_or_default());
+            return Ok(format!("ignored: {why}"));
+        }
         let object = &event["data"]["object"];
         let text = |key: &str| object[key].as_str().unwrap_or_default().to_owned();
         // The customer whose saved card may have changed. A detached card
@@ -296,31 +383,33 @@ impl Billing {
             }
             "invoice.paid" => {
                 if let Some(subscription) = invoice_subscription(object) {
-                    self.plan_paid(subscription, object).await?;
+                    self.plan_paid(subscription, &text("id")).await?;
                     self.settle_subscription(subscription).await?
                 } else if let Some(done) = self.workspace_invoice_paid(&text("id")).await? {
                     done
                 } else {
-                    self.enterprise_invoice_paid(object).await?
+                    self.enterprise_invoice_paid(&text("id")).await?
                 }
             }
             "invoice.payment_failed" => match (invoice_subscription(object), object["metadata"]["g1t_workspace"].as_str()) {
                 (Some(subscription), _) => self.settle_subscription(subscription).await?,
-                (None, Some(tagged)) => {
-                    // The invoice's own row names the workspace as it is
-                    // now; the metadata keeps the slug it was sent under.
-                    let workspace = self.workspace_of_invoice(&text("id")).await?.unwrap_or_else(|| tagged.to_owned());
-                    let workspace = workspace.as_str();
-                    self.mark_declined(workspace, "the card was declined for an invoice").await?;
-                    format!("{workspace}: invoice payment failed; work stopped")
-                }
+                (None, Some(tagged)) => self.workspace_invoice_failed(&text("id"), tagged).await?,
                 _ => "ignored: not g1t's".to_owned(),
             },
             "invoice.overdue" => self.enterprise_invoice_status(&text("id"), "overdue").await?,
-            "invoice.voided" => self.enterprise_invoice_status(&text("id"), "void").await?,
-            "charge.refunded" => self.refunded(object).await?,
-            "charge.dispute.created" => self.disputed(object, true).await?,
-            "charge.dispute.closed" => self.disputed(object, object["status"].as_str() == Some("lost")).await?,
+            "invoice.voided" => {
+                // A workspace invoice voided at Stripe stops being open here.
+                self.db
+                    .prepare("UPDATE workspace_invoices SET status = 'void' WHERE invoice_id = ? AND status IN ('open', 'failed')")
+                    .bind(&[text("id").into()])?
+                    .run()
+                    .await?;
+                self.enterprise_invoice_status(&text("id"), "void").await?
+            }
+            "charge.refunded" => self.refunded(&text("id")).await?,
+            // Created or closed, the dispute is read as it stands now, so
+            // events late or out of order act on where it is.
+            "charge.dispute.created" | "charge.dispute.closed" => self.disputed(&text("id")).await?,
             "customer.updated"
             | "payment_method.attached"
             | "payment_method.detached"
@@ -370,18 +459,17 @@ impl Billing {
         if session.payment_status != "paid" && open.feature.is_none() {
             return Ok("ignored: not paid".to_owned());
         }
-        let claimed = self
-            .db
-            .prepare("UPDATE checkouts SET status = 'paid' WHERE id = ? AND status = 'open' RETURNING id")
-            .bind(&[session_id.into()])?
-            .first::<Value>(None)
-            .await?;
-        if claimed.is_none() {
-            return Ok("ignored: settled meanwhile".to_owned());
-        }
+        // What the page paid for first, then the page marked paid: a
+        // failure between the two leaves it open, and settling it again
+        // finds the credit (the ledger's reference) or the plan entered.
+        let mark = self.db.prepare("UPDATE checkouts SET status = 'paid' WHERE id = ? AND status = 'open'").bind(&[session_id.into()])?;
         match open.feature.as_deref() {
             None => {
                 let cents = self.credit_prepayment(&open.workspace, &session, open.fee_cents.unwrap_or(0), &open.created_by).await?;
+                mark.run().await?;
+                if cents == 0 {
+                    return Ok("ignored: credited meanwhile".to_owned());
+                }
                 Ok(format!("credited {} to {}", crate::features::dollars(cents * 10_000), open.workspace))
             }
             Some(feature) => {
@@ -400,6 +488,7 @@ impl Billing {
                     .bind(&[open.workspace.as_str().into(), crate::optional(session.customer.as_deref()), rfc3339(now_ms()).into()])?
                     .run()
                     .await?;
+                mark.run().await?;
                 Ok(format!("{} plan started for {}", feature.title(), open.workspace))
             }
         }
@@ -409,11 +498,20 @@ impl Billing {
     /// ledger, recorded once per invoice for sudo's figures and for trust.
     /// Only the plan's own price is revenue: the invoice's tax and card fee
     /// are kept apart (`tax_and_fees`).
-    async fn plan_paid(&self, subscription_id: &str, invoice: &Value) -> Result<()> {
-        let invoice_id = invoice["id"].as_str().unwrap_or_default();
+    ///
+    /// The invoice is read again at billing's API version: the event's copy
+    /// is at the destination's, where `tax` and `payment_intent` may be
+    /// gone.
+    async fn plan_paid(&self, subscription_id: &str, invoice_id: &str) -> Result<()> {
+        let Some(stripe) = &self.stripe else { return Ok(()) };
+        if invoice_id.is_empty() {
+            return Ok(());
+        }
+        let invoice: Value = stripe.get(&format!("/invoices/{invoice_id}")).await?;
+        let invoice = &invoice;
         let split = crate::stripe::invoice_split(invoice, invoice["amount_paid"].as_i64().unwrap_or(0));
         let amount_cents = split.net_cents;
-        if amount_cents <= 0 || invoice_id.is_empty() {
+        if amount_cents <= 0 {
             return Ok(());
         }
         #[derive(Deserialize)]
@@ -467,7 +565,20 @@ impl Billing {
         let (Some(stripe), Some(feature)) = (&self.stripe, g1t_contracts::billing::Feature::parse(&plan.feature)) else {
             return Ok("ignored".to_owned());
         };
-        let subscription = stripe.subscription(subscription_id).await?;
+        let subscription = match stripe.subscription(subscription_id).await {
+            Ok(subscription) => subscription,
+            // A plan Stripe no longer has (another account's, or deleted):
+            // it has ended here.
+            Err(error) if crate::stripe::is_missing(&error) => {
+                self.db
+                    .prepare("UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE subscription_id = ?")
+                    .bind(&[rfc3339(now_ms()).into(), subscription_id.into()])?
+                    .run()
+                    .await?;
+                return Ok(format!("{} plan for {} is gone at Stripe: canceled", feature.title(), plan.workspace));
+            }
+            Err(error) => return Err(error),
+        };
         self.record(&plan.workspace, feature, &subscription, &plan.started_by).await?;
         Ok(format!("{} plan for {} is {}", feature.title(), plan.workspace, subscription.status))
     }
@@ -488,7 +599,7 @@ impl Billing {
     }
 
     /// The workspace a workspace invoice was sent to, under its slug now.
-    async fn workspace_of_invoice(&self, invoice_id: &str) -> Result<Option<String>> {
+    pub(crate) async fn workspace_of_invoice(&self, invoice_id: &str) -> Result<Option<String>> {
         #[derive(Deserialize)]
         struct Row {
             workspace: String,
@@ -502,8 +613,14 @@ impl Billing {
             .map(|row| row.workspace))
     }
 
-    /// Money given back: what was paid is less, by the refund.
-    async fn refunded(&self, charge: &Value) -> Result<String> {
+    /// Money given back: what was paid is less, by the refund. A refund of
+    /// a plan's invoice takes back the plan's payment (`plan_payments`);
+    /// any other takes back credit on the balance. The charge is read again
+    /// at billing's API version, where it still carries `invoice`.
+    async fn refunded(&self, charge_id: &str) -> Result<String> {
+        let Some(stripe) = &self.stripe else { return Ok("ignored: payments off".to_owned()) };
+        let charge: Value = stripe.get(&format!("/charges/{charge_id}")).await?;
+        let charge = &charge;
         let Some(customer) = charge["customer"].as_str() else { return Ok("ignored: no customer".to_owned()) };
         let Some(workspace) = self.workspace_of_customer(customer).await? else {
             return Ok("ignored: not a workspace's customer".to_owned());
@@ -512,15 +629,21 @@ impl Billing {
         if refunded <= 0 {
             return Ok("ignored: nothing refunded".to_owned());
         }
-        // Each refund total once, so partial refunds add up correctly.
-        let charge_id = charge["id"].as_str().unwrap_or_default();
+        let plan_invoice = match charge["invoice"].as_str() {
+            Some(invoice) => self.plan_payment_of(invoice).await?,
+            None => false,
+        };
+        // Each refund total once, so partial refunds add up correctly: what
+        // earlier refunds of the charge took back, wherever they were kept.
+        // A plan's refund recorded on the ledger (before plan refunds went
+        // to `plan_payments`) counts as much as one recorded there.
         #[derive(Deserialize)]
         struct Sum {
             micros: Option<i64>,
         }
         let already = self
             .db
-            .prepare("SELECT -SUM(amount_micros) AS micros FROM ledger WHERE reference LIKE ?")
+            .prepare(ALREADY_REFUNDED_SQL)
             .bind(&[format!("refund/{charge_id}/%").into()])?
             .first::<Sum>(None)
             .await?
@@ -538,7 +661,17 @@ impl Billing {
             return Ok("ignored: refund already recorded".to_owned());
         }
         let reference = format!("refund/{charge_id}/{refunded}");
-        if new > 0 {
+        if new > 0 && plan_invoice {
+            // The plan's revenue is less; nothing was ever on the balance.
+            self.db
+                .prepare(
+                    "INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at) VALUES (?, ?, ?, ?)
+                     ON CONFLICT (invoice_id) DO NOTHING",
+                )
+                .bind(&[reference.as_str().into(), workspace.as_str().into(), ((-new) as f64).into(), rfc3339(now_ms()).into()])?
+                .run()
+                .await?;
+        } else if new > 0 {
             self.enter(&workspace, EntryKind::TopUp, -new, "Refunded to the card", &reference, None, None, None).await?;
         }
         self.record_extras(&workspace, &reference, charge["payment_intent"].as_str(), new_extras, None).await?;
@@ -575,11 +708,39 @@ impl Billing {
         Ok((of("tax"), of("card_fee")))
     }
 
-    /// A disputed payment stops the workspace's work until it is resolved;
-    /// one closed in the workspace's favour lets it go on.
-    async fn disputed(&self, dispute: &Value, stop: bool) -> Result<String> {
+    /// Whether a Stripe invoice is a plan's, its payment recorded in
+    /// `plan_payments`.
+    async fn plan_payment_of(&self, invoice_id: &str) -> Result<bool> {
+        Ok(self
+            .db
+            .prepare("SELECT invoice_id FROM plan_payments WHERE invoice_id = ?")
+            .bind(&[invoice_id.into()])?
+            .first::<Value>(None)
+            .await?
+            .is_some())
+    }
+
+    /// A disputed payment, acted on as Stripe says it stands now (so an
+    /// event late, twice or out of order does the right thing):
+    ///
+    /// - Open: the payment never counts toward trust, and work stops.
+    /// - Won: it counts again, and the stop lifts unless another dispute is
+    ///   open or what a lost one took is unpaid. Won after it was lost (the
+    ///   bank reversed itself), what was taken back is given back once
+    ///   (`dispute/<id>/won`, where the loss was entered) and no longer
+    ///   owed.
+    /// - Lost: its credit is taken back once (`dispute/<id>` on the ledger,
+    ///   or on `plan_payments` for a plan's invoice), in the share of the
+    ///   payment that was not tax or card fee, and work stays stopped until
+    ///   that much is paid again (`dispute_owed_micros`). A smaller payment
+    ///   in the meantime is credit like any other, but does not lift it.
+    async fn disputed(&self, dispute_id: &str) -> Result<String> {
         let Some(stripe) = &self.stripe else { return Ok("ignored".to_owned()) };
-        let Some(charge_id) = dispute["charge"].as_str() else { return Ok("ignored: no charge".to_owned()) };
+        let dispute: Value = stripe.get(&format!("/disputes/{dispute_id}")).await?;
+        let state = dispute_state(dispute["status"].as_str().unwrap_or_default());
+        let Some(charge_id) = dispute["charge"].as_str().or_else(|| dispute["charge"]["id"].as_str()) else {
+            return Ok("ignored: no charge".to_owned());
+        };
         let charge: Value = stripe.get(&format!("/charges/{charge_id}")).await?;
         let Some(workspace) = (match charge["customer"].as_str() {
             Some(customer) => self.workspace_of_customer(customer).await?,
@@ -588,34 +749,208 @@ impl Billing {
             return Ok("ignored: not a workspace's customer".to_owned());
         };
         let now = rfc3339(now_ms());
-        // The disputed payment never counts toward trust again.
-        for reference in [charge["payment_intent"].as_str(), charge["invoice"].as_str()].into_iter().flatten() {
+        let payment_intent = charge["payment_intent"].as_str();
+        let invoice = charge["invoice"].as_str();
+        // The payment as the ledger knows it: its PaymentIntent, its
+        // invoice, or the prepayment page that took it.
+        let mut references: Vec<String> = [payment_intent, invoice].into_iter().flatten().map(str::to_owned).collect();
+        if let Some(intent) = payment_intent {
+            let pages: Value = stripe.get(&format!("/checkout/sessions?payment_intent={intent}&limit=10")).await?;
+            references.extend(pages["data"].as_array().into_iter().flatten().filter_map(|page| page["id"].as_str().map(str::to_owned)));
+        }
+        // It counts toward trust again only if won.
+        for reference in &references {
             self.db
                 .prepare("UPDATE ledger SET disputed = ? WHERE workspace = ? AND reference = ?")
-                .bind(&[(if stop { 1 } else { 0 }).into(), workspace.as_str().into(), reference.into()])?
+                .bind(&[(if state == "won" { 0 } else { 1 }).into(), workspace.as_str().into(), reference.as_str().into()])?
                 .run()
                 .await?;
         }
-        if stop {
+        #[derive(Deserialize)]
+        struct Known {
+            status: String,
+            reversed_micros: Option<i64>,
+        }
+        let known_row = self
+            .db
+            .prepare("SELECT status, reversed_micros FROM disputes WHERE dispute_id = ?")
+            .bind(&[dispute_id.into()])?
+            .first::<Known>(None)
+            .await?;
+        let taken = known_row.as_ref().and_then(|row| row.reversed_micros).unwrap_or(0);
+        let known = known_row.map(|row| row.status);
+        // Where it stood already: an event twice, or late, changes nothing.
+        // Work is not stopped again (an owner may have paid since), and
+        // nothing is taken back or owed twice.
+        if !dispute_moves(known.as_deref(), state) {
+            return Ok(format!("ignored: dispute {dispute_id} is {state} already"));
+        }
+        let reference = format!("dispute/{dispute_id}");
+        let mut writes = vec![];
+        // A lost dispute's credit, taken back once: the reversal, the
+        // dispute's row and what is owed go in one batch, so a delivery
+        // alongside (whose reversal fails on the same reference, undoing
+        // its whole batch) never adds what is owed a second time.
+        let mut reversed = 0;
+        if state == "lost" {
+            let (extras, _) = self.extras_of(payment_intent, invoice).await?;
+            let amount = dispute["amount"].as_i64().unwrap_or(0);
+            let paid = charge["amount"].as_i64().unwrap_or(amount);
+            reversed = crate::tax::refund_split(amount, paid, extras.tax_cents, extras.fee_cents).0 * 10_000;
+            let plan = match invoice {
+                Some(invoice) => self.plan_payment_of(invoice).await?,
+                None => false,
+            };
+            if reversed > 0 && plan {
+                // No `ON CONFLICT`: a second insert fails the batch.
+                writes.push(
+                    self.db
+                        .prepare("INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at) VALUES (?, ?, ?, ?)")
+                        .bind(&[reference.as_str().into(), workspace.as_str().into(), ((-reversed) as f64).into(), now.as_str().into()])?,
+                );
+            } else if reversed > 0 {
+                writes.extend(self.entry_statements(
+                    &workspace,
+                    EntryKind::TopUp,
+                    -reversed,
+                    "Taken back by the card's bank: a dispute was lost",
+                    &reference,
+                    None,
+                    None,
+                    None,
+                )?);
+            }
+        }
+        // Lost, then won: what the loss took back is given back, where it
+        // was taken (the plan's payments or the ledger), in the same batch
+        // as the dispute's row, so a delivery alongside fails on the same
+        // reference and gives nothing twice.
+        let restored = restore_on_win(known.as_deref(), state, taken);
+        if restored > 0 {
+            let back = won_reference(dispute_id);
+            if self.plan_payment_of(&reference).await? {
+                // No `ON CONFLICT`: a second insert fails the batch.
+                writes.push(
+                    self.db
+                        .prepare("INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at) VALUES (?, ?, ?, ?)")
+                        .bind(&[back.as_str().into(), workspace.as_str().into(), (restored as f64).into(), now.as_str().into()])?,
+                );
+            } else {
+                writes.extend(self.entry_statements(
+                    &workspace,
+                    EntryKind::TopUp,
+                    restored,
+                    "Given back by the card's bank: a lost dispute was reversed",
+                    &back,
+                    None,
+                    None,
+                    None,
+                )?);
+            }
+        }
+        let reversing = !writes.is_empty();
+        writes.push(
             self.db
                 .prepare(
-                    "INSERT INTO limits (workspace, autopay_failed_at, autopay_error, updated_at) VALUES (?1, ?2, ?3, ?2)
-                     ON CONFLICT (workspace) DO UPDATE SET autopay_failed_at = ?2, autopay_error = ?3, updated_at = ?2",
+                    "INSERT INTO disputes (dispute_id, workspace, charge_id, status, reversed_micros, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                     ON CONFLICT (dispute_id) DO UPDATE SET status = ?4, reversed_micros = reversed_micros + ?5, updated_at = ?6",
                 )
-                .bind(&[workspace.as_str().into(), now.as_str().into(), "a payment was disputed with the card's bank".into()])?
-                .run()
-                .await?;
+                .bind(&[dispute_id.into(), workspace.as_str().into(), charge_id.into(), state.into(), (reversed as f64).into(), now.as_str().into()])?,
+        );
+        if state == "won" {
+            if restored > 0 {
+                writes.push(self.db.prepare(LOWER_DISPUTE_OWED).bind(&[workspace.as_str().into(), (restored as f64).into()])?);
+            }
+            // Only the stop a dispute made: a declined card stays stopped.
+            writes.push(
+                self.db
+                    .prepare(format!("{} AND autopay_error = ?2", crate::CLEAR_STOP))
+                    .bind(&[workspace.as_str().into(), DISPUTE_STOP.into()])?,
+            );
         } else {
-            self.db
-                .prepare("UPDATE limits SET autopay_failed_at = NULL, autopay_error = NULL WHERE workspace = ?")
-                .bind(&[workspace.as_str().into()])?
-                .run()
-                .await?;
+            writes.push(
+                self.db
+                    .prepare(
+                        "INSERT INTO limits (workspace, autopay_failed_at, autopay_error, dispute_owed_micros, updated_at) VALUES (?1, ?2, ?3, ?4, ?2)
+                         ON CONFLICT (workspace) DO UPDATE SET autopay_failed_at = ?2, autopay_error = ?3,
+                           dispute_owed_micros = dispute_owed_micros + ?4, updated_at = ?2",
+                    )
+                    .bind(&[workspace.as_str().into(), now.as_str().into(), DISPUTE_STOP.into(), (reversed as f64).into()])?,
+            );
+        }
+        match self.db.batch(writes).await {
+            Ok(_) => {}
+            // The reversal was entered already: by a delivery alongside,
+            // whose batch recorded the dispute and what is owed with it, or
+            // (before these went in one batch) on its own, its dispute
+            // left unrecorded. Only then is the dispute recorded now, at
+            // the amount entered, once.
+            // Given back already, by a delivery alongside.
+            Err(error) if restored > 0 && crate::is_duplicate(&error) => {
+                return Ok(format!("ignored: dispute {dispute_id} is won already"));
+            }
+            Err(error) if reversing && crate::is_duplicate(&error) => {
+                return self.dispute_reversed_before(&workspace, dispute_id, charge_id, &reference, &now).await;
+            }
+            Err(error) => return Err(error),
         }
         let account = self.account_of(&workspace).await?;
-        let what = if stop { "dispute: work stopped" } else { "dispute closed in the workspace's favour" };
+        let what = match state {
+            "won" if restored > 0 => {
+                format!("dispute reversed in the workspace's favour: {} given back", crate::features::dollars(restored))
+            }
+            "won" => "dispute closed in the workspace's favour".to_owned(),
+            "lost" => format!("dispute lost: {} taken back; work stopped until it is paid", crate::features::dollars(reversed)),
+            _ => "dispute: work stopped".to_owned(),
+        };
         self.audit(&account.id, "dispute", &format!("{workspace}: {what}"), "stripe").await?;
         Ok(format!("{workspace}: {what}"))
+    }
+
+    /// A lost dispute whose reversal is on the ledger (or the plan's
+    /// payments) already. Recorded as lost, and what it took back owed,
+    /// only by the one delivery that moves the dispute's row to lost.
+    async fn dispute_reversed_before(&self, workspace: &str, dispute_id: &str, charge_id: &str, reference: &str, now: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        struct Sum {
+            micros: Option<i64>,
+        }
+        let reversed = self
+            .db
+            .prepare(
+                "SELECT -(COALESCE((SELECT SUM(amount_micros) FROM ledger WHERE reference = ?1), 0)
+                        + COALESCE((SELECT SUM(amount_micros) FROM plan_payments WHERE invoice_id = ?1), 0)) AS micros",
+            )
+            .bind(&[reference.into()])?
+            .first::<Sum>(None)
+            .await?
+            .and_then(|s| s.micros)
+            .unwrap_or(0)
+            .max(0);
+        let moved = self
+            .db
+            .prepare(
+                "INSERT INTO disputes (dispute_id, workspace, charge_id, status, reversed_micros, updated_at) VALUES (?1, ?2, ?3, 'lost', ?4, ?5)
+                 ON CONFLICT (dispute_id) DO UPDATE SET status = 'lost', reversed_micros = ?4, updated_at = ?5 WHERE disputes.status <> 'lost'
+                 RETURNING dispute_id",
+            )
+            .bind(&[dispute_id.into(), workspace.into(), charge_id.into(), (reversed as f64).into(), now.into()])?
+            .first::<Value>(None)
+            .await?
+            .is_some();
+        if !moved {
+            return Ok(format!("ignored: dispute {dispute_id} is lost already"));
+        }
+        self.db
+            .prepare(
+                "INSERT INTO limits (workspace, autopay_failed_at, autopay_error, dispute_owed_micros, updated_at) VALUES (?1, ?2, ?3, ?4, ?2)
+                 ON CONFLICT (workspace) DO UPDATE SET autopay_failed_at = ?2, autopay_error = ?3,
+                   dispute_owed_micros = dispute_owed_micros + ?4, updated_at = ?2",
+            )
+            .bind(&[workspace.into(), now.into(), DISPUTE_STOP.into(), (reversed as f64).into()])?
+            .run()
+            .await?;
+        Ok(format!("{workspace}: dispute lost: {} taken back earlier; work stopped until it is paid", crate::features::dollars(reversed)))
     }
 
     // --- Enterprise invoices ------------------------------------------------
@@ -916,34 +1251,56 @@ impl Billing {
 
     /// An enterprise invoice paid: each workspace is credited its line, and
     /// any stop for the invoice is lifted.
-    async fn enterprise_invoice_paid(&self, invoice: &Value) -> Result<String> {
-        let invoice_id = invoice["id"].as_str().unwrap_or_default();
-        let claimed = self
+    ///
+    /// Each line is credited before the invoice is marked paid, once by its
+    /// ledger reference: a failure part way leaves it open, and the event
+    /// again credits only the lines not yet credited.
+    async fn enterprise_invoice_paid(&self, invoice_id: &str) -> Result<String> {
+        let open = self
             .db
-            .prepare(
-                "UPDATE enterprise_invoices SET status = 'paid', paid_at = ? WHERE invoice_id = ? AND status <> 'paid'
-                 RETURNING invoice_id",
-            )
-            .bind(&[rfc3339(now_ms()).into(), invoice_id.into()])?
+            .prepare("SELECT invoice_id FROM enterprise_invoices WHERE invoice_id = ? AND status <> 'paid'")
+            .bind(&[invoice_id.into()])?
             .first::<Value>(None)
             .await?;
-        if claimed.is_none() {
+        if open.is_none() {
             return Ok("ignored: not an open enterprise invoice".to_owned());
         }
+        // Read at billing's API version, before anything is written: the
+        // event's copy may lack `tax` and `payment_intent`.
+        let fetched: Option<Value> = match &self.stripe {
+            Some(stripe) => Some(stripe.get(&format!("/invoices/{invoice_id}")).await?),
+            None => None,
+        };
         let lines = self.invoice_lines(invoice_id).await?;
         for line in &lines {
-            self.enter(
-                &line.workspace,
-                EntryKind::TopUp,
-                line.amount_micros,
-                &format!("Paid on the enterprise's invoice {invoice_id}"),
-                &format!("inv/{invoice_id}/{}", line.workspace),
-                None,
-                None,
-                None,
-            )
-            .await?;
+            let reference = format!("inv/{invoice_id}/{}", line.workspace);
+            let seen = self.db.prepare("SELECT id FROM ledger WHERE reference = ?").bind(&[reference.as_str().into()])?.first::<Value>(None).await?;
+            if seen.is_some() {
+                continue;
+            }
+            let entered = self
+                .enter(
+                    &line.workspace,
+                    EntryKind::TopUp,
+                    line.amount_micros,
+                    &format!("Paid on the enterprise's invoice {invoice_id}"),
+                    &reference,
+                    None,
+                    None,
+                    None,
+                )
+                .await;
+            match entered {
+                Ok(()) => {}
+                Err(error) if crate::is_duplicate(&error) => {}
+                Err(error) => return Err(error),
+            }
         }
+        self.db
+            .prepare("UPDATE enterprise_invoices SET status = 'paid', paid_at = ? WHERE invoice_id = ? AND status <> 'paid'")
+            .bind(&[rfc3339(now_ms()).into(), invoice_id.into()])?
+            .run()
+            .await?;
         // Its tax is the enterprise's, paid on top of what its workspaces
         // owed, and never credited to them.
         #[derive(Deserialize)]
@@ -956,6 +1313,7 @@ impl Billing {
             .bind(&[invoice_id.into()])?
             .first::<Account>(None)
             .await?
+            && let Some(invoice) = &fetched
         {
             let extras = crate::tax::Extras { tax_cents: invoice["tax"].as_i64().unwrap_or(0).max(0), fee_cents: 0 };
             self.record_extras(&account.account_id, invoice_id, invoice["payment_intent"].as_str(), extras, None).await?;
@@ -1042,6 +1400,74 @@ mod tests {
         // Different amounts, even with the same total, are a different invoice.
         assert_ne!(key, enterprise_invoice_key("ent_1", "2026-09", &[("acme", 1_300), ("acme-labs", 49)]));
         assert_ne!(key, enterprise_invoice_key("ent_1", "2026-10", &lines));
+    }
+
+    #[test]
+    fn an_event_from_the_other_mode_is_ignored() {
+        assert!(wrong_mode(Some(false), "live").is_some());
+        assert!(wrong_mode(Some(true), "test").is_some());
+        assert!(wrong_mode(Some(true), "live").is_none());
+        assert!(wrong_mode(Some(false), "test").is_none());
+        assert!(wrong_mode(None, "live").is_none());
+    }
+
+    #[test]
+    fn a_dispute_won_after_it_was_lost_gives_back_what_it_took_once() {
+        // Lost then won: the $46.40 taken back is given back.
+        assert_eq!(restore_on_win(Some("lost"), "won", 46_400_000), 46_400_000);
+        // Won from open, or won again (a redelivery): nothing.
+        assert_eq!(restore_on_win(Some("open"), "won", 0), 0);
+        assert_eq!(restore_on_win(None, "won", 0), 0);
+        assert_eq!(restore_on_win(Some("won"), "won", 46_400_000), 0);
+        assert!(!dispute_moves(Some("won"), "won"));
+        assert_eq!(restore_on_win(Some("lost"), "lost", 46_400_000), 0);
+        assert_eq!(restore_on_win(Some("lost"), "won", -5), 0);
+        // Its own reference: unique, so a delivery alongside fails the
+        // batch instead of giving it back twice; apart from the loss's.
+        assert_eq!(won_reference("dp_1"), "dispute/dp_1/won");
+        assert_ne!(won_reference("dp_1"), "dispute/dp_1");
+        // What is owed comes down by it, never below nothing, before the
+        // stop is cleared (which needs nothing owed).
+        assert!(LOWER_DISPUTE_OWED.contains("MAX(0, dispute_owed_micros - ?2)"));
+        assert!(crate::CLEAR_STOP.contains("dispute_owed_micros = 0"));
+    }
+
+    #[test]
+    fn a_dispute_event_twice_or_late_changes_nothing() {
+        assert!(dispute_moves(None, "open"));
+        assert!(dispute_moves(None, "lost"));
+        assert!(dispute_moves(Some("open"), "lost"));
+        assert!(dispute_moves(Some("open"), "won"));
+        assert!(dispute_moves(Some("lost"), "won"));
+        // The same state again: nothing stopped, taken back or owed twice.
+        for state in ["open", "won", "lost"] {
+            assert!(!dispute_moves(Some(state), state), "{state}");
+        }
+        // A late `created` after the dispute was lost never re-opens it.
+        assert!(!dispute_moves(Some("lost"), "open"));
+    }
+
+    #[test]
+    fn a_refund_counts_what_earlier_refunds_took_back_wherever_they_were_kept() {
+        assert!(ALREADY_REFUNDED_SQL.contains("FROM plan_payments WHERE invoice_id LIKE ?1"));
+        assert!(ALREADY_REFUNDED_SQL.contains("FROM ledger WHERE reference LIKE ?1"));
+        assert_eq!(crate::rename::parameters(ALREADY_REFUNDED_SQL), 1);
+    }
+
+    #[test]
+    fn a_dispute_is_acted_on_as_it_stands_now() {
+        for open in ["warning_needs_response", "warning_under_review", "needs_response", "under_review"] {
+            assert_eq!(dispute_state(open), "open");
+        }
+        assert_eq!(dispute_state("won"), "won");
+        assert_eq!(dispute_state("warning_closed"), "won");
+        assert_eq!(dispute_state("lost"), "lost");
+        // A lost dispute takes back only the credit: $50 paid as $46.40
+        // credit, $1.60 card fee and $2 tax.
+        assert_eq!(crate::tax::refund_split(5_000, 5_000, 200, 160).0, 4_640);
+        // Lifting a stop for a won dispute leaves a declined card's.
+        assert!(crate::CLEAR_STOP.contains("dispute_owed_micros = 0") && crate::CLEAR_STOP.contains("status = 'open'"));
+        assert!(!DISPUTE_STOP.is_empty());
     }
 
     fn sign(payload: &str, secret: &str, t: i64) -> String {

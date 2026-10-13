@@ -15,9 +15,9 @@ export function meta(args: Route.MetaArgs) {
   const plan = args.loaderData?.book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
   return [
     ...page(args, {
-      title: `g1t pricing - $${plan.monthlyCents / 100} per workspace, never per seat, usage at cost plus 20%`,
+      title: `g1t pricing - $${plan.monthlyCents / 100} per workspace, never per seat, usage priced from cost plus 20%`,
       description:
-        "People chat free on every plan, and the forge is free. One plan, $20 a month per workspace with $10 of usage included. Everything g1t runs is billed at cost plus 20%. Your own runners are free. No seats, ever.",
+        "People chat free on every plan, and the forge is free. One plan, $21 a month per workspace with $10 of usage included. Runner minutes are a flat rate per machine; everything else g1t runs is priced from what it costs, plus 20%. Your own runners are free. No seats, ever.",
     }),
     application(plan.monthlyCents / 100),
     faqPage(FAQ),
@@ -104,16 +104,16 @@ const DEFAULT_FREE: Required<FreeTier> = {
 const DEFAULT_PLAN: FeaturePlan = {
   feature: "plan",
   title: "g1t",
-  monthlyCents: 2000,
+  monthlyCents: 2100,
   includes: [
-    "$10 of usage each month, used first: everything g1t runs at cost plus 20%",
+    "$10 of usage each month, used first: runner minutes at their flat rate, everything else g1t runs at cost plus 20%",
     "Everyone in the workspace at one price, never per person",
     "Unlimited projects, previews and repositories",
     "Checks, workflows, the merge queue, deployments, semantic search, and Security and quality on private repositories",
     "Usage past $10 is charged the same way, up to your spend limit",
   ],
   overage:
-    "Everything g1t runs is metered from the first unit at what it costs g1t plus 20%. Your own runners cost nothing. Unused included usage does not roll over.",
+    "Everything g1t runs is metered from the first unit, priced from what it costs g1t plus 20%: runner minutes at a fixed rate for each machine, the rest at cost plus 20%. Your own runners cost nothing. Unused included usage does not roll over.",
 };
 
 /** How each part of a workspace is charged. */
@@ -186,8 +186,8 @@ const HOW = [
     body: "Every price here is before tax. Stripe adds sales tax, VAT or GST where it applies, worked out from the billing address, and shows it as its own line before you pay and on every receipt and invoice. A valid business tax ID is applied where the law says so.",
   },
   {
-    title: "Card fees are passed on, nothing more",
-    body: "Paying by card adds Stripe's card processing fee as its own line, shown before you pay, so the 20% is never spent on fees. A bank transfer or invoiced billing has no card fee.",
+    title: "No card fee on top",
+    body: "Stripe's card processing fee is part of the price. Paying by card, by bank transfer or by invoice costs the same: the price, plus tax where it applies.",
   },
 ];
 
@@ -217,7 +217,7 @@ function rows(tier: Required<FreeTier>): Row[] {
     {
       what: "Checks, workflows, merge queue",
       free: "After a card check: the trial, and the open-source pool for checks, workflows and the merge queue on public repositories",
-      plan: "From the plan's included usage, then at cost plus 20%",
+      plan: "From the plan's included usage, then by the runner minute, at a fixed rate for each machine",
     },
     {
       what: "Projects and previews",
@@ -273,7 +273,7 @@ function rows(tier: Required<FreeTier>): Row[] {
     {
       what: "Usage past what is included",
       free: "Not possible: a free workspace never runs up a bill",
-      plan: "Charged at cost plus 20%, up to a spend limit you set. No quotas: only your limit stops anything.",
+      plan: "Priced from cost plus 20%, up to a spend limit you set. No quotas: only your limit stops anything.",
     },
   ];
 }
@@ -296,10 +296,10 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
       <p className="text-sm font-medium text-accent">Pricing</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">What g1t runs, at cost plus {markup}.</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">What g1t runs, priced from cost plus {markup}.</h1>
       <p className="mt-3 max-w-2xl text-muted">
-        People chatting and the forge are free for everyone. Everything g1t runs is billed at what it costs g1t plus{" "}
-        {markup}. Your own runners are free, connecting your coding agents costs nothing, and there are no seats. The numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added
+        People chatting and the forge are free for everyone. Everything g1t runs is priced from what it costs g1t plus{" "}
+        {markup}: runner minutes at a fixed rate for each machine, the rest at cost plus {markup}. Your own runners are free, connecting your coding agents costs nothing, and there are no seats. The numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added
         where it applies.
       </p>
       <Card asChild tone="plain" className="mt-6 grid gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -334,9 +334,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <p>
             <span className="text-3xl font-semibold tabular-nums">${price}</span>{" "}
             <span className="text-sm text-muted">a month per workspace</span>
-            <span className="block text-right text-xs text-faint">
-              {plan.cardFeeCents ? `+ $${(plan.cardFeeCents / 100).toFixed(2)} card processing fee, plus tax where it applies` : "Plus tax where it applies"}
-            </span>
+            <span className="block text-right text-xs text-faint">Plus tax where it applies</span>
           </p>
         </div>
         <p className="mt-2 text-sm text-muted">
@@ -360,7 +358,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <div>
             <p className="font-medium">Where the ${price} goes</p>
             <p className="mt-1 text-muted">
-              $10 comes back to you as usage: sandboxes, builds and deployments at cost plus 20%, used before
+              $10 comes back to you as usage: runner minutes, builds and deployments, priced from cost plus 20%, used before
               anything else. The other $10 pays for running g1t, the free forge for everyone, and the people building it.
             </p>
           </div>
@@ -368,7 +366,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <p className="font-medium">No quotas</p>
             <p className="mt-1 text-muted">
               No count of projects, previews, builds, requests or git operations ever stops a workspace on the plan. Past
-              the $10, usage is charged at cost plus 20%, and only your spend limit stops it. Unused included usage does
+              the $10, usage is charged at the same prices, and only your spend limit stops it. Unused included usage does
               not roll over.
             </p>
           </div>
@@ -604,29 +602,6 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {(() => {
-              const feePercent = book?.prices.find((p) => p.meter === "card_fee_percent");
-              const feeFixed = book?.prices.find((p) => p.meter === "card_fee_fixed");
-              return (
-                <>
-                  {feePercent && feeFixed && (
-                    <tr>
-                      <td className="px-4 py-3">
-                        <p className="font-medium">Card processing fee</p>
-                        <p className="text-xs text-faint">
-                          On every card payment, as its own line shown before you pay; never on bank transfers or invoiced billing
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-muted">Stripe's fee</td>
-                      <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
-                      <td className="px-4 py-3 font-mono text-xs tabular-nums">
-                        {(feePercent.priceMicros / 10_000).toFixed(1)}% + {money(feeFixed.priceMicros)}
-                      </td>
-                    </tr>
-                  )}
-                </>
-              );
-            })()}
             {machines().map((instance) => (
               <tr key={instance.machine}>
                 <td className="px-4 py-3">

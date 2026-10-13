@@ -448,10 +448,13 @@ billable operation.
   and [git operations](/guides/usage-and-billing/#git-operations).
 - **Status.** Depends on Cloudflare.
 
-### Payments are in test mode
+### Payments in test mode
 
-While payments are in test mode, no real card is charged, so a card check
-proves nothing. **Status.** Live payments are planned.
+A g1t whose payments use Stripe's test mode, such as a self-hosted one set
+up with test keys, or g1t.sh before its live payments are switched on,
+charges no real card, so a card check there proves nothing. With live
+payments, the card check and every charge are real. **Status.** By design
+for test setups.
 
 ## Accounts, status and self-hosting
 

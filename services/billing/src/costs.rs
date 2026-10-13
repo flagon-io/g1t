@@ -441,6 +441,8 @@ pub(crate) fn bucket_title(bucket: &str) -> String {
         "repo_storage" => "Repository storage".into(),
         "actions_cache" => "Actions cache".into(),
         "embeddings" => "Search embeddings".into(),
+        "observability" => "Observability".into(),
+        "packages" => "Package storage".into(),
         "security" => "Security scans".into(),
         "domains" => "Custom domains".into(),
         "models" => "Models".into(),

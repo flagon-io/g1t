@@ -3,44 +3,12 @@
  * workspace's alerts. Pure, so it can be tested.
  */
 
-import type { CreditGrant, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, PriceBook, Usage, UsageAlert } from "@g1t/contracts";
+import type { CreditGrant, Entitlements, FeatureState, Limit, LimitRequest, MeterUsage, Usage, UsageAlert } from "@g1t/contracts";
 
 import { MICROS_PER_DOLLAR, money, wholeDollars } from "./money.ts";
 
 /** Prices on g1t exclude tax; Stripe adds it at checkout from the billing address. */
 export const PLUS_TAX = "plus tax where it applies";
-
-/** A card processing fee: Stripe's percent (in millionths) and fixed fee. */
-export type CardFee = { on: boolean; percentMicros: number; fixedCents: number };
-
-/**
- * The card fee as the price book lists it (`card_fee_percent` and
- * `card_fee_fixed`), or null when it does not.
- */
-export function cardFeeOf(book: PriceBook | null | undefined): CardFee | null {
-  const percent = book?.prices.find((price) => price.meter === "card_fee_percent");
-  const fixed = book?.prices.find((price) => price.meter === "card_fee_fixed");
-  if (!percent || !fixed) return null;
-  return { on: true, percentMicros: percent.priceMicros, fixedCents: Math.max(0, Math.round(fixed.priceMicros / 10_000)) };
-}
-
-/**
- * The card processing fee on a card payment of `cents`, as billing works it
- * out (`tax::card_fee_cents`): Stripe's percent and fixed fee grossed up, so
- * what is left after Stripe's fee is the amount, rounded up to the cent.
- * 0 when the fee is off.
- */
-export function cardFeeCents(cents: number, fee: CardFee | null | undefined): number {
-  if (!fee?.on || !(cents > 0)) return 0;
-  const rate = fee.percentMicros / MICROS_PER_DOLLAR;
-  if (!(rate >= 0 && rate < 0.5)) return 0;
-  return Math.max(0, Math.ceil((cents + fee.fixedCents) / (1 - rate)) - cents);
-}
-
-/** "Card processing fee $1.06, plus tax where it applies", as shown before paying. */
-export function feeAndTax(feeCents: number): string {
-  return feeCents > 0 ? `Card processing fee ${money(feeCents * 10_000)}, ${PLUS_TAX}` : `Plus tax where it applies`;
-}
 
 /** A form's dollar amount as micros, or null when it is empty or not a number. */
 export function readDollars(value: FormDataEntryValue | null | undefined): number | null {
@@ -373,38 +341,4 @@ export function parseBudgetAlerts(form: {
   const webhook = String(form.webhook ?? "").trim();
   if (webhook && !/^https:\/\/[^\s/]+\.[^\s]+$/.test(webhook)) return { ok: false, error: "The webhook is an https:// address." };
   return { ok: true, value: { alerts, pauseAtLimit: form.pause === "on", webhook: webhook || null } };
-}
-
-/** The invoice details form, each field as given (empty clears it on Stripe). */
-export function parseInvoiceDetails(form: FormData): Parsed<{
-  email: string;
-  name: string;
-  address: { line1: string; line2: string; city: string; state: string; postalCode: string; country: string };
-  taxIdType: string;
-  taxId: string;
-  poNumber: string;
-  language: string;
-}> {
-  const text = (name: string) => String(form.get(name) ?? "").trim();
-  const email = text("email");
-  if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) return { ok: false, error: "That is not an email address." };
-  const country = text("country").toUpperCase();
-  if (country && !/^[A-Z]{2}$/.test(country)) return { ok: false, error: "The country is two letters, such as US or DE." };
-  // Stripe Tax places a US customer by ZIP code: without it, tax cannot be worked out.
-  if (country === "US" && !text("postalCode")) return { ok: false, error: "Add the ZIP code: in the US, tax is worked out from it." };
-  const taxIdType = text("taxIdType");
-  const taxId = text("taxId");
-  if (Boolean(taxIdType) !== Boolean(taxId)) return { ok: false, error: "Give the tax ID's kind and its number together." };
-  return {
-    ok: true,
-    value: {
-      email,
-      name: text("name"),
-      address: { line1: text("line1"), line2: text("line2"), city: text("city"), state: text("state"), postalCode: text("postalCode"), country },
-      taxIdType,
-      taxId,
-      poNumber: text("poNumber"),
-      language: text("language"),
-    },
-  };
 }

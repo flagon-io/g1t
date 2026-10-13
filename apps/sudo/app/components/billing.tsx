@@ -338,7 +338,7 @@ export function AllowancesForm({
           <span>
             <span className="block font-medium">The g1t plan, without its price</span>
             <span className="block text-xs text-muted">
-              Its included usage, storage and caps, with no $20 a month. Usage past it is charged as usual.
+              Its included usage, storage and caps, with no $21 a month. Usage past it is charged as usual.
             </span>
           </span>
         </label>

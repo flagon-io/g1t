@@ -7,8 +7,9 @@ The forge is free: repositories, git, issues, pull requests and review cost
 nothing, for public and private work. What costs money is compute, the
 things g1t runs for you: the sandboxes your workflows and checks run in,
 deployed apps, and, on the plan, storage and git traffic past the free
-amounts. Each is charged at what it costs g1t plus 20%, to the workspace
-that owns the repository. There is no seat price, and on the plan there
+amounts. Each is priced from what it costs g1t, plus 20%: runner minutes
+at a fixed rate for each machine, everything else at its cost plus 20%.
+It is charged to the workspace that owns the repository. There is no seat price, and on the plan there
 are no quotas: only your spend limit stops anything.
 
 Wherever this page says an owner can do something to a workspace's
@@ -92,13 +93,13 @@ as **Self-hosted runner time** at $0.
 
 ## The g1t plan
 
-One plan, **$20 a month per workspace**, however many people are in it. It is never priced per person. Like every price on g1t, it
-excludes tax ([Tax](#tax)), and paid by card it carries Stripe's
-[card processing fee](#card-processing-fee) as its own line, $0.91 a month
-on $20.
+One plan, **$21 a month per workspace**, however many people are in it. It is never priced per person. Like every price on g1t, it
+excludes tax ([Tax](#tax)). There is no card processing fee on top: it is
+part of the price.
 
-- **$10 of usage each month**, used first: everything g1t runs, at cost
-  plus 20%. That is 2,500 runner minutes on the standard machine, or
+- **$10 of usage each month**, used first: everything g1t runs, at the
+  [prices below](#what-it-costs) (runner minutes at their flat rate per
+  machine, everything else at cost plus 20%). That is 2,500 runner minutes on the standard machine, or
   about 1,428 on `g1t-4core`.
 - **Everyone in the workspace** at one price, never per person.
 - **Unlimited** projects, previews and repositories.
@@ -145,7 +146,7 @@ There are no seats. The live figures are on
 | --- | --- | --- | --- |
 | [Runner minutes](#runner-minutes) on the standard machine (2 vCPU, 8 GiB, 16 GB): workflow jobs, checks, the merge queue | Minute, each job rounded up | From $0.0014 a minute idle to $0.0038 with both vCPUs busy | $0.004 a minute |
 | [Runner minutes](#runner-minutes) on `g1t-4core` (4 vCPU, 12 GiB, 20 GB) | Minute, each job rounded up | From $0.0020 a minute idle to $0.0068 with all four vCPUs busy | $0.007 a minute |
-| Deploy builds | Second | About $0.0015 a minute | About $0.0018 a minute |
+| Deploy builds | Second | About $0.0017 a minute | About $0.002 a minute |
 | App requests | Million | $0.30 | $0.36 |
 | App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
 | Custom domains | Domain-month | $0.10 | $0.12 |
@@ -172,7 +173,7 @@ purchase.
 
 ### Start or end the plan
 
-Only an owner can start or end the plan.
+Only an owner or a billing manager can start or end the plan.
 
 1. Open **Settings → Billing and plans**, `g1t.sh/<workspace>/-/billing`.
 2. On the **g1t** card, choose **Start the g1t plan**.
@@ -184,13 +185,17 @@ in the first billing cycle), with the billing period, a meter for the
 month's included usage, and the **Upcoming invoice**: the plan and add-ons
 at their monthly price plus usage still owed after included usage, credit
 and any discount, from g1t's own ledger (**View upcoming invoice** splits
-it). **Usage** and **Invoices** go to each. App traffic, custom domains,
-storage and git operations are counted through the month and charged when
-it closes. **Downgrade to free at the period's end** ends the plan then,
-with nothing more charged after; **Keep the plan** takes that back until
-then. If a renewal payment fails, the card says **Payment failed**, and the
-plan's features stop until it is paid: update the card with **Manage in
-Stripe** under **Payment method**.
+it). **Usage** goes to usage by product and project. App traffic, custom
+domains, storage and git operations are counted through the month and
+charged when it closes.
+
+To end the plan, choose **Manage billing** and cancel it on Stripe's
+billing page: it ends at the end of the period, with nothing more charged
+after, and the plan's card says **Ends on** and the date. Until then,
+**Manage billing** lets you keep it after all. If a renewal payment fails,
+the card says **Payment failed**, and the plan's features stop until it is
+paid: choose **Update payment method** and change the card on Stripe's
+page.
 
 Starting the plan uses the card from the card check, or else the default
 card on Stripe's billing page, without a second page; with neither, Stripe's
@@ -233,7 +238,7 @@ The card check unlocks:
 ## The trial
 
 Once its card is checked, a workspace gets **$5 of trial credit**, once. It
-pays for usage at cost plus 20%: runner minutes for checks, workflows
+pays for usage at the plan's prices: runner minutes for checks, workflows
 and the merge queue (1,250 on the standard machine), and semantic search. It never pays for deployments.
 
 - Each card gets one trial, whichever workspace it is checked in. Prepaid
@@ -293,7 +298,9 @@ the dependency graph and SBOMs are free everywhere, on every plan. See [What's f
 
 ## How prices are set
 
-Every price is what g1t pays for the thing, at Cloudflare, plus 20%. The live prices are on
+Every price is what g1t pays for the thing, at Cloudflare, plus 20%;
+[runner minutes](#runner-minutes) are a fixed rate for each machine, set
+the same way from what a minute of it costs. The live prices are on
 [g1t.sh/pricing](https://g1t.sh/pricing), straight from the price book
 billing charges from.
 
@@ -438,7 +445,7 @@ toward the limit and never use the trial.
 
 | | What it costs g1t | What is counted |
 | --- | --- | --- |
-| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past the free 1 GB. A month's GB-months are those days added up, divided by 30. |
+| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past the free 1 GB. A month's GB-months are those days added up, divided by the days in the month. |
 | Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, issues and pull requests put in the search index. Public text and searches are not charged. |
 | Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. |
 
@@ -446,7 +453,7 @@ toward the limit and never use the trial.
 
 What a workspace's [`actions/cache`](/guides/actions/#the-cache) entries and its runs'
 [artifacts](/guides/actions/#artifacts) hold is measured every hour, and each day's largest figure counts. A
-month's GB-months are those days added up, divided by 30, charged at
+month's GB-months are those days added up, divided by the days in the month, charged at
 $0.018 a GB-month: R2's $0.015, plus 20%. It is charged from the first
 byte, to workspaces on the plan only, as **Actions cache storage** under
 **Git operations & storage**. A free workspace's caches are never charged;
@@ -589,10 +596,9 @@ at once. It is never needed to start work. Only an owner can prepay.
    asks. A bank transfer page gives the account details, and the amount
    counts when the money arrives.
 
-By card, the [card processing fee](#card-processing-fee) is its own line
-(the card shows it for $100, $500 and $1,000); a bank transfer has none.
-[Tax](#tax) is added where it applies. What you prepay is credited in full:
-neither the fee nor the tax comes from it.
+There is no fee on top, by card or by bank transfer. [Tax](#tax) is added
+where it applies. What you prepay is credited in full: the tax does not
+come from it.
 
 **Prepaid balance** shows what is paid in advance and not used yet.
 
@@ -671,11 +677,10 @@ with its PDF and emailed as a receipt:
   charged at once with no minimum. See
   [deleting a workspace](/guides/workspaces/#what-billing-needs).
 
-Each is charged to the card on file, with the
-[card processing fee](#card-processing-fee) and [tax](#tax) as lines of
-their own. The Billing page lists them, with links to view each on Stripe
-and download its PDF; each one's amount is the usage, with the fee and
-tax under it.
+Each is charged to the card on file, with [tax](#tax) as a line of its
+own and no card fee. Every invoice and receipt, with its PDF, is on
+Stripe's billing page: choose **Manage billing** under **Billing on
+Stripe**.
 
 ## Tax
 
@@ -685,18 +690,17 @@ shows it as its own line before you pay and on every receipt and invoice.
 The plan, add-ons, prepaying and invoices are all taxed the same way, as software as a service for business use.
 
 - **The address.** Stripe's payment pages always ask for a billing
-  address, and save it as the workspace's **Invoice details**. A card check
+  address, and save it on the workspace's Stripe customer. A card check
   saves the card's billing address there too, if there is none yet. You
-  can change it under [Your card and billing
+  change it on Stripe's billing page: see [Your card and billing
   details](#your-card-and-billing-details).
-- **A business tax ID.** Add it on Stripe's page or under **Invoice
-  details** (the kind, such as EU VAT, and the number). Stripe checks it
-  (**Verified by Stripe**, or **Stripe is checking it**) and applies it
-  where the law says so, such as a reverse charge.
+- **A business tax ID.** Add it on Stripe's payment page or on its billing
+  page (the kind, such as EU VAT, and the number). Stripe checks it and
+  applies it where the law says so, such as a reverse charge.
 - **No address, no charge.** Where Stripe has nothing to work tax out
-  from, g1t does not charge the card. Billing shows **Add a billing
-  address**, the owners are emailed once, and the charge goes through once
-  the address is saved. Nothing is lost, and work is not stopped for it.
+  from, g1t does not charge the card. Billing shows **Add your billing
+  address in Stripe** with a **Manage billing** button, the owners are
+  emailed once, and the charge goes through once the address is saved. Nothing is lost, and work is not stopped for it.
   In the United States the ZIP code is needed; elsewhere the country.
 - **Tax exempt.** If your organisation is exempt, write to
   support@g1t.sh with the certificate; Billing then says **Tax exempt**.
@@ -705,29 +709,17 @@ The plan, add-ons, prepaying and invoices are all taxed the same way, as softwar
 Tax is never part of your balance or usage: the statement shows it as its
 own line, beside the payment it came with.
 
-## Card processing fee
+## No card processing fee
 
-Paying by card adds Stripe's fee, **2.9% + $0.30**, as its own line,
-**Card processing fee**, worked out so that what is left after Stripe's
-fee is exactly what you paid for: $0.91 on the $20 plan, $3.30 on $100
-prepaid. It is shown before you pay, on every card payment:
-
-| Payment | Card fee |
-| --- | --- |
-| The plan and add-ons, each month | Yes, a monthly line |
-| Prepaying by card | Yes |
-| Invoices charged to the card | Yes |
-| Prepaying by bank transfer | No |
-| An enterprise's invoices | No |
-
-Tax applies to the fee as to what it is paid with. The fee pays Stripe, not
-g1t: usage is still charged at cost plus 20%. The statement shows card fees as their own line,
-never from your balance.
+g1t's prices include what Stripe charges to take a card. Nothing is added
+on top of the plan, a prepayment or an invoice, however you pay. Payments
+from before the fee was folded into prices may show **Card processing
+fees** on the statement; those stay as they were.
 
 ### The minimum charge
 
 Only the month's close has a minimum: a card is not charged less than
-**$5** then, so a payment's fee is never most of what is paid. When a month
+**$5** then, so a payment's processing cost is never most of what is paid. When a month
 closes owing less, the amount carries over to the next invoice that reaches
 $5, as *Unpaid from earlier*. A charge made because a workspace is at or
 near a limit always goes through, whatever the amount, so work can carry
@@ -743,30 +735,28 @@ they started on.
 
 ## Your card and billing details
 
-Cards live on **Stripe's billing page**, not on g1t: g1t never sees or
-stores card numbers. On **Settings → Billing and plans**:
+Your card, billing address, tax IDs, invoices and receipts live on
+**Stripe's billing page**, not on g1t: g1t never sees or stores card
+numbers. On **Settings → Billing and plans**, owners and billing managers
+see **Billing on Stripe**:
 
-- **Payment method** shows the default card (brand, last four digits and
-  expiry). **Manage in Stripe** opens Stripe's page, where an owner adds,
-  removes or replaces a card and makes one the default. The plan charges
-  the default card.
-- **Invoice details** are kept on the workspace's Stripe customer and
-  printed on every invoice: the invoice email, company name, billing
-  address, tax ID (its kind and number), a purchase order, and the invoice
-  language. An owner edits them here and chooses **Save invoice details**.
-  [Tax](#tax) is worked out from the address, so the card says when there
-  is none yet (in the US it needs the ZIP code), shows Stripe's check of
-  the tax ID, and says **Tax exempt** or **Reverse charge** when that
-  applies.
-- **Invoices** lists every invoice Stripe sent (the plan, add-ons and
-  month-end usage), each with **View** and **PDF**.
-- **Add-ons** lists what comes with the plan, such as
-  [Security and quality](/guides/security/pricing/), and whether it is on.
+- the default card (brand, last four digits and expiry), read-only; the
+  plan charges it.
+- **Manage billing**, which opens Stripe's billing page. There you add,
+  remove or replace a card and make one the default; change the billing
+  email, name, address and phone; add or remove tax IDs; see and download
+  every invoice and receipt (the plan and month-end usage); and end the
+  plan at the end of the period, or keep it after all. [Tax](#tax) is
+  worked out from the address you keep there.
+
+**Add-ons** lists what comes with the plan, such as
+[Security and quality](/guides/security/pricing/), and whether it is on.
 
 g1t support never takes card details by phone or email.
 
 If a card is declined, work stops until the workspace pays, and the
-Billing page and the API say why. Replace the card or prepay to clear it.
+Billing page and the API say why. Replace the card under **Manage billing**,
+or prepay, to clear it.
 A payment disputed with the card's bank stops work the same way.
 
 Through the API, `GET /workspaces/:workspace/billing_details` and
@@ -828,7 +818,7 @@ is public; custom terms change how you pay, not what things cost.
   30 days and paid by card or bank transfer. If it goes overdue, the
   workspaces' work stops until it is paid. [Tax](#tax) is added from the
   enterprise's billing address, which g1t keeps on its Stripe customer, and
-  an invoice never carries the card processing fee.
+  there is no card fee.
 - **A discount**: a percentage off every usage charge, from a few percent
   to 100%, with a reason, sometimes until a date. Prices themselves stay
   the public ones. The statement shows every line at its price and the
@@ -926,10 +916,10 @@ time. Every member can see it.
   | Credits from g1t | Credit g1t added (promotional, goodwill or a refund), and what of it expired or was withdrawn. See [Credits from g1t](#credits-from-g1t). |
   | Refunds | Money given back to your card. |
   | Tax | Tax paid with that day's payments. Not a charge, and not from your balance. |
-  | Card processing fees | Card fees paid with that day's payments. Not a charge, and not from your balance. |
+  | Card processing fees | Only on payments from before the card fee was folded into prices: the fee paid with them. Not a charge, and not from your balance. |
 
-  Payments are what reached your balance; the tax and card fee paid with
-  them are the two lines below them, and the totals say what they came to.
+  Payments are what reached your balance; the tax paid with them is the
+  line below them, and the totals say what it came to.
 
 - **Covered.** Below the totals, what paid for usage before it was
   charged, each with its amount:
