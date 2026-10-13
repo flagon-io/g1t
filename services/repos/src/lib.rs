@@ -87,6 +87,8 @@ const MAX_DRIFT_HEADS: usize = 100;
 /// stops and keeps its progress for the next call. The site asks from a
 /// waitUntil, which may run 30 s past its response.
 const LAST_COMMITS_WALK_MS: u64 = 20_000;
+/// How long a path's history may walk when the caller gives no budget.
+const PATH_LOG_WALK_MS: u64 = 10_000;
 
 /// One path segment, percent-encoded for a cache key.
 fn urlencoding_segment(segment: &str) -> String {
@@ -946,6 +948,26 @@ impl<S: GitStore> Repos<S> {
         let git = self.read_git(&repo).await?;
         let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
         Ok(Outcome::Ok(git.log(&git_ref, a.limit).await?))
+    }
+
+    /// The commits that changed a file or directory, newest first: the
+    /// first-parent chain walked within `PATH_LOG_WALK_MS` (or the caller's
+    /// budget) and `last_commits::MAX_READS`.
+    async fn path_log(&self, a: g1t_contracts::repos::PathLogArgs) -> Result<Outcome<g1t_contracts::repos::PathLog>> {
+        let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
+            return Ok(not_found());
+        };
+        let git = self.read_git(&repo).await?;
+        let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
+        let Some(head) = git.log(&git_ref, 1).await?.into_iter().next() else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such branch, tag or commit."));
+        };
+        let started = worker::Date::now().as_millis();
+        let budget = a.budget_ms.unwrap_or(PATH_LOG_WALK_MS);
+        let out_of_time = move || worker::Date::now().as_millis().saturating_sub(started) > budget;
+        let limit = a.limit.clamp(1, 100) as usize;
+        let (commits, complete) = last_commits::path_log(&git, &head.hash, &a.file_path, limit, &out_of_time, last_commits::MAX_READS).await?;
+        Ok(Outcome::Ok(g1t_contracts::repos::PathLog { commits, complete }))
     }
 
     /// Which commit last changed each entry of a directory. A finished
@@ -2657,6 +2679,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "git_access" => reply(&repos.git_access(args(body)?).await?),
         "branches" => reply(&repos.branches(args(body)?).await?),
         "last_commits" => reply(&repos.last_commits(args(body)?).await?),
+        "path_log" => reply(&repos.path_log(args(body)?).await?),
         "branch_drift" => reply(&repos.branch_drift(args(body)?).await?),
         "tags" => reply(&repos.tags(args(body)?).await?),
         // The About: what the Files page shows beside the files (about.rs).

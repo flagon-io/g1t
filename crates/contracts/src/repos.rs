@@ -574,6 +574,32 @@ pub struct LastCommitsArgs {
     pub budget_ms: Option<u64>,
 }
 
+/// `path_log`: the commits on the first-parent chain from `ref` (the
+/// default branch when absent) that changed `file_path`, a file or a
+/// directory, newest first, at most `limit`. Returns `Outcome<PathLog>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathLogArgs {
+    pub path: RepoPath,
+    pub viewer: Viewer,
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
+    pub file_path: String,
+    pub limit: u32,
+    /// Answer within this many milliseconds with what was found.
+    #[serde(default)]
+    pub budget_ms: Option<u64>,
+}
+
+/// A path's history: `complete` is false when the walk ran out of time or
+/// reads before the first commit and before `limit`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathLog {
+    pub commits: Vec<Commit>,
+    pub complete: bool,
+}
+
 /// An entry of a directory and the commit that last changed it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LastCommit {

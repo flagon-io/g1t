@@ -244,7 +244,7 @@ out.
 | --- | --- | --- | --- |
 | [`list`](/reference/api/repositories/list-repos/) | Repositories you can see, optionally filtered by `query`. | None | `repo:read` |
 | [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
-| [`commits`](/reference/api/repositories/list-commits/) | A branch's commits, newest first, each with its `sha`, `message`, `author`, `authored_at` and `html_url`; `ref` names another branch, tag or commit, `limit` is 30 unless you say (at most 100). With `path`, `last_changed`: the commit that last changed that file or directory. | `repo` | `code:read` |
+| [`commits`](/reference/api/repositories/list-commits/) | A branch's commits, newest first, each with its `sha`, `message`, `author`, `authored_at` and `html_url`; `ref` names another branch, tag or commit, `limit` is 30 unless you say (at most 100). With `path`, only the commits that changed that file or directory (its history), newest first, with `last_changed` (the newest) and `complete` (false when a long history was not walked to its start in time). | `repo` | `code:read` |
 | [`contents`](/reference/api/repositories/get-contents/) | What it holds at `path` (the root when left out) at `ref` (the default branch when left out): a file's `text` (null for a binary one; at most 200,000 characters), or a directory's `entries` and its README. | `repo` | `code:read` |
 | [`tarball`](/reference/api/repositories/download-tarball-archive/) | A link to a branch, tag or commit (`ref`, the default branch when left out) as a `.tar.gz` that needs no token, good for 10 minutes, as `url`, with the `commit` it is of. | `repo` | `code:read` |
 | [`zipball`](/reference/api/repositories/download-zipball-archive/) | The same as a `.zip`. | `repo` | `code:read` |
@@ -422,7 +422,7 @@ deployments; and the self-hosted runners workflows run on. See
 | --- | --- | --- | --- |
 | [`list`](/reference/api/actions/list-workflows/) | The workflows, with their events, state, problems, notes on what runs differently, manual-run inputs and last run. | `repo` | `workflows:read` |
 | [`get`](/reference/api/actions/get-workflow/) | One workflow by its id, file name, path or name, as `list` gives it, with `source`, its file on `ref` (the default branch unless given). | `repo`, `workflow` | `workflows:read` |
-| [`list_runs`](/reference/api/actions/list-runs-of-workflow/) | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull` or `sha`. | `repo` | `workflows:read` |
+| [`list_runs`](/reference/api/actions/list-runs-of-workflow/) | Runs, newest first; filter by `workflow`, `branch`, `event`, `pull`, `sha`, or `status`: a status (`queued`, `in_progress`, `completed`) or a conclusion (`failure` for the failed runs, `success`, `cancelled`). | `repo` | `workflows:read` |
 | [`get_run`](/reference/api/actions/get-workflow-run/) | A run with its jobs, their steps and annotations, and its `attempts`; `attempt` reads an earlier attempt, with the jobs it had then. | `repo`, `id` | `workflows:read` |
 | [`job_logs`](/reference/api/actions/get-job-logs/) | A job's log after `after`, or with `tail` its last chunks (at most 500), where a failed job says why; `done` says if more will come. | `repo`, `job` | `workflows:read` |
 | [`dispatch`](/reference/api/actions/dispatch-workflow/) | Run a `workflow_dispatch` workflow on `ref` with `inputs`. Write role. | `repo`, `workflow` | `workflows:write` |

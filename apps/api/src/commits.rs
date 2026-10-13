@@ -1,13 +1,13 @@
 //! `list_commits`: a branch's history, newest first, with each commit's
-//! message, author, time and page; with `path`, also the commit that last
-//! changed that file or directory. What an agent (or Ask g1t) reads to say
-//! what changed lately and why: g1t's commit messages say why.
+//! message, author, time and page; with `path`, that file's or directory's
+//! own history: the commits that changed it. What an agent (or Ask g1t)
+//! reads to say what changed lately and why: g1t's commit messages say why.
 //!
-//! The repos service reads it, as the caller may see it: `log` for the
-//! history, `last_commits` of the path's directory for its last change.
-//! The shaping is [`commit`], a plain function.
+//! The repos service reads it, as the caller may see it: `log` for a
+//! branch, `path_log` for a path. The shaping is [`commit`], a plain
+//! function.
 
-use g1t_contracts::repos::{Commit, LastCommits, LastCommitsArgs, LogArgs, RepoPath};
+use g1t_contracts::repos::{Commit, LogArgs, PathLog, PathLogArgs, RepoPath};
 use g1t_contracts::{Outcome, Viewer};
 use serde_json::{Value, json};
 use worker::Result;
@@ -22,7 +22,7 @@ const MAX_MESSAGE_CHARS: usize = 4_000;
 const PATH_BUDGET_MS: u64 = 8_000;
 
 pub fn description() -> &'static str {
-    "A branch's commits, newest first (the default branch unless `ref` names a branch, tag or commit): each with its `sha`, `message` (why it was made: g1t's commit messages say), `author`, `authored_at` and `html_url`. `limit` is 30 unless you say, at most 100. With `path` (a file or directory), also `last_changed`: the commit that last changed it."
+    "A branch's commits, newest first (the default branch unless `ref` names a branch, tag or commit): each with its `sha`, `message` (why it was made: g1t's commit messages say), `author`, `authored_at` and `html_url`. `limit` is 30 unless you say, at most 100. With `path` (a file or directory), only the commits that changed it, newest first (its history: added, changed, removed), with `last_changed`, the newest of them, and `complete` false when a long history was not walked to its start in time."
 }
 
 pub fn input() -> Value {
@@ -31,7 +31,7 @@ pub fn input() -> Value {
         "properties": {
             "repo": { "type": "string", "description": "Repository as \"owner/name\", e.g. \"flagon-io/hello\"." },
             "ref": { "type": "string", "description": "A branch, tag or commit; the default branch when left out." },
-            "path": { "type": "string", "description": "A file or directory, such as scripts/deploy/npm-ci.mjs: adds the commit that last changed it." },
+            "path": { "type": "string", "description": "A file or directory, such as scripts/deploy/npm-ci.mjs: only the commits that changed it." },
             "limit": { "type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "description": "How many commits: 30 unless you say, at most 100." },
         },
         "required": ["repo"],
@@ -70,42 +70,52 @@ pub async fn run(services: &Services, viewer: &Viewer, repo: &RepoPath, input: &
     let site = services.addresses.site.clone();
     let git_ref = input["ref"].as_str().map(str::trim).filter(|git_ref| !git_ref.is_empty()).map(str::to_owned);
     let path = input["path"].as_str().unwrap_or_default().trim().trim_matches('/').to_owned();
-    let log: Outcome<Vec<Commit>> = g1t_kit::call(
-        &services.repos,
-        "log",
-        &LogArgs { path: repo.clone(), viewer: viewer.clone(), git_ref: git_ref.clone(), limit: limit(input) },
-    )
-    .await?;
-    let commits = match log {
-        Outcome::Ok(commits) => commits,
-        Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-    };
-    let mut answer = json!({
-        "repo": format!("{}/{}", repo.namespace, repo.name),
-        "commits": commits.iter().map(|found| commit(&site, repo, found)).collect::<Vec<_>>(),
-    });
-    if !path.is_empty() {
-        let (directory, name) = match path.rsplit_once('/') {
-            Some((directory, name)) => (directory.to_owned(), name.to_owned()),
-            None => (String::new(), path.clone()),
-        };
-        let last: Outcome<LastCommits> = g1t_kit::call(
+    let full = format!("{}/{}", repo.namespace, repo.name);
+    if path.is_empty() {
+        let log: Outcome<Vec<Commit>> = g1t_kit::call(
             &services.repos,
-            "last_commits",
-            &LastCommitsArgs { path: repo.clone(), viewer: viewer.clone(), git_ref, tree_path: directory, budget_ms: Some(PATH_BUDGET_MS) },
+            "log",
+            &LogArgs { path: repo.clone(), viewer: viewer.clone(), git_ref, limit: limit(input) },
         )
         .await?;
-        answer["path"] = json!(path);
-        answer["last_changed"] = match last {
-            Outcome::Ok(last) => match last.entries.iter().find(|entry| entry.name == name) {
-                Some(entry) => commit(&site, repo, &entry.commit),
-                None if last.complete => json!(format!("{path} is not in this repository at this ref.")),
-                None => json!("Not found in time: its history is long. Look through the commits for it."),
-            },
-            Outcome::Fail(failure) => json!(failure.message),
-        };
+        return Ok(match log {
+            Outcome::Ok(commits) => Outcome::Ok(json!({
+                "repo": full,
+                "commits": commits.iter().map(|found| commit(&site, repo, found)).collect::<Vec<_>>(),
+            })),
+            Outcome::Fail(failure) => Outcome::Fail(failure),
+        });
     }
-    Ok(Outcome::Ok(answer))
+    // A path's own history: the commits that changed it, newest first.
+    let history: Outcome<PathLog> = g1t_kit::call(
+        &services.repos,
+        "path_log",
+        &PathLogArgs {
+            path: repo.clone(),
+            viewer: viewer.clone(),
+            git_ref,
+            file_path: path.clone(),
+            limit: limit(input),
+            budget_ms: Some(PATH_BUDGET_MS),
+        },
+    )
+    .await?;
+    let history = match history {
+        Outcome::Ok(history) => history,
+        Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+    };
+    let last_changed = match history.commits.first() {
+        Some(first) => commit(&site, repo, first),
+        None if history.complete => json!(format!("{path} is not in this repository at this ref.")),
+        None => json!("Not found in time: its history is long. Ask with a smaller limit, or read the branch's commits."),
+    };
+    Ok(Outcome::Ok(json!({
+        "repo": full,
+        "path": path,
+        "commits": history.commits.iter().map(|found| commit(&site, repo, found)).collect::<Vec<_>>(),
+        "last_changed": last_changed,
+        "complete": history.complete,
+    })))
 }
 
 #[cfg(test)]

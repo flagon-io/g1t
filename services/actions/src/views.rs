@@ -279,6 +279,12 @@ impl Actions {
             sql.push_str(" AND sha = ?");
             binds.push(sha.as_str().into());
         }
+        // GitHub's `status` takes a status or a conclusion.
+        if let Some(status) = a.status.as_deref().map(str::trim).filter(|status| !status.is_empty()) {
+            sql.push_str(" AND (status = ? OR conclusion = ?)");
+            binds.push(status.into());
+            binds.push(status.into());
+        }
         sql.push_str(" ORDER BY id DESC LIMIT ?");
         binds.push(a.limit.unwrap_or(RUNS_SHOWN).clamp(1, 100).into());
         let rows = self.db.prepare(sql).bind(&binds)?.all().await?.results::<RunRow>()?;

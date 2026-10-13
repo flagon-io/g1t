@@ -310,6 +310,81 @@ pub async fn last_commits<R: GitRepo>(
     Ok(Walk { progress: Progress { head: head.to_owned(), found, open, at }, reads: trees.reads })
 }
 
+/// The commits on the first-parent chain from `head` that changed `path`
+/// (a file or a directory; empty for the whole tree), newest first: at most
+/// `limit`, within `max_reads` reads of the store and before `out_of_time`
+/// says so. A commit changed the path when its hash there differs from its
+/// parent's, appearing and going away included. `complete` is true when the
+/// walk reached the first commit or found `limit`.
+pub async fn path_log<R: GitRepo>(
+    repo: &R,
+    head: &str,
+    path: &str,
+    limit: usize,
+    out_of_time: &dyn Fn() -> bool,
+    max_reads: u32,
+) -> Result<(Vec<Commit>, bool)> {
+    let mut trees = Trees { repo, read: HashMap::new(), reads: 0 };
+    let path = path.trim_matches('/');
+    let (dir, name) = match path.rsplit_once('/') {
+        Some((dir, name)) => (dir.to_owned(), name.to_owned()),
+        None => (String::new(), path.to_owned()),
+    };
+    let segments = dir.split('/').filter(|segment| !segment.is_empty()).count();
+    let batch = (READ_AHEAD * (segments + 1)) as u32 + 1;
+    let mut history = trees.log(head).await?;
+    let mut changed = Vec::new();
+    let mut index = 0usize;
+    let mut read_ahead_to = 0usize;
+    // The hash of the path in a commit's tree: the root's own for an empty path.
+    async fn hash_at<R: GitRepo>(trees: &mut Trees<'_, R>, root: &str, dir: &str, name: &str) -> Result<Option<String>> {
+        if name.is_empty() {
+            return Ok(Some(root.to_owned()));
+        }
+        let Some(parent) = trees.dir(root, dir).await? else { return Ok(None) };
+        Ok(trees.entries(Some(&parent)).await?.remove(name))
+    }
+    let Some(first) = history.first().cloned() else { return Ok((changed, true)) };
+    let mut current = hash_at(&mut trees, &first.tree_hash, &dir, &name).await?;
+    loop {
+        if changed.len() >= limit {
+            return Ok((changed, true));
+        }
+        let Some(commit) = history.get(index).cloned() else { return Ok((changed, true)) };
+        let needs_page = index + 1 >= history.len() && !commit.parents.is_empty();
+        if (needs_page || index >= read_ahead_to) && index > 0 && (out_of_time() || trees.reads + batch > max_reads) {
+            return Ok((changed, false));
+        }
+        if needs_page {
+            let more = trees.log(&commit.parents[0]).await?;
+            history.drain(..index);
+            read_ahead_to = read_ahead_to.saturating_sub(index);
+            index = 0;
+            history.extend(more);
+        }
+        if index >= read_ahead_to {
+            trees.read.clear();
+            let ahead = history.iter().skip(index + 1).take(READ_AHEAD).map(|commit| commit.tree_hash.clone()).collect();
+            trees.prefetch_dirs(ahead, &dir).await?;
+            read_ahead_to = index + READ_AHEAD;
+        }
+        let Some(parent) = history.get(index + 1).cloned() else {
+            // The oldest commit read: the first commit added what it has.
+            let first = commit.parents.is_empty();
+            if first && current.is_some() {
+                changed.push(commit);
+            }
+            return Ok((changed, first));
+        };
+        let before = hash_at(&mut trees, &parent.tree_hash, &dir, &name).await?;
+        if before != current {
+            changed.push(commit);
+        }
+        current = before;
+        index += 1;
+    }
+}
+
 /// Where the progress for a ref and path of a repository is kept: in this
 /// colo's cache, and shared between colos when the service has `GIT_CACHE`
 /// (shared.rs).
@@ -447,6 +522,34 @@ mod tests {
         fake.trees.insert("root3".into(), vec![entry("README.md", "r2", EntryKind::Blob), entry("src", "src2", EntryKind::Tree)]);
         fake.history = vec![commit("c3", "root3", Some("c2")), commit("c2", "root2", Some("c1")), commit("c1", "root1", None)];
         fake
+    }
+
+    #[test]
+    fn a_files_history_is_the_commits_that_changed_it() {
+        let fake = repo();
+        let never = || false;
+        let names = |found: Vec<Commit>| found.into_iter().map(|commit| commit.hash).collect::<Vec<_>>();
+        let (found, complete) = run(path_log(&fake, "main", "src/a.rs", 10, &never, MAX_READS)).unwrap();
+        assert_eq!((names(found), complete), (vec!["c2".to_owned(), "c1".to_owned()], true));
+        let (found, _) = run(path_log(&fake, "main", "README.md", 10, &never, MAX_READS)).unwrap();
+        assert_eq!(names(found), vec!["c3", "c1"]);
+        // A directory changes with what is in it.
+        let (found, _) = run(path_log(&fake, "main", "src", 10, &never, MAX_READS)).unwrap();
+        assert_eq!(names(found), vec!["c2", "c1"]);
+        let (found, complete) = run(path_log(&fake, "main", "src/a.rs", 1, &never, MAX_READS)).unwrap();
+        assert_eq!((names(found), complete), (vec!["c2".to_owned()], true));
+        let (found, _) = run(path_log(&fake, "main", "nope.txt", 10, &never, MAX_READS)).unwrap();
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn a_long_history_is_walked_across_pages_within_its_reads() {
+        let fake = long(130);
+        let never = || false;
+        let (found, complete) = run(path_log(&fake, "main", ".dockerignore", 10, &never, MAX_READS)).unwrap();
+        assert_eq!((found.len(), found[0].hash.as_str(), complete), (1, "c0", true));
+        let (found, complete) = run(path_log(&fake, "main", ".dockerignore", 10, &never, 40)).unwrap();
+        assert!(found.is_empty() && !complete, "out of reads before the first commit");
     }
 
     /// A long history, newest first: `.dockerignore` is added by the first

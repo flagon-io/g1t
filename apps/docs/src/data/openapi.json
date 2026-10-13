@@ -26937,7 +26937,7 @@
           "Repositories"
         ],
         "summary": "List commits",
-        "description": "A branch's commits, newest first (the default branch unless `ref` names a branch, tag or commit): each with its `sha`, `message` (why it was made: g1t's commit messages say), `author`, `authored_at` and `html_url`. `limit` is 30 unless you say, at most 100. With `path` (a file or directory), also `last_changed`: the commit that last changed it.\n\nWith `path`, `last_changed` is the commit that last changed that file or directory.",
+        "description": "A branch's commits, newest first (the default branch unless `ref` names a branch, tag or commit): each with its `sha`, `message` (why it was made: g1t's commit messages say), `author`, `authored_at` and `html_url`. `limit` is 30 unless you say, at most 100. With `path` (a file or directory), only the commits that changed it, newest first (its history: added, changed, removed), with `last_changed`, the newest of them, and `complete` false when a long history was not walked to its start in time.\n\nWith `path`, `last_changed` is the commit that last changed that file or directory.",
         "x-operation": "list_commits",
         "x-mcp-tool": "repository",
         "x-mcp-action": "commits",
@@ -26984,7 +26984,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "A file or directory, such as scripts/deploy/npm-ci.mjs: adds the commit that last changed it."
+            "description": "A file or directory, such as scripts/deploy/npm-ci.mjs: only the commits that changed it."
           },
           {
             "name": "limit",
@@ -47880,7 +47880,7 @@
           "Actions"
         ],
         "summary": "List a workflow's runs",
-        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, or a commit.",
+        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, or a status or conclusion (`status`: failure for the failed ones, in_progress for those still going). A run whose `status` is not completed has no result yet.",
         "x-operation": "list_workflow_runs",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runs",
@@ -47936,6 +47936,24 @@
               "type": "string"
             },
             "description": "push, pull_request, schedule, workflow_dispatch…"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only runs with this status (queued, in_progress, waiting, completed) or conclusion (success, failure, cancelled, skipped, timed_out): failure finds the failed ones."
+          },
+          {
+            "name": "head_sha",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A commit."
           },
           {
             "name": "per_page",
@@ -48482,7 +48500,7 @@
           "Actions"
         ],
         "summary": "List workflow runs",
-        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, or a commit.\n\nA run's `status` is `queued`, `pending` (waiting for its concurrency group), `in_progress` or `completed`; `conclusion` is set once it completes.",
+        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, or a status or conclusion (`status`: failure for the failed ones, in_progress for those still going). A run whose `status` is not completed has no result yet.\n\nA run's `status` is `queued`, `pending` (waiting for its concurrency group), `in_progress` or `completed`; `conclusion` is set once it completes.",
         "x-operation": "list_workflow_runs",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runs",
@@ -48556,6 +48574,15 @@
               "type": "string"
             },
             "description": "A commit."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only runs with this status (queued, in_progress, waiting, completed) or conclusion (success, failure, cancelled, skipped, timed_out): failure finds the failed ones."
           },
           {
             "name": "per_page",

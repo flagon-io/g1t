@@ -671,6 +671,11 @@ pub struct RunsArgs {
     pub pull: Option<u32>,
     #[serde(default)]
     pub sha: Option<String>,
+    /// GitHub's `status` filter: a status (`queued`, `in_progress`,
+    /// `waiting`, `completed`) or a conclusion (`success`, `failure`,
+    /// `cancelled`, `skipped`, `timed_out`, `neutral`, `action_required`).
+    #[serde(default)]
+    pub status: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
 }

@@ -36,10 +36,22 @@ export function linksIn(text) {
 
 /** `#N` in an answer, leaving out run, deploy and job numbers. */
 export function numbersIn(text) {
+  const all = String(text);
+  const lines = all.split("\n");
   const found = new Set();
-  for (const m of String(text).matchAll(/#(\d{1,6})\b/g)) {
-    const before = String(text).slice(Math.max(0, m.index - 24), m.index);
-    if (/(run|deploy|build|workflow|attempt|job|ci|release|step)\W*$/i.test(before)) continue;
+  for (const m of all.matchAll(/#(\d{1,6})\b/g)) {
+    const before = all.slice(Math.max(0, m.index - 24), m.index);
+    if (/(run|deploy|build|workflow|attempt|job|ci|release|step|scanning|caches)\W*$/i.test(before)) continue;
+    // A link's own address says what it is: a run or a deployment is not an issue.
+    const link = all.slice(m.index).match(/^#\d+\]\(([^)]+)\)/);
+    if (link && /\/actions\/runs\/|\/deployments|\/releases\//.test(link[1])) continue;
+    // In a table whose header names runs, a #N is a run's number.
+    const row = all.slice(0, m.index).split("\n").length - 1;
+    if (lines[row]?.trimStart().startsWith("|")) {
+      let at = row;
+      while (at > 0 && lines[at - 1].trimStart().startsWith("|")) at--;
+      if (/\b(run|deploy|workflow|build)s?\b/i.test(lines[at] ?? "")) continue;
+    }
     found.add(Number(m[1]));
   }
   return [...found];

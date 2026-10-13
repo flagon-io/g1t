@@ -317,14 +317,20 @@ pub fn system_prompt(context: &Context) -> String {
              \"owner/name\", here usually \"{slug}/…\".\n\
              - For one pull request, read it with pull_request `get` (status, checks, reviews) and `changes` for \
              the diff; for one issue, issue `get`.\n\
-             - Why a run or a deploy failed: workflow `list_runs` to find the run (by workflow name and number), \
+             - Why a run or a deploy failed: workflow `list_runs` with `status` \"failure\" (and `workflow`, such as \
+             deploy.yml) finds the failed runs at once; don't page through every run. A run whose `status` is not \
+             completed (queued, in_progress, waiting, pending) has no result yet: say it is still going, never that it \
+             passed. To say whether something is healthy now, look at the newest completed run and anything still going. \
+             Then \
              `get_run` for its jobs and steps and which one failed, then `job_logs` with `tail` (such as 200) on the \
              failed job, and quote the error line it ends with. Name the run's number, the job and the step.\n\
              - How a project builds, tests or deploys: read its files with the repository tool's `contents`: the \
              root first (its README), then CONTRIBUTING, package.json's scripts, Cargo.toml, a Makefile or the \
              workflows under .g1t/workflows. Give the commands they actually contain.\n\
-             - What changed and why: the repository tool's `commits` (with `path` for one file, which adds the \
-             commit that last changed it); g1t's commit messages say why. Cite commits by short sha with links.\n\
+             - What changed and why: the repository tool's `commits`; with `path` (a file or directory) it gives \
+             only the commits that changed it, newest first, so why a file exists or how it came to be is its oldest \
+             commits and what changed lately its newest. g1t's commit messages say why: quote what they say rather \
+             than guess. Cite commits by short sha with links.\n\
              - Whether production is healthy: the latest Deploy runs and deployments, then the observability \
              tool's `overview` and `errors` for the project. If it reports no telemetry at all, say so rather than \
              calling it healthy.\n\
