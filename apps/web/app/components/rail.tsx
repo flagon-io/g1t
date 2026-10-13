@@ -1,5 +1,5 @@
 import { Check, ChevronDown, CircleUserRound, Compass, LayoutGrid, Plus, Settings } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { Link, useLocation, useNavigation } from "react-router";
 
 import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
@@ -262,17 +262,20 @@ export function Rail({
       <SidebarContent className="items-center gap-0">
         <SidebarMenu className="w-auto shrink-0 gap-2">
           {builtins.map((item) => (
-            <RailLink
-              key={item.key}
-              to={modeHome(item.key, slug)}
-              label={item.label}
-              icon={appIcon(item.key as BuiltinApp, 20)}
-              current={here === item.key && !shown.some((app) => at(app.to))}
-              badge={item.badge}
-            />
+            <Fragment key={item.key}>
+              <RailLink
+                to={modeHome(item.key, slug)}
+                label={item.label}
+                icon={appIcon(item.key as BuiltinApp, 20)}
+                current={here === item.key && !shown.some((app) => at(app.to))}
+                badge={item.badge}
+              />
+              {/* Right after Home: g1t beyond your workspaces (Explore, search, profiles, other workspaces and their public projects). */}
+              {item.key === "home" && (
+                <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={here === "browse" || at("/explore")} />
+              )}
+            </Fragment>
           ))}
-          {/* g1t beyond your workspaces: Explore, search, profiles, other workspaces and their public projects. */}
-          <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={here === "browse" || at("/explore")} />
         </SidebarMenu>
         {/* Your pinned apps: as many as you like, scrolling under a fade at either end. */}
         {shown.length > 0 && (
