@@ -353,7 +353,7 @@ export function renderPage(model: PageModel, options: PageOptions): string {
   const past = incidents.filter((i) => i.resolved_at != null && Date.parse(i.resolved_at) >= recentSince);
   const inProgress = maintenance.filter((m) => maintenanceState(m, options.now) === "in_progress");
   const upcoming = maintenance.filter((m) => maintenanceState(m, options.now) === "scheduled");
-  const description = `${overall.title}. Live status of g1t: the website, API, git, MCP, docs, deployments, agents and billing, with 90 days of history.`;
+  const description = `${overall.title}. Live status of g1t: the website, API, git, MCP, docs, deployments, sandboxes and billing, with 90 days of history.`;
   const checkedLine = checked_at
     ? stale
       ? `The checks have not run since ${time(checked_at, true)}, so what follows may be out of date.`
