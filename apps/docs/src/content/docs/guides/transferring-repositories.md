@@ -69,7 +69,7 @@ Everything that belongs to the repository moves with it:
 | Issues and pull requests | With their numbers, comments, reviews, labels, sessions and merge queue. |
 | Workflows | Workflow runs, their jobs, logs and artifacts. |
 | Deployments | The repository's project, its deployments and its custom domains. See [deployments](#deployments). |
-| Its own settings | Merge rules, branch protection, guardrails, and the project's memory. |
+| Its own settings | Merge rules, branch protection and guardrails. |
 | Its own secrets and variables | Set on the repository, they move with it. |
 | Its own webhooks | They now name the repository by its new path. |
 
@@ -80,7 +80,7 @@ These belong to the old workspace and stay with it:
 | Workspace secrets and variables | The old workspace's stop reaching the repository; the new workspace's start, if they reach every repository or name this one. |
 | Workspace webhooks | The old workspace's stop hearing about the repository; the new one's start. |
 | Integrations | Sentry, Datadog, Jira and Linear connections stay with their workspace. Connect them in the new one if you need them there. |
-| Workspace memory and guardrails | The new workspace's apply from now on. |
+| Workspace guardrails | The new workspace's apply from now on. |
 | The audit log | What happened before the transfer stays in the old workspace's log. Each workspace's log records the transfer itself. |
 | Billing history | See [billing](#billing). |
 

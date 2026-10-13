@@ -447,7 +447,7 @@ function DeleteAction({
               </li>
               <li>
                 To get it back within {WORKSPACE_RESTORE_DAYS} days, an owner writes to support. After that its
-                repositories, projects, apps, webhooks, integrations, secrets and memory are removed for good.
+                repositories, projects, apps, webhooks, integrations and secrets are removed for good.
               </li>
               <li>
                 The name <span className="font-mono text-fg">{workspace.slug}</span> is never given to another

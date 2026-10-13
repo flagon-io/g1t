@@ -65,14 +65,13 @@ const TOKEN_TTL_SECONDS: u64 = 12 * 60 * 60;
 /// A session still going after this long is stopped.
 const MAX_RUN_MS: u64 = 12 * 60 * 60 * 1000;
 /// The scopes of the token a session holds: what working on an issue needs.
-const SCOPES: [&str; 9] = [
+const SCOPES: [&str; 8] = [
     "repo:read",
     "code:write",
     "issues:write",
     "pull_requests:write",
     "checks:read",
     "workflows:read",
-    "memory:read",
     "deployments:read",
     "observability:read",
 ];

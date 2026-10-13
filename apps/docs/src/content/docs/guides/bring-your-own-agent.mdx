@@ -1,6 +1,6 @@
 ---
 title: Connect a coding agent
-description: Connect Claude Code, Codex, Cursor, OpenCode or any MCP client to g1t, and have it work on issues, record its sessions, share memory and react to events.
+description: Connect Claude Code, Codex, Cursor, OpenCode or any MCP client to g1t, and have it work on issues, record its sessions and react to events.
 ---
 
 import AgentSetup from '../../../components/AgentSetup.astro';
@@ -16,7 +16,6 @@ do, and act with the access you give them:
 | Start the agent when something happens | [Webhooks](/guides/webhooks/), or a [workflow](/guides/actions/) on `issues` or `issue_comment` |
 | Show people how a change was made | The pull request's [session](/guides/why-blame/#sessions) |
 | See who is working on what, and not collide | [Sessions, claims and dependencies](/guides/sessions/) |
-| Pass what one agent learned to the next | [Memory](/guides/memory/) |
 | Script anything else | The [REST API](/reference/api/), which has the same operations as the tools |
 
 The agent runs where you run it: on your machine, in your CI, or on a
@@ -62,7 +61,7 @@ Give an agent the least that lets it do its work:
 
 | Choose | For an agent |
 | --- | --- |
-| Scopes | The **Agent** preset: reading across g1t, and writing code, issues, pull requests, memory and notifications. Add an admin scope only for a task that needs it. |
+| Scopes | The **Agent** preset: reading across g1t, and writing code, issues, pull requests and notifications. Add an admin scope only for a task that needs it. |
 | Expires | The shortest that fits the work, such as 30 days. |
 
 A token reaches every workspace and repository you can. To keep an agent
@@ -82,15 +81,13 @@ the agent does is done as you, and shows as you in the
    done means, who has claimed it, the pull requests already made for it,
    and what it is blocked by. Then `issue` with `claim`, which also says
    who else is on it.
-2. `memory` with `recall`, to read what the project remembers: how to
-   build, conventions and traps.
-3. `pull_request` with `create` and the issue's number. This opens a draft
+2. `pull_request` with `create` and the issue's number. This opens a draft
    pull request and returns the git remote of its fork.
-4. Clone the fork, make changes, commit and push.
-5. `pull_request` with `record_session` as it goes, so people can see its
+3. Clone the fork, make changes, commit and push.
+4. `pull_request` with `record_session` as it goes, so people can see its
    reasoning.
-6. `pull_request` with `get`, to check `overlaps`, `behind` and the checks.
-7. `pull_request` with `ready` and a summary of what changed and why.
+5. `pull_request` with `get`, to check `overlaps`, `behind` and the checks.
+6. `pull_request` with `ready` and a summary of what changed and why.
 
 ### Work with no issue yet
 
@@ -151,11 +148,10 @@ Claude Code from `CLAUDE.md`, and Codex, OpenCode and Cursor from
 ```md title="AGENTS.md"
 ## Working on g1t
 
-- Before starting, call g1t's `memory` tool with `recall`. Save anything
-  the next agent should know with `remember`, one fact at a time.
 - Work in a draft pull request (`pull_request` `create` with the issue),
   and record your session with `record_session` before each push.
 - Read `overlaps` and `behind` on `pull_request` `get` before going far.
+- Say why you made a choice with `pull_request` `record_decision`.
 ```
 
 An agent with a shell can use the [g1t CLI](/guides/cli/) instead of the
@@ -200,15 +196,6 @@ everything it records, and how to opt out.
 Other agents record a session with the same CLI commands, from their
 instructions file: see
 [other coding agents](/guides/claude-code-plugin/#other-coding-agents).
-
-## Share what agents learn
-
-[Memory](/guides/memory/) holds short notes about a project, or a whole
-workspace, that whoever works on it next should know. An agent reads it
-with `memory` `recall` before it starts and adds to it with `remember`
-when it learns something, such as a test that needs `TZ=UTC`. People see,
-pin, edit and forget the same notes on the repository's **Memory** page.
-Memory never holds a secret: text that looks like one is refused.
 
 ## Staying out of each other's way
 
@@ -313,7 +300,6 @@ requests as the repository and a `number`.
 | `issue` | Issues, labels and comments; an issue's whole context, and claims |
 | `pull_request` | Pull requests: create, record and read sessions, review, merge, the merge queue |
 | `session` | Your harness's session: start, update, record, end, get, list; dispatch work on an issue; who else is working |
-| `memory` | `recall` and `remember` |
 | `workflow` | Workflow runs and logs, checks, deployments, environments and runners |
 | `observability` | A project's requests, logs, traces, errors and metrics in production |
 | `package` | Packages in every registry |

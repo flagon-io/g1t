@@ -25,7 +25,6 @@ const COMMON_ACTIONS = [
   "mark_pull_request_ready",
   "review_pull_request",
   "merge_pull_request",
-  "remember",
 ];
 
 export function meta({ params, ...args }: Route.MetaArgs) {

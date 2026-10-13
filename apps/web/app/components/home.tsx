@@ -1,7 +1,7 @@
 /**
  * Home's parts (routes/workspace/home.tsx): Where you're needed, Start
  * here, what happened in the span (what people did, what landed, builds,
- * decisions, spend) and Running now. Each takes what
+ * spend) and Running now. Each takes what
  * lib/home.ts worked out and only draws it.
  */
 import {
@@ -12,7 +12,6 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
-  Lightbulb,
   Loader,
   Mail,
   Package,
@@ -30,7 +29,6 @@ import {
   type Attention,
   type AttentionKind,
   type AttentionRow,
-  type DecisionRow,
   type DeployRow,
   type Digest,
   type DigestActor,
@@ -429,7 +427,7 @@ export function SpanSkeleton() {
   );
 }
 
-// --- Landed, builds and decisions -------------------------------------------------
+// --- Landed and builds -----------------------------------------------------------
 
 /** Rows each list shows before the rest fold away. */
 const LIST_ROWS = 5;
@@ -550,29 +548,6 @@ export function DeploysCard({ deploys, complete, code, now, tz }: { deploys: Dep
         />
       )}
       {deploys && !complete && <p className="border-t border-line px-5 py-2.5 text-xs text-faint">Some projects&apos; builds couldn&apos;t be read.</p>}
-    </Card>
-  );
-}
-
-export function DecisionsCard({ decisions, now, tz }: { decisions: DecisionRow[] | null; now: number; tz: string | null }) {
-  if (!decisions || decisions.length === 0) return null;
-  return (
-    <Card title="Decisions" hint="Recorded in the workspace's memory">
-      <Folded
-        items={decisions}
-        render={(row) => (
-          <li key={row.key} className={rowClass}>
-            <Lightbulb size={15} className="shrink-0 text-warn" />
-            <div className="min-w-0 grow">
-              <Link to={row.to} className="line-clamp-2 text-sm text-fg hover:underline">
-                {row.text}
-              </Link>
-              {row.by && <p className="truncate text-xs text-muted">by {row.by}</p>}
-            </div>
-            <When at={row.at} now={now} tz={tz} />
-          </li>
-        )}
-      />
     </Card>
   );
 }

@@ -411,11 +411,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         &[Op::ListDecisions, Op::RecordDecision, Op::Why],
     ),
     (
-        "Memory",
-        "What agents and people learned that the next agent should know, for one project or across a workspace. Members only; never a secret.",
-        &[Op::Remember, Op::Recall],
-    ),
-    (
         "Search",
         "One search across all of g1t: repositories, code, issues, pull requests, people and workspaces. Public content for everyone, and private content in workspaces you belong to.",
         &[Op::Search],
@@ -667,8 +662,6 @@ fn title(op: Op) -> &'static str {
         Op::UpdateRepoSettings => "Update repository settings",
         Op::ListCheckNames => "List check names",
         Op::GetMergeQueue => "Get the merge queue",
-        Op::Remember => "Remember something",
-        Op::Recall => "Recall memory",
         Op::Search => "Search g1t",
         Op::ListIssues => "List issues",
         Op::GetIssue => "Get an issue",

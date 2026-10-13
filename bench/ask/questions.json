@@ -318,38 +318,6 @@
       "good": "Lists the workflows briefly and names the broken one with its error (Code scanning: its file is no longer on the default branch)."
     },
     {
-      "id": "how-to-test",
-      "category": "memory",
-      "question": "How do I run g1t's tests locally?",
-      "page": {
-        "path": "/flagon-io/g1t",
-        "repo": {
-          "namespace": "flagon-io",
-          "name": "g1t"
-        }
-      },
-      "truth": {
-        "name": "memory",
-        "args": {
-          "repo": "flagon-io/g1t"
-        }
-      },
-      "expect": {
-        "tools": true
-      },
-      "require_any": [
-        [
-          "cargo test"
-        ],
-        [
-          "npm run typecheck",
-          "test:deploy",
-          "--workspaces"
-        ]
-      ],
-      "good": "Gives the commands from the project's memory and CI: cargo test for the Rust workspace; npm ci, npm run typecheck, npm test --workspaces --if-present, npm run test:deploy and test:ops for TypeScript. Short, in a code block."
-    },
-    {
       "id": "projects",
       "category": "workspace",
       "question": "What projects are in this workspace and what does each do? Keep it to one line each.",

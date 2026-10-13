@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Brain, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, Building2, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -822,11 +822,6 @@ function RepoMenu({
             Pull requests
           </SidebarLink>
         )}
-        {repo.member && (
-          <SidebarLink to={`${base}/memory`} icon={<Brain size={15} />}>
-            Memory
-          </SidebarLink>
-        )}
         {shows.has("actions") && (
           <SidebarLink to={`${base}/actions`} icon={<PlayCircle size={15} />}>
             Workflows
@@ -1267,9 +1262,6 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
         <SidebarLink to={`/${slug}/-/packages`} icon={<Package size={15} />} current={at("packages")}>
           Packages
         </SidebarLink>
-        <SidebarLink to={`/${slug}/-/memory`} icon={<Brain size={15} />} current={at("memory")}>
-          Memory
-        </SidebarLink>
         {INSIGHTS && (
           <SidebarSoonLink to={`/${slug}/-/insights`} icon={<TrendingUp size={15} />} about={INSIGHTS.summary} current={at("insights")}>
             {INSIGHTS.title}
@@ -1537,7 +1529,6 @@ const SECTIONS: Record<string, string> = {
   audit: "Audit log",
   tree: "Files",
   blob: "Files",
-  memory: "Memory",
   security: "Security",
   packages: "Packages",
   runners: "Runners",

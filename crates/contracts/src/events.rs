@@ -813,7 +813,7 @@ impl RepoTransferred {
 }
 
 /// `workspace.deleted`: a workspace is gone. Services drop what they keep
-/// for it alone (its webhooks, integrations, secrets, memory, guardrails,
+/// for it alone (its webhooks, integrations, secrets, guardrails,
 /// agent queue) and keep what is history: ledgers, invoices and the audit
 /// log stay under its slug, which is never given to another workspace.
 #[derive(Clone, Debug, Serialize, serde::Deserialize)]

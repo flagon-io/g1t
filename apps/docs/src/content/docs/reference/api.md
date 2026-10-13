@@ -240,7 +240,6 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | [Issues](/reference/api/issues/list-issues/) | What should change, with labels and comments. |
 | [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging and the merge queue. |
 | [Sessions](/reference/api/sessions/read-session/) | The record of how a pull request was made, written by the coding agent that made it. See [sessions and why-blame](/guides/why-blame/). |
-| [Memory](/reference/api/memory/recall/) | What a project and its workspace remember for whoever works on it next. See [memory](/guides/memory/). |
 | [Actions](/reference/api/actions/list-workflows/) | Workflows, their runs and their logs. |
 | [Run protection](/reference/api/run-protection/update-environment/) | Environments' protection rules and the reviews of the jobs they hold, approving a pull request's run from outside, a job token's default permissions, and repository dispatch. See [GitHub Actions](/guides/actions/#environments). |
 | [Secrets and variables](/reference/api/secrets-and-variables/list-actions-secrets/) | Values workflows and deployments read. |

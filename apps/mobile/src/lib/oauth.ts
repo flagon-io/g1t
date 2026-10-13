@@ -47,7 +47,6 @@ export const SCOPES = [
   "workflows:read",
   "notifications:read",
   "notifications:write",
-  "memory:read",
   "artifacts:read",
 ];
 

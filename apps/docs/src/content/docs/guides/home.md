@@ -147,11 +147,6 @@ live** when it built and was served (it may have been replaced since), or
 **Failed**. Skipped builds are left out. A workspace whose projects did not
 build in the span has no Deploys card.
 
-### Decisions
-
-Decisions recorded in the workspace's [memory](/guides/memory/) in the
-span, with who recorded each. With none, the card is not shown.
-
 ### Spent
 
 What the workspace spent over the span, from its
@@ -187,7 +182,7 @@ from Code:
   repositories.
 - Where you're needed has no rows from Code, and no notifications about a
   repository.
-- Landed, Deploys, memory decisions and Running now are not shown.
+- Landed, Deploys and Running now are not shown.
 - Spent is the same for every member.
 
 ## When something doesn't answer

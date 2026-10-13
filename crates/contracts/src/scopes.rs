@@ -44,6 +44,7 @@ pub enum Resource {
     /// Observability: what a project's running software did, as requests,
     /// logs, traces, errors and metrics, and how they are collected.
     Observability,
+    /// Retired with project and workspace memory ([`Resource::retired`]).
     Memory,
     Access,
     Webhooks,
@@ -154,13 +155,14 @@ impl Resource {
     }
 
     /// Whether it belonged to something g1t no longer has: `agents` (g1t's
-    /// own agents) and `models` (its model proxy and AI Gateway). Their
+    /// own agents), `memory` (project and workspace memory) and `models`
+    /// (its model proxy and AI Gateway). Their
     /// scopes still parse, so tokens and OAuth grants that stored them read
     /// as before, but [`parse_scopes`] leaves them out, nothing hands them
     /// out and no operation needs them: they grant nothing. The TypeScript
     /// mirror lists them under `RETIRED_RESOURCES` and `RETIRED_SCOPES`.
     pub fn retired(self) -> bool {
-        matches!(self, Resource::Agents | Resource::Models)
+        matches!(self, Resource::Agents | Resource::Memory | Resource::Models)
     }
 }
 
@@ -218,6 +220,8 @@ pub enum Scope {
     DeploymentsWrite,
     ObservabilityRead,
     ObservabilityWrite,
+    /// Retired with memory ([`Resource::retired`]): parses, so stored
+    /// tokens still read, but is never granted and gates nothing.
     MemoryRead,
     MemoryWrite,
     AccountRead,
@@ -417,8 +421,8 @@ impl Scope {
             Scope::DeploymentsWrite => "Report deployments and their statuses, from any CI",
             Scope::ObservabilityRead => "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports",
             Scope::ObservabilityWrite => "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports",
-            Scope::MemoryRead => "Recall memory",
-            Scope::MemoryWrite => "Save memory for whoever works on the project next",
+            Scope::MemoryRead => "Retired: recall project and workspace memory. Grants nothing now",
+            Scope::MemoryWrite => "Retired: save project and workspace memory. Grants nothing now",
             Scope::AccountRead => "Read your email addresses, invites, invitations, pinned projects and stars",
             Scope::AccountWrite => "Change your email addresses, make invites, answer invitations, pin projects and star repositories",
             Scope::NotificationsRead => "See your inbox, its threads, and what you subscribe to and watch",
@@ -652,7 +656,6 @@ impl Preset {
                     Scope::CodeWrite,
                     Scope::IssuesWrite,
                     Scope::PullRequestsWrite,
-                    Scope::MemoryWrite,
                     Scope::NotificationsWrite,
                 ]);
                 normalize(&mut scopes);
@@ -1112,6 +1115,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("add_comment", Scope::IssuesWrite),
     ("edit_comment", Scope::IssuesWrite),
     ("delete_comment", Scope::IssuesWrite),
+    // Looking up a ticket the work refers to, through the workspace's
+    // integrations, and bringing one in as an issue.
+    ("get_context", Scope::IssuesRead),
     ("import_issue", Scope::IssuesWrite),
     // Coordinating work on issues: claims, and the context to pick one up.
     ("list_claims", Scope::IssuesRead),
@@ -1242,10 +1248,6 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_token_requests", Scope::AccessRead),
     ("review_token_request", Scope::AccessAdmin),
     ("revoke_member_token", Scope::AccessAdmin),
-    // Memory.
-    ("recall", Scope::MemoryRead),
-    ("get_context", Scope::MemoryRead),
-    ("remember", Scope::MemoryWrite),
     // Who has access.
     ("list_collaborators", Scope::AccessRead),
     ("get_collaborator_permission", Scope::AccessRead),
@@ -1567,14 +1569,14 @@ mod tests {
     #[test]
     fn retired_scopes_parse_but_are_never_granted() {
         // Stored tokens and OAuth grants that hold them still read.
-        for text in ["agents:run", "models:read", "models:write"] {
+        for text in ["agents:run", "memory:read", "memory:write", "models:read", "models:write"] {
             let scope = Scope::parse(text).unwrap();
             assert!(scope.resource().retired() && !scope.offered(), "{text}");
             let back: Scope = serde_json::from_value(json!(text)).unwrap();
             assert_eq!(back, scope);
         }
         // But nothing hands them out, and asking for them gets the rest.
-        assert_eq!(parse_scopes("agents:run issues:read models:write"), vec![Scope::IssuesRead]);
+        assert_eq!(parse_scopes("agents:run issues:read memory:write models:write"), vec![Scope::IssuesRead]);
         assert!(!offered_scopes().iter().any(|scope| scope.resource().retired()));
         assert!(!everything().iter().any(|scope| scope.resource().retired()));
         for preset in Preset::ALL {

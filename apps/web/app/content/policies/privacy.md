@@ -21,7 +21,6 @@ The short version: we collect what we need to run a git platform for you and you
 - **Repositories**: everything you push, with its history, and what it holds, including any personal information in commit authors and files.
 - **Issues, pull requests, reviews, comments, plans and labels**, with who wrote them and when.
 - **Secrets and variables, integration credentials and webhook signing secrets.** Secrets are encrypted at rest (AES-256-GCM) and never shown again after you save them.
-- **Memory and the context hub**: what agents and members record for the workspace to remember.
 - **Deployments**: the apps you deploy, their builds and logs, and a screenshot of each production site for your project's overview.
 
 ### What agents do

@@ -319,7 +319,6 @@ fn noun(tool: &str, plural: bool) -> String {
         "repository" => ("repository", "repositories"),
         "workflow" => ("workflow", "workflows"),
         "workspace" => ("workspace", "workspaces"),
-        "memory" => ("memory", "memory"),
         "notifications" => ("notification", "notifications"),
         "package" => ("package", "packages"),
         "team" => ("team", "teams"),

@@ -355,17 +355,6 @@ const resolvers = {
     };
   },
 
-  /** What the project remembers. */
-  async memory({ repo }) {
-    const { data } = await api(`/repos/${repo}/memory`);
-    const facts = [...(data?.project ?? []), ...(data?.workspace ?? [])];
-    return {
-      digest: `Project and workspace memory for ${repo}:\n${facts.slice(0, 25).map((m) => `- ${clip(m.text, 300)}`).join("\n")}`,
-      require_any: [],
-      repo,
-    };
-  },
-
   /** The workspace's projects. */
   async projects() {
     const list = await projects();

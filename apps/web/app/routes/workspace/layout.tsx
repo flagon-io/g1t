@@ -93,10 +93,6 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   usage: { title: "Usage", about: "What the workspace used and what it cost, by product, project and day." },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
-  memory: {
-    title: "Workspace memory",
-    about: "What holds across all of the workspace's projects, beside each project's own memory. Coding agents read it with the MCP server's recall.",
-  },
   audit: {
     title: "Audit log",
     about: "Every change people, tokens and g1t's own runs made: by whom, on whose behalf, to what, and whether it was allowed.",

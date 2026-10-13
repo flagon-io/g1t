@@ -206,7 +206,6 @@ export default [
     route("-/apps", "routes/workspace/apps.tsx"),
     // What Code's pages say to a member without Code.
     route("-/code-access", "routes/workspace/code-access.tsx"),
-    route("-/memory", "routes/workspace/memory.tsx"),
     route("-/security", "routes/workspace/security.tsx"),
     route("-/security/patterns", "routes/workspace/security-patterns.tsx"),
     route("-/security/bypass-requests", "routes/workspace/security-bypass.tsx"),
@@ -278,7 +277,6 @@ export default [
     route("usage", "routes/repo/usage.tsx"),
     route("sessions", "routes/repo/sessions.tsx"),
     route("sessions/:number", "routes/repo/session.tsx"),
-    route("memory", "routes/repo/memory.tsx"),
     route("actions", "routes/repo/actions.tsx"),
     route("actions/runs/:id", "routes/repo/actions-run.tsx"),
     route("actions/runs/:id/artifacts/:name", "routes/repo/actions-artifact.ts"),

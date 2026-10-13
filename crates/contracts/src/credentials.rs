@@ -267,7 +267,6 @@ pub const READ_OPERATIONS: &[&str] = &[
     "get_repo_settings",
     "list_check_names",
     "get_merge_queue",
-    "recall",
     "list_issues",
     "get_issue",
     "list_labels",

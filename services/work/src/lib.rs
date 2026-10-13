@@ -17,7 +17,6 @@ mod inbox;
 mod integration;
 mod labels;
 mod lifecycle;
-mod memory;
 mod mergeability;
 mod milestones;
 mod prefetch;
@@ -2799,18 +2798,13 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "hand_off_issue" => reply(&work.hand_off_issue(args(body)?).await?),
         "list_claims" => reply(&work.list_claims(args(body)?).await?),
         "get_work" => reply(&work.get_work(args(body)?).await?),
-        // Runs of sandboxes, and memory (runs.rs, memory.rs).
+        // Runs of sandboxes (runs.rs).
         "open_run" => reply(&work.open_run(args(body)?).await?),
         "report_run" => reply(&work.report_run(args(body)?).await?),
         "list_runs" => reply(&work.list_runs(args(body)?).await?),
         "get_run" => reply(&work.get_run(args(body)?).await?),
         "list_sessions" => reply(&work.list_sessions(args(body)?).await?),
         "get_session" => reply(&work.get_session(args(body)?).await?),
-        "list_memories" => reply(&work.list_memories(args(body)?).await?),
-        "add_memory" => reply(&work.add_memory(args(body)?).await?),
-        "update_memory" => reply(&work.update_memory(args(body)?).await?),
-        "delete_memory" => reply(&work.delete_memory(args(body)?).await?),
-        "recall" => reply(&work.recall(args(body)?).await?),
         // What a sandbox may reach (guardrails.rs).
         "get_guardrails" => reply(&work.get_guardrails(args(body)?).await?),
         "update_guardrails" => reply(&work.update_guardrails(args(body)?).await?),
@@ -2840,19 +2834,19 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let work = service(&env)?;
     for message in batch.messages()? {
-        // A workspace renamed: its runs and memory move to the slug it has now.
-        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[memory::RENAMED, guardrails::RENAMED, rulesets::RENAMED].concat()).await? {
+        // A workspace renamed: its runs move to the slug it has now.
+        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED].concat()).await? {
             message.ack();
             continue;
         }
-        // A repository renamed or transferred: its runs, memory and
-        // guardrails follow.
-        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[memory::TRANSFERRED, guardrails::TRANSFERRED].concat()).await? {
+        // A repository renamed or transferred: its runs and guardrails
+        // follow.
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[runs::TRANSFERRED, guardrails::TRANSFERRED].concat()).await? {
             message.ack();
             continue;
         }
         // A workspace deleted: what it kept for itself goes.
-        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), memory::DELETED).await? {
+        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), guardrails::DELETED).await? {
             message.ack();
             continue;
         }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ActivityDigest, ActorCount, ChatActivity, Deployment, InboxItem, Memory, RepoDigest, WorkflowRun } from "@g1t/contracts";
+import type { ActivityDigest, ActorCount, ChatActivity, Deployment, InboxItem, RepoDigest, WorkflowRun } from "@g1t/contracts";
 
 import {
   type AttentionRow,
@@ -12,7 +12,6 @@ import {
   chatRow,
   codeRow,
   dayIn,
-  decisionsIn,
   deploysIn,
   digestOf,
   duration,
@@ -550,33 +549,6 @@ test("builds that finished in the span: live or failed, never skipped", () => {
   assert.equal(unknown[0]!.by, "someone");
   const robot = deploysIn([{ slug: "site", deployments: [deploy({ createdBy: "agt_01x" })] }], "acme", SPAN, { "user:agt_01x": "otto" });
   assert.equal(robot[0]!.by, "@otto");
-});
-
-const memory = (over: Partial<Memory>): Memory => ({
-  id: "m1",
-  scope: "workspace",
-  workspace: "acme",
-  repo: null,
-  text: "Use Postgres for the ledger",
-  kind: "decision",
-  source: { kind: "person" } as Memory["source"],
-  createdBy: "ada",
-  pinned: false,
-  createdAt: iso(NOW - DAY),
-  updatedAt: iso(NOW - DAY),
-  lastUsedAt: null,
-  ...over,
-});
-
-test("decisions: kept decisions in memory, in the span", () => {
-  const rows = decisionsIn(
-    [memory({}), memory({ id: "m2", kind: "fact" }), memory({ id: "m3", status: "candidate" }), memory({ id: "m4", createdAt: iso(NOW - 6 * DAY) })],
-    "acme",
-    SPAN,
-  );
-  assert.deepEqual(rows.map((row) => row.key), ["memory:m1"]);
-  assert.equal(rows[0]!.to, "/acme/-/memory");
-  assert.deepEqual(decisionsIn(null, "acme", SPAN), []);
 });
 
 test("running now: workflow runs and builds going", () => {

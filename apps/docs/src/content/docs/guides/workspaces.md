@@ -292,7 +292,7 @@ After 30 days it is purged:
 | Repositories | Purged, their git data with them, including any that were in Recently deleted. |
 | Projects, apps and custom domains | Removed. |
 | Webhooks, integrations, secrets and variables | The workspace's own are removed. |
-| Memory and guardrails | The workspace's own are removed. |
+| Guardrails | The workspace's own are removed. |
 | Statements, invoices and the ledger | Kept, for accounting. |
 | The audit log | Kept as [long as its account keeps it](/guides/audit-log/#how-long-it-is-kept), with the purge as its last entry: once the plan ends with the workspace, that is 7 days, unless an enterprise pays for it or longer was arranged. With no owners left, ask support@g1t.sh for an export. |
 | Old addresses | Redirects for repositories transferred out keep working. The workspace's own pages answer 404. |

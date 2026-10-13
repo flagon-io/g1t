@@ -401,7 +401,7 @@ export function codeAccessPath(slug: string, from?: string): string {
 }
 
 /** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
-const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "memory", "insights", "soon"]);
+const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "insights", "soon"]);
 
 /**
  * Where a member without Code access goes instead of `pathname`, or null

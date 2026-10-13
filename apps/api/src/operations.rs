@@ -157,8 +157,6 @@ pub enum Op {
     UpdateRepoSettings,
     ListCheckNames,
     GetMergeQueue,
-    Remember,
-    Recall,
     Search,
     ListIssues,
     GetIssue,
@@ -704,7 +702,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 380] = [
+    pub const ALL: [Op; 378] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -750,8 +748,6 @@ impl Op {
         Op::UpdateRepoSettings,
         Op::ListCheckNames,
         Op::GetMergeQueue,
-        Op::Remember,
-        Op::Recall,
         Op::Search,
         Op::ListIssues,
         Op::GetIssue,
@@ -1138,8 +1134,6 @@ impl Op {
             Op::GetRepoSettings => "get_repo_settings",
             Op::ListCheckNames => "list_check_names",
             Op::GetMergeQueue => "get_merge_queue",
-            Op::Remember => "remember",
-            Op::Recall => "recall",
             Op::Search => "search",
             Op::UpdateRepoSettings => "update_repo_settings",
             Op::ListIssues => "list_issues",
@@ -1423,12 +1417,6 @@ impl Op {
             }
             Op::ListCheckNames => {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
-            }
-            Op::Remember => {
-                "Save something to memory that the next agent working here should know: how to build or test, a convention, a decision and why, a trap. scope project is for this codebase; scope workspace is for what holds across all of the workspace's projects, such as \"we use pnpm everywhere\" or where staging lives. One short fact per memory. Never save a secret, key, token or password: text that looks like one is refused. Members of the workspace only."
-            }
-            Op::Recall => {
-                "Search what the project and its workspace remember, by words in any order, or list it all without a query. Pinned memories come first, then the most recently used. Members of the workspace only."
             }
             Op::Search => {
                 "Search all of g1t: repositories (name, description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind."
@@ -2220,35 +2208,6 @@ impl Op {
             Op::ListDeletedRepos => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
             Op::GetRepoSettings | Op::ListCheckNames => object(json!({ "repo": repo_schema() }), &["repo"]),
             Op::GetMergeQueue => object(json!({ "repo": repo_schema() }), &["repo"]),
-            Op::Remember => object(
-                json!({
-                    "repo": repo_schema(),
-                    "text": { "type": "string", "description": "What to remember, in one or two sentences. At most 1000 characters." },
-                    "scope": {
-                        "type": "string",
-                        "enum": ["project", "workspace"],
-                        "description": "project: about this codebase. workspace: true across the workspace's projects. Defaults to project.",
-                    },
-                    "kind": {
-                        "type": "string",
-                        "enum": ["fact", "convention", "decision", "gotcha"],
-                        "description": "Defaults to fact.",
-                    },
-                    "from_number": {
-                        "type": "integer",
-                        "description": "For an agent: the pull request you are working on, recorded as where it was learned.",
-                    },
-                }),
-                &["repo", "text"],
-            ),
-            Op::Recall => object(
-                json!({
-                    "repo": repo_schema(),
-                    "query": { "type": "string", "description": "Words to look for. Leave out for everything." },
-                    "limit": { "type": "integer", "description": "At most 100 of each level; 20 if not given." },
-                }),
-                &["repo"],
-            ),
             Op::Search => object(
                 json!({
                     "query": { "type": "string", "description": "What to look for: words, \"phrases\" and qualifiers, such as parse_query language:rust repo:acme/web." },
@@ -4210,31 +4169,6 @@ impl Op {
             Op::GetMergeQueue => {
                 pass(work, "queue", &json!({ "repo": repo, "viewer": viewer })).await
             }
-            Op::Remember => {
-                let scope = match input["scope"].as_str() {
-                    Some("workspace") => "workspace",
-                    None | Some("project") => "project",
-                    Some(_) => return failed(FailureCode::Invalid, "scope must be project or workspace."),
-                };
-                let kind = input["kind"].as_str().unwrap_or("fact");
-                if g1t_contracts::agents::MemoryKind::parse(kind).is_none() {
-                    return failed(FailureCode::Invalid, "kind must be fact, convention, decision or gotcha.");
-                }
-                pass(
-                    work,
-                    "add_memory",
-                    &json!({
-                        "actor": actor(),
-                        "workspace": repo.namespace.to_lowercase(),
-                        "repo": repo,
-                        "scope": scope,
-                        "text": text(input, "text"),
-                        "kind": kind,
-                        "fromNumber": integer(input, "from_number"),
-                    }),
-                )
-                .await
-            }
             Op::Search => {
                 pass(
                     &services.search,
@@ -4247,19 +4181,6 @@ impl Op {
                         }),
                         "page": integer(input, "page"),
                         "perPage": integer(input, "per_page"),
-                    }),
-                )
-                .await
-            }
-            Op::Recall => {
-                pass(
-                    work,
-                    "recall",
-                    &json!({
-                        "viewer": viewer,
-                        "repo": repo,
-                        "query": optional_text(input, "query"),
-                        "limit": integer(input, "limit"),
                     }),
                 )
                 .await

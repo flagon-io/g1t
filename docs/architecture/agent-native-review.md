@@ -14,10 +14,16 @@ access tokens, webhooks and runners. What this review calls managed
 execution (option A, §II.3, Part XI, the runtime parts of Part XV and
 Phase 4) is out of scope; read those parts as history. The harness-first
 pieces it recommends that exist today stay: pull request sessions
-(`record_session` / `read_session`), memory (`recall` / `remember`, without
-automatic capture), overlaps, the merge queue, required checks and
-coding-agent attribution. Where a row below says **[built]** about a hosted
-agent, that code is gone.
+(`record_session` / `read_session`), overlaps, the merge queue, required
+checks and coding-agent attribution. Where a row below says **[built]**
+about a hosted agent, that code is gone.
+
+**Decision, 2026-10-13:** project and workspace memory (`recall` /
+`remember`, the Memory pages and the `memory:*` scopes) was removed too:
+harnesses keep their own memory, and shared knowledge belongs in
+`AGENTS.md`/`CLAUDE.md`. Decision records stay. The `memories` table is
+left in work's D1, no longer read or written; read the memory parts below
+as history.
 
 Labels used throughout:
 
