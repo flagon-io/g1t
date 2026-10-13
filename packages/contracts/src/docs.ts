@@ -597,7 +597,7 @@ export type DocsApi = {
   /** One file of a project's docs, for a viewer who can read the repository; not found otherwise. */
   repoPage(workspace: string, viewer: User, repo: string, path: string): Promise<Result<DocRepoPage>>;
   /**
-   * Indexes the workspace's pages and projects' docs for agents' recall
+   * Indexes the workspace's pages and projects' docs for search
    * again, in batches in the background. Workspace owners. True when a run
    * started (false: one is already going).
    */

@@ -70,8 +70,8 @@ apart.
 ## Coming soon
 
 Every category has integrations on the way, among them Slack, Microsoft
-Teams, Notion, Confluence, PagerDuty, Cloudflare, AWS, Figma, Okta and
-Google Drive for workspaces. For you: **Google Calendar** and **Outlook
+Teams, Google Docs, PagerDuty, AWS, Miro, Okta and Google Drive for
+workspaces. For you: **Google Calendar** and **Outlook
 Calendar** will set your [status](/guides/chat/#presence-and-status) to *In a meeting* while
 you are in one; **Zoom**
 and **Google Meet** will set it to *On a call*. A status you set by hand
