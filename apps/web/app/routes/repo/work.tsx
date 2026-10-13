@@ -2,18 +2,17 @@ import { Activity, GitMerge, History, Layers, Radio } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { EventType, Pull, WorkSession } from "@g1t/contracts";
+import type { EventType, Pull } from "@g1t/contracts";
 
 import type { Route } from "./+types/work";
-import { CoordinationFeed, ClaimLine, SessionLine } from "../../components/coordination";
+import { CoordinationFeed, LiveNowList, StartHere } from "../../components/coordination";
 import { QueueTrain } from "../../components/merge-queue";
-import { CopyLine, EmptyState, TimeAgo } from "../../components/ui";
+import { EmptyState, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
-import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
-import { IssueIcon, PullIcon } from "../../components/work-icons";
+import { PullIcon } from "../../components/work-icons";
 import { requireRepo } from "../../lib/access.server";
-import { COORDINATION_TYPES, type LiveIssue, feedLine, liveByIssue } from "../../lib/coordination";
+import { COORDINATION_TYPES, feedLine } from "../../lib/coordination";
 import { page } from "../../lib/meta";
 import { useRefreshWhile } from "../../lib/refresh";
 import { repoPages } from "../../lib/repo-live";
@@ -64,55 +63,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     landed,
     defaultBranch: repo.defaultBranch,
   };
-}
-
-function LiveIssueCard({ group, title, base, now }: { group: LiveIssue; title: string | undefined; base: string; now: number }) {
-  return (
-    <Card asChild divided>
-      <li>
-        <div className="flex items-start gap-2.5 px-4 py-3">
-          <span className="mt-1">
-            <IssueIcon issue={{ state: "open", reason: null }} />
-          </span>
-          <Link to={`${base}/issues/${group.issue}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
-            {title ?? `Issue #${group.issue}`} <span className="font-normal text-faint">#{group.issue}</span>
-          </Link>
-          {group.claims.length > 1 && <Badge tone="warn">{group.claims.length} claims</Badge>}
-        </div>
-        {group.claims.map((claim) => (
-          <div key={claim.id} className="px-4 py-3">
-            <ClaimLine claim={claim} now={now} base={base} />
-          </div>
-        ))}
-        {group.sessions.map((session) => (
-          <div key={session.id} className="px-4 py-3">
-            <SessionLine session={session} base={base} />
-          </div>
-        ))}
-      </li>
-    </Card>
-  );
-}
-
-/** What to do when nothing is being worked on: bring a harness. */
-function StartHere() {
-  return (
-    <EmptyState title="Nobody is working on this repository right now">
-      <div className="mx-auto mt-3 max-w-lg space-y-3 text-left">
-        <p>Install the g1t plugin in Claude Code, and each session shows here as it works:</p>
-        <CopyLine text="claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git" prompt />
-        <CopyLine text="claude plugin install g1t@g1t" prompt />
-        <p>From any other harness, or by hand, claim an issue with the g1t CLI:</p>
-        <CopyLine text="g1t work claim 12" prompt />
-        <p>
-          <a href="https://docs.g1t.sh/guides/sessions/" className="text-fg underline underline-offset-4">
-            Sessions, claims and dependencies
-          </a>{" "}
-          says how it works.
-        </p>
-      </div>
-    </EmptyState>
-  );
 }
 
 function Section({ icon, title, aside, children }: { icon: ReactNode; title: string; aside?: ReactNode; children: ReactNode }) {
@@ -166,7 +116,6 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
   const { claims, sessions, queue, feed, titles, landed, defaultBranch } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const now = Date.now();
-  const live = liveByIssue(claims, sessions);
   const working = claims.length > 0 || sessions.length > 0;
   // Claims, sessions, overlaps, integration results and merges as they happen.
   useRepoLive({ match: repoPages.work() });
@@ -194,25 +143,9 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
         }
       >
         {!working ? (
-          <StartHere />
+          <StartHere title="Nobody is working on this repository right now" />
         ) : (
-          <ol className="space-y-3">
-            {live.issues.map((group) => (
-              <LiveIssueCard key={group.issue} group={group} title={titles[group.issue]} base={base} now={now} />
-            ))}
-            {live.loose.length > 0 && (
-              <Card asChild divided>
-                <li>
-                  <p className="px-4 py-3 text-sm text-muted">Not on an issue yet</p>
-                  {live.loose.map((session: WorkSession) => (
-                    <div key={session.id} className="px-4 py-3">
-                      <SessionLine session={session} base={base} />
-                    </div>
-                  ))}
-                </li>
-              </Card>
-            )}
-          </ol>
+          <LiveNowList claims={claims} sessions={sessions} titles={titles} base={base} now={now} />
         )}
       </Section>
 
