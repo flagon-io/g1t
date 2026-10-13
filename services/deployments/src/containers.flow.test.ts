@@ -105,6 +105,11 @@ let calls: string[] = [];
 let uploads: Record<string, any>[] = [];
 let applications: { id: string; name: string }[] = [];
 let registryHas = true;
+/** The tags the registry holds in the app's repository. */
+let registryTags: string[] = [];
+/** The namespace the app's Worker's `APP` binding names, if Cloudflare says. */
+let boundNamespace: string | null = null;
+let applicationBodies: any[] = [];
 const realFetch = globalThis.fetch;
 
 function setUp(containers: string) {
@@ -113,23 +118,39 @@ function setUp(containers: string) {
   uploads = [];
   applications = [];
   registryHas = true;
+  registryTags = [];
+  boundNamespace = null;
+  applicationBodies = [];
   globalThis.fetch = (async (input: string | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input.url);
     const method = init?.method ?? "GET";
     calls.push(`${method} ${url.host === "api.cloudflare.com" ? url.pathname.replace("/client/v4/accounts/acct", "") : url.host + url.pathname}`);
     const result = (value: unknown) => Response.json({ success: true, result: value });
-    if (url.host === "registry.cloudflare.com") return new Response(null, { status: registryHas ? 200 : 404 });
+    if (url.host === "registry.cloudflare.com") {
+      if (url.pathname.endsWith("/tags/list")) return Response.json({ name: `acct/g1t-${SCRIPT}`, tags: registryTags });
+      if (method === "DELETE") {
+        const tag = url.pathname.split("/").pop()!;
+        registryTags = registryTags.filter((t) => t !== tag);
+        return new Response(null, { status: 202 });
+      }
+      if (url.pathname === "/v2/gc/layers") return new Response(null, { status: 200 });
+      return new Response(null, { status: registryHas ? 200 : 404 });
+    }
     if (url.pathname.endsWith("/credentials")) return result({ username: "v1", password: "push-secret", registry_host: "registry.cloudflare.com" });
     if (method === "PUT" && url.pathname.includes("/scripts/")) {
       const form = init?.body as FormData;
       uploads.push(JSON.parse(String(form.get("metadata"))));
       return result({});
     }
+    if (url.pathname.endsWith(`/scripts/${SCRIPT}/bindings`)) {
+      return result(boundNamespace ? [{ type: "durable_object_namespace", name: "APP", class_name: "G1tApp", namespace_id: boundNamespace }] : []);
+    }
     if (url.pathname.endsWith("/durable_objects/namespaces")) {
       return result([{ id: "ns1", class: "G1tApp", script: SCRIPT, dispatch_namespace: "g1t-deployments" }]);
     }
     if (url.pathname.endsWith("/containers/applications") && method === "GET") return result(applications);
     if (url.pathname.endsWith("/containers/applications") && method === "POST") {
+      applicationBodies.push(JSON.parse(String(init?.body)));
       applications.push({ id: "app1", name: JSON.parse(String(init?.body)).name });
       return result({ id: "app1" });
     }
@@ -275,4 +296,32 @@ test("a paused container app keeps its class and stops serving", async () => {
   assert.deepEqual(paused.exports, { G1tApp: { type: "durable-object", storage: "sqlite" } });
   assert.ok(!paused.bindings.some((b: any) => b.name === "DATABASE_URL"), "a paused app holds no secrets");
   assert.ok(rows("SELECT paused_at FROM apps")[0].paused_at);
+});
+
+test("the app's Container application is attached to the namespace its Worker's binding names", async () => {
+  boundNamespace = "ns-bound";
+  await finish({ image: IMAGE, port: 3000 });
+  assert.equal(applicationBodies[0].durable_objects.namespace_id, "ns-bound");
+  assert.ok(!calls.some((call) => call.includes("/durable_objects/namespaces")), "no listing is needed");
+  // Without it, the account's namespaces are searched, by class and script.
+  setUp("on");
+  await finish({ image: IMAGE, port: 3000 });
+  assert.equal(applicationBodies[0].durable_objects.namespace_id, "ns1");
+});
+
+test("an app keeps the image it runs, the one before it and those still being built, and none once it is down", async () => {
+  registryTags = ["dpl_0", "dpl_1"];
+  await finish({ image: IMAGE, port: 3000 });
+  // Nothing replaced yet: only the older image goes.
+  assert.deepEqual(registryTags, ["dpl_1"]);
+  assert.ok(calls.includes("PUT registry.cloudflare.com/v2/gc/layers"), "unused layers are collected");
+  // The next build replaces it, while another is being built.
+  open("dpl_2");
+  open("dpl_3");
+  registryTags = ["dpl_0", "dpl_1", "dpl_2", "dpl_3"];
+  await post("/jobs/dpl_2/finish", { token: TOKEN, detected: "container", container: { image: IMAGE, port: 3000 } });
+  assert.deepEqual(registryTags, ["dpl_1", "dpl_2", "dpl_3"]);
+  // Taken down, it takes its images with it, but a build still under way keeps its own.
+  await post("/rpc/take_down", { actor: { id: "usr_1", username: "a", kind: "user", workspaces: [{ slug: "acme", role: "owner" }] }, project: { workspace: "acme", slug: "web" }, branch: null });
+  assert.deepEqual(registryTags, ["dpl_3"]);
 });

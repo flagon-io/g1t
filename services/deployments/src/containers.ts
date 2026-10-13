@@ -22,6 +22,8 @@
  * build to its app's: it names the repository, deploys only an image by
  * digest in that repository, and checks the digest is there before it
  * does. The login can never pull, so no build can read another app's image.
+ * Once a deploy is live, the app's older images are deleted, keeping the
+ * one it replaced; an app taken down takes its images with it.
  *
  * Pure, with no Workers imports, so it can be tested under Node.
  */
@@ -45,6 +47,13 @@ export const APP_CLASS = "G1tApp";
 
 /** How long a build's push login lasts. */
 export const PUSH_LOGIN_MINUTES = 15;
+
+/**
+ * What Cloudflare Containers holds of an account's images, in all. Each
+ * app keeps only the image it runs and the one before it
+ * (`Cloudflare.pruneImages`), and none once it is taken down.
+ */
+export const IMAGE_STORAGE_GB = 50;
 
 /** The repository an app's images are pushed to: `<account>/g1t-<script>`. */
 export function repositoryFor(account: string, script: string): string {
@@ -147,12 +156,16 @@ export function appWorkerMetadata(
   };
 }
 
+/** A container's output, kept in Workers Logs. */
+const CONTAINER_LOGS = { logs: { enabled: true } };
+
 /** `POST /accounts/{id}/containers/applications`: the app's container, for its Durable Object namespace. */
 export function applicationRequest(name: string, image: string, instanceType: string, namespaceId: string): Record<string, unknown> {
   return {
     name,
     scheduling_policy: "default",
-    configuration: { image, instance_type: instanceTypeOf(instanceType) },
+    // Its output goes to Workers Logs on g1t's account, where it can be read.
+    configuration: { image, instance_type: instanceTypeOf(instanceType), observability: CONTAINER_LOGS },
     instances: 0,
     // One instance per app: its Durable Object is named `app`.
     max_instances: 1,
@@ -167,7 +180,7 @@ export function rolloutRequest(image: string, instanceType: string, description:
     strategy: "rolling",
     kind: "full_auto",
     step_percentage: 100,
-    target_configuration: { image, instance_type: instanceTypeOf(instanceType) },
+    target_configuration: { image, instance_type: instanceTypeOf(instanceType), observability: CONTAINER_LOGS },
   };
 }
 
@@ -291,12 +304,21 @@ export class ${APP_CLASS} extends DurableObject {
       for (const [name, value] of Object.entries(env)) if (!INTERNAL.has(name) && typeof value === "string") vars[name] = value;
       container.start({ env: vars, enableInternet: true });
       this.listening = false;
+      // How it ended, if it ends: said on the page of a request it never answered.
+      this.exited = null;
+      if (typeof container.monitor === "function") {
+        container.monitor().then(
+          () => { this.exited = "0"; },
+          (error) => { this.exited = error && error.exitCode !== undefined ? String(error.exitCode) : "unknown"; },
+        );
+      }
       await this.tick();
     }
     // A backstop: g1t stops it itself once it has slept long enough.
     await container.setInactivityTimeout((Number(env.G1T_SLEEP_MS) || 300000) + 2 * TICK_MS).catch(() => undefined);
     if (!(await this.ready(container, port))) {
-      return page(503, "The app did not start", "It is not answering on port " + port + ". It must listen on 0.0.0.0 at the port in the PORT environment variable (or the one its Dockerfile exposes). Its build's log on g1t has its output.");
+      const ended = this.exited === null || this.exited === undefined ? "It is not answering on port " + port + "." : "It stopped (exit code " + this.exited + ") before it answered on port " + port + ".";
+      return page(503, "The app did not start", ended + " It must listen on 0.0.0.0 at the port in the PORT environment variable (the one its Dockerfile exposes, else 8080).");
     }
     let response;
     try {
