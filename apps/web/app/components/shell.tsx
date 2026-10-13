@@ -1144,6 +1144,13 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
           </SidebarSoonLink>
         )}
       </NavRows>
+      <Rule />
+      <NavRows>
+        {/* Public repositories beyond this workspace's own. */}
+        <SidebarLink to="/explore" icon={<Compass size={15} />} current={path === "/explore" || path.startsWith("/explore/")}>
+          Explore
+        </SidebarLink>
+      </NavRows>
       {shared.length > 0 && (
         <>
           <Rule />
