@@ -730,18 +730,20 @@ export function running(parts: RunningRow[][]): RunningRow[] {
  * What a row is. Tiers, most pressing first:
  * 0. production is down to an older build (`deploy`);
  * 1. a change that can't land until someone acts on it (`pull_blocked`);
- * 2. something waiting only for you (a review, an invitation);
+ * 2. something waiting only for you (a review, an invitation, your pull
+ *    request that is ready to merge);
  * 3. a job waiting for a runner that is not there;
  * 4. an unread notification that is a warning or a failure;
  * 5. a mention or a direct message.
  */
-export type AttentionKind = "deploy" | "pull_blocked" | "review" | "invitation" | "runner" | "notification" | "chat";
+export type AttentionKind = "deploy" | "pull_blocked" | "review" | "invitation" | "ready" | "runner" | "notification" | "chat";
 
 export const TIER: Record<AttentionKind, number> = {
   deploy: 0,
   pull_blocked: 1,
   review: 2,
   invitation: 2,
+  ready: 2,
   runner: 3,
   notification: 4,
   chat: 5,
@@ -801,6 +803,7 @@ const WHY: Record<AttentionKind, string> = {
   pull_blocked: "This change can't land until someone fixes it.",
   review: "You were asked by name, so it waits for your verdict.",
   invitation: "It is addressed to you; no one else can answer it.",
+  ready: "Everything it needs is met; it lands when you merge it.",
   runner: "A job is waiting for a runner that is not there.",
   notification: "It is the most pressing unread notification.",
   chat: "Nothing else is waiting, and this is the oldest message for you.",
@@ -854,6 +857,9 @@ export function codeRow(need: CodeNeed): AttentionRow {
     }
     case "runner":
       return { ...base, kind: "runner", stake: { text: `Waiting ${fact(need, "Waiting") ?? ""}`.trim(), tone: "warn" }, action: { label: "Look", to: need.to } };
+    // Your pull request, which meets everything its branch asks for.
+    case "ready":
+      return { ...base, kind: "ready", stake: { text: "Ready to merge", tone: null }, action: { label: "Merge", to: need.to } };
     default:
       return {
         ...base,

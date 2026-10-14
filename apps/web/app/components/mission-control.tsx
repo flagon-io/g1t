@@ -59,6 +59,7 @@ const CHIP_TONE: Record<Reason, string> = {
   stalled: "border-warn/35 bg-warn/10 text-warn",
   invited: "border-accent/35 bg-accent/10 text-accent",
   needs_review: "border-info/35 bg-info/10 text-info",
+  ready: "border-success/35 bg-success/10 text-success",
 };
 
 function Chip({ children, tone }: { children: ReactNode; tone: string }) {

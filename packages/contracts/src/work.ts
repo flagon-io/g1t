@@ -888,7 +888,11 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * however often this is called. For the runner service.
    */
   advance(pullId: string): Promise<Advance>;
-  /** Ids of the open pull requests g1t is seeing through. */
+  /**
+   * Ids of the open pull requests to move along: those g1t merges by itself
+   * or someone set to auto-merge; with `repoId`, also every open one whose
+   * lifecycle is remembered, to bring it up to date after a merge there.
+   */
   managedPulls(repoId?: string): Promise<string[]>;
 
   /** A repository's merge queue: what is in it, in order, and what recently left. */
