@@ -2735,6 +2735,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         flush_later(&env, &ctx);
         return answered;
     };
+    let started = now_ms();
     // A replica near the caller when it asks for one (crates/kit/src/d1.rs).
     // Git over HTTPS above always reads the primary.
     let (db, served) = g1t_kit::d1::open(&env, "DB", &request)?;
@@ -2998,7 +2999,24 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     };
     repos.deferred.hand_over(&ctx);
     flush_later(&env, &ctx);
+    slow_answer(&method, now_ms().saturating_sub(started));
     served.finish(answered)
+}
+
+/// RPC answers this slow are logged with how long the answer took.
+const SLOW_RPC_MS: u64 = 1_000;
+
+/// Logs an RPC answer that took [`SLOW_RPC_MS`] or more, as a JSON line
+/// Workers Logs keeps as fields (`rpc`, `answered_ms`). An invocation's
+/// wall time there also counts what `ctx.wait_until` does after the
+/// answer, which here includes waiting up to `meters::FLUSH_EVERY_MS` to
+/// write the meters (`flush_later`), so it reads as seconds for answers
+/// that took milliseconds; `answered_ms` is the time the caller waited,
+/// as the `svc` entry of the answer's `server-timing` says.
+fn slow_answer(method: &str, took: u64) {
+    if took >= SLOW_RPC_MS {
+        worker::console_log!("{}", serde_json::json!({ "rpc": method, "answered_ms": took }));
+    }
 }
 
 /// The nightly cron in wrangler.jsonc: tonight's backups are queued.
