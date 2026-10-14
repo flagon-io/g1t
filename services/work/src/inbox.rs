@@ -313,7 +313,7 @@ impl Work {
     }
 
     /// The teams named, resolved, with who each mention tells.
-    async fn team_mentions(&self, repo_id: &str, teams: &[String], writer_id: &str, writer: &str) -> Result<Vec<TeamMentioned>> {
+    pub(crate) async fn team_mentions(&self, repo_id: &str, teams: &[String], writer_id: &str, writer: &str) -> Result<Vec<TeamMentioned>> {
         if teams.is_empty() {
             return Ok(Vec::new());
         }

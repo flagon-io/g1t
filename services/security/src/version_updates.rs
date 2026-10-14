@@ -934,6 +934,7 @@ impl Security {
                 title: row.title.clone(),
                 body: row.body.clone(),
                 branch: Some(row.branch.clone()),
+                head_repo: None,
                 agent: String::new(),
                 runtime: Runtime::External,
                 // Into `target-branch`, which it was made from.
@@ -1074,6 +1075,12 @@ impl Security {
                         keep_issue_open: false,
                         ignore_checks: false,
                         bypass_rules: false,
+                        merge_method: None,
+                        commit_title: None,
+                        commit_message: None,
+                        expected_head: None,
+                        delete_branch: None,
+                        update_method: None,
                     },
                 )
                 .await?;
@@ -1363,12 +1370,12 @@ impl Security {
                 let name = dependency.clone().unwrap_or_else(|| update.package.clone());
                 self.ignore_report(repo, ecosystem, "", &[name]).await?
             }
-            UpdateCommand::Merge | UpdateCommand::SquashAndMerge => match checks_verdict(detail) {
+            command @ (UpdateCommand::Merge | UpdateCommand::SquashAndMerge) => match checks_verdict(detail) {
                 Some(true) => {
                     let merged: Outcome<Pull> = g1t_kit::call(
                         &self.work,
                         "merge_pull",
-                        &PullActionArgs { actor: system.clone(), repo: path.clone(), number, summary: String::new(), keep_issue_open: false, ignore_checks: false, bypass_rules: false },
+                        &PullActionArgs { actor: system.clone(), repo: path.clone(), number, summary: String::new(), keep_issue_open: false, ignore_checks: false, bypass_rules: false, merge_method: matches!(command, UpdateCommand::SquashAndMerge).then_some(g1t_contracts::rules::MergeMethod::Squash), commit_title: None, commit_message: None, expected_head: None, delete_branch: None, update_method: None },
                     )
                     .await?;
                     match merged {
@@ -1402,7 +1409,7 @@ impl Security {
             &self.repos,
             "raw_file",
             &RawFileArgs {
-                repo_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.repo_id.clone()),
+                repo_id: pull.source_id().to_owned(),
                 git_ref: head.clone(),
                 path: file.path.clone(),
                 max_bytes: 1_000_000,

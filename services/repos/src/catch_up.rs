@@ -1,17 +1,20 @@
 //! Bringing a pull request up to date with the branch it would merge into,
 //! without a sandbox, when that is safe.
 //!
-//! When the pull request and the default branch changed different files
-//! since they last agreed, the merge cannot conflict, and its result is
-//! known without merging any file: the default branch's tree, with the
-//! files the pull request changed taken from the pull request. Only the
-//! trees on the way to those files change. They are rebuilt here, with one
-//! merge commit on top whose parents are the pull request's head and the
-//! default branch's head, written as a pack of whole objects and pushed to
-//! the pull request's branch, if it is still where it was.
+//! By merge (the default): the files the pull request changed since the
+//! two last agreed are applied to the base branch's tree, a file both
+//! changed merged line by line (merge_methods.rs), and one merge commit on
+//! top whose parents are the pull request's head and the base branch's
+//! head. Only the trees on the way to changed files are rebuilt. They are
+//! written as a pack of whole objects and pushed to the pull request's
+//! branch, if it is still where it was.
 //!
-//! When both sides changed a file, the merge needs git itself (and maybe an
-//! agent), so the answer is that a sandbox is needed, and nothing is pushed.
+//! By rebase: the branch's commits are made again on the base branch's
+//! head (merge_methods.rs `replay`), and the branch is moved there.
+//!
+//! When lines both sides changed clash, or the change is beyond what g1t
+//! merges itself, the answer is that a sandbox is needed, and nothing is
+//! pushed.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -19,7 +22,7 @@ use futures_util::future::{try_join, try_join_all};
 use g1t_contracts::audit::{AuditActor, NewAuditEntry, Surface};
 use g1t_contracts::credentials::Decision;
 use g1t_contracts::repos::{
-    EntryKind, NeedsAgentReason, PullBranchUpdate, RepoPath, TreeEntry, UpdatePullBranchArgs,
+    EntryKind, NeedsAgentReason, PullBranchUpdate, RepoPath, TreeEntry, UpdateMethod, UpdatePullBranchArgs,
 };
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -28,7 +31,8 @@ use worker::Result;
 
 use crate::registry::{can_read, can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope};
-use crate::{MAX_ANCESTRY, Repos, UNVERIFIED, descends_from, diff, land, nearest_ancestor_in, not_found};
+use crate::merge_methods::{Applied, Reader, apply};
+use crate::{MAX_ANCESTRY, Repos, UNVERIFIED, descends_from, land, nearest_ancestor_in, not_found};
 
 /// The mode git writes for an entry of each kind.
 fn mode(kind: EntryKind) -> &'static str {
@@ -267,15 +271,22 @@ pub(crate) struct Signature<'a> {
 
 /// A commit object's bytes, authored and committed by `by`.
 pub(crate) fn commit_object(tree: &str, parents: &[&str], by: &Signature, message: &str) -> Vec<u8> {
+    commit_object_by(tree, parents, by, by, message)
+}
+
+/// A commit object's bytes, by `author`, committed by `committer`.
+pub(crate) fn commit_object_by(tree: &str, parents: &[&str], author: &Signature, committer: &Signature, message: &str) -> Vec<u8> {
     let mut out = format!("tree {tree}\n");
     for parent in parents {
         out.push_str(&format!("parent {parent}\n"));
     }
     // Git takes everything up to `<` as the name.
-    let name: String = by.name.chars().filter(|c| !matches!(c, '<' | '>' | '\n')).collect();
-    let email: String = by.email.chars().filter(|c| !matches!(c, '<' | '>' | '\n')).collect();
-    let line = format!("{name} <{email}> {} +0000", by.seconds);
-    out.push_str(&format!("author {line}\ncommitter {line}\n\n{message}\n"));
+    let line = |by: &Signature| {
+        let name: String = by.name.chars().filter(|c| !matches!(c, '<' | '>' | '\n')).collect();
+        let email: String = by.email.chars().filter(|c| !matches!(c, '<' | '>' | '\n')).collect();
+        format!("{name} <{email}> {} +0000", by.seconds)
+    };
+    out.push_str(&format!("author {}\ncommitter {}\n\n{message}\n", line(author), line(committer)));
     out.into_bytes()
 }
 
@@ -376,14 +387,13 @@ impl<S: GitStore> Repos<S> {
         let Some(source) = self.registry.by_id(&a.source_id).await? else {
             return Ok(not_found());
         };
-        let target = match &source.fork_of {
-            Some(id) => self.registry.by_id(id).await?,
-            None => Some(source.clone()),
-        };
+        let target = self.pull_target(&source, a.target_id.as_deref()).await?;
         let Some(target) = target.filter(|repo| can_read(repo, &actor)) else {
             return Ok(not_found());
         };
-        // The merge is pushed as the person asking, so they must be able to push.
+        // The update is pushed as the person asking, so they must be able
+        // to push: to the working copy as whoever opened the pull request,
+        // or to the fork or repository holding the branch.
         if !can_write(&source, &actor) {
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
@@ -411,14 +421,48 @@ impl<S: GitStore> Repos<S> {
         };
         let from_fork = source.id != target.id;
         let base_branch = a.target_branch.clone().unwrap_or_else(|| target.default_branch.clone());
-        let branch = a.branch.clone().unwrap_or_else(|| target.default_branch.clone());
+        // A working copy holds the change on the branch it merges into.
+        let branch = match a.branch.clone() {
+            Some(branch) => branch,
+            None if source.fork_of.is_some() || !from_fork => target.default_branch.clone(),
+            None => return Ok(Outcome::fail(FailureCode::Invalid, "Say which branch of the fork to update.")),
+        };
         if !from_fork && branch == base_branch {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
                 format!("{base_branch} cannot be merged into itself."),
             ));
         }
+        match a.method {
+            UpdateMethod::Merge => {
+                let message = merge_message(&base_branch, &branch, a.number);
+                self.merge_up(source, target, branch, base_branch, &a.actor, message, a.expected_head.as_deref()).await
+            }
+            UpdateMethod::Rebase => {
+                self.rebase_up(source, target, branch, base_branch, &a.actor, a.expected_head.as_deref()).await
+            }
+        }
+    }
 
+    /// Merges `base_branch` of `target` into `branch` of `source` without a
+    /// sandbox, pushed as `actor` with `message`; `source` may be `target`
+    /// itself, a pull request's working copy, or a fork. Files only one
+    /// side changed are taken from it, and a file both changed is merged
+    /// line by line (merge_methods.rs); lines both changed differently
+    /// leave it to a sandbox, naming the files. Refused when the branch is
+    /// no longer at `expected_head`. The caller has checked who may do it.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn merge_up(
+        &self,
+        source: g1t_contracts::repos::Repo,
+        target: g1t_contracts::repos::Repo,
+        branch: String,
+        base_branch: String,
+        actor: &g1t_contracts::User,
+        message: String,
+        expected_head: Option<&str>,
+    ) -> Result<Outcome<PullBranchUpdate>> {
+        let from_fork = source.id != target.id;
         // A working copy removed after its pull request closed is made again.
         self.live(&source).await?;
         let source_git = self.store.open(&store_key(&source)).await?;
@@ -431,9 +475,12 @@ impl<S: GitStore> Repos<S> {
         let (Some(head), Some(base)) = (history.first(), target_history.first()) else {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
-                "This pull request has no commits to bring up to date.",
+                format!("{branch} has no commits to bring up to date."),
             ));
         };
+        if let Some(refused) = moved_since(&branch, &head.hash, expected_head) {
+            return Ok(refused);
+        }
         if descends_from(&source_git, &history, &base.hash).await? {
             return Ok(Outcome::Ok(PullBranchUpdate::UpToDate {
                 commit: head.hash.clone(),
@@ -454,57 +501,19 @@ impl<S: GitStore> Repos<S> {
             ));
         };
 
-        let ((ours, ours_cut), (theirs, theirs_cut)) = try_join(
-            diff::changed_paths(&source_git, Some(&merge_base_tree), &head.tree_hash),
-            diff::changed_paths(&target_git, Some(&merge_base_tree), &base.tree_hash),
-        )
-        .await?;
-        if ours_cut || theirs_cut {
-            return Ok(needs_agent(
-                NeedsAgentReason::Unsupported,
-                "The change is too large to merge without a sandbox.",
-                Vec::new(),
-            ));
-        }
-        let met = overlapping(&ours, &theirs);
-        if !met.is_empty() {
-            return Ok(needs_agent(
-                NeedsAgentReason::Overlap,
-                format!("This pull request and {base_branch} both changed some of the same files."),
-                met,
-            ));
-        }
-
-        // The trees on the way to each changed file, on both sides.
-        let dirs: BTreeSet<String> = ours
-            .iter()
-            .flat_map(|path| ancestors(path).map(str::to_owned))
-            .collect();
-        let (on_pull, on_base) = try_join(
-            read_dirs(&source_git, &head.tree_hash, &dirs),
-            read_dirs(&target_git, &base.tree_hash, &dirs),
-        )
-        .await?;
-        let changes: Vec<Change> = ours
-            .iter()
-            .map(|path| {
-                let (parent, name) = path.rsplit_once('/').unwrap_or(("", path.as_str()));
-                let entry = on_pull.get(parent).and_then(|(_, entries)| {
-                    entries
-                        .iter()
-                        .find(|entry| entry.name == name && entry.kind != EntryKind::Tree)
-                        .map(|entry| (entry.kind, entry.hash.clone()))
-                });
-                Change {
-                    path: path.clone(),
-                    entry,
-                }
-            })
-            .collect();
-        let trees: HashMap<String, Vec<TreeEntry>> = on_base.into_values().collect();
-        let merged = match merge_tree(&base.tree_hash, &trees, &changes) {
-            Ok(merged) => merged,
-            Err(why) => {
+        // The pull request's changes, applied to the base branch's tree.
+        let reader = Reader::new(&source_git, from_fork.then_some(&target_git));
+        let mut objects: Vec<(ObjectKind, Vec<u8>)> = Vec::new();
+        let tree = match apply(&reader, Some(&merge_base_tree), &head.tree_hash, &base.tree_hash, &mut objects).await? {
+            Applied::Tree(tree) => tree,
+            Applied::Conflict(paths) => {
+                return Ok(needs_agent(
+                    NeedsAgentReason::Conflicting,
+                    format!("This pull request and {base_branch} changed the same lines of some files."),
+                    paths,
+                ));
+            }
+            Applied::Unsupported(why) => {
                 return Ok(needs_agent(
                     NeedsAgentReason::Unsupported,
                     format!("g1t could not merge this itself: {why}."),
@@ -513,25 +522,28 @@ impl<S: GitStore> Repos<S> {
             }
         };
 
-        let author = self.commit_identity(&a.actor).await;
+        let author = self.commit_identity(actor).await;
         let commit = commit_object(
-            &merged.tree,
+            &tree,
             &[&head.hash, &base.hash],
             &Signature {
                 name: &author.name,
                 email: &author.email,
                 seconds: now_ms() / 1000,
             },
-            &merge_message(&base_branch, &branch, a.number),
+            &message,
         );
         let commit_id = object_id(ObjectKind::Commit, &commit);
-        let mut objects: Vec<(ObjectKind, Vec<u8>)> = merged
-            .objects
-            .into_iter()
-            .map(|bytes| (ObjectKind::Tree, bytes))
-            .collect();
         objects.push((ObjectKind::Commit, commit));
-
+        let facts = vec![crate::rules::made_commit(&commit_id, &message, &author.email, 2, Vec::new())];
+        let update = BranchUpdate { branch: &branch, head: &head.hash, commit: &commit_id, fast_forward: true, commits: 1 };
+        // From another repository (a fork syncing, a pull request from a
+        // fork catching up), the merge also brings that repository's commits,
+        // which are not read here: a rule about what commits hold refuses it
+        // rather than pass them unseen.
+        if let Some(refused) = self.update_refused(&source, actor, &update, facts, !from_fork).await? {
+            return Ok(refused);
+        }
         // A fork lacks what the default branch gained since it was made:
         // those objects come from the repository, with the merge after them.
         let pack = if from_fork {
@@ -541,34 +553,53 @@ impl<S: GitStore> Repos<S> {
         } else {
             write_pack(&objects)
         };
-        // A branch of the repository itself: the rules of that branch hold
-        // for the merge pushed to it, as for any push (rules.rs). A catch-up
-        // brings nothing the base branch does not have, so no files.
-        if !from_fork {
-            let change = g1t_rules::push::RefChange {
-                git_ref: format!("refs/heads/{branch}"),
-                old: Some(head.hash.clone()),
-                new: Some(commit_id.clone()),
-                fast_forward: Some(true),
-                commits: vec![crate::rules::made_commit(
-                    &commit_id,
-                    &merge_message(&base_branch, &branch, a.number),
-                    &author.email,
-                    2,
-                    Vec::new(),
-                )],
-                complete: true,
-            };
-            if let crate::rules::Ruled::Refused { message, .. } =
-                self.check_changes(&source, &a.actor, g1t_contracts::rules::Action::Push, vec![change]).await?
-            {
-                return Ok(Outcome::fail(FailureCode::Forbidden, message));
-            }
+        self.push_update(&source, &source_git, actor, &update, pack).await
+    }
+
+    /// Whether the rules of `update.branch` refuse moving it as `update`
+    /// says, for a branch of a repository (not a pull request's working
+    /// copy, which has none), as for any push (rules.rs). A catch-up
+    /// brings nothing the base branch does not have, so no files.
+    pub(crate) async fn update_refused(
+        &self,
+        source: &g1t_contracts::repos::Repo,
+        actor: &g1t_contracts::User,
+        update: &BranchUpdate<'_>,
+        commits: Vec<g1t_contracts::rules::CommitFacts>,
+        complete: bool,
+    ) -> Result<Option<Outcome<PullBranchUpdate>>> {
+        if source.fork_of.is_some() {
+            return Ok(None);
         }
+        let change = g1t_rules::push::RefChange {
+            git_ref: format!("refs/heads/{}", update.branch),
+            old: Some(update.head.to_owned()),
+            new: Some(update.commit.to_owned()),
+            fast_forward: Some(update.fast_forward),
+            commits,
+            complete,
+        };
+        Ok(match self.check_changes(source, actor, g1t_contracts::rules::Action::Push, vec![change]).await? {
+            crate::rules::Ruled::Refused { message, .. } => Some(Outcome::fail(FailureCode::Forbidden, message)),
+            _ => None,
+        })
+    }
+
+    /// Moves `update.branch` of `source` to `update.commit`, sending
+    /// `pack`, only if it is still at `update.head`: a push that landed
+    /// meanwhile is kept, and this is refused. Audited and announced as a
+    /// push by `actor`.
+    pub(crate) async fn push_update(
+        &self,
+        source: &g1t_contracts::repos::Repo,
+        source_git: &S::Repo,
+        actor: &g1t_contracts::User,
+        update: &BranchUpdate<'_>,
+        pack: Vec<u8>,
+    ) -> Result<Outcome<PullBranchUpdate>> {
+        let branch = update.branch;
         let source_access = source_git.access(Scope::Write).await?;
-        // Only if the branch is still where it was: a push that landed
-        // meanwhile is kept, and this is refused.
-        let pushed = land::push_pack(&source_access, &branch, Some(&head.hash), &commit_id, pack).await?;
+        let pushed = land::push_pack(&source_access, branch, Some(update.head), update.commit, pack).await?;
         self.refs_moved(&source.id).await;
         let git_ref = format!("refs/heads/{branch}");
         let path = RepoPath {
@@ -578,7 +609,7 @@ impl<S: GitStore> Repos<S> {
         let mut target_entry = self.audit_target(&path).await?;
         target_entry.git_ref = Some(git_ref.clone());
         let mut entry = NewAuditEntry::new(
-            AuditActor::of(&a.actor),
+            AuditActor::of(actor),
             "git.push",
             Surface::Git,
             target_entry,
@@ -598,13 +629,37 @@ impl<S: GitStore> Repos<S> {
         self.record_git(entry).await;
         // As any push does: the pull request's head moves, its checks run
         // again, and whether it merges cleanly is worked out anew.
-        self.publish_push(&source, &git_ref, Some(&head.hash), &commit_id, Some(&a.actor), Some(1))
+        self.publish_push(source, &git_ref, Some(update.head), update.commit, Some(actor), Some(update.commits))
             .await?;
         Ok(Outcome::Ok(PullBranchUpdate::Updated {
-            commit: commit_id,
-            previous: head.hash.clone(),
+            commit: update.commit.to_owned(),
+            previous: update.head.to_owned(),
         }))
     }
+}
+
+/// How a pull request's branch is being moved.
+pub(crate) struct BranchUpdate<'a> {
+    pub branch: &'a str,
+    /// Where it is, which it must still be when it moves.
+    pub head: &'a str,
+    /// Where it goes.
+    pub commit: &'a str,
+    /// Whether `commit` keeps `head` in its history (a merge does, a
+    /// rebase does not).
+    pub fast_forward: bool,
+    /// How many commits it makes.
+    pub commits: u32,
+}
+
+/// The refusal for a branch that is no longer at `expected`.
+pub(crate) fn moved_since(branch: &str, head: &str, expected: Option<&str>) -> Option<Outcome<PullBranchUpdate>> {
+    expected.filter(|expected| *expected != head).map(|_| {
+        Outcome::fail(
+            FailureCode::Conflict,
+            format!("{branch} has changed since it was last looked at. Look again, then update it."),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -633,6 +688,15 @@ mod tests {
         assert_eq!((made.name.as_str(), made.email.as_str()), ("g1t", "g1t@users.noreply.g1t.sh"));
         let person = User { id: "usr_1".into(), username: "ana".into(), ..User::default() };
         assert!(g1t_commit_identity(&person).is_none());
+    }
+
+    #[test]
+    fn a_branch_that_moved_since_it_was_looked_at_is_left_alone() {
+        assert!(moved_since("feature", "abc", None).is_none());
+        assert!(moved_since("feature", "abc", Some("abc")).is_none());
+        let Some(Outcome::Fail(failure)) = moved_since("feature", "abc", Some("def")) else { panic!("not refused") };
+        assert_eq!(failure.code, FailureCode::Conflict);
+        assert!(failure.message.starts_with("feature has changed"));
     }
 
     #[test]

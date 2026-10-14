@@ -152,12 +152,15 @@ fn sample(op: Op, example: &Value) -> Value {
     }
     match op {
         Op::GetWorkspace | Op::CreateWorkspace | Op::UpdateWorkspace => through::<g1t_contracts::identity::Workspace>(op, sent),
-        Op::ListRepos => through::<Vec<repos::Repo>>(op, sent),
+        Op::ListRepos | Op::ListForks => through::<Vec<repos::Repo>>(op, sent),
+        Op::SyncFork => through::<repos::SyncedFork>(op, sent),
         Op::Search => through::<search::SearchResults>(op, sent),
         Op::GetRepo
         | Op::CreateRepo
         | Op::UpdateRepo
         | Op::TransferRepo
+        | Op::ForkRepo
+        | Op::DetachFork
         | Op::RenameRepo
         | Op::RenameBranch
         | Op::ArchiveRepo
@@ -191,10 +194,18 @@ fn sample(op: Op, example: &Value) -> Value {
         | Op::ReopenPullRequest
         | Op::ConvertPullRequestToDraft
         | Op::MergePullRequest
+        | Op::EnablePullRequestAutoMerge
+        | Op::DisablePullRequestAutoMerge
+        | Op::DeletePullRequestHeadBranch
+        | Op::RestorePullRequestHeadBranch
         | Op::RequestReviewers
         | Op::RemoveRequestedReviewers => {
             through::<work::Pull>(op, sent)
         }
+        Op::UpdatePullRequestBranch => through::<repos::PullBranchUpdate>(op, sent),
+        Op::GetPullRequestMergeOptions => through::<work::MergeChoices>(op, sent),
+        Op::ListRepoCommitComments | Op::ListCommitComments => through::<Vec<work::CommitComment>>(op, sent),
+        Op::CreateCommitComment | Op::UpdateCommitComment => through::<work::CommitComment>(op, sent),
         Op::ListWorkflows => through::<Vec<actions::Workflow>>(op, sent),
         Op::GetWorkflow => through::<actions::WorkflowDetail>(op, sent),
         Op::ListWorkflowRuns => through::<Vec<actions::WorkflowRun>>(op, sent),

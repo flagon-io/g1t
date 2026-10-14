@@ -567,6 +567,14 @@ impl Identity {
         .await
     }
 
+    async fn current_user(&self, a: g1t_contracts::identity::UserIdArgs) -> Result<Viewer> {
+        self.find_user(
+            "SELECT id, username, display_username, email_verified_at IS NOT NULL AS verified, avatar FROM users WHERE id = ? AND deleted_at IS NULL",
+            &a.id,
+        )
+        .await
+    }
+
     async fn user_by_username(&self, a: UsernameArgs) -> Result<Viewer> {
         self.find_public_user(
             // A deleted account is nobody's to find, mention or add.
@@ -988,6 +996,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         }
         "user_for_ssh_key" => reply(&identity.user_for_ssh_key(args(body)?).await?),
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
+        "user_by_id" => reply(&identity.current_user(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
         // The API: each username's chosen case, shown beside it.
         "display_usernames" => reply(&identity.display_usernames(args(body)?).await?),
@@ -1067,6 +1076,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_collaborator_role" => reply(&identity.set_collaborator_role(args(body)?).await?),
         "remove_collaborator" => reply(&identity.remove_collaborator(args(body)?).await?),
         "collaborator_permission" => reply(&identity.collaborator_permission(args(body)?).await?),
+        "can_read_repo" => reply(&identity.can_read_repo(args(body)?).await?),
         "my_repo_invitations" => reply(&identity.my_repo_invitations(args(body)?).await?),
         "respond_repo_invitation" => reply(&identity.respond_repo_invitation(args(body)?).await?),
         "revoke_repo_invitation" => reply(&identity.revoke_repo_invitation(args(body)?).await?),

@@ -210,6 +210,17 @@ for `/repos/{owner}/{name}`.
   to target another branch. If the change is already on a branch pushed to the repository,
   send `branch` (and `title`, `body`) instead: no fork is made and the pull
   request is ready at once.
+- **Contribute without write access by forking:** `POST {repo}/forks` with
+  `workspace` (yours; your personal one when left out) copies the code and
+  description into a repository of yours whose `parent` is this one;
+  workflows and issues start off in it. Push a branch to the fork, then
+  `POST {repo}/pulls` on the parent with `head_repo` (the fork, `owner/name`),
+  `branch` and `title`. `POST {fork}/merge-upstream` (optional `branch`)
+  syncs a fork's branch from its parent: `status` is `up_to_date`,
+  `fast_forwarded`, `merged` or `conflicted` (merge locally, then push).
+  `GET {repo}/forks` lists forks; `POST {fork}/detach` makes a fork an
+  ordinary repository. MCP: `repository` `fork`, `forks`, `sync_fork`,
+  `detach_fork`.
 - **Record the session** as you work, so people can see why a change was
   made: `POST {repo}/pulls/{number}/session` with
   `{"entries": [{"kind": "message", "text": "…"}]}`. Kinds are `prompt`,
@@ -246,14 +257,25 @@ for `/repos/{owner}/{name}`.
   `POST {repo}/pulls/{number}/reviews` with `verdict` (`approve` or
   `request_changes`) and `body`.
 - **Merge** (the Write role or higher on the repository):
-  `POST {repo}/pulls/{number}/merge`. This closes the issue it was for and
-  closes the other pull requests for that issue as superseded; send
-  `{"keep_issue_open": true}` if this is only part of the work. If main has
-  moved, g1t brings the pull request up to date and lands it when that is
-  done; when it cannot be brought up to date cleanly, the merge says so. A
-  repository that requires pull requests to be up to date answers `409`
-  instead. Either way: pull main from `https://g1t.sh/{owner}/{name}.git`
-  into the fork, push, and merge again.
+  `POST {repo}/pulls/{number}/merge`, with optional `merge_method`
+  (`merge`, `squash`, `rebase` or `fast_forward`; the repository's
+  default when left out, and only those the repository and the branch's
+  rules allow: `GET {repo}/pulls/{number}/merge-options` lists them),
+  `commit_title` and `commit_message` (merge and squash), `sha` (refused
+  with `409` if the head moved) and `delete_branch`. Into the default
+  branch this closes the issue it was for and those named after a closing
+  keyword (`Fixes #12`), and closes the other pull requests for that issue
+  as superseded; send `{"keep_issue_open": true}` if this is only part of
+  the work. If main has moved, g1t brings the pull request up to date and
+  lands it when that is done; when it cannot be brought up to date
+  cleanly, the merge says so. A repository that requires pull requests to
+  be up to date answers `409` instead: `PUT {repo}/pulls/{number}/update-branch`
+  (`update_method` `merge` or `rebase`) brings it up to date when the two
+  sides did not change the same lines; otherwise pull main from
+  `https://g1t.sh/{owner}/{name}.git` into the fork, push, and merge again.
+  `PUT {repo}/pulls/{number}/auto-merge` (same `merge_method`,
+  `commit_title`, `commit_message`) merges it on its own once its checks,
+  reviews and rules allow; `DELETE` turns that off.
   With the merge queue on, merging adds the pull request to the queue
   instead; `GET {repo}/queue` shows it being tested with the pull requests
   ahead of it, and it lands only if that combination passes. When it fails
@@ -681,9 +703,14 @@ https://docs.g1t.sh/guides/search/
   `{"ignore_checks": true}`. Checks that are not required never hold a
   merge. With the merge queue on, the workflows behind required checks
   need `merge_group` in their `on:`.
-- Landing fast-forwards the default branch: g1t makes no merge commit on
-  main. Bringing a pull request up to date makes a merge commit on its own
-  branch.
+- A pull request lands by the method chosen: a merge commit, one squashed
+  commit, its commits rebased onto main, or a fast-forward of main to its
+  head. Merges are line-level: edits to the same file merge unless their
+  lines clash. Bringing a pull request up to date makes a merge commit on
+  its own branch, or rebases it with `update_method: "rebase"`.
+- Comment on a commit: `POST {repo}/commits/{sha}/comments` with `body`,
+  and `path` and `line` for one line of a file it changed; read them with
+  `GET {repo}/commits/{sha}/comments` or `GET {repo}/comments`.
 - Pricing (https://g1t.sh/pricing): the forge is free. One plan, g1t, at
   $21 a month per workspace with unlimited members, includes $10 of usage
   at cost + 20% (unused does not roll over). Compute needs the plan or a

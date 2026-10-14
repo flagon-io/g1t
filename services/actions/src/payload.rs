@@ -37,7 +37,7 @@ fn owner(login: &str) -> Value {
 
 pub fn repository(repo: &Repo) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
-    json!({
+    let mut repository = json!({
         "id": github_id(&repo.id),
         "node_id": repo.id,
         "name": repo.name,
@@ -51,11 +51,28 @@ pub fn repository(repo: &Repo) -> Value {
         "homepage": repo.website,
         "topics": repo.topics,
         "default_branch": repo.default_branch,
-        "fork": false,
+        // A repository someone forked into their workspace; a pull
+        // request's own working copy is never a run's repository.
+        "fork": repo.parent_id.is_some(),
         "archived": repo.archived(),
         "created_at": repo.created_at,
         "visibility": if repo.is_private { "private" } else { "public" },
-    })
+    });
+    // Where a fork came from, when its reader may see it.
+    if let Some(parent) = &repo.parent {
+        let full_name = format!("{}/{}", parent.namespace, parent.name);
+        repository["parent"] = json!({
+            "id": repo.parent_id.as_deref().map(github_id),
+            "node_id": repo.parent_id,
+            "name": parent.name,
+            "full_name": full_name,
+            "owner": owner(&parent.namespace),
+            "html_url": format!("{SITE}/{full_name}"),
+            "url": format!("{API}/repos/{full_name}"),
+            "clone_url": format!("{SITE}/{full_name}.git"),
+        });
+    }
+    repository
 }
 
 /// A pull request's fork, from what the pull request knows of it.
@@ -292,8 +309,14 @@ pub fn pull(repo: &Repo, pull: &Pull) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     let head_ref = head_ref(pull);
     let base_ref = pull.base_branch(&repo.default_branch);
-    let (head_repo, head_owner) = match &pull.fork {
-        Some(fork) => (fork_repository(fork, pull.fork_repo_id.as_deref()), fork.namespace.as_str()),
+    // A working copy, or the fork its branch is in, or the repository.
+    let elsewhere = match (&pull.fork, &pull.head_repo) {
+        (Some(fork), _) => Some((fork, pull.fork_repo_id.as_deref())),
+        (None, Some(fork)) => Some((fork, pull.head_repo_id.as_deref())),
+        (None, None) => None,
+    };
+    let (head_repo, head_owner) = match elsewhere {
+        Some((fork, id)) => (fork_repository(fork, id), fork.namespace.as_str()),
         None => (repository(repo), repo.namespace.as_str()),
     };
     let merged = pull.status == PullStatus::Merged;
@@ -504,7 +527,7 @@ fn run_pulls(repo: &Repo, run: &FollowedRun) -> Vec<Value> {
     let Some(pull) = run.pull else {
         return vec![json!({ "number": number, "url": url })];
     };
-    if pull.fork.is_some() {
+    if pull.fork.is_some() || pull.head_repo.is_some() {
         return Vec::new();
     }
     let short = json!({ "id": github_id(&repo.id), "url": format!("{API}/repos/{full_name}"), "name": repo.name });
@@ -1016,6 +1039,21 @@ mod github_shapes {
     }
 
     #[test]
+    fn a_fork_says_it_is_one_and_names_its_parent() {
+        assert_eq!(repository(&repo())["fork"], false);
+        assert!(repository(&repo()).get("parent").is_none());
+        let mut fork = repo();
+        fork.parent_id = Some("rep_p".into());
+        assert_eq!(repository(&fork)["fork"], true);
+        assert!(repository(&fork).get("parent").is_none(), "only where the parent is known");
+        fork.parent = Some(RepoPath { namespace: "acme".into(), name: "web".into() });
+        let event = repository(&fork);
+        assert_eq!(event["parent"]["full_name"], "acme/web");
+        assert_eq!(event["parent"]["id"], json!(github_id("rep_p")));
+        assert_eq!(event["parent"]["owner"]["login"], "acme");
+    }
+
+    #[test]
     fn a_pull_request_from_a_fork_names_the_fork() {
         let mut pull = a_pull();
         pull.fork = Some(RepoPath { namespace: "ana".into(), name: "web".into() });
@@ -1028,5 +1066,19 @@ mod github_shapes {
         assert_eq!(event["head"]["label"], "ana:pull/2");
         assert_eq!(event["head"]["user"]["login"], "ana");
         assert_eq!(event["merge_commit_sha"], Value::Null, "only once merged");
+    }
+
+    #[test]
+    fn a_pull_request_from_a_forks_branch_names_the_fork_and_branch() {
+        let mut pull = a_pull();
+        pull.head_repo = Some(RepoPath { namespace: "ana".into(), name: "web".into() });
+        pull.head_repo_id = Some("rep_f".into());
+        let event = self::pull(&repo(), &pull);
+        assert_eq!(event["head"]["repo"]["full_name"], "ana/web");
+        assert_eq!(event["head"]["repo"]["fork"], true);
+        assert_eq!(event["head"]["repo"]["id"], json!(github_id("rep_f")));
+        assert_eq!(event["head"]["ref"], "changes");
+        assert_eq!(event["head"]["label"], "ana:changes");
+        assert_eq!(event["base"]["repo"]["id"], json!(github_id(&repo().id)));
     }
 }

@@ -563,6 +563,7 @@ export function ProjectStrip({
   settings,
   counts,
   always = false,
+  issues = true,
 }: {
   /** `/<namespace>/<name>`. */
   base: string;
@@ -573,11 +574,13 @@ export function ProjectStrip({
   counts?: { issues: number; pulls: number };
   /** On a computer too: for a visitor, who has no sidebar to list them. */
   always?: boolean;
+  /** Whether issues can be opened in it; Issues leaves the row when not. */
+  issues?: boolean;
 }) {
   const { pathname } = useLocation();
   const rest = pathname.toLowerCase().startsWith(base.toLowerCase()) ? pathname.slice(base.length) : "";
   const at = projectPageAt(rest, SOON_PAGES);
-  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings"),
+  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings" && (issues || page !== "issues")),
     ...(settings ?? member ? (["settings"] as const) : []),
   ];
   return (

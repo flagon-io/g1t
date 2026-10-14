@@ -207,7 +207,7 @@ impl Security {
     /// still at the pull request's last commit. Failures are logged: a
     /// branch left behind is removed by a later scan.
     pub(crate) async fn delete_pull_branch(&self, repo: &RepoRow, pull: &Pull) {
-        if matches!(pull.status, PullStatus::Open | PullStatus::Draft) || pull.fork.is_some() || pull.fork_repo_id.is_some() {
+        if matches!(pull.status, PullStatus::Open | PullStatus::Draft) || pull.from_other_repo() || pull.fork.is_some() {
             return;
         }
         let (Some(branch), Some(head)) = (pull.branch.clone(), pull.head_commit.clone()) else { return };

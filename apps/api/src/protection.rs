@@ -26,6 +26,8 @@ pub enum ProtectionOp {
     SetForkPrApproval,
     GetActionsAccess,
     SetActionsAccess,
+    GetActionsPermissions,
+    SetActionsPermissions,
     CreateRepositoryDispatch,
     GetWorkspaceWorkflowPermissions,
     SetWorkspaceWorkflowPermissions,
@@ -39,7 +41,7 @@ impl ProtectionOp {
     /// Every one: `Op::ALL` lists each as `Op::Protection(…)`, which a test
     /// checks against this.
     #[cfg(test)]
-    pub const ALL: [ProtectionOp; 18] = [
+    pub const ALL: [ProtectionOp; 20] = [
         ProtectionOp::UpdateEnvironment,
         ProtectionOp::DeleteEnvironment,
         ProtectionOp::GetPendingDeployments,
@@ -51,6 +53,8 @@ impl ProtectionOp {
         ProtectionOp::SetForkPrApproval,
         ProtectionOp::GetActionsAccess,
         ProtectionOp::SetActionsAccess,
+        ProtectionOp::GetActionsPermissions,
+        ProtectionOp::SetActionsPermissions,
         ProtectionOp::CreateRepositoryDispatch,
         ProtectionOp::GetWorkspaceWorkflowPermissions,
         ProtectionOp::SetWorkspaceWorkflowPermissions,
@@ -73,6 +77,8 @@ impl ProtectionOp {
             ProtectionOp::SetForkPrApproval => "set_fork_pr_approval",
             ProtectionOp::GetActionsAccess => "get_actions_access",
             ProtectionOp::SetActionsAccess => "set_actions_access",
+            ProtectionOp::GetActionsPermissions => "get_actions_permissions",
+            ProtectionOp::SetActionsPermissions => "set_actions_permissions",
             ProtectionOp::CreateRepositoryDispatch => "create_repository_dispatch",
             ProtectionOp::GetWorkspaceWorkflowPermissions => "get_workspace_workflow_permissions",
             ProtectionOp::SetWorkspaceWorkflowPermissions => "set_workspace_workflow_permissions",
@@ -113,6 +119,8 @@ impl ProtectionOp {
             ProtectionOp::SetForkPrApproval => "Set the approval policy for outside pull requests",
             ProtectionOp::GetActionsAccess => "Get who may use a repository's actions and workflows",
             ProtectionOp::SetActionsAccess => "Set who may use a repository's actions and workflows",
+            ProtectionOp::GetActionsPermissions => "Get whether a repository's workflows run",
+            ProtectionOp::SetActionsPermissions => "Turn a repository's workflows on or off",
             ProtectionOp::CreateRepositoryDispatch => "Create a repository dispatch event",
             ProtectionOp::GetWorkspaceWorkflowPermissions => "Get a workspace's default workflow permissions",
             ProtectionOp::SetWorkspaceWorkflowPermissions => "Set a workspace's default workflow permissions",
@@ -136,6 +144,8 @@ impl ProtectionOp {
             ProtectionOp::SetForkPrApproval => "Set approval_policy: first_time_contributors, outside_contributors or all_external_contributors. Needs the Admin role.",
             ProtectionOp::GetActionsAccess => "Which other repositories' workflows may use this private repository's actions (uses: owner/repo@ref) and reusable workflows (jobs.<id>.uses: owner/repo/.g1t/workflows/build.yml@ref): access_level is none (the default: only this repository) or organization (private repositories in the same workspace). A public repository's actions and workflows are anyone's, whatever this says, and a public repository's workflows never use a private one's. Needs the Read role.",
             ProtectionOp::SetActionsAccess => "Set access_level: none, or organization to let the workspace's other private repositories use this repository's actions and reusable workflows (user is read as organization). Needs the Admin role.",
+            ProtectionOp::GetActionsPermissions => "Whether a repository's workflows run at all: enabled is on for a repository and off for a fork until someone chooses (enabled_chosen says whether anyone has), so a fork never runs the workflows it copied until they are turned on. While it is off, no push, pull request, schedule, dispatch, repository_dispatch, merge queue or re-run starts a run; its workflows stay listed. allowed_actions is always all. Needs the Read role.",
+            ProtectionOp::SetActionsPermissions => "Turn a repository's workflows on or off (enabled). Off, nothing starts a run, and a dispatch or re-run is refused with \"Actions is turned off for owner/name\"; runs already going finish. Turning it on runs nothing by itself: the next event does. Needs the Admin role; a workflow job's own token cannot.",
             ProtectionOp::GetWorkspaceWorkflowPermissions => "A workspace's policy for its repositories' job tokens: default_workflow_permissions (read, the default, or write) is what a repository made from now on gets until it chooses; max_workflow_permissions (write, the default, or read) is the most any repository's default may be, so read holds every repository to read-only; can_approve_pull_request_reviews (off by default) lets its repositories allow jobs to open and approve pull requests. Members only.",
             ProtectionOp::SetWorkspaceWorkflowPermissions => "Change a workspace's default_workflow_permissions, max_workflow_permissions and can_approve_pull_request_reviews; fields left out stay as they are. A maximum of read makes the default read too. Owners only.",
             ProtectionOp::ListWorkspaceManagedWorkflows => "The workflows a workspace's owners added to its repositories, g1t's required workflows: each runs in every repository it targets as that repository's own workflow (its token, its secrets, its checks), under the path managed/<name>.yml, from a copy of its source file taken when it was saved. Each has name, path, workflow_name (its `name:`), source (owner/repo/path@ref), source_sha (the commit it was copied at), source_private, mode, repositories, visibility, content (the copy that runs) and when and by whom it was last saved. Owners only.",
@@ -154,6 +164,7 @@ impl ProtectionOp {
                 | ProtectionOp::GetWorkflowPermissions
                 | ProtectionOp::GetForkPrApproval
                 | ProtectionOp::GetActionsAccess
+                | ProtectionOp::GetActionsPermissions
                 | ProtectionOp::GetWorkspaceWorkflowPermissions
                 | ProtectionOp::ListWorkspaceManagedWorkflows
         )
@@ -217,7 +228,17 @@ impl ProtectionOp {
                 }),
                 &["repo", "id", "state"],
             ),
-            ProtectionOp::GetWorkflowPermissions | ProtectionOp::GetForkPrApproval | ProtectionOp::GetActionsAccess => (json!({ "repo": repo }), &["repo"]),
+            ProtectionOp::GetWorkflowPermissions
+            | ProtectionOp::GetForkPrApproval
+            | ProtectionOp::GetActionsAccess
+            | ProtectionOp::GetActionsPermissions => (json!({ "repo": repo }), &["repo"]),
+            ProtectionOp::SetActionsPermissions => (
+                json!({
+                    "repo": repo,
+                    "enabled": { "type": "boolean", "description": "Whether its workflows run." },
+                }),
+                &["repo", "enabled"],
+            ),
             ProtectionOp::SetActionsAccess => (
                 json!({
                     "repo": repo,
@@ -713,6 +734,23 @@ pub async fn run(op: ProtectionOp, services: &Services, viewer: &Viewer, input: 
                 .await?
             };
             map(settings, |s| json!({ "access_level": s["accessLevel"] }))
+        }
+        ProtectionOp::GetActionsPermissions | ProtectionOp::SetActionsPermissions => {
+            let settings: Outcome<Value> = if op == ProtectionOp::GetActionsPermissions {
+                g1t_kit::call(actions, "actions_settings", &json!({ "viewer": viewer, "repo": repo })).await?
+            } else {
+                let Some(enabled) = flag(input, "enabled") else {
+                    return Ok(Outcome::fail(FailureCode::Invalid, "enabled is true or false."));
+                };
+                g1t_kit::call(actions, "set_actions_settings", &json!({ "actor": actor(), "repo": repo, "enabled": enabled })).await?
+            };
+            map(settings, |s| {
+                json!({
+                    "enabled": s.get("enabled").cloned().unwrap_or(Value::Bool(true)),
+                    "enabled_chosen": s.get("enabledChosen").cloned().unwrap_or(Value::Bool(false)),
+                    "allowed_actions": "all",
+                })
+            })
         }
         ProtectionOp::CreateRepositoryDispatch => {
             let started: Outcome<u32> = g1t_kit::call(

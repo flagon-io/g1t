@@ -294,7 +294,7 @@ impl Security {
             ("success", view.headline.clone(), view, None)
         } else {
             let base = comparison.base.clone().unwrap_or_else(|| "HEAD".to_owned());
-            let head_repo = pull.fork_repo_id.clone().unwrap_or_else(|| repo.repo_id.clone());
+            let head_repo = pull.source_id().to_owned();
             let (verdict, view) = self.review(&repo.repo_id, &base, &head_repo, &head, &policy).await?;
             let summary = verdict.summary(&policy);
             (if verdict.passed { "success" } else { "failure" }, verdict.headline(), view, Some(summary))

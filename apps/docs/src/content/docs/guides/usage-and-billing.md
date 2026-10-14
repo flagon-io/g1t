@@ -468,6 +468,13 @@ is stored. Public repositories are never charged, and neither is a free
 workspace: its pushes to private repositories stop at 1 GB instead. On the
 plan they never stop.
 
+A [fork](/concepts/forks/) counts toward the workspace it was forked into
+in full, from the moment it is made: its size is what was copied into it,
+however much it shares with the repository it came from. A free workspace
+cannot take a private fork that would carry its private repositories past
+1 GB. Pull requests' working copies are counted with the repository they
+belong to.
+
 ## How spend is counted
 
 Everything a workspace uses is entered on one ledger, as it happens, and

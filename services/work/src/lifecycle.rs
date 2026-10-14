@@ -48,12 +48,17 @@ struct Progress {
     stalled: Option<String>,
 }
 
-/// A merge asked for while the pull request was behind, as stored.
+/// A merge asked for while the pull request was behind, as stored: a
+/// fast-forward, which needs it up to date first (merging.rs).
 #[derive(serde::Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LandRequest {
     actor: User,
     keep_issue_open: bool,
+    /// Delete its branch once merged, as asked; the repository's setting
+    /// when absent.
+    #[serde(default)]
+    delete_branch: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -421,6 +426,11 @@ impl Work {
         if pull.status != PullStatus::Open {
             return Ok(Advance::None);
         }
+        // A person asked for it to merge on its own (automerge.rs).
+        if pull.auto_merge.is_some() {
+            self.try_auto_merge(&pull).await?;
+            return Ok(Advance::None);
+        }
         // As a member: a private repository would look missing otherwise,
         // and the pull request would never move.
         let viewer: Viewer = self.owner_viewer(&pull).await?;
@@ -436,7 +446,7 @@ impl Work {
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(Advance::None);
         };
-        let behind = self.is_behind(&repo.id, &pull).await?;
+        let behind = self.is_behind(&pull).await?;
         if let Some((_, Next::Merge)) = self.assess(&pull, &None, behind).await? {
             self.merge_by_policy(&repo, &pull).await?;
         }
@@ -470,6 +480,14 @@ impl Work {
                 keep_issue_open: false,
                 ignore_checks: false,
                 bypass_rules: false,
+                // The repository's default method, message and branch
+                // setting.
+                merge_method: None,
+                commit_title: None,
+                commit_message: None,
+                expected_head: pull.head_commit.clone(),
+                delete_branch: None,
+                update_method: None,
             })
             .await?;
         match merged {
@@ -507,11 +525,13 @@ impl Work {
         pull: &Pull,
         actor: &User,
         keep_issue_open: bool,
+        delete_branch: Option<bool>,
     ) -> Result<()> {
         let now = now_ms();
         let request = serde_json::to_string(&LandRequest {
             actor: actor.clone(),
             keep_issue_open,
+            delete_branch,
         })?;
         self.db
             .prepare(
@@ -625,6 +645,13 @@ impl Work {
                 keep_issue_open: request.keep_issue_open,
                 ignore_checks: true,
                 bypass_rules: false,
+                // Only a fast-forward waits to be brought up to date.
+                merge_method: Some(g1t_contracts::rules::MergeMethod::FastForward),
+                commit_title: None,
+                commit_message: None,
+                expected_head: None,
+                delete_branch: request.delete_branch,
+                update_method: None,
             })
             .await?;
         if let Outcome::Fail(failure) = merged {
@@ -702,7 +729,7 @@ impl Work {
             .db
             .prepare(
                 "SELECT id AS value FROM pulls
-                 WHERE status = 'open' AND managed = 1 AND stalled IS NULL
+                 WHERE status = 'open' AND ((managed = 1 AND stalled IS NULL) OR auto_merge IS NOT NULL)
                    AND (?1 IS NULL OR repo_id = ?1)
                  ORDER BY updated_at DESC LIMIT ?2",
             )

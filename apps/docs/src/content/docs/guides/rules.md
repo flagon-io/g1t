@@ -138,7 +138,7 @@ default.
 | `dismiss_stale_reviews_on_push` | `false` | Approvals given before the latest push no longer count. |
 | `require_code_owner_review` | `false` | The [code owners](/guides/codeowners/) of every file it changes must approve. |
 | `require_last_push_approval` | `false` | Someone other than whoever pushed last must approve after that push. |
-| `allowed_merge_methods` | All | `merge`, `squash` or `rebase`. g1t merges by landing the branch as it is, which counts as `merge`. Squash and rebase merging are planned. |
+| `allowed_merge_methods` | All | The [methods](/guides/pull-requests/#merge-methods) a pull request into the branch may merge by: `merge`, `squash`, `rebase` and `fast_forward`. Within those the repository allows: the merge button offers only methods both allow, and a merge by any other is refused. Where several rulesets set it, a method must be in every list. |
 | `allow_direct_pushes` | `false` | Pull requests need what this rule says, but pushes straight to the branch are still allowed. Only the ruleset made from branch protection that did not require pull requests has this on. |
 
 `required_status_checks` parameters:
@@ -171,7 +171,7 @@ any CI or by a g1t Actions job with an `environment:`: a successful
 
 | Rule | `type` | What it does |
 | --- | --- | --- |
-| Require linear history | `required_linear_history` | No merge commits. Rebase instead of merging the branch in. |
+| Require linear history | `required_linear_history` | No merge commits: a push that adds one is refused, and a pull request into the branch merges by `squash`, `rebase` or `fast_forward`, never `merge`. Update a pull request's branch by rebasing, or let it be squashed. |
 | Require signed commits | `required_signatures` | Every commit carries a signature g1t verifies. |
 | Commit message pattern | `commit_message_pattern` | Every commit message must match, or must not. |
 | Commit author email pattern | `commit_author_email_pattern` | Every author address must match, or must not. |

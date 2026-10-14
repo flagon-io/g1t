@@ -2,7 +2,8 @@ import type { ChecksApi } from "./checks";
 import type { CodeownersReport, PullCodeOwners } from "./codeowners";
 import type { G1tEvent } from "./events";
 import type { User, Viewer } from "./identity";
-import type { PullBranchUpdate, RepoPath } from "./repos";
+import type { PullBranchUpdate, RepoPath, UpdateMethod } from "./repos";
+import type { MergeMethod } from "./rules";
 import type { Result } from "./result";
 import type { MergeRules, RulesApi } from "./rules";
 
@@ -130,7 +131,8 @@ export type Runtime = "hosted" | "external";
 
 /**
  * A proposed change. It is made either in a fork created for it, which is
- * how agents work, or on a branch pushed to the repository itself.
+ * how agents work, on a branch pushed to the repository itself, or on a
+ * branch of someone's fork of it (`headRepo`).
  */
 export type Pull = {
   id: string;
@@ -150,8 +152,19 @@ export type Pull = {
   fork: RepoPath | null;
   /** The fork's repository id. */
   forkRepoId: string | null;
-  /** The branch of the repository holding the change, unless it is in a fork. */
+  /**
+   * The branch holding the change, unless it is in a working copy (`fork`):
+   * of `headRepo` when set, else of the repository.
+   */
   branch: string | null;
+  /**
+   * A fork of the repository (its `parentId`, directly or through other
+   * forks) whose `branch` holds the change, when it was opened from one.
+   * Null for a branch of the repository itself and for a working copy.
+   */
+  headRepo?: RepoPath | null;
+  /** `headRepo`'s id. */
+  headRepoId?: string | null;
   headCommit: string | null;
   /**
    * For a merged pull request, what the branch pointed to before the merge.
@@ -162,6 +175,19 @@ export type Pull = {
   mergedBy: string | null;
   /** RFC 3339. */
   mergedAt: string | null;
+  /** How it merged, once merged. */
+  mergeMethod?: MergeMethod | null;
+  /** Where its merge left the base: the merge or squash commit, the last rebased one, or its head. */
+  mergeCommit?: string | null;
+  /** Merge it on its own once everything it needs is met, as a person asked. */
+  autoMerge?: AutoMerge | null;
+  /**
+   * The issues it closes when it merges into the default branch: its issue and
+   * those its title and description name after a closing keyword (`Fixes #12`).
+   */
+  closes?: number[];
+  /** Its branch was deleted after it merged or closed, and can be restored at `headCommit`. */
+  headBranchDeleted?: boolean;
   /**
    * Set on a pull request closed because another one for the same issue was
    * merged: that one's number.
@@ -574,14 +600,138 @@ export type RepoSettings = {
    * the file names `@g1t`.
    */
   requireCodeOwnerReview?: boolean;
+  /**
+   * Whether issues can be opened in it: null for the default, which is on
+   * for a repository and off for a fork of one. Existing issues stay
+   * readable either way.
+   */
+  hasIssues?: boolean | null;
+  /** Whether issues can be opened in it now: `hasIssues`, or its default. */
+  issuesEnabled?: boolean;
+  /** Which merge methods pull requests may use (at least one); rules can narrow them per branch. */
+  allowMergeCommit: boolean;
+  allowSquashMerge: boolean;
+  allowRebaseMerge: boolean;
+  allowFastForward: boolean;
+  /** The method offered first, and used when none is named. */
+  defaultMergeMethod: MergeMethod;
+  /** What merge and squash commits say unless their merger writes it. */
+  mergeCommitMessage: CommitMessageDefault;
+  squashCommitMessage: CommitMessageDefault;
+  /**
+   * For `custom`: templates whose `{title}`, `{number}`, `{body}`, `{branch}`,
+   * `{head_repo}`, `{base}`, `{author}`, `{commits}`, `{issues}` and
+   * `{co_authors}` are filled in.
+   */
+  mergeCommitTemplate: string | null;
+  squashCommitTemplate: string | null;
+  /** Offer to bring a pull request up to date whenever its base has new commits. */
+  suggestUpdatingBranches: boolean;
+  /** Let people turn on auto-merge for a pull request. */
+  allowAutoMerge: boolean;
+  /** Delete a pull request's branch once it merges (restorable from it). */
+  deleteBranchOnMerge: boolean;
+  /** Commits made on g1t.sh carry a `Signed-off-by:` trailer for whoever made them. */
+  requireWebCommitSignOff: boolean;
+  /** Let anyone who can read it comment on its commits. */
+  allowCommitComments: boolean;
+  /** Close the issues a pull request names when it merges into the default branch. */
+  autoCloseIssues: boolean;
   /** Username of the member who last changed the settings, if anyone has. */
   updatedBy: string | null;
   /** RFC 3339. */
   updatedAt: string | null;
 };
 
+/** What a merge or squash commit's message says by default (`pull_title_and_commits` is squash only). */
+export type CommitMessageDefault = "default" | "pull_title" | "pull_title_and_description" | "pull_title_and_commits" | "custom";
+
+/** A person's request that a pull request merge on its own once it may. */
+export type AutoMerge = {
+  method: MergeMethod;
+  commitTitle: string | null;
+  commitMessage: string | null;
+  /** Username of who asked. */
+  enabledBy: string;
+  /** RFC 3339. */
+  enabledAt: string;
+};
+
+/** A comment on a commit, or on one line (`path`, `line`) of a file it changed. */
+export type CommitComment = {
+  id: string;
+  repoId: string;
+  /** The commit's full hash. */
+  commit: string;
+  path: string | null;
+  line: number | null;
+  /** Username. */
+  author: string;
+  /** Markdown. */
+  body: string;
+  /** RFC 3339. */
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+/** How a pull request may merge now, for whoever is looking (`mergeChoices`). */
+export type MergeChoices = {
+  /** The methods it may merge by: the repository's, as the rules for its base allow. In the order offered. */
+  methods: MergeMethod[];
+  /** The one offered first: the repository's default when it may be used, else the first of `methods`. */
+  defaultMethod: MergeMethod | null;
+  /** Each of `methods`, with its default commit message and whether it can be used now. */
+  options: MergeChoice[];
+  /** Its base has commits it does not have. */
+  behind: boolean;
+  /** It contains its base's head, so it can fast-forward as it is. */
+  canFastForward: boolean;
+  /** Offer to bring it up to date: it is behind, and the repository suggests (or requires) it. */
+  suggestUpdate: boolean;
+  /** The repository requires it to be up to date before it merges. */
+  requireUpToDate: boolean;
+  /** It merges through the merge queue, which lands it as tested whatever method is chosen. */
+  mergeQueue: boolean;
+  /** The viewer may turn on auto-merge for it. */
+  autoMergeAllowed: boolean;
+  /** Whether "delete the branch" starts ticked. */
+  deleteBranchDefault: boolean;
+  /** Its branch can be deleted once it merges (never a working copy's). */
+  canDeleteBranch: boolean;
+  /** Commits made merging it carry a `Signed-off-by:` trailer for the merger. */
+  signOff: boolean;
+};
+
+/** One way a pull request may merge. */
+export type MergeChoice = {
+  method: MergeMethod;
+  /** For `merge` and `squash`: the commit's default title and the rest of its message. */
+  commitTitle: string | null;
+  commitMessage: string | null;
+  /** Why it cannot merge this way now, if it cannot. */
+  unavailable: string | null;
+};
+
+/** How a pull request merges, as the merger chose. */
+export type MergeOptions = {
+  keepIssueOpen?: boolean;
+  /** Merge although required checks have not passed, where the rule requiring them allows it. */
+  ignoreChecks?: boolean;
+  /** Merge past rules a ruleset lets the actor bypass. Recorded as a bypass. */
+  bypassRules?: boolean;
+  /** The repository's default when absent. */
+  mergeMethod?: MergeMethod;
+  /** For `merge` and `squash`: the commit's title and the rest of its message. */
+  commitTitle?: string;
+  commitMessage?: string;
+  /** Refuse if its head is no longer this commit. */
+  expectedHead?: string;
+  /** Delete its branch once merged; the repository's setting when absent. */
+  deleteBranch?: boolean;
+};
+
 /** The settings a member can change. */
-export type RepoSettingsInput = Omit<RepoSettings, "updatedBy" | "updatedAt">;
+export type RepoSettingsInput = Omit<RepoSettings, "updatedBy" | "updatedAt" | "issuesEnabled">;
 
 /**
  * What the runner is to do next for a pull request: always nothing now,
@@ -623,6 +773,11 @@ export type OpenPullInput = {
    * request is then ready for review at once and has no fork.
    */
   branch?: string;
+  /**
+   * A fork of the repository (directly or through other forks) whose
+   * `branch` holds the change. Needs `branch`.
+   */
+  headRepo?: RepoPath;
   agent: string;
   runtime: Runtime;
   /** The branch to merge into: the default branch when left out. */
@@ -807,7 +962,43 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * it (for a fork) or a member (for a branch). Otherwise `needs_agent`, and
    * nothing is pushed: the runner's `update` is the way on.
    */
-  catchUpPull(actor: User, repo: RepoPath, number: number): Promise<Result<PullBranchUpdate>>;
+  catchUpPull(
+    actor: User,
+    repo: RepoPath,
+    number: number,
+    options?: { updateMethod?: UpdateMethod; expectedHead?: string },
+  ): Promise<Result<PullBranchUpdate>>;
+  /**
+   * Turns a pull request's auto-merge on (with how to merge) or off. On needs
+   * Write, since it merges as whoever turned it on; its author may also turn
+   * it off. Refused where the repository does not allow auto-merge or the
+   * method. One that may merge already merges at once.
+   */
+  setAutoMerge(
+    actor: User,
+    repo: RepoPath,
+    number: number,
+    enabled: boolean,
+    options?: { mergeMethod?: MergeMethod; commitTitle?: string; commitMessage?: string },
+  ): Promise<Result<Pull>>;
+  /** How a pull request may merge now: methods, default messages, auto-merge and branch deletion. */
+  mergeChoices(viewer: Viewer, repo: RepoPath, number: number): Promise<Result<MergeChoices>>;
+  /** Deletes a merged or closed pull request's branch (Push on where it is). */
+  deleteHeadBranch(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
+  /** Makes a deleted pull request branch again at its head. */
+  restoreHeadBranch(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
+  /** A commit's comments, oldest first; with no commit, the repository's, newest first, 30 a page. */
+  commitComments(viewer: Viewer, repo: RepoPath, commit?: string | null, page?: number): Promise<Result<CommitComment[]>>;
+  /** Comments on a commit, or on one line of a file it changed. Needs Read, where commit comments are on. */
+  addCommitComment(
+    actor: User,
+    repo: RepoPath,
+    commit: string,
+    body: string,
+    at?: { path: string; line: number },
+  ): Promise<Result<CommitComment>>;
+  editCommitComment(actor: User, repo: RepoPath, id: string, body: string): Promise<Result<CommitComment>>;
+  deleteCommitComment(actor: User, repo: RepoPath, id: string): Promise<Result<boolean>>;
   /** Marks a draft ready for review and sets its description. */
   readyPull(actor: User, repo: RepoPath, number: number, summary: string): Promise<Result<Pull>>;
   closePull(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
@@ -826,18 +1017,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * `PullDetail.landing` is true meanwhile. A repository that requires pull
    * requests to be up to date refuses instead.
    */
-  mergePull(
-    actor: User,
-    repo: RepoPath,
-    number: number,
-    options?: {
-      keepIssueOpen?: boolean;
-      /** Merge although required checks have not passed, where the rule requiring them allows it. */
-      ignoreChecks?: boolean;
-      /** Merge past rules a ruleset lets the actor bypass. Recorded as a bypass. */
-      bypassRules?: boolean;
-    },
-  ): Promise<Result<Pull>>;
+  mergePull(actor: User, repo: RepoPath, number: number, options?: MergeOptions): Promise<Result<Pull>>;
   /**
    * Drafts and open pull requests the viewer started, most recently active
    * first, each with where it stands if g1t is seeing it through.
@@ -866,9 +1046,11 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
 /**
  * What to pass `ReposApi.compare` to see what a pull request changes.
  *
- * A fork is compared as a whole. A branch is compared by name while the
- * pull request is open, and by the commit it was merged or closed at
- * afterwards, so later pushes to the branch do not change the record.
+ * A working copy is compared as a whole. A branch, of the repository or of
+ * a fork of it, is compared by name while the pull request is open, and by
+ * the commit it was merged or closed at afterwards, so later pushes to the
+ * branch do not change the record. A fork's branch is compared from the
+ * repository it merges into (`targetId`).
  */
 export function pullComparison(pull: Pull): {
   repoId: string;
@@ -876,16 +1058,26 @@ export function pullComparison(pull: Pull): {
   head: string | null;
   /** The branch it merges into, which it is compared from. */
   baseBranch: string | null;
+  /** For a fork's branch: the repository it merges into. */
+  targetId: string | null;
 } {
   const baseBranch = pull.base ?? null;
-  if (pull.forkRepoId) return { repoId: pull.forkRepoId, base: pull.mergeBase, head: null, baseBranch };
+  if (pull.forkRepoId) return { repoId: pull.forkRepoId, base: pull.mergeBase, head: null, baseBranch, targetId: null };
   const settled = pull.status === "merged" || pull.status === "closed";
   return {
-    repoId: pull.repoId,
+    repoId: pull.headRepoId ?? pull.repoId,
     base: pull.mergeBase,
-    head: (settled && pull.headCommit) || pull.branch,
+    // A fork's branch by the commit it was last seen at, which the repository
+    // it merges into holds too, so those who read that repository can read it.
+    head: ((settled || pull.headRepoId) && pull.headCommit) || pull.branch,
     baseBranch,
+    targetId: pull.headRepoId ? pull.repoId : null,
   };
+}
+
+/** The id of the repository holding a pull request's change: its working copy, its fork, or the repository. */
+export function pullSourceId(pull: Pull): string {
+  return pull.forkRepoId ?? pull.headRepoId ?? pull.repoId;
 }
 
 

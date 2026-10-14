@@ -364,6 +364,10 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/zipball/:ref", Op::Archives(ArchiveOp::DownloadZipball), &[]),
     route("PATCH", "/repos/:owner/:name", Op::UpdateRepo, &[]),
     route("POST", "/repos/:owner/:name/transfer", Op::TransferRepo, &[]),
+    route("POST", "/repos/:owner/:name/forks", Op::ForkRepo, &[]),
+    route("GET", "/repos/:owner/:name/forks", Op::ListForks, &[("limit", "limit")]),
+    route("POST", "/repos/:owner/:name/merge-upstream", Op::SyncFork, &[]),
+    route("POST", "/repos/:owner/:name/detach", Op::DetachFork, &[]),
     route("DELETE", "/repos/:owner/:name", Op::DeleteRepo, &[]),
     route(
         "GET",
@@ -498,6 +502,8 @@ pub const ROUTES: &[Route] = &[
     ),
     route("GET", "/repos/:owner/:name/actions/permissions/access", Op::Protection(ProtectionOp::GetActionsAccess), &[]),
     route("PUT", "/repos/:owner/:name/actions/permissions/access", Op::Protection(ProtectionOp::SetActionsAccess), &[]),
+    route("GET", "/repos/:owner/:name/actions/permissions", Op::Protection(ProtectionOp::GetActionsPermissions), &[]),
+    route("PUT", "/repos/:owner/:name/actions/permissions", Op::Protection(ProtectionOp::SetActionsPermissions), &[]),
     route("POST", "/repos/:owner/:name/dispatches", Op::Protection(ProtectionOp::CreateRepositoryDispatch), &[]),
     route(
         "GET",
@@ -1079,6 +1085,18 @@ pub const ROUTES: &[Route] = &[
         Op::MergePullRequest,
         &[],
     ),
+    route("GET", "/repos/:owner/:name/pulls/:number/merge-options", Op::GetPullRequestMergeOptions, &[]),
+    route("PUT", "/repos/:owner/:name/pulls/:number/update-branch", Op::UpdatePullRequestBranch, &[]),
+    route("PUT", "/repos/:owner/:name/pulls/:number/auto-merge", Op::EnablePullRequestAutoMerge, &[]),
+    route("DELETE", "/repos/:owner/:name/pulls/:number/auto-merge", Op::DisablePullRequestAutoMerge, &[]),
+    route("DELETE", "/repos/:owner/:name/pulls/:number/head-branch", Op::DeletePullRequestHeadBranch, &[]),
+    route("POST", "/repos/:owner/:name/pulls/:number/head-branch/restore", Op::RestorePullRequestHeadBranch, &[]),
+    // Commit comments: GitHub's addresses.
+    route("GET", "/repos/:owner/:name/comments", Op::ListRepoCommitComments, &[("page", "page")]),
+    route("PATCH", "/repos/:owner/:name/comments/:comment_id", Op::UpdateCommitComment, &[]),
+    route("DELETE", "/repos/:owner/:name/comments/:comment_id", Op::DeleteCommitComment, &[]),
+    route("GET", "/repos/:owner/:name/commits/:sha/comments", Op::ListCommitComments, &[]),
+    route("POST", "/repos/:owner/:name/commits/:sha/comments", Op::CreateCommitComment, &[]),
     // Artifacts mode's docs, slides, designs and dashboards. Search comes
     // before an artifact by id, which it would otherwise match.
     route("GET", "/workspaces/:workspace/artifacts", Op::Folios(FoliosOp::List), &[("tab", "tab"), ("kind", "kind"), ("space", "space"), ("project", "project"), ("q", "q"), ("state", "state"), ("cursor", "cursor"), ("limit", "limit")]),
@@ -1106,7 +1124,7 @@ impl Route {
     pub fn no_content(&self) -> bool {
         matches!(
             self.op,
-            Op::DeleteComment | Op::Caches(CachesOp::DeleteCache)
+            Op::DeleteComment | Op::DeleteCommitComment | Op::Caches(CachesOp::DeleteCache)
         )
     }
 
@@ -1465,6 +1483,34 @@ mod tests {
         let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/9", &[], json!({ "base": "release" })).unwrap();
         assert_eq!(route.op, Op::UpdatePullRequest);
         assert_eq!(input, json!({ "base": "release", "number": 9, "repo": "acme/web" }));
+    }
+
+    #[test]
+    fn merging_settings_and_commit_comments_have_their_addresses() {
+        let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
+        assert_eq!(op("GET", "/repos/acme/web/pulls/9/merge-options"), Op::GetPullRequestMergeOptions);
+        assert_eq!(op("PUT", "/repos/acme/web/pulls/9/update-branch"), Op::UpdatePullRequestBranch);
+        assert_eq!(op("PUT", "/repos/acme/web/pulls/9/auto-merge"), Op::EnablePullRequestAutoMerge);
+        assert_eq!(op("DELETE", "/repos/acme/web/pulls/9/auto-merge"), Op::DisablePullRequestAutoMerge);
+        assert_eq!(op("DELETE", "/repos/acme/web/pulls/9/head-branch"), Op::DeletePullRequestHeadBranch);
+        assert_eq!(op("POST", "/repos/acme/web/pulls/9/head-branch/restore"), Op::RestorePullRequestHeadBranch);
+        let (route, input) = resolve("GET", "/repos/acme/web/comments", &[("page".to_owned(), "2".to_owned())], Value::Null).unwrap();
+        assert_eq!(route.op, Op::ListRepoCommitComments);
+        assert_eq!(input, json!({ "page": "2", "repo": "acme/web" }));
+        let (route, input) =
+            resolve("POST", "/repos/acme/web/commits/9f2c4e1/comments", &[], json!({ "body": "Why?", "path": "a.rs", "line": 3 })).unwrap();
+        assert_eq!(route.op, Op::CreateCommitComment);
+        assert_eq!(input, json!({ "body": "Why?", "path": "a.rs", "line": 3, "sha": "9f2c4e1", "repo": "acme/web" }));
+        assert_eq!(op("GET", "/repos/acme/web/commits/9f2c4e1/comments"), Op::ListCommitComments);
+        // Still a commit's statuses, beside its comments.
+        assert_eq!(op("GET", "/repos/acme/web/commits/main/statuses"), Op::Checks(ChecksOp::ListCommitStatuses));
+        let (route, input) = resolve("PATCH", "/repos/acme/web/comments/cc_1", &[], json!({ "body": "Better" })).unwrap();
+        assert_eq!(route.op, Op::UpdateCommitComment);
+        assert_eq!(input, json!({ "body": "Better", "comment_id": "cc_1", "repo": "acme/web" }));
+        let (route, _) = resolve("DELETE", "/repos/acme/web/comments/cc_1", &[], Value::Null).unwrap();
+        assert!(route.op == Op::DeleteCommitComment && route.no_content());
+        // An issue's comments keep theirs.
+        assert_eq!(op("PATCH", "/repos/acme/web/issues/comments/cmt_1"), Op::EditComment);
     }
 
     #[test]

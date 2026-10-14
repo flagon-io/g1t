@@ -1,5 +1,6 @@
-import { GitCommitHorizontal } from "lucide-react";
-import { Link } from "react-router";
+import { GitCommitHorizontal, MessageSquare } from "lucide-react";
+import { Suspense } from "react";
+import { Await, Link } from "react-router";
 
 import type { ShownCommit } from "../../lib/commit-people";
 import { parseCommitMessage } from "../../lib/commit-message";
@@ -13,7 +14,9 @@ import { EmptyState, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { showCommits } from "../../lib/commit-people.server";
-import { repos } from "../../lib/services.server";
+import { repos, work } from "../../lib/services.server";
+import { countByCommit } from "../../lib/commit-comments";
+import { Hint } from "../../components/ui/hint";
 import { isPushTo, newCommits, repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 import { getViewer, unwrap } from "../../lib/session.server";
@@ -33,7 +36,30 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const checks = commitChecksFor(path, viewer, log.map((commit) => commit.hash));
   // Who wrote each commit, as their account where there is one.
   const commits = await showCommits(log);
-  return { commits, checks };
+  // How many comments each has, from the repository's latest: streamed.
+  const comments = work
+    .commitComments(viewer, path, null)
+    .then((found) => (found.ok ? countByCommit(found.value) : {}))
+    .catch(() => ({}) as Record<string, number>);
+  return { commits, checks, comments };
+}
+
+/** How many comments a commit has, linking to them; nothing when none. */
+function CommentCount({ count, to }: { count: number; to: string }) {
+  if (count === 0) return null;
+  const label = `${count} ${count === 1 ? "comment" : "comments"}`;
+  return (
+    <Hint label={label}>
+      <Link
+        to={to}
+        aria-label={label}
+        className="relative z-10 flex shrink-0 items-center gap-1 rounded px-1 text-xs text-faint tabular-nums hover:text-fg"
+      >
+        <MessageSquare size={13} />
+        {count}
+      </Link>
+    </Hint>
+  );
 }
 
 /** Commits by the day they were made, newest first. */
@@ -58,7 +84,7 @@ function dayLabel(day: string): string {
 }
 
 export default function Commits({ loaderData, params }: Route.ComponentProps) {
-  const { commits, checks } = loaderData;
+  const { commits, checks, comments } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   // Live: new commits on the branch wait under "N new commits" rather than
   // moving the list under the reader; checks on the shown ones update.
@@ -95,6 +121,11 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
                           {subject}
                         </Link>
                         <CommitChecksBadge checks={checks} sha={commit.hash} />
+                        <Suspense fallback={null}>
+                          <Await resolve={comments}>
+                            {(counts) => <CommentCount count={counts[commit.hash] ?? 0} to={`${to}#commit-comments`} />}
+                          </Await>
+                        </Suspense>
                       </div>
                       {rest && <p className="mt-1 line-clamp-1 text-sm text-muted">{rest}</p>}
                       <p className="mt-1 text-xs text-faint">

@@ -622,6 +622,16 @@ export function commandLineSteps(
 ): string[] {
   const upstream = `${site}/${owner}/${repo}.git`;
   const add = files.length > 0 && files.length <= 6 ? `git add ${files.join(" ")}` : "git add -A";
+  // A branch of someone's fork of the repository: fetched from and pushed to the fork.
+  if (pull.branch && pull.headRepo && !pull.fork) {
+    const fork = pull.headRepo;
+    return [
+      `git clone -b ${pull.branch} ${site}/${fork.namespace}/${fork.name}.git && cd ${fork.name}`,
+      `git pull --no-rebase ${upstream} ${defaultBranch}`,
+      `${add} && git commit --no-edit`,
+      `git push origin ${pull.branch}`,
+    ];
+  }
   if (pull.branch) {
     return [
       `git fetch origin`,
@@ -730,7 +740,9 @@ export function ConflictsSection({
                           : step.includes("merge") || step.includes("pull")
                             ? `Merge ${defaultBranch} in. Git stops on the conflicting files:`
                             : step.startsWith("git clone")
-                              ? "Clone the pull request's fork:"
+                              ? pull.headRepo && !pull.fork
+                                ? `Clone the branch from ${pull.headRepo.namespace}/${pull.headRepo.name}, the fork it is in:`
+                                : "Clone the pull request's fork:"
                               : step.startsWith("git checkout")
                                 ? "Check out the pull request's branch:"
                                 : "Get the latest of both:"}

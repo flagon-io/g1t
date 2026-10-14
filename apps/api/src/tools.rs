@@ -70,17 +70,22 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them and publish releases. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them, publish releases and comment on their commits. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
             a("get", Op::GetRepo, "One repository"),
             a("commits", Op::ListCommits, "A branch's commits with their messages (why each was made); with path, the commit that last changed it"),
+            a("commit_comments", Op::ListCommitComments, "A commit's comments, on it or on lines of its files"),
+            a("list_commit_comments", Op::ListRepoCommitComments, "All its commit comments, newest first"),
+            a("comment_on_commit", Op::CreateCommitComment, "Comment on a commit; path and line for one line of a file it changed"),
+            a("edit_commit_comment", Op::UpdateCommitComment, "Change your commit comment's text"),
+            a("delete_commit_comment", Op::DeleteCommitComment, "Delete a commit comment: your own, or any with the Maintain role"),
             a("contents", Op::GetContents, "A file's text, or a directory's entries and README, at a branch, tag or commit"),
             a("tarball", Op::Archives(ArchiveOp::DownloadTarball), "A 10-minute link to a branch, tag or commit as a .tar.gz"),
             a("zipball", Op::Archives(ArchiveOp::DownloadZipball), "A 10-minute link to a branch, tag or commit as a .zip"),
             a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
-            a("update", Op::UpdateRepo, "Change description, website, topics, default branch, protection"),
+            a("update", Op::UpdateRepo, "Change description, website, topics, default branch, protection, forking"),
             a("get_settings", Op::GetRepoSettings, "How pull requests merge, and the default branch's protection as its rules stack"),
             a("update_settings", Op::UpdateRepoSettings, "Change how pull requests merge and the default branch protection ruleset"),
             a("check_names", Op::ListCheckNames, "Check names reported lately, to require in a ruleset"),
@@ -123,6 +128,10 @@ pub const TOOLS: &[Tool] = &[
             a("delete_branch", Op::DeleteBranch, "Delete a branch; make it again at its commit to restore it"),
             a("rename", Op::RenameRepo, "Rename it; old addresses redirect"),
             a("transfer", Op::TransferRepo, "Move it to another workspace you own"),
+            a("fork", Op::ForkRepo, "Fork it into a workspace: its code and description, linked to it"),
+            a("forks", Op::ListForks, "Its forks you can see"),
+            a("sync_fork", Op::SyncFork, "Bring a fork's branch up to date with its parent"),
+            a("detach_fork", Op::DetachFork, "Make a fork an ordinary repository, no longer linked to its parent"),
             a("archive", Op::ArchiveRepo, "Make it read-only"),
             a("unarchive", Op::UnarchiveRepo, "Make it writable again"),
             a("set_visibility", Op::SetRepoVisibility, "Make it public or private"),
@@ -166,7 +175,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "pull_request",
         title: "Pull requests",
-        description: "Pull requests: start a change for an issue, record your session, mark it ready, ask people and teams to review, review and merge. Read `overlaps` and `behind` on `get` before going far, and `code_owners` for whose approval it needs.",
+        description: "Pull requests: start a change for an issue, record your session, mark it ready, ask people and teams to review, review, update its branch, and merge (by merge, squash, rebase or fast_forward) now or with auto-merge. Read `overlaps` and `behind` on `get` before going far, and `code_owners` for whose approval it needs.",
         default_action: None,
         actions: &[
             a("list", Op::ListPullRequests, "Pull requests on a repository, newest first"),
@@ -185,7 +194,13 @@ pub const TOOLS: &[Tool] = &[
             a("review", Op::ReviewPullRequest, "Approve or request changes"),
             a("close", Op::ClosePullRequest, "Close without merging"),
             a("reopen", Op::ReopenPullRequest, "Reopen a closed one"),
-            a("merge", Op::MergePullRequest, "Land it, or join the merge queue"),
+            a("merge", Op::MergePullRequest, "Land it (merge, squash, rebase or fast_forward), or join the merge queue"),
+            a("merge_options", Op::GetPullRequestMergeOptions, "How it may merge now: methods, default messages, whether it is behind"),
+            a("update_branch", Op::UpdatePullRequestBranch, "Bring its branch up to date with its base, by merge or rebase"),
+            a("enable_auto_merge", Op::EnablePullRequestAutoMerge, "Merge it on its own once its checks, reviews and rules allow"),
+            a("disable_auto_merge", Op::DisablePullRequestAutoMerge, "Turn its auto-merge off"),
+            a("delete_branch", Op::DeletePullRequestHeadBranch, "Delete a merged or closed one's branch; restorable"),
+            a("restore_branch", Op::RestorePullRequestHeadBranch, "Make its deleted branch again at its head"),
             a("merge_queue", Op::GetMergeQueue, "The repository's merge queue"),
         ],
     },
@@ -261,6 +276,8 @@ pub const TOOLS: &[Tool] = &[
             a("set_approval_policy", Op::Protection(ProtectionOp::SetForkPrApproval), "Set which pull requests' runs wait for approval"),
             a("get_access", Op::Protection(ProtectionOp::GetActionsAccess), "Which repositories may use this one's actions and workflows"),
             a("set_access", Op::Protection(ProtectionOp::SetActionsAccess), "Let the workspace's private repositories use them, or not"),
+            a("get_enabled", Op::Protection(ProtectionOp::GetActionsPermissions), "Whether its workflows run at all; off for a fork until turned on"),
+            a("set_enabled", Op::Protection(ProtectionOp::SetActionsPermissions), "Turn its workflows on or off"),
             a("repository_dispatch", Op::Protection(ProtectionOp::CreateRepositoryDispatch), "Start repository_dispatch workflows with an event"),
             a("get_workspace_permissions", Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions), "A workspace's default and maximum token permissions"),
             a("set_workspace_permissions", Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions), "Set them, and whether jobs may open pull requests"),
@@ -617,6 +634,7 @@ fn destructive(op: Op) -> bool {
             | Op::DeleteTeam
             | Op::RemoveTeamRepo
             | Op::MergePullRequest
+            | Op::DeleteCommitComment
             | Op::RemoveRunner
             | Op::DeleteRunnerGroup
             | Op::UpdateRunnerSettings

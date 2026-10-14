@@ -1,5 +1,5 @@
-import { GitBranch } from "lucide-react";
-import { Form, redirect } from "react-router";
+import { Box, GitBranch, GitFork } from "lucide-react";
+import { Form, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/pull-new";
 import { page } from "../../lib/meta";
@@ -16,6 +16,8 @@ import {
   Textarea,
 } from "../../components/ui";
 import { Card } from "../../components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { accessFor } from "../../lib/access.server";
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 
@@ -23,34 +25,76 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New pull request · ${params.owner}/${params.repo} · g1t` });
 }
 
+/**
+ * `?head=` names where the change is: a branch of this repository
+ * (`branch`), or a branch of a fork of it (`namespace/name:branch`, or
+ * `namespace/name:` for its branches), as a fork's Contribute link asks.
+ */
+function parseHead(head: string): { repo: string | null; branch: string } {
+  const colon = head.indexOf(":");
+  if (colon < 0) return { repo: null, branch: head };
+  return { repo: head.slice(0, colon).toLowerCase() || null, branch: head.slice(colon + 1) };
+}
+
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const path = { namespace: params.owner, name: params.repo };
-  const [repo, branches, open] = await Promise.all([
+  const query = new URL(request.url).searchParams;
+  const head = parseHead(query.get("head") ?? "");
+  const [repo, branches, open, forks] = await Promise.all([
     repos.get(path, user),
     repos.branches(path, user),
     work.listPulls(path, user, "open"),
+    // Forks of it the viewer can push to: pull requests can come from their branches.
+    repos.forks(path, user, 100).then((found) => (found.ok ? found.value : [])).catch(() => []),
   ]);
   const { defaultBranch } = unwrap(repo);
   const all = unwrap(branches).filter((branch) => !branch.name.startsWith("g1t-queue/"));
-  const query = new URL(request.url).searchParams;
+  const theirs = forks.filter((fork) => accessFor(user, fork).can.push);
+  const self = `${params.owner}/${params.repo}`.toLowerCase();
+  // From a fork when one of theirs is asked for; this repository otherwise.
+  // One asked for by name is read itself, so an older fork, or a fork of a
+  // fork, is found too; opening the pull request checks it is one of this.
+  const listed = head.repo && head.repo !== self ? (theirs.find((f) => `${f.namespace}/${f.name}`.toLowerCase() === head.repo) ?? null) : null;
+  const [askedNamespace, askedName] = (head.repo ?? "").split("/");
+  const fork =
+    listed ??
+    (head.repo && head.repo !== self && askedNamespace && askedName
+      ? await repos
+          .get({ namespace: askedNamespace, name: askedName }, user)
+          .then((found) => (found.ok && found.value.parentId && accessFor(user, found.value).can.push ? found.value : null))
+          .catch(() => null)
+      : null);
+  if (fork && !theirs.some((f) => f.id === fork.id)) theirs.unshift(fork);
+  const headRepo = fork ? { namespace: fork.namespace, name: fork.name } : null;
+  const headBranches = headRepo
+    ? await repos.branches(headRepo, user).then((found) => (found.ok ? found.value : [])).catch(() => [])
+    : all;
   // Into the default branch unless another is asked for (Compare's base).
   const asked = query.get("base") ?? "";
   const base = all.some((branch) => branch.name === asked) ? asked : defaultBranch;
   const baseHead = all.find((branch) => branch.name === base)?.hash;
   // A branch that already has an open pull request into this base cannot
-  // have another.
-  const taken = new Set(open.ok ? open.value.filter((pull) => (pull.base ?? defaultBranch) === base).map((pull) => pull.branch) : []);
+  // have another: from the same repository, this one or the fork.
+  const key = (p: { namespace: string; name: string } | null | undefined) => (p ? `${p.namespace}/${p.name}`.toLowerCase() : "");
+  const taken = new Set(
+    open.ok
+      ? open.value.filter((pull) => (pull.base ?? defaultBranch) === base && key(pull.headRepo) === key(headRepo)).map((pull) => pull.branch)
+      : [],
+  );
   return {
     defaultBranch,
     base,
     bases: all.map((branch) => branch.name),
-    branches: all
+    branches: headBranches
+      .filter((branch) => !branch.name.startsWith("g1t-queue/"))
       // A branch at the same commit as the base has nothing to merge.
-      .filter((branch) => branch.name !== base && branch.hash !== baseHead)
+      .filter((branch) => (headRepo || branch.name !== base) && branch.hash !== baseHead)
       .map((branch) => branch.name)
       .filter((name) => !taken.has(name)),
-    selected: query.get("branch") ?? "",
+    headRepo,
+    forks: theirs.map((f) => ({ namespace: f.namespace, name: f.name })),
+    selected: query.get("branch") ?? head.branch,
     issue: query.get("issue") ?? "",
   };
 }
@@ -60,11 +104,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const issue = Number(form.get("issue"));
+  // From a fork: `namespace/name`; absent for a branch of this repository.
+  const [headNamespace, headName] = String(form.get("headRepo") ?? "").split("/");
   const result = await work.openPull(
     user,
     { namespace: params.owner, name: params.repo },
     {
       branch: String(form.get("branch") ?? ""),
+      headRepo: headNamespace && headName ? { namespace: headNamespace, name: headName } : undefined,
       title: String(form.get("title") ?? ""),
       body: String(form.get("body") ?? ""),
       issue: issue > 0 ? issue : undefined,
@@ -79,14 +126,48 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function NewPull({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { defaultBranch, base, bases, branches, selected, issue } = loaderData;
-  const remote = cloneUrl(useAddresses(), `${params.owner}/${params.repo}`);
+  const { defaultBranch, base, bases, branches, selected, issue, headRepo, forks } = loaderData;
+  const navigate = useNavigate();
+  const self = `${params.owner}/${params.repo}`;
+  const from = headRepo ? `${headRepo.namespace}/${headRepo.name}` : self;
+  const remote = cloneUrl(useAddresses(), from);
+  // Another repository's branches come with the page: choosing one loads them.
+  const choose = (repo: string) => {
+    const next = new URLSearchParams({ base });
+    if (repo !== self) next.set("head", `${repo}:`);
+    if (issue) next.set("issue", issue);
+    navigate(`?${next}`, { replace: true });
+  };
+  const picker =
+    forks.length > 0 ? (
+      <Select value={from} onValueChange={choose}>
+        <SelectTrigger aria-label="Repository the change is in" size="sm" className="w-auto max-w-full min-w-40 font-mono">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={self} icon={<Box />} className="font-mono">
+            {self}
+          </SelectItem>
+          {forks.map((fork) => (
+            <SelectItem key={`${fork.namespace}/${fork.name}`} value={`${fork.namespace}/${fork.name}`} icon={<GitFork />} className="font-mono">
+              {fork.namespace}/{fork.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    ) : null;
 
   if (branches.length === 0) {
     return (
       <div className="max-w-2xl">
+        {picker && (
+          <Card className="mb-4 flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
+            <span className="text-muted">From</span>
+            {picker}
+          </Card>
+        )}
         <EmptyState title="No branch to open a pull request from">
-          Push a branch to this repository, then come back.
+          {headRepo ? `Push a branch with your change to ${from}, then come back.` : "Push a branch to this repository, then come back."}
         </EmptyState>
         <div className="mt-4 space-y-2">
           <CopyLine prompt text="git switch -c my-change" />
@@ -105,7 +186,10 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
       <Card className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
         <GitBranch size={15} className="text-faint" />
         <span className="text-muted">Merge</span>
+        {picker}
+        {headRepo && <input type="hidden" name="headRepo" value={from} />}
         <Combobox
+          key={from}
           name="branch"
           defaultValue={branches.includes(selected) ? selected : branches[0]}
           aria-label="Branch to merge"

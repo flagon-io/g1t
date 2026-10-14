@@ -592,6 +592,10 @@ impl Registry {
         self.db
             .batch(vec![
                 self.db.prepare("DELETE FROM repos WHERE fork_of = ?1").bind(&[id.into()])?,
+                // Its forks stay, now forks of what it was a fork of.
+                self.db
+                    .prepare("UPDATE repos SET parent_id = (SELECT parent_id FROM repos WHERE id = ?1) WHERE parent_id = ?1")
+                    .bind(&[id.into()])?,
                 self.db.prepare("DELETE FROM repos WHERE id = ?1").bind(&[id.into()])?,
                 self.db
                     .prepare("DELETE FROM repo_redirects WHERE repo_id = ?1")
@@ -1278,6 +1282,15 @@ impl<S: GitStore> Repos<S> {
         if repo.is_private == private {
             return Ok(Outcome::Ok(repo));
         }
+        if repo.parent_id.is_some() {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                format!(
+                    "{}/{} is a fork, as visible as the repository it came from. Detach it from its fork network in its settings to change who can see it.",
+                    repo.namespace, repo.name
+                ),
+            ));
+        }
         let facts = if private {
             VisibilityFacts {
                 to_private: true,
@@ -1293,6 +1306,10 @@ impl<S: GitStore> Repos<S> {
             return Ok(fail(refusal));
         }
         self.registry.set_private(&repo.id, private).await?;
+        // Its forks keep who can see them, and leave its network.
+        for fork_id in self.registry.detach_forks_of(&repo.id).await? {
+            self.publish_detached(&fork_id, &repo.id).await?;
+        }
         let changed = Repo {
             is_private: private,
             ..repo
@@ -1852,6 +1869,11 @@ mod tests {
             owner_id: "usr_1".into(),
             default_branch: "main".into(),
             fork_of: None,
+            parent_id: None,
+            forked_from: None,
+            parent: None,
+            allow_forking: false,
+            max_ref_updates: None,
             protected: false,
             created_at: String::new(),
             topics: Vec::new(),

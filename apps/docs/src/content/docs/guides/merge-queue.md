@@ -139,8 +139,8 @@ to the queue: [its merge box](/guides/pull-requests/#conflicts) says which
 files conflict and how to resolve them first. One that is only behind `main`
 does not need to catch up to join the queue, since the queue tests it on
 top of `main`. Where the repository requires pull requests to be up to
-date, [catch it up](/guides/pull-requests/#catching-up) first: when it and
-`main` changed different files that takes a few seconds.
+date, [catch it up](/guides/pull-requests/#keeping-it-up-to-date) first: when it and
+`main` did not change the same lines, that takes a few seconds.
 
 ## When an entry fails
 

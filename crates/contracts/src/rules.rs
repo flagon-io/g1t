@@ -274,19 +274,36 @@ pub struct NoParameters {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MergeMethod {
-    /// The branch lands as it is, its commits included: how g1t merges.
+    /// A merge commit joins the branch to the base: every commit of the
+    /// branch lands, with one more on top whose parents are both.
     Merge,
+    /// One new commit on the base holds everything the branch changed.
     Squash,
+    /// Each commit of the branch is made again on top of the base, in
+    /// order, and the base moves to the last.
     Rebase,
+    /// The base moves to the branch's head, exactly the commit that was
+    /// checked: no new commit. Only possible when the branch contains the
+    /// base's head.
+    FastForward,
 }
 
 impl MergeMethod {
+    pub const ALL: [MergeMethod; 4] = [MergeMethod::Merge, MergeMethod::Squash, MergeMethod::Rebase, MergeMethod::FastForward];
+
     pub fn as_str(self) -> &'static str {
         match self {
             MergeMethod::Merge => "merge",
             MergeMethod::Squash => "squash",
             MergeMethod::Rebase => "rebase",
+            MergeMethod::FastForward => "fast_forward",
         }
+    }
+
+    /// Whether every commit that lands has one parent: what required
+    /// linear history asks of the base branch.
+    pub fn is_linear(self) -> bool {
+        !matches!(self, MergeMethod::Merge)
     }
 }
 

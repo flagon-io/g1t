@@ -218,8 +218,8 @@ pub trait GitRepo {
     /// `None` when the ref or path does not resolve to a file.
     async fn read_file(&self, git_ref: &str, path: &str) -> Result<Option<Vec<u8>>>;
     /// Makes a copy of this repository under `target_key`, in the same
-    /// namespace.
-    async fn fork(&self, target_key: &str) -> Result<()>;
+    /// namespace: its default branch only, or every branch and tag.
+    async fn fork(&self, target_key: &str, default_branch_only: bool) -> Result<()>;
     /// The version of the repository's refs (registry.rs `RefsState`),
     /// when answers about branches may be kept under it (R9). Reads by
     /// branch name are then kept until the version moves.
@@ -1318,7 +1318,7 @@ impl GitRepo for ArtifactsRepo {
         Ok(bytes)
     }
 
-    async fn fork(&self, target_key: &str) -> Result<()> {
+    async fn fork(&self, target_key: &str, default_branch_only: bool) -> Result<()> {
         let (namespace, name) = locate(target_key);
         if namespace != self.namespace {
             return Err(worker::Error::RustError(format!(
@@ -1326,7 +1326,7 @@ impl GitRepo for ArtifactsRepo {
                 self.namespace
             )));
         }
-        let options = js::to_js(&serde_json::json!({ "defaultBranchOnly": true }))?;
+        let options = js::to_js(&serde_json::json!({ "defaultBranchOnly": default_branch_only }))?;
         match self.call("fork", &[name.as_str().into(), options], false).await {
             Err(failed) if !failed.is("ALREADY_EXISTS") => Err(failed.into()),
             _ => Ok(()),

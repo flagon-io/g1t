@@ -992,6 +992,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Repositories.
     ("list_repos", Scope::RepoRead),
     ("get_repo", Scope::RepoRead),
+    ("list_forks", Scope::RepoRead),
+    // Comments on commits are read with the repository, and written as
+    // comments on issues are.
+    ("list_repo_commit_comments", Scope::RepoRead),
+    ("list_commit_comments", Scope::RepoRead),
     // A repository's files, as clone and fetch need.
     // A file or directory of a repository, as clone and fetch would give it.
     ("get_contents", Scope::CodeRead),
@@ -1052,6 +1057,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("delete_branch", Scope::RepoWrite),
     ("rename_repo", Scope::RepoAdmin),
     ("transfer_repo", Scope::RepoAdmin),
+    // Forking makes a repository, as create_repo does; syncing moves a
+    // fork's branch; detaching changes what the fork is.
+    ("fork_repo", Scope::RepoWrite),
+    ("sync_fork", Scope::RepoWrite),
+    ("detach_fork", Scope::RepoAdmin),
     ("archive_repo", Scope::RepoAdmin),
     ("unarchive_repo", Scope::RepoAdmin),
     ("set_repo_visibility", Scope::RepoAdmin),
@@ -1115,6 +1125,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("add_comment", Scope::IssuesWrite),
     ("edit_comment", Scope::IssuesWrite),
     ("delete_comment", Scope::IssuesWrite),
+    ("create_commit_comment", Scope::IssuesWrite),
+    ("update_commit_comment", Scope::IssuesWrite),
+    ("delete_commit_comment", Scope::IssuesWrite),
     // Looking up a ticket the work refers to, through the workspace's
     // integrations, and bringing one in as an issue.
     ("get_context", Scope::IssuesRead),
@@ -1131,6 +1144,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_pull_request_changes", Scope::PullRequestsRead),
     ("read_session", Scope::PullRequestsRead),
     ("get_merge_queue", Scope::PullRequestsRead),
+    ("get_pull_request_merge_options", Scope::PullRequestsRead),
     ("list_decisions", Scope::PullRequestsRead),
     ("create_pull_request", Scope::PullRequestsWrite),
     ("update_pull_request", Scope::PullRequestsWrite),
@@ -1142,6 +1156,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("convert_pull_request_to_draft", Scope::PullRequestsWrite),
     ("review_pull_request", Scope::PullRequestsWrite),
     ("merge_pull_request", Scope::PullRequestsWrite),
+    ("update_pull_request_branch", Scope::PullRequestsWrite),
+    ("enable_pull_request_auto_merge", Scope::PullRequestsWrite),
+    ("disable_pull_request_auto_merge", Scope::PullRequestsWrite),
+    ("delete_pull_request_head_branch", Scope::PullRequestsWrite),
+    ("restore_pull_request_head_branch", Scope::PullRequestsWrite),
     ("request_reviewers", Scope::PullRequestsWrite),
     ("remove_requested_reviewers", Scope::PullRequestsWrite),
     // Harness sessions, which record how pull requests are made.
@@ -1225,11 +1244,13 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_workflow_permissions", Scope::RepoRead),
     ("get_fork_pr_approval", Scope::RepoRead),
     ("get_actions_access", Scope::RepoRead),
+    ("get_actions_permissions", Scope::RepoRead),
     ("update_environment", Scope::RepoAdmin),
     ("delete_environment", Scope::RepoAdmin),
     ("set_workflow_permissions", Scope::RepoAdmin),
     ("set_fork_pr_approval", Scope::RepoAdmin),
     ("set_actions_access", Scope::RepoAdmin),
+    ("set_actions_permissions", Scope::RepoAdmin),
     // Starting workflows from outside, as a push would.
     ("create_repository_dispatch", Scope::CodeWrite),
     // A workspace's policy for its repositories' tokens.
@@ -1364,7 +1385,7 @@ pub fn extra_scopes(operation: &str, input: &serde_json::Value) -> Vec<Scope> {
     {
         extra.push(Scope::WorkflowsWrite);
     }
-    if operation == "update_repo" && (input.get("private").is_some_and(|v| !v.is_null()) || input.get("default_branch").is_some_and(|v| !v.is_null())) {
+    if operation == "update_repo" && ["private", "default_branch", "allow_forking", "max_ref_updates"].iter().any(|key| input.get(*key).is_some_and(|v| !v.is_null())) {
         extra.push(Scope::RepoAdmin);
     }
     extra
@@ -1407,6 +1428,27 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
             }
         }
     }
+    // Making a repository (forking makes one) needs a token that reaches
+    // every repository of the workspace it goes in, ones made later
+    // included: a token for chosen repositories would otherwise make one
+    // outside its choice and then administer it.
+    if let Some(reach) = &access.reach
+        && matches!(operation, "fork_repo" | "create_repo")
+    {
+        let destination = input["workspace"].as_str().map(str::trim).filter(|slug| !slug.is_empty());
+        let elsewhere = match (&reach.workspace, destination) {
+            (Some(workspace), Some(destination)) => !workspace.eq_ignore_ascii_case(destination),
+            // Its owner's own workspace, which a workspace's token is not.
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+        if reach.repositories != RepositorySelection::All || elsewhere {
+            return Decision::deny(
+                "token:resource-owner",
+                "This access token cannot create repositories there: that needs a token that reaches every repository of the workspace it goes in.",
+            );
+        }
+    }
     // A token made for one workspace (or none) only reads outside it:
     // public repositories, as anyone may. Inside it, its repository
     // selection is checked with its owner's role (`access::granted`).
@@ -1415,7 +1457,8 @@ pub fn decide(access: &TokenAccess, operation: &str, input: &serde_json::Value) 
         && !NO_SCOPE.contains(&operation)
     {
         let namespace = repo.split('/').next().unwrap_or_default();
-        let changes = needed(operation, input).iter().any(|scope| scope.level() != Level::Read);
+        // Forking only reads its source; where the fork goes is judged above.
+        let changes = operation != "fork_repo" && needed(operation, input).iter().any(|scope| scope.level() != Level::Read);
         if changes && !reach.owned_by(namespace) {
             let made_for = reach.workspace.as_deref().map_or_else(|| "your account only".to_owned(), |workspace| format!("the workspace {workspace}"));
             return Decision::deny(
@@ -1758,6 +1801,30 @@ mod tests {
         assert!(!public.covers("rep_1", "acme") && public.owned_by("acme"));
         assert!(token(&[]).covers_repo("rep_1", "anything"), "a token for every workspace reaches what its owner can");
         assert_eq!(RepositorySelection::parse("public_only"), Some(RepositorySelection::Public));
+    }
+
+    #[test]
+    fn only_a_token_for_all_of_a_workspace_makes_repositories_there() {
+        let all = TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::All, repo_ids: Vec::new() };
+        let writes = |reach: TokenReach| TokenAccess { reach: Some(reach), ..token(&[Scope::RepoRead, Scope::RepoWrite]) };
+        let fork = |workspace: Option<&str>| json!({ "repo": "acme/lib", "workspace": workspace });
+        assert!(decide(&writes(all.clone()), "fork_repo", &fork(Some("acme"))).allowed);
+        assert!(decide(&writes(all.clone()), "create_repo", &json!({ "workspace": "Acme" })).allowed);
+        // Its chosen repositories, or public ones only: never a new one.
+        let selected = TokenReach { repositories: RepositorySelection::Selected, repo_ids: vec!["rep_1".into()], ..all.clone() };
+        let refused = decide(&writes(selected), "fork_repo", &fork(Some("acme")));
+        assert_eq!(refused.rule, "token:resource-owner");
+        assert!(refused.reason.unwrap().contains("every repository"));
+        let public = TokenReach { repositories: RepositorySelection::Public, ..all.clone() };
+        assert!(!decide(&writes(public), "create_repo", &json!({ "workspace": "acme" })).allowed);
+        // Another workspace, or its maker's own, which is not the token's.
+        assert!(!decide(&writes(all.clone()), "fork_repo", &fork(Some("globex"))).allowed);
+        assert!(!decide(&writes(all), "fork_repo", &fork(None)).allowed);
+        // A token for its owner's account forks into their own workspace.
+        assert!(decide(&writes(TokenReach::default()), "fork_repo", &fork(None)).allowed);
+        // Forking only reads its source, wherever that is.
+        let elsewhere = json!({ "repo": "globex/site", "workspace": "acme" });
+        assert!(decide(&writes(TokenReach { workspace: Some("acme".into()), ..TokenReach::default() }), "fork_repo", &elsewhere).allowed);
     }
 
     #[test]

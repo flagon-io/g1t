@@ -44,6 +44,7 @@ import type {
 } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
+import { METHOD_INFO } from "../lib/merge";
 import {
   ALL,
   DEFAULT_BRANCH,
@@ -366,7 +367,7 @@ function Parameters({
   switch (entry.type) {
     case "pull_request": {
       const p = entry.parameters;
-      const methods: MergeMethod[] = ["merge", "squash", "rebase"];
+      const methods: MergeMethod[] = ["merge", "squash", "rebase", "fast_forward"];
       return (
         <div className="divide-y divide-line">
           <NumberField label="Required approvals" min={0} max={10} value={p.required_approvals} disabled={disabled} onChange={(value) => set({ ...p, required_approvals: value })} />
@@ -385,12 +386,12 @@ function Parameters({
           )}
           <div className="py-2">
             <p className="text-sm text-fg">Allowed merge methods</p>
-            <p className="mt-0.5 text-xs text-muted">None ticked allows every one. g1t merges by landing the branch as it is (merge).</p>
+            <p className="mt-0.5 text-xs text-muted">None ticked allows every one the repository's settings allow.</p>
             <div className="mt-2 flex flex-wrap gap-4">
               {methods.map((method) => (
                 <CheckboxOption
                   key={method}
-                  label={method[0]!.toUpperCase() + method.slice(1)}
+                  label={METHOD_INFO[method].short}
                   checked={p.allowed_merge_methods.includes(method)}
                   disabled={disabled}
                   onCheckedChange={(checked) =>

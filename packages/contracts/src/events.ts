@@ -98,8 +98,12 @@ export type TeamChangedData = {
 };
 
 export type EventPayloads = {
-  "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean };
-  "repo.forked": { repoId: string; sourceRepoId: string; pullId: string };
+  /** `parentId`: the repository it was forked from, when it is a fork. */
+  "repo.created": { repoId: string; namespace: string; name: string; isPrivate: boolean; parentId?: string };
+  /** A repository was forked: into a workspace, or for a pull request (`pullId`). */
+  "repo.forked": { repoId: string; sourceRepoId: string; pullId?: string };
+  /** A fork left its fork network: detached, or its parent changed who can see it. */
+  "repo.detached": { repoId: string; parentId: string };
   /**
    * A repository's description, topics or visibility changed.
    * `visibilityChanged` says whether it went public or private, which

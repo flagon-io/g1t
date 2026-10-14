@@ -144,6 +144,15 @@ pub struct UsernameArgs {
     pub username: String,
 }
 
+/// `user_by_id`: a person as they are now, with their workspaces and roles,
+/// for a service acting later on what they asked (auto-merge), which must
+/// hold them to what they may do then. For services only. Returns
+/// `Viewer`: none for a deleted or unknown account.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserIdArgs {
+    pub id: String,
+}
+
 /// `usernames`: the names behind account and workspace ids, as events and
 /// other records store them. Returns a map from id to name; ids it does
 /// not know are left out. Also `accounts`: the accounts behind user ids,

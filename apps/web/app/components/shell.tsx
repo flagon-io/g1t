@@ -766,6 +766,8 @@ type MenuRepo = {
   can?: Abilities;
   issues?: number;
   pulls?: number;
+  /** False when issues cannot be opened in it (a fork's default): Issues leaves the menu. */
+  issuesOn?: boolean;
 };
 
 function sameRepo(a: { namespace: string; name: string } | null, b: { namespace: string; name: string } | null) {
@@ -824,7 +826,7 @@ function RepoMenu({
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
-        {shows.has("issues") && (
+        {shows.has("issues") && repo.issuesOn !== false && (
           <SidebarLink to={`${base}/issues`} also={[`${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
             Issues
           </SidebarLink>
@@ -1075,11 +1077,11 @@ function CodeSidebar({
     : null;
   // The viewer's role there, from the repository's page once it has loaded.
   const page = useRouteLoaderData("routes/repo/layout") as
-    | { repo?: { namespace: string; name: string }; access?: ViewerAccess }
+    | { repo?: { namespace: string; name: string }; access?: ViewerAccess; issues?: boolean }
     | undefined;
   const menuRepo: MenuRepo | null =
     guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
-      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
+      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can, issuesOn: page.issues }
       : guessed;
 
   // The way from Code's list (or Explore's, browsing) to the one shown.

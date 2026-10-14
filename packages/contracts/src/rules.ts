@@ -24,7 +24,12 @@ export type Level = "repository" | "workspace";
 export type AppliesTo = "everyone" | "agents" | "people";
 export type BypassActorKind = "role" | "team" | "user" | "token" | "g1t";
 export type BypassMode = "always" | "pull_requests";
-export type MergeMethod = "merge" | "squash" | "rebase";
+/**
+ * How a pull request merges: a merge commit, one squashed commit, its
+ * commits made again on the base, or the base moved to its head exactly
+ * (no new commit; only when it contains the base's head).
+ */
+export type MergeMethod = "merge" | "squash" | "rebase" | "fast_forward";
 export type Integration = "actions" | "deployments" | "security" | "g1t" | "api";
 export type PatternOperator = "starts_with" | "ends_with" | "contains" | "regex";
 

@@ -134,6 +134,14 @@ pub struct PullRow {
     pub fork_namespace: Option<String>,
     pub fork_name: Option<String>,
     pub source_branch: Option<String>,
+    /// The fork whose branch it is, for one opened from a fork
+    /// (migrations/0041_pull_head_repo.sql).
+    #[serde(default)]
+    pub head_repo_id: Option<String>,
+    #[serde(default)]
+    pub head_namespace: Option<String>,
+    #[serde(default)]
+    pub head_name: Option<String>,
     pub head_commit: Option<String>,
     pub merge_base: Option<String>,
     pub merged_by: Option<String>,
@@ -170,6 +178,19 @@ pub struct PullRow {
     pub head_pushed_by: Option<String>,
     #[serde(default)]
     pub head_pushed_at: Option<String>,
+    /// How it merged and what its merge left the base at; its auto-merge
+    /// (JSON), the issues it closes (JSON array) and whether its branch was
+    /// deleted (migrations/0042_merge_settings.sql).
+    #[serde(default)]
+    pub merge_method: Option<String>,
+    #[serde(default)]
+    pub merge_commit: Option<String>,
+    #[serde(default)]
+    pub auto_merge: Option<String>,
+    #[serde(default)]
+    pub closes: Option<String>,
+    #[serde(default)]
+    pub head_branch_deleted: Option<u8>,
 }
 
 impl From<PullRow> for Pull {
@@ -190,6 +211,11 @@ impl From<PullRow> for Pull {
                 .map(|(namespace, name)| RepoPath { namespace, name }),
             fork_repo_id: row.fork_repo_id,
             branch: row.source_branch,
+            head_repo: row
+                .head_namespace
+                .zip(row.head_name)
+                .map(|(namespace, name)| RepoPath { namespace, name }),
+            head_repo_id: row.head_repo_id,
             head_commit: row.head_commit,
             merge_base: row.merge_base,
             merged_by: row.merged_by,
@@ -221,6 +247,13 @@ impl From<PullRow> for Pull {
             base: row.base_branch,
             head_pushed_by: row.head_pushed_by,
             head_pushed_at: row.head_pushed_at,
+            merge_method: row
+                .merge_method
+                .and_then(|name| serde_json::from_value(serde_json::Value::String(name)).ok()),
+            merge_commit: row.merge_commit,
+            auto_merge: row.auto_merge.as_deref().and_then(|json| serde_json::from_str(json).ok()),
+            closes: row.closes.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(),
+            head_branch_deleted: row.head_branch_deleted.is_some_and(|deleted| deleted != 0),
         }
     }
 }

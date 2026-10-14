@@ -791,7 +791,22 @@ impl Work {
         ignore_checks: bool,
         honor_bypass: bool,
     ) -> Result<Gate> {
-        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None).await
+        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None, None).await
+    }
+
+    /// `merge_gate` for a merge by `method`: rules that allow only some
+    /// methods, and linear history, judge it too. Without a method they do
+    /// not, as for showing what a pull request still needs.
+    pub(crate) async fn merge_gate_by(
+        &self,
+        repo: &Repo,
+        pull: &Pull,
+        actor: Option<&User>,
+        ignore_checks: bool,
+        honor_bypass: bool,
+        method: MergeMethod,
+    ) -> Result<Gate> {
+        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None, Some(method)).await
     }
 
     /// Re-evaluate current reviews and rules against the exact combined state.
@@ -810,7 +825,9 @@ impl Work {
         bypass_rules: bool,
         statuses: Vec<g1t_contracts::work::CommitStatus>,
     ) -> Result<Gate> {
-        let gate = self.merge_gate_at(repo, pull, Some(actor), false, true, Some((commit, statuses))).await?;
+        // The tested state lands as it was built, which the queue rule's
+        // method does not change (queue.rs): no method is judged.
+        let gate = self.merge_gate_at(repo, pull, Some(actor), false, true, Some((commit, statuses)), None).await?;
         Ok(if landing_honors_bypass(actor, bypass_rules) { gate } else { gate.without_bypass() })
     }
 
@@ -822,6 +839,7 @@ impl Work {
         ignore_checks: bool,
         honor_bypass: bool,
         tested: Option<(&str, Vec<g1t_contracts::work::CommitStatus>)>,
+        method: Option<MergeMethod>,
     ) -> Result<Gate> {
         let tested_commit = tested.as_ref().map(|(commit, _)| *commit);
         let tested_statuses = tested.as_ref().map(|(_, statuses)| statuses.clone());
@@ -861,7 +879,7 @@ impl Work {
             async {
                 // The repository service verifies ancestry and CAS for the
                 // combined commit; the original PR may legitimately be behind.
-                if tested_commit.is_some() { Ok(false) } else { self.is_behind(&repo.id, pull).await }
+                if tested_commit.is_some() { Ok(false) } else { self.is_behind(pull).await }
             },
             async {
                 if needs_owners { self.code_owners_gap(&owners_settings, pull).await } else { Ok(None) }
@@ -900,7 +918,7 @@ impl Work {
             files: &files,
             commits: commits.as_ref(),
             now_ms: now_ms(),
-            method: Some(MergeMethod::Merge),
+            method,
             team_members: Some(&team_members),
             ignore_checks,
         };
@@ -942,7 +960,7 @@ impl Work {
             &self.repos,
             "inspect_commits",
             &InspectCommitsArgs {
-                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                source_id: pull.source_id().to_owned(),
                 head,
                 target_id: repo.id.clone(),
                 base_branch: base.to_owned(),
@@ -982,13 +1000,19 @@ impl Work {
     /// The settings that hold for a pull request: the repository's, with
     /// branch protection as the rules for the branch it merges into stack.
     pub(crate) async fn settings_on(&self, repo: &Repo, pull: &Pull) -> Result<RepoSettings> {
+        Ok(self.settings_and_requirements(repo, pull).await?.0)
+    }
+
+    /// `settings_on`, with what the rules for the branch it merges into
+    /// ask, for anyone: which merge methods they allow, among the rest.
+    pub(crate) async fn settings_and_requirements(&self, repo: &Repo, pull: &Pull) -> Result<(RepoSettings, Requirements)> {
         let (stored, rulesets) = futures_util::future::try_join(self.settings(&repo.id), self.rulesets_for(repo)).await?;
         let base = pull.base_branch(&repo.default_branch);
         let git_ref = Target::Branch.full_ref(base);
         let applicable = select::applicable(&rulesets, RepoFacts::from(repo), std::slice::from_ref(&git_ref), None, &repo.namespace);
         let files: Vec<String> = pull.files.iter().map(|file| file.path.clone()).collect();
         let requirements = g1t_rules::merge::requirements(&applicable, &git_ref, &repo.default_branch, agent_change(pull), &files);
-        Ok(overlay(stored, &requirements, base == repo.default_branch))
+        Ok((overlay(stored, &requirements, base == repo.default_branch), requirements))
     }
 
     /// The repository a pull request merges into: as read earlier in this
@@ -1015,7 +1039,9 @@ impl Work {
     /// The settings that hold for the default branch.
     pub(crate) async fn default_branch_settings(&self, repo: &Repo) -> Result<RepoSettings> {
         let (stored, requirements) = futures_util::future::try_join(self.settings(&repo.id), self.default_requirements(repo)).await?;
-        Ok(overlay(stored, &requirements, true))
+        let mut settings = overlay(stored, &requirements, true);
+        settings.issues_enabled = settings.issues_on(repo.forked_from.is_some());
+        Ok(settings)
     }
 
     /// What the active rules ask of the default branch, for anyone.

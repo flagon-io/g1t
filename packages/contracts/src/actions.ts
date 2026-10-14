@@ -283,6 +283,15 @@ export type ActionsSettings = {
    * (`organization`). A public repository's are anyone's.
    */
   accessLevel: ActionsAccessLevel;
+  /**
+   * Whether the repository's workflows run at all. Unchosen, on for a
+   * repository and off for a fork (`parentId` set), so a fork starts no
+   * workflows until someone turns them on. While off, no run starts from any
+   * event, schedule or dispatch.
+   */
+  enabled: boolean;
+  /** Whether the repository chose `enabled`. */
+  enabledChosen: boolean;
 };
 
 /** Settings, Actions, Access. */
@@ -295,6 +304,8 @@ export type ActionsSettingsChange = {
   approvalPolicy?: ApprovalPolicy;
   canApprovePullRequests?: boolean;
   accessLevel?: ActionsAccessLevel;
+  /** Turns the repository's workflows on or off. */
+  enabled?: boolean;
 };
 
 /** A workspace's policy for its repositories' job tokens. */

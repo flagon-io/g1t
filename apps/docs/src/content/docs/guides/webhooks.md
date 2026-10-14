@@ -67,7 +67,9 @@ With these headers:
 | Event | When |
 | --- | --- |
 | `git.push` | A branch moved. `data.ref`, `data.after`, `data.default_branch`, and `data.commits` (how many commits the push brought to the branch, at most 50; absent for a tag, a deleted branch or a merge). A push of more than 3 tags, or more than 1,000 branches, sends fewer; see [pushes of many branches or tags](/guides/git/#pushes-of-many-branches-or-tags). |
-| `repo.created`, `repo.forked` | A repository was made, or forked for a pull request. |
+| `repo.created` | A repository was made. A [fork](/concepts/forks/) has `data.parent_id`, the repository it was forked from. |
+| `repo.forked` | Someone forked this repository, or a pull request's working copy was made of it. `data.repo_id` is the new repository, `data.source_repo_id` this one, and `data.pull_id` the pull request, for a working copy only. |
+| `repo.detached` | A fork left its parent: an admin detached it, or its parent was made public or private. `data.repo_id` and `data.parent_id`. Its workflows stay off unless someone had turned them on. |
 | `repo.updated` | Its description, website, topics, protection or visibility changed. |
 | `repo.visibility_changed` | It was made public or private. |
 | `repo.renamed` | It was given a new name. Its old address redirects. |
@@ -89,7 +91,10 @@ With these headers:
 | `comment.created` | A comment or review on an issue or pull request. |
 | `comment.edited` | A comment's text was [edited](/guides/pull-requests/#editing-and-deleting-comments). `data.comment_id`, `data.number`, `data.pull_id` on a pull request, and `data.changes.body.from`, what it said before. |
 | `comment.deleted` | A comment was [deleted](/guides/pull-requests/#editing-and-deleting-comments). `data.comment_id`, `data.number`, `data.pull_id` on a pull request, and `data.comment` as it was: `id`, `body`, `author` (`id` and `username`), `created_at`, `path` and `line`. |
+| `commit_comment.created`, `commit_comment.edited`, `commit_comment.deleted` | A [comment on a commit](/guides/pull-requests/#commit-comments) was made, edited or deleted. `data.comment_id`, `data.commit` and `data.comment` (`id`, `commit`, `path`, `line`, `author`, `body`, `created_at`, `updated_at`); on edit, `data.changes.body.from`, what it said before. |
 | `pull.opened`, `pull.ready`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` | A pull request changed. `data.number`, `data.issue` and `data.author` (`id` and `username`); on merge, `data.commit`. `actor` is whoever caused the event. |
+| `pull.auto_merge_enabled`, `pull.auto_merge_disabled` | [Auto-merge](/guides/pull-requests/#auto-merge) was turned on for a pull request, or off: by a person, or by g1t when it merged, closed or someone else pushed. `data.number`; on enable, `data.detail` is the merge method; on disable, `data.detail` says why g1t turned it off, and `data.auto_merge_by` names who had turned it on. |
+| `pull.head_branch_deleted`, `pull.head_branch_restored` | A merged or closed pull request's [branch](/guides/pull-requests/#deleting-the-branch) was deleted, on merge or by hand, or made again. `data.number` and `data.detail`, the branch. |
 | `pull.reopened`, `pull.converted_to_draft` | A closed pull request was [reopened](/guides/pull-requests/#reopen-a-pull-request), or one ready for review was [turned back into a draft](/guides/pull-requests/#convert-to-a-draft). The same data as `pull.closed`; on reopen, `data.commit` is its head. |
 | `pull.assigned` | People were assigned to a pull request. `data.assignees` is everyone assigned now, `data.added` those newly assigned. |
 | `pull.review_requested`, `pull.review_request_removed` | Reviewers were asked for a pull request, or no longer are. `data.reviewers` names the people. `data.teams` lists the [teams](/guides/teams/#review-requests) asked, or no longer asked, each with `team` (`workspace/team`), `notified` (who in it was told) and `assigned` (who review assignment picked). `data.code_owners` is `true` when its [CODEOWNERS file](/guides/codeowners/) asked them. |

@@ -7,7 +7,8 @@ import { DEFAULT_MEMBER_PRIVILEGES, RESTORE_DAYS, type Result, needs } from "@g1
 import { DangerAction, DangerZone } from "../../components/danger-zone";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { SettingsSection as Section } from "../../components/settings-section";
+import { SettingsSection as Section, SettingToggle } from "../../components/settings-section";
+import { SwitchCard } from "../../components/ui/switch";
 import type { Route } from "./+types/settings-repository";
 import { page } from "../../lib/meta";
 import { confirmsName, tidyName } from "../../lib/repo-lifecycle";
@@ -23,10 +24,11 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { FieldLabel, Field as FormField } from "../../components/ui/field";
 import { Input as TextInput } from "../../components/ui/input";
-import { actions, repos } from "../../lib/services.server";
+import { actions, repos, work } from "../../lib/services.server";
 import {
   assertSameOrigin,
   getViewer,
@@ -43,7 +45,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Maintain and up; to anyone without a role here the page does not exist.
   const { repo, access } = await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
-  const [branches, retention] = await Promise.all([repos.branches(path, viewer), actions.artifactRetention(path, viewer)]);
+  const [branches, retention, settings] = await Promise.all([
+    repos.branches(path, viewer),
+    actions.artifactRetention(path, viewer),
+    work.getSettings(path, viewer).catch(() => null),
+  ]);
   // Renaming, archiving and the default branch are for Admins; visibility,
   // moving and deleting, for owners of the workspace unless its member
   // privileges let its members with Admin do them.
@@ -69,6 +75,16 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     destinations,
     // How long workflow runs' artifacts are kept.
     retention: retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
+    // Whether issues can be opened in it; null when that could not be read.
+    issues: settings?.ok ? { on: settings.value.issuesEnabled ?? true, chosen: settings.value.hasIssues != null } : null,
+    // How commits and issues are handled; null when that could not be read.
+    pullSettings: settings?.ok
+      ? {
+          autoCloseIssues: settings.value.autoCloseIssues,
+          requireWebCommitSignOff: settings.value.requireWebCommitSignOff,
+          allowCommitComments: settings.value.allowCommitComments,
+        }
+      : null,
   };
 }
 
@@ -91,7 +107,7 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
   // What each form needs: the details are settings, renaming a branch other
   // than the default is pushing, transfer and delete are for owners.
   const capability =
-    intent === "details" || intent === "artifacts"
+    intent === "details" || intent === "artifacts" || intent === "features" || intent === "commits"
       ? "manage_settings"
       : intent === "rename-branch"
         ? "push"
@@ -118,6 +134,44 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
     }
     case "archive":
       return outcome(intent, await repos.archive(user, path, text("archived") === "true"));
+    case "features": {
+      // The other settings are sent back as they are: only issues change here.
+      const current = await work.getSettings(path, user);
+      if (!current.ok) return outcome(intent, current);
+      return outcome(
+        intent,
+        await work.updateSettings(user, path, {
+          ...current.value,
+          hasIssues: form.get("hasIssues") === "on",
+          autoCloseIssues: form.get("autoCloseIssues") === "on",
+        }),
+      );
+    }
+    case "commits": {
+      // The other settings are sent back as they are.
+      const current = await work.getSettings(path, user);
+      if (!current.ok) return outcome(intent, current);
+      return outcome(
+        intent,
+        await work.updateSettings(user, path, {
+          ...current.value,
+          requireWebCommitSignOff: form.get("requireWebCommitSignOff") === "on",
+          allowCommitComments: form.get("allowCommitComments") === "on",
+        }),
+      );
+    }
+    case "pushes": {
+      // Off is 0: no limit.
+      const limit = form.get("limitRefUpdates") === "on" ? Math.trunc(Number(text("maxRefUpdates"))) : 0;
+      if (!Number.isFinite(limit) || limit < 0 || limit > 1000 || (form.get("limitRefUpdates") === "on" && limit < 1)) {
+        return { intent, saved: false, error: "Enter a number of branches and tags from 1 to 1000." };
+      }
+      return outcome(intent, await repos.update(user, path, { maxRefUpdates: limit }));
+    }
+    case "forking":
+      return outcome(intent, await repos.update(user, path, { allowForking: form.get("allowForking") === "on" }));
+    case "detach":
+      return outcome(intent, await repos.detachFork(user, path));
     case "artifacts":
       return outcome(intent, await actions.artifactRetention(path, user, Number(text("days"))));
     case "transfer": {
@@ -155,7 +209,7 @@ function Status({ intent, data: result, saved = "Saved." }: { intent: string; da
 }
 
 export default function RepoSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, branches, owner, remove, visibility, destinations, retention } = loaderData;
+  const { repo, branches, owner, remove, visibility, destinations, retention, issues, pullSettings } = loaderData;
   const navigation = useNavigation();
   const posting = (intent: string) => navigation.state !== "idle" && navigation.formData?.get("intent") === intent;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -220,11 +274,110 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
             <span className="min-w-0 grow">
               <span className="block text-sm font-medium">Branches and merging</span>
               <span className="mt-0.5 block text-sm text-muted">
-                Protection for {repo.defaultBranch}, required approvals and the merge queue.
+                Merge methods and commit messages, auto-merge, deleting branches after merging, and the rules for{" "}
+                {repo.defaultBranch}.
               </span>
             </span>
             <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
           </Link>
+        </Section>
+
+        {issues && (
+          <Section title="Features" about="What the repository has besides its code.">
+            <Form method="post" key={`${issues.on}|${pullSettings?.autoCloseIssues}`} className="space-y-3">
+              <fieldset disabled={archived} className="min-w-0 space-y-3">
+                <input type="hidden" name="intent" value="features" />
+                <SettingToggle name="hasIssues" on={issues.on} title="Issues" disabled={archived}>
+                  Track bugs, ideas and work to do in it. Turned off, no new issue can be opened and Issues leaves its
+                  menus; issues already opened stay readable at their addresses.
+                  {repo.forkedFrom && !issues.chosen && " Off by default, as it was made as a fork."}
+                </SettingToggle>
+                {pullSettings && (
+                  <SettingToggle
+                    name="autoCloseIssues"
+                    on={pullSettings.autoCloseIssues}
+                    title="Auto-close issues with merged linked pull requests"
+                    disabled={archived}
+                  >
+                    When a pull request merges into {repo.defaultBranch}, the issues it is for or names after a closing
+                    keyword (<span className="font-mono text-xs">Fixes #12</span>,{" "}
+                    <span className="font-mono text-xs">Closes #12</span>) close, naming it. Off, they stay open to be
+                    closed by hand.
+                  </SettingToggle>
+                )}
+                <div className="flex flex-wrap items-center gap-4 pt-1">
+                  <SubmitButton variant="outline" match={{ intent: "features" }} pending="Saving…">
+                    Save
+                  </SubmitButton>
+                  <Status intent="features" data={actionData} />
+                </div>
+              </fieldset>
+            </Form>
+          </Section>
+        )}
+
+        {pullSettings && (
+          <Section id="commits" title="Commits" about="Commits made on g1t, and talking about commits.">
+            <Form method="post" key={`${pullSettings.requireWebCommitSignOff}|${pullSettings.allowCommitComments}`} className="space-y-3">
+              <fieldset disabled={archived} className="min-w-0 space-y-3">
+                <input type="hidden" name="intent" value="commits" />
+                <SettingToggle
+                  name="requireWebCommitSignOff"
+                  on={pullSettings.requireWebCommitSignOff}
+                  title="Require contributors to sign off on web-based commits"
+                  disabled={archived}
+                >
+                  Every commit made on g1t.sh, from editing a file to merging a pull request, carries a{" "}
+                  <span className="font-mono text-xs">Signed-off-by:</span> line for whoever made it: their statement
+                  that they may contribute it under the project's license, as the{" "}
+                  <a
+                    href="https://developercertificate.org/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-fg underline underline-offset-2 hover:text-accent"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    Developer Certificate of Origin
+                  </a>{" "}
+                  asks.
+                </SettingToggle>
+                <SettingToggle
+                  name="allowCommitComments"
+                  on={pullSettings.allowCommitComments}
+                  title="Allow comments on individual commits"
+                  disabled={archived}
+                >
+                  Anyone who can read it may comment on a commit, or on one line of a file a commit changed, from the
+                  commit's page. Off, comments already made stay readable and no new ones can be added.
+                </SettingToggle>
+                <div className="flex flex-wrap items-center gap-4 pt-1">
+                  <SubmitButton variant="outline" match={{ intent: "commits" }} pending="Saving…">
+                    Save
+                  </SubmitButton>
+                  <Status intent="commits" data={actionData} />
+                </div>
+              </fieldset>
+            </Form>
+          </Section>
+        )}
+
+        <Section id="pushes" title="Pushes" about="What a single push may change.">
+          <PushLimitForm limit={repo.maxRefUpdates ?? 0} disabled={archived || !owner} owner={owner} result={actionData} />
+        </Section>
+
+        <Section id="archives" title="Archives" about="What the .zip and .tar.gz downloads of its code hold.">
+          {/* Large file storage is not built yet: shown so the choice has its place. */}
+          <SwitchCard
+            name="includeLfsInArchives"
+            defaultChecked={false}
+            disabled
+            title="Include Git LFS objects in archives"
+          >
+            <Badge tone="neutral" size="sm" className="mr-1.5 align-middle">
+              Coming soon
+            </Badge>
+            Archives would hold the files Git LFS stores, not only their pointers. g1t does not store Git LFS files yet.
+          </SwitchCard>
         </Section>
 
         <Section title="Artifacts" about="How long the files workflow runs upload are kept.">
@@ -253,10 +406,31 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           </Form>
         </Section>
 
+        {repo.isPrivate && (
+          <Section id="forking" title="Forking" about="Whether people who can read it may copy it into their own workspaces.">
+            <Form method="post" key={String(Boolean(repo.allowForking))} className="space-y-3">
+              <fieldset disabled={!owner || archived} className="min-w-0 space-y-3">
+                <input type="hidden" name="intent" value="forking" />
+                <SettingToggle name="allowForking" on={Boolean(repo.allowForking)} title="Allow forking" disabled={!owner || archived}>
+                  People who can read it may fork it into their own workspaces. Forks stay private.
+                </SettingToggle>
+                <div className="flex flex-wrap items-center gap-4 pt-1">
+                  <SubmitButton variant="outline" match={{ intent: "forking" }} pending="Saving…">
+                    Save
+                  </SubmitButton>
+                  <Status intent="forking" data={actionData} />
+                  {!owner && <span className="text-xs text-faint">{needs("administer")}</span>}
+                </div>
+              </fieldset>
+            </Form>
+          </Section>
+        )}
+
         {owner ? (
           <div id="danger-zone" className="scroll-mt-20 border-t border-line pt-8">
             <DangerZone>
-              {visibility && <VisibilityAction full={full} isPrivate={repo.isPrivate} error={errorFor("visibility")} />}
+              {visibility && <VisibilityAction full={full} isPrivate={repo.isPrivate} fork={Boolean(repo.parentId)} error={errorFor("visibility")} />}
+              {repo.parentId && <DetachAction full={full} parent={repo.parent ?? null} error={errorFor("detach")} />}
               <ArchiveAction full={full} archived={archived} error={errorFor("archive")} />
               {remove && <TransferAction repo={full} destinations={destinations} error={errorFor("transfer") ?? undefined} />}
               {remove && <DeleteAction full={full} error={errorFor("delete")} />}
@@ -277,6 +451,61 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
         )}
       </div>
     </>
+  );
+}
+
+/** The most branches and tags one push may update: off (0), or a number. */
+function PushLimitForm({
+  limit,
+  disabled,
+  owner,
+  result,
+}: {
+  limit: number;
+  disabled: boolean;
+  owner: boolean;
+  result: Outcome | undefined;
+}) {
+  const [on, setOn] = useState(limit > 0);
+  return (
+    <Form method="post" key={limit} className="space-y-3">
+      <fieldset disabled={disabled} className="min-w-0 space-y-3">
+        <input type="hidden" name="intent" value="pushes" />
+        <SwitchCard
+          name="limitRefUpdates"
+          checked={on}
+          onCheckedChange={setOn}
+          disabled={disabled}
+          title="Limit how many branches and tags can be updated in a single push"
+        >
+          A push that creates, moves or deletes more than this many branches and tags at once is refused whole, so a
+          mistaken <span className="font-mono text-xs">git push --mirror</span> or{" "}
+          <span className="font-mono text-xs">--all</span> cannot rewrite the repository.
+        </SwitchCard>
+        {on && (
+          <FormField className="pl-4">
+            <FieldLabel htmlFor="max-ref-updates">Most branches and tags per push</FieldLabel>
+            <TextInput
+              id="max-ref-updates"
+              name="maxRefUpdates"
+              type="number"
+              min={1}
+              max={1000}
+              required
+              defaultValue={limit > 0 ? limit : 5}
+              className="w-28"
+            />
+          </FormField>
+        )}
+        <div className="flex flex-wrap items-center gap-4 pt-1">
+          <SubmitButton variant="outline" match={{ intent: "pushes" }} pending="Saving…">
+            Save
+          </SubmitButton>
+          <Status intent="pushes" data={result} />
+          {!owner && <span className="text-xs text-faint">{needs("administer")}</span>}
+        </div>
+      </fieldset>
+    </Form>
   );
 }
 
@@ -478,8 +707,22 @@ function RenameBranchForm({
 }
 
 /** Public to private or back, with what changes, typed out to confirm. */
-function VisibilityAction({ full, isPrivate, error }: { full: string; isPrivate: boolean; error: string | null }) {
+function VisibilityAction({ full, isPrivate, fork, error }: { full: string; isPrivate: boolean; fork: boolean; error: string | null }) {
   const next = isPrivate ? "public" : "private";
+  if (fork) {
+    return (
+      <DangerAction
+        title="Change visibility"
+        action={
+          <Button type="button" variant="destructive" disabled>
+            Make {next}
+          </Button>
+        }
+      >
+        It is {isPrivate ? "private" : "public"}. A fork is as visible as the repository it came from. Detach it to change this.
+      </DangerAction>
+    );
+  }
   return (
     <ConfirmDialog
       intent="visibility"
@@ -515,6 +758,48 @@ function VisibilityAction({ full, isPrivate, error }: { full: string; isPrivate:
           <li>Its storage counts toward the workspace's private storage. A free workspace has 1 GB, and making it private is refused when that would go over.</li>
         </>
       )}
+    </ConfirmDialog>
+  );
+}
+
+/** A fork made an ordinary repository, with no parent. */
+function DetachAction({
+  full,
+  parent,
+  error,
+}: {
+  full: string;
+  parent: { namespace: string; name: string } | null;
+  error: string | null;
+}) {
+  const from = parent ? `${parent.namespace}/${parent.name}` : "the repository it came from";
+  return (
+    <ConfirmDialog
+      intent="detach"
+      title={`Detach ${full} from ${from}?`}
+      description="It becomes an ordinary repository. This can't be undone."
+      confirm={full}
+      submit="Detach fork"
+      busy="Detaching…"
+      error={error}
+      trigger={(open) => (
+        <DangerAction
+          title="Detach fork"
+          action={
+            <Button type="button" variant="destructive" onClick={open}>
+              Detach
+            </Button>
+          }
+        >
+          It is a fork of <span className="font-mono text-fg/85">{from}</span>. Detaching makes it a repository of its own.
+        </DangerAction>
+      )}
+    >
+      <li>Sync fork stops: it no longer brings in what lands on {from}.</li>
+      <li>Opening pull requests from it to {from} is no longer offered.</li>
+      <li>It stops showing among {from}'s forks, and its page no longer says where it came from.</li>
+      <li>Its visibility can then be changed on its own.</li>
+      <li>It can't be attached again.</li>
     </ConfirmDialog>
   );
 }

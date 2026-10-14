@@ -80,7 +80,7 @@ repository, then open a pull request from it on the **Pull requests** tab.
 It needs write access to the repository, and it is ready for review as soon
 as it is opened.
 
-[Forks and branches](/concepts/forks/) explains when each is the better
+[Forks and working copies](/concepts/forks/) explains when each is the better
 choice.
 
 | Status | Meaning |
@@ -183,11 +183,12 @@ page says so. Merging it then brings it up to date first and lands it once
 that is done, unless the repository requires pull requests to be up to date
 before they merge; then merging is refused until it has caught up.
 
-**Catch up with main** brings it up to date. When the pull request and `main` changed
-different files, g1t merges `main` in itself and pushes the merge in a few
-seconds, and the workflows run again on the result
-([how catching up works](/guides/pull-requests/#catching-up)). When they
-changed some of the same files, do it by hand: pull `main` into the fork or
+Updating the branch brings it up to date. When the pull request's and `main`'s
+changes do not clash (edits to the same file merge line by line), g1t merges
+or rebases `main` in itself and pushes the result in a few seconds, and the
+workflows run again on it
+([how updating works](/guides/pull-requests/#keeping-it-up-to-date)). When they
+changed the same lines, do it by hand: pull `main` into the fork or
 the branch, resolve, and push. `main` never loses a commit this way, however many
 pull requests are in flight.
 

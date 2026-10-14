@@ -698,6 +698,18 @@ pub struct CollaboratorPermissionArgs {
     pub username: String,
 }
 
+/// `can_read_repo`: whether the person `user_id` may read `repo` now, by
+/// their workspace membership, teams, direct grants and the workspace's
+/// policy, or because it is public. For other services, which hold the
+/// repository already: the repos service asks it of a private fork's
+/// parent for whoever made the fork. Returns `bool`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanReadRepoArgs {
+    pub repo: crate::repos::Repo,
+    pub user_id: String,
+}
+
 /// `my_repo_invitations`: the invitations waiting for `user` to answer.
 /// Returns `Vec<RepoInvitation>`.
 #[derive(Debug, Serialize, Deserialize)]

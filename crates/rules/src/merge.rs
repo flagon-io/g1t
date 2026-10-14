@@ -174,9 +174,9 @@ fn pull_request_problems(rule: &g1t_contracts::rules::PullRequestRule, facts: &M
         && !rule.allowed_merge_methods.is_empty()
         && !rule.allowed_merge_methods.contains(&method)
     {
-        let allowed: Vec<&str> = rule.allowed_merge_methods.iter().map(|method| method.as_str()).collect();
+        let allowed: Vec<&str> = rule.allowed_merge_methods.iter().map(|method| method_label(*method)).collect();
         problems.push(Problem::new(
-            format!("This branch allows only {} merges, and this one would be a {} merge.", allowed.join(" or "), method.as_str()),
+            format!("This branch allows merging only by {}, not by {}.", allowed.join(" or "), method_label(method)),
             "Merge it another way allowed here.",
         ));
     }
@@ -288,6 +288,13 @@ fn rule_problems(rule: &Rule, facts: &MergeFacts<'_>) -> Vec<Problem> {
                 })
             })
             .collect(),
+        // How it merges decides first: a merge commit is never linear, and
+        // a squash leaves one commit whatever the branch's own history.
+        Rule::RequiredLinearHistory(_) if facts.method == Some(MergeMethod::Merge) => vec![Problem::new(
+            "A merge commit would break this branch's linear history.",
+            "Merge it by squash, rebase or fast-forward instead.",
+        )],
+        Rule::RequiredLinearHistory(_) if facts.method == Some(MergeMethod::Squash) => Vec::new(),
         rule if content::about_content(rule) => match facts.commits {
             Some(inspected) => content::problems(rule, &inspected.commits, inspected.complete),
             None => Vec::new(),
@@ -400,6 +407,29 @@ pub struct Requirements {
     pub merge_queue: Option<MergeQueueRule>,
     /// Whether g1t may land an agent's change here by itself.
     pub agent_auto_merge: bool,
+    /// The merge methods every pull request rule allows, when any narrows
+    /// them; `None` for any method.
+    pub allowed_merge_methods: Option<Vec<MergeMethod>>,
+    /// Whether a rule requires linear history: no merge commits.
+    pub linear_history: bool,
+}
+
+impl Requirements {
+    /// Whether the rules let a pull request merge by `method`.
+    pub fn allows_method(&self, method: MergeMethod) -> bool {
+        self.allowed_merge_methods.as_ref().is_none_or(|allowed| allowed.contains(&method))
+            && !(self.linear_history && !method.is_linear())
+    }
+}
+
+/// How a merge method is named in what people read.
+pub fn method_label(method: MergeMethod) -> &'static str {
+    match method {
+        MergeMethod::Merge => "merge commit",
+        MergeMethod::Squash => "squash",
+        MergeMethod::Rebase => "rebase",
+        MergeMethod::FastForward => "fast-forward",
+    }
 }
 
 /// What the active rules hold for, stacked: the most restrictive wins.
@@ -423,7 +453,14 @@ pub fn requirements(rulesets: &[Applicable], git_ref: &str, default_branch: &str
                     found.required_approvals = found.required_approvals.max(rule.required_approvals);
                     found.count_agent_approvals &= rule.count_agent_approvals;
                     found.require_code_owner_review |= rule.require_code_owner_review;
+                    if !rule.allowed_merge_methods.is_empty() {
+                        found.allowed_merge_methods = Some(match found.allowed_merge_methods.take() {
+                            Some(have) => have.into_iter().filter(|method| rule.allowed_merge_methods.contains(method)).collect(),
+                            None => rule.allowed_merge_methods.clone(),
+                        });
+                    }
                 }
+                Rule::RequiredLinearHistory(_) => found.linear_history = true,
                 Rule::RequiredStatusChecks(rule) if checks_hold(rule, files) => {
                     any_checks = true;
                     found.strict |= rule.strict;
@@ -603,7 +640,57 @@ mod tests {
         waiting.code_owners_missing = Some("@acme/docs must approve changes to docs/.");
         let found = messages(&judge(&rules, "main", &waiting));
         assert_eq!(found[0], "@acme/docs must approve changes to docs/.");
-        assert_eq!(found[1], "This branch allows only squash merges, and this one would be a merge merge.");
+        assert_eq!(found[1], "This branch allows merging only by squash, not by merge commit.");
+        // Squashing is allowed.
+        waiting.method = Some(MergeMethod::Squash);
+        assert_eq!(messages(&judge(&rules, "main", &waiting)).len(), 1);
+        // With no method named, none is judged.
+        waiting.method = None;
+        assert_eq!(messages(&judge(&rules, "main", &waiting)).len(), 1);
+    }
+
+    #[test]
+    fn linear_history_refuses_a_merge_commit_and_is_kept_by_a_squash() {
+        let rules = [ruleset(vec![all(Rule::RequiredLinearHistory(NoParameters {}))])];
+        let mut merge = commit("abcdef12", "Merge main", &[]);
+        merge.parents = 2;
+        let inspected = InspectedCommits { commits: vec![merge], complete: true };
+        let mut read = facts(&[], &[], &[]);
+        read.commits = Some(&inspected);
+        // A merge commit is refused, whatever the branch's own commits.
+        assert_eq!(messages(&judge(&rules, "main", &read)), vec!["A merge commit would break this branch's linear history."]);
+        // A squash leaves one commit: the branch's merge commits do not land.
+        read.method = Some(MergeMethod::Squash);
+        assert!(!refused(&judge(&rules, "main", &read)));
+        // A rebase or fast-forward lands its commits: they are checked.
+        for method in [MergeMethod::Rebase, MergeMethod::FastForward] {
+            read.method = Some(method);
+            assert_eq!(blocking(&judge(&rules, "main", &read))[0].message, "Commit abcdef1 is a merge commit; this branch keeps a linear history.");
+        }
+    }
+
+    #[test]
+    fn requirements_narrow_the_merge_methods() {
+        let squash_or_rebase = ruleset(vec![all(Rule::PullRequest(PullRequestRule {
+            allowed_merge_methods: vec![MergeMethod::Squash, MergeMethod::Rebase],
+            ..PullRequestRule::default()
+        }))]);
+        let open = requirements(&[], "refs/heads/main", "main", false, &[]);
+        assert!(MergeMethod::ALL.iter().all(|method| open.allows_method(*method)));
+        let narrowed = requirements(std::slice::from_ref(&squash_or_rebase), "refs/heads/main", "main", false, &[]);
+        assert_eq!(narrowed.allowed_merge_methods, Some(vec![MergeMethod::Squash, MergeMethod::Rebase]));
+        assert!(!narrowed.allows_method(MergeMethod::Merge) && narrowed.allows_method(MergeMethod::Rebase));
+        // Two rules: what both allow.
+        let rebase_only = ruleset(vec![all(Rule::PullRequest(PullRequestRule {
+            allowed_merge_methods: vec![MergeMethod::Rebase, MergeMethod::Merge],
+            ..PullRequestRule::default()
+        }))]);
+        let both = requirements(&[squash_or_rebase, rebase_only], "refs/heads/main", "main", false, &[]);
+        assert_eq!(both.allowed_merge_methods, Some(vec![MergeMethod::Rebase]));
+        // Linear history rules out merge commits only.
+        let linear = requirements(&[ruleset(vec![all(Rule::RequiredLinearHistory(NoParameters {}))])], "refs/heads/main", "main", false, &[]);
+        assert!(linear.linear_history && !linear.allows_method(MergeMethod::Merge));
+        assert!(linear.allows_method(MergeMethod::Squash) && linear.allows_method(MergeMethod::FastForward));
     }
 
     #[test]
@@ -698,6 +785,7 @@ mod tests {
         merge.parents = 2;
         let inspected = InspectedCommits { commits: vec![merge], complete: true };
         let mut read = facts(&[], &[], &[]);
+        read.method = Some(MergeMethod::Rebase);
         read.commits = Some(&inspected);
         assert_eq!(blocking(&judge(&rules, "main", &read))[0].rule, "required_linear_history");
         let unread = InspectedCommits { commits: Vec::new(), complete: false };

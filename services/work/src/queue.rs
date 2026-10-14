@@ -632,7 +632,7 @@ impl Work {
                 &self.repos,
                 "head",
                 &HeadArgs {
-                    repo_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                    repo_id: pull.source_id().to_owned(),
                     branch: pull
                         .branch
                         .clone()
@@ -644,7 +644,7 @@ impl Work {
                 self.leave_gone(&row, BRANCH_GONE).await?;
                 continue;
             };
-            let source = pull.fork.clone().unwrap_or_else(|| RepoPath {
+            let source = pull.source_path(&RepoPath {
                 namespace: repo.namespace.clone(),
                 name: repo.name.clone(),
             });
@@ -1217,10 +1217,7 @@ impl Work {
                     &self.repos,
                     "head",
                     &HeadArgs {
-                        repo_id: pull
-                            .fork_repo_id
-                            .clone()
-                            .unwrap_or_else(|| repo_id.to_owned()),
+                        repo_id: pull.source_id().to_owned(),
                         branch: pull
                             .branch
                             .clone()
@@ -1291,6 +1288,13 @@ impl Work {
                 // The queue lands on the default branch.
                 target_branch: None,
                 expected_commit: row.combined_commit.clone(),
+                target_id: None,
+                // The state the queue tested lands as it is: the queue
+                // rule's method is not applied to it.
+                method: Some(g1t_contracts::rules::MergeMethod::FastForward),
+                message: None,
+                author: None,
+                sign_off: false,
             };
             let mut landed: Outcome<Landed> = g1t_kit::call(&self.repos, "land", &land).await?;
             if matches!(landed, Outcome::Fail(_)) {
@@ -1329,9 +1333,15 @@ impl Work {
                 }
             };
             // Record the merge before removing its recoverable queue intent.
-            self.record_merge(&repo, pull, &actor, row.keep_issue_open != 0, landed)
+            let head = row.head_commit.clone();
+            let merged = self.record_merge(&repo, pull, &actor, row.keep_issue_open != 0, landed)
                 .await?;
             self.finish_landing(&row).await?;
+            // Its branch, where the repository deletes branches on merge,
+            // if it is still where it was tested.
+            if merged.status == PullStatus::Merged {
+                self.delete_branch_after_merge(&repo, &merged, &actor, None, head).await?;
+            }
         }
         Ok(())
     }

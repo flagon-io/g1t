@@ -5,7 +5,7 @@ import type { ActionsAccessLevel, ActionsSettingsChange, ApprovalPolicy } from "
 
 import type { Route } from "./+types/settings-actions";
 import { RepoSettingsHeading } from "../../components/repo-settings-heading";
-import { SettingsSection as Section } from "../../components/settings-section";
+import { SettingsSection as Section, SettingToggle } from "../../components/settings-section";
 import { ErrorText, SubmitButton } from "../../components/ui";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
@@ -20,9 +20,9 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   // Admins; to anyone without a role here the page does not exist.
-  await requireInsider(context, params, "manage_integrations");
+  const { repo } = await requireInsider(context, params, "manage_integrations");
   const settings = await actions.actionsSettings({ namespace: params.owner, name: params.repo }, getViewer(context));
-  return { settings: unwrap(settings) };
+  return { settings: unwrap(settings), fork: Boolean(repo.forkedFrom) };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -34,6 +34,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const permissions = chosen === "write" || chosen === "inherit" ? chosen : "read";
   const policy = String(form.get("approvalPolicy"));
   const change: ActionsSettingsChange = { defaultPermissions: permissions };
+  // The switch posts only when on: the hidden field says it was there.
+  if (form.has("enabledShown")) change.enabled = form.get("enabled") === "on";
   // Only where the workspace allows it is the box there to send.
   if (form.has("pullRequestsShown")) change.canApprovePullRequests = form.get("canApprovePullRequests") === "on";
   if ((APPROVAL_POLICIES as readonly string[]).includes(policy)) change.approvalPolicy = policy as ApprovalPolicy;
@@ -61,11 +63,24 @@ const POLICY_WORDS: Record<ApprovalPolicy, { label: string; about: string }> = {
 
 export default function RepoActionsSettings({ loaderData, actionData, params }: Route.ComponentProps) {
   const base = `/${params.owner}/${params.repo}`;
-  const { settings } = loaderData;
+  const { settings, fork } = loaderData;
   return (
     <>
       <RepoSettingsHeading base={base} />
       <Form method="post" className="max-w-4xl space-y-8">
+        <Section
+          title="Actions"
+          about="Whether this repository's workflows run at all."
+        >
+          <input type="hidden" name="enabledShown" value="1" />
+          <SettingToggle name="enabled" on={settings.enabled} title="Run workflows">
+            {settings.enabled
+              ? "Workflows run on pushes, pull requests, schedules and dispatches, as their files say."
+              : "Workflows are listed, but nothing runs: no pushes, pull requests, schedules, dispatches or re-runs start one."}
+            {fork && !settings.enabledChosen && " This was made as a fork, so its workflows don't run until you turn Actions on."}
+          </SettingToggle>
+        </Section>
+
         <Section
           title="Workflow permissions"
           about={

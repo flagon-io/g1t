@@ -80,7 +80,7 @@ pub enum Command {
     /// Sign in, sign out, and set git up to use g1t's credentials.
     #[command(subcommand)]
     Auth(AuthCommand),
-    /// Repositories: view, clone, create, list.
+    /// Repositories: view, clone, create, list, fork, sync.
     #[command(subcommand)]
     Repo(RepoCommand),
     /// Issues: list, view, create, comment, close, reopen, edit.
@@ -209,6 +209,61 @@ pub enum RepoCommand {
     Create(RepoCreateArgs),
     /// List repositories you can see.
     List(RepoListArgs),
+    /// Fork a repository into one of your workspaces.
+    Fork(RepoForkArgs),
+    /// List a repository's forks.
+    Forks(RepoForksArgs),
+    /// Bring a fork's branch up to date with the repository it was forked from.
+    Sync(RepoSyncArgs),
+    /// Make a fork an ordinary repository, no longer linked to its parent.
+    Detach(RepoDetachArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct RepoForkArgs {
+    /// OWNER/NAME; the current repository when left out.
+    pub repository: Option<String>,
+    /// The workspace to fork it into; your personal workspace when left out.
+    #[arg(short, long)]
+    pub workspace: Option<String>,
+    /// The fork's name; the repository's own when left out.
+    #[arg(long)]
+    pub name: Option<String>,
+    /// The fork's description; the repository's own when left out.
+    #[arg(short, long)]
+    pub description: Option<String>,
+    /// Copy every branch and tag, not only the default branch.
+    #[arg(long)]
+    pub all_branches: bool,
+    /// Clone the fork, with the repository it came from as the remote upstream.
+    #[arg(short, long)]
+    pub clone: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct RepoForksArgs {
+    /// OWNER/NAME; the current repository when left out.
+    pub repository: Option<String>,
+    #[arg(short = 'L', long, default_value_t = 30)]
+    pub limit: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct RepoSyncArgs {
+    /// The fork, OWNER/NAME; the one this directory pushes to (origin) when left out.
+    pub repository: Option<String>,
+    /// The fork's branch to sync; its default branch when left out.
+    #[arg(short, long)]
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct RepoDetachArgs {
+    /// The fork, OWNER/NAME; the one this directory pushes to (origin) when left out.
+    pub repository: Option<String>,
+    /// Do not ask first.
+    #[arg(short, long)]
+    pub yes: bool,
 }
 
 #[derive(Debug, Args)]
@@ -429,8 +484,10 @@ pub enum PrCommand {
     Checks(PrChecksArgs),
     /// Approve a pull request, or ask for changes.
     Review(PrReviewArgs),
-    /// Merge a pull request.
+    /// Merge a pull request, now or with auto-merge.
     Merge(PrMergeArgs),
+    /// Bring a pull request's branch up to date with its base.
+    UpdateBranch(PrUpdateBranchArgs),
     /// Mark a draft ready for review, or turn it back into a draft.
     Ready(PrReadyArgs),
     /// Comment on a pull request.
@@ -508,6 +565,10 @@ pub struct PrCreateArgs {
     /// Do not push the branch first.
     #[arg(long)]
     pub no_push: bool,
+    /// The fork, OWNER/NAME, that holds the branch. In a clone of your fork (origin) whose
+    /// upstream is the repository, origin when left out.
+    #[arg(long, value_name = "OWNER/NAME")]
+    pub head_repo: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -562,17 +623,57 @@ pub struct PrReviewArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("method").args(["merge", "squash", "rebase", "ff"])))]
 pub struct PrMergeArgs {
     pub number: Option<u64>,
+    /// Merge with a merge commit. The repository's default method when no method is given.
+    #[arg(short, long)]
+    pub merge: bool,
+    /// Squash its commits into one.
+    #[arg(short, long)]
+    pub squash: bool,
+    /// Make each of its commits again on top of the base.
+    #[arg(short, long)]
+    pub rebase: bool,
+    /// Fast-forward: move the base to its head, with no new commit.
+    #[arg(long)]
+    pub ff: bool,
+    /// The merge or squash commit's title; the repository's default when left out.
+    #[arg(short = 't', long)]
+    pub subject: Option<String>,
+    /// The rest of the merge or squash commit's message.
+    #[command(flatten)]
+    pub body: BodyArgs,
+    /// Merge on its own once its checks, reviews and rules allow.
+    #[arg(long, conflicts_with_all = ["disable_auto", "keep_issue_open", "admin", "delete_branch", "keep_branch", "match_head_commit"])]
+    pub auto: bool,
+    /// Turn its auto-merge off.
+    #[arg(long, conflicts_with_all = ["method", "subject", "body", "body_file", "keep_issue_open", "admin", "delete_branch", "keep_branch", "match_head_commit"])]
+    pub disable_auto: bool,
     /// Leave the issue it is for open.
     #[arg(long)]
     pub keep_issue_open: bool,
     /// Merge past failing required checks and rules (needs the Admin role).
     #[arg(long)]
     pub admin: bool,
-    /// Delete the local and remote branch afterwards.
-    #[arg(short, long)]
+    /// Delete its branch once merged, and the local branch. The repository's setting when left out.
+    #[arg(short, long, conflicts_with = "keep_branch")]
     pub delete_branch: bool,
+    /// Keep its branch, whatever the repository's setting.
+    #[arg(long)]
+    pub keep_branch: bool,
+    /// Refuse to merge unless its head is still this commit.
+    #[arg(long, value_name = "SHA")]
+    pub match_head_commit: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct PrUpdateBranchArgs {
+    /// The number; the current branch's when left out.
+    pub number: Option<u64>,
+    /// Rebase its commits onto the base instead of merging the base in. Rewrites its branch.
+    #[arg(long)]
+    pub rebase: bool,
 }
 
 #[derive(Debug, Args)]

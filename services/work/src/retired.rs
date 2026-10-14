@@ -58,6 +58,7 @@ pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM confidence_rules WHERE repo_id = ?1",
     "DELETE FROM agent_runs WHERE repo_id = ?1",
     "DELETE FROM commit_statuses WHERE repo_id = ?1",
+    crate::commit_comments::PURGED,
     "DELETE FROM commit_check_annotations WHERE run_id IN (SELECT id FROM commit_check_runs WHERE repo_id = ?1)",
     "DELETE FROM commit_check_runs WHERE repo_id = ?1",
     "DELETE FROM commit_check_suites WHERE repo_id = ?1",
@@ -118,11 +119,13 @@ fn stopping(event: &Event) -> Option<(String, String, String)> {
     }
 }
 
-/// `branch.renamed`: open pull requests from `?2` in repository `?1`
-/// come from `?3` now. A fork carries its change on its own default
-/// branch, so only branches of the repository itself are named.
+/// `branch.renamed`: open pull requests from `?2` of repository `?1`
+/// come from `?3` now: those in it from its own branch, and those opened
+/// from it as a fork of another (`head_repo_id`). A working copy carries
+/// its change on its own default branch, so it names none.
 const BRANCH_RENAMED: &str = "UPDATE pulls SET source_branch = ?3
-     WHERE repo_id = ?1 AND source_branch = ?2 AND fork_repo_id IS NULL
+     WHERE ((repo_id = ?1 AND head_repo_id IS NULL) OR head_repo_id = ?1)
+       AND source_branch = ?2 AND fork_repo_id IS NULL
        AND status IN ('draft', 'open')";
 
 /// `branch.renamed`: open pull requests into `?2` merge into `?3` now.
@@ -229,6 +232,11 @@ mod tests {
             owner_id: "usr_1".into(),
             default_branch: "main".into(),
             fork_of: None,
+            parent_id: None,
+            forked_from: None,
+            parent: None,
+            allow_forking: false,
+            max_ref_updates: None,
             protected: false,
             created_at: "2026-10-05T00:00:00Z".into(),
             topics: Vec::new(),

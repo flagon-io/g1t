@@ -31,7 +31,7 @@ use crate::store::{GitRepo, GitStore, Scope};
 use crate::{MAX_ANCESTRY, Repos, descends_from, land, nearest_ancestor_in, refs};
 
 /// Files larger than this are not merged line by line.
-const MAX_MERGE_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_MERGE_BYTES: usize = 1024 * 1024;
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 
 /// One side's change to the base: its lines `start..end` become `lines`.
@@ -214,7 +214,7 @@ enum Made {
 
 /// A blob's text, for merging: `Err(true)` when it is binary, `Err(false)`
 /// when it is too large or missing.
-fn as_text(bytes: Option<Vec<u8>>) -> std::result::Result<String, bool> {
+pub(crate) fn as_text(bytes: Option<Vec<u8>>) -> std::result::Result<String, bool> {
     let bytes = bytes.ok_or(false)?;
     if bytes.len() > MAX_MERGE_BYTES {
         return Err(false);
@@ -612,7 +612,7 @@ mod tests {
         async fn read_file(&self, _git_ref: &str, _path: &str) -> Result<Option<Vec<u8>>> {
             Ok(None)
         }
-        async fn fork(&self, _target_key: &str) -> Result<()> {
+        async fn fork(&self, _target_key: &str, _default_branch_only: bool) -> Result<()> {
             Ok(())
         }
     }
