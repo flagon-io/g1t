@@ -6454,7 +6454,7 @@ pub static OPERATIONS: &[Operation] = &[
         path: "/repos/{owner}/{name}/pulls/{number}/dependency-review/rerun",
         tag: "Supply chain",
         summary: "Re-run dependency review",
-        scope: None,
+        scope: Some("security:write"),
         params: &[
             Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
             Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },

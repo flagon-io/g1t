@@ -24486,10 +24486,12 @@
         "x-operation": "rerun_dependency_review",
         "x-mcp-tool": "security",
         "x-mcp-action": "rerun_dependency_review",
-        "x-scope": null,
+        "x-scope": "security:write",
         "security": [
           {
-            "token": []
+            "token": [
+              "security:write"
+            ]
           }
         ],
         "parameters": [
