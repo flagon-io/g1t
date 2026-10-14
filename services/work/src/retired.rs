@@ -47,6 +47,7 @@ pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM overlap_pairs WHERE repo_id = ?1",
     "DELETE FROM check_runs WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM review_runs WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
+    "DELETE FROM pull_message_commits WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM agent_messages WHERE repo_id = ?1 OR pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM queue_entries WHERE repo_id = ?1",
     "DELETE FROM queue_probes WHERE repo_id = ?1",
@@ -264,7 +265,7 @@ mod tests {
         }
         // Rows kept by pull request go before the pull requests do.
         let pulls = PURGED.iter().position(|sql| sql.starts_with("DELETE FROM pulls")).unwrap();
-        for table in ["session_entries", "check_runs", "review_runs", "agent_messages"] {
+        for table in ["session_entries", "check_runs", "review_runs", "pull_message_commits", "agent_messages"] {
             let at = PURGED.iter().position(|sql| sql.contains(&format!("FROM {table} "))).unwrap();
             assert!(at < pulls, "{table}");
         }

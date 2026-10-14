@@ -1296,6 +1296,15 @@ pub struct InspectCommitsArgs {
     pub base_branch: String,
     #[serde(default)]
     pub limit: Option<u32>,
+    /// Where the branch left `base_branch`, when the caller knows it (a
+    /// `divergence` worked it out): the two histories are not read again.
+    #[serde(default)]
+    pub merge_base: Option<String>,
+    /// Only each commit's message, addresses and parents, for default merge
+    /// messages: no files are listed and no signature is decided, so
+    /// `files` is empty and `signature` is left as unsigned.
+    #[serde(default)]
+    pub messages_only: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

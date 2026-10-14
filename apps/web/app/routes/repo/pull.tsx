@@ -144,15 +144,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Its labels and milestone, with the repository's to choose from.
   const labelsFound = work.listLabels(path, viewer);
   // How it may merge now, for the merge box: streamed, since its default
-  // messages are read from the branch's commits, which takes seconds. Only
-  // one still open or a draft can merge.
+  // messages may have to be read from the branch's commits. Asked for
+  // beside the pull request rather than after it; only one still open or
+  // a draft can merge, so the answer for any other is set aside.
   const choicesFound =
     tab === "conversation"
-      ? pullFound
-          .then((found) =>
-            found.ok && (found.value.pull.status === "open" || found.value.pull.status === "draft")
-              ? work.mergeChoices(viewer, path, number)
-              : null,
+      ? Promise.all([work.mergeChoices(viewer, path, number).catch(() => null), pullFound.catch(() => null)])
+          .then(([choices, found]) =>
+            found?.ok && (found.value.pull.status === "open" || found.value.pull.status === "draft") ? choices : null,
           )
           .catch(() => null)
       : Promise.resolve(null);
