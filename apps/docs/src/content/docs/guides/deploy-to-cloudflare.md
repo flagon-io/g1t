@@ -478,5 +478,6 @@ notification destination that reaches someone.
 Each Worker keeps a share of its invocations' logs, set by
 `head_sampling_rate` in its `wrangler.jsonc`: every one for billing,
 identity, runner, actions, deployments, status and sudo, and a tenth for
-the rest. Metrics are not sampled. To chase a rare error on a sampled
+the rest. Repos and work keep every one for now, while rare ~60 s stalls
+are traced, and go back to a tenth once they are found. Metrics are not sampled. To chase a rare error on a sampled
 Worker, raise its rate to 1 while you look.

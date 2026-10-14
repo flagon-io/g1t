@@ -11,9 +11,16 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
+use futures_util::{StreamExt, stream};
+
 use crate::{Actions, Count, MAX_WORKFLOWS, optional};
 
+/// Workflow files read from repos at once: under the six connections a
+/// Worker keeps open.
+const BLOBS_AT_ONCE: usize = 6;
+
 /// One workflow file as read at a commit.
+#[derive(Clone)]
 pub struct WorkflowFile {
     pub path: String,
     pub source: String,
@@ -23,6 +30,7 @@ pub struct WorkflowFile {
 }
 
 /// The files at a commit, and the commit the ref resolved to.
+#[derive(Clone)]
 pub struct Read {
     pub files: Vec<WorkflowFile>,
     pub head: Option<String>,
@@ -100,25 +108,30 @@ impl Actions {
             };
             let at = head.clone().unwrap_or(resolved);
             found_head = found_head.or(head);
-            for entry in entries
+            let file_paths: Vec<String> = entries
                 .into_iter()
                 .filter(|entry| matches!(entry.kind, EntryKind::Blob | EntryKind::Exec))
                 .filter(|entry| entry.name.ends_with(".yml") || entry.name.ends_with(".yaml"))
                 .take(MAX_WORKFLOWS.saturating_sub(files.len()))
-            {
-                let file_path = format!("{folder}/{}", entry.name);
-                let blob: Outcome<BlobView> = g1t_kit::call(
-                    &self.repos,
-                    "blob",
-                    &BlobArgs {
-                        path: path.clone(),
-                        viewer: viewer.clone(),
-                        git_ref: at.clone(),
-                        file_path: file_path.clone(),
-                    },
-                )
-                .await?;
-                if let Outcome::Ok(BlobView { text: Some(source), .. }) = blob {
+                .map(|entry| format!("{folder}/{}", entry.name))
+                .collect();
+            // A few at a time, in the tree's order: one after another, a
+            // repository's dozen workflows took 4 s of every push.
+            let repos = &self.repos;
+            let blobs: Vec<Result<Outcome<BlobView>>> = stream::iter(file_paths.iter().map(|file_path| {
+                let args = BlobArgs {
+                    path: path.clone(),
+                    viewer: viewer.clone(),
+                    git_ref: at.clone(),
+                    file_path: file_path.clone(),
+                };
+                async move { g1t_kit::call(repos, "blob", &args).await }
+            }))
+            .buffered(BLOBS_AT_ONCE)
+            .collect()
+            .await;
+            for (file_path, blob) in file_paths.into_iter().zip(blobs) {
+                if let Outcome::Ok(BlobView { text: Some(source), .. }) = blob? {
                     files.push(WorkflowFile { path: file_path, source, required: false });
                 }
             }
@@ -126,8 +139,10 @@ impl Actions {
         Ok(Read { files, head: found_head })
     }
 
-    /// Keeps the `workflows` table in step with the default branch.
-    pub async fn sync(&self, repo: &Repo, actor: &User) -> Result<()> {
+    /// Keeps the `workflows` table in step with the default branch, and
+    /// gives back the files it read there (`on_event` starts a default
+    /// branch push's runs from them rather than reading them again).
+    pub async fn sync(&self, repo: &Repo, actor: &User) -> Result<Read> {
         let read = self.read_for(repo, actor, None).await?;
         let full_name = format!("{}/{}", repo.namespace, repo.name);
         let now = rfc3339(now_ms());
@@ -200,7 +215,7 @@ impl Actions {
                 .bind(&[repo.id.as_str().into(), now.into()])?,
         );
         self.db.batch(statements).await?;
-        Ok(())
+        Ok(read)
     }
 
     /// Whether any of the repository's default-branch workflows could
