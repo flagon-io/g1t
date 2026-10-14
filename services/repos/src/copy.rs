@@ -126,6 +126,7 @@ pub fn problem_for_status(status: u16, what: impl Into<String>) -> Problem {
 /// What a copy changed.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Copied {
+    pub pack_bytes: u64,
     /// Refs created or moved, each with where it was and where it is now.
     pub updated: Vec<(String, Option<String>, String)>,
     pub deleted: Vec<String>,
@@ -372,7 +373,8 @@ async fn fetch_pack(source: &Endpoint, wants: &[String], haves: &[String]) -> Re
 
 /// Makes `target`'s branches and tags match `source`'s. `Err` in the inner
 /// result is a reason to show a person.
-pub async fn copy(source: &Endpoint, target: &Endpoint) -> Result<std::result::Result<Copied, Problem>> {
+pub async fn copy<F, Fut>(source: &Endpoint, target: &Endpoint, admit: F) -> Result<std::result::Result<Copied, Problem>>
+where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<bool>> {
     let theirs = match advertise(source, "git-upload-pack").await? {
         Ok(refs) => refs,
         Err(problem) => return Ok(Err(problem)),
@@ -389,10 +391,11 @@ pub async fn copy(source: &Endpoint, target: &Endpoint) -> Result<std::result::R
     if commands.is_empty() {
         return Ok(Ok(copied));
     }
-    let results = match transfer(source, target, &ours, &commands).await? {
+    let (results, pack_bytes) = match transfer(source, target, &ours, &commands, admit).await? {
         Ok(results) => results,
         Err(problem) => return Ok(Err(problem)),
     };
+    copied.pack_bytes = pack_bytes;
     let problems: Vec<String> = results
         .iter()
         .filter_map(|(name, problem)| problem.as_ref().map(|problem| format!("{name}: {problem}")))
@@ -413,12 +416,14 @@ pub async fn copy(source: &Endpoint, target: &Endpoint) -> Result<std::result::R
 /// Sends `commands` to `target` in one push, with a pack from `source`
 /// holding what the target lacks (`held`: what its refs already name).
 /// Each command comes back with why it was refused, if it was.
-async fn transfer(
+async fn transfer<F, Fut>(
     source: &Endpoint,
     target: &Endpoint,
     held: &Advertised,
     commands: &[Command],
-) -> Result<std::result::Result<Vec<(String, Option<String>)>, Problem>> {
+    admit: F,
+) -> Result<std::result::Result<(Vec<(String, Option<String>)>, u64), Problem>>
+where F: FnOnce(u64) -> Fut, Fut: std::future::Future<Output = Result<bool>> {
     let have: HashSet<&String> = held.refs.values().collect();
     let mut wants: Vec<String> = commands
         .iter()
@@ -437,6 +442,10 @@ async fn transfer(
             Err(problem) => return Ok(Err(problem)),
         }
     };
+    let pack_bytes = pack.as_ref().map_or(0, |p| p.len() as u64);
+    if !admit(pack_bytes).await? {
+        return Ok(Err(Problem::Refused("Public repository storage is full. Make room before adding more data.".to_owned())));
+    }
     let body = receive_request(commands, pack);
     let url = format!("{}/git-receive-pack", target.url);
     let Ok(mut response) = Fetch::Request(request(Method::Post, &url, target, Some(("git-receive-pack", body)))?)
@@ -450,7 +459,7 @@ async fn transfer(
         let status = response.status_code();
         return Ok(Err(problem_for_status(status, format!("The push was refused ({status})."))));
     }
-    Ok(Ok(outcomes(&report, commands)))
+    Ok(Ok((outcomes(&report, commands), pack_bytes)))
 }
 
 /// Each command with why it was refused, if the report says it was.

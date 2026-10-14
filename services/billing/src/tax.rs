@@ -89,6 +89,22 @@ impl Billing {
         extras: Extras,
         tax_transaction: Option<&str>,
     ) -> Result<()> {
+        let writes = self.extras_statements(workspace, reference, payment_intent, extras, tax_transaction)?;
+        if !writes.is_empty() {
+            self.db.batch(writes).await?;
+        }
+        Ok(())
+    }
+
+    /// These writes can share the transaction that credits the payment.
+    pub(crate) fn extras_statements(
+        &self,
+        workspace: &str,
+        reference: &str,
+        payment_intent: Option<&str>,
+        extras: Extras,
+        tax_transaction: Option<&str>,
+    ) -> Result<Vec<worker::D1PreparedStatement>> {
         let now = rfc3339(now_ms());
         let mut writes = vec![];
         for (kind, cents) in [("tax", extras.tax_cents), ("card_fee", extras.fee_cents)] {
@@ -113,10 +129,7 @@ impl Billing {
                     ])?,
             );
         }
-        if !writes.is_empty() {
-            self.db.batch(writes).await?;
-        }
-        Ok(())
+        Ok(writes)
     }
 
     /// A payment's tax and fee, as kept, by the PaymentIntent that took it

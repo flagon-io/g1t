@@ -9,7 +9,7 @@ import type { Terms } from "@g1t/contracts";
 import { data, redirect } from "react-router";
 
 import { parseCreditForm } from "./credits";
-import { fields, parseAllowances, parseEmail, parseGoodwill, parseNote, parsePayment, parseSlug, parseTerms, text } from "./forms";
+import { fields, parseAllowances, parseComplimentary, parseEmail, parseGoodwill, parseNote, parsePayment, parseSlug, parseTerms, text } from "./forms";
 import { FORGIVE_COST_MICROS, goodwillWarning } from "./pricing";
 import type { ActionData } from "./review";
 import { admin, identity, priceBook } from "./services.server";
@@ -59,6 +59,32 @@ export async function billingAction(request: Request, staff: Staff, subject: Sub
     const result = await admin.setAllowances(subject.accountId, allowances.value, note.value, staff.email);
     if (!result.ok) return failed("allowances", result.error.message, values);
     return back("allowances");
+  }
+
+  if (intent === "complimentary" || intent === "end-complimentary") {
+    // Enrollment is per workspace, never an enterprise's.
+    const values = fields(form, "allowance", "unlimited", "fee", "past", "note", "confirmation");
+    if (subject.kind !== "workspace") return failed("complimentary", "Enroll each workspace on its own page.", values);
+    if (subject.billedTo) return failed("complimentary", `${subject.billedTo.name} pays for this workspace. Detach it first.`, values);
+    if (intent === "end-complimentary") {
+      const note = parseNote(values.note);
+      if (!note.ok) return failed("complimentary", note.error, values);
+      if (values.confirmation !== subject.slug) {
+        return failed("complimentary", `Type the workspace's slug, ${subject.slug}, to end its enrollment. It goes back to Free now.`, values);
+      }
+      const ended = await admin.endComplimentary(subject.slug, note.value, staff.email);
+      if (!ended.ok) return failed("complimentary", ended.error.message, values);
+      return back("complimentary-ended");
+    }
+    const terms = parseComplimentary(form);
+    if (!terms.ok) return failed("complimentary", terms.error, values);
+    if (values.confirmation !== subject.slug) {
+      return failed("complimentary", `Type the workspace's slug, ${subject.slug}, to confirm these terms.`, values);
+    }
+    const { note, ...chosen } = terms.value;
+    const saved = await admin.setComplimentary(subject.slug, chosen, note, staff.email);
+    if (!saved.ok) return failed("complimentary", saved.error.message, values);
+    return back("complimentary");
   }
 
   if (intent === "attach") {

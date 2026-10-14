@@ -598,6 +598,7 @@ export function billingClient(service: ServiceBinding): BillingApi {
       call("confirm_subscription", { workspace, viewer, session }),
     cancelSubscription: (actor, workspace, feature, resume = false) =>
       call("cancel_subscription", { actor, workspace, feature, resume }),
+    convertToPaid: (actor, workspace, returnUrl) => call("convert_to_paid", { actor, workspace, returnUrl }),
     hasFeature: (workspace, feature) => call("has_feature", { workspace, feature }),
     freeWorkspaces: (workspaces) => call("free_workspaces", { workspaces }),
     chargeFeature: (charge) => call("charge_feature", charge),
@@ -635,6 +636,18 @@ export function billingAdminClient(service: ServiceBinding): BillingAdminApi {
     account: (id) => call("admin_account", { id }),
     setTerms: (id, terms, by) => call("admin_set_terms", { id, terms, by }),
     setAllowances: (id, allowances, note, by) => call("admin_set_allowances", { id, allowances, note, by }),
+    complimentary: (workspace) => call("admin_complimentary", { workspace }),
+    setComplimentary: (workspace, terms, note, by) =>
+      call("admin_set_complimentary", {
+        workspace,
+        allowance_micros: terms.allowanceMicros,
+        unlimited: terms.unlimited,
+        fee_cents: terms.feeCents,
+        charge_past_allowance: terms.chargePastAllowance,
+        note,
+        by,
+      }),
+    endComplimentary: (workspace, note, by) => call("admin_end_complimentary", { workspace, note, by }),
     createEnterprise: (name, workspaces, by) => call("admin_create_enterprise", { name, workspaces, by }),
     attach: (workspace, account, by) => call("admin_attach", { workspace, account, by }),
     credit: (workspace, amountMicros, note, by, options = { kind: "goodwill" }) =>

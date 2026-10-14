@@ -142,30 +142,33 @@ impl Registry {
     /// Moves a repository to `to`, keeping its old path as a redirect. Any
     /// redirect held by the path it moves to gives way: a repository is
     /// there now.
-    pub async fn transfer(&self, repo: &Repo, to: &str) -> Result<()> {
+    pub async fn transfer(&self, repo: &Repo, to: &str, cap: i64) -> Result<bool> {
         let now = rfc3339(now_ms());
-        self.db
+        let results = self.db
             .batch(vec![
                 self.db
-                    .prepare("UPDATE repos SET namespace = ? WHERE id = ? AND namespace = ?")
-                    .bind(&[to.into(), repo.id.as_str().into(), repo.namespace.as_str().into()])?,
+                    .prepare(crate::public_storage::TRANSFER)
+                    .bind(&[repo.id.as_str().into(), to.into(), repo.namespace.as_str().into(), (cap as f64).into()])?,
                 self.db
-                    .prepare("DELETE FROM repo_redirects WHERE namespace = ? AND name = ?")
-                    .bind(&[to.into(), repo.name.as_str().into()])?,
+                    .prepare("DELETE FROM repo_redirects WHERE namespace = ?1 AND name = ?2 AND EXISTS (SELECT 1 FROM repos WHERE id = ?3 AND namespace = ?1)")
+                    .bind(&[to.into(), repo.name.as_str().into(), repo.id.as_str().into()])?,
                 self.db
                     .prepare(
                         "INSERT OR REPLACE INTO repo_redirects (namespace, name, repo_id, created_at)
-                         VALUES (?, ?, ?, ?)",
+                         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM repos WHERE id = ?3 AND namespace = ?5)",
                     )
                     .bind(&[
                         repo.namespace.as_str().into(),
                         repo.name.as_str().into(),
                         repo.id.as_str().into(),
                         now.as_str().into(),
+                        to.into(),
                     ])?,
             ])
             .await?;
-        Ok(())
+        #[derive(Deserialize)]
+        struct Moved { #[serde(rename = "id")] _id: String }
+        Ok(!results[0].results::<Moved>()?.is_empty())
     }
 
     /// Where the repository that left `path` is now, unless a repository
@@ -294,7 +297,9 @@ impl<S: GitStore> Repos<S> {
             return Ok(Outcome::fail(code, message));
         }
 
-        self.registry.transfer(&repo, &destination).await?;
+        if !self.registry.transfer(&repo, &destination, self.free_public_bytes).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "This transfer would exceed the destination workspace's public storage limit."));
+        }
         let moved = Repo {
             namespace: destination.clone(),
             ..repo.clone()

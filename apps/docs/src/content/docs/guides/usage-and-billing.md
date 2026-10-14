@@ -9,8 +9,8 @@ things g1t runs for you: the sandboxes your workflows and checks run in,
 deployed apps, and, on the plan, storage and git traffic past the free
 amounts. Each is priced from what it costs g1t, plus 20%: runner minutes
 at a fixed rate for each machine, everything else at its cost plus 20%.
-It is charged to the workspace that owns the repository. There is no seat price, and on the plan there
-are no quotas: only your spend limit stops anything.
+It is charged to the workspace that owns the repository. There is no seat price.
+Your spend limit bounds paid usage; public storage and service size limits still apply.
 
 Wherever this page says an owner can do something to a workspace's
 billing, so can its [billing managers](/guides/workspaces/#roles-that-add-to-a-member):
@@ -41,10 +41,12 @@ charged for storage: once its private repositories hold 1 GB, pushes to
 them are refused at the start of the push, with what to do: make the
 repository public, delete what you do not need, or start the plan, where
 storage past 1 GB is usage and pushes never stop. Public repositories are
-never charged for storage, on any plan; a free workspace's public
-repositories hold up to 5 GB together, and past it pushes to them are
-refused the same way. On the plan, pushes to public repositories never
-stop.
+never charged for storage. Every workspace, including paid workspaces,
+has a **5 GB public repository storage cap**. Pushes, imports, forks and
+changes that would add public storage need room within that cap.
+Recently deleted repositories still count until permanently deleted.
+In-flight writes reserve capacity; an interrupted write may retain its
+reservation until it is reconciled.
 
 Compute is not free. Workflows, the merge queue,
 deployments and semantic search need [the g1t plan](#the-g1t-plan), or a
@@ -112,12 +114,12 @@ part of the price.
 - Usage past $10 is charged the same way, **up to your
   [spend limit](#limits)**.
 
-There are **no quotas** on the plan: no count of projects, previews,
-build minutes, requests, custom domains, git operations or gigabytes
-stops a workspace. Everything that costs g1t money is metered from the
+The plan has no count limit on projects or previews. Public repository
+storage has the 5 GB cap above, and repository and request size limits
+still apply. Paid usage is metered from the
 first unit (past the free 1 GB of private storage and 50,000 git
-operations that every workspace has), and only your spend limit stops
-work.
+operations that every workspace has). Your spend limit also stops new
+paid work.
 
 **Included usage** pays for the month's usage first, at the same prices as
 everything else: runner minutes, builds, app traffic, custom domains,
@@ -844,6 +846,51 @@ is public; custom terms change how you pay, not what things cost.
 g1t's own workspaces and those of Flagon, Inc., the company that makes g1t,
 have a 100% discount. Their usage is shown at price and kept apart from
 what customers pay.
+
+### Complimentary terms
+
+g1t can enroll a workspace in **complimentary** terms, such as for a
+design partner. A new workspace is never enrolled on its own: g1t staff
+choose each one. An enrollment gives:
+
+- **The plan's features**, without the plan's $21 a month.
+- **A monthly usage allowance**, such as $100. Usage counts against it at
+  its ordinary price, the same prices everyone pays: it is an amount of
+  usage g1t pays for, not a discount. It starts again on the 1st of each
+  month (UTC), and what is unused does not carry over.
+- **A monthly fee of its own**, often none. When there is one, Stripe
+  invoices it each month, apart from the allowance.
+
+**Billing** shows the allowance, what is used, what is metered but not
+billed yet, what is left, and when it starts again. Usage that is measured
+at the end of the month, such as storage and git operations, and work
+running now count against what is left.
+
+What happens at the allowance is part of the terms, and **Billing** says
+which:
+
+- **New work that costs money stops** until the month turns: new runner
+  jobs, builds, deployments and other compute, and storage and caches past
+  the free amounts. Nothing is ever charged for usage past it, whether or
+  not a card is saved. Work already running when the allowance runs out
+  finishes, and g1t covers what it cost past the allowance.
+- **Or usage past it is charged to your card**, such as when g1t covers a
+  set amount of an employee's or a friend's usage. Past the allowance,
+  usage is charged at the same prices as on the plan, up to your
+  [spend limit](#limits) and the [ceiling](#the-ceiling), and invoiced
+  when the month closes. Add a card on **Billing** first: without one,
+  work stops at the allowance until you do.
+
+If g1t changes the amount, what the month already used still counts:
+raising it adds only the difference, and lowering it below what was used
+leaves nothing more this month, never a bill.
+
+An owner or billing manager can **start the g1t plan instead** from the
+allowance card on **Billing**. The plan uses the same Stripe customer and
+subscription, and nothing changes until its first payment goes through:
+if the card is declined, the bank asks to confirm the payment, or the page
+is closed, the complimentary terms stay as they were. Usage the allowance
+paid for before the plan started is never charged afterwards.
 
 Each change is made by g1t staff and recorded with who made it and why. To
 ask for one, write to [support@g1t.sh](mailto:support@g1t.sh).

@@ -1305,7 +1305,11 @@ impl<S: GitStore> Repos<S> {
         if let Err(refusal) = visibility_check(&repo.namespace, &facts) {
             return Ok(fail(refusal));
         }
-        self.registry.set_private(&repo.id, private).await?;
+        if private {
+            self.registry.set_private(&repo.id, true).await?;
+        } else if !self.registry.make_public(&repo, self.free_public_bytes).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "This repository would exceed the workspace's public storage limit. Make room before making it public."));
+        }
         // Its forks keep who can see them, and leave its network.
         for fork_id in self.registry.detach_forks_of(&repo.id).await? {
             self.publish_detached(&fork_id, &repo.id).await?;

@@ -125,7 +125,7 @@ export function spendPath(micros: number, range: SpendRange): "self" | "raise" |
 
 /** Where the workspace stands with the g1t plan, for the plan card. */
 export type PlanStatus = {
-  kind: "free" | "trial" | "paid" | "canceling" | "past_due" | "comped" | "enterprise";
+  kind: "free" | "trial" | "paid" | "canceling" | "past_due" | "comped" | "enterprise" | "complimentary";
   label: string;
 };
 
@@ -135,6 +135,7 @@ export function planStatus(
 ): PlanStatus {
   if (entitlements?.plan === "internal") return { kind: "comped", label: "100% discount from g1t" };
   if (entitlements?.plan === "enterprise") return { kind: "enterprise", label: "Paid by an enterprise" };
+  if (entitlements?.plan === "complimentary") return { kind: "complimentary", label: "Complimentary from g1t" };
   if (plan?.included) return { kind: "comped", label: "Included by g1t" };
   const subscription = plan?.subscription;
   if (subscription?.status === "past_due") return { kind: "past_due", label: "Payment failed" };

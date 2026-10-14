@@ -62,8 +62,6 @@ fn needs_refresh(status: &str, period_end: Option<&str>, updated_at: &str, now_m
 
 #[derive(Deserialize)]
 struct PlanCheckoutRow {
-    workspace: String,
-    created_by: String,
     feature: String,
 }
 
@@ -293,6 +291,11 @@ impl Billing {
             ])?
             .run()
             .await?;
+        // invoice.paid may arrive before checkout establishes ownership.
+        // Reconcile the latest paid invoice whenever the plan is saved.
+        if let Some(invoice) = &subscription.latest_invoice {
+            self.plan_paid(&subscription.id, invoice).await?;
+        }
         Ok(())
     }
 
@@ -361,7 +364,10 @@ impl Billing {
         let account = self.account_of(workspace).await?;
         Ok(account.terms.full_discount()
             || account.kind == g1t_contracts::billing::AccountKind::Enterprise
-            || account.allowances.plan)
+            || account.allowances.plan
+            // Pending too: a plan bought while Stripe makes the enrollment's
+            // subscription would be a second one.
+            || self.complimentary_row(workspace).await?.is_some_and(|row| row.status != "ended"))
     }
 
     /// Whether the Security and quality activation is on without its
@@ -581,9 +587,16 @@ impl Billing {
                 }
                 Ok(subscription) => {
                     // Incomplete: let it lapse, and use the page.
-                    let _ = stripe.cancel_now(&subscription.id).await;
+                    if let Err(error) = stripe.cancel_now(&subscription.id).await {
+                        return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error)));
+                    }
                 }
-                Err(error) => worker::console_log!("{workspace}: the plan could not start on the saved card: {error}"),
+                // Only a definitive refusal can fall back to checkout.
+                // A timeout may mean Stripe created and charged the plan.
+                Err(error) if crate::invoices::is_decline(&error.to_string()) || crate::stripe::is_tax_location_error(&error) => {
+                    worker::console_log!("{workspace}: the plan could not start on the saved card: {error}");
+                }
+                Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
             }
         }
         let start = |customer: Option<String>| {
@@ -655,50 +668,17 @@ impl Billing {
             .bind(&[a.session.as_str().into(), workspace.as_str().into()])?
             .first::<PlanCheckoutRow>(None)
             .await?;
-        let (Some(stripe), Some(checkout)) = (&self.stripe, checkout) else {
+        let (Some(_), Some(checkout)) = (&self.stripe, checkout) else {
             // Unknown, someone else's, or already done: show where it stands.
             return Ok(Outcome::Ok(self.state(&workspace, Feature::Plan).await?));
         };
         let Some(feature) = Feature::parse(&checkout.feature) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such plan."));
         };
-        let session = match stripe.session(&a.session).await {
-            Ok(session) => session,
-            Err(error) => return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error))),
-        };
-        if let (Some(subscription_id), true) = (&session.subscription, session.payment_status == "paid") {
-            let claimed = self
-                .db
-                .prepare("UPDATE checkouts SET status = 'paid' WHERE id = ? AND status = 'open' RETURNING id")
-                .bind(&[a.session.as_str().into()])?
-                .first::<Touched>(None)
-                .await?;
-            if claimed.is_some() {
-                let subscription = match stripe.subscription(subscription_id).await {
-                    Ok(subscription) => subscription,
-                    Err(error) => {
-                        // Let the next look (or the webhook) settle it.
-                        self.db.prepare("UPDATE checkouts SET status = 'open' WHERE id = ?").bind(&[a.session.as_str().into()])?.run().await?;
-                        return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error)));
-                    }
-                };
-                self.record(&checkout.workspace, feature, &subscription, &checkout.created_by)
-                    .await?;
-                // Keep the card's customer, so later payments need no retyping.
-                self.db
-                    .prepare(
-                        "INSERT INTO accounts (workspace, balance_micros, customer_id, created_at)
-                         VALUES (?1, 0, ?2, ?3)
-                         ON CONFLICT (workspace) DO UPDATE SET customer_id = COALESCE(customer_id, ?2)",
-                    )
-                    .bind(&[
-                        checkout.workspace.as_str().into(),
-                        optional(session.customer.as_deref()),
-                        rfc3339(now_ms()).into(),
-                    ])?
-                    .run()
-                    .await?;
-            }
+        // The webhook and browser return share the recoverable settlement:
+        // save the plan and customer before marking checkout complete.
+        if let Err(error) = self.settle_checkout(&a.session).await {
+            return Ok(Outcome::fail(FailureCode::Conflict, crate::stripe::friendly(&error)));
         }
         Ok(Outcome::Ok(self.state(&workspace, feature).await?))
     }
@@ -803,7 +783,7 @@ impl Billing {
         // pays what it can; the trial and the open-source pool never pay for
         // deployments.
         let (charge, discount) = self.terms_of(&workspace).await?.discounted(crate::margin_on(cost_micros, self.margin_percent));
-        let drawn = self.draw(&workspace, charge, &month, &crate::credits::Eligible::default()).await?;
+        let drawn = crate::credits::Drawn::default();
         description.push_str(&drawn.note());
         // The ledger's unique reference decides between duplicate
         // deliveries: the one that loses gives back what it drew.
@@ -819,19 +799,12 @@ impl Billing {
             drawn,
         })
         .await;
-        match posted {
-            Ok(true) => {}
-            Ok(false) => {
-                self.undraw(&workspace, &month, &drawn, None).await?;
-                return Ok(Outcome::Ok(false));
-            }
-            Err(error) => {
-                self.undraw(&workspace, &month, &drawn, None).await?;
-                return Err(error);
-            }
+        if !posted? {
+            return Ok(Outcome::Ok(false));
         }
+        let (charged, drawn) = self.posted_allocation(&a.reference).await?;
         self.record_discount(&a.reference, discount).await?;
-        self.count_spend(&workspace, cost_micros, charge - drawn.total(), &drawn).await;
+        self.count_spend(&workspace, cost_micros, charged, &drawn).await;
         Ok(Outcome::Ok(true))
     }
 }

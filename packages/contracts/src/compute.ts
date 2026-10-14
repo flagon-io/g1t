@@ -34,7 +34,7 @@ import type { RepoPath } from "./repos";
 import type { Result } from "./result";
 
 /** What a workspace pays for. */
-export type ComputePlan = "free" | "paid" | "internal" | "enterprise";
+export type ComputePlan = "free" | "paid" | "internal" | "enterprise" | "complimentary";
 
 /**
  * What kind of compute is being started. Billing also knows `agent` and
@@ -94,7 +94,7 @@ function field(raw: Raw, camel: string): unknown {
 
 const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 
-const PLANS: ReadonlySet<string> = new Set(["free", "paid", "internal", "enterprise"]);
+const PLANS: ReadonlySet<string> = new Set(["free", "paid", "internal", "enterprise", "complimentary"]);
 
 /**
  * Billing's `entitlements`, as this module reads them. Null when they do

@@ -235,6 +235,39 @@ export function parseAllowances(form: FormData): Parsed<Allowances> {
   };
 }
 
+/** The most a complimentary allowance or fee can be: billing's caps. */
+export const MAX_COMPLIMENTARY_MICROS = 100_000 * MICROS_PER_DOLLAR;
+
+export type ComplimentaryInput = { allowanceMicros: number; unlimited: boolean; feeCents: number; chargePastAllowance: boolean; note: string };
+
+/**
+ * A complimentary enrollment's terms, from its form: the monthly usage
+ * allowance (at ordinary prices) or unlimited, and the monthly fee (blank or
+ * 0: waived). The two are separate amounts. A note is required.
+ */
+export function parseComplimentary(form: FormData): Parsed<ComplimentaryInput> {
+  const unlimited = text(form, "unlimited") === "on";
+  const rawAllowance = text(form, "allowance");
+  const allowanceMicros = unlimited && !rawAllowance ? 0 : parseDollars(rawAllowance);
+  if (allowanceMicros == null || allowanceMicros < 0) {
+    return { ok: false, error: "The monthly allowance is dollars and cents, such as 100 or 500, valued at ordinary usage prices." };
+  }
+  if (allowanceMicros > MAX_COMPLIMENTARY_MICROS) return { ok: false, error: "The allowance is at most $100,000 a month; for more, make it unlimited." };
+  const rawFee = text(form, "fee");
+  const feeMicros = rawFee ? parseDollars(rawFee) : 0;
+  if (feeMicros == null || feeMicros < 0) return { ok: false, error: "The monthly fee is dollars and cents, or blank to waive it." };
+  if (feeMicros > MAX_COMPLIMENTARY_MICROS) return { ok: false, error: "The monthly fee is at most $100,000." };
+  if (feeMicros % 10_000 !== 0) return { ok: false, error: "The monthly fee is whole cents." };
+  if (!unlimited && allowanceMicros === 0 && feeMicros === 0) {
+    return { ok: false, error: "No allowance and no fee gives nothing: set an allowance, or end the enrollment." };
+  }
+  const note = parseNote(text(form, "note"));
+  if (!note.ok) return note;
+  const chargePastAllowance = text(form, "past") === "charge";
+  if (unlimited && chargePastAllowance) return { ok: false, error: "An unlimited allowance has nothing past it to charge." };
+  return { ok: true, value: { allowanceMicros, unlimited, feeCents: feeMicros / 10_000, chargePastAllowance, note: note.value } };
+}
+
 /** The most one recorded payment can be; billing refuses more. */
 export const MAX_PAYMENT_MICROS = 100_000 * MICROS_PER_DOLLAR;
 const MAX_REFERENCE = 100;

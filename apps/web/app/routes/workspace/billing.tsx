@@ -16,7 +16,7 @@ import {
   SpikeBanner,
   TrialCard,
 } from "../../components/billing";
-import { AddOns, BillingOnStripeCard, BudgetAlerts, PlanSummary, StripeSkeleton } from "../../components/billing-settings";
+import { AddOns, BillingOnStripeCard, BudgetAlerts, ComplimentaryCard, PlanSummary, StripeSkeleton } from "../../components/billing-settings";
 import { StatementView } from "../../components/statement";
 import {
   cardCheckResult,
@@ -44,6 +44,7 @@ const DONE: Record<string, string> = {
   prepaid_pending:
     "Payment pending. Your prepaid balance goes up once the payment clears, and this page shows it the next time it loads. A bank transfer can take a few business days.",
   budget: "Budget alerts saved.",
+  converted: "The g1t plan is on, on the same billing. Usage from now on draws on its included usage first.",
   limit: "Spend limit saved.",
   requested: "Sent. g1t answers within one business day, here and by email.",
   told: "Thanks. g1t looks at it and answers within one business day, here and by email.",
@@ -183,6 +184,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!started.ok) return fail(feature, started.error.message);
       throw redirect(started.value.url);
     }
+    case "convert": {
+      // From complimentary to the plan, on the same customer and subscription:
+      // a card page, or the bank's confirmation, when one is needed first.
+      const converted = await billing.convertToPaid(user, slug, here);
+      if (!converted.ok) return fail("complimentary", converted.error.message);
+      if (converted.value.status === "converted") throw done("converted");
+      if (converted.value.url) throw redirect(converted.value.url);
+      return fail("complimentary", converted.value.message);
+    }
     case "card-check": {
       const started = await billing.cardCheck(user, slug, here);
       if (!started.ok) return fail("trial", started.error.message);
@@ -248,7 +258,9 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
   const error = actionData as SectionError;
   const err = (section: string) => (error && error.section === section ? error.error : undefined);
   const standing = planStatus(plan, entitlements);
-  const paying = standing.kind === "paid" || standing.kind === "canceling" || standing.kind === "past_due";
+  // A complimentary workspace charged past its allowance has the plan's limits too.
+  const chargedPast = standing.kind === "complimentary" && Boolean(entitlements?.complimentary?.chargePastAllowance);
+  const paying = standing.kind === "paid" || standing.kind === "canceling" || standing.kind === "past_due" || chargedPast;
   const free = standing.kind === "free" || standing.kind === "trial";
   const prepaid = limit?.prepaidMicros ?? entitlements?.prepaidMicros ?? 0;
   // The spend limit and its budget are the owners' to set only where
@@ -317,6 +329,10 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         <Suspense fallback={summary(null)}>
           <Await resolve={details}>{(loaded) => summary(loaded)}</Await>
         </Suspense>
+
+        {entitlements?.complimentary && standing.kind === "complimentary" && (
+          <ComplimentaryCard month={entitlements.complimentary} owner={owner} enabled={status.enabled} error={err("complimentary")} />
+        )}
 
         {free && status.enabled && (
           <TrialCard entitlements={entitlements} trialMicros={trialMicros} owner={owner} enabled={status.enabled} error={err("trial")} />

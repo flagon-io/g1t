@@ -238,7 +238,7 @@ function rows(tier: Required<FreeTier>): Row[] {
       what: "Private storage",
       free: `${gigabytes(tier.freePrivateStorageBytes)}, never charged. Past it, pushes to private repositories stop until you make room or start the plan.`,
       plan: `${gigabytes(tier.freePrivateStorageBytes)} free, then at cost plus 20%. Pushes never stop.`,
-      note: "Public repositories are never charged for storage.",
+      note: "Public repository storage is free, with a 5 GB limit per workspace on every plan.",
     },
     {
       what: "Git operations",
