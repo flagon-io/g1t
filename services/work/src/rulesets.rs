@@ -791,7 +791,14 @@ impl Work {
         ignore_checks: bool,
         honor_bypass: bool,
     ) -> Result<Gate> {
-        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None, None).await
+        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None, None, None).await
+    }
+
+    /// `merge_gate` with whether it is behind already worked out (from
+    /// what was stored with its mergeability, or asked once for this
+    /// request), so that showing a pull request does not ask repos again.
+    pub(crate) async fn merge_gate_seen(&self, repo: &Repo, pull: &Pull, actor: Option<&User>, behind: bool) -> Result<Gate> {
+        self.merge_gate_at(repo, pull, actor, false, true, None, None, Some(behind)).await
     }
 
     /// `merge_gate` for a merge by `method`: rules that allow only some
@@ -806,7 +813,7 @@ impl Work {
         honor_bypass: bool,
         method: MergeMethod,
     ) -> Result<Gate> {
-        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None, Some(method)).await
+        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None, Some(method), None).await
     }
 
     /// Re-evaluate current reviews and rules against the exact combined state.
@@ -828,10 +835,11 @@ impl Work {
     ) -> Result<Gate> {
         // The tested state was built by the entry's method (queue.rs), which
         // the rules judge as they are now.
-        let gate = self.merge_gate_at(repo, pull, Some(actor), false, true, Some((commit, statuses)), Some(method)).await?;
+        let gate = self.merge_gate_at(repo, pull, Some(actor), false, true, Some((commit, statuses)), Some(method), None).await?;
         Ok(if landing_honors_bypass(actor, bypass_rules) { gate } else { gate.without_bypass() })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn merge_gate_at(
         &self,
         repo: &Repo,
@@ -841,6 +849,7 @@ impl Work {
         honor_bypass: bool,
         tested: Option<(&str, Vec<g1t_contracts::work::CommitStatus>)>,
         method: Option<MergeMethod>,
+        known_behind: Option<bool>,
     ) -> Result<Gate> {
         let tested_commit = tested.as_ref().map(|(commit, _)| *commit);
         let tested_statuses = tested.as_ref().map(|(_, statuses)| statuses.clone());
@@ -880,7 +889,11 @@ impl Work {
             async {
                 // The repository service verifies ancestry and CAS for the
                 // combined commit; the original PR may legitimately be behind.
-                if tested_commit.is_some() { Ok(false) } else { self.is_behind(pull).await }
+                match (tested_commit, known_behind) {
+                    (Some(_), _) => Ok(false),
+                    (None, Some(behind)) => Ok(behind),
+                    (None, None) => self.is_behind(pull).await,
+                }
             },
             async {
                 if needs_owners { self.code_owners_gap(&owners_settings, pull).await } else { Ok(None) }
