@@ -38,6 +38,7 @@ import {
   type RepoSettings,
   type SessionEntry,
   type Viewer,
+  fail,
   pullComparison,
   workOwner,
 } from "@g1t/contracts";
@@ -516,7 +517,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
   const result =
     action === "merge"
-      ? await work.mergePull(user, path, number, mergeOptions(form))
+      ? // A merge that did not answer in time (lib/deadline.ts) or broke
+        // off says so in the merge box, not as an error page: trying again
+        // is safe, as a merge that went through meanwhile is recognised.
+        await work
+          .mergePull(user, path, number, mergeOptions(form))
+          .catch(() => fail("unavailable", "g1t couldn't reach the repository to merge this. Try again in a moment."))
       : action === "unqueue"
         ? await work.removeFromQueue(user, path, number)
       : action === "close"
@@ -686,6 +692,14 @@ function StatusRow({
       </div>
     </div>
   );
+}
+
+/** The required checks a caught-up merge still waits for: "CI passes", "CI and Deploy pass". */
+function awaitedChecks(checks: { name: string; state: string }[]): string {
+  const names = checks.filter((check) => check.state !== "success").map((check) => check.name);
+  if (names.length === 0) return "the required checks pass";
+  if (names.length === 1) return `the required check ${names[0]} passes`;
+  return `the required checks ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} pass`;
 }
 
 export default function PullPage({ loaderData, actionData, params }: Route.ComponentProps) {
@@ -1267,12 +1281,21 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       </StatusRow>
                     )}
                     {landing ? (
+                      // Brought up to date first, then landed once the
+                      // required checks pass on that new commit.
                       <StatusRow
                         icon={<Loader size={16} className="animate-spin text-accent" />}
-                        title="Merging"
+                        title={!behind && unchecked ? "Merging once checks pass" : "Merging"}
                       >
-                        {defaultBranch} has moved, so it is being brought up to date first. It
-                        lands as soon as that is done.
+                        {behind
+                          ? `${defaultBranch} has moved, so it is being brought up to date first. ${
+                              requiredChecks.length > 0
+                                ? "It lands once the required checks pass on that commit."
+                                : "It lands as soon as that is done."
+                            }`
+                          : unchecked
+                            ? `Brought up to date with ${defaultBranch}. It lands once ${awaitedChecks(requiredChecks)} on that commit.`
+                            : `Brought up to date with ${defaultBranch}. Landing now.`}
                       </StatusRow>
                     ) : conflicting ? (
                       <ConflictsSection

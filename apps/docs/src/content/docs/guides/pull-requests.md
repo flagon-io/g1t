@@ -522,7 +522,17 @@ fix is pushed, g1t works it out again.
 
 A pull request that only has fallen behind its target, without conflicts,
 still merges: merging brings it up to date first, unless the repository
-requires pull requests to be up to date.
+requires pull requests to be up to date. Bringing it up to date makes a new
+commit, so when the target branch requires checks, the merge box says
+**Merging once checks pass** and the pull request lands when the required
+checks pass on that commit, with nothing more to press. If one of them fails
+there, it is not merged: the pull request says which check failed, and you
+push a fix and merge again. With no required checks, it lands as soon as it
+is up to date.
+
+If the repository does not answer in time while merging, the merge box says
+g1t couldn't reach the repository. Merge again: if the first merge went
+through meanwhile, merging again records it rather than merging twice.
 
 ## Keeping it up to date
 
