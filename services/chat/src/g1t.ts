@@ -82,14 +82,38 @@ export function startsAnswer(input: {
 /** A message as the conversation reads it: oldest first. */
 export type SaidRow = { id: string; author: string; kind: "text" | "card"; body: string; meta: string | null; deleted_at: string | null };
 
+/** The longest note of an earlier answer's reads, in characters. */
+const READS_NOTE_CHARS = 800;
+
+/**
+ * What an earlier answer read in g1t, as a line put before its text when
+ * it is read back: a provider is given only the words of past answers, so
+ * without it the model takes an answer made from tool reads for one made
+ * up, and takes it back. Null when the answer read nothing.
+ */
+export function readsNote(steps: ChatAnswer["steps"]): string | null {
+  const tools = (steps ?? []).filter((step) => step.type === "tool" && typeof step.label === "string");
+  if (tools.length === 0) return null;
+  const parts = tools.map((step) => {
+    const label = String(step.label).trim();
+    const summary = typeof step.summary === "string" ? step.summary.trim() : "";
+    if (step.status === "failed") return `${label} (failed${summary ? `: ${summary}` : ""})`;
+    if (step.status === "refused") return `${label} (not run)`;
+    return summary ? `${label}: ${summary}` : label;
+  });
+  let note = `[g1t's tool reads for this answer: ${parts.join("; ")}]`;
+  if (note.length > READS_NOTE_CHARS) note = `${note.slice(0, READS_NOTE_CHARS - 2)}…]`;
+  return note;
+}
+
 /**
  * What an answer reads: the direct message's messages after the latest
  * "New conversation" mark, the person's as `user` and g1t's answers as
  * `assistant`, oldest first, alternating, starting and ending with the
  * person, within Ask's limits (the newest kept). Answers that failed, the
  * set-up note and the answer being written are left out; several messages
- * in a row from one side are read as one. Empty when there is nothing to
- * answer.
+ * in a row from one side are read as one, and each answer starts with what
+ * it read in g1t ([`readsNote`]). Empty when there is nothing to answer.
  */
 export function conversation(rows: readonly SaidRow[], answering: string | null = null): AskMessage[] {
   let start = 0;
@@ -99,13 +123,16 @@ export function conversation(rows: readonly SaidRow[], answering: string | null 
   const turns: AskMessage[] = [];
   for (const row of rows.slice(start)) {
     if (row.deleted_at || row.kind !== "text" || row.id === answering) continue;
-    const text = row.body.trim();
+    let text = row.body.trim();
     if (!text) continue;
     let role: AskMessage["role"];
     if (row.author === G1T_KEY) {
       const answer = parseMeta(row.meta).answer;
       if (!answer || answer.setup || answer.state === "error" || answer.state === "thinking" || answer.state === "streaming") continue;
       role = "assistant";
+      // First, so cutting a long answer short keeps it.
+      const reads = readsNote(answer.steps);
+      if (reads) text = `${reads}\n\n${text}`;
     } else if (row.author.startsWith("user:")) {
       role = "user";
     } else continue;

@@ -15,6 +15,7 @@ import {
   metaColumn,
   notSetUpText,
   pageFrom,
+  readsNote,
   shownAnswer,
   startsAnswer,
   type SaidRow,
@@ -77,6 +78,29 @@ test("the conversation maps the person to user and g1t's answers to assistant, a
     { role: "assistant", content: "Hello! What can I do?" },
     { role: "user", content: "What shipped?\n\nToday, I mean." },
   ]);
+});
+
+test("an earlier answer is read back with what it read in g1t, so it is not taken for made up", () => {
+  const steps = [
+    { type: "tool", id: "t1", name: "repository", action: "list", label: "Listed repositories", status: "done", summary: "9 repositories" },
+    { type: "tool", id: "t2", name: "repository", action: "get", label: "Read acme/rocket", status: "failed", summary: "Repository not found" },
+    { type: "sources", sources: [] },
+  ];
+  const rows = [
+    row("m1", ana, "Open issues in acme/rocket?"),
+    row("m2", G1T_KEY, "There is no acme/rocket.", { answer: { state: "done", steps } }),
+    row("m3", ana, "Did you check?"),
+  ];
+  assert.deepEqual(conversation(rows)[1], {
+    role: "assistant",
+    content:
+      "[g1t's tool reads for this answer: Listed repositories: 9 repositories; Read acme/rocket (failed: Repository not found)]\n\nThere is no acme/rocket.",
+  });
+  assert.equal(readsNote([]), null);
+  assert.equal(readsNote(undefined), null);
+  const many = Array.from({ length: 50 }, (_, i) => ({ type: "tool", id: `t${i}`, label: `Read file number ${i}`, status: "done" }));
+  const long = readsNote(many)!;
+  assert.ok(long.length <= 800 && long.endsWith("…]"));
 });
 
 test("the conversation leaves out failed answers, the set-up note, the answer being written, cards and deleted messages", () => {
