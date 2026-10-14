@@ -313,6 +313,42 @@ watching. When it finishes, its session ends with its last message as its
 result. Whoever started it can stop it from its page. It runs on your
 workspace's key and Anthropic bills the account for it; g1t bills nothing.
 
+## Assign g1t, or ask it in the thread
+
+You can also hand work to g1t from the issue or pull request itself, the
+way you would ask a teammate:
+
+- **Assign the issue to `g1t`**: **Assign to g1t** in the issue's
+  sidebar, `g1t` among the assignees in
+  [`update_issue`](/reference/api/issues/update-issue/), or
+  `g1t issue edit 12 --add-assignee g1t`.
+- **Mention `@g1t` in a comment** on an issue or a pull request:
+  "@g1t the button still overlaps on a phone, fix that". On a pull
+  request, the session carries on with that pull request on its branch.
+  On an issue, it takes the issue on.
+
+g1t reacts 👀 to what asked it, the comment or (for an assignment) the
+issue, then starts a session on the workspace's Anthropic account, as
+the person who asked, with what they wrote as its instruction. Each
+session shows in the issue's or pull request's conversation as a card,
+where it started, the way a comment or a review does: who it works for,
+where it stands, its branch, and its report when it ends, linked to its
+page. Not happy with what a session did? Say so with `@g1t` in the same
+thread. The next session is told to fix the work on the same branch and
+pull request, not start over, and `g1t work context` shows it every
+session and pull request so far. If the session you started on that
+thread is still going, your comment goes to it instead of starting
+another.
+
+Only the workspace's members can ask g1t; anyone else's `@g1t` is an
+ordinary mention. A mention in quoted text or code (`` `@g1t` ``) asks
+nothing. g1t answers one thread at most six times an hour. When it cannot
+start a session, for instance because the workspace has no Anthropic AI
+provider, it says why in the thread. On an update pull request g1t opened,
+`@g1t rebase` and the other
+[comment commands](/guides/dependency-updates/#comment-commands) still do what
+they say.
+
 ## Claims
 
 A claim says you are working on an issue. It is advisory: anyone may claim

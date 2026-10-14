@@ -182,6 +182,13 @@ the MCP server they are the `pull_request` tool's `request_reviewers` and
 
 ## Sessions
 
+Each session that works on a pull request, or on its issue, shows in the
+conversation as a card where it started, the way a comment or a review
+does: who it is (or g1t, working for someone), where it stands, its
+branch, and its report once it ends, linked to its page. Mention `@g1t`
+in a comment to have g1t carry on with the pull request; see
+[assign g1t, or ask it in the thread](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread).
+
 A coding agent that works on a pull request can record how it made the
 change, entry by entry, with the `pull_request` tool's `record_session`
 action. Read it on the pull request's **Session** tab, or with
@@ -292,6 +299,24 @@ comment's `id` is in `GET /repos/{owner}/{name}/issues/{number}` and
 publishes `comment.edited`, with what the comment said before in
 `changes.body.from`; deleting publishes `comment.deleted`, with the comment
 as it was in `comment`.
+
+## Reactions
+
+React to an issue's or pull request's description, or to any comment on
+it, with one of eight emoji: 👍 👎 😄 🎉 😕 ❤️ 🚀 👀. Select the smiley
+under it, or a reaction already there to add or take back yours; hovering
+one says who reacted. Anyone who can read the repository may react. g1t
+reacts 👀 to what it was asked to take on.
+
+Through the API, `POST /repos/{owner}/{name}/issues/{number}/reactions`
+with `content` (`+1`, `-1`, `laugh`, `hooray`, `confused`, `heart`,
+`rocket` or `eyes`), and `comment_id` to react to a comment rather than
+the description, reacts and answers with the reactions it has now;
+`remove: true` takes yours back. On the MCP server it is the `issue`
+tool's `react` action. Each comment's `reactions`, and the description's,
+are in `GET /repos/{owner}/{name}/issues/{number}` and
+`GET /repos/{owner}/{name}/pulls/{number}`: each with its `content`,
+`count` and the `users` who reacted.
 
 ## Commit comments
 

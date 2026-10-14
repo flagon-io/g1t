@@ -49,14 +49,34 @@ impl AgentMode {
 /// The most characters of an instruction kept.
 pub const MAX_INSTRUCTION_CHARS: usize = 4_000;
 
+/// Who asked g1t in an issue or a pull request, rather than from a
+/// button: by assigning it the issue, or by mentioning `@g1t` in a comment.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Asked {
+    /// Their username.
+    pub by: String,
+    /// What their comment said; none for an assignment.
+    #[serde(default)]
+    pub comment: Option<String>,
+    /// Where they asked: the comment, or the issue.
+    pub url: String,
+}
+
 /// `start_agent_session`: work on `issue` (or a new issue from `title` and
-/// `body`), as `actor`. Returns `Outcome<AgentSessionStarted>`.
+/// `body`), or carry on with pull request `pull`, as `actor`. Returns
+/// `Outcome<AgentSessionStarted>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StartAgentSessionArgs {
     pub actor: User,
     pub repo: RepoPath,
     #[serde(default)]
     pub issue: Option<u32>,
+    /// A pull request to carry on with, on its branch: in place of `issue`.
+    #[serde(default)]
+    pub pull: Option<u32>,
+    /// Set when g1t was asked in the thread (integrations' summon.rs).
+    #[serde(default)]
+    pub asked: Option<Asked>,
     /// Without `issue`: a new issue's title, opened first.
     #[serde(default)]
     pub title: Option<String>,
@@ -78,8 +98,11 @@ pub struct StartAgentSessionArgs {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSessionStarted {
-    /// The issue it works on.
+    /// The issue it works on: for a pull request with none, its number.
     pub issue: u32,
+    /// The pull request it carries on with, when it was started on one.
+    #[serde(default)]
+    pub pull: Option<u32>,
     /// The session on g1t, when one was started here.
     #[serde(default)]
     pub session: Option<Session>,

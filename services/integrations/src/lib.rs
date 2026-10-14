@@ -27,6 +27,7 @@ mod models;
 mod refs;
 mod rename;
 mod sentry;
+mod summon;
 mod trackers;
 
 use g1t_contracts::events::Event;
@@ -188,6 +189,7 @@ pub(crate) struct Integrations {
     pub(crate) sealer: Option<Sealer>,
     pub(crate) identity: Fetcher,
     pub(crate) work: Fetcher,
+    pub(crate) repos: Fetcher,
     /// Where the API is, for connections' webhook addresses.
     api_url: String,
     /// Where the site is, for links back to issues and pull requests.
@@ -204,6 +206,7 @@ impl Integrations {
             sealer: env.secret("INTEGRATIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
             identity: env.service("IDENTITY")?,
             work: env.service("WORK")?,
+            repos: env.service("REPOS")?,
             api_url: var("API_URL", "https://api.g1t.sh"),
             site_url: var("SITE_URL", "https://g1t.sh"),
             mcp_url: var("MCP_URL", "https://mcp.g1t.sh"),
@@ -1098,6 +1101,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
 async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
     if let Ok(service) = Integrations::new(&env) {
         agent_sessions::scheduled(&service).await;
+        summon::forget_old(&service).await;
     }
 }
 
@@ -1124,6 +1128,8 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         }
         // A repository purged: what was kept for it goes.
         rename::on_purged(&env.d1("DB")?, message.body()).await?;
+        // g1t assigned an issue or asked in a thread: it takes it on.
+        service.summon(message.body()).await;
         service.on_event(message.body()).await?;
         message.ack();
     }

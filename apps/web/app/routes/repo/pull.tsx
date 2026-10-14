@@ -40,6 +40,7 @@ import {
   type Viewer,
   fail,
   pullComparison,
+  REACTIONS,
   workOwner,
 } from "@g1t/contracts";
 
@@ -68,7 +69,8 @@ import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
 import { Hint } from "../../components/ui/hint";
 import { TabStrip } from "../../components/ui/tab-strip";
-import { DecisionList, IntegrationFailure, SessionTreeList } from "../../components/coordination";
+import { DecisionList, IntegrationFailure, SessionTreeList, TimelineSession } from "../../components/coordination";
+import { Reactions } from "../../components/reactions";
 import { resolutionOf, sessionTree, standingFailure } from "../../lib/coordination";
 import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
@@ -179,8 +181,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Its decision records: what the merge queue found when it was combined
     // with others, and the reasons kept on it (decisions.rs).
     tab !== "changes" ? work.listDecisions(path, number, viewer).catch(() => null) : null,
-    // The harness sessions tied to it in any way, with their subagents, for the Session tab.
-    tab === "session" ? work.listWorkSessions(path, viewer, { pull: number, subagents: true }).catch(() => null) : null,
+    // The harness sessions tied to it in any way: with their subagents for
+    // the Session tab, and in the conversation where each started.
+    tab === "session" || tab === "conversation"
+      ? work.listWorkSessions(path, viewer, { pull: number, subagents: tab === "session" }).catch(() => null)
+      : null,
   ]);
   if (!found.ok) {
     // Issues and pull requests share numbers; this one may be an issue.
@@ -437,6 +442,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     ...String(form.get("others") ?? "").split(/[\s,]+/).map((name) => name.replace(/^@/, "")),
   ];
   // Its labels, milestone and base, from the sidebar's menus and the header.
+  // A reaction to the pull request or one of its comments, or taking one back.
+  if (action === "react") {
+    const content = REACTIONS.find((one) => one.content === form.get("content"))?.content;
+    if (!content) return { error: "Pick a reaction.", action };
+    const reacted = await work.react(user, path, number, {
+      commentId: String(form.get("comment") ?? "") || undefined,
+      content,
+      remove: form.get("remove") === "1",
+    });
+    return reacted.ok ? null : { error: reacted.error.message, action };
+  }
   if (action === "labels") {
     const set = await work.setLabels(user, path, number, form.getAll("label").map(String));
     return set.ok ? null : { error: set.error.message, action };
@@ -1181,7 +1197,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   }
                 >
                   {pull.body ? (
-                    <Markdown source={pull.body} repo={{ namespace: params.owner, name: params.repo }} />
+                    <>
+                      <Markdown source={pull.body} repo={{ namespace: params.owner, name: params.repo }} />
+                      <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-3" />
+                    </>
                   ) : (
                     <p className="text-sm text-muted">
                       {working
@@ -1215,6 +1234,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   review={review}
                   base={base}
                   viewerId={viewer?.id ?? null}
+                  viewerName={viewer?.username ?? null}
+                  extra={harnessSessions
+                    .filter((session) => !session.parentId)
+                    .map((session) => ({ id: session.id, at: session.startedAt, node: <TimelineSession session={session} base={base} /> }))}
                   canModerate={canModerate}
                   failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
                 />

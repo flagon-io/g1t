@@ -336,6 +336,7 @@ impl From<CommentRow> for Comment {
             acting_for: agent.as_ref().and(requester(row.acting_for_id, row.acting_for_name)),
             advisory: agent.is_some() && advisory_verdict.is_some(),
             agent,
+            reactions: Vec::new(),
         }
     }
 }

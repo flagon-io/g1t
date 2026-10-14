@@ -1604,6 +1604,18 @@
     },
     "notes": "Answers `204` with no body. Its author, or someone with the Maintain role or higher. A review that approved or requested changes answers `409`: edit it instead."
   },
+  "react": {
+    "params": {
+      "number": 12,
+      "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+      "content": "heart"
+    },
+    "response": [
+      { "content": "heart", "count": 1, "users": ["ana"] },
+      { "content": "eyes", "count": 1, "users": ["g1t"] }
+    ],
+    "notes": "Reacting twice the same way is one reaction. Without comment_id it reacts to the issue's or pull request's description."
+  },
   "list_labels": {
     "response": [
       {
