@@ -96,7 +96,9 @@ request when it caught up with `main` is credited to whoever wrote it on
 
 Blame reads up to 400 commits back, for up to six seconds. A line older
 than that is credited to the oldest commit read that has it, and the view
-says the history is long. A file's blame at a commit is kept once worked
+says the history is long. While it is worked out the file shows as it is,
+with "Working out who changed each line" above it, and each line's commit
+fills in when it is ready. A file's blame at a commit is kept once worked
 out, so opening it again, or from a commit's link, shows at once. Search
 engines and other crawlers are asked to leave blame pages alone
 (`Disallow: /*?blame=` in `/robots.txt`); the file itself stays open to
