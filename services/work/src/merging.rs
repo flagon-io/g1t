@@ -281,8 +281,8 @@ impl Work {
         let (repo, mut pull) = check!(self.pull_at(&a.repo, a.number, &a.viewer).await?);
         crate::fill_base(&mut pull, &repo);
         let base = pull.base_branch(&repo.default_branch).to_owned();
-        let (settings, requirements) = self.settings_and_requirements(&repo, &pull).await?;
-        let behind = if pull.status.is_active() { self.is_behind(&pull).await? } else { false };
+        let ((settings, requirements), behind) =
+            futures_util::future::try_join(self.settings_and_requirements(&repo, &pull), self.behind_now(&pull)).await?;
         let methods = offered(&settings, &requirements);
         let default_method = choose_method(None, &settings, &requirements, &base).ok();
         let viewer = a.viewer.as_ref();
