@@ -298,6 +298,8 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_check_suites_for_ref",
     "get_check_suite",
     "list_integrations",
+    "list_ai_providers",
+    "get_ask_settings",
     "list_webhooks",
     "list_webhook_deliveries",
     "list_actions_secrets",
@@ -333,7 +335,7 @@ pub const READ_OPERATIONS: &[&str] = &[
 
 /// What no run credential may ever do, whatever its scope says:
 /// workspaces, repositories' settings, members, tokens, billing,
-/// integrations, webhooks, secrets, workflows' controls and merging.
+/// integrations, AI providers, webhooks, secrets, workflows' controls and merging.
 pub const NEVER: &[&str] = &[
     // Billing is people's: runs never spend or change it.
     "set_budget",
@@ -368,6 +370,14 @@ pub const NEVER: &[&str] = &[
     "update_integration",
     "disconnect_integration",
     "test_integration",
+    // A workspace's AI: its providers' keys, and what Ask answers with.
+    "list_ai_providers",
+    "add_ai_provider",
+    "update_ai_provider",
+    "remove_ai_provider",
+    "test_ai_provider",
+    "get_ask_settings",
+    "set_ask_settings",
     "list_webhooks",
     "create_webhook",
     "update_webhook",

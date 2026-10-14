@@ -15,9 +15,9 @@ use std::collections::VecDeque;
 
 use futures_util::StreamExt;
 use g1t_contracts::identity::RevokeAskTokenArgs;
-use g1t_contracts::integrations::{
+use g1t_contracts::ai::{
     ASK_MAX_TOOL_CALLS, ASK_MAX_TOOL_RESULT_CHARS, ASK_MAX_TOOL_ROUNDS, ASK_MAX_TOOL_SECONDS, ASK_MAX_TOOL_TOTAL_CHARS,
-    AskEvent, AskMessage, AskToolStatus, ConnectionConfig, Provider,
+    AskEvent, AskMessage, AskToolStatus, AiConfig, AiProvider,
 };
 use serde_json::Value;
 use worker::{ByteStream, Fetcher, Method};
@@ -86,8 +86,8 @@ impl Budget {
 /// Everything one answer needs, owned, so its stream outlives the request
 /// that started it.
 pub struct Answering {
-    pub provider: Provider,
-    pub config: ConnectionConfig,
+    pub provider: AiProvider,
+    pub config: AiConfig,
     pub key: Option<String>,
     pub model: String,
     pub system: String,
@@ -123,15 +123,15 @@ enum Phase {
 }
 
 /// Why a provider could not be asked, for the person.
-pub fn refused_by(provider: Provider, status: u16, body: String) -> String {
+pub fn refused_by(provider: AiProvider, status: u16, body: String) -> String {
     http::Answer { status, body }.problem(provider.label())
 }
 
 impl Answering {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        provider: Provider,
-        config: ConnectionConfig,
+        provider: AiProvider,
+        config: AiConfig,
         key: Option<String>,
         model: String,
         system: String,

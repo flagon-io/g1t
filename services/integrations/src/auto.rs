@@ -18,7 +18,7 @@
 //! date. A provider that lists none (an endpoint, an Azure deployment)
 //! answers with its own model.
 
-use g1t_contracts::integrations::{AskMessage, AskRole};
+use g1t_contracts::ai::{AskMessage, AskRole};
 
 /// What a question needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

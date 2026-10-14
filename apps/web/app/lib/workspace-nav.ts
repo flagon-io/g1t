@@ -42,6 +42,11 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
     pages: [{ key: "settings", label: "General", path: "settings", owner: true }],
   },
   {
+    key: "ai",
+    title: "AI",
+    pages: [{ key: "ai", label: "Models", path: "ai" }],
+  },
+  {
     key: "access",
     title: "Access",
     pages: [
@@ -248,6 +253,7 @@ const PAGE_MODES: Record<string, ModeKey> = {
   usage: "workspace",
   billing: "workspace",
   integrations: "workspace",
+  ai: "workspace",
   guardrails: "workspace",
   rules: "workspace",
   audit: "workspace",

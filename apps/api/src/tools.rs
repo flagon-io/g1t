@@ -412,7 +412,7 @@ pub const TOOLS: &[Tool] = &[
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite someone by username or email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
-            a("list_integrations", Op::ListIntegrations, "AI providers, alert sources and issue trackers"),
+            a("list_integrations", Op::ListIntegrations, "Alert sources and issue trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
             a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),
             a("disconnect_integration", Op::DisconnectIntegration, "Remove one"),
@@ -437,6 +437,21 @@ pub const TOOLS: &[Tool] = &[
             a("list_token_requests", Op::Tokens(TokenOp::ListTokenRequests), "Tokens waiting for approval"),
             a("review_token_request", Op::Tokens(TokenOp::ReviewTokenRequest), "Approve or deny one"),
             a("revoke_member_token", Op::Tokens(TokenOp::RevokeMemberToken), "Revoke a member's token in it"),
+        ],
+    },
+    Tool {
+        name: "ai",
+        title: "AI",
+        description: "A workspace's AI: the AI providers it keeps keys for (frontier labs, model platforms and self-hosted endpoints) and what Ask g1t answers with. Keys are sealed and never returned. g1t hosts no model and bills nothing for it: it runs on the workspace's own account. Members read it; changing it is for owners.",
+        default_action: Some("list_providers"),
+        actions: &[
+            a("list_providers", Op::ListAiProviders, "Its AI providers, with the models each offered and its last error"),
+            a("add_provider", Op::AddAiProvider, "Add one with its key, checked as it is saved"),
+            a("update_provider", Op::UpdateAiProvider, "Change one: rotate its key, its name or its settings"),
+            a("remove_provider", Op::RemoveAiProvider, "Remove one and its key"),
+            a("test_provider", Op::TestAiProvider, "Check its key works"),
+            a("get_ask", Op::GetAskSettings, "What Ask g1t answers with, or why it cannot"),
+            a("set_ask", Op::SetAskSettings, "Choose the provider and model Ask answers with, Auto, or turn Ask off"),
         ],
     },
     Tool {
@@ -608,6 +623,8 @@ fn destructive(op: Op) -> bool {
             | Op::RemoveCollaborator
             | Op::DisconnectIntegration
             | Op::UpdateIntegration
+            | Op::RemoveAiProvider
+            | Op::UpdateAiProvider
             | Op::DeleteWebhook
             | Op::DeleteActionsSecret
             | Op::DeleteActionsVariable

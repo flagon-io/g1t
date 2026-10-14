@@ -30,8 +30,8 @@ export default defineConfig({
 		'/guides/chat-app/': '/guides/chat/',
 		'/guides/customize/': '/guides/bring-your-own-agent/',
 		'/guides/marketplace/': '/guides/bring-your-own-agent/',
-		'/guides/models/': '/guides/integrations/',
-		'/guides/ai-gateway/': '/guides/integrations/',
+		'/guides/models/': '/guides/ai/',
+		'/guides/ai-gateway/': '/guides/ai/',
 		'/guides/context-hub/': '/guides/bring-your-own-agent/',
 		// Project and workspace memory is gone: harnesses keep their own.
 		'/guides/memory/': '/guides/bring-your-own-agent/',
@@ -105,6 +105,7 @@ export default defineConfig({
 						{ label: 'The g1t CLI', slug: 'guides/cli' },
 						{ label: 'Home', slug: 'guides/home' },
 						{ label: 'Ask g1t', slug: 'guides/ask' },
+						{ label: 'AI providers', slug: 'guides/ai' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
 						{ label: 'The desktop app', slug: 'guides/desktop' },
 						{ label: 'The phone app', slug: 'guides/mobile' },

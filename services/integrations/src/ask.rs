@@ -15,8 +15,8 @@
 //! The key goes in the provider's request here and nowhere else: never to
 //! the browser, never into the prompt.
 
-use g1t_contracts::integrations::{
-    ASK_MAX_MESSAGE_CHARS, ASK_MAX_MESSAGES, ASK_MAX_TOTAL_CHARS, AskEvent, AskMessage, AskPage, AskRole, ConnectionConfig, Provider,
+use g1t_contracts::ai::{
+    ASK_MAX_MESSAGE_CHARS, ASK_MAX_MESSAGES, ASK_MAX_TOTAL_CHARS, AskEvent, AskMessage, AskPage, AskRole, AiConfig, AiProvider,
 };
 use serde_json::{Value, json};
 
@@ -41,8 +41,8 @@ pub struct ToolSpec {
 
 /// What one request to a provider asks for.
 pub struct Request<'a> {
-    pub provider: Provider,
-    pub config: &'a ConnectionConfig,
+    pub provider: AiProvider,
+    pub config: &'a AiConfig,
     pub key: Option<&'a str>,
     pub model: &'a str,
     pub system: &'a str,
@@ -102,7 +102,7 @@ pub fn build(request: &Request) -> Result<Built, String> {
                 // Anthropic's own API keeps the tools and the system prompt
                 // cached between an answer's rounds: each round sends them
                 // again, so the workspace's key pays for them once.
-                if provider == Provider::Anthropic
+                if provider == AiProvider::Anthropic
                     && let Some(last) = tools.last_mut()
                 {
                     last["cache_control"] = json!({ "type": "ephemeral" });
@@ -121,7 +121,7 @@ pub fn build(request: &Request) -> Result<Built, String> {
             // OpenAI's own API, and Azure's, take `max_completion_tokens`
             // (its reasoning models refuse `max_tokens`); the rest take
             // `max_tokens`.
-            let limit = if matches!(provider, Provider::Openai | Provider::AzureOpenai) {
+            let limit = if matches!(provider, AiProvider::Openai | AiProvider::AzureOpenai) {
                 "max_completion_tokens"
             } else {
                 "max_tokens"
@@ -600,7 +600,7 @@ pub struct Round {
 }
 
 impl Round {
-    pub fn new(provider: Provider, gap: bool) -> Self {
+    pub fn new(provider: AiProvider, gap: bool) -> Self {
         Round {
             api: provider.api(),
             sse: Sse::default(),
@@ -746,8 +746,8 @@ mod tests {
 
     #[allow(clippy::too_many_arguments)]
     fn plain(
-        provider: Provider,
-        config: &ConnectionConfig,
+        provider: AiProvider,
+        config: &AiConfig,
         key: Option<&str>,
         model: &str,
         system: &str,
@@ -771,7 +771,7 @@ mod tests {
     #[test]
     fn anthropic_gets_the_messages_api_with_its_key_header() {
         let messages = [say(AskRole::User, "What is this?")];
-        let built = plain(Provider::Anthropic, &ConnectionConfig::default(), Some("sk-ant"), "claude-x", "Be brief.", &messages, 1024).unwrap();
+        let built = plain(AiProvider::Anthropic, &AiConfig::default(), Some("sk-ant"), "claude-x", "Be brief.", &messages, 1024).unwrap();
         assert_eq!(built.url, "https://api.anthropic.com/v1/messages");
         assert_eq!(header(&built, "x-api-key"), Some("sk-ant"));
         assert_eq!(header(&built, "anthropic-version"), Some("2023-06-01"));
@@ -787,23 +787,23 @@ mod tests {
 
     #[test]
     fn an_anthropic_endpoint_takes_its_own_address_and_header() {
-        let config = ConnectionConfig {
+        let config = AiConfig {
             base_url: Some("https://llm.acme.dev/v1".into()),
             auth_header: Some("authorization".into()),
-            ..ConnectionConfig::default()
+            ..AiConfig::default()
         };
-        let built = plain(Provider::AnthropicEndpoint, &config, Some("k"), "m", "s", &[say(AskRole::User, "hi")], 10).unwrap();
+        let built = plain(AiProvider::AnthropicEndpoint, &config, Some("k"), "m", "s", &[say(AskRole::User, "hi")], 10).unwrap();
         assert_eq!(built.url, "https://llm.acme.dev/v1/messages");
         assert_eq!(header(&built, "authorization"), Some("Bearer k"));
         // An endpoint that needs no key gets none.
-        let open = plain(Provider::AnthropicEndpoint, &config, None, "m", "s", &[say(AskRole::User, "hi")], 10).unwrap();
+        let open = plain(AiProvider::AnthropicEndpoint, &config, None, "m", "s", &[say(AskRole::User, "hi")], 10).unwrap();
         assert_eq!(header(&open, "authorization"), None);
     }
 
     #[test]
     fn openai_compatible_providers_get_chat_completions_with_the_system_first() {
         let messages = [say(AskRole::User, "a"), say(AskRole::Assistant, "b"), say(AskRole::User, "c")];
-        let built = plain(Provider::Groq, &ConnectionConfig::default(), Some("gsk"), "kimi", "sys", &messages, 512).unwrap();
+        let built = plain(AiProvider::Groq, &AiConfig::default(), Some("gsk"), "kimi", "sys", &messages, 512).unwrap();
         assert_eq!(built.url, "https://api.groq.com/openai/v1/chat/completions");
         assert_eq!(header(&built, "authorization"), Some("Bearer gsk"));
         let sent = body(&built);
@@ -813,21 +813,14 @@ mod tests {
         assert!(sent.get("max_completion_tokens").is_none());
         assert_eq!(sent["stream"], true);
 
-        let openai = body(&plain(Provider::Openai, &ConnectionConfig::default(), Some("sk"), "gpt-5", "s", &messages, 512).unwrap());
+        let openai = body(&plain(AiProvider::Openai, &AiConfig::default(), Some("sk"), "gpt-5", "s", &messages, 512).unwrap());
         assert_eq!(openai["max_completion_tokens"], 512);
         assert!(openai.get("max_tokens").is_none());
 
-        let azure = ConnectionConfig { base_url: Some("https://acme.openai.azure.com".into()), ..ConnectionConfig::default() };
-        let built = plain(Provider::AzureOpenai, &azure, Some("az"), "gpt-5", "s", &messages, 512).unwrap();
+        let azure = AiConfig { base_url: Some("https://acme.openai.azure.com".into()), ..AiConfig::default() };
+        let built = plain(AiProvider::AzureOpenai, &azure, Some("az"), "gpt-5", "s", &messages, 512).unwrap();
         assert_eq!(built.url, "https://acme.openai.azure.com/openai/v1/chat/completions");
         assert_eq!(header(&built, "api-key"), Some("az"));
-    }
-
-    #[test]
-    fn what_is_not_an_ai_provider_cannot_answer() {
-        let refused =
-            plain(Provider::Sentry, &ConnectionConfig { base_url: Some("https://x.dev".into()), ..ConnectionConfig::default() }, None, "m", "s", &[], 1);
-        assert!(refused.unwrap_err().contains("not supported for Ask yet"));
     }
 
     #[test]
@@ -838,8 +831,8 @@ mod tests {
         let rounds = tool_turns("anthropic", "Let me look.", &calls, &results);
         let tools = tools();
         let request = Request {
-            provider: Provider::Anthropic,
-            config: &ConnectionConfig::default(),
+            provider: AiProvider::Anthropic,
+            config: &AiConfig::default(),
             key: Some("k"),
             model: "claude-x",
             system: "s",
@@ -870,8 +863,8 @@ mod tests {
         let last = build(&Request { answer_now: true, ..request }).unwrap();
         assert_eq!(body(&last)["tool_choice"], json!({ "type": "none" }));
         // A compatible endpoint is not sent Anthropic's cache marker.
-        let config = ConnectionConfig { base_url: Some("https://llm.acme.dev/v1".into()), ..ConnectionConfig::default() };
-        let endpoint = build(&Request { provider: Provider::AnthropicEndpoint, config: &config, ..request }).unwrap();
+        let config = AiConfig { base_url: Some("https://llm.acme.dev/v1".into()), ..AiConfig::default() };
+        let endpoint = build(&Request { provider: AiProvider::AnthropicEndpoint, config: &config, ..request }).unwrap();
         assert!(body(&endpoint)["tools"][1].get("cache_control").is_none());
         // A refused call is an error result.
         let refused = tool_turns("anthropic", "", &calls, &[Answered { is_error: true, ..results[0].clone() }]);
@@ -887,8 +880,8 @@ mod tests {
         let rounds = tool_turns("openai", "", &calls, &results);
         let tools = tools();
         let request = Request {
-            provider: Provider::Openai,
-            config: &ConnectionConfig::default(),
+            provider: AiProvider::Openai,
+            config: &AiConfig::default(),
             key: Some("k"),
             model: "gpt-5",
             system: "s",
@@ -1076,7 +1069,7 @@ mod tests {
 
     #[test]
     fn a_round_streams_text_and_keeps_the_tools_asked_for() {
-        let mut round = Round::new(Provider::Openai, false);
+        let mut round = Round::new(AiProvider::Openai, false);
         let out = round.feed(b"data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n");
         assert_eq!(out, "{\"type\":\"text\",\"text\":\"Hi\"}\n");
         assert_eq!(round.feed(b"data: [DONE]\n\n"), "");
@@ -1086,7 +1079,7 @@ mod tests {
         assert_eq!(round.error(), None);
 
         // Anthropic: a call's arguments arrive in parts.
-        let mut round = Round::new(Provider::Anthropic, false);
+        let mut round = Round::new(AiProvider::Anthropic, false);
         let mut stream = String::new();
         for event in [
             r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
@@ -1113,7 +1106,7 @@ mod tests {
 
         // A later round's text starts a new paragraph; arguments that are
         // not JSON are none.
-        let mut round = Round::new(Provider::Openai, true);
+        let mut round = Round::new(AiProvider::Openai, true);
         let out = round.feed(
             b"data: {\"choices\":[{\"delta\":{\"content\":\" Here\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"name\":\"issue\",\"arguments\":\"{oops\"}}]}}]}\n\n",
         );
@@ -1121,10 +1114,10 @@ mod tests {
         assert_eq!(round.end(), "");
         assert_eq!(round.calls(), vec![Call { id: "call_0".into(), name: "issue".into(), input: json!({}) }]);
 
-        let mut round = Round::new(Provider::Anthropic, false);
+        let mut round = Round::new(AiProvider::Anthropic, false);
         round.broke("Lost the provider.");
         assert_eq!(round.error(), Some("Lost the provider."));
-        let mut round = Round::new(Provider::Anthropic, false);
+        let mut round = Round::new(AiProvider::Anthropic, false);
         round.feed(b"data: {\"type\":\"error\",\"error\":{\"message\":\"Overloaded\"}}\n\n");
         assert_eq!(round.error(), Some("Overloaded"));
     }

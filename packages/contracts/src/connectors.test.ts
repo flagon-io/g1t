@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { CONNECTOR_CATEGORIES, CONNECTORS, connectorPath, connectorView, connectorsFor } from "./connectors.ts";
+import { AI_PROVIDERS } from "./ai.ts";
 import { PROVIDERS } from "./integrations.ts";
 
 test("every connector has a unique id, a category and a scope", () => {
@@ -29,11 +30,15 @@ test("every category has connectors, and an available one in each scope it has i
   }
 });
 
-test("every integration provider is an available connector", () => {
+test("every integration provider is an available connector, and no AI provider is one", () => {
   for (const provider of Object.keys(PROVIDERS)) {
     const connector = CONNECTORS.find((c) => c.provider === provider);
     assert.ok(connector, `${provider} has no connector`);
     assert.equal(connector.status, "available", provider);
+  }
+  // AI providers are each workspace's AI settings, at -/ai, not integrations.
+  for (const provider of Object.keys(AI_PROVIDERS)) {
+    assert.equal(CONNECTORS.find((c) => (c.provider as string) === provider || c.id === provider.replace(/_/g, "-")), undefined, provider);
   }
 });
 
@@ -43,10 +48,7 @@ test("only what g1t sets up end to end is available; the docs' Available today l
       .filter((view) => view.status === "available")
       .map((view) => view.id)
       .sort();
-  const models = Object.entries(PROVIDERS)
-    .filter(([, provider]) => provider.kind === "models")
-    .map(([id]) => id.replace(/_/g, "-"));
-  assert.deepEqual(available("workspace"), ["alerts-webhook", "datadog", "github", "jira", "linear", "sentry", "webhooks", ...models].sort());
+  assert.deepEqual(available("workspace"), ["alerts-webhook", "datadog", "github", "jira", "linear", "sentry", "webhooks"]);
   assert.deepEqual(available("personal"), ["github", "mcp"]);
 });
 
@@ -65,6 +67,6 @@ test("a connector shows its personal side to you", () => {
 });
 
 test("a setup path names the workspace", () => {
-  assert.equal(connectorPath("/:workspace/-/integrations/models?add=openai#add", "acme"), "/acme/-/integrations/models?add=openai#add");
+  assert.equal(connectorPath("/:workspace/-/integrations/alerts?add=sentry#add", "acme"), "/acme/-/integrations/alerts?add=sentry#add");
   assert.equal(connectorPath("/new/github?workspace=:workspace", "acme"), "/new/github?workspace=acme");
 });

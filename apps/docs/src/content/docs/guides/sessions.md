@@ -75,7 +75,7 @@ Everything here shows on g1t.sh as it happens, without reloading.
 - **An issue's and a pull request's sessions**: every session tied to it
   in any way, with its subagents under it.
 - **Start a session** on an issue, for members of a workspace with an
-  Anthropic connection: see
+  Anthropic AI provider: see
   [Start a session on your Anthropic account](#start-a-session-on-your-anthropic-account).
 
 ## Picking up an issue
@@ -272,8 +272,8 @@ curl -X POST https://api.g1t.sh/repos/acme/web/agent-sessions \
 Give `issue`, or `title` and `body` to open a new issue first, a `mode`
 (`plan`, `implement` or `review`) and an optional `instruction`.
 
-- **With an Anthropic connection** in the workspace (an owner adds one
-  under **Integrations**, **Your AI providers**), g1t starts a
+- **With an Anthropic AI provider** in the workspace (an owner adds one
+  under [**AI**](/guides/ai/)), g1t starts a
   [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview)
   session on that account, with its key, on the model Ask is set to use
   (or `claude-opus-5-5`). It runs in a sandbox on Anthropic's side and

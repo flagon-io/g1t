@@ -9,7 +9,7 @@ reviewing, or anything else about your work, and the answer streams in as
 it is written.
 
 Ask answers with **your workspace's own AI provider**, on your workspace's
-own key: one of [your AI providers](/guides/integrations/#your-ai-providers),
+own key: one of [your AI providers](/guides/ai/),
 and **Auto** or the model an owner chose for it. g1t hosts no model for Ask and bills
 nothing for it; what an answer costs is on your provider's bill. Your key
 stays sealed in g1t: it is used to call the provider and is never sent to
@@ -19,11 +19,11 @@ your browser.
 
 An owner of the workspace sets it up once:
 
-1. Open **Integrations → Your AI providers**, at
-   `g1t.sh/<workspace>/-/integrations/models`.
-2. Connect a provider if there is none yet: Anthropic, OpenAI, Gemini or
-   any of the others, or your own Anthropic- or OpenAI-compatible
-   endpoint.
+1. Open **AI**, in the workspace's settings, at
+   `g1t.sh/<workspace>/-/ai`.
+2. Add a provider if there is none yet: a frontier lab such as
+   Anthropic, OpenAI or Gemini, a model platform, or a model you host
+   yourself behind an Anthropic- or OpenAI-compatible endpoint.
 3. Under **Ask g1t**, choose the provider and its model, then **Use for
    Ask**. The model starts at **Auto** (see [Auto](#auto)); choose one of
    the models the provider offers to use that one for every answer. For

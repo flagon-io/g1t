@@ -2413,7 +2413,7 @@
       "command": null,
       "prompt": "Work on issue #12 in syntaqx/hello: Make the greeting name the caller.\n\n…"
     },
-    "notes": "Runs on the workspace's own Anthropic key: g1t runs no model and bills nothing for it. Without an Anthropic connection (or with `handoff: true`) nothing is started and `command` is a Claude Code command line to run with g1t's plugin. See [Sessions](/guides/sessions/#start-a-session-on-your-anthropic-account)."
+    "notes": "Runs on the workspace's own Anthropic key: g1t runs no model and bills nothing for it. Without an Anthropic AI provider (or with `handoff: true`) nothing is started and `command` is a Claude Code command line to run with g1t's plugin. See [Sessions](/guides/sessions/#start-a-session-on-your-anthropic-account)."
   },
   "update_session": {
     "request": {
@@ -4688,8 +4688,7 @@
         "created_by": "syntaqx",
         "created_at": "2026-10-04T15:42:07.318Z",
         "last_used_at": null,
-        "last_error": null,
-        "models": []
+        "last_error": null
       }
     ],
     "notes": "`kind` is `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts."
@@ -4722,8 +4721,7 @@
         "created_by": "syntaqx",
         "created_at": "2026-10-04T15:42:07.318Z",
         "last_used_at": null,
-        "last_error": null,
-        "models": []
+        "last_error": null
       },
       "signing_secret": "g1ts_9f2c4a7e1b0d3c6f8a2e5b7d9c1f4a6e8b0d2c4f6a8e1b3d"
     },
@@ -4765,8 +4763,7 @@
       "created_by": "syntaqx",
       "created_at": "2026-10-04T15:42:07.318Z",
       "last_used_at": "2026-10-07T14:00:02.000Z",
-      "last_error": null,
-      "models": []
+      "last_error": null
     },
     "notes": "The secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. Use it to rotate a key."
   },
@@ -4787,6 +4784,167 @@
       "message": "Connected to https://acme.atlassian.net as Chase Pierce."
     },
     "notes": "Credentials that do not work still answer `200`, with `ok` false and `message` saying what went wrong."
+  },
+  "list_ai_providers": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+        "workspace": "flagon-io",
+        "provider": "anthropic",
+        "group": "labs",
+        "name": "Anthropic",
+        "config": {},
+        "secret_hint": "…Q2fA",
+        "created_by": "syntaqx",
+        "created_at": "2026-10-04T15:42:07.318Z",
+        "last_used_at": "2026-10-14T09:12:44.051Z",
+        "last_error": null,
+        "models": [
+          "claude-haiku-4-5",
+          "claude-sonnet-4-5",
+          "claude-opus-4-1"
+        ]
+      },
+      {
+        "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3bf",
+        "workspace": "flagon-io",
+        "provider": "openai_endpoint",
+        "group": "self_hosted",
+        "name": "vLLM",
+        "config": {
+          "base_url": "https://llm.example.com/v1",
+          "auth_header": "authorization",
+          "model": "qwen3-coder"
+        },
+        "secret_hint": "…k9Lm",
+        "created_by": "syntaqx",
+        "created_at": "2026-10-14T10:03:51.902Z",
+        "last_used_at": null,
+        "last_error": null,
+        "models": [
+          "qwen3-coder"
+        ]
+      }
+    ],
+    "notes": "`group` is `labs`, `platforms` or `self_hosted`. `secret_hint` shows the end of the key; the key itself is never returned. `models` are those the provider offered when last checked. See [AI](/guides/ai/)."
+  },
+  "add_ai_provider": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "provider": "openai_endpoint",
+      "name": "vLLM",
+      "config": {
+        "base_url": "https://llm.example.com/v1",
+        "auth_header": "authorization",
+        "model": "qwen3-coder"
+      },
+      "secret": "sk-…"
+    },
+    "response": {
+      "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3bf",
+      "workspace": "flagon-io",
+      "provider": "openai_endpoint",
+      "group": "self_hosted",
+      "name": "vLLM",
+      "config": {
+        "base_url": "https://llm.example.com/v1",
+        "auth_header": "authorization",
+        "model": "qwen3-coder"
+      },
+      "secret_hint": "…k9Lm",
+      "created_by": "syntaqx",
+      "created_at": "2026-10-14T10:03:51.902Z",
+      "last_used_at": null,
+      "last_error": null,
+      "models": [
+        "qwen3-coder"
+      ]
+    },
+    "notes": "The key is checked as it is saved: one the provider refuses is refused with `422`, saying why. It is sealed and never returned; only its last four characters come back, as `secret_hint`."
+  },
+  "update_ai_provider": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be"
+    },
+    "request": {
+      "name": "Anthropic (team)",
+      "secret": "sk-ant-…"
+    },
+    "response": {
+      "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+      "workspace": "flagon-io",
+      "provider": "anthropic",
+      "group": "labs",
+      "name": "Anthropic (team)",
+      "config": {},
+      "secret_hint": "…w8Rt",
+      "created_by": "syntaqx",
+      "created_at": "2026-10-04T15:42:07.318Z",
+      "last_used_at": "2026-10-14T09:12:44.051Z",
+      "last_error": null,
+      "models": [
+        "claude-haiku-4-5",
+        "claude-sonnet-4-5",
+        "claude-opus-4-1"
+      ]
+    },
+    "notes": "The key is write-only. Use it to rotate a key: the new one replaces the old at once."
+  },
+  "remove_ai_provider": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3bf"
+    },
+    "response": true
+  },
+  "test_ai_provider": {
+    "params": {
+      "workspace": "flagon-io",
+      "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be"
+    },
+    "response": {
+      "ok": true,
+      "message": "Anthropic answered with 3 models."
+    },
+    "notes": "A key that does not work still answers `200`, with `ok` false and `message` saying what went wrong."
+  },
+  "get_ask_settings": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "provider_id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+      "provider_name": "Anthropic",
+      "provider": "anthropic",
+      "model": null,
+      "auto": true,
+      "problem": null
+    },
+    "notes": "`auto` is true when Ask picks one of the provider's models for each question. `problem` says why Ask cannot answer, such as no provider chosen, and is null when it can. See [Ask g1t](/guides/ask/)."
+  },
+  "set_ask_settings": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "provider_id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+      "model": "claude-sonnet-4-5"
+    },
+    "response": {
+      "provider_id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+      "provider_name": "Anthropic",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "auto": false,
+      "problem": null
+    },
+    "notes": "`model` is one of the models the provider offers, or `auto`. Send `provider_id` null to turn Ask off."
   },
   "get_context": {
     "query": {

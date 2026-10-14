@@ -17,7 +17,7 @@ import { data } from "react-router";
 import { AGENT_MODES } from "@g1t/contracts";
 
 import type { Route } from "./+types/ask";
-import { agentSessions, integrations } from "../../lib/services.server";
+import { agentSessions, ai } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -30,7 +30,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const setup = await agentSessions.setup(workspace, viewer).catch(() => null);
     return Response.json({ available: Boolean(setup?.ok && setup.value.available), model: setup?.ok ? setup.value.model : null }, { headers });
   }
-  const setup = await integrations.askSettings(workspace, viewer);
+  const setup = await ai.askSettings(workspace, viewer);
   return Response.json({ ...setup, owner: role === "owner" }, { headers });
 }
 

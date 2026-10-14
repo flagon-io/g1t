@@ -429,8 +429,8 @@ impl Scope {
             Scope::NotificationsWrite => "Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories",
             Scope::ChatRead => "Read the conversations you are in: channels, direct messages, threads and reactions, live",
             Scope::ChatWrite => "Send, edit and delete your messages, react, mark conversations read, and answer cards in chat",
-            Scope::WorkspaceRead => "Read workspace settings, invites, integrations, teams and rulesets",
-            Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, create, change and delete teams, and change the workspace's rulesets",
+            Scope::WorkspaceRead => "Read workspace settings, invites, integrations, AI providers, teams and rulesets",
+            Scope::WorkspaceAdmin => "Create and delete workspaces, invite members, connect integrations, add AI providers and choose what Ask answers with, create, change and delete teams, and change the workspace's rulesets",
             Scope::BillingRead => "See a workspace's usage, budget and invoices",
             Scope::BillingWrite => "Change a workspace's budget",
             Scope::AccessRead => "See who has access to repositories",
@@ -963,6 +963,14 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_integration", Scope::WorkspaceAdmin),
     ("disconnect_integration", Scope::WorkspaceAdmin),
     ("test_integration", Scope::WorkspaceAdmin),
+    // Its AI: the AI providers it keeps keys for, and what Ask answers with.
+    ("list_ai_providers", Scope::WorkspaceRead),
+    ("add_ai_provider", Scope::WorkspaceAdmin),
+    ("update_ai_provider", Scope::WorkspaceAdmin),
+    ("remove_ai_provider", Scope::WorkspaceAdmin),
+    ("test_ai_provider", Scope::WorkspaceAdmin),
+    ("get_ask_settings", Scope::WorkspaceRead),
+    ("set_ask_settings", Scope::WorkspaceAdmin),
     // Teams: reading them, and managing them. A team's role on a
     // repository is who has access.
     ("list_teams", Scope::WorkspaceRead),
