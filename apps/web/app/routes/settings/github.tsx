@@ -1,4 +1,4 @@
-import { Form } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/github";
 import { page } from "../../lib/meta";
@@ -70,6 +70,15 @@ export default function GithubSettings({ loaderData, actionData }: Route.Compone
         >
           <GithubMark /> Link GitHub
         </a>
+      )}
+      {github.account?.authorized && (
+        <p className="mt-3 text-sm text-muted">
+          To bring repositories into a workspace,{" "}
+          <Link to="/new/github" className="text-fg underline underline-offset-4">
+            import from GitHub
+          </Link>
+          .
+        </p>
       )}
       {github.account && !github.hasPassword && (
         <p className="mt-2 text-xs text-faint">

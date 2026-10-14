@@ -72,13 +72,15 @@ workspace you belong to, as `github.sign_in`, `github.linked` and
 
 1. Choose **New project**, then **Import from GitHub**. You can also go to
    `g1t.sh/new/github`.
-2. If your GitHub account is not linked yet, choose **Connect GitHub**.
-3. If no GitHub account is connected to the workspace, a workspace owner
-   chooses **Install on GitHub**, picks the GitHub account or organization,
-   and chooses which repositories the app may see. GitHub returns you to
-   g1t, which records the installation for the workspace. If the app is
-   installed on GitHub already, add it instead: see
-   [already installed the app on GitHub](#already-installed-the-app-on-github).
+2. A workspace owner chooses **Connect GitHub**. In one trip to GitHub,
+   g1t links your GitHub account (if it is not linked yet) and installs
+   its GitHub App on the account or organization you pick, with the
+   repositories you let it see. GitHub then returns you to the import page
+   with that account connected to the workspace. If the app is installed
+   on your GitHub account already, g1t adds that installation instead of
+   asking you to install again; with several, you choose which to add.
+3. Members who are not owners choose **Connect GitHub** to link their own
+   GitHub account, and import from the accounts an owner connected.
 4. Tick the repositories to bring across. You see only repositories that
    both you and the app can reach.
 5. Choose whether to copy their issues.
@@ -95,19 +97,23 @@ g1t adds an installation to a workspace when GitHub sends you back to g1t
 after you install the app. If you installed it on GitHub directly, in
 another browser, or the return to g1t was lost, add it from g1t instead:
 
-1. Make sure your GitHub account is linked: **Connect GitHub** on the import
-   page, or **Link GitHub** in [Settings → GitHub](https://g1t.sh/settings/github).
-2. Open `g1t.sh/new/github?workspace=<workspace>`.
-3. Under **Already installed on GitHub**, choose **Add to** the workspace
-   beside the GitHub account or organization.
+1. Open `g1t.sh/new/github?workspace=<workspace>` and choose **Connect
+   GitHub**. With one installation, g1t adds it straight away.
+2. With several, choose **Add to** the workspace beside the GitHub account
+   or organization under **Already installed on GitHub**.
 
 Only a workspace owner can add one, and only an installation your own
 GitHub account can see: on your account, or on an organization you belong
 to.
 
 If GitHub sends you to g1t after an installation that did not start from
-g1t, g1t asks which of the workspaces you own to add it to. It is the same
+g1t, g1t adds it to the workspace you own, or asks which one if you own
+several, linking your GitHub account on the way if needed. It is the same
 check: the installation must be one your GitHub account can see.
+
+**Choose repositories on GitHub**, beside a connected account, opens the
+installation's settings on GitHub; saving there brings you back to the
+import page.
 
 ### What comes across
 

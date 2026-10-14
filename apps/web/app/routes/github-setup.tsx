@@ -27,8 +27,9 @@ type Choice = {
  * checks with the person's own GitHub token that they can see it.
  *
  * Without g1t's state (the app was installed on GitHub directly, from
- * another browser, or the cookie was lost), the person chooses which of
- * the workspaces they own to add it to, checked the same way.
+ * another browser, or the cookie was lost), it is added to the workspace
+ * the person owns, or with several they choose which, checked the same
+ * way; a GitHub account not linked yet is linked on the way.
  */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
@@ -39,6 +40,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const installation = Number(url.searchParams.get("installation_id"));
   const problem = (error: string, at: string | null = workspace, link: string | null = null) =>
     data<Problem | Choice>({ kind: "error", error, workspace: at, link }, { headers: clear });
+  // GitHub not linked, or its access ended: link it and come back here,
+  // once; a link that did not take shows the problem instead.
+  const relink = (code: string) => {
+    if (code !== "not_found" && code !== "unauthenticated") return null;
+    const back = new URL(url);
+    back.searchParams.set("linked", "1");
+    const link = `/auth/github?link=1&next=${encodeURIComponent(`${back.pathname}${back.search}`)}`;
+    if (url.searchParams.get("linked") !== "1") throw redirect(link);
+    return link;
+  };
   // Repositories chosen again on GitHub: nothing to record, the picker
   // lists what the installation can see now.
   if (!workspace && action === "update") throw redirect("/new/github", { headers: clear });
@@ -52,7 +63,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
   if (workspace) {
     const added = await githubApp.addInstallation(user, workspace, installation);
-    if (!added.ok) return problem(added.error.message);
+    if (!added.ok) return problem(added.error.message, workspace, relink(added.error.code));
     throw redirect(`/new/github?workspace=${encodeURIComponent(workspace)}&installation=${installation}`, { headers: clear });
   }
   const owned = (user.workspaces ?? []).filter((membership) => membership.role === "owner");
@@ -60,18 +71,22 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     return problem("Only a workspace owner can add a GitHub account. Ask an owner of your workspace to add it from Import from GitHub.", null);
   }
   const visible = await githubApp.visibleInstallations(user);
-  if (!visible.ok) {
-    // GitHub not linked, or its access ended: link it and come back here.
-    const unlinked = visible.error.code === "not_found" || visible.error.code === "unauthenticated";
-    const here = `${url.pathname}${url.search}`;
-    return problem(visible.error.message, null, unlinked ? `/auth/github?link=1&next=${encodeURIComponent(here)}` : null);
-  }
+  if (!visible.ok) return problem(visible.error.message, null, relink(visible.error.code));
   const found = visible.value.find((item) => item.id === installation);
   if (!found) {
     return problem(
       "Your GitHub account cannot see that installation. Install the app from your own GitHub account or an organization you manage.",
       null,
     );
+  }
+  // One workspace of theirs: there is nothing to choose.
+  if (owned.length === 1) {
+    const only = owned[0].slug;
+    if (!found.recordedIn.includes(only)) {
+      const added = await githubApp.addInstallation(user, only, installation);
+      if (!added.ok) return problem(added.error.message, only);
+    }
+    throw redirect(`/new/github?workspace=${encodeURIComponent(only)}&installation=${installation}`, { headers: clear });
   }
   return data<Problem | Choice>(
     {

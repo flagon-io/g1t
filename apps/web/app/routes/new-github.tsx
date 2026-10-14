@@ -121,14 +121,15 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
       {!linked ? (
         <Card asChild tone="plain" radius="lg" className="mt-8 p-6">
           <section>
-            <h2 className="font-medium">Connect your GitHub account</h2>
+            <h2 className="font-medium">Connect GitHub</h2>
             <p className="mt-1.5 text-sm text-muted">
-              g1t lists the repositories you can reach on GitHub as you, so it needs your GitHub account linked first. If
-              the app is installed on GitHub already, it is listed here to add once your account is linked.
+              {owner
+                ? `GitHub asks once who you are and which repositories g1t may see, then brings you back here to choose what to import into ${workspaceName}.`
+                : "g1t lists the repositories you can reach on GitHub as you, so it needs your GitHub account linked first."}
             </p>
             <div className="mt-4">
               <a
-                href={`/auth/github?link=1&next=${encodeURIComponent(here)}`}
+                href={owner ? `/integrations/github/install?workspace=${workspace}` : `/auth/github?link=1&next=${encodeURIComponent(here)}`}
                 className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover"
               >
                 <GithubMark /> Connect GitHub
@@ -143,7 +144,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
               <h2 className="font-medium">GitHub accounts</h2>
               {owner && (
                 <a
-                  href={`/integrations/github/install?workspace=${workspace}`}
+                  href={`/integrations/github/install?workspace=${workspace}&another=1`}
                   className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg"
                 >
                   <Plus size={14} /> Add a GitHub account
@@ -200,7 +201,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                     </p>
                     <div className="mt-4">
                       <a
-                        href={`/integrations/github/install?workspace=${workspace}`}
+                        href={`/integrations/github/install?workspace=${workspace}${claimable.length > 0 ? "&another=1" : ""}`}
                         className="inline-flex items-center gap-2 rounded-md bg-fg px-3.5 py-2 text-sm font-medium text-bg hover:bg-fg-hover"
                       >
                         <GithubMark /> Install on GitHub
@@ -227,7 +228,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                     </span>
                     {item.suspended && <Badge size="md">Suspended</Badge>}
                     <span className="ml-auto flex items-center gap-3">
-                    <a href={item.settingsUrl} className="whitespace-nowrap text-xs text-muted hover:text-fg" target="_blank" rel="noreferrer">
+                    <a href={item.settingsUrl} className="whitespace-nowrap text-xs text-muted hover:text-fg">
                       Choose repositories on GitHub
                     </a>
                     {owner && (

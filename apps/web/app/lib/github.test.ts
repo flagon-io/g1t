@@ -5,6 +5,7 @@ import { test } from "node:test";
 import {
   INSTALL_COOKIE,
   STATE_COOKIE,
+  connectStep,
   cookie,
   githubConnected,
   installCookieValue,
@@ -105,4 +106,22 @@ test("once an installation is recorded, Integrations says GitHub is connected", 
     ])?.problem,
     "The installation on b is suspended on GitHub.",
   );
+});
+
+test("Connect GitHub links first, adds what is there, and installs only when nothing is", () => {
+  const none: { id: number; suspended: boolean }[] = [];
+  assert.deepEqual(connectStep({ linked: false, justLinked: false, another: false, unadded: none }), { kind: "link" });
+  // A link that did not take goes back to the page, not round again.
+  assert.deepEqual(connectStep({ linked: false, justLinked: true, another: false, unadded: none }), { kind: "choose" });
+  assert.deepEqual(connectStep({ linked: true, justLinked: true, another: false, unadded: none }), { kind: "install" });
+  assert.deepEqual(connectStep({ linked: true, justLinked: false, another: false, unadded: [{ id: 7, suspended: false }] }), {
+    kind: "add",
+    installation: 7,
+  });
+  assert.deepEqual(connectStep({ linked: true, justLinked: false, another: false, unadded: [{ id: 7, suspended: true }] }), { kind: "choose" });
+  assert.deepEqual(
+    connectStep({ linked: true, justLinked: false, another: false, unadded: [{ id: 7, suspended: false }, { id: 8, suspended: false }] }),
+    { kind: "choose" },
+  );
+  assert.deepEqual(connectStep({ linked: true, justLinked: false, another: true, unadded: [{ id: 7, suspended: false }] }), { kind: "install" });
 });

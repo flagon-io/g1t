@@ -91,6 +91,34 @@ export function notYetAdded<T extends SeenInstallation>(seen: T[], workspace: st
   return seen.filter((item) => !item.recordedIn.includes(workspace));
 }
 
+/** Where "Connect GitHub" goes next for a workspace owner. */
+export type ConnectStep =
+  | { kind: "link" }
+  | { kind: "add"; installation: number }
+  | { kind: "choose" }
+  | { kind: "install" };
+
+/**
+ * One click connects GitHub to a workspace: the person's GitHub account is
+ * linked first (g1t lists repositories as them), an installation they
+ * already have is added rather than installed again, several are left to
+ * choose from, and only with none is the app installed on GitHub.
+ * `another` is an owner asking to install on one more account; `justLinked`
+ * stops a link that did not take from sending them round again.
+ */
+export function connectStep(input: {
+  linked: boolean;
+  justLinked: boolean;
+  another: boolean;
+  unadded: { id: number; suspended: boolean }[];
+}): ConnectStep {
+  if (!input.linked) return input.justLinked ? { kind: "choose" } : { kind: "link" };
+  if (input.another) return { kind: "install" };
+  const usable = input.unadded.filter((item) => !item.suspended);
+  if (usable.length === 1 && input.unadded.length === 1) return { kind: "add", installation: usable[0].id };
+  return input.unadded.length > 0 ? { kind: "choose" } : { kind: "install" };
+}
+
 /** How an installation is described in a list: `Organization · all repositories`. */
 export function installationSummary(item: { accountType: string; repositorySelection: string }): string {
   const kind = item.accountType === "Organization" ? "Organization" : "Personal";
