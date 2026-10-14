@@ -59,8 +59,26 @@ use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Reques
 
 /// The most workflow files read from a repository.
 pub const MAX_WORKFLOWS: usize = 50;
-/// Jobs one workspace may have running at once; the rest wait their turn.
+/// Jobs on g1t's own machines one workspace may always have running at
+/// once; the rest wait their turn, unless the pool has room (`has_room`).
 pub const RUNNING_PER_WORKSPACE: u32 = 4;
+/// The most one workspace may run at once while the pool has room to spare.
+pub const BURST_PER_WORKSPACE: u32 = 12;
+/// Sandboxes g1t's own machines have between them (services/runner's
+/// wrangler.jsonc: 20 standard, 10 g1t-2core, 10 g1t-4core).
+pub const HOSTED_POOL: u32 = 40;
+/// Kept free while workspaces run past their share, so another workspace's
+/// first jobs still start at once.
+pub const POOL_HEADROOM: u32 = 8;
+
+/// Whether a workspace running `in_workspace` jobs on g1t's machines may
+/// start another while `in_pool` run across every workspace: always within
+/// its share, and past it, up to the burst, while the pool keeps its
+/// headroom.
+pub fn has_room(in_workspace: u32, in_pool: u32) -> bool {
+    in_workspace < RUNNING_PER_WORKSPACE
+        || (in_workspace < BURST_PER_WORKSPACE && in_pool + POOL_HEADROOM < HOSTED_POOL)
+}
 /// The longest a job on g1t's own machines may run, whatever its
 /// `timeout-minutes`.
 pub const MAX_TIMEOUT_MINUTES: u32 = g1t_actions::workflow::HOSTED_MAX_TIMEOUT_MINUTES;
@@ -402,5 +420,23 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
             }
         }
         Err(error) => worker::console_error!("actions: could not start: {error}"),
+    }
+}
+
+#[cfg(test)]
+mod room_tests {
+    use super::*;
+
+    #[test]
+    fn a_workspace_always_has_its_share() {
+        assert!(has_room(RUNNING_PER_WORKSPACE - 1, HOSTED_POOL));
+        assert!(!has_room(RUNNING_PER_WORKSPACE, HOSTED_POOL));
+    }
+
+    #[test]
+    fn past_its_share_a_workspace_runs_more_while_the_pool_keeps_its_headroom() {
+        assert!(has_room(RUNNING_PER_WORKSPACE, HOSTED_POOL - POOL_HEADROOM - 1));
+        assert!(!has_room(RUNNING_PER_WORKSPACE, HOSTED_POOL - POOL_HEADROOM));
+        assert!(!has_room(BURST_PER_WORKSPACE, 0));
     }
 }

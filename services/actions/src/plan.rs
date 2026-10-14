@@ -22,7 +22,7 @@ use worker::Result;
 use crate::broker::{self, Broker};
 use crate::protection::Gate;
 use crate::sync::WorkflowRow;
-use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, RUNNING_PER_WORKSPACE, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, optional, repo_path};
+use crate::{Actions, Count, MAX_TIMEOUT_MINUTES, SELF_HOSTED_MAX_TIMEOUT_MINUTES, SILENT_MS, SITE, check, fail, has_room, optional, repo_path};
 use g1t_contracts::runners::{Wanted, waiting_reason};
 
 /// The most log one job keeps, in bytes; past it, the log says so and stops.
@@ -1595,6 +1595,17 @@ impl Actions {
             .await?
             .results::<JobRow>()?;
         let mut running: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+        // Every workspace's jobs on g1t's own machines: past its share, a
+        // workspace starts more only while the pool has room (has_room).
+        let mut in_pool = if queued.is_empty() {
+            0
+        } else {
+            self.db
+                .prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'in_progress' AND runner_id IS NULL")
+                .first::<Count>(None)
+                .await?
+                .map_or(0, |count| count.n)
+        };
         for job in queued {
             let in_workspace = match running.get(&job.namespace) {
                 Some(n) => *n,
@@ -1611,7 +1622,7 @@ impl Actions {
                     n
                 }
             };
-            if in_workspace >= RUNNING_PER_WORKSPACE {
+            if !has_room(in_workspace, in_pool) {
                 continue;
             }
             if let Some(max) = job.max_parallel {
@@ -1653,6 +1664,7 @@ impl Actions {
                 continue;
             }
             running.insert(job.namespace.clone(), in_workspace + 1);
+            in_pool += 1;
             self.db
                 .prepare("UPDATE runs SET status = 'in_progress', started_at = COALESCE(started_at, ?) WHERE id = ? AND status = 'queued'")
                 .bind(&[at.as_str().into(), job.run_id.as_str().into()])?
