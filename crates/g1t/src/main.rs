@@ -60,7 +60,11 @@ fn run(args: Vec<String>) -> error::Result<()> {
         Ok(p) => p,
         Err(e) => return clap_error(e),
     };
-    commands::dispatch(parsed)
+    // A newer release, said after the command at a terminal (upgrade.rs).
+    let notice = commands::upgrade::Notice::start(matches!(parsed.command, cli::Command::Upgrade(_)));
+    let ran = commands::dispatch(parsed);
+    notice.finish();
+    ran
 }
 
 /// Help and the version go to stdout and succeed; a mistake is one line on

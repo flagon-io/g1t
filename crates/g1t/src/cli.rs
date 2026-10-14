@@ -127,6 +127,19 @@ pub enum Command {
     Completion(CompletionArgs),
     /// Push a local container image to g1t's registry, in chunks.
     Push(PushArgs),
+    /// Update g1t to the newest release, checked against g1t's release key.
+    Upgrade(UpgradeArgs),
+}
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Downloads the newest release for this machine from g1t.sh, checks its signature and SHA-256, and puts it
+where this g1t is. In a terminal, g1t also says once a day when a newer release is out;
+G1T_NO_UPDATE_NOTIFIER=1 turns that off.")]
+pub struct UpgradeArgs {
+    /// Only say whether a newer release is out.
+    #[arg(long)]
+    pub check: bool,
 }
 
 // --- auth -------------------------------------------------------------
