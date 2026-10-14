@@ -1,30 +1,25 @@
 /**
- * A workspace's AI providers: the catalogue people choose from, and the
- * fields each one asks for when it is added. The marks and tiles are the
- * integrations' own (components/connectors).
+ * A workspace's AI providers, on its AI page: the catalogue people choose
+ * from, and the fields each one asks for when it is added. The marks and
+ * tiles are drawn like the integrations' (components/connectors).
  */
 import type { ReactNode } from "react";
 
-import type { Provider } from "@g1t/contracts";
+import type { AiProvider } from "@g1t/contracts";
 
-import { AI_PROVIDER_GROUPS, AI_PROVIDERS, aiProvidersIn } from "../lib/ai-providers";
-import { ProviderTiles } from "./connectors";
+import { AI_PROVIDER_GROUPS, AI_PROVIDER_LOOKS, aiProvidersIn, isEndpoint } from "../lib/ai-providers";
+import { AiProviderTiles } from "./connectors";
 import { Field, Input } from "./ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 /** The AI providers to choose from, grouped. */
-export function ModelCatalog({ slug, adding }: { slug: string; adding: Provider | null }) {
+export function ModelCatalog({ slug, adding }: { slug: string; adding: AiProvider | null }) {
   return (
     <div className="mt-4 space-y-4">
       {AI_PROVIDER_GROUPS.map(({ group, title }) => (
         <div key={group}>
           <p className="mb-2 text-xs font-medium tracking-wide text-faint uppercase">{title}</p>
-          <ProviderTiles
-            providers={aiProvidersIn(group)}
-            slug={slug}
-            adding={adding}
-            blurb={(provider) => AI_PROVIDERS[provider]?.blurb ?? ""}
-          />
+          <AiProviderTiles providers={aiProvidersIn(group)} slug={slug} adding={adding} />
         </div>
       ))}
     </div>
@@ -32,8 +27,8 @@ export function ModelCatalog({ slug, adding }: { slug: string; adding: Provider 
 }
 
 /** What adding an AI provider asks for. */
-export function ModelProviderFields({ provider }: { provider: Provider }): ReactNode {
-  const entry = AI_PROVIDERS[provider];
+export function ModelProviderFields({ provider }: { provider: AiProvider }): ReactNode {
+  const look = AI_PROVIDER_LOOKS[provider];
   if (provider === "azure_openai") {
     return (
       <>
@@ -49,7 +44,7 @@ export function ModelProviderFields({ provider }: { provider: Provider }): React
       </>
     );
   }
-  if (provider === "anthropic_endpoint" || provider === "openai_endpoint") {
+  if (isEndpoint(provider)) {
     const anthropic = provider === "anthropic_endpoint";
     return (
       <>
@@ -87,12 +82,12 @@ export function ModelProviderFields({ provider }: { provider: Provider }): React
     <>
       <Field
         label="API key"
-        hint={`${entry?.keyUrl ? `Get one at ${new URL(entry.keyUrl).host}. ` : ""}Sealed when saved: nobody sees it again.`}
+        hint={`${look.keyUrl ? `Get one at ${new URL(look.keyUrl).host}. ` : ""}Sealed when saved: nobody sees it again.`}
       >
-        <Input name="secret" type="password" required placeholder={entry?.keyPlaceholder} autoComplete="new-password" />
+        <Input name="secret" type="password" required placeholder={look.keyPlaceholder} autoComplete="new-password" />
       </Field>
       <Field label="Model" hint="Optional. The model your team uses on it. g1t lists the key's models when it checks the key.">
-        <Input name="model" placeholder={entry?.model} />
+        <Input name="model" placeholder={look.model} />
       </Field>
     </>
   );

@@ -139,8 +139,11 @@ export default [
     route("-/billing", "routes/workspace/billing.tsx"),
     route("-/billing/entries", "routes/workspace/statement-entries.ts"),
     route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
-    // The integrations directory, and the setup page for each kind of
-    // provider connection: models, alerts, trackers (lib/integration-sections).
+    // The workspace's AI: its AI providers, managed or self-hosted, and
+    // what Ask answers with. A base setting, not an integration.
+    route("-/ai", "routes/workspace/ai.tsx"),
+    // The integrations directory, and the setup pages for alerts and
+    // trackers (lib/integration-sections).
     route("-/integrations", "routes/workspace/integrations-directory.tsx"),
     route("-/integrations/:section", "routes/workspace/integrations.tsx"),
     // Ask g1t, from the top bar: what it answers with, and each answer,

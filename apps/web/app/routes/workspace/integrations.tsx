@@ -1,18 +1,8 @@
-import {
-  AlertTriangle,
-  ArrowLeft,
-  CheckCircle2,
-  ChevronRight,
-  Cpu,
-  Siren,
-  Ticket,
-  X,
-} from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { Form, Link } from "react-router";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Siren, Ticket, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { Form, Link, redirect } from "react-router";
 
 import {
-  type AskSetup,
   type Connection,
   type ConnectionConfig,
   type Delivery,
@@ -24,15 +14,11 @@ import {
 import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
 import { ProviderMark, ProviderTiles } from "../../components/connectors";
-import { ModelCatalog, ModelProviderFields } from "../../components/model-providers";
-import { AI_PROVIDERS } from "../../lib/ai-providers";
-import { integrationsSection, sectionKind } from "../../lib/integration-sections";
+import { aiPagePath, providerPage, sectionKind } from "../../lib/integration-sections";
 import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { Combobox } from "../../components/ui/combobox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { autoOffered, defaultModel as startingModel, modelLabel, modelOptions } from "../../lib/ask-model";
 import { integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -46,16 +32,14 @@ const isProvider = (value: string | null): value is Provider => value != null &&
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
+  if (!role) throw new Response(null, { status: 404 });
+  const slug = params.owner.toLowerCase();
+  // AI providers were set up here: they are the workspace's AI settings now.
+  if (params.section === "models") throw redirect(aiPagePath(slug, new URL(request.url).search));
   // One kind of connection's page: the directory at `-/integrations` finds them.
   const kind = sectionKind(params.section);
-  if (!role || !kind) throw new Response(null, { status: 404 });
-  const slug = params.owner.toLowerCase();
-  const [connections, listed, ask] = await Promise.all([
-    integrations.list(slug, viewer),
-    repos.list(viewer, { namespace: slug }),
-    // What Ask g1t answers with, on the AI providers' page.
-    kind === "models" ? integrations.askSettings(slug, viewer) : null,
-  ]);
+  if (!kind) throw new Response(null, { status: 404 });
+  const [connections, listed] = await Promise.all([integrations.list(slug, viewer), repos.list(viewer, { namespace: slug })]);
   const all = unwrap(connections);
   // What each alert source has sent lately, to see it is wired up.
   const deliveries: Record<string, Delivery[]> = {};
@@ -75,8 +59,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     connections: all,
     deliveries,
     repos: listed.map((repo) => `${repo.namespace}/${repo.name}`),
-    adding: isProvider(adding) ? adding : null,
-    ask: ask?.ok ? ask.value : null,
+    adding: isProvider(adding) && PROVIDERS[adding].kind === kind ? adding : null,
   };
 }
 
@@ -96,9 +79,6 @@ function configFrom(form: FormData): ConnectionConfig {
     site: text(form, "site"),
     email: text(form, "email"),
     keys: keys ? keys.split(/[\s,]+/).filter(Boolean) : [],
-    baseUrl: text(form, "baseUrl"),
-    authHeader: text(form, "authHeader"),
-    model: text(form, "model"),
   };
 }
 
@@ -124,28 +104,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     });
     return updated.ok ? { updated: id } : { error: updated.error.message };
   }
-  if (intent === "ask") {
-    // Which provider and model Ask g1t answers with; none turns it off.
-    const connection = text(form, "connection");
-    const chosen = await integrations.setAskSettings(user, slug, connection ?? null, connection ? (text(form, "model") ?? null) : null);
-    return chosen.ok ? { asked: true } : { error: chosen.error.message, ask: true };
-  }
-  if (intent === "provider") {
-    // An AI provider's model and address, and a new key if one was given:
-    // its other settings as they are.
-    const listed = await integrations.list(slug, user);
-    const connection = listed.ok ? listed.value.find((c) => c.id === id) : undefined;
-    if (!connection) return { error: listed.ok ? "No such integration." : listed.error.message };
-    const updated = await integrations.update(user, slug, id, {
-      config: {
-        ...connection.config,
-        model: text(form, "model"),
-        ...(form.has("baseUrl") ? { baseUrl: text(form, "baseUrl") } : {}),
-      },
-      secret: text(form, "secret"),
-    });
-    return updated.ok ? { updated: id } : { error: updated.error.message };
-  }
   const provider = String(form.get("provider") ?? "");
   if (!isProvider(provider)) return { error: "Choose what to connect." };
   const connected = await integrations.connect(user, slug, {
@@ -158,12 +116,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   return connected.ok ? { connected: connected.value } : { error: connected.error.message, provider };
 }
 
+/** The kinds of connection set up here: AI providers are on the workspace's AI page. */
 const KIND_INFO: Record<ProviderKind, { title: string; icon: ReactNode; blurb: string }> = {
-  models: {
-    title: "Your AI providers",
-    icon: <Cpu size={16} />,
-    blurb: "Connect the AI providers your team uses: Ask g1t answers with one, and an Anthropic key starts sessions on issues.",
-  },
   alerts: {
     title: "Alerts",
     icon: <Siren size={16} />,
@@ -185,14 +139,12 @@ const PROVIDER_BLURB: Partial<Record<Provider, string>> = {
 };
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, kind, connections, deliveries, repos: repoNames, adding, ask } = loaderData;
+  const { slug, role, kind, connections, deliveries, repos: repoNames, adding } = loaderData;
   const owner = role === "owner";
   const justConnected = actionData && "connected" in actionData ? actionData.connected : null;
   const tested = (actionData && "tested" in actionData ? actionData.tested : null) ?? null;
   const error = (actionData && "error" in actionData ? actionData.error : null) ?? null;
   const updated = (actionData && "updated" in actionData ? actionData.updated : null) ?? null;
-  const asked = actionData != null && "asked" in actionData;
-  const askError = actionData && "ask" in actionData ? error : null;
 
   return (
     <div>
@@ -201,40 +153,8 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
       </Link>
       {justConnected && <Connected connected={justConnected} />}
       <div className="mt-4">
-        <ErrorText>{actionData && "ask" in actionData ? null : error}</ErrorText>
+        <ErrorText>{error}</ErrorText>
       </div>
-
-      {/* AI providers -------------------------------------------------------- */}
-      {kind === "models" && (
-      <Section kind="models">
-        <Connections
-          list={connections.filter((c) => c.kind === "models")}
-          owner={owner}
-          tested={tested}
-          updated={updated}
-          deliveries={deliveries}
-        />
-        <p className="mb-4 text-xs text-faint">
-          Keys are sealed when saved and never shown again. Only an owner of {slug} can add, test, change or remove them.
-        </p>
-        <AskSetting
-          connections={connections.filter((c) => c.kind === "models")}
-          setup={ask}
-          owner={owner}
-          saved={asked}
-          error={askError}
-        />
-        {owner && <ModelCatalog slug={slug} adding={adding} />}
-        {adding && PROVIDERS[adding].kind === "models" && owner && (
-          <AddForm
-            provider={adding}
-            slug={slug}
-            repos={repoNames}
-            error={actionData && "provider" in actionData ? error : null}
-          />
-        )}
-      </Section>
-      )}
 
       {/* Alerts -------------------------------------------------------------- */}
       {kind === "alerts" && (
@@ -363,9 +283,6 @@ function ConnectionRow({
     config.repo && `issues in ${config.repo}`,
     config.organization,
     host(config.site),
-    host(config.baseUrl),
-    config.model && `model ${config.model}`,
-    connection.models.length > 0 && `${connection.models.length} models`,
     config.keys?.length ? config.keys.join(", ") : null,
     connection.secretHint && `key ${connection.secretHint}`,
   ].filter(Boolean);
@@ -404,7 +321,6 @@ function ConnectionRow({
           {connection.lastError}
         </p>
       )}
-      {owner && connection.kind === "models" && <ProviderSettings connection={connection} updated={updated} />}
       {connection.webhookUrl && (
         <div className="mt-3">
           <p className="mb-1.5 text-xs text-faint">Where it sends alerts</p>
@@ -460,174 +376,9 @@ function ConnectionRow({
   );
 }
 
-/**
- * Ask g1t's provider and model: one of the workspace's AI providers, and
- * Auto (the default: a model for each question) or one of the models it
- * offered when last checked (or any name, for one that lists none). Owners
- * choose; members see what it is.
- */
-function AskSetting({
-  connections,
-  setup,
-  owner,
-  saved,
-  error,
-}: {
-  connections: Connection[];
-  setup: AskSetup | null;
-  owner: boolean;
-  saved: boolean;
-  error: string | null;
-}) {
-  const current = connections.find((c) => c.id === setup?.connection_id) ?? null;
-  const [chosen, setChosen] = useState(current?.id ?? connections[0]?.id ?? "");
-  const connection = connections.find((c) => c.id === chosen) ?? null;
-  const azure = connection?.provider === "azure_openai";
-  const defaultModel = startingModel(connection, setup);
-  return (
-    <Card asChild className="mb-6 scroll-mt-20 p-4">
-      <section id="ask" aria-labelledby="ask-heading">
-        <h2 id="ask-heading" className="text-sm font-medium">
-          Ask g1t
-        </h2>
-        <p className="mt-1 text-xs text-muted">
-          The top bar's Ask answers with this provider and model, on your workspace's own key. g1t hosts no model for it and
-          bills nothing for it: what it costs is on your provider's bill.
-        </p>
-        {setup?.connection_id && !setup.problem && (
-          <p className="mt-3 text-sm">
-            Answers with <span className="font-medium">{setup.connection_name}</span> ·{" "}
-            <span className="font-mono text-[0.8125rem]">{modelLabel(setup)}</span>
-          </p>
-        )}
-        {setup?.problem && <p className="mt-3 text-sm text-warn">{setup.problem}</p>}
-        {connections.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">
-            {owner ? "Connect an AI provider below, then choose it here." : `An owner of the workspace can connect one and choose it here.`}
-          </p>
-        ) : (
-          owner && (
-            <Form method="post" className="mt-4 grid max-w-2xl gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <input type="hidden" name="intent" value="ask" />
-              <Field label="Provider">
-                <Select name="connection" value={chosen} onValueChange={setChosen}>
-                  <SelectTrigger aria-label="Provider">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {connections.map((c) => (
-                      <SelectItem key={c.id} value={c.id} description={PROVIDERS[c.provider].label}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label={azure ? "Deployment" : "Model"}>
-                {autoOffered(connection) && connection ? (
-                  <Combobox
-                    key={connection.id}
-                    name="model"
-                    defaultValue={defaultModel}
-                    aria-label="Model"
-                    searchPlaceholder="Find a model"
-                    emptyText="It offers no model by that name."
-                    options={modelOptions(connection)}
-                    className="font-mono text-[0.8125rem]"
-                  />
-                ) : (
-                  <Input
-                    key={connection?.id}
-                    name="model"
-                    required
-                    defaultValue={defaultModel}
-                    placeholder={azure ? "The deployment's name" : "The model's name"}
-                    className="font-mono text-[0.8125rem]"
-                    autoComplete="off"
-                  />
-                )}
-              </Field>
-              <div className="flex items-center gap-2">
-                <SubmitButton variant="outline" match={{ intent: "ask" }} pending="Saving…">
-                  Use for Ask
-                </SubmitButton>
-              </div>
-            </Form>
-          )
-        )}
-        {owner && setup?.connection_id && (
-          <Form method="post" className="mt-2">
-            <input type="hidden" name="intent" value="ask" />
-            <SubmitButton variant="link" size="inline" match={{ intent: "ask" }} className="text-xs text-muted">
-              Turn Ask off
-            </SubmitButton>
-          </Form>
-        )}
-        {saved && !error && <p className="mt-2 text-sm text-success">Saved.</p>}
-        <ErrorText>{error}</ErrorText>
-      </section>
-    </Card>
-  );
-}
-
 /** What a provider is for, in a line. */
 function blurb(provider: Provider): string {
-  return PROVIDER_BLURB[provider] ?? AI_PROVIDERS[provider]?.blurb ?? "";
-}
-
-/** Changing an AI provider after it is added: its model, its address, a new key. */
-function ProviderSettings({ connection, updated }: { connection: Connection; updated: boolean }) {
-  const azure = connection.provider === "azure_openai";
-  const ownAddress = azure || connection.provider.endsWith("_endpoint");
-  return (
-    <details className="group mt-3" open={updated || undefined}>
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs text-muted hover:text-fg">
-        <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
-        Change its model, address or key
-      </summary>
-      <Form method="post" className="mt-3 max-w-2xl space-y-3">
-        <input type="hidden" name="intent" value="provider" />
-        <input type="hidden" name="id" value={connection.id} />
-        {ownAddress && (
-          <Field label="Base URL">
-            <Input name="baseUrl" type="url" required defaultValue={connection.config.baseUrl ?? ""} className="max-w-sm" />
-          </Field>
-        )}
-        <Field label={azure ? "Deployment" : "Model"} hint={azure ? undefined : "Optional. The model your team uses on it."}>
-          <Input
-            name="model"
-            required={azure}
-            defaultValue={connection.config.model ?? ""}
-            list={connection.models.length > 0 ? `models-${connection.id}` : undefined}
-            className="max-w-sm font-mono text-[0.8125rem]"
-            autoComplete="off"
-          />
-        </Field>
-        {connection.models.length > 0 && (
-          <datalist id={`models-${connection.id}`}>
-            {connection.models.map((model) => (
-              <option key={model} value={model} />
-            ))}
-          </datalist>
-        )}
-        <Field label="Replace the key" hint="Write-only: g1t never shows it again. Leave it empty to keep the key you have.">
-          <Input
-            name="secret"
-            type="password"
-            placeholder={connection.secretHint ? `Now ${connection.secretHint}` : "Paste a key"}
-            autoComplete="new-password"
-            className="max-w-sm"
-          />
-        </Field>
-        <div className="flex items-center gap-3">
-          <SubmitButton variant="outline" match={{ intent: "provider", id: connection.id }} pending="Saving…">
-            Save
-          </SubmitButton>
-          {updated && <span className="text-sm text-success">Saved.</span>}
-        </div>
-      </Form>
-    </details>
-  );
+  return PROVIDER_BLURB[provider] ?? "";
 }
 
 function Choices({ kind, slug, adding }: { kind: ProviderKind; slug: string; adding: Provider | null }) {
@@ -728,13 +479,11 @@ function AddForm({
         <div className="flex items-center gap-3">
           <ProviderMark provider={provider} />
           <div className="grow">
-            <h3 className="font-medium">
-              Connect {provider.endsWith("_endpoint") ? `an ${PROVIDERS[provider].label}` : PROVIDERS[provider].label}
-            </h3>
+            <h3 className="font-medium">Connect {PROVIDERS[provider].label}</h3>
             <p className="text-xs text-muted">{blurb(provider)}</p>
           </div>
           <Link
-            to={`/${slug}/-/integrations/${integrationsSection(PROVIDERS[provider].kind)}`}
+            to={`/${slug}/-/${providerPage(PROVIDERS[provider].kind)}`}
             className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg"
             aria-label="Close"
           >
@@ -743,7 +492,7 @@ function AddForm({
         </div>
         <Form method="post" className="mt-5 grid max-w-xl gap-4">
           <input type="hidden" name="provider" value={provider} />
-          {fields[provider] ?? <ModelProviderFields provider={provider} />}
+          {fields[provider]}
           <ErrorText>{error}</ErrorText>
           <div>
             <SubmitButton match={{ provider }} pending="Connecting…">
@@ -814,15 +563,6 @@ function Connected({ connected }: { connected: { connection: Connection; signing
       {connection.kind === "tracker" && (
         <p className="mt-2 text-sm text-muted">
           You can import a ticket from any repository's new issue page. Use Test to check the token.
-        </p>
-      )}
-      {connection.kind === "models" && (
-        <p className="mt-2 text-sm text-muted">
-          {connection.lastError
-            ? `It was saved, but the check failed: ${connection.lastError}`
-            : connection.models.length > 0
-              ? `The key works, and it offers ${connection.models.length} models.`
-              : "The key is saved. Use Test to check it again."}
         </p>
       )}
     </div>

@@ -17,7 +17,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import {
   G1T_KEY,
-  integrationsClient,
+  aiClient,
   principalKey,
   type AskMessage,
   type AskPage,
@@ -181,7 +181,7 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
       await this.discard(job.channel.id, job.message.id);
       return;
     }
-    const ask = integrationsClient(this.env.INTEGRATIONS as ServiceBinding);
+    const ask = aiClient(this.env.INTEGRATIONS as ServiceBinding);
     try {
       await runAnswer(
         {
@@ -189,7 +189,7 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
           setup: async () => {
             if (!this.env.INTEGRATIONS) return null;
             const found = await ask.askSettings(job.slug, job.actor);
-            return found.ok ? found.value : { connection_id: "unknown", connection_name: null, provider: null, model: null, problem: found.error.message };
+            return found.ok ? found.value : { provider_id: "unknown", provider_name: null, provider: null, model: null, problem: found.error.message };
           },
           ask: (signal) => ask.ask(job.actor, job.slug, job.messages, job.page, signal),
           typing: () =>

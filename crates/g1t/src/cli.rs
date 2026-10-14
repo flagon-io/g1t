@@ -1176,7 +1176,7 @@ Examples:
 With --json, each event is one JSON object on a line of its own.")]
     Events(WorkEventsArgs),
     /// Start work on an issue in a session on your own Claude, or print the Claude Code command for it.
-    #[command(after_help = "\nWith the workspace's Anthropic connection, a Claude Managed Agents session starts on that
+    #[command(after_help = "\nWith the workspace's Anthropic AI provider, a Claude Managed Agents session starts on that
 account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
 to run with g1t's plugin, whose session attaches to the issue as it starts.
 Examples:

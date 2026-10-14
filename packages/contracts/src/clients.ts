@@ -1,4 +1,5 @@
 import type { ActionsApi } from "./actions";
+import type { AiApi } from "./ai";
 import type { BillingAdminApi, BillingApi } from "./billing";
 import type { DeploymentsApi } from "./deployments";
 import type { ProjectsApi } from "./projects";
@@ -721,9 +722,24 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     resolve: (workspace, viewer, reference) => call("resolve", { workspace, viewer, reference }),
     import: (actor, repo, reference) => call("import", { actor, repo, reference }),
     links: (repo, number) => call("links", { repo, number }),
+  };
+}
+
+/**
+ * A workspace's AI providers and Ask g1t. Kept by the integrations service,
+ * so it is built on the same binding, with its own methods.
+ */
+export function aiClient(service: ServiceBinding): AiApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    list: (workspace, viewer) => call("ai_list", { workspace, viewer }),
+    add: (actor, workspace, input) => call("ai_add", { actor, workspace, ...input }),
+    update: (actor, workspace, id, input) => call("ai_update", { actor, workspace, id, ...input }),
+    remove: (actor, workspace, id) => call("ai_remove", { actor, workspace, id }),
+    test: (actor, workspace, id) => call("ai_test", { actor, workspace, id }),
     askSettings: (workspace, viewer) => call("ask_settings", { workspace, viewer }),
-    setAskSettings: (actor, workspace, connectionId, model) =>
-      call("set_ask_settings", { actor, workspace, connection_id: connectionId, model }),
+    setAskSettings: (actor, workspace, providerId, model) =>
+      call("set_ask_settings", { actor, workspace, provider_id: providerId, model }),
     // Streamed: the response itself, not its parsed body.
     ask: (actor, workspace, messages, page, signal) =>
       service.fetch("https://service/rpc/ask", {

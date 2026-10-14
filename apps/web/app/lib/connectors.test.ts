@@ -47,7 +47,6 @@ test("search finds by name, description, tag and keyword, across every category"
   assert.deepEqual(found.available.map((view) => view.id), ["sentry"], "a search is not held to the category");
   assert.deepEqual(found.soon.map((view) => view.id), ["pagerduty"], "what is coming sorts after what works");
   assert.ok(matchesQuery(personal.find((view) => view.id === "google-calendar")!, "in a meeting"));
-  assert.ok(matchesQuery(workspace.find((view) => view.id === "anthropic")!, "claude"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "incident-io")!, "incidentio"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "pagerduty")!, "opens ISSUES"));
   assert.ok(!matchesQuery(workspace.find((view) => view.id === "miro")!, "kubernetes"));
@@ -56,7 +55,8 @@ test("search finds by name, description, tag and keyword, across every category"
 test("the navigation counts each category and leaves out empty ones", () => {
   const counts = categoryCounts(workspace);
   assert.equal(counts.all, workspace.length);
-  assert.ok(counts.ai >= 14);
+  // AI providers are the workspace's AI settings, not connectors.
+  assert.equal(counts.ai, 0);
   const mine = categoriesWith(personal).map((category) => category.id);
   assert.ok(mine.includes("calendar"));
   const groups = groupByCategory(personal);

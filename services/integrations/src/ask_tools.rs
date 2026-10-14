@@ -27,7 +27,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use g1t_contracts::integrations::{ASK_MAX_SOURCES, AskEvent, AskSource};
+use g1t_contracts::ai::{ASK_MAX_SOURCES, AskEvent, AskSource};
 use serde_json::{Map, Value, json};
 use worker::Method;
 

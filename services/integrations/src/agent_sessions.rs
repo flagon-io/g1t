@@ -33,7 +33,7 @@ use std::collections::BTreeMap;
 
 use g1t_contracts::agent_sessions::*;
 use g1t_contracts::identity::{CreateAccessTokenArgs, CreatedAccessToken, RemoveArgs};
-use g1t_contracts::integrations::Provider;
+use g1t_contracts::ai::AiProvider;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::work::{
@@ -47,7 +47,8 @@ use serde_json::{Value, json};
 use worker::wasm_bindgen::JsValue;
 use worker::{Method, Result};
 
-use crate::{Integrations, Row, http};
+use crate::ai::AiRow;
+use crate::{Integrations, http};
 
 /// Where Anthropic's API is.
 const API: &str = "https://api.anthropic.com";
@@ -598,45 +599,45 @@ impl Integrations {
         Ok(if answer.ok() { Ok(if answer.body.trim().is_empty() { Value::Null } else { answer.json() }) } else { Err(answer.problem("Anthropic")) })
     }
 
-    /// The workspace's Anthropic connection: the one Ask answers with when
-    /// it is Anthropic's, else the first, with its key and the model.
-    async fn anthropic_connection(&self, workspace: &str) -> Result<(AgentSessionsSetup, Option<(Row, String)>)> {
+    /// The workspace's Anthropic provider: the one Ask answers with when it
+    /// is Anthropic's, else the first, with its key and the model.
+    async fn anthropic_connection(&self, workspace: &str) -> Result<(AgentSessionsSetup, Option<(AiRow, String)>)> {
         #[derive(Deserialize)]
         struct Route {
-            connection_id: Option<String>,
+            provider_id: Option<String>,
             model: Option<String>,
         }
-        let rows: Vec<Row> = self.rows(workspace).await?.into_iter().filter(|row| row.provider() == Provider::Anthropic).collect();
+        let rows: Vec<AiRow> = self.ai_rows(workspace).await?.into_iter().filter(|row| row.provider() == AiProvider::Anthropic).collect();
         if rows.is_empty() {
             return Ok((
-                AgentSessionsSetup { problem: Some("The workspace has no Anthropic connection. An owner can add one under Integrations.".to_owned()), ..Default::default() },
+                AgentSessionsSetup { problem: Some("The workspace has no Anthropic provider. An owner can add one in the workspace's AI settings.".to_owned()), ..Default::default() },
                 None,
             ));
         }
         let route = self
             .db
-            .prepare("SELECT connection_id, model FROM model_routes WHERE workspace = ? AND task = 'ask'")
+            .prepare("SELECT provider_id, model FROM ai_routes WHERE workspace = ? AND task = 'ask'")
             .bind(&[workspace.into()])?
             .first::<Route>(None)
             .await?;
-        let chosen = route.as_ref().and_then(|route| route.connection_id.clone());
+        let chosen = route.as_ref().and_then(|route| route.provider_id.clone());
         let row = match rows.iter().position(|row| Some(&row.id) == chosen.as_ref()) {
             Some(at) => rows.into_iter().nth(at),
             None => rows.into_iter().next(),
         };
         let Some(row) = row else { return Ok((AgentSessionsSetup::default(), None)) };
         let model = route
-            .filter(|route| route.connection_id.as_deref() == Some(row.id.as_str()))
+            .filter(|route| route.provider_id.as_deref() == Some(row.id.as_str()))
             .and_then(|route| route.model)
             .or_else(|| row.config().model)
             .filter(|model| model.starts_with("claude-"))
             .unwrap_or_else(|| DEFAULT_MODEL.to_owned());
         let mut setup = AgentSessionsSetup { connection_name: Some(row.name.clone()), model: Some(model.clone()), ..Default::default() };
         if self.sealer.is_none() {
-            setup.problem = Some("Integrations are not set up on this g1t: it has no key to keep secrets with.".to_owned());
+            setup.problem = Some("AI providers are not set up on this g1t: it has no key to keep secrets with.".to_owned());
             return Ok((setup, None));
         }
-        if self.secrets(&row).secret.is_none() {
+        if self.ai_secret(&row).is_none() {
             setup.problem = Some(format!("The key for {} cannot be read. Replace it.", row.name));
             return Ok((setup, None));
         }
@@ -692,7 +693,7 @@ impl Integrations {
 
     /// The agent and environment on the connection's account: made the
     /// first time, the agent updated when what g1t asks of it changed.
-    async fn ensure_agent(&self, row: &Row, key: &str, model: &str) -> Result<std::result::Result<(String, u32, String), String>> {
+    async fn ensure_agent(&self, row: &AiRow, key: &str, model: &str) -> Result<std::result::Result<(String, u32, String), String>> {
         let stored = self
             .db
             .prepare("SELECT agent_id, agent_version, environment_id, skills, config_hash FROM managed_agents WHERE connection_id = ?")
@@ -825,11 +826,11 @@ impl Integrations {
                 ..AgentSessionStarted::default()
             }));
         };
-        let key = self.secrets(&row).secret.unwrap_or_default();
+        let key = self.ai_secret(&row).unwrap_or_default();
         let (agent_id, version, environment_id) = match self.ensure_agent(&row, &key, &model).await? {
             Ok(found) => found,
             Err(problem) => {
-                self.note(&row.id, Some(&problem)).await?;
+                self.ai_note(&row.id, Some(&problem)).await?;
                 return Ok(Outcome::fail(FailureCode::Unavailable, problem));
             }
         };
@@ -877,7 +878,7 @@ impl Integrations {
             Err(problem) => {
                 self.forget_vault(&key, &vault).await;
                 revoke().await;
-                self.note(&row.id, Some(&problem)).await?;
+                self.ai_note(&row.id, Some(&problem)).await?;
                 return Ok(Outcome::fail(FailureCode::Unavailable, problem));
             }
         };
@@ -925,7 +926,7 @@ impl Integrations {
             .await?;
             return Ok(Outcome::fail(FailureCode::Unavailable, problem));
         }
-        self.note(&row.id, None).await?;
+        self.ai_note(&row.id, None).await?;
         let at = rfc3339(now_ms());
         self.db
             .prepare(
@@ -1056,11 +1057,11 @@ impl Integrations {
         if run.status != "running" {
             return Ok(false);
         }
-        let Some(row) = self.row(&run.connection_id).await? else {
+        let Some(row) = self.ai_row(&run.connection_id).await? else {
             self.finish_run(&run, None, "connection removed").await?;
             return Ok(false);
         };
-        let key = self.secrets(&row).secret.unwrap_or_default();
+        let key = self.ai_secret(&row).unwrap_or_default();
         let now = now_ms();
         if now.saturating_sub(parse_rfc3339(&run.created_at).unwrap_or(now)) > MAX_RUN_MS {
             let _ = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(interrupt_event())).await?;
@@ -1255,7 +1256,7 @@ impl Integrations {
         if run.status != "running" {
             return Ok(Outcome::Ok(false));
         }
-        let key = self.row(&run.connection_id).await?.map(|row| self.secrets(&row).secret.unwrap_or_default());
+        let key = self.ai_row(&run.connection_id).await?.map(|row| self.ai_secret(&row).unwrap_or_default());
         if let Some(key) = &key {
             let _ = self.call_anthropic(key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(interrupt_event())).await?;
         }

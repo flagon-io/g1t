@@ -5,6 +5,7 @@ export * from "./accounts";
 export * from "./actions";
 export * from "./agent-sessions";
 export * from "./agents";
+export * from "./ai";
 export * from "./audit";
 export * from "./billing";
 export * from "./chat";

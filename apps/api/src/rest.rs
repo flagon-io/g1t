@@ -755,6 +755,48 @@ pub const ROUTES: &[Route] = &[
     ),
     route(
         "GET",
+        "/workspaces/:workspace/ai/providers",
+        Op::ListAiProviders,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/ai/providers",
+        Op::AddAiProvider,
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/workspaces/:workspace/ai/providers/:id",
+        Op::UpdateAiProvider,
+        &[],
+    ),
+    route(
+        "DELETE",
+        "/workspaces/:workspace/ai/providers/:id",
+        Op::RemoveAiProvider,
+        &[],
+    ),
+    route(
+        "POST",
+        "/workspaces/:workspace/ai/providers/:id/test",
+        Op::TestAiProvider,
+        &[],
+    ),
+    route(
+        "GET",
+        "/workspaces/:workspace/ai/ask",
+        Op::GetAskSettings,
+        &[],
+    ),
+    route(
+        "PUT",
+        "/workspaces/:workspace/ai/ask",
+        Op::SetAskSettings,
+        &[],
+    ),
+    route(
+        "GET",
         "/repos/:owner/:name/actions/workflows",
         Op::ListWorkflows,
         &[],

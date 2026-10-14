@@ -570,7 +570,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Integrations",
-        "A workspace's connections to outside systems: AI providers, alert sources and issue trackers.",
+        "A workspace's connections to outside systems: the alert sources that open issues (Sentry, Datadog, webhooks) and the issue trackers whose tickets agents read (Jira, Linear).",
         &[
             Op::ListIntegrations,
             Op::ConnectIntegration,
@@ -579,6 +579,19 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::TestIntegration,
             Op::GetContext,
             Op::ImportIssue,
+        ],
+    ),
+    (
+        "AI",
+        "A workspace's AI: the AI providers it keeps keys for, managed or self-hosted, and what Ask g1t answers with.",
+        &[
+            Op::ListAiProviders,
+            Op::AddAiProvider,
+            Op::UpdateAiProvider,
+            Op::RemoveAiProvider,
+            Op::TestAiProvider,
+            Op::GetAskSettings,
+            Op::SetAskSettings,
         ],
     ),
     (
@@ -708,6 +721,13 @@ fn title(op: Op) -> &'static str {
         Op::UpdateIntegration => "Update an integration",
         Op::DisconnectIntegration => "Disconnect an integration",
         Op::TestIntegration => "Test an integration",
+        Op::ListAiProviders => "List AI providers",
+        Op::AddAiProvider => "Add an AI provider",
+        Op::UpdateAiProvider => "Update an AI provider",
+        Op::RemoveAiProvider => "Remove an AI provider",
+        Op::TestAiProvider => "Test an AI provider",
+        Op::GetAskSettings => "Get Ask settings",
+        Op::SetAskSettings => "Set Ask settings",
         Op::GetContext => "Look up a ticket",
         Op::ImportIssue => "Import an issue",
         Op::ListWebhooks => "List webhooks",

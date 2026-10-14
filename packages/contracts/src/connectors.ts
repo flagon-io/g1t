@@ -49,7 +49,6 @@ export type ConnectorCapability =
   | "Sends events"
   | "Alerts into chat"
   | "Sets your status"
-  | "AI provider"
   | "Deploys"
   | "Syncs people";
 
@@ -97,7 +96,7 @@ export const CONNECTOR_CATEGORIES: { id: ConnectorCategory; title: string }[] = 
   { id: "docs", title: "Docs & knowledge" },
   { id: "monitoring", title: "Monitoring & incidents" },
   { id: "cloud", title: "Cloud & deploy" },
-  { id: "ai", title: "AI models" },
+  { id: "ai", title: "AI & agents" },
   { id: "data", title: "Data & analytics" },
   { id: "crm", title: "CRM & support" },
   { id: "design", title: "Design" },
@@ -108,22 +107,6 @@ export const CONNECTOR_CATEGORIES: { id: ConnectorCategory; title: string }[] = 
 const W: ConnectorScope[] = ["workspace"];
 const P: ConnectorScope[] = ["personal"];
 const BOTH: ConnectorScope[] = ["workspace", "personal"];
-
-/** An AI provider: its credentials are kept on the workspace's AI providers page. */
-function model(provider: Provider, name: string, description: string, keywords: string[] = []): Connector {
-  return {
-    id: provider.replace(/_/g, "-"),
-    name,
-    category: "ai",
-    description,
-    scopes: W,
-    status: "available",
-    href: { workspace: `/:workspace/-/integrations/models?add=${provider}#add` },
-    capabilities: ["AI provider"],
-    provider,
-    keywords: ["model", "llm", ...keywords],
-  };
-}
 
 /** A planned connector. */
 function soon(
@@ -297,21 +280,8 @@ export const CONNECTORS: Connector[] = [
   soon("fly-io", "Fly.io", "cloud", W, "Deploy apps from workflows, and roll back from the deployment's page.", ["Deploys"]),
   soon("kubernetes", "Kubernetes", "cloud", W, "Roll out to your own clusters from workflows, with each rollout's status on g1t.", ["Deploys"]),
 
-  // AI models -------------------------------------------------------------
-  model("anthropic", "Anthropic", "Keep your team's Anthropic API key, sealed, for the workspace.", ["claude"]),
-  model("openai", "OpenAI", "Keep your team's OpenAI API key, sealed, for the workspace.", ["gpt"]),
-  model("gemini", "Google Gemini", "Keep your team's Google AI Studio key, sealed, for the workspace.", ["google"]),
-  model("xai", "xAI", "Keep your team's xAI API key, sealed, for the workspace.", ["grok"]),
-  model("mistral", "Mistral", "Keep your team's Mistral API key, sealed, for the workspace."),
-  model("deepseek", "DeepSeek", "Keep your team's DeepSeek API key, sealed, for the workspace."),
-  model("azure_openai", "Azure OpenAI", "Keep your Azure OpenAI resource, deployment and key for the workspace.", ["microsoft"]),
-  model("openrouter", "OpenRouter", "Keep your team's OpenRouter key, sealed, for the workspace."),
-  model("groq", "Groq", "Keep your team's Groq API key, sealed, for the workspace."),
-  model("together", "Together AI", "Keep your team's Together AI key, sealed, for the workspace."),
-  model("fireworks", "Fireworks AI", "Keep your team's Fireworks AI key, sealed, for the workspace."),
-  model("cerebras", "Cerebras", "Keep your team's Cerebras API key, sealed, for the workspace."),
-  model("anthropic_endpoint", "Anthropic-compatible endpoint", "Any server that speaks the Anthropic API, such as your own gateway or proxy.", ["self-hosted", "proxy"]),
-  model("openai_endpoint", "OpenAI-compatible endpoint", "Any server that speaks the OpenAI API, such as a model you host yourself.", ["self-hosted", "proxy", "ollama", "vllm"]),
+  // AI & agents. AI providers are not connectors: they are each workspace's
+  // own AI settings, at /:workspace/-/ai.
   {
     id: "mcp",
     name: "MCP clients",
@@ -323,8 +293,6 @@ export const CONNECTORS: Connector[] = [
     capabilities: ["Agents can act"],
     keywords: ["model context protocol", "agent", "applications", "oauth"],
   },
-  soon("amazon-bedrock", "Amazon Bedrock", "ai", W, "Models in your own AWS account, billed there.", ["AI provider"]),
-  soon("vertex-ai", "Google Vertex AI", "ai", W, "Models in your own Google Cloud project, billed there.", ["AI provider"]),
 
   // Data & analytics ------------------------------------------------------
   soon("postgresql", "PostgreSQL", "data", W, "Agents read your schema, and run read-only queries while they investigate.", ["Agents can read"]),

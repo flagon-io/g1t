@@ -6,6 +6,105 @@ use crate::ops::{Field, In, Operation, Param};
 #[rustfmt::skip]
 pub static OPERATIONS: &[Operation] = &[
     Operation {
+        id: "add_ai_provider",
+        method: "POST",
+        path: "/workspaces/{workspace}/ai/providers",
+        tag: "AI",
+        summary: "Add an AI provider",
+        scope: Some("workspace:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "config", kind: "object", required: false, values: &[] },
+            Field { name: "name", kind: "string", required: false, values: &[] },
+            Field { name: "provider", kind: "string", required: true, values: &["anthropic", "openai", "gemini", "xai", "mistral", "deepseek", "azure_openai", "openrouter", "groq", "together", "fireworks", "cerebras", "anthropic_endpoint", "openai_endpoint"] },
+            Field { name: "secret", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
+        id: "get_ask_settings",
+        method: "GET",
+        path: "/workspaces/{workspace}/ai/ask",
+        tag: "AI",
+        summary: "Get Ask settings",
+        scope: Some("workspace:read"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
+        id: "list_ai_providers",
+        method: "GET",
+        path: "/workspaces/{workspace}/ai/providers",
+        tag: "AI",
+        summary: "List AI providers",
+        scope: Some("workspace:read"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
+        id: "remove_ai_provider",
+        method: "DELETE",
+        path: "/workspaces/{workspace}/ai/providers/{id}",
+        tag: "AI",
+        summary: "Remove an AI provider",
+        scope: Some("workspace:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "id", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
+        id: "set_ask_settings",
+        method: "PUT",
+        path: "/workspaces/{workspace}/ai/ask",
+        tag: "AI",
+        summary: "Set Ask settings",
+        scope: Some("workspace:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "model", kind: "string", required: false, values: &[] },
+            Field { name: "provider_id", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
+        id: "test_ai_provider",
+        method: "POST",
+        path: "/workspaces/{workspace}/ai/providers/{id}/test",
+        tag: "AI",
+        summary: "Test an AI provider",
+        scope: Some("workspace:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "id", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
+        id: "update_ai_provider",
+        method: "PATCH",
+        path: "/workspaces/{workspace}/ai/providers/{id}",
+        tag: "AI",
+        summary: "Update an AI provider",
+        scope: Some("workspace:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "id", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "config", kind: "object", required: false, values: &[] },
+            Field { name: "name", kind: "string", required: false, values: &[] },
+            Field { name: "secret", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
         id: "accept_repo_invitation",
         method: "PATCH",
         path: "/user/repository_invitations/{id}",
@@ -1720,7 +1819,7 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[
             Field { name: "config", kind: "object", required: false, values: &[] },
             Field { name: "name", kind: "string", required: false, values: &[] },
-            Field { name: "provider", kind: "string", required: true, values: &["anthropic", "openai", "gemini", "xai", "mistral", "deepseek", "azure_openai", "openrouter", "groq", "together", "fireworks", "cerebras", "anthropic_endpoint", "openai_endpoint", "sentry", "datadog", "webhook", "jira", "linear"] },
+            Field { name: "provider", kind: "string", required: true, values: &["sentry", "datadog", "webhook", "jira", "linear"] },
             Field { name: "secret", kind: "string", required: false, values: &[] },
             Field { name: "signing_secret", kind: "string", required: false, values: &[] },
         ],
