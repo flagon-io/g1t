@@ -141,7 +141,7 @@ Before going to court, please write to [support@g1t.sh](mailto:support@g1t.sh). 
 
 ## 17. Changes to these terms
 
-We'll update these terms as g1t changes. **We'll tell you before material changes take effect**: by email to workspace owners and on the [policies](/policies) page, at least 30 days ahead, unless a change is needed sooner for legal or security reasons. Every change is listed in the policies' change history. To the extent permitted by law, continuing to use g1t after a change takes effect means you accept the updated terms. Where express consent is required, we will ask for it; continued use alone does not replace that consent. If you don't agree, you can stop using g1t and take your data with you.
+We'll update these terms as g1t changes. **We'll tell you about material changes** by email to workspace owners and on the [policies](/policies) page. Every change is listed in the policies' change history. To the extent permitted by law, continuing to use g1t after a change takes effect means you accept the updated terms. Where express consent is required, we will ask for it; continued use alone does not replace that consent. If you don't agree, you can stop using g1t and take your data with you.
 
 ## 18. The rest
 
