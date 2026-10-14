@@ -390,6 +390,7 @@
         "add_comment",
         "edit_comment",
         "delete_comment",
+        "react",
         "list_issue_labels",
         "add_issue_labels",
         "set_issue_labels",
@@ -60987,6 +60988,173 @@
         },
         "x-example-params": {
           "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/issues/{number}/reactions": {
+      "post": {
+        "operationId": "react",
+        "tags": [
+          "Issues"
+        ],
+        "summary": "React with an emoji",
+        "description": "React to an issue or a pull request with an emoji: to its description, or with comment_id to one of its comments. content is one of +1, -1, laugh, hooray, confused, heart, rocket and eyes; remove true takes your reaction back. Anyone who can read the repository may. Answers with the reactions it has now, each with its count and the usernames of who reacted (`g1t` for g1t, which reacts eyes to what it was asked to take on). get_issue and get_pull_request give each comment's reactions, and the description's as reactions.\n\nReacting twice the same way is one reaction. Without comment_id it reacts to the issue's or pull request's description.",
+        "x-operation": "react",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "react",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "content": "heart",
+                    "count": 1,
+                    "users": [
+                      "ana"
+                    ]
+                  },
+                  {
+                    "content": "eyes",
+                    "count": 1,
+                    "users": [
+                      "g1t"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "enum": [
+                      "+1",
+                      "-1",
+                      "laugh",
+                      "hooray",
+                      "confused",
+                      "heart",
+                      "rocket",
+                      "eyes"
+                    ]
+                  },
+                  "comment_id": {
+                    "type": "string",
+                    "description": "A comment on it, to react to that comment rather than to its description."
+                  },
+                  "remove": {
+                    "type": "boolean",
+                    "description": "Take your reaction back."
+                  }
+                },
+                "required": [
+                  "content"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "number": 12,
+          "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+          "content": "heart"
         }
       }
     },

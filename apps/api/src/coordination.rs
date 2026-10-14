@@ -506,6 +506,8 @@ pub async fn run(op: CoordinationOp, services: &Services, viewer: &Viewer, input
                 actor: actor(),
                 repo,
                 issue,
+                pull: None,
+                asked: None,
                 title: text(input, "title"),
                 body: text(input, "body"),
                 instruction: text(input, "instruction"),
