@@ -776,9 +776,9 @@ impl Actions {
             return Ok(());
         }
         let Some((repo, ws)) = self.repo_by_id(repo_id).await? else { return Ok(()) };
-        if pushed_default {
-            self.sync(&repo, &ws).await?;
-        }
+        // What the sync read, which a push to the default branch starts
+        // from while the branch is still at the pushed commit.
+        let synced = if pushed_default { Some(self.sync(&repo, &ws).await?) } else { None };
         // Nothing starts while the repository's Actions are off (a fork's
         // are, until someone turns them on). Its workflows are still synced
         // above, so turning them on finds them listed. `create_run` holds
@@ -822,7 +822,12 @@ impl Actions {
             }
             // A pull request from a working copy reads the copy's files.
             let read = if subject.source == Self::repo_path(&repo) {
-                self.read_for(&repo, &ws, subject.source_ref.as_deref()).await?
+                match synced.as_ref().filter(|read| read.head.as_deref() == Some(subject.sha.as_str())) {
+                    // The same files at the same commit: reading them again
+                    // took seconds of every push to the default branch.
+                    Some(read) => read.clone(),
+                    None => self.read_for(&repo, &ws, subject.source_ref.as_deref()).await?,
+                }
             } else if !subject.source.namespace.eq_ignore_ascii_case(WORKING_COPIES) {
                 // A branch of someone's fork, built as its head (there was
                 // no merge commit): the workflows are this repository's, at

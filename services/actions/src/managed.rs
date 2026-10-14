@@ -501,7 +501,9 @@ impl Actions {
             .results::<Id>()?;
         for Id { repo_id } in ids {
             match self.repo_by_id(&repo_id).await? {
-                Some((repo, ws)) => self.sync(&repo, &ws).await?,
+                Some((repo, ws)) => {
+                    self.sync(&repo, &ws).await?;
+                }
                 // Gone: nothing to sync, so it is not looked for again.
                 None => {
                     self.db
