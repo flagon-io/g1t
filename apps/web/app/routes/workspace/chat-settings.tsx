@@ -91,7 +91,7 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
           <section className={SECTION}>
             <h2 className="font-medium">Creating channels</h2>
             <p className="mt-1.5 text-xs text-faint">
-              Today {settings.public_channels === "owners" ? "only owners" : "any member"} can create a public channel and{" "}
+              Today {settings.public_channels === "owners" ? "only owners" : "any member"} can create a workspace channel and{" "}
               {settings.private_channels === "owners" ? "only owners" : "any member"} a private one.{" "}
               {owner ? (
                 <>
@@ -156,11 +156,11 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
           <section className={SECTION}>
             <h2 className="font-medium">Default channels</h2>
             <p className="mt-1.5 text-xs text-faint">
-              The public channels someone new is put in the first time they open Chat. They can leave any of them. People already here are not
+              The workspace and public channels someone new is put in the first time they open Chat. They can leave any of them. People already here are not
               moved.
             </p>
             {view.channels.length === 0 ? (
-              <p className="mt-5 text-sm text-muted">No public channels yet.</p>
+              <p className="mt-5 text-sm text-muted">No workspace or public channels yet.</p>
             ) : (
               <ul className="mt-5 grid gap-2.5 sm:grid-cols-2">
                 {view.channels.map((channel) => (

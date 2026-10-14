@@ -309,10 +309,10 @@ function ChannelsSetting({ channels, slug, answer }: { channels: { public: ChatA
         <input type="hidden" name="intent" value="chat-channels" />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <h4 className="mb-2 text-xs font-medium text-fg-soft">Public channels</h4>
-            <RadioGroup name="public_channels" value={chosen.public} onValueChange={(value) => setChosen((now) => ({ ...now, public: value as ChatAllowed }))} aria-label="Who can create public channels">
+            <h4 className="mb-2 text-xs font-medium text-fg-soft">Workspace channels</h4>
+            <RadioGroup name="public_channels" value={chosen.public} onValueChange={(value) => setChosen((now) => ({ ...now, public: value as ChatAllowed }))} aria-label="Who can create workspace channels">
               <RadioOption value="members" label="Any member" description="The default." />
-              <RadioOption value="owners" label="Owners only" description="Members join and read public channels, but ask an owner for a new one." />
+              <RadioOption value="owners" label="Owners only" description="Members join and read workspace channels, but ask an owner for a new one. Public channels, open to anyone on g1t, are always for owners to make." />
             </RadioGroup>
           </div>
           <div>

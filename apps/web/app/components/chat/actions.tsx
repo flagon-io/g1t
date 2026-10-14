@@ -1,15 +1,14 @@
-import { Check, Hash, Lock, Plus, Search, SquarePen, X } from "lucide-react";
+import { Check, Globe, Hash, Lock, Plus, Search, SquarePen, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useNavigate, useRouteLoaderData } from "react-router";
 
-import type { ChatSidebar, Result } from "@g1t/contracts";
+import type { ChannelVisibility, ChatSidebar, Result } from "@g1t/contracts";
 
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
-import { Card } from "../ui/card";
 import { Hint } from "../ui/hint";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Switch } from "../ui/switch";
+import { RadioGroup, RadioOption } from "../ui/radio-group";
 import { channelName, shownHandle, shownName } from "../../lib/chat";
 import type { ChatLayoutData } from "../../routes/workspace/chat/layout";
 import { useLiveCounts } from "../../lib/notify-client";
@@ -93,36 +92,42 @@ export const OWNERS_ONLY_CHANNELS = "Only workspace owners can create channels h
  * What the viewer may make, from the workspace's chat settings (Settings,
  * Chat). Until the sidebar arrives, everything: the chat service checks.
  */
-export function useChannelCreation(): { public: boolean; private: boolean; any: boolean } {
+export function useChannelCreation(): { public: boolean; private: boolean; any: boolean; open: boolean } {
   const { sidebar } = useChatSidebar();
-  const open = sidebar?.can?.create_public_channels ?? true;
+  // `create_public_channels` is the setting's old name for channels anyone in the workspace can join.
+  const shared = sidebar?.can?.create_public_channels ?? true;
   const closed = sidebar?.can?.create_private_channels ?? true;
-  return { public: open, private: closed, any: open || closed };
+  // Open to anyone on g1t: the workspace's owners only.
+  const open = shared && sidebar?.can?.make_public === true;
+  return { public: shared, private: closed, any: shared || closed, open };
 }
 
 /**
- * Making a channel: its name, what it is for, and whether it is private.
- * Someone the workspace's settings do not let make one sees the button
- * turned off, with why; someone who may make only one kind gets that kind.
+ * Making a channel: its name, what it is for, and who can open it:
+ * private, the workspace, or anyone on g1t (owners only). Someone the
+ * workspace's settings do not let make one sees the button turned off,
+ * with why; a kind they may not make is shown off, with why.
  */
 export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; variant?: "icon" | "button" }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [topic, setTopic] = useState("");
-  const [secret, setSecret] = useState(false);
+  const [chosen, setChosen] = useState<ChannelVisibility>("workspace");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const send = useChatSend(slug);
   const navigate = useNavigate();
   const may = useChannelCreation();
-  // Only one kind allowed: that kind, and the switch says why it is fixed.
-  const isPrivate = !may.public ? true : !may.private ? false : secret;
+  // A kind they may not make falls back to one they may.
+  const visibility: ChannelVisibility =
+    chosen === "private" && !may.private ? "workspace" : chosen !== "private" && !may.public ? "private" : chosen === "public" && !may.open ? "workspace" : chosen;
+  const isPrivate = visibility === "private";
   const clean = channelName(name);
   const submit = async () => {
     if (!clean) return setError("Give the channel a name.");
     setBusy(true);
     setError(null);
-    const made = await send<{ to: string }>({ intent: "create_channel", name: clean, topic, private: isPrivate });
+    const made = await send<{ to: string }>({ intent: "create_channel", name: clean, topic, private: isPrivate, visibility });
     setBusy(false);
     if (!made.ok) return setError(made.error.message);
     setOpen(false);
@@ -177,7 +182,7 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
             <label className="grid gap-1.5">
               <span className="text-sm font-medium text-muted">Name</span>
               <span className="flex h-10 items-center gap-1.5 rounded-md border border-line bg-bg px-3 focus-within:border-accent-dim">
-                {isPrivate ? <Lock size={14} className="text-faint" /> : <Hash size={14} className="text-faint" />}
+                {isPrivate ? <Lock size={14} className="text-faint" /> : visibility === "public" ? <Globe size={14} className="text-faint" /> : <Hash size={14} className="text-faint" />}
                 <input
                   autoFocus
                   value={name}
@@ -205,26 +210,36 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
                 className="h-10 rounded-md border border-line bg-bg px-3 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
               />
             </label>
-            <Card asChild tone="plain" radius="lg" className="flex items-start justify-between gap-4 bg-bg/60 p-3">
-              <label>
-                <span>
-                  <span className="flex items-center gap-1.5 text-sm font-medium">
-                    {isPrivate ? <Lock size={13} className="text-muted" /> : <Hash size={13} className="text-muted" />}
-                    {isPrivate ? "Private" : "Public"}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-muted">
-                    {!may.public
-                      ? "Only workspace owners can create public channels here, so this one is private: only people you invite can find and read it."
-                      : !may.private
-                        ? "Only workspace owners can create private channels here, so this one is public: anyone in the workspace can find, read and join it."
-                        : isPrivate
-                          ? "Only people you invite can find and read it."
-                          : "Anyone in the workspace can find, read and join it. Turn on to keep it to the people you invite."}
-                  </span>
-                </span>
-                <Switch checked={isPrivate} onCheckedChange={setSecret} disabled={!may.public || !may.private} aria-label="Private" />
-              </label>
-            </Card>
+            <fieldset className="grid gap-2">
+              <legend className="mb-1.5 text-sm font-medium text-muted">Who can open it</legend>
+              <RadioGroup value={visibility} onValueChange={(value) => setChosen(value as ChannelVisibility)} className="grid gap-3">
+                <RadioOption
+                  value="workspace"
+                  icon={<Hash />}
+                  label="Workspace"
+                  description={may.public ? "Anyone in the workspace can find, read and join it." : "Only workspace owners can create these here."}
+                  disabled={!may.public}
+                />
+                <RadioOption
+                  value="private"
+                  icon={<Lock />}
+                  label="Private"
+                  description={may.private ? "Only the people you invite can find and read it. Others can ask to join." : "Only workspace owners can create these here."}
+                  disabled={!may.private}
+                />
+                <RadioOption
+                  value="public"
+                  icon={<Globe />}
+                  label="Public"
+                  description={
+                    may.open
+                      ? "Anyone signed in to g1t can read, join and talk in it, marked Guest. A community or support channel."
+                      : "Open to anyone on g1t. Only workspace owners can make one."
+                  }
+                  disabled={!may.open}
+                />
+              </RadioGroup>
+            </fieldset>
             {error && <p className="text-sm text-danger">{error}</p>}
             <DialogFooter>
               <Button type="button" onClick={() => setOpen(false)} variant="outline">

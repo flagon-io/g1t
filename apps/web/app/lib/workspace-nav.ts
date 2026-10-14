@@ -291,6 +291,8 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
       return PAGE_MODES[parts[2] ?? ""] ?? "code";
     }
   }
+  // Another workspace's chat, where the viewer is a guest: Chat all the same.
+  if (parts[1] === "-" && parts[2] === "chat") return "chat";
   return "code";
 }
 
@@ -372,6 +374,8 @@ export function browsingOf(pathname: string, viewer: Viewer): { owner: BrowsedOw
   // g1t's own pages, and files such as robots.txt.
   if (NOT_AN_OWNER.has(first) || first.includes(".")) return null;
   if (first === viewer.slug.toLowerCase() || viewer.memberships.some((slug) => slug.toLowerCase() === first)) return null;
+  // Another workspace's channels, as a guest in them, are Chat's (`modeOf`), not Explore's.
+  if (parts[1] === "-" && parts[2] === "chat") return null;
   const repo = parts[1] && parts[1] !== "-" ? parts[1] : null;
   if (repo && (viewer.shared ?? []).some((r) => r.namespace.toLowerCase() === first && r.name.toLowerCase() === repo.toLowerCase())) return null;
   return { owner: { kind: "workspace", name: parts[0]!, repo } };

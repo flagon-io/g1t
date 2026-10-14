@@ -24,7 +24,10 @@ import { Link, useNavigate, useRouteLoaderData, useSearchParams } from "react-ro
 
 import {
   type Channel,
+  type ChannelAccessRequest,
   type ChannelChange,
+  type ChannelInvitation,
+  type ChannelVisibility,
   type ChannelMember,
   type ChatLiveEvent,
   type ChatMessage,
@@ -39,7 +42,8 @@ import { useChatData, useChatSend, useChatSidebar } from "./actions";
 import { CardBox, CardToasts, showToast } from "./card";
 import { Composer } from "./composer";
 import { type LiveState, useChatLive } from "./live";
-import { AgentPill, MemberAvatar } from "./marks";
+import { AgentPill, GuestPill, MemberAvatar } from "./marks";
+import { ChannelMark } from "./sidebar";
 import { PersonStatusEmoji, PersonStatusLine, PresenceSummary, WithPresence } from "../presence";
 import { CardContext, MemberCard, type PersonCard, personCard } from "./profile-card";
 
@@ -71,6 +75,7 @@ import { Hint } from "../ui/hint";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Switch } from "../ui/switch";
 import {
   type Mentionable,
   type ShownMessage,
@@ -783,6 +788,12 @@ export function ChannelView({ data }: { data: Loaded }) {
                 <span>{formerAgentLine(formerAgent)}</span>
               </Card>
             ) : joined ? (
+              <>
+              {data.guest && (
+                <p className="mb-1.5 px-1 text-xs text-faint">
+                  You&apos;re a guest in {data.workspace?.name ?? "this workspace"}: everyone here sees you marked Guest, and @g1t answers its members only.
+                </p>
+              )}
               <Composer
                 draftKey={data.channel.id}
                 placeholder={withG1t ? "Ask g1t about your work" : placeholder}
@@ -792,10 +803,20 @@ export function ChannelView({ data }: { data: Loaded }) {
                 onTyping={onTyping}
                 autoFocus
               />
+              </>
             ) : (
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="text-sm text-muted">
-                  You're reading <span className="font-medium text-fg">#{name}</span>. Join to post and get its notifications.
+                  {data.guest ? (
+                    <>
+                      You're reading <span className="font-medium text-fg">#{name}</span> as a guest: it's open to anyone on g1t. Join to talk in it;
+                      you'll be marked Guest, since you're not in {data.workspace?.name ?? "the workspace"}.
+                    </>
+                  ) : (
+                    <>
+                      You're reading <span className="font-medium text-fg">#{name}</span>. Join to post and get its notifications.
+                    </>
+                  )}
                 </p>
                 <Button
                   type="button"
@@ -844,6 +865,7 @@ export function ChannelView({ data }: { data: Loaded }) {
               slug={slug}
               people={people}
               onAdded={(m) => setMembers((now) => [...now, m])}
+              onRemoved={(id) => setMembers((now) => now.filter((m) => !(m.member.kind === "user" && m.member.id === id)))}
               joined={joined}
               canManage={canManage}
               onUpdate={updateChannel}
@@ -922,17 +944,25 @@ function ChannelHeader({
         {channel.kind === "channel" ? (
           <>
             <h1 className="flex min-w-0 shrink-0 items-center gap-1 text-[0.9375rem] font-semibold">
-              {channel.private ? (
-                <Hint label="Private channel: only its members can find and read it">
-                  <span className="flex">
-                    <Lock size={15} className="text-faint" aria-label="Private channel" />
-                  </span>
-                </Hint>
-              ) : (
-                <Hash size={16} className="text-faint" aria-label="Public channel" />
-              )}
+              <Hint label={VISIBILITY_HINT[channel.visibility ?? (channel.private ? "private" : "workspace")]}>
+                <span className="flex text-faint">
+                  <ChannelMark channel={channel} size={16} />
+                </span>
+              </Hint>
               <span className="truncate">{channel.name}</span>
             </h1>
+            {channel.visibility === "public" && (
+              <Hint label="Anyone signed in to g1t can read and join this channel. People outside the workspace are marked Guest.">
+                <Badge tone="accent" className="shrink-0">
+                  Public
+                </Badge>
+              </Hint>
+            )}
+            {data.guest && (
+              <Hint label={`You're not a member of ${data.workspace?.name ?? "this workspace"}: you're here as a guest.`}>
+                <Badge className="shrink-0">Guest</Badge>
+              </Hint>
+            )}
             <StarButton starred={starred} onClick={onStar} />
             {muted && (
               <Hint label="Muted: no unread count or notifications">
@@ -985,6 +1015,11 @@ function ChannelHeader({
         <Hint label={info ? "Hide details" : "Members and details"}>
           <Button variant="outline" size="sm" onClick={onInfo} aria-pressed={info} aria-label="Members and details" className="px-2 text-xs text-muted tabular-nums aria-pressed:border-line-strong aria-pressed:bg-raised aria-pressed:text-fg max-md:h-11">
             <UsersStack count={memberCount} />
+            {(data.requests?.length ?? 0) > 0 && (
+              <span className="ml-1 rounded-full bg-accent px-1.5 text-[0.6875rem] leading-4 font-semibold text-bg" aria-label={`${data.requests!.length} asking to join`}>
+                {data.requests!.length}
+              </span>
+            )}
           </Button>
         </Hint>
       )}
@@ -1345,6 +1380,8 @@ function MessageRow({
   const author = message.author;
   const time = clock(message.created_at, zone);
   const press = useLongPress(onLongPress);
+  // Whose chat this is, for a guest's mark.
+  const workspaceName = useChatData()?.sidebar?.workspace?.name ?? null;
   return (
     <article
       {...press}
@@ -1376,6 +1413,7 @@ function MessageRow({
             </MemberCard>
             {author.kind === "user" && <PersonStatusEmoji person={{ id: author.id, username: author.name }} size={14} className="self-center" />}
             {author.kind === "agent" && <AgentPill className="self-center" deleted={author.deleted === true} />}
+            {author.guest && <GuestPill className="self-center" workspace={workspaceName} />}
             <time dateTime={message.created_at} suppressHydrationWarning className="shrink-0 text-xs text-faint tabular-nums">
               {time}
             </time>
@@ -1629,20 +1667,34 @@ function ThreadPanel({
   );
 }
 
+/** Who can find and read a channel, in a line: its header's hint and its details. */
+const VISIBILITY_HINT: Record<ChannelVisibility, string> = {
+  private: "Private: only the people in it can find and read it",
+  workspace: "Workspace: anyone in the workspace can read and join it",
+  public: "Public: anyone signed in to g1t can read, join and talk in it",
+};
+
 /**
  * A channel's name, topic and visibility, and changing them: any member
  * edits the topic; renaming and archiving are for whoever the workspace's
- * chat settings allow (`canManage`). #general keeps its name and stays.
+ * chat settings allow (`canManage`); opening it to anyone on g1t, or
+ * keeping it to the workspace again, for the workspace's owners
+ * (`canMakePublic`). #general keeps its name and stays.
  */
 function ChannelAbout({
   channel,
   joined,
   canManage,
+  canMakePublic,
+  guest,
   onUpdate,
 }: {
   channel: Channel;
   joined: boolean;
   canManage: boolean;
+  canMakePublic: boolean;
+  /** The viewer is a guest: they change nothing. */
+  guest: boolean;
   onUpdate: (change: ChannelChange) => Promise<Result<unknown>>;
 }) {
   const [editing, setEditing] = useState<"name" | "topic" | null>(null);
@@ -1653,7 +1705,8 @@ function ChannelAbout({
   const general = channel.name === "general";
   const archived = !!channel.archived_at;
   const mayRename = canManage && !general && !archived;
-  const mayTopic = joined && !archived;
+  const mayTopic = joined && !archived && !guest;
+  const visibility: ChannelVisibility = channel.visibility ?? (channel.private ? "private" : "workspace");
   const save = async (change: ChannelChange) => {
     setBusy(true);
     setError(null);
@@ -1677,7 +1730,11 @@ function ChannelAbout({
       }}
     >
       <span className="flex h-9 items-center gap-1.5 rounded-md border border-line bg-bg px-2.5 focus-within:border-accent-dim">
-        {field === "name" && (channel.private ? <Lock size={13} className="text-faint" /> : <Hash size={13} className="text-faint" />)}
+        {field === "name" && (
+          <span className="flex text-faint">
+            <ChannelMark channel={channel} size={13} />
+          </span>
+        )}
         <input
           autoFocus
           value={value}
@@ -1728,10 +1785,30 @@ function ChannelAbout({
           </div>
           {editing === "topic" ? edit("topic") : <p className="mt-1 text-sm text-fg-soft">{channel.topic || "No topic yet."}</p>}
           <h3 className="mt-3 text-xs font-medium text-faint">Visibility</h3>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-fg-soft">
-            {channel.private ? <Lock size={13} /> : <Hash size={13} />}
-            {channel.private ? "Private: only its members can find and read it" : "Public: anyone in the workspace can read and join"}
+          <p className="mt-1 flex items-start gap-1.5 text-sm text-fg-soft">
+            <span className="mt-0.5 flex">
+              <ChannelMark channel={channel} size={13} />
+            </span>
+            {VISIBILITY_HINT[visibility]}
           </p>
+          {canMakePublic && visibility !== "private" && !archived && (
+            <label className="mt-3 flex items-start gap-3 rounded-md bg-bg p-2.5 ring-1 ring-line">
+              <span className="min-w-0 grow">
+                <span className="block text-[0.8125rem] font-medium">Open to anyone on g1t</span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-muted">
+                  {visibility === "public"
+                    ? "Turning it off keeps it to the workspace: people outside it who joined on their own leave; guests you asked in stay."
+                    : "Anyone signed in to g1t can find it by its link, read it and talk in it, marked Guest. They see nothing else of the workspace, and @g1t answers members only."}
+                </span>
+              </span>
+              <Switch
+                checked={visibility === "public"}
+                disabled={busy}
+                onCheckedChange={(open) => void save({ visibility: open ? "public" : "workspace" })}
+                aria-label="Open to anyone on g1t"
+              />
+            </label>
+          )}
           {error && <p className="mt-2 text-xs text-danger">{error}</p>}
         </section>
       </Card>
@@ -1779,6 +1856,7 @@ function InfoPanel({
   slug,
   people,
   onAdded,
+  onRemoved,
   joined,
   canManage,
   onUpdate,
@@ -1788,24 +1866,110 @@ function InfoPanel({
   slug: string;
   people: Mentionable[];
   onAdded: (member: ChannelMember) => void;
+  /** Someone taken out of the channel, by their account id. */
+  onRemoved: (id: string) => void;
   joined: boolean;
   /** Whether the viewer may rename, archive and unarchive it. */
   canManage: boolean;
   onUpdate: (change: ChannelChange) => Promise<Result<unknown>>;
 }) {
   const channel = data.channel;
+  const send = useChatSend(slug);
+  const me = useChatData()?.me.id ?? null;
+  const workspaceName = data.workspace?.name ?? null;
   const humans = members.filter((m) => m.member.kind === "user");
+  const guests = humans.filter((m) => m.member.guest).length;
+  const [requests, setRequests] = useState<ChannelAccessRequest[]>(data.requests ?? []);
+  const [invited, setInvited] = useState<ChannelInvitation[]>(data.invited ?? []);
+  const [error, setError] = useState<string | null>(null);
+  const answer = async (request: ChannelAccessRequest, approve: boolean) => {
+    setError(null);
+    const done = await send({ intent: "answer_request", channel_id: channel.id, id: request.id, approve });
+    if (!done.ok) return setError(done.error.message);
+    setRequests((now) => now.filter((r) => r.id !== request.id));
+    if (approve) {
+      onAdded({ channel_id: channel.id, member: request.requester, role: "member", starred: false, muted: false, last_read_id: null, joined_at: new Date().toISOString() });
+    }
+  };
+  const takeOut = async (member: MemberProfile) => {
+    setError(null);
+    const done = await send({ intent: "remove_member", channel_id: channel.id, member: `user:${member.id}` });
+    if (!done.ok) return setError(done.error.message);
+    setInvited((now) => now.filter((i) => i.invitee.id !== member.id));
+    onRemoved(member.id);
+  };
   return (
     <div className="min-h-0 grow overflow-y-auto p-4 scrollbar-thin">
-      {channel.kind === "channel" && <ChannelAbout channel={channel} joined={joined} canManage={canManage} onUpdate={onUpdate} />}
+      {channel.kind === "channel" && (
+        <ChannelAbout
+          channel={channel}
+          joined={joined}
+          canManage={canManage}
+          canMakePublic={data.can_make_public === true}
+          guest={data.guest === true}
+          onUpdate={onUpdate}
+        />
+      )}
+      {requests.length > 0 && (
+        <section className="mt-5">
+          <h3 className="mb-1 px-1 text-xs font-medium text-faint">Asking to join · {requests.length}</h3>
+          <ul className="space-y-1.5">
+            {requests.map((request) => (
+              <li key={request.id} className="rounded-md bg-surface p-2.5 ring-1 ring-line">
+                <div className="flex items-center gap-2">
+                  <MemberAvatar member={request.requester} size={22} />
+                  <span className="min-w-0 grow truncate text-sm">{shownName(request.requester)}</span>
+                  {request.requester.guest && <GuestPill workspace={workspaceName} />}
+                </div>
+                {request.note && <p className="mt-1.5 text-xs leading-relaxed text-muted">{request.note}</p>}
+                {request.requester.guest && <p className="mt-1.5 text-xs text-faint">Letting them in makes them a guest here: they see this channel and nothing else of the workspace.</p>}
+                <div className="mt-2 flex gap-1.5">
+                  <Button type="button" size="xs" variant="accent" onClick={() => void answer(request, true)}>
+                    Let in
+                  </Button>
+                  <Button type="button" size="xs" variant="ghost" onClick={() => void answer(request, false)}>
+                    Decline
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="mt-5">
         <div className="mb-1 flex items-center justify-between px-1">
-          <h3 className="text-xs font-medium text-faint">People · {humans.length}</h3>
-          {joined && channel.kind === "channel" && <AddMember slug={slug} channelId={channel.id} people={people} members={members} onAdded={onAdded} />}
+          <h3 className="text-xs font-medium text-faint">
+            People · {humans.length}
+            {guests > 0 && <span className="ml-1">({guests} {guests === 1 ? "guest" : "guests"})</span>}
+          </h3>
+          {joined && !data.guest && channel.kind === "channel" && (
+            <AddMember
+              slug={slug}
+              channelId={channel.id}
+              people={people}
+              members={members}
+              guests={data.can_invite_guests === true}
+              workspaceName={workspaceName}
+              onAdded={onAdded}
+              onInvited={(username) =>
+                setInvited((now) => [
+                  ...now,
+                  {
+                    id: `pending-${username}`,
+                    workspace: data.workspace ?? { slug, name: slug, avatar: null },
+                    channel,
+                    invitee: { kind: "user", id: username, name: username, display_name: username, avatar: null, role: null, guest: true },
+                    invited_by: { kind: "user", id: me ?? "", name: "you", display_name: "you", avatar: null, role: null },
+                    created_at: new Date().toISOString(),
+                  },
+                ])
+              }
+            />
+          )}
         </div>
         <ul className="space-y-px">
           {humans.map(({ member, role }) => (
-            <li key={member.id}>
+            <li key={member.id} className="group/person relative">
               <MemberCard member={member} className="flex w-full items-center gap-2.5 rounded-md px-1 py-1.5 transition-colors hover:bg-raised/60 max-md:min-h-11">
                 <MemberAvatar member={member} size={26} presence />
                 <span className="min-w-0 grow truncate text-sm">
@@ -1813,29 +1977,76 @@ function InfoPanel({
                   {shownName(member) !== shownHandle(member) && <span className="ml-1.5 text-faint">@{shownHandle(member)}</span>}
                   <PersonStatusEmoji person={{ id: member.id, username: member.name }} size={13} className="ml-1.5 align-[-2px]" inert />
                 </span>
+                {member.guest && <GuestPill workspace={workspaceName} />}
                 {role === "owner" && <span className="text-[0.6875rem] text-faint">Owner</span>}
               </MemberCard>
+              {data.can_remove_members && member.id !== me && !(channel.name === "general" && !member.guest) && (
+                <Hint label={`Take ${shownName(member)} out of #${channel.name}`}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    aria-label={`Take ${shownName(member)} out`}
+                    onClick={() => void takeOut(member)}
+                    className="absolute top-1/2 right-1 hidden size-6 -translate-y-1/2 text-faint group-hover/person:flex group-focus-within/person:flex hover:text-fg [@media(hover:none)]:flex"
+                  >
+                    <X size={13} />
+                  </Button>
+                </Hint>
+              )}
             </li>
           ))}
         </ul>
       </section>
+      {invited.length > 0 && (
+        <section className="mt-5">
+          <h3 className="mb-1 px-1 text-xs font-medium text-faint">Invited as guests · {invited.length}</h3>
+          <ul className="space-y-px">
+            {invited.map((invitation) => (
+              <li key={invitation.id} className="flex items-center gap-2.5 rounded-md px-1 py-1.5">
+                <MemberAvatar member={invitation.invitee} size={26} />
+                <span className="min-w-0 grow truncate text-sm text-muted">
+                  @{invitation.invitee.display_username ?? invitation.invitee.name}
+                  <span className="ml-1.5 text-xs text-faint">hasn&apos;t answered</span>
+                </span>
+                {data.can_remove_members && !invitation.id.startsWith("pending-") && (
+                  <Button type="button" variant="ghost" size="xs" onClick={() => void takeOut(invitation.invitee)}>
+                    Take back
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {error && <p className="mt-3 px-1 text-xs text-danger">{error}</p>}
     </div>
   );
 }
 
-/** Adding a person to the channel. An invite lets them read; it never grants write. */
+/**
+ * Adding a person to the channel: someone in the workspace joins at once.
+ * With `guests`, anyone else on g1t can be asked in by their username:
+ * they are sent an invitation and join as a guest when they accept.
+ */
 function AddMember({
   slug,
   channelId,
   people,
   members,
+  guests,
+  workspaceName,
   onAdded,
+  onInvited,
 }: {
   slug: string;
   channelId: string;
   people: Mentionable[];
   members: ChannelMember[];
+  guests: boolean;
+  workspaceName: string | null;
   onAdded: (member: ChannelMember) => void;
+  onInvited: (username: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1847,6 +2058,19 @@ function AddMember({
     .filter((p) => !inside.has(`${p.kind}:${p.name.toLowerCase()}`))
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.display_name.toLowerCase().includes(q))
     .slice(0, 8);
+  // Someone not in the workspace, by their exact username: asked in as a guest.
+  const outsider = guests && /^[a-z0-9][a-z0-9-]*$/.test(q) && !people.some((p) => p.name.toLowerCase() === q) && !inside.has(`user:${q}`) ? q : null;
+  const [sent, setSent] = useState<string | null>(null);
+  const inviteGuest = async (username: string) => {
+    setError(null);
+    const done = await send<{ invited: boolean }>({ intent: "invite", channel_id: channelId, member: `user:${username}` });
+    if (!done.ok) return setError(done.error.message);
+    if (done.value.invited) {
+      onInvited(username);
+      setSent(username);
+      setQuery("");
+    } else setOpen(false);
+  };
   const add = async (person: Mentionable) => {
     setError(null);
     const done = await send({ intent: "invite", channel_id: channelId, member: `user:${person.name}` });
@@ -1875,13 +2099,13 @@ function AddMember({
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Add a person"
+          placeholder={guests ? "Add a person, or anyone on g1t by username" : "Add a person"}
           aria-label="Add a person"
           autoComplete="off"
           data-1p-ignore
           className="mb-1 h-8 w-full rounded-md border border-line bg-bg px-2.5 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
         />
-        {options.length === 0 && <p className="px-2 py-3 text-xs text-faint">Everyone who matches is already here.</p>}
+        {options.length === 0 && !outsider && <p className="px-2 py-3 text-xs text-faint">Everyone who matches is already here.</p>}
         {options.map((person) => (
           <button
             key={`${person.kind}:${person.name}`}
@@ -1893,6 +2117,20 @@ function AddMember({
             <span className="min-w-0 grow truncate">{person.display_name}</span>
           </button>
         ))}
+        {outsider && (
+          <button
+            type="button"
+            onClick={() => void inviteGuest(outsider)}
+            className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-line"
+          >
+            <UserPlus size={16} className="mt-0.5 shrink-0 text-faint" />
+            <span className="min-w-0 grow">
+              Invite @{outsider} as a guest
+              <span className="block text-xs text-faint">Not in {workspaceName ?? "the workspace"}: they join this channel only, once they accept.</span>
+            </span>
+          </button>
+        )}
+        {sent && <p className="px-2 pt-1 text-xs text-muted">Invited @{sent}. They&apos;ll see it in their Chat sidebar.</p>}
         {error && <p className="px-2 pt-1 text-xs text-danger">{error}</p>}
       </PopoverContent>
     </Popover>

@@ -3,7 +3,6 @@ import { env } from "cloudflare:workers";
 import { CHAT_VIEWER_HEADER } from "@g1t/contracts";
 
 import type { Route } from "./+types/live";
-import { roleIn } from "../../../lib/session.server";
 import { socketViewer } from "../../../lib/socket-ticket.server";
 
 /**
@@ -17,7 +16,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // A session, or a page opened with a token by its socket ticket.
   const viewer = await socketViewer(context, request);
   if (!viewer) return new Response("Sign in to use chat.", { status: 401 });
-  if (!roleIn(viewer, params.owner)) return new Response("Not found", { status: 404 });
+  // Members and guests alike: the chat service checks they may read the channel.
   if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return new Response("This address takes a WebSocket.", { status: 426, headers: { upgrade: "websocket" } });
   }

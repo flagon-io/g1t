@@ -84,6 +84,13 @@ export type MemberProfile = Principal & {
   archived_by?: string | null;
   /** An agent deleted for good: its messages stay under the name it had. Absent otherwise. */
   deleted?: boolean;
+  /**
+   * A person who is not a member of the workspace whose chat this is: a
+   * guest asked into one of its channels, or someone talking in a public
+   * one. Every surface marks them, so who is in the workspace is never in
+   * doubt. Absent for members, @g1t and agents.
+   */
+  guest?: boolean;
 };
 
 /**
@@ -107,6 +114,13 @@ export function memberName(member: { name: string; display_name?: string | null;
 
 export type ChannelKind = "channel" | "dm";
 
+/**
+ * Who can find, read and join a channel: `private`, only the people in it;
+ * `workspace`, anyone in the workspace; `public`, anyone signed in to g1t,
+ * who talk in it as guests. A direct message is always `private`.
+ */
+export type ChannelVisibility = "private" | "workspace" | "public";
+
 export type Channel = {
   id: string;
   workspace_id: string;
@@ -114,7 +128,9 @@ export type Channel = {
   /** Lowercase, no `#`. Null for a direct message. */
   name: string | null;
   topic: string | null;
+  /** `visibility === "private"`, kept for older clients. */
   private: boolean;
+  visibility: ChannelVisibility;
   created_by: Principal;
   created_at: string;
   archived_at: string | null;
@@ -321,6 +337,14 @@ export type ChatPermissions = {
   add_emoji: boolean;
   /** Whether they may change the workspace's chat settings: owners only. */
   manage_settings: boolean;
+  /** Whether they may make a channel public, open to anyone on g1t: owners only. */
+  make_public?: boolean;
+  /**
+   * Whether they may ask people outside the workspace into its channels as
+   * guests: owners, and members while the workspace lets members invite
+   * outside collaborators.
+   */
+  invite_guests?: boolean;
 };
 
 /** The chat settings page: the settings, what the viewer may do, and the public channels to choose defaults from. */
@@ -330,8 +354,12 @@ export type ChatSettingsView = {
   channels: Channel[];
 };
 
-/** A change to a channel: its name, its topic, or whether it is archived. Anything left out stays. */
-export type ChannelChange = { name?: string; topic?: string | null; archived?: boolean };
+/**
+ * A change to a channel: its name, its topic, whether it is archived, or
+ * whether a channel that is not private is open to anyone on g1t
+ * (`workspace` or `public`; workspace owners only). Anything left out stays.
+ */
+export type ChannelChange = { name?: string; topic?: string | null; archived?: boolean; visibility?: "workspace" | "public" };
 
 /** An image for a new emoji, as base64. Its type is read from its bytes, never taken from here. */
 export type EmojiFile = { data: string };
@@ -355,10 +383,43 @@ export type ChatSidebarEntry = {
 
 export type ChatSidebar = {
   entries: ChatSidebarEntry[];
-  /** Public channels in the workspace the viewer has not joined. */
+  /** Channels the viewer could join and has not: for a guest, the public ones only. */
   browsable: number;
   /** What the viewer may do, from the workspace's chat settings: the page hides what they may not. */
   can: ChatPermissions;
+  /**
+   * The viewer is not a member of this workspace: a guest, who sees only
+   * the channels they are in and its public ones. Absent for members.
+   */
+  guest?: boolean;
+  /** The workspace whose chat this is. */
+  workspace?: ChatWorkspace;
+  /** Channels of other workspaces the viewer is a guest in. */
+  elsewhere?: GuestChannel[];
+  /** Invitations into other workspaces' channels, waiting for the viewer's answer. */
+  invitations?: ChannelInvitation[];
+};
+
+/** A workspace as chat names it to someone who may not be in it. */
+export type ChatWorkspace = { slug: string; name: string; avatar: string | null };
+
+/** A channel of another workspace that the viewer is a guest in, for their own sidebar. */
+export type GuestChannel = {
+  workspace: ChatWorkspace;
+  channel: Channel;
+  unread: number;
+  mentions: number;
+};
+
+/** An invitation for someone outside a workspace to join one of its channels as a guest. */
+export type ChannelInvitation = {
+  id: string;
+  workspace: ChatWorkspace;
+  channel: Channel;
+  /** Who it is for. */
+  invitee: MemberProfile;
+  invited_by: MemberProfile;
+  created_at: string;
 };
 
 /**
@@ -396,7 +457,11 @@ export type MessagePage = {
   newer?: string | null;
 };
 
-export type NewChannel = { name: string; topic?: string | null; private?: boolean };
+/**
+ * A new channel. `visibility` wins over `private`; left out, a channel is
+ * `workspace`, or `private` when `private` is set.
+ */
+export type NewChannel = { name: string; topic?: string | null; private?: boolean; visibility?: ChannelVisibility };
 
 export type PostMessage = {
   body: string;
@@ -438,8 +503,42 @@ export type ChatLiveEvent =
  */
 export const CHAT_VIEWER_HEADER = "x-g1t-chat-viewer";
 
-/** A channel with its members, and whether the viewer may rename or archive it. */
-export type ChannelDetail = { channel: Channel; members: ChannelMember[]; can_manage: boolean };
+/**
+ * A channel with its members, and what the viewer may do there. `invited`
+ * lists guests' open invitations, for those who may ask guests in or take
+ * people out; empty for anyone else.
+ */
+export type ChannelDetail = {
+  channel: Channel;
+  members: ChannelMember[];
+  /** Whether the viewer may rename or archive it. */
+  can_manage: boolean;
+  /** Whether the viewer may make it public, or keep it to the workspace. */
+  can_make_public?: boolean;
+  /** Whether the viewer may ask people outside the workspace in. */
+  can_invite_guests?: boolean;
+  /** Whether the viewer may take people out of it. */
+  can_remove_members?: boolean;
+  /** The viewer is not a member of the workspace: a guest here. */
+  guest?: boolean;
+  /** The workspace whose channel this is. */
+  workspace?: ChatWorkspace;
+  invited?: ChannelInvitation[];
+  /** Requests to join waiting for an answer, for those who could let the person in. */
+  requests?: ChannelAccessRequest[];
+};
+
+/**
+ * Someone asking to be let into a channel they cannot open. `guest` when
+ * they are not in the workspace: letting them in makes them a guest.
+ */
+export type ChannelAccessRequest = {
+  id: string;
+  channel_id: string;
+  requester: MemberProfile;
+  note: string | null;
+  created_at: string;
+};
 
 export type ChatApi = {
   sidebar(workspace: string, viewer: User): Promise<Result<ChatSidebar>>;
@@ -481,8 +580,31 @@ export type ChatApi = {
   openDm(workspace: string, viewer: User, members: Principal[]): Promise<Result<Channel>>;
   join(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
   leave(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
-  /** Adds a person. An invite grants read, never write. */
-  invite(workspace: string, channelId: string, viewer: User, member: Principal): Promise<Result<null>>;
+  /**
+   * Adds a person. A member of the workspace joins at once; anyone else is
+   * sent an invitation and joins as a guest when they accept (`invited`).
+   */
+  invite(workspace: string, channelId: string, viewer: User, member: Principal): Promise<Result<{ invited: boolean }>>;
+  /**
+   * Takes someone out of a channel, or takes back their open invitation:
+   * the workspace's owners, and the channel's own owners where the
+   * workspace lets them manage channels. Someone outside the workspace
+   * taken out of a public channel cannot join it again on their own.
+   */
+  removeMember(workspace: string, channelId: string, viewer: User, member: Principal): Promise<Result<null>>;
+  /** The viewer's invitations into channels of workspaces they are not in. */
+  channelInvitations(viewer: User): Promise<Result<ChannelInvitation[]>>;
+  /** Accepts or declines one; accepting answers the channel's page. */
+  answerChannelInvitation(viewer: User, id: string, accept: boolean): Promise<Result<{ to: string | null }>>;
+  /**
+   * Asks to be let into a channel, by the name in its link. Answers the
+   * same whether or not there is such a channel the viewer may ask about,
+   * so asking never tells them one exists; a request is kept only when it
+   * does. Already able to read it: nothing to ask.
+   */
+  requestAccess(workspace: string, name: string, viewer: User, note: string | null): Promise<Result<{ requested: true }>>;
+  /** Lets the person in, or turns them down: anyone who could have added them. */
+  answerAccessRequest(workspace: string, channelId: string, viewer: User, id: string, approve: boolean): Promise<Result<null>>;
   /**
    * Newest first. Without `thread_root`, the channel's top-level messages;
    * with it, that thread's replies, plus the message they reply to as the
@@ -605,6 +727,13 @@ export function chatClient(service: ServiceBinding): ChatApi {
     leave: (workspace, channelId, viewer) => call("leave", { workspace, channel_id: channelId, viewer }),
     invite: (workspace, channelId, viewer, member) =>
       call("invite", { workspace, channel_id: channelId, viewer, member }),
+    removeMember: (workspace, channelId, viewer, member) =>
+      call("remove_member", { workspace, channel_id: channelId, viewer, member }),
+    channelInvitations: (viewer) => call("channel_invitations", { viewer }),
+    answerChannelInvitation: (viewer, id, accept) => call("answer_channel_invitation", { viewer, id, accept }),
+    requestAccess: (workspace, name, viewer, note) => call("request_access", { workspace, name, viewer, note }),
+    answerAccessRequest: (workspace, channelId, viewer, id, approve) =>
+      call("answer_access_request", { workspace, channel_id: channelId, viewer, id, approve }),
     messages: (workspace, channelId, viewer, page) =>
       call("messages", {
         workspace,
