@@ -11,8 +11,9 @@ pub(crate) const MAX_TITLE_CHARS: usize = 500;
 /// The longest commit message body a merger may write.
 pub(crate) const MAX_MESSAGE_CHARS: usize = 64_000;
 
-/// One commit the pull request adds, as its message says.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// One commit the pull request adds, as its message says. Kept as JSON
+/// with its pull request (`pull_message_commits`, merging.rs).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CommitText {
     pub message: String,
     pub author_email: Option<String>,

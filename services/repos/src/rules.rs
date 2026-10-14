@@ -319,22 +319,32 @@ impl<S: GitStore> Repos<S> {
     }
 
     /// Services only: the commits a pull request would land, read as rules
-    /// look at them, fetched from its source as a pack.
+    /// look at them (or only their messages), fetched from its source as a
+    /// pack.
     pub(crate) async fn inspect_commits(&self, a: InspectCommitsArgs) -> Result<Outcome<InspectedCommits>> {
         let (Some(source), Some(target)) = (self.registry.by_id(&a.source_id).await?, self.registry.by_id(&a.target_id).await?) else {
             return Ok(Outcome::fail(FailureCode::NotFound, "Repository not found."));
         };
         self.live(&source).await?;
-        let (source_git, target_git) = (self.store.open(&store_key(&source)).await?, self.store.open(&store_key(&target)).await?);
-        let (history, base_history) =
-            futures_util::future::try_join(source_git.log(&a.head, MAX_ANCESTRY), target_git.log(&a.base_branch, MAX_ANCESTRY)).await?;
-        let shared: std::collections::HashSet<String> = base_history.into_iter().map(|commit| commit.hash).collect();
-        let merge_base = crate::nearest_ancestor_in(&source_git, &history, &shared).await?;
-        let Some(head) = history.first() else {
-            return Ok(Outcome::Ok(InspectedCommits { commits: Vec::new(), complete: true }));
+        let source_git = self.store.open(&store_key(&source)).await?;
+        // Where the branch left the base: as the caller found it (from a
+        // `divergence`), else from both histories, read at once.
+        let (head, merge_base) = match a.merge_base.clone() {
+            Some(merge_base) => (a.head.clone(), Some(merge_base)),
+            None => {
+                let target_git = self.store.open(&store_key(&target)).await?;
+                let (history, base_history) =
+                    futures_util::future::try_join(source_git.log(&a.head, MAX_ANCESTRY), target_git.log(&a.base_branch, MAX_ANCESTRY)).await?;
+                let shared: std::collections::HashSet<String> = base_history.into_iter().map(|commit| commit.hash).collect();
+                let merge_base = crate::nearest_ancestor_in(&source_git, &history, &shared).await?;
+                let Some(head) = history.first() else {
+                    return Ok(Outcome::Ok(InspectedCommits { commits: Vec::new(), complete: true }));
+                };
+                (head.hash.clone(), merge_base)
+            }
         };
         let access = source_git.access(crate::store::Scope::Read).await?;
-        let fetched = crate::land::fetch_pack(&access, &head.hash, merge_base.as_deref()).await?;
+        let fetched = crate::land::fetch_pack(&access, &head, merge_base.as_deref()).await?;
         if fetched.len() > crate::secret_scan::MAX_SCANNED_PUSH {
             return Ok(Outcome::Ok(InspectedCommits { commits: Vec::new(), complete: false }));
         }
@@ -346,9 +356,14 @@ impl<S: GitStore> Repos<S> {
             }
         };
         let limit = a.limit.map_or(MAX_COMMITS, |limit| (limit as usize).min(MAX_COMMITS));
-        let Some(ids) = rule_facts::added(&pack, &head.hash, limit) else {
+        let Some(ids) = rule_facts::added(&pack, &head, limit) else {
             return Ok(Outcome::Ok(InspectedCommits { commits: Vec::new(), complete: false }));
         };
+        // For messages, what the pack holds is enough: no file is listed, so
+        // no tree is read, and no signature's owner is asked for.
+        if a.messages_only {
+            return Ok(Outcome::Ok(InspectedCommits { commits: rule_facts::messages(&pack, &ids), complete: true }));
+        }
         let (fingerprints, emails) = rule_facts::signing_facts(&pack, &ids);
         let owners = self.signing_owners(&fingerprints, &emails).await;
         let commits = rule_facts::read_all(&pack, &source_git, &ids, Some(&owners)).await?;
