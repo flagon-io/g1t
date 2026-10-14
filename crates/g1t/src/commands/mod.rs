@@ -14,6 +14,7 @@ pub mod run;
 pub mod secret;
 pub mod session;
 pub mod status;
+pub mod upgrade;
 pub mod why;
 pub mod work;
 pub mod workflow;
@@ -31,6 +32,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             clap_complete::generate(args.shell, &mut command, "g1t", &mut std::io::stdout());
             Ok(())
         }
+        Command::Upgrade(args) => upgrade::run(args),
         Command::Push(args) => {
             let push = crate::push::Push::from_args(args).map_err(Error::usage)?;
             push.run().map_err(Error::failed)

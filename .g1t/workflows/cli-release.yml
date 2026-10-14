@@ -72,6 +72,9 @@ jobs:
           key: cli-release-${{ runner.os }}-${{ steps.keys.outputs.zigbuild }}-${{ steps.keys.outputs.cargo }}
           restore-keys: cli-release-${{ runner.os }}-${{ steps.keys.outputs.zigbuild }}-
       - name: Build
+        env:
+          # Built in, so `g1t upgrade` checks what it downloads.
+          G1T_RUNNER_RELEASE_KEY: ${{ vars.RUNNER_RELEASE_PUBLIC_KEY }}
         run: node scripts/cli-release.mjs build
       - uses: actions/upload-artifact@v4
         with:

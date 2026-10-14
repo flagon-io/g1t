@@ -1046,6 +1046,7 @@ pub const ROUTES: &[Route] = &[
     ),
     route("PATCH", "/repos/:owner/:name/issues/comments/:comment_id", Op::EditComment, &[]),
     route("DELETE", "/repos/:owner/:name/issues/comments/:comment_id", Op::DeleteComment, &[]),
+    route("POST", "/repos/:owner/:name/issues/:number/reactions", Op::React, &[]),
     route(
         "GET",
         "/repos/:owner/:name/pulls",
@@ -1579,6 +1580,7 @@ mod tests {
         assert_eq!(input, json!({ "comment_id": "cmt_1", "repo": "acme/web" }));
         // Still an issue's comments, labels and subscription.
         assert_eq!(op("POST", "/repos/acme/web/issues/7/comments"), Op::AddComment);
+        assert_eq!(op("POST", "/repos/acme/web/issues/7/reactions"), Op::React);
         assert_eq!(op("DELETE", "/repos/acme/web/issues/7/labels"), Op::RemoveIssueLabels);
         assert_eq!(op("DELETE", "/repos/acme/web/issues/7/subscription"), Op::DeleteThreadSubscription);
     }

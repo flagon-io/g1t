@@ -46,6 +46,7 @@ pub(crate) enum Slot {
     Queued,
     Rulesets,
     Adopted,
+    Reactions,
 }
 
 /// How many runs `latest_checks` and `earlier_checks` show together.
@@ -217,6 +218,8 @@ impl Work {
             // Slot::Rulesets and Slot::Adopted (rulesets.rs `rulesets_for`)
             self.statement(crate::rulesets::prefetch_sql().0, &[repo_id.as_str().into(), namespace.to_lowercase().into()])?,
             self.statement(crate::rulesets::prefetch_sql().1, &repo_only())?,
+            // Slot::Reactions (reactions.rs `THREAD_SQL`)
+            self.statement(crate::reactions::THREAD_SQL, &key())?,
         ];
         let count = statements.len() as u32;
         let results = self.timing.db(count, self.db.batch(statements)).await?;

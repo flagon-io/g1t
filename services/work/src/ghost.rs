@@ -31,6 +31,8 @@ pub(crate) fn statements() -> Vec<String> {
              WHERE ?1 IS NOT NULL AND json_valid({column}) AND EXISTS (SELECT 1 FROM json_each({table}.{column}) WHERE value = ?2)"
         ));
     }
+    // What it reacted with goes: a reaction is nobody's without its person.
+    sql.push(crate::reactions::USER_DELETED.to_owned());
     sql.push("DELETE FROM team_review_requests WHERE ?1 IS NOT NULL AND username = ?2".to_owned());
     // Its sessions and claims (coordination/) keep their place as ghost's,
     // and a hand-off to it is to anyone now.

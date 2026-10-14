@@ -1466,3 +1466,21 @@ g1t push [OPTIONS] [IMAGE]
 The token is the first of: --token-stdin, G1T_TOKEN, the account `g1t auth login`
 signed in for the registry's host, or what `docker login g1t.sh` stored.
 ```
+
+## g1t upgrade
+
+Update g1t to the newest release, checked against g1t's release key.
+
+```text
+g1t upgrade [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `--check` | Only say whether a newer release is out. |
+
+```text
+Downloads the newest release for this machine from g1t.sh, checks its signature and SHA-256, and puts it
+where this g1t is. In a terminal, g1t also says once a day when a newer release is out;
+G1T_NO_UPDATE_NOTIFIER=1 turns that off.
+```

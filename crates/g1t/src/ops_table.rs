@@ -2280,6 +2280,24 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[],
     },
     Operation {
+        id: "react",
+        method: "POST",
+        path: "/repos/{owner}/{name}/issues/{number}/reactions",
+        tag: "Issues",
+        summary: "React with an emoji",
+        scope: Some("issues:write"),
+        params: &[
+            Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "comment_id", kind: "string", required: false, values: &[] },
+            Field { name: "content", kind: "string", required: true, values: &["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"] },
+            Field { name: "remove", kind: "boolean", required: false, values: &[] },
+        ],
+    },
+    Operation {
         id: "remove_issue_label",
         method: "DELETE",
         path: "/repos/{owner}/{name}/issues/{number}/labels/{label}",

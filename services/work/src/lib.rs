@@ -28,6 +28,7 @@ mod merging;
 mod milestones;
 mod prefetch;
 mod queue;
+mod reactions;
 mod retired;
 mod reviews;
 mod rows;
@@ -661,19 +662,22 @@ impl Work {
                 self.db
                     .prepare("SELECT * FROM comments WHERE repo_id = ?1 AND number = ?2 ORDER BY id LIMIT 500")
                     .bind(&key)?,
+                self.db.prepare(reactions::THREAD_SQL).bind(&key)?,
             ];
-            let results = self.timing.db(3, self.db.batch(statements)).await?;
+            let results = self.timing.db(4, self.db.batch(statements)).await?;
             let rows = |index: usize| results.get(index).ok_or_else(|| worker::Error::RustError("short batch".into()));
             Ok::<_, worker::Error>((
                 rows(0)?.results::<IssueRow>()?.into_iter().next().map(Issue::from),
                 rows(1)?.results::<PullRow>()?.into_iter().map(Pull::from).collect::<Vec<_>>(),
                 rows(2)?.results::<CommentRow>()?.into_iter().map(Comment::from).collect::<Vec<_>>(),
+                rows(3)?.results::<reactions::ReactionRow>()?,
             ))
         };
-        let Outcome::Ok((_, (Some(issue), pulls, comments))) = self.repo_then(&a.repo, &a.viewer, read).await? else {
+        let Outcome::Ok((_, (Some(issue), pulls, mut comments, reacted))) = self.repo_then(&a.repo, &a.viewer, read).await? else {
             return Ok(no_issue());
         };
-        Ok(Outcome::Ok(IssueDetail { comments, pulls, issue }))
+        let reactions = reactions::attach(&reacted, &issue.id, &mut comments);
+        Ok(Outcome::Ok(IssueDetail { comments, pulls, issue, reactions }))
     }
 
     /// The issue, if `actor` wrote it or may triage the repository's issues.
@@ -821,6 +825,12 @@ impl Work {
                     FailureCode::Invalid,
                     format!("An issue can be assigned to at most {MAX_ASSIGNEES} people."),
                 ));
+            }
+            // g1t has no account, and takes the issue on: a session on the
+            // workspace's own Claude (integrations' summon.rs).
+            if name == g1t_contracts::system::USERNAME {
+                assignees.push(name);
+                continue;
             }
             let account: Viewer = g1t_kit::call(
                 &self.identity,
@@ -1025,6 +1035,7 @@ impl Work {
             agent: None,
             acting_for: None,
             advisory: false,
+            reactions: Vec::new(),
         };
         self.db
             .batch(vec![
@@ -1183,6 +1194,7 @@ impl Work {
             .bind(&[row.id.as_str().into()])?
             .run()
             .await?;
+        self.db.prepare("DELETE FROM reactions WHERE subject = ?").bind(&[row.id.as_str().into()])?.run().await?;
         let number = row.number;
         let comment = Comment::from(row);
         self.publish(
@@ -1549,8 +1561,9 @@ impl Work {
         };
         let stored = found.first::<StoredBehind>(prefetch::Slot::Pull)?;
         let issue = found.first::<IssueRow>(prefetch::Slot::Issue)?.map(Issue::from);
-        let comments: Vec<Comment> =
+        let mut comments: Vec<Comment> =
             found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
+        let reactions = reactions::attach(&found.rows::<reactions::ReactionRow>(prefetch::Slot::Reactions)?, &row.id, &mut comments);
         self.keep_prefetched(Some(found));
         let default_branch = repo.default_branch.clone();
         let detail = self.pull_detail(repo, Pull::from(row), issue, comments, stored, &a.viewer).await;
@@ -1561,6 +1574,7 @@ impl Work {
                 if detail.pull.base.as_deref().is_none_or(str::is_empty) {
                     detail.pull.base = Some(default_branch);
                 }
+                detail.reactions = reactions;
                 Outcome::Ok(detail)
             }
             failed => failed,
@@ -1665,6 +1679,7 @@ impl Work {
             mergeable,
             conflicts,
             earlier_checks: self.earlier_checks(&pull.id).await?,
+            reactions: Vec::new(),
             issue,
             pull,
         }))
@@ -2964,6 +2979,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "edit_comment" => reply(&work.edit_comment(args(body)?).await?),
         "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
+        "react" => reply(&work.react(args(body)?).await?),
         "commit_comments" => reply(&work.commit_comments(args(body)?).await?),
         "add_commit_comment" => reply(&work.add_commit_comment(args(body)?).await?),
         "edit_commit_comment" => reply(&work.edit_commit_comment(args(body)?).await?),
