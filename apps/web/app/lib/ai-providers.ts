@@ -14,6 +14,8 @@ export type AiProviderLook = {
   mark: string;
   /** Where to get a key. */
   keyUrl?: string;
+  /** How to get one there, in a sentence or two, for someone who never has. */
+  keyHow?: string;
   keyPlaceholder?: string;
   /** A model to suggest. */
   model?: string;
@@ -25,8 +27,9 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     blurb: "Claude, on your own Anthropic key.",
     color: "#d97757",
     mark: "A",
-    keyUrl: "https://console.anthropic.com/settings/keys",
+    keyUrl: "https://platform.claude.com/settings/keys",
     keyPlaceholder: "sk-ant-…",
+    keyHow: "Sign in to the Claude Console, choose Create key and copy it. The account needs credits under Billing; a Claude.ai subscription does not include the API.",
   },
   openai: {
     blurb: "GPT and the o-series, on your own OpenAI key.",
@@ -35,6 +38,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     keyUrl: "https://platform.openai.com/api-keys",
     keyPlaceholder: "sk-…",
     model: "gpt-5",
+    keyHow: "Choose Create new secret key and copy it. The API needs credit under Settings → Billing; a ChatGPT subscription does not include it.",
   },
   gemini: {
     blurb: "Gemini, on your own Google AI Studio key.",
@@ -42,6 +46,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     mark: "G",
     keyUrl: "https://aistudio.google.com/apikey",
     model: "gemini-2.5-pro",
+    keyHow: "Sign in with a Google account, choose Create API key and copy it. The free tier needs no card.",
   },
   xai: {
     blurb: "Grok, on your own xAI key.",
@@ -50,6 +55,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     keyUrl: "https://console.x.ai",
     keyPlaceholder: "xai-…",
     model: "grok-4",
+    keyHow: "Open API Keys, choose Create API key and copy it. The team needs credits under Billing.",
   },
   mistral: {
     blurb: "Mistral and Codestral, on your own key.",
@@ -57,6 +63,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     mark: "M",
     keyUrl: "https://console.mistral.ai/api-keys",
     model: "mistral-large-latest",
+    keyHow: "Choose Create new key and copy it. The workspace needs a plan under Billing; the free Experiment plan works.",
   },
   deepseek: {
     blurb: "DeepSeek's chat and reasoning models.",
@@ -65,11 +72,14 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     keyUrl: "https://platform.deepseek.com/api_keys",
     keyPlaceholder: "sk-…",
     model: "deepseek-chat",
+    keyHow: "Choose Create new API key and copy it. The account needs a balance under Top up.",
   },
   azure_openai: {
     blurb: "OpenAI's models on your own Azure resource and contract.",
     color: "#0078d4",
     mark: "Az",
+    keyUrl: "https://portal.azure.com",
+    keyHow: "Open your Azure OpenAI resource, then Resource Management → Keys and Endpoint: copy KEY 1 and the endpoint. Deployments are listed in the Azure AI Foundry portal.",
   },
   openrouter: {
     blurb: "Hundreds of models from every lab, on one key.",
@@ -78,6 +88,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     keyUrl: "https://openrouter.ai/keys",
     keyPlaceholder: "sk-or-…",
     model: "anthropic/claude-sonnet-4.5",
+    keyHow: "Choose Create Key and copy it. Paid models need credits under Credits.",
   },
   groq: {
     blurb: "Open models at very high speed.",
@@ -86,6 +97,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     keyUrl: "https://console.groq.com/keys",
     keyPlaceholder: "gsk_…",
     model: "moonshotai/kimi-k2-instruct",
+    keyHow: "Choose Create API Key and copy it. The free tier needs no card.",
   },
   together: {
     blurb: "Open models: Llama, Qwen, DeepSeek, Kimi.",
@@ -93,6 +105,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     mark: "T",
     keyUrl: "https://api.together.ai/settings/api-keys",
     model: "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+    keyHow: "Copy the key shown there, or create one.",
   },
   fireworks: {
     blurb: "Fast open models, and your own fine-tunes.",
@@ -100,6 +113,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     mark: "F",
     keyUrl: "https://fireworks.ai/account/api-keys",
     model: "accounts/fireworks/models/kimi-k2-instruct",
+    keyHow: "Choose Create API Key and copy it.",
   },
   cerebras: {
     blurb: "Open models on wafer-scale chips.",
@@ -108,6 +122,7 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     keyUrl: "https://cloud.cerebras.ai",
     keyPlaceholder: "csk-…",
     model: "qwen-3-coder-480b",
+    keyHow: "Open API Keys, choose Generate API Key and copy it.",
   },
   anthropic_endpoint: {
     blurb: "Anything that speaks Anthropic's API: your own gateway, LiteLLM, Bedrock or Vertex behind a proxy.",
