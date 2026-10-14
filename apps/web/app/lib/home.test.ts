@@ -363,7 +363,7 @@ test("an actor is not a person when it is g1t or an agent of older rows; everyon
   assert.equal(actorKind(MARGO), "agent");
   assert.equal(actorKind(G1T), "agent");
   assert.equal(actorKind("user:agt_01abc"), "agent", "an agent named by its own id under user: is still a robot");
-  assert.equal(actorKind("user:wsp_01abc"), "agent", "the workspace's own upkeep is g1t's");
+  assert.equal(actorKind("user:wsp_01abc"), "agent", "a workspace, by its own token or g1t's upkeep, is never a person");
   assert.equal(actorKind("user:g1t"), "agent");
   assert.equal(actorKind(ANA), "person");
   assert.equal(actorKind(""), "person");

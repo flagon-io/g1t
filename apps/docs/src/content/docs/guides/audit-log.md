@@ -63,21 +63,23 @@ Through the API and the MCP server, the call itself is recorded under its
 operation's name too, such as `delete_repo`. See
 [managing a repository](/guides/managing-repositories/).
 
-Refusals are recorded too, with the rule that refused them. Entries are
-only ever added: nothing edits or removes one.
+Refusals are recorded too, with the rule that refused them. A push
+refused before it sends anything, such as one with a token that does not
+reach the repository or may not push, is recorded as a denied `git.push`.
+Entries are only ever added: nothing edits or removes one.
 
 ## What an entry says
 
 | Field | What it is |
 | --- | --- |
 | Time | When it happened, to the millisecond. |
-| Actor | Who did it: a person or a workspace token. |
+| Actor | Who did it: a person, or the workspace for its own tokens and deploy keys. |
 | Run | The workflow run whose job's token did it, as `workflow_job`. |
 | Credential | The id of the token used: on the API, the MCP server or git, or on g1t.sh by a token [used on the website](/guides/authentication/#use-a-token-on-the-website). Empty for a person signed in on g1t.sh. |
 | Action | The API or MCP operation, such as `create_issue`, or `git.push` and `git.fetch`. |
 | Target | The repository, the issue or pull request number, and for git the refs it moved. |
 | Outcome | `allowed` or `denied`. |
-| Rule | What decided it: a refusal rule, such as `scope:repository`, or `token:repository` for a workflow job's token used on another repository; or, for people, their own access. A refusal by the repository's own rules is `service` (or `repository` for git). |
+| Rule | What decided it: a refusal rule, such as `scope:repository`, or `token:repository` for a workflow job's token used on another repository; or, for people, their own access. A push allowed through is `person`, `workspace-token`, `deploy-key` or `agent-token`, after what pushed. A refusal by the repository's own rules is `service` (or `repository` for git). |
 | Result | `ok`, or the reason it failed. |
 | Request id | The request's id, the same one Cloudflare logs it under. |
 
