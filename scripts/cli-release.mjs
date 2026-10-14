@@ -95,6 +95,9 @@ export function builderArgs({ root = ROOT, env = process.env, home = homedir() }
   const registry = env.GITHUB_ACTIONS === "true" ? `${join(env.CARGO_HOME || join(home, ".cargo"), "registry").replaceAll("\\", "/")}` : "g1t-cargo-registry";
   return [
     "-e", "CARGO_TARGET_DIR=/src/target/zig",
+    // The release key's public half, built into the CLI so `g1t upgrade`
+    // can check releases (crates/g1t/src/commands/upgrade.rs).
+    ...(env.G1T_RUNNER_RELEASE_KEY ? ["-e", `G1T_RUNNER_RELEASE_KEY=${env.G1T_RUNNER_RELEASE_KEY}`] : []),
     "-v", `${root.replaceAll("\\", "/")}:/src`,
     "-v", `${registry}:/usr/local/cargo/registry`,
     "-w", "/src", BUILDER,

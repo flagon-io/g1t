@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   updateContext,
   UPDATES_REPEAT_MS,
+  howToUpdate,
   PROMPT_LIMIT,
   RESULT_LIMIT,
   agentResult,
@@ -377,6 +378,8 @@ describe("with a working copy", () => {
   });
 
   test("background retrieval reaches the next tool without auto-acknowledging", () => {
+    // A CLI that acknowledges: an older one is told to update instead (below).
+    env.FAKE_G1T_VERSION = "0.3.3";
     env.FAKE_G1T_UPDATES = JSON.stringify([{ id: "upd_real", kind: "overlap.detected", data: { paths: ["src/api.ts"] } }]);
     const event = { ...base, cwd: dir, hook_event_name: "SessionStart" };
     const { job } = hook(event, env);
@@ -731,6 +734,35 @@ test("pending updates survive delivery and stay isolated between parent and chil
     writeFileSync(files.updates("ses_parent"), "[]");
     assert.equal(updateContext(event, env), null);
     assert.equal(updateContext({ ...event, agent_id: "child" }, env), child);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a CLI too old to acknowledge is told to update, once per set of updates", () => {
+  const dir = mkdtempSync(join(tmpdir(), "g1t-stuck-"));
+  try {
+    const env = { CLAUDE_PLUGIN_DATA: dir };
+    const files = sessionFiles("harness", env);
+    mkdirSync(files.dir, { recursive: true });
+    writeFileSync(files.id, "ses_old");
+    writeFileSync(join(dir, "cli.json"), JSON.stringify({ stamp: "x", version: "0.3.2" }));
+    writeFileSync(files.updates("ses_old"), JSON.stringify([{ id: "upd_1", kind: "session.ended", data: {} }]));
+    const event = { session_id: "harness" };
+    const first = updateContext(event, env);
+    assert.match(first, /upd_1/);
+    assert.match(first, /cannot acknowledge them \(0\.3\.3 can\)/);
+    assert.match(first, /install\.ps1/, "0.3.2 has no g1t upgrade: the installer");
+    assert.doesNotMatch(first, /g1t session acknowledge/);
+    // Nothing can clear them, so not again on every prompt or tool.
+    assert.equal(updateContext(event, env), null);
+    assert.equal(updateContext(event, env, { throttle: true, now: Date.now() + 10 * UPDATES_REPEAT_MS }), null);
+    writeFileSync(files.updates("ses_old"), JSON.stringify([{ id: "upd_1", data: {} }, { id: "upd_2", data: {} }]));
+    assert.match(updateContext(event, env), /upd_2/);
+    // A CLI that acknowledges is asked to.
+    writeFileSync(join(dir, "cli.json"), JSON.stringify({ stamp: "x", version: "0.3.3" }));
+    assert.match(updateContext(event, env), /g1t session acknowledge UPDATE_ID --session ses_old/);
+    assert.equal(howToUpdate("0.3.4"), "`g1t upgrade`");
+    assert.match(howToUpdate("0.3.3"), /curl -fsSL https:\/\/g1t\.sh\/install \| sh/);
+    assert.match(howToUpdate(null), /installer/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
