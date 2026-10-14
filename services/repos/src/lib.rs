@@ -100,6 +100,9 @@ const MAX_DRIFT_HEADS: usize = 100;
 const LAST_COMMITS_WALK_MS: u64 = 20_000;
 /// How long a path's history may walk when the caller gives no budget.
 const PATH_LOG_WALK_MS: u64 = 10_000;
+/// How long a blame walks before it answers with what it has: a page waits
+/// on it. A blame cut short is kept only briefly (blame.rs, `cache_control`).
+const BLAME_WALK_MS: u64 = 6_000;
 
 /// One path segment, percent-encoded for a cache key.
 fn urlencoding_segment(segment: &str) -> String {
@@ -978,10 +981,37 @@ impl<S: GitStore> Repos<S> {
         };
         let git = self.read_git(&repo).await?;
         let git_ref = a.git_ref.unwrap_or_else(|| repo.default_branch.clone());
-        Ok(match blame::blame(&git, &git_ref, &a.file_path).await? {
-            Some(blame) => Outcome::Ok(blame),
-            None => not_found(),
-        })
+        // The commit the ref names, so the answer can be kept by it: a
+        // blame of a commit and path never changes. Most blames are of a
+        // commit already (the site links files by commit, and crawlers
+        // follow those links), which needs no read.
+        let head = if store::is_commit_hash(&git_ref) {
+            git_ref
+        } else {
+            match git.log(&git_ref, 1).await?.into_iter().next() {
+                Some(head) => head.hash,
+                None => return Ok(not_found()),
+            }
+        };
+        let url = blame::cache_url(&repo.id, &head, &a.file_path);
+        if let Ok(Some(mut kept)) = worker::Cache::default().get(url.as_str(), false).await
+            && let Ok(found) = kept.json::<Blame>().await
+        {
+            return Ok(Outcome::Ok(found));
+        }
+        let started = now_ms();
+        let out_of_time = move || now_ms().saturating_sub(started) > BLAME_WALK_MS;
+        let Some(blamed) = blame::blame(&git, &head, &a.file_path, &out_of_time, blame::MAX_READS).await? else {
+            return Ok(not_found());
+        };
+        // Kept once the answer has gone.
+        if let Ok(mut response) = worker::Response::from_json(&blamed.blame) {
+            let _ = response.headers_mut().set("cache-control", blame::cache_control(&blamed));
+            self.deferred.spawn(async move {
+                let _ = worker::Cache::default().put(url.as_str(), response).await;
+            });
+        }
+        Ok(Outcome::Ok(blamed.blame))
     }
 
     async fn log(&self, a: LogArgs) -> Result<Outcome<Vec<Commit>>> {
@@ -1035,32 +1065,33 @@ impl<S: GitStore> Repos<S> {
             head.hash,
             a.tree_path.split('/').map(urlencoding_segment).collect::<Vec<_>>().join("/")
         );
-        let cache = worker::Cache::default();
-        if let Ok(Some(mut kept)) = cache.get(key.as_str(), false).await {
-            if let Ok(found) = kept.json::<g1t_contracts::repos::LastCommits>().await {
-                return Ok(Outcome::Ok(found));
-            }
+        if let Ok(Some(mut kept)) = worker::Cache::default().get(key.as_str(), false).await
+            && let Ok(found) = kept.json::<g1t_contracts::repos::LastCommits>().await
+        {
+            return Ok(Outcome::Ok(found));
         }
         let memo = last_commits::Memo::new(&repo.id, &git_ref, &a.tree_path);
-        let shared = self.shared.as_deref();
-        let progress = memo.get(shared).await;
+        let shared = self.shared.clone();
+        let progress = memo.get(shared.as_deref()).await;
         // Asked with a budget, the walk stops past it; without one, past
         // LAST_COMMITS_WALK_MS, well before the caller's waitUntil ends.
         let started = worker::Date::now().as_millis();
         let budget = a.budget_ms.unwrap_or(LAST_COMMITS_WALK_MS);
         let out_of_time = move || worker::Date::now().as_millis().saturating_sub(started) > budget;
         let walk = last_commits::last_commits(&git, &head.hash, &a.tree_path, progress, &out_of_time, last_commits::MAX_READS).await?;
-        if walk.reads > 0 {
-            memo.keep(shared, &walk.progress).await;
-        }
         let settled = walk.progress.settled();
-        let found = g1t_contracts::repos::LastCommits { complete: walk.progress.complete(), entries: walk.progress.found };
-        if !settled {
-            return Ok(Outcome::Ok(found));
+        // What the walk found is kept once the answer has gone: the caller
+        // waits on neither write.
+        if walk.reads > 0 {
+            let progress = walk.progress.clone();
+            self.deferred.spawn(async move { memo.keep(shared.as_deref(), &progress).await });
         }
-        if let Ok(mut response) = worker::Response::from_json(&found) {
+        let found = g1t_contracts::repos::LastCommits { complete: walk.progress.complete(), entries: walk.progress.found };
+        if settled && let Ok(mut response) = worker::Response::from_json(&found) {
             let _ = response.headers_mut().set("cache-control", "max-age=604800");
-            let _ = cache.put(key.as_str(), response).await;
+            self.deferred.spawn(async move {
+                let _ = worker::Cache::default().put(key.as_str(), response).await;
+            });
         }
         Ok(Outcome::Ok(found))
     }
@@ -2577,6 +2608,29 @@ fn announced_refs<'a>(pushed: &'a [git_http::Pushed], default_branch: &str) -> V
     announced
 }
 
+/// How long after a push's answer its About may still be reading: the
+/// waitUntil it runs in ends 30 s after the answer, and what it worked out
+/// must still be written.
+const PUSH_ABOUT_BY_MS: u64 = 24_000;
+/// Less time left than this after recording a push, and its About is left
+/// for the next view to start.
+const MIN_PUSH_ABOUT_MS: u64 = 5_000;
+
+/// How long a push's About may read, `elapsed` after the push's answer:
+/// what is left before [`PUSH_ABOUT_BY_MS`], or `None` when that is too
+/// little to be worth starting.
+fn push_about_budget(elapsed: u64) -> Option<u64> {
+    let left = PUSH_ABOUT_BY_MS.saturating_sub(elapsed);
+    (left >= MIN_PUSH_ABOUT_MS).then_some(left)
+}
+
+/// The repository whose About a push should work out: one that has an
+/// About, when the push moved its default branch.
+fn about_after_push(push: &PushDone) -> Option<Repo> {
+    let moved_default = push.pushed.iter().any(|pushed| pushed.branch() == Some(push.repo.default_branch.as_str()));
+    (stats::has_about(&push.repo) && moved_default).then(|| push.repo.clone())
+}
+
 /// A push the store accepted, to be recorded once git has its answer.
 struct PushDone {
     repo: Repo,
@@ -2618,6 +2672,11 @@ impl AfterGit {
             return;
         }
         let env = env.clone();
+        // A push that moved the default branch has its About worked out
+        // now, so the next view finds it current rather than starting the
+        // run itself (about.rs, `refresh`).
+        let about = self.push.as_ref().and_then(about_after_push);
+        let started = now_ms();
         ctx.wait_until(async move {
             let repos = match service(&env) {
                 Ok(repos) => repos,
@@ -2633,6 +2692,12 @@ impl AfterGit {
                 worker::console_error!("push not recorded: {error}");
             }
             repos.deferred.settle().await;
+            if let Some(repo) = about
+                && let Some(budget) = push_about_budget(now_ms().saturating_sub(started))
+            {
+                repos.refresh(&repo, budget).await;
+                repos.deferred.settle().await;
+            }
         });
     }
 }
@@ -3302,6 +3367,48 @@ mod announced_refs_tests {
             .collect();
         assert_eq!(refs(announced_refs(&over, "main")), ["refs/heads/main"]);
         assert!(announced_refs(&over, "trunk").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod push_about_tests {
+    use super::*;
+
+    fn push(refs: &[&str], fork_of: Option<&str>) -> PushDone {
+        let repo: Repo = serde_json::from_value(serde_json::json!({
+            "id": "rep_1", "namespace": "acme", "name": "web", "description": null, "isPrivate": false,
+            "ownerId": "usr_1", "defaultBranch": "main", "forkOf": fork_of, "createdAt": ""
+        }))
+        .unwrap();
+        PushDone {
+            repo,
+            pushed: refs.iter().map(|git_ref| git_http::Pushed { git_ref: (*git_ref).into(), before: None, after: "abc".into() }).collect(),
+            deleted: Vec::new(),
+            pack_bytes: 0,
+            actor: None,
+            unscanned: false,
+            caused_by_job: None,
+            credit: None,
+        }
+    }
+
+    #[test]
+    fn a_push_to_the_default_branch_works_out_the_about() {
+        assert!(about_after_push(&push(&["refs/heads/main"], None)).is_some());
+        assert!(about_after_push(&push(&["refs/heads/topic", "refs/heads/main"], None)).is_some());
+        assert!(about_after_push(&push(&["refs/heads/topic"], None)).is_none());
+        assert!(about_after_push(&push(&["refs/tags/main"], None)).is_none());
+        // A pull request's working copy has no About.
+        assert!(about_after_push(&push(&["refs/heads/main"], Some("rep_0"))).is_none());
+    }
+
+    #[test]
+    fn a_push_about_reads_only_within_what_is_left() {
+        assert_eq!(push_about_budget(0), Some(PUSH_ABOUT_BY_MS));
+        assert_eq!(push_about_budget(4_000), Some(PUSH_ABOUT_BY_MS - 4_000));
+        assert_eq!(push_about_budget(PUSH_ABOUT_BY_MS - MIN_PUSH_ABOUT_MS), Some(MIN_PUSH_ABOUT_MS));
+        assert_eq!(push_about_budget(PUSH_ABOUT_BY_MS - MIN_PUSH_ABOUT_MS + 1), None);
+        assert_eq!(push_about_budget(60_000), None);
     }
 }
 

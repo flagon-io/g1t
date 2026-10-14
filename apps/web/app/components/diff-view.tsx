@@ -639,6 +639,7 @@ function FileSection({
               </Link>
               <Link
                 to={`${fileBase}/${file.path}?blame=1`}
+                rel="nofollow"
                 className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg"
               >
                 Blame
