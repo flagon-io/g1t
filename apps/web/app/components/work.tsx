@@ -402,24 +402,87 @@ function WithReferences({ text, base, filesUrl }: { text: string; base?: string;
   );
 }
 
-/** Something that happened, as one line on the conversation's rail. */
-function TimelineEvent({ comment, base, filesUrl }: { comment: Comment; base?: string; filesUrl?: string }) {
+/**
+ * One line on the conversation's rail: a mark on the rail (a dot unless
+ * `mark` says otherwise), who, what and when.
+ */
+function TimelineRow({ comment, mark, children }: { comment: Comment; mark?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 text-sm text-muted">
       <span className="hidden w-8 shrink-0 justify-center sm:flex">
-        <span className="size-2 rounded-full border border-line-strong bg-bg" />
+        {mark ?? <span className="size-2 rounded-full border border-line-strong bg-bg" />}
       </span>
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        <Avatar name={comment.author.username} size={16} />
-        <PersonLink name={comment.author.username} className="font-medium text-fg hover:underline" />
-        <span>
-          <WithReferences text={comment.body} base={base} filesUrl={filesUrl} />
-        </span>
+        {comment.agent ? (
+          <>
+            <Avatar name={comment.agent.displayName} agent size={16} />
+            <AgentName agent={comment.agent} />
+          </>
+        ) : (
+          <>
+            <Avatar name={comment.author.username} size={16} />
+            <PersonLink name={comment.author.username} className="font-medium text-fg hover:underline" />
+          </>
+        )}
+        {children}
+        {comment.actingFor && (
+          <span className="text-xs text-faint">
+            on behalf of{" "}
+            <PersonLink name={comment.actingFor.username} className="hover:text-fg hover:underline">
+              @{comment.actingFor.username}
+            </PersonLink>
+          </span>
+        )}
         <span className="text-faint">
           · <TimeAgo at={comment.createdAt} />
         </span>
       </span>
     </div>
+  );
+}
+
+/** Something that happened, as one line on the conversation's rail. */
+function TimelineEvent({ comment, base, filesUrl }: { comment: Comment; base?: string; filesUrl?: string }) {
+  return (
+    <TimelineRow comment={comment}>
+      <span>
+        <WithReferences text={comment.body} base={base} filesUrl={filesUrl} />
+      </span>
+    </TimelineRow>
+  );
+}
+
+/** A review's verdict, approved or changes requested, in its own colour. */
+function Verdict({ verdict }: { verdict: keyof typeof VERDICTS }) {
+  const { label, style } = VERDICTS[verdict];
+  return (
+    <span className={`flex items-center gap-1 font-medium ${style}`}>
+      {verdict === "approve" ? <CircleCheck size={14} /> : <CircleSlash size={14} />}
+      {label}
+    </span>
+  );
+}
+
+/**
+ * A review that gave a verdict and said nothing else: one line on the rail,
+ * not a comment with an empty body. There is nothing to edit, and a
+ * verdict is not deleted, so it has no actions.
+ */
+function TimelineVerdict({ comment, verdict }: { comment: Comment; verdict: keyof typeof VERDICTS }) {
+  return (
+    <TimelineRow
+      comment={comment}
+      mark={
+        verdict === "approve" ? (
+          <CircleCheck size={16} className="text-success" />
+        ) : (
+          <CircleSlash size={16} className="text-danger" />
+        )
+      }
+    >
+      <span className={VERDICTS[verdict].style}>{VERDICTS[verdict].label}</span>
+      {comment.advisory && <AdvisoryChip />}
+    </TimelineRow>
   );
 }
 
@@ -521,7 +584,11 @@ export function CommentList({
         if (comment.kind === "event") {
           return <TimelineEvent key={comment.id} comment={comment} base={base} filesUrl={review?.changesUrl} />;
         }
-        const verdict = comment.verdict && VERDICTS[comment.verdict];
+        const verdict = comment.verdict;
+        // A verdict with nothing said and no line it is about is one line, not a card.
+        if (verdict && !comment.body.trim() && !comment.path) {
+          return <TimelineVerdict key={comment.id} comment={comment} verdict={verdict} />;
+        }
         const can = mayChangeComment(comment, viewerId, canModerate);
         return (
           <TimelineItem
@@ -537,14 +604,7 @@ export function CommentList({
             action={
               <>
                 {verdict ? (
-                  <span className={`flex items-center gap-1 font-medium ${verdict.style}`}>
-                    {comment.verdict === "approve" ? (
-                      <CircleCheck size={14} />
-                    ) : (
-                      <CircleSlash size={14} />
-                    )}
-                    {verdict.label}
-                  </span>
+                  <Verdict verdict={verdict} />
                 ) : (
                   <span>{comment.advisory ? "reviewed" : "commented"}</span>
                 )}
