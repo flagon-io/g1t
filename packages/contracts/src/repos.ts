@@ -331,6 +331,9 @@ export interface ReposApi {
   /** The repository's branches, default branch first. */
   branches(path: RepoPath, viewer: Viewer): Promise<Result<Branch[]>>;
 
+  /** Where a repository is now, by id; null when it is gone. For services: it checks nobody's access. */
+  pathById(id: string): Promise<RepoPath | null>;
+
   /** Which commit last changed each entry of a directory at `ref` (the default branch when null). */
   lastCommits(path: RepoPath, viewer: Viewer, ref: string | null, treePath: string): Promise<Result<LastCommits>>;
 

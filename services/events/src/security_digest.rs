@@ -236,7 +236,7 @@ pub async fn send_due(db: &D1Database, identity: &Fetcher, notify: Option<&Fetch
             db.batch(statements).await?;
             sent += 1;
             if let Some(notify) = notify {
-                inbox::tell_live(notify, vec![(username.clone(), inbox::live_notification(&event_id, &notice, &link, &now))]).await;
+                inbox::tell_live(notify, vec![(username.clone(), inbox::live_notification(&event_id, &notice, &link, &now, Some(&thread)))]).await;
                 inbox::tell_inbox_count(db, notify, &username).await;
             }
             // Emailed as a security alert, to someone who can still read the

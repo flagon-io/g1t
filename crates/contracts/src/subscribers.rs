@@ -84,11 +84,13 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "repo.archived",
         ],
     ),
-    // Previews and production deploys (deployments/src/index.ts queue).
+    // Previews and production deploys (deployments/src/index.ts queue),
+    // and what each production deployment shipped (deployments/src/shipped.ts).
     (
         "SUBSCRIBER_DEPLOYMENTS",
         &[
             "git.push",
+            "deployment_status.created",
             "branch.renamed",
             "repo.default_branch_changed",
             "pull.opened",
@@ -290,6 +292,9 @@ mod tests {
         assert!(!routed("SUBSCRIBER_DOCS", "pull.opened"));
         assert!(routed("SUBSCRIBER_PROJECTS", "deployment_status.created"));
         assert!(!routed("SUBSCRIBER_PROJECTS", "deployment.created"));
+        // A production deployment's success writes down what it shipped.
+        assert!(routed("SUBSCRIBER_DEPLOYMENTS", "deployment_status.created"));
+        assert!(!routed("SUBSCRIBER_DEPLOYMENTS", "deployment.created"));
         // Every subscriber follows what moves or removes a repository.
         for (binding, _) in ROUTES {
             for kind in LIFECYCLE {

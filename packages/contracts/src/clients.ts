@@ -393,6 +393,7 @@ export function reposClient(service: ServiceBinding): ReposApi {
     gitAccess: (path, viewer, service) =>
       call("git_access", { path, viewer, service }),
     branches: (path, viewer) => call("branches", { path, viewer }),
+    pathById: (id) => call("path_by_id", { id }),
     lastCommits: (path, viewer, ref, treePath) => call("last_commits", { path, viewer, ref, treePath }),
     branchDrift: (path, viewer, base, heads) => call("branch_drift", { path, viewer, base, heads }),
     tags: (path, viewer) => call("tags", { path, viewer }),
@@ -560,6 +561,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       }),
     getWorkSession: (repo, id, viewer, afterSeq = 0) =>
       call("get_work_session", { repo, id, viewer, after_seq: afterSeq }),
+    pullSessions: (repo, viewer, numbers) => call("pull_sessions", { repo, viewer, numbers }),
     listDecisions: (repo, number, viewer) => call("list_decisions", { repo, number, viewer }),
   };
 }
@@ -876,6 +878,7 @@ export function deploymentsClient(service: ServiceBinding): DeploymentsApi {
     environments: (repo, viewer) => call("list_environments", { repo, viewer }),
     createDeployment: (actor, repo, input) => call("create_deployment", { repo, actor, ...input }),
     createDeploymentStatus: (actor, repo, id, input) => call("create_deployment_status", { repo, actor, id, ...input }),
+    shipped: (workspace, viewer, repos) => call("shipped", { workspace, viewer, repos }),
   };
 }
 

@@ -25,7 +25,10 @@ use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use super::links::{count_subagents, end_tree_sql, tree_sql};
+use super::links::{PULL_SESSIONS, PullSessionRow, count_subagents, end_tree_sql, pull_sessions_of, tree_sql};
+
+/// The most pull requests one `pull_sessions` asks about.
+const MAX_PULL_SESSIONS: usize = 100;
 use super::updates::push_delivery;
 use super::{SESSION_COLUMNS, SessionRow, after_minutes, tidy, unwrap_or_fail};
 use crate::Work;
@@ -704,6 +707,26 @@ impl Work {
         let (touched, links, skills) = self.tree_facts(&repo.id, &ids).await?;
         let updates = self.pending_updates(&session.id).await?;
         Ok(Outcome::Ok(SessionDetail { session, entries, children, touched, links, skills, root, updates }))
+    }
+
+    /// The sessions tied to some pull requests, for Home (`PullSessionsArgs`).
+    pub(crate) async fn pull_sessions(&self, a: PullSessionsArgs) -> Result<Outcome<Vec<PullSessions>>> {
+        let repo = unwrap_or_fail!(self.coordination_repo(&a.repo, &a.viewer).await?);
+        let mut numbers = a.numbers;
+        numbers.sort_unstable();
+        numbers.dedup();
+        numbers.truncate(MAX_PULL_SESSIONS);
+        if numbers.is_empty() {
+            return Ok(Outcome::Ok(Vec::new()));
+        }
+        let rows = self
+            .db
+            .prepare(PULL_SESSIONS)
+            .bind(&[repo.id.as_str().into(), serde_json::to_string(&numbers)?.into()])?
+            .all()
+            .await?
+            .results::<PullSessionRow>()?;
+        Ok(Outcome::Ok(pull_sessions_of(rows)))
     }
 
     pub(crate) async fn list_work_sessions(&self, a: ListWorkSessionsArgs) -> Result<Outcome<Vec<Session>>> {

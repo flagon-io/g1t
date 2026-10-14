@@ -49,6 +49,7 @@ import { FEED_USERNAME_HEADER, FEED_USER_ID_HEADER, Feed, type FeedEnv } from ".
 import { cleanChannelId } from "./forget.ts";
 import { onlyPeople } from "./presence.ts";
 import { visitWorkspace } from "./visits.ts";
+import { settledThreads } from "./prefs.ts";
 import { byRepo, cleanRepoId, cleanRepoPath } from "./watch.ts";
 
 export { Feed } from "./feed.ts";
@@ -137,7 +138,7 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
     case "notify":
       return Response.json(await stub.notify(args.notification));
     case "set_inbox":
-      return Response.json(await stub.setInbox(Number(args.unread)));
+      return Response.json(await stub.setInbox(Number(args.unread), settledThreads(args.settled)));
     case "subscribe":
       return Response.json(await stub.subscribe(args.subscription, typeof args.user_agent === "string" ? args.user_agent : null));
     case "unsubscribe":
