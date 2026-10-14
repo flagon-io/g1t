@@ -962,6 +962,14 @@ Starting again with the same --harness-session-id returns the same session.")]
     List(SessionListArgs),
     /// Show a session and what it recorded; the current one when left out.
     View(SessionViewArgs),
+    /// Read pending coordination updates without acknowledging them.
+    #[command(after_help = "
+First says which files this working copy changed (git status, from its root), as `session touch`
+would, so another session changing the same files is an overlap.detected for both: heartbeat and
+acknowledge do too. G1T_TOUCH=0 turns that off.")]
+    Updates(SessionViewArgs),
+    /// Record your decision, then acknowledge exact coordination update IDs.
+    Acknowledge(SessionAcknowledgeArgs),
     /// Say what the current session touched: files, commits, branches, pull requests, issues.
     #[command(after_help = "\nEach is kept once. A file another active session touched too (a sibling subagent's included)
 is an overlap.detected event for both. Pull requests and issues tie the session to them.")]
@@ -1122,6 +1130,19 @@ pub struct SessionListArgs {
 pub struct SessionViewArgs {
     /// The session's id (ses_…); the current one when left out.
     pub id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionAcknowledgeArgs {
+    /// IDs you have considered. Never pass unseen updates. At most 100.
+    #[arg(required = true, num_args = 1..=100)]
+    pub updates: Vec<String>,
+    /// What changed in your plan, or why no change is needed.
+    #[arg(long)]
+    pub note: String,
+    /// Use this session instead of G1T_SESSION or the working copy's session.
+    #[arg(long)]
+    pub session: Option<String>,
 }
 
 // --- work -------------------------------------------------------------
@@ -1597,4 +1618,15 @@ mod tests {
         assert_eq!(args.title.as_deref(), Some("Fix the preview builds"));
         assert!(Cli::try_parse_from(["g1t", "session", "attach"]).is_err());
     }
+    #[test]
+    fn harness_neutral_updates_and_acknowledgements_parse() {
+        for args in [
+            vec!["g1t", "session", "updates", "--json"],
+            vec!["g1t", "session", "updates", "ses_child", "--json"],
+            vec!["g1t", "session", "acknowledge", "upd_a", "upd_b", "--session", "ses_child", "--note", "My scope is separate"],
+        ] { assert!(Cli::try_parse_from(args).is_ok()); }
+        assert!(Cli::try_parse_from(["g1t", "session", "acknowledge", "upd_a"]).is_err());
+        assert!(Cli::try_parse_from(["g1t", "session", "acknowledge", "--note", "No IDs"]).is_err());
+    }
+
 }

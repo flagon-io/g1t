@@ -433,9 +433,11 @@ so pages load fast. Repositories are not pinned to a region.
 
 ### Some costs are not fully defined yet
 
-Cloudflare starts billing for Artifacts, where repositories are stored, on
-October 14, 2026, and has not yet said exactly which calls count as a
-billable operation.
+Cloudflare's [Artifacts pricing documentation](https://developers.cloudflare.com/artifacts/platform/pricing/)
+lists October 14, 2026 as the billing start, while its launch announcement
+lists October 15. The pricing documentation identifies repository operations
+such as create, push, pull and clone, and storage measured from daily peaks.
+g1t's measurements still need reconciliation against the upstream bill.
 
 - **What g1t does.** It counts every clone, fetch and push through its git
   endpoints. Each day it checks what Cloudflare billed it for containers and
@@ -480,12 +482,14 @@ the beta.
 ### Self-hosting is early
 
 [Running g1t yourself](/guides/self-hosting/) gives you the core forge:
-accounts, repositories over HTTP, issues and pull requests. Actions,
-deployments, git over SSH, the REST API and MCP are off, and it is
-not ready for the open internet. **Status.** Planned, in phases.
+accounts, repositories over HTTP, issues and pull requests, the REST API
+and MCP, container images, search, webhooks and observability. Hosted
+runners, deployments, billing and git over SSH are off. The merge queue
+can accept pull requests, but cannot test or land them without g1t's
+runner. Use the hosted service to try that integration loop. Self-hosting
+is not ready for the open internet. **Status.** Planned, in phases.
 
 ### Not built yet
 
 
-- **Releases and package registries.** Planned.
 - **Wikis.** Not scheduled. Keep docs in the repository.

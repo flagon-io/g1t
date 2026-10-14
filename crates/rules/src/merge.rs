@@ -549,6 +549,19 @@ mod tests {
     }
 
     #[test]
+    fn admission_does_not_grant_permission_after_reviews_or_rules_change() {
+        let rules = |count| [ruleset(vec![all(Rule::PullRequest(PullRequestRule {
+            required_approvals: count, ..PullRequestRule::default()
+        }))])];
+        let approved = [review("bob", Verdict::Approve, "before")];
+        assert!(!refused(&judge(&rules(1), "main", &facts(&approved, &[], &[]))));
+        let withdrawn = [review("bob", Verdict::RequestChanges, "after")];
+        assert!(refused(&judge(&rules(1), "main", &facts(&withdrawn, &[], &[]))));
+        assert!(refused(&judge(&rules(2), "main", &facts(&approved, &[], &[]))));
+        assert!(refused(&judge(&rules(1), "main", &facts(&[], &[], &[]))));
+    }
+
+    #[test]
     fn stale_approvals_and_the_last_push() {
         let rules = [ruleset(vec![all(Rule::PullRequest(PullRequestRule {
             required_approvals: 1,

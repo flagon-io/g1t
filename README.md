@@ -55,8 +55,8 @@ sets up other harnesses. An assistant can do it for you from
   same work, with hand-offs between sessions and coordination events
   (`g1t work events --follow`, or over MCP) when work overlaps.
 - **Integration.** The merge queue tests changes together before they land,
-  finds which change broke a combination by bisecting, and sends the failure
-  to the session responsible.
+  tests smaller combinations to narrow a failure without assuming a single
+  culprit, and sends the evidence to the session responsible for repair.
 - **Why-blame and decisions.** `g1t why file:line` answers why code is as it
   is: its commit, pull request, issue, the decisions recorded along the way,
   and the sessions behind it.

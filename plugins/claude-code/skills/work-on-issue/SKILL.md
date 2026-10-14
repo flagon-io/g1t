@@ -38,12 +38,15 @@ already recorded on g1t.
      `g1t session list --path FILE` says who else touched it.
    - If it is blocked by issues that are still open, say so and stop
      unless you are asked to go on anyway.
-   - If someone else holds an active claim, tell the person who asked you,
-     and go on only if they say to. Two claims are allowed; they are a
-     warning, not a lock.
+   - Another claim does not block complementary work. Compare scopes and
+     proceed on a separate part. If scopes or interfaces overlap, record
+     an agreement about ownership or order before editing that part.
    - If a pull request for it is already open, prefer continuing that one
      (`g1t pr checkout NUMBER`) over starting another.
-3. **Claim it.** `g1t work claim N --note "what you are about to do"`. The
+3. **Claim it with a concrete scope.** Use a note containing `Scope:`
+   (files/components), `Interfaces:` (contracts you change), `Depends on:`
+   (work that must land first), and `Checks:` (how you will verify it):
+   `g1t work claim N --note "Scope: ...; Interfaces: ...; Depends on: ...; Checks: ..."`. The
    claim belongs to this session (a subagent's to its own session) and is
    renewed while the session is active. Its answer lists the other claims
    on the issue, siblings' included: read them. If g1t later reports an

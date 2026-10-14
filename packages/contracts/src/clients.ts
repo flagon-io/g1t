@@ -499,6 +499,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("update_settings", { actor, repo, settings }),
     openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
     listPulls: (repo, viewer, state, filter = {}) => call("list_pulls", { repo, viewer, state, ...filter }),
+    deliveryInsights: (repoIds, viewer, from, until) => call("delivery_insights", { repoIds, viewer, from, until }),
     pullsForRepos: (repoIds, viewer, limit) => call("pulls_for_repos", { repoIds, viewer, limit }),
     // Its own fields arrive in snake_case: read into camelCase here.
     getPull: (repo, number, viewer) =>

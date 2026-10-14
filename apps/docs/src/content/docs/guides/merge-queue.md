@@ -77,7 +77,7 @@ that takes longer than 45 minutes (`check_response_timeout_minutes`) is tested a
 
 ### What each state is held to
 
-g1t pushes each state it built to a branch of its own, `g1t-queue/<entry>`,
+g1t pushes each state it built to a branch of its own, `g1t-queue/<entry>-<attempt>`,
 and runs the repository's [workflows](/guides/actions/) that run on
 `merge_group` on it. The entry waits for them, and passes only if:
 
@@ -107,12 +107,25 @@ A repository that requires no checks and has no `merge_group` workflows
 only has each state built: an entry passes once it merges cleanly with
 what is ahead of it.
 
+Each build has its own attempt token. A result from an old attempt cannot
+replace a retry or put a removed entry back in the queue. Workflow results
+apply only to the combined commit still being checked.
+Retries use separate Git branches, so a late sandbox cannot overwrite the
+new attempt's branch. Workflow results wait until the whole group has been
+registered; a dispatch error does not count as a pass.
+
 ## How entries land
 
 Entries land in order. When an entry has passed and everything ahead of it
 has landed, `main` moves to exactly the state that was tested. The issue
 closes and the other pull requests for it are superseded, as with any
 merge.
+
+Current reviews and branch rules are checked again before publication,
+against the combined commit's checks. Once publication starts, removal,
+closing or conversion to draft returns a conflict until it finishes. If the
+service stops after updating Git, the next queue poll resumes bookkeeping
+for that same commit instead of publishing a different branch tip.
 
 Before landing, g1t checks that nothing has changed underneath:
 
@@ -189,15 +202,13 @@ did not report and a state that could not be built never look this up.
 
 ### Narrowing it down
 
-An entry whose own checks pass but which fails combined with several
-entries ahead breaks *with* some of them. g1t builds `main` with the first
-half of those entries and the failing one, and runs the `merge_group`
-workflows on it, as for any queued state. If that fails, the cause is in
-that half; if it passes, in the other half. It halves again until one entry
-is left, or it has built three extra combinations. With the default four
-entries to a batch, at most three are ahead of a failing entry, and two
-builds always find the one it breaks with; three builds find one among up
-to eight.
+When an entry passes its own checks but fails combined with several entries
+ahead, g1t tests smaller combinations using the same `merge_group` workflows.
+A failing subset becomes the new suspect set. A passing subset causes g1t
+to test its complement before excluding anything. If both subsets pass,
+g1t retains the last failing combination: the failure may involve several
+changes together, or may not be deterministic. Diagnosis stops after three
+extra builds, retaining the last combination demonstrated to fail.
 
 These combinations are built in sandboxes as the queue's states are, on
 `g1t-queue/<id>` branches that are deleted afterwards, and never land. They
@@ -206,9 +217,10 @@ a combination cannot be built or checked, or its checks are still running
 past the rule's timeout when the queue next moves, g1t stops and reports
 the entries still suspected.
 
-The halving assumes one entry ahead is the cause. When the failure needs
-two of them together, what is reported is the half that still failed, and
-can name more than one pull request.
+The result identifies a failing combination, not proof of one root cause.
+Missing or pending checks on the original change do not count as passing
+in isolation. Agents should inspect the recorded checks and reproduce the
+failure before choosing a repair.
 
 ### Who is told
 

@@ -247,6 +247,8 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "session end", ops: &["end_session"] },
     Mapping { command: "session list", ops: &["list_sessions"] },
     Mapping { command: "session view", ops: &["get_session"] },
+    Mapping { command: "session updates", ops: &["get_session"] },
+    Mapping { command: "session acknowledge", ops: &["record_session_entries"] },
     Mapping { command: "session touch", ops: &["record_session_entries"] },
     Mapping { command: "work context", ops: &["get_work"] },
     Mapping { command: "work claim", ops: &["claim_issue", "claim_new_issue"] },

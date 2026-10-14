@@ -13,7 +13,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Agent|Task|Bash|PowerShell|mcp__plugin_g1t_g1t__issue|mcp__g1t__issue",
+        "matcher": "*",
         "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/g1t.mjs\"", "timeout": 5 }]
       }
     ],

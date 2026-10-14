@@ -433,6 +433,9 @@ pub struct LandArgs {
     /// The branch of the target to land on; its default branch when absent.
     #[serde(default)]
     pub target_branch: Option<String>,
+    /// Refuse if the source no longer names the commit that was checked.
+    #[serde(default)]
+    pub expected_commit: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

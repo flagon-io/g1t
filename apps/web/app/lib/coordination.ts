@@ -312,6 +312,15 @@ export type FeedLine = {
 const list = (all: number[]) => all.map((n) => `#${n}`).join(", ");
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
+/** A session's pending updates as lines of the feed, oldest first. */
+export function pendingLines(updates: { id: string; kind: string; data: unknown; at: string }[]): FeedLine[] {
+  return updates.flatMap((update) => {
+    if (!(COORDINATION_TYPES as readonly string[]).includes(update.kind)) return [];
+    const event = { id: update.id, type: update.kind, time: update.at, source: "work", repoId: null, actor: null, data: update.data } as G1tEvent;
+    return feedLine(event) ?? [];
+  });
+}
+
 /** A coordination event as a line of the feed, or null for one it does not show. */
 export function feedLine(event: G1tEvent): FeedLine | null {
   const base = { id: event.id, time: event.time, harness: null as Harness | null, number: null as number | null };

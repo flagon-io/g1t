@@ -5,7 +5,7 @@ import { Form, Link } from "react-router";
 import type { Pull, SessionLink, SessionTouch, State, TouchKind, WorkSession } from "@g1t/contracts";
 
 import type { Route } from "./+types/work-session";
-import { Actor, HarnessBadge, SessionStateBadge } from "../../components/coordination";
+import { Actor, CoordinationFeed, HarnessBadge, SessionStateBadge } from "../../components/coordination";
 import { SessionEntries } from "../../components/session-entries";
 import { EmptyState, SubmitButton, TimeAgo } from "../../components/ui";
 import { Alert } from "../../components/ui/alert";
@@ -17,7 +17,7 @@ import { Hint } from "../../components/ui/hint";
 import { PersonLink } from "../../components/work";
 import { IssueIcon, PullIcon } from "../../components/work-icons";
 import { requireRepo } from "../../lib/access.server";
-import { type SessionNode, TOUCH_KINDS, duration, harnessName, sessionTitle, sessionTree, touchedByKind, viaLabel } from "../../lib/coordination";
+import { type SessionNode, TOUCH_KINDS, duration, harnessName, pendingLines, sessionTitle, sessionTree, touchedByKind, viaLabel } from "../../lib/coordination";
 import { page } from "../../lib/meta";
 import { notFound } from "../../lib/not-found.server";
 import { repoPages } from "../../lib/repo-live";
@@ -253,7 +253,7 @@ function SubagentTree({ nodes, base, touched, now }: { nodes: SessionNode[]; bas
 
 /** One harness session: who ran it, where, what it worked on, its subagents, what it touched and what it recorded. */
 export default function WorkSessionPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { session, entries, children = [], touched = [], links = [], skills = [], root, canStop } = loaderData;
+  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const now = Date.now();
   // Any session, claim or overlap in the repository: a change names no session.
@@ -456,6 +456,12 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
         </Section>
       )}
 
+      {updates.length > 0 && (
+        <Section title="Awaiting agent acknowledgement" aside={`${updates.length}${updates.length === 100 ? "+" : ""} pending`}>
+          <p className="mb-3 text-sm text-muted">What others did that concerns this session, which its agent has not said it considered yet. Acknowledging records that it was considered, not that anything was resolved.</p>
+          <CoordinationFeed lines={pendingLines(updates)} base={base} />
+        </Section>
+      )}
       <Section title="What it recorded" aside={`${entries.length} entries, ${tools} tool calls`}>
         {entries.length === 0 ? (
           <EmptyState title="Nothing recorded yet">Prompts, messages, tool calls, skills and notes show here as the session records them.</EmptyState>

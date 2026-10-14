@@ -1008,6 +1008,42 @@ g1t session view [OPTIONS] [ID]
 
 Calls [`get_session`](/reference/api/sessions/get-session/).
 
+### g1t session updates
+
+Read pending coordination updates without acknowledging them.
+
+```text
+g1t session updates [OPTIONS] [ID]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[ID]` | The session's id (ses_…); the current one when left out. |
+
+```text
+First says which files this working copy changed (git status, from its root), as `session touch`
+would, so another session changing the same files is an overlap.detected for both: heartbeat and
+acknowledge do too. G1T_TOUCH=0 turns that off.
+```
+
+Calls [`get_session`](/reference/api/sessions/get-session/).
+
+### g1t session acknowledge
+
+Record your decision, then acknowledge exact coordination update IDs.
+
+```text
+g1t session acknowledge [OPTIONS] --note <NOTE> <UPDATES>...
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<UPDATES>` | IDs you have considered. Never pass unseen updates. At most 100. |
+| `--note <NOTE>` | What changed in your plan, or why no change is needed. |
+| `--session <SESSION>` | Use this session instead of G1T_SESSION or the working copy's session. |
+
+Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/).
+
 ### g1t session touch
 
 Say what the current session touched: files, commits, branches, pull requests, issues.

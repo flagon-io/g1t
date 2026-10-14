@@ -23,6 +23,12 @@ use crate::pack_limits::Sideband;
 
 const ZERO_ID: &str = "0000000000000000000000000000000000000000";
 const FLUSH: &[u8] = b"0000";
+
+/// Bind publication to the immutable commit approved by the caller. The
+/// returned object ID, never a second branch lookup, is used for the push.
+pub(crate) fn checked_commit(observed: &str, expected: Option<&str>) -> Option<String> {
+    expected.is_none_or(|expected| expected == observed).then(|| observed.to_owned())
+}
 /// Side-band channels: pack data, and fatal errors.
 const PACK_BAND: u8 = 1;
 const ERROR_BAND: u8 = 3;
@@ -348,6 +354,17 @@ pub(crate) async fn copy_refs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn landing_rejects_a_branch_replaced_after_checks() {
+        assert_eq!(checked_commit("tested", Some("tested")).as_deref(), Some("tested"));
+        assert_eq!(checked_commit("replacement", Some("tested")), None);
+        // Compatibility for callers that have no checked-state contract.
+        assert_eq!(checked_commit("tip", None).as_deref(), Some("tip"));
+        let commit = checked_commit("tested", Some("tested")).unwrap();
+        let command = String::from_utf8(commands_block(&[("refs/heads/main".into(), Some("base".into()), commit)])).unwrap();
+        assert!(command.contains("base tested refs/heads/main"));
+    }
 
     #[test]
     fn many_refs_are_moved_by_one_block_of_commands() {

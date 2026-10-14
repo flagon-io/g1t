@@ -148,9 +148,15 @@ are created and approved only in their browser.
    Other agents with a shell record the same way with the CLI:
    `g1t session start --harness codex` when they start,
    `g1t work context N` and `g1t work claim N` before working on issue N,
+   `g1t session touch --file PATH` before editing a file (another session
+   touching it too is an `overlap.detected` update for both),
    `g1t session log --kind note TEXT` for decisions, `g1t session heartbeat`
    while working, `g1t work handoff N --note TEXT` if they stop early, and
-   `g1t session end` at the end.
+   `g1t session end` at the end. Between steps, `g1t session updates --json`
+   lists what other sessions did since (claims, overlaps, dependencies,
+   decisions, integration results); after weighing each,
+   `g1t session acknowledge ID --note "what changed in my plan"` records
+   the decision and clears it. Reading never clears an update.
 
 ## Do work
 
@@ -188,6 +194,11 @@ for `/repos/{owner}/{name}`.
   `POST {repo}/sessions/{id}/entries` records `entries`, each with an
   optional `key` that makes it idempotent; `POST {repo}/sessions/{id}/end`
   ends it. Idle after 15 minutes without a heartbeat, ended after 2 hours.
+  `GET {repo}/sessions/{id}` has `updates`: up to 100 pending coordination
+  events for the session, oldest first, which reading does not clear.
+  After considering them, send their IDs as `acknowledge` (with a note
+  entry saying what you decided) to `POST {repo}/sessions/{id}/entries`;
+  `acknowledged` counts the IDs that were the session's.
 - **Dependencies:** `PATCH {repo}/issues/{number}` with `blocked_by` (issue
   numbers) sets the issues that must land first; no cycles.
 - **Open a pull request:** `POST {repo}/pulls` with `issue` (its number) and
@@ -724,7 +735,7 @@ https://docs.g1t.sh/guides/search/
 ## Help, status and policies
 
 - [Status](https://status.g1t.sh/): whether each part of g1t is working now, 90 days of uptime, and incidents; the same as JSON at https://status.g1t.sh/status.json
-- [Support](https://g1t.sh/support): where to get help (hey@flagon.io)
-- [Security](https://g1t.sh/security): how g1t protects code and accounts, and responsible disclosure (hey@flagon.io, https://g1t.sh/.well-known/security.txt)
+- [Support](https://g1t.sh/support): where to get help (support@g1t.sh)
+- [Security](https://g1t.sh/security): how g1t protects code and accounts, and responsible disclosure (support@g1t.sh, https://g1t.sh/.well-known/security.txt)
 - [Policies](https://g1t.sh/policies): [Terms of Service](https://g1t.sh/policies/terms), [Privacy Policy](https://g1t.sh/policies/privacy), [Acceptable Use](https://g1t.sh/policies/acceptable-use), [Refunds and Cancellation](https://g1t.sh/policies/refunds), [Subprocessors](https://g1t.sh/policies/subprocessors)
 - g1t is made by Flagon, Inc. (https://www.flagon.io)

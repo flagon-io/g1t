@@ -1,13 +1,15 @@
 // Tests for the plugin's hooks: node --test plugins/claude-code/test/
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  updateContext,
+  UPDATES_REPEAT_MS,
   PROMPT_LIMIT,
   RESULT_LIMIT,
   agentResult,
@@ -368,10 +370,27 @@ describe("with a working copy", () => {
     // No SessionStart marked this session as one in a g1t working copy.
     assert.equal(job, null);
     work(plan({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "fix the login" }, env), env);
-    const [start, logged] = calls();
+    const [start, logged] = calls().filter((call) => call.args[1] !== "get_session");
     assert.deepEqual(start.args, ["session", "start", "--harness", "claude_code", "--harness-session-id", "abc-123", "--json"]);
     assert.deepEqual(logged, { args: ["session", "log", "--kind", "prompt", "--", "fix the login"], session: "ses_fake01" });
     assert.equal(readFileSync(sessionFiles(base.session_id, env).id, "utf8"), "ses_fake01");
+  });
+
+  test("background retrieval reaches the next tool without auto-acknowledging", () => {
+    env.FAKE_G1T_UPDATES = JSON.stringify([{ id: "upd_real", kind: "overlap.detected", data: { paths: ["src/api.ts"] } }]);
+    const event = { ...base, cwd: dir, hook_event_name: "SessionStart" };
+    const { job } = hook(event, env);
+    work(job, env);
+    const next = { ...event, hook_event_name: "PreToolUse", tool_name: "Read", tool_input: { file_path: "src/api.ts" } };
+    const first = hook(next, env).output;
+    assert.match(first.hookSpecificOutput.additionalContext, /upd_real/);
+    assert.equal(first.hookSpecificOutput.hookEventName, "PreToolUse");
+    // The next tool is not told again at once; the next prompt is.
+    assert.equal(hook(next, env).output, null);
+    const prompt = hook({ ...event, hook_event_name: "UserPromptSubmit", prompt: "go on" }, env).output;
+    assert.match(prompt.hookSpecificOutput.additionalContext, /upd_real/);
+    assert.ok(calls().some((call) => call.args[1] === "get_session" && call.args.includes("after=4294967295")));
+    assert.ok(!calls().some((call) => call.args[1] === "record_session_entries"));
   });
 
   test("hooks after SessionStart record; SessionEnd forgets the session", () => {
@@ -673,4 +692,58 @@ describe("with a working copy", () => {
     assert.equal(oldNode(at("PostToolUse"), env, "16.20.2"), null);
     assert.deepEqual(calls(), []);
   });
+});
+
+test("pending updates survive delivery and stay isolated between parent and child", () => {
+  const dir = mkdtempSync(join(tmpdir(), "g1t-inbox-"));
+  try {
+    const env = { CLAUDE_PLUGIN_DATA: dir };
+    const files = sessionFiles("harness", env);
+    mkdirSync(files.dir, { recursive: true });
+    writeFileSync(files.id, "ses_parent");
+    writeFileSync(files.agent("child"), "ses_child");
+    writeFileSync(files.updates("ses_parent"), JSON.stringify([{ id: "parent-update", kind: "overlap.detected", data: {} }]));
+    writeFileSync(files.updates("ses_child"), JSON.stringify([{ id: "child-update", kind: "dependency.changed", data: {} }]));
+    const event = { session_id: "harness" };
+    const first = updateContext(event, env);
+    assert.match(first, /parent-update/);
+    assert.doesNotMatch(first, /child-update/);
+    assert.equal(updateContext(event, env), first);
+    // Before tools: shown once, again when it changes or after a while.
+    const files2 = sessionFiles("harness", env);
+    rmSync(files2.shown("ses_parent"), { force: true });
+    assert.equal(updateContext(event, env, { throttle: true, now: 1000 }), first);
+    assert.equal(updateContext(event, env, { throttle: true, now: 2000 }), null);
+    assert.equal(updateContext(event, env, { throttle: true, now: 1000 + UPDATES_REPEAT_MS }), first);
+    writeFileSync(files.updates("ses_parent"), JSON.stringify([{ id: "parent-update", kind: "overlap.detected", data: {} }, { id: "newer", kind: "work.claimed", data: {} }]));
+    assert.match(updateContext(event, env, { throttle: true, now: 1001 + UPDATES_REPEAT_MS }), /newer/);
+    writeFileSync(files.updates("ses_parent"), JSON.stringify([{ id: "parent-update", kind: "overlap.detected", data: {} }]));
+    const child = updateContext({ ...event, agent_id: "child" }, env);
+    assert.match(child, /child-update/);
+    assert.doesNotMatch(child, /parent-update/);
+    assert.equal(updateContext({ ...event, agent_id: "unknown" }, env), null);
+    writeFileSync(files.updates("ses_parent"), JSON.stringify([{ id: "oversized", data: "x".repeat(20000) }]));
+    const bounded = updateContext(event, env);
+    assert.ok(bounded.length < 10000);
+    assert.match(bounded, /read get_session first/);
+    // A payload that was omitted is not cleared from the cache.
+    assert.match(readFileSync(files.updates("ses_parent"), "utf8"), /oversized/);
+    writeFileSync(files.updates("ses_parent"), "[]");
+    assert.equal(updateContext(event, env), null);
+    assert.equal(updateContext({ ...event, agent_id: "child" }, env), child);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("an acknowledgement refreshes the inbox at once, from the shell or MCP", () => {
+  const dir = mkdtempSync(join(tmpdir(), "g1t-ack-"));
+  try {
+    const env = { CLAUDE_PLUGIN_DATA: dir };
+    const base = { session_id: "harness", cwd: dir, hook_event_name: "PostToolUse" };
+    const shell = plan({ ...base, tool_name: "Bash", tool_input: { command: "g1t session acknowledge upd_1 --note 'Separate scopes'" } }, env);
+    assert.equal(shell.refreshUpdates, true);
+    const mcp = plan({ ...base, tool_name: "mcp__plugin_g1t_g1t__session", tool_input: { action: "record", id: "ses_a", acknowledge: ["upd_1"] } }, env);
+    assert.equal(mcp.refreshUpdates, true);
+    const other = plan({ ...base, tool_name: "Bash", tool_input: { command: "git status" } }, env);
+    assert.equal(other.refreshUpdates, undefined);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

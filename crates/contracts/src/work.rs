@@ -12,6 +12,9 @@ use crate::repos::{CompareArgs, RepoPath};
 use crate::{User, Viewer};
 
 // Sessions, claims and dependencies: work/coordination.rs.
+mod insights;
+pub use insights::*;
+
 mod coordination;
 pub use coordination::*;
 

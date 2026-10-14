@@ -14,6 +14,7 @@ mod coordination;
 mod decisions;
 mod guardrails;
 mod inbox;
+mod insights;
 mod integration;
 mod labels;
 mod lifecycle;
@@ -263,6 +264,23 @@ impl Work {
         repo_id: &str,
         actor: Option<String>,
         data: T,
+    ) -> Result<()> {
+        let data = serde_json::to_value(data)?;
+        // Store agent updates before external event delivery. A retry may repeat
+        // an event, but an external delivery failure cannot erase its inbox copy.
+        // Coordination changes write their updates with themselves instead
+        // (coordination::updates) and call `publish_value`.
+        self.deliver_update(kind, repo_id, &data).await?;
+        self.publish_value(kind, repo_id, actor, data).await
+    }
+
+    /// Publishes an event whose session updates are already written.
+    pub(crate) async fn publish_value(
+        &self,
+        kind: &'static str,
+        repo_id: &str,
+        actor: Option<String>,
+        data: serde_json::Value,
     ) -> Result<()> {
         let event = NewEvent {
             kind,
@@ -697,7 +715,13 @@ impl Work {
         let assigned = assignees.as_ref().map(serde_json::to_string).transpose()?;
         let blocked = blocked_by.as_ref().map(serde_json::to_string).transpose()?;
         let body = a.body.map(|body| body.trim().to_owned());
-        self.db
+        let updated_at = rfc3339(now_ms());
+        let dependency = match &blocked_by {
+            Some(after) => self.dependency_change(&issue, after, &a.actor).await?,
+            None => None,
+        };
+        let mut statements = vec![self
+            .db
             .prepare(
                 "UPDATE issues
                  SET title = COALESCE(?, title), body = COALESCE(?, body),
@@ -710,11 +734,26 @@ impl Work {
                 optional(&body),
                 optional(&assigned),
                 optional(&blocked),
-                rfc3339(now_ms()).into(),
+                updated_at.as_str().into(),
                 issue.id.as_str().into(),
-            ])?
-            .run()
-            .await?;
+            ])?];
+        // A change to what it is blocked by reaches the sessions it concerns
+        // with the change itself.
+        let dependency_sent = match (&dependency, &blocked) {
+            (Some(data), Some(blocked)) => coordination::updates::push_delivery(
+                &mut statements,
+                self.delivery(
+                    "dependency.changed",
+                    &issue.repo_id,
+                    data.clone(),
+                    &format!("{}:blocked_by:{updated_at}", issue.id),
+                    "EXISTS (SELECT 1 FROM issues WHERE id = ?7 AND blocked_by = ?8 AND updated_at = ?9)",
+                    vec![issue.id.as_str().into(), blocked.as_str().into(), updated_at.as_str().into()],
+                )?,
+            ),
+            _ => None,
+        };
+        self.db.batch(statements).await?;
         let before = issue.assignees.clone();
         let blocked_before = issue.blocked_by.clone();
         let Some(issue) = self.issue(&issue.repo_id, issue.number).await? else {
@@ -727,7 +766,8 @@ impl Work {
             Self::issue_event(&issue),
         )
         .await?;
-        if blocked_by.is_some() {
+        if let Some(data) = dependency {
+            self.delivered(dependency_sent, "dependency.changed", &issue.repo_id, Some(a.actor.id.clone()), data).await?;
             self.blocked_by_changed(&issue, &blocked_before, &a.actor).await?;
         }
         if let Some(assignees) = assignees {
@@ -1807,6 +1847,11 @@ impl Work {
         let left_queue = self
             .leave(&pull.repo_id, pull, QueueState::Removed, Some("Its base branch changed."))
             .await?;
+        // Its tested commit is being published to the default branch: a new
+        // base would describe a merge that is not the one taking place.
+        if !left_queue && self.publishing(&pull.id).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict, "This pull request is being published. Wait for landing to finish."));
+        }
         let stored = stored_base(base, repo);
         self.db
             .prepare(
@@ -1908,12 +1953,17 @@ impl Work {
     async fn close_pull(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
         let mut pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
         let now = rfc3339(now_ms());
-        self.db
+        let closed = self.db
             // What it was closed as, so that reopening brings that back.
-            .prepare("UPDATE pulls SET status = 'closed', closed_from = ?, updated_at = ? WHERE id = ?")
+            .prepare("UPDATE pulls SET status = 'closed', closed_from = ?, updated_at = ? WHERE id = ? AND status <> 'merged'
+                AND NOT EXISTS (SELECT 1 FROM queue_entries q WHERE q.pull_id = pulls.id AND q.state = 'passed' AND q.landing_commit IS NOT NULL)
+                RETURNING id AS value")
             .bind(&[pull.status.as_str().into(), now.as_str().into(), pull.id.as_str().into()])?
-            .run()
+            .first::<rows::ValueRow>(None)
             .await?;
+        if closed.is_none() {
+            return Ok(Outcome::fail(FailureCode::Conflict, "This pull request is being published or has already merged."));
+        }
         self.publish(
             "pull.closed",
             &pull.repo_id,
@@ -2019,14 +2069,19 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::Conflict, refusal));
         }
         let now = rfc3339(now_ms());
-        self.db
+        let drafted = self.db
             .prepare(
                 "UPDATE pulls SET status = 'draft', land_requested = NULL, land_requested_at = NULL, updated_at = ?
-                 WHERE id = ?",
+                 WHERE id = ? AND status = 'open'
+                   AND NOT EXISTS (SELECT 1 FROM queue_entries q WHERE q.pull_id = pulls.id AND q.state = 'passed' AND q.landing_commit IS NOT NULL)
+                 RETURNING id AS value",
             )
             .bind(&[now.as_str().into(), pull.id.as_str().into()])?
-            .run()
+            .first::<rows::ValueRow>(None)
             .await?;
+        if drafted.is_none() {
+            return Ok(Outcome::fail(FailureCode::Conflict, "This pull request changed or is already being published."));
+        }
         self.publish(
             "pull.converted_to_draft",
             &pull.repo_id,
@@ -2133,7 +2188,9 @@ impl Work {
             }
             check!(allowed(Some(&a.actor), &repo, Capability::Merge));
             self.record_merge_evaluations(&repo, &pull, &gate).await;
-            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open).await;
+            // Landing honours the same bypass request against the rules as
+            // they are then (queue.rs `settle`).
+            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open, a.bypass_rules).await;
         }
 
         // The default branch has moved under it. Unless the repository
@@ -2201,6 +2258,7 @@ impl Work {
                 branch: pull.branch.clone(),
                 actor: a.actor.clone(),
                 target_branch: Some(base.clone()),
+                expected_commit: pull.head_commit.clone(),
             },
         )
         .await?;
@@ -2239,7 +2297,7 @@ impl Work {
                     "UPDATE pulls
                      SET status = 'merged', head_commit = ?, merge_base = ?, merged_by = ?,
                          merged_at = ?, updated_at = ?
-                     WHERE id = ?",
+                     WHERE id = ? AND status <> 'merged' RETURNING id AS value",
                 )
                 .bind(&[
                     landed.commit.as_str().into(),
@@ -2280,7 +2338,10 @@ impl Work {
                     ])?,
             );
         }
-        self.db.batch(statements).await?;
+        let recorded = self.db.batch(statements).await?;
+        if recorded.first().map(|result| result.results::<rows::ValueRow>()).transpose()?.is_none_or(|rows| rows.is_empty()) {
+            return Ok(self.pull_by_id(&pull.id).await?.unwrap_or(pull));
+        }
 
         self.publish(
             "pull.merged",
@@ -2744,6 +2805,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "update_settings" => reply(&work.update_settings(args(body)?).await?),
         "open_pull" => reply(&work.open_pull(args(body)?).await?),
         "list_pulls" => reply(&work.list_pulls(args(body)?).await?),
+        "delivery_insights" => reply(&work.delivery_insights(args(body)?).await?),
         "pulls_for_repos" => reply(&work.pulls_for_repos(args(body)?).await?),
         "get_pull" => reply(&work.get_pull(args(body)?).await?),
         "update_pull" => reply(&work.update_pull(args(body)?).await?),

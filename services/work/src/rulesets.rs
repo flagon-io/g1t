@@ -170,6 +170,12 @@ fn optional(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, Into::into)
 }
 
+/// Whether a queued merge's landing may count a bypass: as `merge_pull`
+/// counted one when it was queued.
+pub(crate) fn landing_honors_bypass(actor: &User, bypass_rules: bool) -> bool {
+    bypass_rules || actor.is_system()
+}
+
 /// Whether a pull request is an agent's change: g1t made it, an agent
 /// opened it, or it was opened naming an agent rather than by its author
 /// on the site.
@@ -785,6 +791,41 @@ impl Work {
         ignore_checks: bool,
         honor_bypass: bool,
     ) -> Result<Gate> {
+        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None).await
+    }
+
+    /// Re-evaluate current reviews and rules against the exact combined state.
+    /// Queue admission never grants a permanent bypass of later policy changes:
+    /// a bypass counts only as `merge_pull` let it count at admission (the
+    /// merger asked for it, or g1t merges), and only if the actor may still
+    /// bypass the rules as they are now.
+    /// `statuses`: the attempt's own evidence on `commit` (statuses.rs
+    /// `attempt_evidence`), jobs included, never the commit's every status.
+    pub(crate) async fn queue_landing_gate(
+        &self,
+        repo: &Repo,
+        pull: &Pull,
+        actor: &User,
+        commit: &str,
+        bypass_rules: bool,
+        statuses: Vec<g1t_contracts::work::CommitStatus>,
+    ) -> Result<Gate> {
+        let gate = self.merge_gate_at(repo, pull, Some(actor), false, true, Some((commit, statuses))).await?;
+        Ok(if landing_honors_bypass(actor, bypass_rules) { gate } else { gate.without_bypass() })
+    }
+
+    async fn merge_gate_at(
+        &self,
+        repo: &Repo,
+        pull: &Pull,
+        actor: Option<&User>,
+        ignore_checks: bool,
+        honor_bypass: bool,
+        tested: Option<(&str, Vec<g1t_contracts::work::CommitStatus>)>,
+    ) -> Result<Gate> {
+        let tested_commit = tested.as_ref().map(|(commit, _)| *commit);
+        let tested_statuses = tested.as_ref().map(|(_, statuses)| statuses.clone());
+        let checked_commit = tested_commit.or(pull.head_commit.as_deref());
         let rulesets = self.rulesets_for(repo).await?;
         let base = pull.base_branch(&repo.default_branch).to_owned();
         let git_ref = Target::Branch.full_ref(&base);
@@ -811,8 +852,17 @@ impl Work {
         let teams = g1t_rules::merge::named_teams(&applicable);
         let (verdicts, statuses, behind, code_owners, team_members, commits) = futures_util::try_join!(
             self.verdict_rows(pull),
-            self.statuses(&pull.repo_id, pull.head_commit.as_deref()),
-            self.is_behind(&repo.id, pull),
+            async {
+                match &tested_statuses {
+                    Some(statuses) => Ok(statuses.clone()),
+                    None => self.statuses(&pull.repo_id, checked_commit).await,
+                }
+            },
+            async {
+                // The repository service verifies ancestry and CAS for the
+                // combined commit; the original PR may legitimately be behind.
+                if tested_commit.is_some() { Ok(false) } else { self.is_behind(&repo.id, pull).await }
+            },
             async {
                 if needs_owners { self.code_owners_gap(&owners_settings, pull).await } else { Ok(None) }
             },
@@ -831,7 +881,12 @@ impl Work {
         // A required check named for a g1t Actions job is met by that job.
         let requires_checks =
             applicable.iter().any(|ruleset| ruleset.rules.iter().any(|entry| matches!(&entry.rule, Rule::RequiredStatusChecks(_))));
-        let statuses = if requires_checks { self.with_job_checks(&repo.id, pull.head_commit.as_deref(), statuses).await? } else { statuses };
+        // A tested state's evidence already holds its own jobs.
+        let statuses = if requires_checks && tested_statuses.is_none() {
+            self.with_job_checks(&repo.id, checked_commit, statuses).await?
+        } else {
+            statuses
+        };
         let facts = MergeFacts {
             git_ref: git_ref.clone(),
             agent_change: agent,

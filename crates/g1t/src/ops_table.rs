@@ -5840,6 +5840,7 @@ pub static OPERATIONS: &[Operation] = &[
             Param { name: "id", location: In::Path, kind: "string", required: true, values: &[] },
         ],
         body: &[
+            Field { name: "acknowledge", kind: "array", required: false, values: &[] },
             Field { name: "entries", kind: "array", required: false, values: &[] },
             Field { name: "touched", kind: "array", required: false, values: &[] },
         ],

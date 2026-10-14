@@ -66,10 +66,14 @@ impl Work {
                     .bind(&[pull.repo_id.as_str().into(), low.into(), high.into()])?,
             );
         }
-        let first_new = statements.len();
+        // Each pair is noticed, and each side told, in one change.
+        let guard = "EXISTS (SELECT 1 FROM overlap_pairs WHERE repo_id = ?7 AND low = ?8 AND high = ?9 AND noticed_at = ?10)";
+        let mut announced = Vec::new();
         for other in &new {
             let (low, high) = pair(pull.number, *other);
-            let files = overlaps.iter().find(|overlap| overlap.number == *other).map(|overlap| overlap.paths.clone()).unwrap_or_default();
+            let Some(overlap) = overlaps.iter().find(|overlap| overlap.number == *other) else {
+                continue;
+            };
             statements.push(
                 self.db
                     .prepare(
@@ -80,20 +84,11 @@ impl Work {
                         pull.repo_id.as_str().into(),
                         low.into(),
                         high.into(),
-                        serde_json::to_string(&files)?.into(),
+                        serde_json::to_string(&overlap.paths)?.into(),
                         at.as_str().into(),
                     ])?,
             );
-        }
-        let results = self.db.batch(statements).await?;
-        for (result, other) in results.into_iter().skip(first_new).zip(&new) {
-            // Announced by the other side's push at the same moment.
-            if result.results::<PairRow>()?.is_empty() {
-                continue;
-            }
-            let Some(overlap) = overlaps.iter().find(|overlap| overlap.number == *other) else {
-                continue;
-            };
+            let index = statements.len() - 1;
             let ours = OverlapDetected {
                 repo_id: pull.repo_id.clone(),
                 number: pull.number,
@@ -111,8 +106,30 @@ impl Work {
                 other_issue: pull.issue,
                 ..ours.clone()
             };
-            self.publish_as("overlap.detected", &pull.repo_id, actor.clone(), ours).await?;
-            self.publish_as("overlap.detected", &pull.repo_id, actor.clone(), theirs).await?;
+            let mut sent = Vec::new();
+            for event in [&ours, &theirs] {
+                let delivery = self.delivery(
+                    "overlap.detected",
+                    &pull.repo_id,
+                    serde_json::to_value(event)?,
+                    &format!("pulls:{low}:{high}:{at}:{}", event.pull),
+                    guard,
+                    vec![pull.repo_id.as_str().into(), low.into(), high.into(), at.as_str().into()],
+                )?;
+                sent.push(super::updates::push_delivery(&mut statements, delivery));
+            }
+            announced.push((index, [ours, theirs], sent));
+        }
+        let results = self.db.batch(statements).await?;
+        for (index, events, sent) in announced {
+            // Announced by the other side's push at the same moment.
+            match results.get(index) {
+                Some(result) if !result.results::<PairRow>()?.is_empty() => {}
+                _ => continue,
+            }
+            for (event, sent) in events.into_iter().zip(sent) {
+                self.delivered(sent, "overlap.detected", &pull.repo_id, actor.clone(), serde_json::to_value(event)?).await?;
+            }
         }
         Ok(())
     }

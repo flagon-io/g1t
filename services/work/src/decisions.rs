@@ -150,7 +150,14 @@ impl Work {
             created_at: rfc3339(now),
         };
         let number = |value: Option<u32>| value.map_or(JsValue::NULL, JsValue::from);
-        self.db
+        let event = serde_json::to_value(DecisionRecorded {
+            repo_id: repo_id.to_owned(),
+            number: decision.pull.or(decision.issue).unwrap_or_default(),
+            issue: decision.issue,
+            decision: decision.clone(),
+        })?;
+        let mut statements = vec![self
+            .db
             .prepare(
                 "INSERT INTO decisions
                    (id, repo_id, issue, pull, session_id, actor, actor_name, kind, confidence,
@@ -170,21 +177,14 @@ impl Work {
                 decision.summary.as_str().into(),
                 decision.evidence.to_string().into(),
                 decision.created_at.as_str().into(),
-            ])?
-            .run()
-            .await?;
-        self.publish_as(
-            "decision.recorded",
-            repo_id,
-            new.actor.map(|actor| actor.id.clone()),
-            DecisionRecorded {
-                repo_id: repo_id.to_owned(),
-                number: decision.pull.or(decision.issue).unwrap_or_default(),
-                issue: decision.issue,
-                decision: decision.clone(),
-            },
-        )
-        .await?;
+            ])?];
+        // Kept and delivered to the sessions it concerns in one change.
+        let sent = crate::coordination::updates::push_delivery(
+            &mut statements,
+            self.delivery("decision.recorded", repo_id, event.clone(), &decision.id, "1", Vec::new())?,
+        );
+        self.db.batch(statements).await?;
+        self.delivered(sent, "decision.recorded", repo_id, new.actor.map(|actor| actor.id.clone()), event).await?;
         Ok(decision)
     }
 

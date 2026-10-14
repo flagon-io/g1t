@@ -12,7 +12,7 @@
 //! **Bisection.** An entry whose own checks pass but whose combined state
 //! fails breaks *with* some of the entries ahead of it. With more than one
 //! ahead, g1t builds smaller combinations, the default branch with half of
-//! the suspects and the entry, halving the suspects each time, within
+//! the suspects and the entry, verifying complements before excluding them, within
 //! [`PROBE_BUDGET`] extra builds (built and checked as the queue's states
 //! are, by the `merge_group` workflows, and never landed). What is left is
 //! reported as `suspects`.
@@ -55,6 +55,28 @@ use crate::rows::ValueRow;
 
 /// The most extra combinations built to narrow down one failure.
 pub(crate) const PROBE_BUDGET: u32 = 3;
+
+pub(crate) const RESOLVE_HELD: &str = "UPDATE queue_entries SET state = 'failed', held = NULL, finished_at = ?1
+    WHERE id = ?2 AND state = 'testing' AND held = ?3 AND attempt_id IS ?4 RETURNING id AS value";
+
+pub(crate) const REPORT_PROBE: &str = "UPDATE queue_probes SET combined_commit = ?1, token_hash = NULL, dispatching = 1
+    WHERE id = ?2 AND state = 'testing' AND token_hash = ?3 RETURNING id AS value";
+
+pub(crate) const OPEN_PROBE: &str = "UPDATE queue_probes SET dispatching = 0, workflow_runs = ?1
+    WHERE id = ?2 AND state = 'testing' AND combined_commit = ?3 AND token_hash IS NULL";
+
+pub(crate) const FINISH_PROBE: &str = "UPDATE queue_probes SET state = ?1, token_hash = NULL, error = ?2, finished_at = ?3
+    WHERE id = ?4 AND state = ?5 AND state IN ('waiting', 'testing')
+      AND token_hash IS ?6 AND combined_commit IS ?7 RETURNING id AS value";
+
+/// A recorded stack, if it is the combination the entry's failure is about:
+/// the entries ahead in order, then the entry itself.
+pub(crate) fn recorded_stack(stack: Vec<QueueStackItem>, number: u32, ahead: &[u32]) -> Option<Vec<QueueStackItem>> {
+    let numbers: Vec<u32> = stack.iter().map(|item| item.number).collect();
+    let mut expected = ahead.to_vec();
+    expected.push(number);
+    (numbers == expected).then_some(stack)
+}
 
 /// The most pull requests reported as landed since an entry branched.
 pub(crate) const MAX_LANDED: usize = 10;
@@ -308,7 +330,7 @@ pub(crate) fn pull_note(ahead: &[u32], suspects: &[u32], bisected: bool, landed:
         } else {
             format!("with {} merged in ahead of it", numbers(ahead))
         };
-        return format!("traced its merge queue failure to this change: {what} {on}, and the change is the cause. {rejoin}");
+        return format!("observed a merge queue failure for this change: {what} {on}. No other change has been isolated as the cause. {rejoin}");
     }
     let narrowed = if bisected && suspects.len() < ahead.len() {
         format!(" (narrowed down from {} by building smaller combinations)", numbers(ahead))
@@ -341,7 +363,7 @@ pub(crate) fn summary(number: u32, suspects: &[u32], landed: &[u32], check: &Fai
             landed_clause(landed),
         )
     } else if suspects.is_empty() {
-        format!("#{number} failed in the merge queue: {what}, and #{number} itself is the cause.")
+        format!("#{number} failed in the merge queue: {what}. No other change has been isolated as the cause.")
     } else {
         format!("#{number} failed in the merge queue together with {}: {what} when they were combined.", numbers(suspects))
     }
@@ -360,6 +382,35 @@ pub(crate) struct Diagnosis {
     pub(crate) failure: Failure,
     #[serde(default)]
     pub(crate) done: bool,
+    /// A passing subset does not prove its complement fails. Test that
+    /// complement before discarding any member of the last failing set.
+    #[serde(default)]
+    pub(crate) complement: Option<Vec<u32>>,
+}
+
+impl Diagnosis {
+    fn next_subset(&self) -> Option<Vec<u32>> {
+        if self.done || self.builds >= PROBE_BUDGET {
+            None
+        } else {
+            self.complement.clone().or_else(|| next_probe(&self.suspects, self.builds))
+        }
+    }
+
+    fn observed(&mut self, tested: &[u32], broke: bool) {
+        self.builds += 1;
+        if broke {
+            self.suspects = narrow(&self.suspects, tested, true);
+            self.complement = None;
+        } else if self.complement.is_some() {
+            // Both halves pass: retain the failing combination. This may
+            // be a multi-way interaction or a non-deterministic failure.
+            self.done = true;
+            self.complement = None;
+        } else {
+            self.complement = Some(narrow(&self.suspects, tested, false));
+        }
+    }
 }
 
 /// How one smaller combination came out.
@@ -383,6 +434,12 @@ pub(crate) struct ProbeRow {
     state: String,
     #[serde(default)]
     tested_at: Option<String>,
+    #[serde(default)]
+    token_hash: Option<String>,
+    #[serde(default)]
+    combined_commit: Option<String>,
+    #[serde(default)]
+    workflow_runs: u32,
 }
 
 impl ProbeRow {
@@ -423,11 +480,12 @@ impl Work {
             };
             let claimed = self
                 .db
-                .prepare(
-                    "UPDATE queue_entries SET state = 'failed', held = NULL, finished_at = ?
-                     WHERE id = ? AND state = 'testing' AND held IS NOT NULL RETURNING id AS value",
-                )
-                .bind(&[rfc3339(now_ms()).into(), row.id.as_str().into()])?
+                .prepare(RESOLVE_HELD)
+                .bind(&[
+                    rfc3339(now_ms()).into(), row.id.as_str().into(),
+                    row.held.as_deref().map_or(JsValue::NULL, JsValue::from),
+                    row.attempt_id.as_deref().map_or(JsValue::NULL, JsValue::from),
+                ])?
                 .first::<ValueRow>(None)
                 .await?;
             if claimed.is_none() {
@@ -445,7 +503,7 @@ impl Work {
     /// Whether the entry's own checks pass on the commit it was queued at.
     async fn passed_alone(&self, row: &EntryRow) -> Result<bool> {
         let facts = self.facts(&row.repo_id, row.head_commit.as_deref()).await?;
-        Ok(facts.failed.is_empty() && facts.required_failed().is_empty())
+        Ok(facts.passed())
     }
 
     /// Works out who answers for an entry's failure, after it left the
@@ -465,7 +523,7 @@ impl Work {
                 self.integration_failed(row, &pull, &failure, false, &[], &landed).await
             }
             Plan::Bisect => {
-                let Some(stack) = self.tested_stack(row, &pull, &ahead).await? else {
+                let Some(stack) = Self::tested_stack(row, &pull, &ahead) else {
                     // What was tested can no longer be found: say what is known.
                     return self.integration_failed(row, &pull, &failure, false, &ahead, &[]).await;
                 };
@@ -476,6 +534,7 @@ impl Work {
                     builds: 0,
                     failure,
                     done: false,
+                    complement: None,
                 };
                 self.go_on(row, None, diagnosis).await
             }
@@ -531,49 +590,18 @@ impl Work {
         Ok(landed_since(&merged, &history, oldest))
     }
 
-    /// Each entry ahead and then `row`'s, as they were tested together.
-    async fn tested_stack(&self, row: &EntryRow, pull: &Pull, ahead: &[u32]) -> Result<Option<Vec<QueueStackItem>>> {
-        let path: Option<RepoPath> = g1t_kit::call(
-            &self.repos,
-            "path_by_id",
-            &PathByIdArgs { id: row.repo_id.clone() },
-        )
-        .await?;
-        let Some(path) = path else { return Ok(None) };
-        let item = |pull: &Pull, commit: String| QueueStackItem {
-            number: pull.number,
-            title: pull.title.clone(),
-            source: pull.fork.clone().unwrap_or_else(|| path.clone()),
-            branch: pull.branch.clone().unwrap_or_default(),
-            commit,
-        };
-        let mut stack = Vec::new();
-        for number in ahead {
-            let tested = self
-                .db
-                .prepare(
-                    "SELECT * FROM queue_entries WHERE repo_id = ? AND number = ? AND head_commit IS NOT NULL
-                     ORDER BY created_at DESC LIMIT 1",
-                )
-                .bind(&[row.repo_id.as_str().into(), (*number).into()])?
-                .first::<EntryRow>(None)
-                .await?;
-            let (Some(tested), Some(other)) = (tested, self.pull(&row.repo_id, *number).await?) else {
-                return Ok(None);
-            };
-            let Some(commit) = tested.head_commit else { return Ok(None) };
-            stack.push(item(&other, commit));
-        }
-        let Some(commit) = row.head_commit.clone() else { return Ok(None) };
-        stack.push(item(pull, commit));
-        Ok(Some(stack))
+    /// Each entry ahead and then `row`'s, exactly as this attempt built
+    /// them: recorded when it was claimed (queue.rs). Never rebuilt from the
+    /// pull requests' heads now, which may have moved on since.
+    fn tested_stack(row: &EntryRow, pull: &Pull, ahead: &[u32]) -> Option<Vec<QueueStackItem>> {
+        recorded_stack(row.tested_stack()?, pull.number, ahead)
     }
 
     /// Builds the next smaller combination, or reports what is known when
     /// there is none to build. `before` is the diagnosis as last kept, so
     /// that only one result moves it on.
     async fn go_on(&self, row: &EntryRow, before: Option<&str>, mut diagnosis: Diagnosis) -> Result<()> {
-        let subset = next_probe(&diagnosis.suspects, diagnosis.builds);
+        let subset = diagnosis.next_subset();
         diagnosis.done = subset.is_none();
         if !self.keep_diagnosis(&row.id, before, &diagnosis).await? {
             return Ok(());
@@ -749,7 +777,7 @@ impl Work {
             .bind(&[a.entry_id.as_str().into(), hash(&a.token).into()])?
             .first::<ProbeRow>(None)
             .await?;
-        let Some(probe) = probe else {
+        let Some(mut probe) = probe else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such queue entry."));
         };
         if probe.state != "testing" {
@@ -772,38 +800,56 @@ impl Work {
             .as_deref()
             .and_then(|text| serde_json::from_str::<Diagnosis>(text).ok())
             .map(|diagnosis| diagnosis.base_commit);
-        self.db
-            .prepare(
-                "UPDATE queue_probes SET combined_commit = ?, token_hash = NULL WHERE id = ? AND state = 'testing'",
-            )
-            .bind(&[commit.into(), probe.id.as_str().into()])?
-            .run()
+        let accepted = self.db
+            .prepare(REPORT_PROBE)
+            .bind(&[commit.into(), probe.id.as_str().into(), hash(&a.token).into()])?
+            .first::<ValueRow>(None)
             .await?;
+        if accepted.is_none() {
+            return Ok(Outcome::fail(FailureCode::Conflict, "This probe attempt is no longer being tested."));
+        }
+        probe.token_hash = None;
+        probe.combined_commit = Some(commit.to_owned());
         let runs = self
             .run_merge_group(&probe.repo_id, &probe.id, &probe.branch(), base.as_deref(), probe.number, &probe.subset(), commit)
-            .await
-            .unwrap_or(0);
+            .await?;
         if runs == 0 {
             self.probe_result(&probe, ProbeResult::Stopped, Some("No workflow runs on merge_group events.")).await?;
             return Ok(Outcome::Ok(QueueState::Failed));
         }
+        self.db.prepare(OPEN_PROBE)
+            .bind(&[runs.into(), probe.id.as_str().into(), commit.into()])?.run().await?;
+        // A run may have finished while dispatching was fenced.
+        self.probe_finished(&probe.repo_id, commit).await?;
         Ok(Outcome::Ok(QueueState::Testing))
     }
 
     /// The `merge_group` workflows on a smaller combination finished.
     /// Whether `commit` was one.
-    pub(crate) async fn probe_finished(&self, repo_id: &str, commit: &str, passed: bool) -> Result<bool> {
+    pub(crate) async fn probe_finished(&self, repo_id: &str, commit: &str) -> Result<bool> {
         let probe = self
             .db
             .prepare(
                 "SELECT * FROM queue_probes
-                 WHERE repo_id = ? AND combined_commit = ? AND state = 'testing' AND token_hash IS NULL",
+                 WHERE repo_id = ? AND combined_commit = ? AND state = 'testing' AND token_hash IS NULL AND dispatching = 0",
             )
             .bind(&[repo_id.into(), commit.into()])?
             .first::<ProbeRow>(None)
             .await?;
         let Some(probe) = probe else { return Ok(false) };
-        let result = if passed { ProbeResult::Passed } else { ProbeResult::Broke };
+        // Judged on its own runs only: the same commit may have been built
+        // before, by the queue or another probe.
+        let attempt = crate::statuses::Attempt {
+            sha: commit,
+            head_ref: format!("refs/heads/{}", probe.branch()),
+            since: probe.tested_at.as_deref(),
+            runs: probe.workflow_runs,
+        };
+        let facts = self.attempt_facts(repo_id, &attempt).await?;
+        if !facts.pending.is_empty() {
+            return Ok(false);
+        }
+        let result = if facts.passed() { ProbeResult::Passed } else { ProbeResult::Broke };
         self.probe_result(&probe, result, None).await?;
         Ok(true)
     }
@@ -818,15 +864,15 @@ impl Work {
         };
         let claimed = self
             .db
-            .prepare(
-                "UPDATE queue_probes SET state = ?, token_hash = NULL, error = ?, finished_at = ?
-                 WHERE id = ? AND state IN ('waiting', 'testing') RETURNING id AS value",
-            )
+            .prepare(FINISH_PROBE)
             .bind(&[
                 state.into(),
                 error.map_or(JsValue::NULL, JsValue::from),
                 rfc3339(now_ms()).into(),
                 probe.id.as_str().into(),
+                probe.state.as_str().into(),
+                probe.token_hash.as_deref().map_or(JsValue::NULL, JsValue::from),
+                probe.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
             ])?
             .first::<ValueRow>(None)
             .await?;
@@ -858,8 +904,7 @@ impl Work {
                     .await
             }
             ProbeResult::Broke | ProbeResult::Passed => {
-                diagnosis.suspects = narrow(&diagnosis.suspects, &probe.subset(), result == ProbeResult::Broke);
-                diagnosis.builds += 1;
+                diagnosis.observed(&probe.subset(), result == ProbeResult::Broke);
                 self.go_on(&row, Some(&before), diagnosis).await
             }
         }
@@ -913,26 +958,24 @@ impl Work {
             },
         )
         .await;
-        self.publish_as(
-            "integration.failed",
-            &row.repo_id,
-            None,
-            IntegrationFailed {
-                repo_id: row.repo_id.clone(),
-                pull_id: pull.id.clone(),
-                number: pull.number,
-                pull: pull.number,
-                issue: pull.issue,
-                combination,
-                check: failure.check.clone(),
-                bisected,
-                suspects: suspects.to_vec(),
-                other_pulls: ahead,
-                landed: landed.to_vec(),
-                commit: failure.combined_commit.clone(),
-            },
-        )
-        .await
+        // Named by the attempt and the commit it tested, so a result told
+        // twice reaches each session once.
+        let key = format!("{}:{}:{}", row.id, row.attempt_id.as_deref().unwrap_or(""), failure.combined_commit.as_deref().unwrap_or(""));
+        let data = serde_json::to_value(IntegrationFailed {
+            repo_id: row.repo_id.clone(),
+            pull_id: pull.id.clone(),
+            number: pull.number,
+            pull: pull.number,
+            issue: pull.issue,
+            combination,
+            check: failure.check.clone(),
+            bisected,
+            suspects: suspects.to_vec(),
+            other_pulls: ahead,
+            landed: landed.to_vec(),
+            commit: failure.combined_commit.clone(),
+        })?;
+        self.publish_keyed("integration.failed", &row.repo_id, None, data, &key).await
     }
 
     /// Tells anyone following that an entry's combined state passed.
@@ -962,21 +1005,17 @@ impl Work {
             },
         )
         .await;
-        self.publish_as(
-            "integration.passed",
-            &row.repo_id,
-            None,
-            IntegrationPassed {
-                repo_id: row.repo_id.clone(),
-                pull_id: pull.id.clone(),
-                number: pull.number,
-                pull: pull.number,
-                issue: pull.issue,
-                combination,
-                commit: commit.map(str::to_owned),
-            },
-        )
-        .await
+        let key = format!("{}:{}:{}", row.id, row.attempt_id.as_deref().unwrap_or(""), commit.unwrap_or(""));
+        let data = serde_json::to_value(IntegrationPassed {
+            repo_id: row.repo_id.clone(),
+            pull_id: pull.id.clone(),
+            number: pull.number,
+            pull: pull.number,
+            issue: pull.issue,
+            combination,
+            commit: commit.map(str::to_owned),
+        })?;
+        self.publish_keyed("integration.passed", &row.repo_id, None, data, &key).await
     }
 
     /// Appends a note by g1t to a pull request's session, and to the
@@ -1145,12 +1184,37 @@ mod tests {
     /// Plays a bisection through against `breaks`, the suspects the entry
     /// really fails with: how many builds it took and what was left.
     fn bisect(ahead: &[u32], breaks: u32) -> (u32, Vec<u32>) {
-        let (mut suspects, mut builds) = (ahead.to_vec(), 0);
-        while let Some(tested) = next_probe(&suspects, builds) {
-            suspects = narrow(&suspects, &tested, tested.contains(&breaks));
-            builds += 1;
+        let mut diagnosis = diagnosis(ahead);
+        while let Some(tested) = diagnosis.next_subset() {
+            diagnosis.observed(&tested, tested.contains(&breaks));
         }
-        (builds, suspects)
+        (diagnosis.builds, diagnosis.suspects)
+    }
+
+    fn diagnosis(ahead: &[u32]) -> Diagnosis {
+        Diagnosis { base_commit: "base".into(), stack: vec![], suspects: ahead.to_vec(), builds: 0,
+            failure: failure(FailureKind::Checks), done: false, complement: None }
+    }
+
+    #[test]
+    fn passing_halves_do_not_falsely_identify_a_single_cause() {
+        let mut diagnosis = diagnosis(&[11, 12]);
+        assert_eq!(diagnosis.next_subset(), Some(vec![11]));
+        diagnosis.observed(&[11], false);
+        assert_eq!(diagnosis.suspects, [11, 12]);
+        assert_eq!(diagnosis.next_subset(), Some(vec![12]));
+        diagnosis.observed(&[12], false);
+        assert_eq!(diagnosis.next_subset(), None);
+        assert_eq!(diagnosis.suspects, [11, 12]);
+    }
+
+    #[test]
+    fn exhausted_budget_keeps_the_last_demonstrably_failing_combination() {
+        let mut diagnosis = diagnosis(&[11, 12]);
+        diagnosis.builds = PROBE_BUDGET - 1;
+        diagnosis.observed(&[11], false);
+        assert_eq!(diagnosis.next_subset(), None);
+        assert_eq!(diagnosis.suspects, [11, 12]);
     }
 
     #[test]
@@ -1161,14 +1225,16 @@ mod tests {
         assert_eq!(next_probe(&[11, 12], PROBE_BUDGET), None);
         assert_eq!(narrow(&[11, 12, 13], &[11, 12], true), vec![11, 12]);
         assert_eq!(narrow(&[11, 12, 13], &[11, 12], false), vec![13]);
-        // A full default batch (three ahead) needs two builds at most.
+        // Complementary probes also consume the bounded budget.
         assert_eq!(bisect(&[11, 12, 13], 11), (2, vec![11]));
-        assert_eq!(bisect(&[11, 12, 13], 12), (2, vec![12]));
-        assert_eq!(bisect(&[11, 12, 13], 13), (1, vec![13]));
-        // Eight ahead: found in three.
+        assert_eq!(bisect(&[11, 12, 13], 12), (3, vec![12]));
+        assert_eq!(bisect(&[11, 12, 13], 13), (2, vec![13]));
+        // Never exclude the cause merely to fit the budget.
         let eight: Vec<u32> = (1..=8).collect();
         for breaks in 1..=8 {
-            assert_eq!(bisect(&eight, breaks), (3, vec![breaks]));
+            let (builds, suspects) = bisect(&eight, breaks);
+            assert!(builds <= PROBE_BUDGET);
+            assert!(suspects.contains(&breaks));
         }
         // More than the budget can narrow to one: what is left is reported.
         let twelve: Vec<u32> = (1..=12).collect();
@@ -1185,7 +1251,7 @@ mod tests {
         assert!(note.contains("`CI / merge_group` failed"));
         assert!(note.contains("once #12 has landed"));
         let own = pull_note(&[], &[], false, &[], &check);
-        assert!(own.contains("on the default branch as it is now, and the change is the cause"), "{own}");
+        assert!(own.contains("on the default branch as it is now. No other change has been isolated as the cause"), "{own}");
         let conflict = pull_note(&[11], &[11], false, &[], &FailedCheck { name: "merge".into(), conclusion: "conflict".into(), url: None });
         assert!(conflict.contains("it did not merge cleanly"), "{conflict}");
         assert!(!conflict.contains("narrowed"));
@@ -1211,8 +1277,8 @@ mod tests {
         assert!(several.contains("Since this branched, #7, #5 and #1 landed and may be what it conflicts with."), "{several}");
         assert!(!several.contains("the change is the cause"));
         assert!(summary(14, &[], &[7, 5], &check).ends_with("since it branched, #7 and #5 landed and may be what it conflicts with."));
-        // None found: the change is the cause, as before.
-        assert_eq!(summary(14, &[], &[], &check), "#14 failed in the merge queue: `CI / merge_group` failed, and #14 itself is the cause.");
+        // No attribution evidence is not proof that the change itself caused it.
+        assert_eq!(summary(14, &[], &[], &check), "#14 failed in the merge queue: `CI / merge_group` failed. No other change has been isolated as the cause.");
     }
 
     fn commit(hash: &str, at: &str) -> Commit {

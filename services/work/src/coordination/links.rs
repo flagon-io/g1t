@@ -19,6 +19,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
+use super::updates::push_delivery;
 use super::{SESSION_COLUMNS, SessionRow};
 use crate::Work;
 
@@ -62,7 +63,8 @@ pub(crate) fn tree_sql() -> String {
 }
 
 /// Ends session `?1`'s subagents still going, and theirs, at `?2` for
-/// `?3`.
+/// `?3`: only once `?1` itself ended at `?2`, so in the batch that ends it,
+/// a call that lost the race to end it ends nothing.
 pub(crate) fn end_tree_sql() -> String {
     format!(
         "WITH RECURSIVE tree(id) AS (
@@ -70,6 +72,7 @@ pub(crate) fn end_tree_sql() -> String {
            UNION SELECT s.id FROM sessions s JOIN tree ON s.parent_id = tree.id)
          UPDATE sessions SET state = 'ended', ended_at = ?2, end_reason = ?3, last_seen_at = ?2
          WHERE id IN (SELECT id FROM tree) AND state = 'active'
+           AND EXISTS (SELECT 1 FROM sessions WHERE id = ?1 AND state = 'ended' AND ended_at = ?2)
          RETURNING {SESSION_COLUMNS}"
     )
 }
@@ -99,9 +102,19 @@ pub(crate) const BRANCH_SESSIONS: &str = "SELECT DISTINCT t.session_id AS id FRO
      WHERE t.repo_id = ?1 AND t.kind = 'branch' AND p.number IN (SELECT value FROM json_each(?2)) LIMIT 200";
 
 /// Announces the pair `?2`, `?3` of repository `?1` as overlapping on
-/// `?4` (JSON); returns it only the first time.
+/// `?4` (JSON) at `?5`: returns it the first time, and again whenever a
+/// file it was not announced for joins, so a pair that first met on a
+/// trivial file still hears when it starts changing the same code.
 pub(crate) const INSERT_OVERLAP: &str = "INSERT INTO session_overlaps (repo_id, low, high, files, noticed_at)
-     VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO NOTHING RETURNING low";
+     VALUES (?1, ?2, ?3, ?4, ?5)
+     ON CONFLICT (repo_id, low, high) DO UPDATE SET
+       files = (SELECT json_group_array(value) FROM (
+                  SELECT value FROM json_each(session_overlaps.files)
+                  UNION SELECT value FROM json_each(excluded.files))),
+       noticed_at = excluded.noticed_at
+     WHERE EXISTS (SELECT 1 FROM json_each(excluded.files) AS added
+                   WHERE added.value NOT IN (SELECT value FROM json_each(session_overlaps.files)))
+     RETURNING low";
 
 #[derive(Deserialize)]
 struct IdRow {
@@ -293,15 +306,6 @@ impl Work {
         let at = rfc3339(now_ms());
         for (other_id, files) in session_overlaps(&session.id, &family, &touched) {
             let (low, high) = session_pair(&session.id, &other_id);
-            let new = self
-                .db
-                .prepare(INSERT_OVERLAP)
-                .bind(&[session.repo_id.as_str().into(), low.into(), high.into(), serde_json::to_string(&files)?.into(), at.as_str().into()])?
-                .first::<serde_json::Value>(None)
-                .await?;
-            if new.is_none() {
-                continue;
-            }
             let Some(other) = self.session_row(&session.repo_id, &other_id).await? else {
                 continue;
             };
@@ -325,8 +329,35 @@ impl Work {
                 other_issue: session.issue,
                 ..ours.clone()
             };
-            self.publish_as("overlap.detected", &session.repo_id, Some(session.actor.id.clone()), ours).await?;
-            self.publish_as("overlap.detected", &session.repo_id, Some(session.actor.id.clone()), theirs).await?;
+            // The pair is noticed once, and each side told, in one change.
+            let mut statements = vec![self
+                .db
+                .prepare(INSERT_OVERLAP)
+                .bind(&[session.repo_id.as_str().into(), low.as_str().into(), high.as_str().into(), serde_json::to_string(&files)?.into(), at.as_str().into()])?];
+            let guard = "EXISTS (SELECT 1 FROM session_overlaps WHERE repo_id = ?7 AND low = ?8 AND high = ?9 AND noticed_at = ?10)";
+            let mut sent = Vec::new();
+            for event in [&ours, &theirs] {
+                let delivery = self.delivery(
+                    "overlap.detected",
+                    &session.repo_id,
+                    serde_json::to_value(event)?,
+                    &format!("{low}:{high}:{at}:{}", event.session_id),
+                    guard,
+                    vec![session.repo_id.as_str().into(), low.as_str().into(), high.as_str().into(), at.as_str().into()],
+                )?;
+                sent.push(push_delivery(&mut statements, delivery));
+            }
+            let new = match self.db.batch(statements).await?.into_iter().next() {
+                Some(result) => !result.results::<serde_json::Value>()?.is_empty(),
+                None => false,
+            };
+            if !new {
+                continue;
+            }
+            let actor = Some(session.actor.id.clone());
+            for (event, sent) in [ours, theirs].into_iter().zip(sent) {
+                self.delivered(sent, "overlap.detected", &session.repo_id, actor.clone(), serde_json::to_value(event)?).await?;
+            }
         }
         Ok(())
     }

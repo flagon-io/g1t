@@ -25,7 +25,8 @@ use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use super::links::{count_subagents, end_tree_sql};
+use super::links::{count_subagents, end_tree_sql, tree_sql};
+use super::updates::push_delivery;
 use super::{SESSION_COLUMNS, SessionRow, after_minutes, tidy, unwrap_or_fail};
 use crate::Work;
 use crate::rows::NumberRow;
@@ -288,11 +289,39 @@ impl Work {
             fields.head_commit = fields.head_commit.clone().or(parent.head_commit.clone());
         }
         let parent_id = parent.as_ref().map(|parent| parent.id.clone());
-        let inserted = self
+        let id = new_id("ses", now);
+        // The session as the insert makes it, announced with it.
+        let expected = SessionRow {
+            id: id.clone(),
+            repo_id: repo.id.clone(),
+            issue: fields.issue,
+            pull: fields.pull,
+            branch: fields.branch.clone(),
+            actor_id: a.actor.id.clone(),
+            actor_name: a.actor.username.clone(),
+            harness: a.harness.as_str().to_owned(),
+            harness_session_id: harness_session_id.clone(),
+            title: fields.title.clone(),
+            state: "active".to_owned(),
+            head_commit: fields.head_commit.clone(),
+            started_at: at.clone(),
+            last_seen_at: at.clone(),
+            ended_at: None,
+            end_reason: None,
+            parent_id: parent_id.clone(),
+            agent_type: fields.agent_type.clone(),
+            task: fields.task.clone(),
+            prompt: fields.prompt.clone(),
+            result: None,
+            model: fields.model.clone(),
+        }
+        .at(now);
+        let started = |session: &Session| g1t_contracts::events::marked(SessionEvent::of(session), Some(&a.actor));
+        let mut statements = vec![self
             .db
             .prepare(insert_session_sql())
             .bind(&[
-                new_id("ses", now).into(),
+                id.as_str().into(),
                 repo.id.as_str().into(),
                 number_or_null(fields.issue),
                 number_or_null(fields.pull),
@@ -310,9 +339,23 @@ impl Work {
                 text_or_null(&fields.task),
                 text_or_null(&fields.prompt),
                 text_or_null(&fields.model),
-            ])?
-            .first::<SessionRow>(None)
-            .await?;
+            ])?];
+        // Started at the same moment by another call: none, and no update.
+        let sent = push_delivery(
+            &mut statements,
+            self.delivery(
+                "session.started",
+                &repo.id,
+                started(&expected),
+                &format!("{id}:started"),
+                "EXISTS (SELECT 1 FROM sessions WHERE id = ?7)",
+                vec![id.as_str().into()],
+            )?,
+        );
+        let inserted = match self.db.batch(statements).await?.into_iter().next() {
+            Some(result) => result.results::<SessionRow>()?.into_iter().next(),
+            None => None,
+        };
         let Some(row) = inserted else {
             // Started at the same moment by another call: that one.
             let Some(harness_id) = &harness_session_id else {
@@ -328,7 +371,7 @@ impl Work {
         if let Some(parent) = &parent_id {
             self.db.prepare(SEE_PARENT).bind(&[at.as_str().into(), parent.as_str().into()])?.run().await?;
         }
-        self.publish("session.started", &repo.id, &a.actor, SessionEvent::of(&session)).await?;
+        self.delivered(sent, "session.started", &repo.id, Some(a.actor.id.clone()), started(&session)).await?;
         Ok(Outcome::Ok(session))
     }
 
@@ -357,7 +400,45 @@ impl Work {
         binds.push(at.as_str().into());
         binds.push(id.as_str().into());
         let sql = if finished { refresh_sql() } else { resume_sql() };
-        let updated = self.db.prepare(sql).bind(&binds)?.first::<SessionRow>(None).await?;
+        let mut statements = vec![self.db.prepare(sql).bind(&binds)?];
+        // Brought back from having ended: announced with the change.
+        let sent = if was_ended && !finished {
+            let expected = SessionRow {
+                issue: fields.issue.or(row.issue),
+                pull: fields.pull.or(row.pull),
+                branch: fields.branch.clone().or(row.branch.clone()),
+                head_commit: fields.head_commit.clone().or(row.head_commit.clone()),
+                title: fields.title.clone().or(row.title.clone()),
+                agent_type: fields.agent_type.clone().or(row.agent_type.clone()),
+                task: fields.task.clone().or(row.task.clone()),
+                prompt: fields.prompt.clone().or(row.prompt.clone()),
+                model: fields.model.clone().or(row.model.clone()),
+                result: fields.result.clone().or(row.result.clone()),
+                last_seen_at: at.clone(),
+                state: "active".to_owned(),
+                ended_at: None,
+                end_reason: None,
+                ..row.clone()
+            }
+            .at(now);
+            push_delivery(
+                &mut statements,
+                self.delivery(
+                    "session.started",
+                    &repo.id,
+                    g1t_contracts::events::marked(SessionEvent::of(&expected), Some(actor)),
+                    &format!("{id}:started:{at}"),
+                    "EXISTS (SELECT 1 FROM sessions WHERE id = ?7 AND state = 'active' AND last_seen_at = ?8)",
+                    vec![id.as_str().into(), at.as_str().into()],
+                )?,
+            )
+        } else {
+            None
+        };
+        let updated = match self.db.batch(statements).await?.into_iter().next() {
+            Some(result) => result.results::<SessionRow>()?.into_iter().next(),
+            None => None,
+        };
         let Some(updated) = updated else {
             return Ok(not_found());
         };
@@ -376,7 +457,8 @@ impl Work {
             self.move_entries_onto_pull(&repo.id, &id, number).await?;
         }
         if was_ended {
-            self.publish("session.started", &repo.id, actor, SessionEvent::of(&session)).await?;
+            let data = g1t_contracts::events::marked(SessionEvent::of(&session), Some(actor));
+            self.delivered(sent, "session.started", &repo.id, Some(actor.id.clone()), data).await?;
         }
         Ok(Outcome::Ok(session))
     }
@@ -483,16 +565,78 @@ impl Work {
             return Ok(Outcome::Ok(row.at(now)));
         }
         let reason = tidy(a.reason.as_deref(), MAX_NOTE_CHARS).unwrap_or_else(|| "ended".to_owned());
-        let ended = self
+        let ended_event = |session: &Session| g1t_contracts::events::marked(SessionEvent::of(session), Some(&a.actor));
+        // Its subagents still going end with it, all in one change with
+        // their updates. (One started meanwhile ends with it too, and is
+        // announced on its own below.)
+        let going: Vec<SessionRow> = self
+            .db
+            .prepare(tree_sql())
+            .bind(&[row.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<SessionRow>()?
+            .into_iter()
+            .filter(|child| child.state == "active")
+            .collect();
+        let end_one = |session: SessionRow, reason: &str, result: Option<String>| {
+            SessionRow {
+                state: "ended".to_owned(),
+                ended_at: Some(at.clone()),
+                end_reason: Some(reason.to_owned()),
+                last_seen_at: at.clone(),
+                result: result.or(session.result.clone()),
+                ..session
+            }
+            .at(now)
+        };
+        let guard = "EXISTS (SELECT 1 FROM sessions WHERE id = ?7 AND state = 'ended' AND ended_at = ?8)";
+        let mut statements = vec![self
             .db
             .prepare(format!(
                 "UPDATE sessions SET state = 'ended', ended_at = ?, end_reason = ?, last_seen_at = ?, result = COALESCE(?, result)
                  WHERE id = ? AND state = 'active'
                  RETURNING {SESSION_COLUMNS}"
             ))
-            .bind(&[at.as_str().into(), reason.into(), at.as_str().into(), text_or_null(&result), row.id.as_str().into()])?
-            .first::<SessionRow>(None)
-            .await?;
+            .bind(&[at.as_str().into(), reason.as_str().into(), at.as_str().into(), text_or_null(&result), row.id.as_str().into()])?];
+        let expected = end_one(row.clone(), &reason, result.clone());
+        let sent = push_delivery(
+            &mut statements,
+            self.delivery(
+                "session.ended",
+                &repo.id,
+                ended_event(&expected),
+                &format!("{}:ended:{at}", row.id),
+                guard,
+                vec![row.id.as_str().into(), at.as_str().into()],
+            )?,
+        );
+        // Only once it ended here, so a call that lost the race ends nothing.
+        statements.push(self.db.prepare(end_tree_sql()).bind(&[row.id.as_str().into(), at.as_str().into(), "parent ended".into()])?);
+        let tree_index = statements.len() - 1;
+        let mut orphans_sent = Vec::new();
+        for child in going {
+            let child_id = child.id.clone();
+            let expected = end_one(child, "parent ended", None);
+            let delivery = self.delivery(
+                "session.ended",
+                &repo.id,
+                ended_event(&expected),
+                &format!("{child_id}:ended:{at}"),
+                guard,
+                vec![child_id.as_str().into(), at.as_str().into()],
+            )?;
+            orphans_sent.push((child_id, push_delivery(&mut statements, delivery)));
+        }
+        let mut results = self.db.batch(statements).await?;
+        let orphans: Vec<SessionRow> = match results.get(tree_index) {
+            Some(result) => result.results()?,
+            None => Vec::new(),
+        };
+        let ended = match results.drain(..).next() {
+            Some(result) => result.results::<SessionRow>()?.into_iter().next(),
+            None => None,
+        };
         let Some(ended) = ended else {
             // Ended by another call meanwhile.
             return Ok(match self.session_row(&repo.id, &row.id).await? {
@@ -504,17 +648,16 @@ impl Work {
         if let Some(result) = &result {
             self.link_refs(&session.id, &session.repo_id, &result.chars().take(MAX_REF_TEXT).collect::<String>()).await?;
         }
-        self.publish("session.ended", &repo.id, &a.actor, SessionEvent::of(&session)).await?;
-        // The subagents it left going end with it.
-        let orphans = self
-            .db
-            .prepare(end_tree_sql())
-            .bind(&[session.id.as_str().into(), at.as_str().into(), "parent ended".into()])?
-            .all()
-            .await?
-            .results::<SessionRow>()?;
+        self.delivered(sent, "session.ended", &repo.id, Some(a.actor.id.clone()), ended_event(&session)).await?;
         for orphan in orphans {
-            self.publish("session.ended", &repo.id, &a.actor, SessionEvent::of(&orphan.at(now))).await?;
+            let orphan = orphan.at(now);
+            match orphans_sent.iter().position(|(id, _)| *id == orphan.id) {
+                Some(index) => {
+                    let (_, sent) = orphans_sent.swap_remove(index);
+                    self.delivered(sent, "session.ended", &repo.id, Some(a.actor.id.clone()), ended_event(&orphan)).await?;
+                }
+                None => self.publish("session.ended", &repo.id, &a.actor, SessionEvent::of(&orphan)).await?,
+            }
         }
         Ok(Outcome::Ok(session))
     }
@@ -559,7 +702,8 @@ impl Work {
         let mut ids: Vec<String> = vec![session.id.clone()];
         ids.extend(children.iter().map(|child| child.id.clone()));
         let (touched, links, skills) = self.tree_facts(&repo.id, &ids).await?;
-        Ok(Outcome::Ok(SessionDetail { session, entries, children, touched, links, skills, root }))
+        let updates = self.pending_updates(&session.id).await?;
+        Ok(Outcome::Ok(SessionDetail { session, entries, children, touched, links, skills, root, updates }))
     }
 
     pub(crate) async fn list_work_sessions(&self, a: ListWorkSessionsArgs) -> Result<Outcome<Vec<Session>>> {
@@ -690,6 +834,9 @@ impl Work {
     }
 
     pub(crate) async fn record_session_entries(&self, a: RecordEntriesArgs) -> Result<Outcome<Recorded>> {
+        if a.acknowledge.len() > 100 || a.acknowledge.iter().any(|id| id.len() > 100) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "Acknowledge at most 100 update IDs."));
+        }
         if a.entries.len() > crate::MAX_ENTRY_BATCH {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
@@ -711,7 +858,8 @@ impl Work {
             if touched > 0 {
                 self.announce_progress(&session).await?;
             }
-            return Ok(Outcome::Ok(Recorded::default()));
+            let acknowledged = self.acknowledge_updates(&session.id, &a.acknowledge).await?;
+            return Ok(Outcome::Ok(Recorded { acknowledged, ..Recorded::default() }));
         }
         let pull = match session.pull {
             Some(number) => self.pull(&repo.id, number).await?,
@@ -774,7 +922,8 @@ impl Work {
         if recorded > 0 || touched > 0 {
             self.announce_progress(&session).await?;
         }
-        Ok(Outcome::Ok(Recorded { recorded, duplicates: total - recorded }))
+        let acknowledged = self.acknowledge_updates(&session.id, &a.acknowledge).await?;
+        Ok(Outcome::Ok(Recorded { recorded, duplicates: total - recorded, acknowledged }))
     }
 
     /// `session.progressed`, at most every [`PROGRESS_EVERY_MS`] for a

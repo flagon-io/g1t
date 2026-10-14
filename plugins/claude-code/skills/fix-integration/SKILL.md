@@ -31,10 +31,12 @@ Pull request: $ARGUMENTS (if empty, use the current branch's pull request).
    meets your change: the same function changed two ways, a renamed or
    removed name you still use, a migration, a fixture or a test that
    assumes the old behaviour.
-4. **Reproduce it locally.** Merge the default branch and the other pull
-   requests' branches into a scratch branch in the same order, and run the
-   failing check's command. For a `landed` failure, merging the default
-   branch as it is now into yours is enough.
+4. **Reproduce the tested state locally.** Read the recorded combined commit
+   and check log first. Check out that exact commit in a separate worktree
+   when available and run the failing command. Current branch tips may have
+   changed since the failure; merging them is a new experiment, not a replay.
+   Preserve ongoing work. Treat suspects as a failing combination, not proof
+   of a single cause: a failure may need several changes together or be flaky.
 5. **Fix it on your branch.** Change only what the failure needs. If the
    right fix belongs in the other pull request, say so on it
    (`g1t pr comment OTHER`) instead of working around it, and tell the
@@ -44,7 +46,8 @@ Pull request: $ARGUMENTS (if empty, use the current branch's pull request).
    back in the queue.
 7. **Leave a record.** `g1t session log --kind note "Integration failure
    with #OTHER: CAUSE. Fixed by CHANGE."` so the next person can see why
-   the change looks the way it does.
+   the change looks the way it does. Include the tested commit and the
+   reproducing check; distinguish what you observed from your hypothesis.
 
 If the event says the failure was not bisected and lists several
 suspects, check that yours really is one before changing anything: run the

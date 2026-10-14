@@ -1421,3 +1421,72 @@ fn a_workflow_that_is_not_there_or_not_named_fails_without_asking() {
         out.stderr
     );
 }
+
+#[test]
+fn codex_and_claude_use_the_same_inbox_and_decision_protocol() {
+    let mock = Mock::start(|r| {
+        if r.method == "POST" && r.path() == "/repos/acme/web/sessions" {
+            return (200, session(&format!("ses_{}", r.json()["harness"].as_str().unwrap())));
+        }
+        if r.method == "GET" && r.path().contains("/sessions/ses_") {
+            assert!(r.target.contains("after=4294967295"));
+            return (200, json!({ "updates": [{ "id": "upd_overlap", "kind": "overlap.detected", "data": { "path": "src/api.rs" }, "at": "2026-10-14T00:00:00Z" }] }));
+        }
+        if r.method == "POST" && r.path().ends_with("/entries") {
+            assert_eq!(r.json()["acknowledge"], json!(["upd_overlap"]));
+            assert_eq!(r.json()["entries"][0]["kind"], "note");
+            assert!(r.json()["entries"][0]["text"].as_str().unwrap().contains("I will change tests only"));
+            return (200, json!({ "recorded": 1, "duplicates": 0 }));
+        }
+        (404, json!({}))
+    });
+    let dir = working_copy("harness-inbox");
+    for harness in ["codex", "claude_code"] {
+        let id = format!("ses_{harness}");
+        let out = g1t_with(&mock, &dir, &["session", "start", "--harness", harness, "--no-remember", "--json"], &[]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        assert!(!dir.join(".git/g1t/session").exists());
+        let out = g1t_with(&mock, &dir, &["session", "updates", "--json"], &[("G1T_SESSION", &id)]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        let found: Value = serde_json::from_str(&out.stdout).unwrap();
+        assert_eq!(found["session_id"], id);
+        assert_eq!(found["updates"][0]["id"], "upd_overlap");
+        // Explicit identity overrides a conflicting environment, including in a shared checkout.
+        let out = g1t_with(&mock, &dir, &["session", "acknowledge", "upd_overlap", "--session", &id, "--note", "I will change tests only"], &[("G1T_SESSION", "ses_wrong")]);
+        assert_eq!(out.code, 0, "{}", out.stderr);
+        assert_eq!(mock.requests().last().unwrap().path(), format!("/repos/acme/web/sessions/{id}/entries"));
+    }
+}
+
+#[test]
+fn an_inbox_missing_from_an_old_server_is_not_reported_as_empty() {
+    let mock = Mock::start(|_| (200, json!({ "entries": [] })));
+    let out = run(&mock, &["session", "updates", "ses_a", "-R", "acme/web", "--json"]);
+    assert_eq!(out.code, 1);
+    assert!(out.stderr.contains("does not expose session updates"));
+}
+
+#[test]
+fn any_harness_checking_its_updates_says_which_files_it_changed() {
+    let mock = Mock::start(|r| {
+        if r.method == "POST" && r.path().ends_with("/entries") {
+            return (200, json!({ "recorded": 0, "duplicates": 0, "acknowledged": 0 }));
+        }
+        (200, json!({ "updates": [] }))
+    });
+    let dir = working_copy("auto-touch");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/api.ts"), "export const x = 1;\n").unwrap();
+    let out = g1t_with(&mock, &dir, &["session", "updates", "--json"], &[("G1T_SESSION", "ses_a")]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let requests = mock.requests();
+    // Said before the inbox is read, so an overlap it makes is read with it.
+    assert!(requests[0].path().ends_with("/sessions/ses_a/entries"), "{}", requests[0].path());
+    assert_eq!(requests[0].json()["touched"], json!([{ "kind": "file", "value": "src/api.ts" }]));
+    assert!(requests[1].path().ends_with("/sessions/ses_a"));
+    // Not with G1T_TOUCH=0.
+    let before = mock.requests().len();
+    let out = g1t_with(&mock, &dir, &["session", "updates", "--json"], &[("G1T_SESSION", "ses_a"), ("G1T_TOUCH", "0")]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(mock.requests().len(), before + 1);
+}

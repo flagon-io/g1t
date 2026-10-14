@@ -5,7 +5,7 @@
 //! the default branch's rules say otherwise) is tested at once, speculatively: one
 //! sandbox per entry builds the default branch with that entry and every
 //! entry ahead of it merged in, and pushes the result to
-//! `g1t-queue/<entry>`. The repository's `merge_group` workflows then run
+//! `g1t-queue/<entry>-<attempt>`. The repository's `merge_group` workflows then run
 //! on that commit, and the default branch's required checks must pass
 //! there. Entries land in order, each by moving the default branch to its
 //! tested state, once everything ahead has landed. One that fails leaves
@@ -15,7 +15,9 @@
 
 use futures_util::future::try_join_all;
 use g1t_contracts::events::{ChecksEvent, QueueChanged};
-use g1t_contracts::repos::{DeleteBranchArgs, GetByIdArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath};
+use g1t_contracts::repos::{
+    DeleteBranchArgs, GetByIdArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath,
+};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
@@ -31,6 +33,83 @@ use crate::checks::{hash, new_token};
 const RECENT: u32 = 20;
 /// Where tested states are pushed, in the repository itself.
 pub(crate) const BRANCH_PREFIX: &str = "g1t-queue/";
+
+// Each transition must still own the attempt when it writes: service
+// calls between reading and writing allow removal, retries and callbacks
+// from another request to interleave.
+const CLAIM_BUILD: &str = "UPDATE queue_entries
+    SET state = 'testing', attempt_id = ?1, token_hash = ?1, head_commit = ?2, base_commit = ?3,
+        ahead = ?4, combined_commit = NULL, results = NULL, error = NULL,
+        tested_at = ?5, dispatching = 0, tested_stack = ?7, workflow_runs = 0
+    WHERE id = ?6 AND state = 'waiting' RETURNING id AS value";
+
+const ENQUEUE: &str = "INSERT INTO queue_entries
+    (id, repo_id, pull_id, number, state, enqueued_by, keep_issue_open, created_at, bypass_rules)
+    SELECT ?1, ?2, ?3, ?4, 'waiting', ?5, ?6, ?7, ?8
+    WHERE NOT EXISTS (SELECT 1 FROM queue_entries WHERE pull_id = ?3 AND state IN ('waiting', 'testing', 'passed'))
+    RETURNING id AS value";
+
+const RETEST: &str = "UPDATE queue_entries
+    SET state = 'waiting', token_hash = NULL, combined_commit = NULL,
+        results = NULL, error = NULL, ahead = NULL, held = NULL, dispatching = 0, workflow_runs = 0
+    WHERE id = ?1 AND state IN ('testing', 'passed')
+      AND attempt_id IS ?2 AND landing_commit IS NULL";
+
+const BEGIN_LANDING: &str = "UPDATE queue_entries SET landing_commit = combined_commit
+    WHERE id = ?1 AND state = 'passed' AND combined_commit = ?2 AND attempt_id IS ?3
+      AND (landing_commit = combined_commit OR EXISTS
+        (SELECT 1 FROM pulls WHERE pulls.id = queue_entries.pull_id AND pulls.status = 'open'))
+      AND NOT EXISTS (SELECT 1 FROM json_each(COALESCE(queue_entries.ahead, '[]')) dependency
+        WHERE NOT EXISTS (SELECT 1 FROM queue_entries landed
+          WHERE landed.repo_id = queue_entries.repo_id AND landed.number = dependency.value AND landed.state = 'landed'))
+      AND NOT EXISTS (SELECT 1 FROM queue_entries earlier
+        WHERE earlier.repo_id = queue_entries.repo_id AND earlier.state IN ('waiting', 'testing', 'passed')
+          AND (earlier.created_at < queue_entries.created_at
+            OR (earlier.created_at = queue_entries.created_at AND earlier.id < queue_entries.id)))
+    RETURNING id AS value";
+
+// The attempt was reset: no later claim or publication can use its branch.
+const RETESTED: &str = "SELECT id AS value FROM queue_entries
+    WHERE id = ?1 AND state = 'waiting' AND attempt_id IS ?2 AND landing_commit IS NULL";
+
+const PUBLISHING: &str = "SELECT id AS value FROM queue_entries
+    WHERE pull_id = ?1 AND state = 'passed' AND landing_commit IS NOT NULL LIMIT 1";
+
+const STILL_LANDING: &str = "SELECT id AS value FROM queue_entries
+    WHERE id = ?1 AND state = 'passed' AND landing_commit = ?2";
+
+// Only the request that still holds the intent may give it up: one that
+// lost Git's race to a concurrent publisher must not undo its intent.
+const ABANDON_LANDING: &str = "UPDATE queue_entries SET landing_commit = NULL
+    WHERE id = ?1 AND state = 'passed' AND landing_commit = ?2 RETURNING id AS value";
+
+const FINISH_LANDING: &str = "UPDATE queue_entries SET state = 'landed', finished_at = ?1
+    WHERE id = ?2 AND state = 'passed' AND landing_commit = combined_commit";
+
+const LEAVE: &str =
+    "UPDATE queue_entries SET state = ?1, error = COALESCE(?2, error), finished_at = ?3
+    WHERE id = ?4 AND state IN ('waiting', 'testing', 'passed') AND landing_commit IS NULL
+    RETURNING id AS value";
+
+const ACCEPT_BUILD: &str =
+    "UPDATE queue_entries SET combined_commit = ?1, token_hash = NULL, dispatching = 1
+    WHERE id = ?2 AND state = 'testing' AND token_hash = ?3 RETURNING id AS value";
+
+const REPORT_BUILD: &str = "UPDATE queue_entries
+    SET state = ?, combined_commit = ?, results = ?, error = ?, token_hash = NULL, held = ?, workflow_runs = ?, dispatching = 0,
+        finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END
+    WHERE id = ? AND state = 'testing' AND token_hash IS NULL AND held IS NULL
+      AND attempt_id IS ? AND combined_commit IS ? RETURNING id AS value";
+
+const FINISH_CHECKS: &str = "UPDATE queue_entries
+    SET state = ?, held = ?, finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END
+    WHERE id = ? AND state = 'testing' AND held IS NULL
+        AND combined_commit = ? AND token_hash IS NULL AND dispatching = 0 AND attempt_id IS ?
+    RETURNING id AS value";
+
+#[cfg(test)]
+#[path = "queue_tests.rs"]
+mod tests;
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct EntryRow {
@@ -48,6 +127,13 @@ pub(crate) struct EntryRow {
     results: Option<String>,
     error: Option<String>,
     pub(crate) tested_at: Option<String>,
+    #[serde(default)]
+    pub(crate) attempt_id: Option<String>,
+    #[serde(default)]
+    landing_commit: Option<String>,
+    /// Whoever queued it asked to bypass the rules they may bypass.
+    #[serde(default)]
+    bypass_rules: u32,
     created_at: String,
     finished_at: Option<String>,
     /// What failed its combined state while entries ahead were still
@@ -57,6 +143,12 @@ pub(crate) struct EntryRow {
     /// What the queue worked out about its failure (integration.rs).
     #[serde(default)]
     pub(crate) diagnosis: Option<String>,
+    /// The stack this attempt built, as JSON `[QueueStackItem]`.
+    #[serde(default)]
+    tested_stack: Option<String>,
+    /// How many merge_group runs this attempt's dispatch registered.
+    #[serde(default)]
+    workflow_runs: u32,
 }
 
 impl EntryRow {
@@ -83,8 +175,40 @@ impl EntryRow {
     }
 
     fn branch(&self) -> String {
-        format!("{BRANCH_PREFIX}{}", self.id)
+        attempt_branch(&self.id, self.attempt_id.as_deref())
     }
+
+    /// Exactly what this attempt built, as recorded when it was claimed.
+    pub(crate) fn tested_stack(&self) -> Option<Vec<QueueStackItem>> {
+        self.tested_stack.as_deref().and_then(|stack| serde_json::from_str(stack).ok())
+    }
+
+    /// The attempt whose evidence decides this entry, once it has a commit.
+    fn attempt(&self) -> Option<crate::statuses::Attempt<'_>> {
+        Some(crate::statuses::Attempt {
+            sha: self.combined_commit.as_deref()?,
+            head_ref: format!("refs/heads/{}", self.branch()),
+            since: self.tested_at.as_deref(),
+            runs: self.workflow_runs,
+        })
+    }
+}
+
+fn attempt_branch(id: &str, attempt: Option<&str>) -> String {
+    match attempt {
+        Some(attempt) => format!("{BRANCH_PREFIX}{id}-{attempt}"),
+        None => format!("{BRANCH_PREFIX}{id}"),
+    }
+}
+
+/// Why an entry left because what it would build is gone.
+const BRANCH_GONE: &str = "Its branch no longer exists.";
+const PULL_GONE: &str = "Its pull request no longer exists.";
+
+fn gone_note(reason: &str) -> String {
+    let what = reason.trim_end_matches('.');
+    let what = what.strip_prefix("Its ").map_or_else(|| what.to_owned(), |rest| format!("its {rest}"));
+    format!("{what}, so it cannot be tested or landed. Push the branch again and merge to rejoin.")
 }
 
 fn minutes_ago(minutes: u64) -> String {
@@ -112,18 +236,22 @@ impl Work {
     }
 
     /// The entry a pull request has in the queue now, if any.
-    pub(crate) async fn queued_entry(&self, pull_id: &str) -> Result<Option<(QueueState, Vec<u32>)>> {
+    pub(crate) async fn queued_entry(
+        &self,
+        pull_id: &str,
+    ) -> Result<Option<(QueueState, Vec<u32>)>> {
         let row = match self.prefetched_pull(pull_id) {
             Some(found) => found.first::<EntryRow>(crate::prefetch::Slot::Queued)?,
-            None => self
-                .db
-                .prepare(
-                    "SELECT * FROM queue_entries
+            None => {
+                self.db
+                    .prepare(
+                        "SELECT * FROM queue_entries
                      WHERE pull_id = ? AND state IN ('waiting', 'testing', 'passed') LIMIT 1",
-                )
-                .bind(&[pull_id.into()])?
-                .first::<EntryRow>(None)
-                .await?,
+                    )
+                    .bind(&[pull_id.into()])?
+                    .first::<EntryRow>(None)
+                    .await?
+            }
         };
         Ok(row.map(|row| (row.state(), row.ahead())))
     }
@@ -148,17 +276,15 @@ impl Work {
         pull: &Pull,
         actor: &User,
         keep_issue_open: bool,
+        bypass_rules: bool,
     ) -> Result<Outcome<Pull>> {
         if self.queued_entry(&pull.id).await?.is_some() {
             return Ok(Outcome::Ok(pull.clone()));
         }
         let now = now_ms();
-        self.db
-            .prepare(
-                "INSERT INTO queue_entries
-                   (id, repo_id, pull_id, number, state, enqueued_by, keep_issue_open, created_at)
-                 VALUES (?, ?, ?, ?, 'waiting', ?, ?, ?)",
-            )
+        let inserted = self
+            .db
+            .prepare(ENQUEUE)
             .bind(&[
                 new_id("qen", now).into(),
                 repo.id.as_str().into(),
@@ -167,9 +293,13 @@ impl Work {
                 serde_json::to_string(actor)?.into(),
                 u32::from(keep_issue_open).into(),
                 rfc3339(now).into(),
+                u32::from(bypass_rules).into(),
             ])?
-            .run()
+            .first::<crate::rows::ValueRow>(None)
             .await?;
+        if inserted.is_none() {
+            return Ok(Outcome::Ok(pull.clone()));
+        }
         let who = (actor.id.as_str(), actor.username.as_str());
         self.note(&repo.id, pull.number, who, "added this to the merge queue")
             .await?;
@@ -183,7 +313,10 @@ impl Work {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let enabled = self.default_branch_settings(&repo).await?.merge_queue;
-        let (active, recent) = (self.entries(&repo.id, true).await?, self.entries(&repo.id, false).await?);
+        let (active, recent) = (
+            self.entries(&repo.id, true).await?,
+            self.entries(&repo.id, false).await?,
+        );
         let numbers: Vec<u32> = active.iter().chain(&recent).map(|row| row.number).collect();
         let pulls = try_join_all(numbers.iter().map(|number| self.pull(&repo.id, *number))).await?;
         let view = |rows: Vec<EntryRow>, pulls: &[Option<Pull>]| -> Vec<QueueEntry> {
@@ -192,7 +325,9 @@ impl Work {
                 .map(|(row, pull)| QueueEntry {
                     state: row.state(),
                     ahead: row.ahead(),
-                    enqueued_by: row.actor().map_or_else(|| "g1t".to_owned(), |actor| actor.username),
+                    enqueued_by: row
+                        .actor()
+                        .map_or_else(|| "g1t".to_owned(), |actor| actor.username),
                     title: pull.as_ref().map(|p| p.title.clone()).unwrap_or_default(),
                     agent: pull.as_ref().map(|p| p.agent.clone()).unwrap_or_default(),
                     results: row
@@ -232,18 +367,45 @@ impl Work {
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
         }
-        if let Outcome::Fail(failure) =
-            crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::Merge)
-        {
+        if let Outcome::Fail(failure) = crate::allowed(
+            Some(&a.actor),
+            &repo,
+            g1t_contracts::access::Capability::Merge,
+        ) {
             return Ok(Outcome::Fail(failure));
         }
-        if self.leave(&repo.id, &pull, QueueState::Removed, None).await? {
+        if self
+            .leave(&repo.id, &pull, QueueState::Removed, None)
+            .await?
+        {
             let who = (a.actor.id.as_str(), a.actor.username.as_str());
-            self.note(&repo.id, pull.number, who, "removed this from the merge queue")
-                .await?;
+            self.note(
+                &repo.id,
+                pull.number,
+                who,
+                "removed this from the merge queue",
+            )
+            .await?;
             self.changed(&repo.id).await?;
+        } else if self.publishing(&pull.id).await? {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "This tested commit is already being published. Wait for landing to finish.",
+            ));
         }
         Ok(Outcome::Ok(pull))
+    }
+
+    /// Whether a pull request's tested commit is being published: its
+    /// entry holds publication intent, which removal cannot revoke.
+    pub(crate) async fn publishing(&self, pull_id: &str) -> Result<bool> {
+        Ok(self
+            .db
+            .prepare(PUBLISHING)
+            .bind(&[pull_id.into()])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?
+            .is_some())
     }
 
     /// Takes a pull request's entry out of the queue, and sends every entry
@@ -259,27 +421,63 @@ impl Work {
         let Some(entry) = active.iter().find(|row| row.pull_id == pull.id) else {
             return Ok(false);
         };
+        self.leave_entry(&active, entry, state, error).await
+    }
+
+    /// Takes `entry`, one of `active`, out of the queue, as `leave` does.
+    async fn leave_entry(
+        &self,
+        active: &[EntryRow],
+        entry: &EntryRow,
+        state: QueueState,
+        error: Option<&str>,
+    ) -> Result<bool> {
         let now = rfc3339(now_ms());
-        self.db
-            .prepare(
-                "UPDATE queue_entries SET state = ?, error = COALESCE(?, error), finished_at = ?
-                 WHERE id = ?",
-            )
+        let removed = self
+            .db
+            .prepare(LEAVE)
             .bind(&[
                 state.as_str().into(),
                 error.map_or(JsValue::NULL, JsValue::from),
                 now.as_str().into(),
                 entry.id.as_str().into(),
             ])?
-            .run()
+            .first::<crate::rows::ValueRow>(None)
             .await?;
+        if removed.is_none() {
+            return Ok(false);
+        }
         self.drop_branch(entry).await;
         let behind: Vec<&EntryRow> = active
             .iter()
-            .filter(|row| row.state() != QueueState::Waiting && row.ahead().contains(&pull.number))
+            .filter(|row| row.state() != QueueState::Waiting && row.ahead().contains(&entry.number))
             .collect();
         self.retest(&behind).await?;
         Ok(true)
+    }
+
+    /// An entry whose pull request or branch no longer exists cannot be
+    /// built or landed: it leaves the queue, saying why, rather than wait
+    /// at the front for ever and hold up every entry behind it.
+    async fn leave_gone(&self, entry: &EntryRow, reason: &str) -> Result<()> {
+        let active = self.entries(&entry.repo_id, true).await?;
+        let Some(entry) = active.iter().find(|row| row.id == entry.id) else {
+            return Ok(());
+        };
+        if !self.leave_entry(&active, entry, QueueState::Removed, Some(reason)).await? {
+            return Ok(());
+        }
+        // A pull request that is gone has no conversation to say so in.
+        if reason != PULL_GONE {
+            self.note(
+                &entry.repo_id,
+                entry.number,
+                ("g1t", "g1t"),
+                &format!("removed this from the merge queue: {}", gone_note(reason)),
+            )
+            .await?;
+        }
+        self.changed(&entry.repo_id).await
     }
 
     /// Removes an entry's tested state from the repository once it has
@@ -311,16 +509,30 @@ impl Work {
     /// Sends entries back to waiting, to be tested again.
     async fn retest(&self, rows: &[&EntryRow]) -> Result<()> {
         for row in rows {
+            let attempt = row
+                .attempt_id
+                .as_deref()
+                .map_or(JsValue::NULL, JsValue::from);
             self.db
-                .prepare(
-                    "UPDATE queue_entries
-                     SET state = 'waiting', token_hash = NULL, combined_commit = NULL,
-                         results = NULL, error = NULL, ahead = NULL, held = NULL
-                     WHERE id = ? AND state IN ('testing', 'passed')",
-                )
-                .bind(&[row.id.as_str().into()])?
+                .prepare(RETEST)
+                .bind(&[row.id.as_str().into(), attempt.clone()])?
                 .run()
                 .await?;
+            // Each attempt pushes its own branch; one that was given up is
+            // never landed from, so remove it rather than leave one behind
+            // per retry. Only once the reset took: an attempt that is being
+            // published keeps its branch.
+            if row.attempt_id.is_some()
+                && self
+                    .db
+                    .prepare(RETESTED)
+                    .bind(&[row.id.as_str().into(), attempt])?
+                    .first::<crate::rows::ValueRow>(None)
+                    .await?
+                    .is_some()
+            {
+                self.drop_branch(row).await;
+            }
         }
         Ok(())
     }
@@ -332,6 +544,8 @@ impl Work {
     /// Smaller combinations a failure is being narrowed down with
     /// (integration.rs) are built alongside, whatever the queue is doing.
     pub(crate) async fn queue_build(&self, a: QueueBuildArgs) -> Result<Vec<QueueJob>> {
+        // Also resumes a publication interrupted after the Git update.
+        self.settle(&a.repo_id).await?;
         let mut jobs = self.probe_jobs(&a.repo_id).await?;
         jobs.extend(self.queue_batch(a).await?);
         Ok(jobs)
@@ -347,7 +561,10 @@ impl Work {
             .iter()
             .filter(|row| {
                 row.state() == QueueState::Testing
-                    && row.tested_at.as_deref().is_none_or(|at| at < stale.as_str())
+                    && row
+                        .tested_at
+                        .as_deref()
+                        .is_none_or(|at| at < stale.as_str())
             })
             .collect();
         if !stuck.is_empty() {
@@ -357,13 +574,17 @@ impl Work {
         if active.iter().any(|row| row.state() != QueueState::Waiting) {
             return Ok(Vec::new());
         }
-        let batch: Vec<EntryRow> = active.into_iter().take(rule.max_entries_to_build.max(1) as usize).collect();
+        let batch: Vec<EntryRow> = active
+            .into_iter()
+            .take(rule.max_entries_to_build.max(1) as usize)
+            .collect();
         let Some(first) = batch.first() else {
             return Ok(Vec::new());
         };
         // Too few to start yet, and the oldest has not waited long enough.
         if batch.len() < rule.min_entries_to_merge as usize
-            && first.created_at.as_str() > minutes_ago(u64::from(rule.min_entries_wait_minutes)).as_str()
+            && first.created_at.as_str()
+                > minutes_ago(u64::from(rule.min_entries_wait_minutes)).as_str()
         {
             return Ok(Vec::new());
         }
@@ -399,6 +620,7 @@ impl Work {
         let mut items: Vec<(EntryRow, Pull, QueueStackItem)> = Vec::new();
         for row in batch {
             let Some(pull) = self.pull_by_id(&row.pull_id).await? else {
+                self.leave_gone(&row, PULL_GONE).await?;
                 continue;
             };
             if pull.status != PullStatus::Open {
@@ -411,11 +633,15 @@ impl Work {
                 "head",
                 &HeadArgs {
                     repo_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
-                    branch: pull.branch.clone().unwrap_or_else(|| repo.default_branch.clone()),
+                    branch: pull
+                        .branch
+                        .clone()
+                        .unwrap_or_else(|| repo.default_branch.clone()),
                 },
             )
             .await?;
             let Some(commit) = head else {
+                self.leave_gone(&row, BRANCH_GONE).await?;
                 continue;
             };
             let source = pull.fork.clone().unwrap_or_else(|| RepoPath {
@@ -426,7 +652,10 @@ impl Work {
                 number: pull.number,
                 title: pull.title.clone(),
                 source,
-                branch: pull.branch.clone().unwrap_or_else(|| repo.default_branch.clone()),
+                branch: pull
+                    .branch
+                    .clone()
+                    .unwrap_or_else(|| repo.default_branch.clone()),
                 commit,
             };
             items.push((row, pull, item));
@@ -436,17 +665,15 @@ impl Work {
         let mut jobs = Vec::new();
         for index in 0..items.len() {
             let (row, pull, _) = &items[index];
-            let stack: Vec<QueueStackItem> = items[..=index].iter().map(|(_, _, item)| item.clone()).collect();
+            let stack: Vec<QueueStackItem> = items[..=index]
+                .iter()
+                .map(|(_, _, item)| item.clone())
+                .collect();
             let ahead: Vec<u32> = stack[..index].iter().map(|item| item.number).collect();
             let token = new_token();
-            self.db
-                .prepare(
-                    "UPDATE queue_entries
-                     SET state = 'testing', token_hash = ?, head_commit = ?, base_commit = ?,
-                         ahead = ?, combined_commit = NULL, results = NULL, error = NULL,
-                         tested_at = ?
-                     WHERE id = ? AND state = 'waiting'",
-                )
+            let claimed = self
+                .db
+                .prepare(CLAIM_BUILD)
                 .bind(&[
                     hash(&token).into(),
                     stack[index].commit.as_str().into(),
@@ -454,14 +681,20 @@ impl Work {
                     serde_json::to_string(&ahead)?.into(),
                     now.as_str().into(),
                     row.id.as_str().into(),
+                    // Diagnosis rebuilds exactly these commits (integration.rs).
+                    serde_json::to_string(&stack)?.into(),
                 ])?
-                .run()
+                .first::<crate::rows::ValueRow>(None)
                 .await?;
+            if claimed.is_none() {
+                continue;
+            }
             // The sandbox reads the change and pushes the tested state as
             // the pull request's owner (whoever asked g1t for it, or its
             // author): a real account, whose token carries its memberships.
             // (Whoever queued it may be g1t itself.)
             let actor = pull.owner().clone();
+            let branch = attempt_branch(&row.id, Some(&hash(&token)));
             jobs.push(QueueJob {
                 entry_id: row.id.clone(),
                 token,
@@ -471,7 +704,7 @@ impl Work {
                 },
                 default_branch: repo.default_branch.clone(),
                 base_commit: base.clone(),
-                branch: row.branch(),
+                branch,
                 // The state is checked by its merge_group workflows.
                 contract_checks: Vec::new(),
                 stack,
@@ -503,23 +736,61 @@ impl Work {
                 "This state is no longer being tested.",
             ));
         }
+        if a.combined_commit.is_none() && a.error.is_none() {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                "A successful build must name the combined commit it tested.",
+            ));
+        }
+        // Publish the commit before dispatching workflows: a very fast callback
+        // must be able to find it. Only the winning report dispatches work.
+        let accepted = self
+            .db
+            .prepare(ACCEPT_BUILD)
+            .bind(&[
+                a.combined_commit
+                    .as_deref()
+                    .map_or(JsValue::NULL, JsValue::from),
+                row.id.as_str().into(),
+                hash(&a.token).into(),
+            ])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?;
+        if accepted.is_none() {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "This build attempt is no longer being tested.",
+            ));
+        }
         let built = a.error.is_none() && a.results.iter().all(|result| result.passed);
         // A state that was built runs the repository's `merge_group`
         // workflows; it stays in testing until they finish (see `statuses`),
         // and the branch's required checks must pass on it.
         let workflows = match (&a.combined_commit, built) {
-            (Some(commit), true) => self
-                .run_merge_group(
-                    &row.repo_id,
-                    &row.id,
-                    &row.branch(),
-                    row.base_commit.as_deref(),
-                    row.number,
-                    &row.ahead(),
-                    commit,
-                )
-                .await
-                .unwrap_or(0),
+            (Some(commit), true) => {
+                let dispatched = self
+                    .run_merge_group(
+                        &row.repo_id,
+                        &row.id,
+                        &row.branch(),
+                        row.base_commit.as_deref(),
+                        row.number,
+                        &row.ahead(),
+                        commit,
+                    )
+                    .await;
+                match dispatched {
+                    Ok(runs) => runs,
+                    Err(error) => {
+                        // The token is spent and the fence stays up, so no
+                        // report or callback could ever move this attempt
+                        // on: build it again now rather than after the
+                        // check response timeout.
+                        self.retest(&[&row]).await?;
+                        return Err(error);
+                    }
+                }
+            }
             _ => 0,
         };
         let required = self.settings_by_id(&row.repo_id).await?.required_checks;
@@ -533,15 +804,23 @@ impl Work {
         });
         let passed = built && unchecked.is_none();
         let error = a.error.clone().or(unchecked.clone());
-        let report = ReportQueueArgs { error: error.clone(), ..a };
+        let report = ReportQueueArgs {
+            error: error.clone(),
+            ..a
+        };
         let failure = (!passed).then(|| {
-            crate::integration::Failure::of_report(&report, unchecked.is_some().then_some(&required[..]))
+            crate::integration::Failure::of_report(
+                &report,
+                unchecked.is_some().then_some(&required[..]),
+            )
         });
         // Failed while an entry ahead of it is still being tested: held
         // until those ahead are settled, so that it is not blamed for
         // theirs (integration.rs).
         let held = match &failure {
-            Some(failure) if self.ahead_unsettled(&row).await? => Some(serde_json::to_string(failure)?),
+            Some(failure) if self.ahead_unsettled(&row).await? => {
+                Some(serde_json::to_string(failure)?)
+            }
             _ => None,
         };
         let state = if passed && workflows == 0 {
@@ -551,31 +830,51 @@ impl Work {
         } else {
             QueueState::Failed
         };
-        self.db
-            .prepare(
-                "UPDATE queue_entries
-                 SET state = ?, combined_commit = ?, results = ?, error = ?, token_hash = NULL, held = ?,
-                     finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END
-                 WHERE id = ?",
-            )
+        let moved = self
+            .db
+            .prepare(REPORT_BUILD)
             .bind(&[
                 state.as_str().into(),
-                report.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+                report
+                    .combined_commit
+                    .as_deref()
+                    .map_or(JsValue::NULL, JsValue::from),
                 serde_json::to_string(&report.results)?.into(),
                 error.as_deref().map_or(JsValue::NULL, JsValue::from),
                 held.as_deref().map_or(JsValue::NULL, JsValue::from),
+                workflows.into(),
                 state.as_str().into(),
                 rfc3339(now_ms()).into(),
                 row.id.as_str().into(),
+                row.attempt_id
+                    .as_deref()
+                    .map_or(JsValue::NULL, JsValue::from),
+                report
+                    .combined_commit
+                    .as_deref()
+                    .map_or(JsValue::NULL, JsValue::from),
             ])?
-            .run()
+            .first::<crate::rows::ValueRow>(None)
             .await?;
+        if moved.is_none() {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "This build attempt is no longer being tested.",
+            ));
+        }
+        if passed && workflows > 0 {
+            // A workflow may have finished while dispatching was fenced. Read
+            // the whole registered group now so that callback is not lost.
+            self.merge_group_finished(&row.repo_id, report.combined_commit.as_deref().unwrap())
+                .await?;
+        }
         if let Some(failure) = failure.filter(|_| held.is_none()) {
             self.eject(&row, &report).await?;
             self.diagnose(&row, failure).await?;
         }
         if state == QueueState::Passed {
-            self.integration_passed(&row, report.combined_commit.as_deref()).await?;
+            self.integration_passed(&row, report.combined_commit.as_deref())
+                .await?;
             self.resolve_held(&row.repo_id).await?;
         }
         self.settle(&row.repo_id).await?;
@@ -617,7 +916,12 @@ impl Work {
         .await?;
         Ok(match started {
             Outcome::Ok(started) => started.runs,
-            Outcome::Fail(_) => 0,
+            Outcome::Fail(failure) => {
+                return Err(worker::Error::RustError(format!(
+                    "Merge-group dispatch failed: {}",
+                    failure.message
+                )));
+            }
         })
     }
 
@@ -628,39 +932,55 @@ impl Work {
         &self,
         repo_id: &str,
         commit: &str,
-        facts: &crate::statuses::WorkflowFacts,
     ) -> Result<()> {
         let row = self
             .db
             .prepare(
                 "SELECT * FROM queue_entries
-                 WHERE repo_id = ? AND combined_commit = ? AND state = 'testing' AND token_hash IS NULL AND held IS NULL",
+                 WHERE repo_id = ? AND combined_commit = ? AND state = 'testing' AND token_hash IS NULL AND held IS NULL AND dispatching = 0",
             )
             .bind(&[repo_id.into(), commit.into()])?
             .first::<EntryRow>(None)
             .await?;
-        let missing = facts.expected();
-        let passed = facts.failed.is_empty() && facts.required_failed().is_empty() && missing.is_empty();
         let Some(row) = row else {
             // Or a smaller combination built to narrow down a failure.
-            if self.probe_finished(repo_id, commit, passed).await? {
+            if self.probe_finished(repo_id, commit).await? {
                 self.changed(repo_id).await?;
             }
             return Ok(());
         };
+        // Only this attempt's own runs, and what reported since it was
+        // claimed, decide it: the same commit may have been built before.
+        let Some(attempt) = row.attempt() else { return Ok(()) };
+        let facts = self.attempt_facts(repo_id, &attempt).await?;
+        if !facts.pending.is_empty() {
+            return Ok(());
+        }
+        let missing = facts.expected();
+        let passed = facts.passed();
         let failure = if passed {
             None
         } else {
             let error = if facts.failed.is_empty() && facts.required_failed().is_empty() {
                 format!(
                     "the required {} {} did not report on it. Add merge_group to the on: of the workflows the branch requires",
-                    if missing.len() == 1 { "check" } else { "checks" },
+                    if missing.len() == 1 {
+                        "check"
+                    } else {
+                        "checks"
+                    },
                     crate::statuses::list(&missing)
                 )
             } else if facts.failed.is_empty() {
-                format!("the required {} failed on it", crate::statuses::list(&facts.required_failed()))
+                format!(
+                    "the required {} failed on it",
+                    crate::statuses::list(&facts.required_failed())
+                )
             } else {
-                format!("the workflow {} failed on it", crate::statuses::list(&facts.failed))
+                format!(
+                    "the workflow {} failed on it",
+                    crate::statuses::list(&facts.failed)
+                )
             };
             // Where to see the check that failed: its run's page.
             let statuses = self.statuses(repo_id, Some(commit)).await?;
@@ -680,7 +1000,9 @@ impl Work {
             ))
         };
         let held = match &failure {
-            Some(failure) if self.ahead_unsettled(&row).await? => Some(serde_json::to_string(failure)?),
+            Some(failure) if self.ahead_unsettled(&row).await? => {
+                Some(serde_json::to_string(failure)?)
+            }
             _ => None,
         };
         let state = if passed {
@@ -692,16 +1014,15 @@ impl Work {
         };
         let moved = self
             .db
-            .prepare(
-                "UPDATE queue_entries SET state = ?, held = ?, finished_at = CASE WHEN ? = 'failed' THEN ? ELSE NULL END
-                 WHERE id = ? AND state = 'testing' AND held IS NULL RETURNING id AS value",
-            )
+            .prepare(FINISH_CHECKS)
             .bind(&[
                 state.into(),
                 held.as_deref().map_or(JsValue::NULL, JsValue::from),
                 state.into(),
                 rfc3339(now_ms()).into(),
                 row.id.as_str().into(),
+                commit.into(),
+                row.attempt_id.as_deref().map_or(JsValue::NULL, JsValue::from),
             ])?
             .first::<crate::rows::ValueRow>(None)
             .await?;
@@ -729,7 +1050,9 @@ impl Work {
         let active = self.entries(&row.repo_id, true).await?;
         let behind: Vec<&EntryRow> = active
             .iter()
-            .filter(|other| other.state() != QueueState::Waiting && other.ahead().contains(&row.number))
+            .filter(|other| {
+                other.state() != QueueState::Waiting && other.ahead().contains(&row.number)
+            })
             .collect();
         self.retest(&behind).await?;
 
@@ -742,7 +1065,11 @@ impl Work {
         } else {
             format!(
                 "the default branch with {} merged in first",
-                ahead.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ")
+                ahead
+                    .iter()
+                    .map(|n| format!("#{n}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         };
         // Named in backticks, so the conversation can link each to the diff.
@@ -762,12 +1089,19 @@ impl Work {
                 "Its change conflicts with the default branch in {files}. Bring it up to date with the default branch and push: it rejoins the merge queue once its checks pass."
             ),
             (Some(error), _) if error.starts_with("the workflow ") => {
-                format!("{} when it was combined with {state}.", error.replacen("the workflow", "The workflow", 1).trim_end_matches(" on it"))
+                format!(
+                    "{} when it was combined with {state}.",
+                    error
+                        .replacen("the workflow", "The workflow", 1)
+                        .trim_end_matches(" on it")
+                )
             }
             (Some(error), _) if error.starts_with("the required ") => {
                 format!("Combined with {state}, {error}.")
             }
-            (Some(error), _) => format!("Its combined state could not be built or checked: {error}"),
+            (Some(error), _) => {
+                format!("Its combined state could not be built or checked: {error}")
+            }
             (None, _) => format!(
                 "It failed when it was combined with {state}, though it may pass on its own."
             ),
@@ -798,7 +1132,9 @@ impl Work {
                         rfc3339(now).into(),
                     ])?,
                 self.db
-                    .prepare("UPDATE pulls SET check_status = 'failed', check_run_id = ? WHERE id = ?")
+                    .prepare(
+                        "UPDATE pulls SET check_status = 'failed', check_run_id = ? WHERE id = ?",
+                    )
                     .bind(&[run_id.as_str().into(), pull.id.as_str().into()])?,
                 // Its merge stays asked for: it rejoins once a fix's checks
                 // pass (integration.rs `requeue_if_fixed`).
@@ -855,50 +1191,135 @@ impl Work {
                 return Ok(());
             }
             let Some(pull) = self.pull_by_id(&row.pull_id).await? else {
-                continue;
+                self.leave_gone(&row, PULL_GONE).await?;
+                return Ok(());
             };
             let Some(actor) = row.actor() else {
                 continue;
             };
-            // Pushed to since it was tested: test it again as it is now.
-            if pull.status != PullStatus::Open {
-                self.leave(repo_id, &pull, QueueState::Removed, Some("It was closed."))
-                    .await?;
+            // Git may have succeeded before a previous request stopped. Once
+            // the merge record exists, only queue bookkeeping remains.
+            if row.landing_commit.is_some()
+                && pull.status == PullStatus::Merged
+                && pull.head_commit == row.landing_commit
+            {
+                self.finish_landing(&row).await?;
                 continue;
             }
-            let head: Option<String> = g1t_kit::call(
-                &self.repos,
-                "head",
-                &HeadArgs {
-                    repo_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo_id.to_owned()),
-                    branch: pull.branch.clone().unwrap_or_else(|| repo.default_branch.clone()),
-                },
-            )
-            .await?;
-            if head.is_some() && head != row.head_commit {
-                let active = self.entries(repo_id, true).await?;
-                let again: Vec<&EntryRow> = active
-                    .iter()
-                    .filter(|other| other.id == row.id || other.ahead().contains(&row.number))
-                    .collect();
-                self.retest(&again).await?;
+            if row.landing_commit.is_none() {
+                // Pushed to since it was tested: test it again as it is now.
+                if pull.status != PullStatus::Open {
+                    self.leave(repo_id, &pull, QueueState::Removed, Some("It was closed."))
+                        .await?;
+                    continue;
+                }
+                let head: Option<String> = g1t_kit::call(
+                    &self.repos,
+                    "head",
+                    &HeadArgs {
+                        repo_id: pull
+                            .fork_repo_id
+                            .clone()
+                            .unwrap_or_else(|| repo_id.to_owned()),
+                        branch: pull
+                            .branch
+                            .clone()
+                            .unwrap_or_else(|| repo.default_branch.clone()),
+                    },
+                )
+                .await?;
+                if head.is_none() {
+                    self.leave_gone(&row, BRANCH_GONE).await?;
+                    return Ok(());
+                }
+                if head != row.head_commit || row.combined_commit.is_none() {
+                    let active = self.entries(repo_id, true).await?;
+                    let again: Vec<&EntryRow> = active
+                        .iter()
+                        .filter(|other| other.id == row.id || other.ahead().contains(&row.number))
+                        .collect();
+                    self.retest(&again).await?;
+                    return Ok(());
+                }
+                // Judged on this attempt's own evidence on the tested commit,
+                // not on an earlier attempt's or the pull request's own.
+                let Some(attempt) = row.attempt() else { return Ok(()) };
+                let evidence = self.attempt_statuses(repo_id, &attempt).await?;
+                if evidence.runs_missing {
+                    // Its runs cannot be read just now: try again later.
+                    return Ok(());
+                }
+                let gate = self
+                    .queue_landing_gate(
+                        &repo,
+                        &pull,
+                        &actor,
+                        row.combined_commit.as_deref().unwrap(),
+                        row.bypass_rules != 0,
+                        evidence.all(),
+                    )
+                    .await?;
+                if let Some(refusal) = gate.refusal() {
+                    self.record_merge_evaluations(&repo, &pull, &gate).await;
+                    self.leave(repo_id, &pull, QueueState::Removed, Some(&refusal))
+                        .await?;
+                    self.changed(repo_id).await?;
+                    return Ok(());
+                }
+            }
+            let acquired = self
+                .db
+                .prepare(BEGIN_LANDING)
+                .bind(&[
+                    row.id.as_str().into(),
+                    row.combined_commit
+                        .as_deref()
+                        .map_or(JsValue::NULL, JsValue::from),
+                    row.attempt_id
+                        .as_deref()
+                        .map_or(JsValue::NULL, JsValue::from),
+                ])?
+                .first::<crate::rows::ValueRow>(None)
+                .await?;
+            if acquired.is_none() {
                 return Ok(());
             }
-            let landed: Outcome<Landed> = g1t_kit::call(
-                &self.repos,
-                "land",
-                &LandArgs {
-                    source_id: repo_id.to_owned(),
-                    branch: Some(row.branch()),
-                    actor: actor.clone(),
-                    // The queue lands on the default branch.
-                    target_branch: None,
-                },
-            )
-            .await?;
+            let land = LandArgs {
+                source_id: repo_id.to_owned(),
+                branch: Some(row.branch()),
+                actor: actor.clone(),
+                // The queue lands on the default branch.
+                target_branch: None,
+                expected_commit: row.combined_commit.clone(),
+            };
+            let mut landed: Outcome<Landed> = g1t_kit::call(&self.repos, "land", &land).await?;
+            if matches!(landed, Outcome::Fail(_)) {
+                // BEGIN_LANDING lets a crashed publication resume, so another
+                // request may be publishing this same commit: its push makes
+                // ours lose Git's compare-and-swap, and its bookkeeping may
+                // already have dropped the tested branch. Ask Git again before
+                // giving up on a commit that may already be published.
+                if !self.still_landing(&row).await? {
+                    return Ok(());
+                }
+                landed = g1t_kit::call(&self.repos, "land", &land).await?;
+            }
             let landed = match landed {
                 Outcome::Ok(landed) => landed,
                 Outcome::Fail(_) => {
+                    let abandoned = self
+                        .db
+                        .prepare(ABANDON_LANDING)
+                        .bind(&[
+                            row.id.as_str().into(),
+                            row.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+                        ])?
+                        .first::<crate::rows::ValueRow>(None)
+                        .await?;
+                    if abandoned.is_none() {
+                        // Another request finished (or abandoned) it.
+                        return Ok(());
+                    }
                     // The default branch moved outside the queue: every
                     // tested state is built on something that is gone.
                     let active = self.entries(repo_id, true).await?;
@@ -907,17 +1328,35 @@ impl Work {
                     return Ok(());
                 }
             };
-            self.db
-                .prepare(
-                    "UPDATE queue_entries SET state = 'landed', finished_at = ? WHERE id = ?",
-                )
-                .bind(&[rfc3339(now_ms()).into(), row.id.as_str().into()])?
-                .run()
-                .await?;
-            self.drop_branch(&row).await;
+            // Record the merge before removing its recoverable queue intent.
             self.record_merge(&repo, pull, &actor, row.keep_issue_open != 0, landed)
                 .await?;
+            self.finish_landing(&row).await?;
         }
         Ok(())
+    }
+
+    async fn finish_landing(&self, row: &EntryRow) -> Result<()> {
+        self.db
+            .prepare(FINISH_LANDING)
+            .bind(&[rfc3339(now_ms()).into(), row.id.as_str().into()])?
+            .run()
+            .await?;
+        self.drop_branch(row).await;
+        Ok(())
+    }
+
+    /// Whether `row` still holds the publication intent it was read with.
+    async fn still_landing(&self, row: &EntryRow) -> Result<bool> {
+        Ok(self
+            .db
+            .prepare(STILL_LANDING)
+            .bind(&[
+                row.id.as_str().into(),
+                row.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+            ])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?
+            .is_some())
     }
 }

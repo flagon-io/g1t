@@ -113,7 +113,7 @@ export default [
     route("-/members", "routes/workspace/members.tsx"),
     route("-/members/invitations", "routes/workspace/member-invitations.tsx"),
     route("-/permissions", "routes/workspace/permissions.tsx"),
-    route("-/insights", "routes/workspace/tab-soon.tsx", { id: "routes/workspace/insights" }),
+    route("-/insights", "routes/workspace/insights.tsx"),
     // Pinning its projects, for the person signed in.
     route("-/pins", "routes/workspace/pins.ts"),
     // Code's Overview: Mission control's code panels, for this workspace.

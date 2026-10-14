@@ -734,7 +734,18 @@ pub struct WorkSessionArgs {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionUpdate {
+    pub id: String,
+    pub kind: String,
+    pub data: serde_json::Value,
+    pub at: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionDetail {
+    /// Oldest pending coordination updates, at most 100. Reading does not acknowledge them.
+    #[serde(default)]
+    pub updates: Vec<SessionUpdate>,
     pub session: Session,
     /// Oldest first, numbered within the session.
     pub entries: Vec<SessionEntry>,
@@ -791,6 +802,9 @@ pub struct KeyedSessionEntry {
 /// `record_session_entries`. Returns `Outcome<Recorded>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RecordEntriesArgs {
+    /// Exact update IDs this session has considered. Repeated acknowledgements are harmless.
+    #[serde(default)]
+    pub acknowledge: Vec<String>,
     pub actor: User,
     pub repo: RepoPath,
     pub id: String,
@@ -808,6 +822,11 @@ pub struct Recorded {
     pub recorded: u32,
     /// Entries skipped because one with the same key was recorded before.
     pub duplicates: u32,
+    /// Of the `acknowledge` IDs given, how many name an update of this
+    /// session (acknowledged now or before). Fewer than given means some
+    /// IDs were mistyped or belong to another session.
+    #[serde(default)]
+    pub acknowledged: u32,
 }
 
 /// `claim_issue`. Returns `Outcome<Claimed>`. Claiming an issue you hold
@@ -1126,7 +1145,8 @@ pub struct OverlapDetected {
 /// `overlap.detected` between two sessions: the session `session_id` (or
 /// one of its subagents) touched files that `other_session_id`, active
 /// and outside its own line of parents and subagents, touched too. Sent
-/// once for each side when a pair starts overlapping. Siblings (subagents
+/// once for each side when a pair starts overlapping, and again, with the
+/// new `files`, when another file in common joins. Siblings (subagents
 /// of one session) are told of each other.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

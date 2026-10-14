@@ -6,6 +6,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::links::{BRANCH_SESSIONS, FAMILY, FIRST_PROMPTS, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, TOUCHED_BY_OTHERS, end_tree_sql, tree_sql};
 use super::sessions::{INSERT_ENTRY, MOVE_ENTRIES, RENEW_CLAIM, harness_session_sql, insert_session_sql, refresh_sql, renewal, resume_sql};
 use super::{after_minutes, expire_claims_sql, time_out_sessions_sql};
+use super::updates::deliver_sql;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{claim_is_mine, session_overlaps, session_pair, subagent_harness_id};
 use std::collections::HashSet;
@@ -37,7 +38,11 @@ fn touch(db: &Connection, session: &str, kind: &str, value: &str) -> bool {
 }
 
 fn database() -> Connection {
-    let db = Connection::open_in_memory().unwrap();
+    database_at(":memory:")
+}
+
+fn database_at(path: impl AsRef<std::path::Path>) -> Connection {
+    let db = Connection::open(path).unwrap();
     db.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
     let mut names: Vec<String> = std::fs::read_dir(dir)
@@ -57,6 +62,57 @@ fn database() -> Connection {
     )
     .unwrap();
     db
+}
+
+fn claim(db: &Connection, id: &str, session: Option<&str>, actor: &str) -> String {
+    db.query_row(
+        &super::claims::upsert_claim_sql(),
+        params![id, "rep_1", 4, session, actor, "ana", "codex", "Working on it", 30, rfc3339(NOW), after_minutes(NOW, 30)],
+        |row| row.get(0),
+    ).unwrap()
+}
+
+#[test]
+fn simultaneous_claims_converge_without_locking_out_other_agents() {
+    let path = std::env::temp_dir().join(format!("g1t-claims-{}-{}.sqlite", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let db = database_at(&path);
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+    let threads: Vec<_> = (0..16).map(|n| {
+        let path = path.clone();
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            let db = Connection::open(path).unwrap();
+            db.busy_timeout(std::time::Duration::from_secs(10)).unwrap();
+            // Every caller's preliminary read precedes every write.
+            assert_eq!(db.query_row("SELECT COUNT(*) FROM claims", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            barrier.wait();
+            claim(&db, &format!("clm_{n}"), Some("ses_a"), "usr_1")
+        })
+    }).collect();
+    let ids: HashSet<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+    assert_eq!(ids.len(), 1);
+    let first = ids.into_iter().next().unwrap();
+    assert_ne!(claim(&db, "sibling", Some("ses_b"), "usr_1"), first);
+    assert_ne!(claim(&db, "person", Some("ses_a"), "usr_2"), first);
+    db.execute("UPDATE claims SET state = 'released' WHERE id = ?", [&first]).unwrap();
+    assert_eq!(claim(&db, "replacement", Some("ses_a"), "usr_1"), "replacement");
+    assert_eq!(db.query_row("SELECT COUNT(*) FROM claims WHERE state = 'active'", [], |r| r.get::<_, i64>(0)).unwrap(), 3);
+    drop(db);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn a_session_adopts_a_sessionless_claim_and_handoff_allows_a_new_claim() {
+    let db = database();
+    assert_eq!(claim(&db, "first", None, "usr_1"), "first");
+    assert_eq!(claim(&db, "retry", None, "usr_1"), "first");
+    assert_eq!(claim(&db, "attached", Some("ses_a"), "usr_1"), "first");
+    assert_eq!(claim(&db, "sibling", Some("ses_b"), "usr_1"), "sibling");
+    db.execute("UPDATE claims SET state = 'handed_off' WHERE id = 'first'", []).unwrap();
+    assert_eq!(claim(&db, "successor", Some("ses_a"), "usr_1"), "successor");
+    db.execute("UPDATE claims SET state = 'expired' WHERE id = 'successor'", []).unwrap();
+    assert_eq!(claim(&db, "after_expiry", Some("ses_a"), "usr_1"), "after_expiry");
 }
 
 fn start(db: &Connection, id: &str, harness_id: Option<&str>) -> Option<String> {
@@ -112,7 +168,7 @@ fn a_quiet_session_times_out_and_a_heartbeat_brings_it_back() {
     let ended: Vec<String> = db
         .prepare(&time_out_sessions_sql())
         .unwrap()
-        .query_map(params!["rep_1", late], |row| row.get(0))
+        .query_map(params!["rep_1", late, "ses_1"], |row| row.get(0))
         .unwrap()
         .map(Result::unwrap)
         .collect();
@@ -120,7 +176,7 @@ fn a_quiet_session_times_out_and_a_heartbeat_brings_it_back() {
     let reason: String = db.query_row("SELECT end_reason FROM sessions WHERE id = 'ses_1'", [], |row| row.get(0)).unwrap();
     assert_eq!(reason, "timed_out");
     // Noticed once only.
-    assert_eq!(db.prepare(&time_out_sessions_sql()).unwrap().query_map(params!["rep_1", late], |_| Ok(())).unwrap().count(), 0);
+    assert_eq!(db.prepare(&time_out_sessions_sql()).unwrap().query_map(params!["rep_1", late, "ses_1"], |_| Ok(())).unwrap().count(), 0);
     // The harness reconnects.
     let state: String = db
         .query_row(
@@ -173,6 +229,9 @@ fn ending_a_session_ends_the_subagents_it_left_going() {
     // A subagent of a subagent.
     start_child(&db, "ses_c3", "ses_c1", "p/agent/3", "Explore");
     db.execute("UPDATE sessions SET state = 'ended', end_reason = 'done' WHERE id = 'ses_c2'", []).unwrap();
+    // Not before the parent itself ended, at that moment.
+    assert!(column(&db, &end_tree_sql(), params!["ses_parent", rfc3339(NOW), "parent ended"]).is_empty());
+    db.execute("UPDATE sessions SET state = 'ended', ended_at = ?1 WHERE id = 'ses_parent'", [rfc3339(NOW)]).unwrap();
     let mut ended = column(&db, &end_tree_sql(), params!["ses_parent", rfc3339(NOW), "parent ended"]);
     ended.sort();
     assert_eq!(ended, ["ses_c1", "ses_c3"], "the one already done keeps its own end");
@@ -311,14 +370,16 @@ fn claims_expire_when_due_and_heartbeats_only_extend_them() {
     };
     insert("clm_due", &rfc3339(NOW - 1));
     insert("clm_live", &after_minutes(NOW, 10));
-    let expired: Vec<String> = db
-        .prepare(&expire_claims_sql())
-        .unwrap()
-        .query_map(params!["rep_1", rfc3339(NOW)], |row| row.get(0))
-        .unwrap()
-        .map(Result::unwrap)
-        .collect();
-    assert_eq!(expired, ["clm_due"]);
+    let expire = |id: &str| -> Vec<String> {
+        db.prepare(&expire_claims_sql())
+            .unwrap()
+            .query_map(params!["rep_1", rfc3339(NOW), id], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    assert!(expire("clm_live").is_empty(), "a claim not yet due stays");
+    assert_eq!(expire("clm_due"), ["clm_due"]);
     let (state, ended_at): (String, String) =
         db.query_row("SELECT state, ended_at FROM claims WHERE id = 'clm_due'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
     assert_eq!((state.as_str(), ended_at), ("expired", rfc3339(NOW - 1)));
@@ -352,4 +413,224 @@ fn an_untitled_sessions_first_prompt_is_found_by_its_own_numbering() {
         .map(Result::unwrap)
         .collect();
     assert_eq!(found, vec![("ses_1".to_owned(), "Fix the prev".to_owned())]);
+}
+
+#[test]
+fn inbox_delivery_acknowledgement_and_reconnect_are_session_scoped() {
+    use super::updates::{PENDING, ACK};
+    let db = database();
+    start(&db, "ses_a", Some("a"));
+    start(&db, "ses_b", Some("b"));
+    start(&db, "ses_ended", Some("ended"));
+    start(&db, "ses_other", Some("other"));
+    db.execute("UPDATE sessions SET state = 'ended' WHERE id = 'ses_ended'", []).unwrap();
+    db.execute("UPDATE sessions SET repo_id = 'other' WHERE id = 'ses_other'", []).unwrap();
+    let event = params!["upd_1", "overlap.detected", "{}", rfc3339(NOW), "rep_1", "[]"];
+    assert_eq!(db.execute(&deliver_sql("1"), event).unwrap(), 2);
+    assert_eq!(db.execute(&deliver_sql("1"), event).unwrap(), 0);
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_1"]);
+    // Reading repeatedly, including after a reconnect, never clears updates.
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_1"]);
+    assert!(column(&db, PENDING, ["ses_other"]).is_empty());
+    assert!(column(&db, PENDING, ["ses_ended"]).is_empty());
+    db.execute(ACK, params!["first", "ses_a", "upd_1"]).unwrap();
+    db.execute(ACK, params!["retry", "ses_a", "upd_1"]).unwrap();
+    assert!(column(&db, PENDING, ["ses_a"]).is_empty());
+    assert_eq!(column(&db, PENDING, ["ses_b"]), ["upd_1"]);
+    assert_eq!(column(&db, "SELECT acknowledged_at FROM session_updates WHERE session_id = 'ses_a'", []), ["first"]);
+    db.execute(&deliver_sql("1"), params!["upd_2", "dependency.changed", "{}", rfc3339(NOW+1), "rep_1", "[]"]).unwrap();
+    // An old acknowledgement cannot swallow a later update.
+    db.execute(ACK, params!["retry", "ses_a", "upd_1"]).unwrap();
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_2"]);
+}
+
+#[test]
+fn inbox_drains_bounded_pages_without_skipping_updates() {
+    use super::updates::{PENDING, ACK};
+    let db = database();
+    start(&db, "ses_a", Some("a"));
+    for i in 0..105 {
+        db.execute(&deliver_sql("1"), params![format!("upd_{i:03}"), "work.claimed", "{}", rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    }
+    let first = column(&db, PENDING, ["ses_a"]);
+    assert_eq!(first.len(), 100);
+    for id in first { db.execute(ACK, params!["now", "ses_a", id]).unwrap(); }
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_100", "upd_101", "upd_102", "upd_103", "upd_104"]);
+}
+
+#[test]
+fn pending_updates_and_receipts_survive_database_reopen() {
+    use super::updates::{PENDING, ACK};
+    let path = std::env::temp_dir().join(format!("g1t-updates-{}-{}.sqlite", std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let db = database_at(&path);
+    start(&db, "ses_a", Some("a"));
+    db.execute(&deliver_sql("1"), params!["upd_1", "overlap.detected", "{}", rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    drop(db);
+    let db = Connection::open(&path).unwrap();
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_1"]);
+    db.execute(ACK, params!["considered", "ses_a", "upd_1"]).unwrap();
+    drop(db);
+    let db = Connection::open(&path).unwrap();
+    assert!(column(&db, PENDING, ["ses_a"]).is_empty());
+    assert_eq!(column(&db, "SELECT acknowledged_at FROM session_updates", []), ["considered"]);
+    drop(db);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn inbox_targets_session_overlaps_and_excludes_own_lifecycle_events() {
+    use super::updates::{PENDING};
+    let db = database();
+    start(&db, "ses_a", Some("a"));
+    start(&db, "ses_b", Some("b"));
+    db.execute(&deliver_sql("1"), params!["upd_overlap", "overlap.detected", r#"{"sessionId":"ses_a","otherSessionId":"ses_b"}"#, rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_overlap"]);
+    assert!(column(&db, PENDING, ["ses_b"]).is_empty());
+    db.execute(&deliver_sql("1"), params!["upd_start", "session.started", r#"{"session":{"id":"ses_b"}}"#, rfc3339(NOW+1), "rep_1", "[]"]).unwrap();
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_overlap", "upd_start"]);
+    assert!(column(&db, PENDING, ["ses_b"]).is_empty());
+}
+
+#[test]
+fn a_session_is_not_told_of_its_own_claims_but_others_are() {
+    use super::updates::{PENDING};
+    let db = database();
+    start(&db, "ses_a", Some("a"));
+    start(&db, "ses_b", Some("b"));
+    for (id, kind) in [("upd_claim", "work.claimed"), ("upd_release", "work.released"), ("upd_handoff", "work.handoff_requested")] {
+        db.execute(&deliver_sql("1"), params![id, kind, r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    }
+    // An expiry happened to the session; it hears of it.
+    db.execute(&deliver_sql("1"), params!["upd_expired", "work.claim_expired", r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW + 1), "rep_1", "[]"]).unwrap();
+    // A sessionless claim is news to every session.
+    db.execute(&deliver_sql("1"), params!["upd_bare", "work.claimed", r#"{"claim":{"sessionId":null}}"#, rfc3339(NOW + 2), "rep_1", "[]"]).unwrap();
+    assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_expired", "upd_bare"]);
+    assert_eq!(column(&db, PENDING, ["ses_b"]), ["upd_claim", "upd_handoff", "upd_release", "upd_expired", "upd_bare"]);
+}
+
+#[test]
+fn acknowledging_counts_only_this_sessions_updates() {
+    use super::updates::{ACK, KNOWN};
+    let db = database();
+    start(&db, "ses_a", Some("a"));
+    start(&db, "ses_b", Some("b"));
+    db.execute(&deliver_sql("1"), params!["upd_1", "dependency.changed", "{}", rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    let known = |session: &str, ids: &str| db.query_row(KNOWN, params![session, ids], |row| row.get::<_, u32>(0)).unwrap();
+    assert_eq!(known("ses_a", r#"["upd_1","upd_typo"]"#), 1);
+    db.execute(ACK, params!["now", "ses_a", "upd_1"]).unwrap();
+    // A receipt still counts on a retry, and never for another session.
+    assert_eq!(known("ses_a", r#"["upd_1"]"#), 1);
+    assert_eq!(known("ses_b", r#"["upd_x"]"#), 0);
+}
+
+#[test]
+fn updates_reach_the_sessions_on_their_subject_and_those_not_on_anything_yet() {
+    use super::updates::{PENDING, deliver_sql, subjects};
+    let db = database();
+    for id in ["ses_on4", "ses_on9", "ses_free", "ses_linked", "ses_pull"] {
+        start(&db, id, Some(id));
+    }
+    // start() puts a session on #4: only ses_on4 stays there.
+    db.execute("UPDATE sessions SET issue = NULL WHERE id <> 'ses_on4'", []).unwrap();
+    db.execute("UPDATE sessions SET issue = 9 WHERE id = 'ses_on9'", []).unwrap();
+    db.execute("UPDATE sessions SET pull = 14 WHERE id = 'ses_pull'", []).unwrap();
+    // Tied to #4 another way (it named it), though attached to nothing.
+    db.execute(INSERT_LINK, params!["ses_linked", "rep_1", "issue", 4, "ref", rfc3339(NOW)]).unwrap();
+    let data = serde_json::json!({ "number": 14, "issue": 4, "claim": { "sessionId": null } });
+    assert_eq!(subjects(&data), [4, 14]);
+    db.execute(&deliver_sql("1"), params!["upd_claim", "work.claimed", data.to_string(), rfc3339(NOW), "rep_1", "[4,14]"]).unwrap();
+    let heard: Vec<&str> = ["ses_on4", "ses_on9", "ses_free", "ses_linked", "ses_pull"]
+        .into_iter()
+        .filter(|id| !column(&db, PENDING, [*id]).is_empty())
+        .collect();
+    assert_eq!(heard, ["ses_on4", "ses_free", "ses_linked", "ses_pull"], "the session on #9 is not interrupted");
+    // Tied to another issue only, a session is on something: not told of #4.
+    start(&db, "ses_elsewhere", Some("elsewhere"));
+    db.execute("UPDATE sessions SET issue = NULL WHERE id = 'ses_elsewhere'", []).unwrap();
+    db.execute(INSERT_LINK, params!["ses_elsewhere", "rep_1", "issue", 9, "claim", rfc3339(NOW)]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_claim_2", "work.claimed", data.to_string(), rfc3339(NOW), "rep_1", "[4,14]"]).unwrap();
+    assert!(column(&db, PENDING, ["ses_elsewhere"]).is_empty());
+    // An event about nothing in particular reaches everyone.
+    db.execute(&deliver_sql("1"), params!["upd_any", "session.started", r#"{"session":{"id":"ses_x"}}"#, rfc3339(NOW + 1), "rep_1", "[]"]).unwrap();
+    assert_eq!(column(&db, PENDING, ["ses_on9"]), ["upd_any"]);
+}
+
+#[test]
+fn an_update_is_written_only_with_its_change_and_once() {
+    use super::claims::upsert_claim_sql;
+    use super::updates::{PENDING, deliver_sql, update_id};
+    let mut db = database();
+    start(&db, "ses_a", Some("a"));
+    start(&db, "ses_b", Some("b"));
+    let guard = deliver_sql("EXISTS (SELECT 1 FROM claims WHERE id = ?7)");
+    let claim_with_update = |db: &mut Connection, proposed: &str| {
+        // As one D1 batch: the claim and its update commit together.
+        let tx = db.transaction().unwrap();
+        let id: String = tx
+            .query_row(
+                &upsert_claim_sql(),
+                params![proposed, "rep_1", 4, "ses_a", "usr_1", "ana", "codex", "Scope: api", 30, rfc3339(NOW), after_minutes(NOW, 30)],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let update = update_id("work.claimed", &format!("{proposed}:claimed"));
+        tx.execute(&guard, params![update, "work.claimed", r#"{"issue":4,"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), "rep_1", "[4]", proposed]).unwrap();
+        tx.commit().unwrap();
+        id
+    };
+    assert_eq!(claim_with_update(&mut db, "clm_first"), "clm_first");
+    assert_eq!(column(&db, PENDING, ["ses_b"]).len(), 1);
+    assert!(column(&db, PENDING, ["ses_a"]).is_empty(), "not told of its own claim");
+    // Claiming again renews: no new claim, so no update.
+    assert_eq!(claim_with_update(&mut db, "clm_retry"), "clm_first");
+    assert_eq!(column(&db, PENDING, ["ses_b"]).len(), 1);
+    // The same change written twice (a retried or concurrent request) is one update.
+    let update = update_id("work.claimed", "clm_first:claimed");
+    db.execute(&guard, params![update, "work.claimed", "{}", rfc3339(NOW), "rep_1", "[4]", "clm_first"]).unwrap();
+    assert_eq!(column(&db, PENDING, ["ses_b"]).len(), 1);
+    // A transaction that fails takes its update with it.
+    {
+        let tx = db.transaction().unwrap();
+        tx.execute(&guard, params!["upd_lost", "work.claimed", "{}", rfc3339(NOW), "rep_1", "[4]", "clm_first"]).unwrap();
+        drop(tx);
+    }
+    assert_eq!(column(&db, PENDING, ["ses_b"]), [update]);
+}
+
+#[test]
+fn a_pair_is_told_again_when_it_starts_changing_another_file_in_common() {
+    let db = database();
+    let announce = |files: &[&str], at: u64| {
+        db.query_row(INSERT_OVERLAP, params!["rep_1", "ses_a", "ses_b", serde_json::to_string(files).unwrap(), rfc3339(at)], |_| Ok(()))
+            .optional()
+            .unwrap()
+            .is_some()
+    };
+    assert!(announce(&["CLAUDE.md"], NOW), "first met on a harness file");
+    assert!(!announce(&["CLAUDE.md"], NOW + 1), "the same file again is not news");
+    assert!(announce(&["src/report.ts"], NOW + 2), "the code they both change is");
+    assert!(!announce(&["src/report.ts", "CLAUDE.md"], NOW + 3));
+    let (files, noticed): (String, String) = db
+        .query_row("SELECT files, noticed_at FROM session_overlaps WHERE low = 'ses_a'", [], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap();
+    let mut files: Vec<String> = serde_json::from_str(&files).unwrap();
+    files.sort();
+    assert_eq!(files, ["CLAUDE.md", "src/report.ts"]);
+    assert_eq!(noticed, rfc3339(NOW + 2), "noticed when it last grew, which guards its delivery");
+}
+
+#[test]
+fn a_queue_result_told_twice_reaches_each_session_once() {
+    use super::updates::{PENDING, deliver_sql, update_id};
+    let db = database();
+    start(&db, "ses_a", Some("a"));
+    let id = update_id("integration.failed", "qe_1:att_2:abc123");
+    for _ in 0..2 {
+        db.execute(&deliver_sql("1"), params![id, "integration.failed", r#"{"number":14,"issue":4}"#, rfc3339(NOW), "rep_1", "[4,14]"]).unwrap();
+    }
+    assert_eq!(column(&db, PENDING, ["ses_a"]), [id.clone()]);
+    // A later attempt's result is news of its own.
+    let next = update_id("integration.failed", "qe_1:att_3:abc123");
+    assert_ne!(next, id);
 }

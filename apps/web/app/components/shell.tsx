@@ -736,8 +736,6 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
   );
 }
 
-/** Insights, coming: the workspace's own page says what it will be. */
-const INSIGHTS = roadmapItem("insights");
 
 /**
  * A page a project will have that is a page of its own, not a tab: its own
@@ -1279,11 +1277,9 @@ function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
         <SidebarLink to={`/${slug}/-/packages`} icon={<Package size={15} />} current={at("packages")}>
           Packages
         </SidebarLink>
-        {INSIGHTS && (
-          <SidebarSoonLink to={`/${slug}/-/insights`} icon={<TrendingUp size={15} />} about={INSIGHTS.summary} current={at("insights")}>
-            {INSIGHTS.title}
-          </SidebarSoonLink>
-        )}
+        <SidebarLink to={`/${slug}/-/insights`} icon={<TrendingUp size={15} />} current={at("insights")}>
+          Insights
+        </SidebarLink>
       </NavRows>
       <Rule />
       <NavRows>

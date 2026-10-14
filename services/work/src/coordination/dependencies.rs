@@ -77,32 +77,39 @@ impl Work {
         })
     }
 
-    /// Announces a change to `issue`'s `blocked_by` (from `before`), and
-    /// notes it in the issue's conversation.
+    /// The `dependency.changed` that setting `issue`'s `blocked_by` to
+    /// `after` makes, worked out before the change so that its updates are
+    /// written with it; none when nothing changes.
+    pub(crate) async fn dependency_change(&self, issue: &Issue, after: &[u32], actor: &User) -> Result<Option<serde_json::Value>> {
+        let before = &issue.blocked_by;
+        let added: Vec<u32> = after.iter().filter(|n| !before.contains(n)).copied().collect();
+        let removed: Vec<u32> = before.iter().filter(|n| !after.contains(n)).copied().collect();
+        if added.is_empty() && removed.is_empty() {
+            return Ok(None);
+        }
+        let remaining = self.still_open(&issue.repo_id, after, None).await?;
+        let change = DependencyChanged {
+            repo_id: issue.repo_id.clone(),
+            number: issue.number,
+            issue: issue.number,
+            blocked_by: after.to_vec(),
+            added,
+            removed,
+            cleared: Vec::new(),
+            remaining,
+            merged_pull: None,
+        };
+        Ok(Some(g1t_contracts::events::marked(change, Some(actor))))
+    }
+
+    /// Notes a change to `issue`'s `blocked_by` (from `before`) in the
+    /// issue's conversation.
     pub(crate) async fn blocked_by_changed(&self, issue: &Issue, before: &[u32], actor: &User) -> Result<()> {
         let added: Vec<u32> = issue.blocked_by.iter().filter(|n| !before.contains(n)).copied().collect();
         let removed: Vec<u32> = before.iter().filter(|n| !issue.blocked_by.contains(n)).copied().collect();
         if added.is_empty() && removed.is_empty() {
             return Ok(());
         }
-        let remaining = self.still_open(&issue.repo_id, &issue.blocked_by, None).await?;
-        self.publish(
-            "dependency.changed",
-            &issue.repo_id,
-            actor,
-            DependencyChanged {
-                repo_id: issue.repo_id.clone(),
-                number: issue.number,
-                issue: issue.number,
-                blocked_by: issue.blocked_by.clone(),
-                added: added.clone(),
-                removed: removed.clone(),
-                cleared: Vec::new(),
-                remaining,
-                merged_pull: None,
-            },
-        )
-        .await?;
         let list = |numbers: &[u32]| numbers.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ");
         let who = (actor.id.as_str(), actor.username.as_str());
         if !added.is_empty() {
@@ -161,22 +168,22 @@ impl Work {
             for dependent in dependents {
                 let blocked_by = numbers(&dependent.blocked_by);
                 let remaining = self.still_open(repo_id, &blocked_by, Some(number)).await?;
-                self.publish(
-                    "dependency.changed",
-                    repo_id,
-                    actor,
-                    DependencyChanged {
-                        repo_id: repo_id.to_owned(),
-                        number: dependent.number,
-                        issue: dependent.number,
-                        blocked_by,
-                        cleared: vec![number],
-                        remaining,
-                        merged_pull,
-                        ..DependencyChanged::default()
-                    },
-                )
-                .await?;
+                let change = DependencyChanged {
+                    repo_id: repo_id.to_owned(),
+                    number: dependent.number,
+                    issue: dependent.number,
+                    blocked_by,
+                    cleared: vec![number],
+                    remaining,
+                    merged_pull,
+                    ..DependencyChanged::default()
+                };
+                // Follows from a close or merge already made: named by it, so
+                // a repeat of the same close or merge tells each session once.
+                let how = merged_pull.map_or_else(|| "closed".to_owned(), |pull| format!("merged:{pull}"));
+                let key = format!("{}:cleared:{number}:{how}", dependent.number);
+                let data = g1t_contracts::events::marked(change, Some(actor));
+                self.publish_keyed("dependency.changed", repo_id, Some(actor.id.clone()), data, &key).await?;
             }
             Ok::<(), worker::Error>(())
         };

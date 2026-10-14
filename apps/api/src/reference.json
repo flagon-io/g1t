@@ -2637,9 +2637,10 @@
     },
     "response": {
       "recorded": 3,
-      "duplicates": 0
+      "duplicates": 0,
+      "acknowledged": 0
     },
-    "notes": "Up to 200 entries a request. An entry whose `key` the session recorded before is counted in `duplicates` and not recorded again. Entries of a session on a pull request show in that pull request's session too (read_session)."
+    "notes": "Up to 200 entries a request. An entry whose `key` the session recorded before is counted in `duplicates` and not recorded again. Entries of a session on a pull request show in that pull request's session too (read_session). `acknowledge` (up to 100 update IDs from get_session's `updates`) clears those updates for this session only; `acknowledged` counts the IDs that were this session's."
   },
   "claim_issue": {
     "request": {

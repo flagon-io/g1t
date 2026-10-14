@@ -91,6 +91,7 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Packages",
     about: "What the workspace publishes and installs, beside its code: container images, npm, Composer, Go, Cargo, Maven, NuGet and RubyGems, with the same members, roles and tokens.",
   },
+  insights: { title: "Insights", about: "Delivery, review times, work in progress and costs across your workspace." },
   usage: { title: "Usage", about: "What the workspace used and what it cost, by product, project and day." },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
   audit: {
@@ -172,8 +173,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     const whole = parts.join("/");
     const key = shown ?? (PAGES[whole] ? whole : (parts[0] ?? ""));
     const heading = PAGES[key];
-    // A page within one (a single package or team) and a page that is
-    // coming (Insights) have headings of their own.
+    // Pages within one (a single package or team) have headings of their own.
     const titled = heading && (shown != null || parts.length === 1 || key === whole);
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">

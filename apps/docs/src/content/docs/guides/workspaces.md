@@ -554,7 +554,7 @@ top bar, such as *acme / Projects*, leads back to the workspace's page.
 | [**Teams**](/guides/teams/) | `/-/teams` | Members | Groups of members given roles on repositories together, mentioned as `@workspace/team` and asked to review together. Each team has its own page at `/-/teams/<team>`. |
 | [**People**](/guides/people-and-teams/) | `/-/people` | Members | The workspace's people, with their titles, teams and what they own. Each has a profile at `/-/people/<username>`. |
 | **Members and invites** | `/-/members` | Members | Who belongs. Owners invite, change roles and remove people here. |
-| **Insights** | `/-/insights` | Members | Coming soon: how the whole workspace delivers. |
+| **Insights** | `/-/insights` | Members | How the workspace delivers, what waits and what it costs. See [Insights](#insights). |
 | **Settings** | `/-/settings` | Owners | How the workspace is set up and connected (below). |
 
 Each person sees the projects they can read: a member whose base permission
@@ -588,6 +588,31 @@ The Projects page, `g1t.sh/<workspace>/-/projects`, is made for workspaces with 
 
 Everything you choose is in the address, so a filtered list can be
 bookmarked or shared.
+
+### Insights
+
+Insights, `g1t.sh/<workspace>/-/insights`, puts the workspace's projects
+side by side: how much they ship, how long changes take, what is waiting
+now, and what the work cost. Choose the last 7, 30 or 90 days and all
+projects or one; both are in the address (`?period=7d&project=api`).
+
+| | What it counts |
+| --- | --- |
+| **Merged changes** | Pull requests merged in the period, with a bar for each day. The daily values are in a table under the chart. |
+| **Average lead time** | From a pull request's opening to its merge, for those merged in the period. |
+| **Average first review** (per project) | From opening to the first approval or request for changes by a person other than its owner, for first reviews given in the period. Reviews by g1t and by workspace agents do not count. |
+| **Opened** and **Open now** (per project) | Pull requests opened in the period, and those open or in draft now. |
+| **Awaiting a first review** | Open pull requests (not drafts) no person has reviewed yet. |
+| **In the merge queue** | Open pull requests waiting, being tested or passed in the [merge queue](/guides/merge-queue/). |
+| **Checks running** and **Checks failed** | Open pull requests by their latest commit's checks: statuses, check runs and g1t Actions jobs, as the pull request shows them. One with a failed check counts as failed, else one with a check still going counts as running; one with no checks counts in neither. |
+| **Usage at price** and **Cost** | [Usage](/guides/usage-and-billing/#the-usage-page) at price, before what the plan, credit or discounts paid. A project's cost is its repository's usage; with all projects shown, the total also holds usage that is no project's. |
+| **Cost per merged change** | The period's usage divided by its merged changes: an average, not what any one change cost. |
+
+The days are UTC days, and the waiting counts are as of now and can
+overlap. Each person sees only the projects they can read. When part of
+it cannot be read, such as one service being briefly unavailable, Insights
+says so and shows a dash in place of numbers it cannot vouch for. **Explore
+costs** opens [Usage](/guides/usage-and-billing/#the-usage-page) with the same period and project.
 
 ## The rail, the sidebar and the page
 

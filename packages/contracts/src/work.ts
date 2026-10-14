@@ -769,6 +769,12 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
     filter?: { label?: string; milestone?: number; base?: string },
   ): Promise<Result<Pull[]>>;
   /**
+   * Delivery for up to 100 repositories over UTC days `from` through
+   * `until`, over their whole history. Repositories the viewer cannot read,
+   * and forks, are left out of `projects`.
+   */
+  deliveryInsights(repoIds: string[], viewer: Viewer, from: string, until: string): Promise<DeliveryInsights>;
+  /**
    * The newest `limit` open and closed pull requests of each repository,
    * in one call. Repositories the viewer cannot read, and forks, are left
    * out: ask those with `listPulls`.
@@ -1272,6 +1278,8 @@ export type WorkContext = {
 
 /** A harness session and what it recorded. */
 export type WorkSessionDetail = {
+  /** Pending repository coordination events; reading does not acknowledge them. */
+  updates?: { id: string; kind: string; data: unknown; at: string }[];
   session: WorkSession;
   entries: SessionEntry[];
   /** Its subagents and theirs, in the order they started. */
@@ -1300,3 +1308,12 @@ export interface CoordinationApi {
   /** An issue's (with its pull requests') or a pull request's, oldest first. */
   listDecisions(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<Decision[]>>;
 }
+
+/**
+ * Delivery counts cover the requested UTC days; waiting counts are current.
+ * `checking` and `failed` count each open pull request once, by its head's
+ * checks (statuses, check runs and g1t Actions jobs); one with none is in neither.
+ */
+export type DeliveryMetrics = { repoId: string; opened: number; merged: number; active: number; unreviewed: number; checking: number; failed: number; queued: number; leadSeconds: number; reviewSeconds: number; reviewed: number };
+/** `checksUnavailable`: g1t Actions could not be read, so `checking` and `failed` are not known. */
+export type DeliveryInsights = { projects: DeliveryMetrics[]; days: { day: string; merged: number }[]; checksUnavailable: boolean };

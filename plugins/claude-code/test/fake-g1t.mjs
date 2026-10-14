@@ -85,6 +85,9 @@ function main() {
     process.stdout.write(`g1t ${process.env.FAKE_G1T_VERSION ?? CONTRACT.minimum_version}\n`);
     process.exit(0);
   }
+  if (args[0] === "api" && args[1] === "get_session" && process.env.FAKE_G1T_UPDATES) {
+    process.stdout.write(JSON.stringify({ updates: JSON.parse(process.env.FAKE_G1T_UPDATES) }));
+  }
   const exit = Number(process.env.FAKE_G1T_EXIT ?? 0);
   if (exit) process.exit(exit);
   if (args[0] === "session" && args[1] === "start") {

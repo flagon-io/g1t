@@ -16,6 +16,7 @@ import {
   mergeSessions,
   numberedParts,
   parseBlockedBy,
+  pendingLines,
   resolutionOf,
   sessionTree,
   span,
@@ -305,4 +306,15 @@ test("blocked_by is typed as numbers", () => {
   assert.deepEqual(parseBlockedBy(""), []);
   assert.equal(parseBlockedBy("#12, soon"), null);
   assert.equal(parseBlockedBy("0"), null);
+});
+
+test("a session's pending updates read as the feed does, leaving out what it does not show", () => {
+  const lines = pendingLines([
+    { id: "upd_1", kind: "work.claimed", at: "2026-10-14T10:00:00Z", data: { repoId: "rep_1", number: 4, issue: 4, claim: claim(4, { actor: bo, harness: "codex" }) } },
+    { id: "upd_2", kind: "session.progressed", at: "2026-10-14T10:00:01Z", data: {} },
+  ]);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].id, "upd_1");
+  assert.equal(lines[0].who, "bo");
+  assert.match(lines[0].text, /claimed #4/);
 });

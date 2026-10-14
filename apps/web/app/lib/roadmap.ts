@@ -28,19 +28,6 @@ export type RoadmapItem = {
 };
 
 export const ROADMAP: RoadmapItem[] = [
-  // --- Workspace ----------------------------------------------------------
-  {
-    key: "insights",
-    title: "Insights",
-    section: "Workspace",
-    summary: "How the whole workspace delivers: lead time, reviews and what it costs, across every project.",
-    why: "Each project will have its own numbers. The workspace's put them side by side, so you can see which projects ship steadily, where work waits, and where the money goes.",
-    plans: [
-      "Delivery metrics for every project, side by side",
-      "Where work waits: review, the merge queue, checks",
-      "Cost by project, by kind of work and per merged change",
-    ],
-  },
   // --- Code ---------------------------------------------------------------
   // Nothing: code is not docs. Docs is its own workspace mode, filterable
   // by project there, and a project never gets a Docs tab.

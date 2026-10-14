@@ -1004,7 +1004,7 @@ impl Integrations {
             let recorded: Outcome<Recorded> = g1t_kit::call(
                 &self.work,
                 "record_session_entries",
-                &RecordEntriesArgs { actor: run.actor(), repo: repo.clone(), id: session_id.to_owned(), entries: chunk, touched: touched.clone() },
+                &RecordEntriesArgs { actor: run.actor(), repo: repo.clone(), id: session_id.to_owned(), entries: chunk, touched: touched.clone(), acknowledge: vec![] },
             )
             .await?;
             if let Outcome::Fail(failure) = recorded {

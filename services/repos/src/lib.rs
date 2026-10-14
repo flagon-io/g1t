@@ -1601,6 +1601,9 @@ impl<S: GitStore> Repos<S> {
                 "This pull request has no commits to merge.",
             ));
         };
+        let Some(new) = land::checked_commit(&new, a.expected_commit.as_deref()) else {
+            return Ok(Outcome::fail(FailureCode::Conflict, "The source branch changed after it was checked. Test it again before landing."));
+        };
         let old = target_git
             .log(branch, 1)
             .await?
@@ -1613,6 +1616,14 @@ impl<S: GitStore> Repos<S> {
                 commit: new,
                 previous: None,
             }));
+        }
+        if a.expected_commit.is_some() && old.is_some() {
+            // A prior attempt may have published this exact commit and stopped
+            // before recording the merge; another change can already follow it.
+            let target_history = target_git.log(branch, MAX_ANCESTRY).await?;
+            if descends_from(&target_git, &target_history, &new).await? {
+                return Ok(Outcome::Ok(Landed { commit: new, previous: None }));
+            }
         }
         // Moving the branch to a commit that does not descend from its
         // current head would discard whatever landed in between.

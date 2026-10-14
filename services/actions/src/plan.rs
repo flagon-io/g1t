@@ -617,6 +617,18 @@ impl Actions {
     /// Makes a run and its jobs, and starts what can start. `None` when the
     /// event already started this workflow.
     pub async fn create_run(&self, new: NewRun) -> Result<Option<String>> {
+        self.create_run_with(new, false).await
+    }
+
+    /// As `create_run`, but the run's pending status must reach Work: one
+    /// that cannot is cancelled and the error returned, so that a caller
+    /// waiting on statuses (the merge queue) never reads "no workflows" or
+    /// a premature pass from a run nothing was told about.
+    pub async fn create_run_registered(&self, new: NewRun) -> Result<Option<String>> {
+        self.create_run_with(new, true).await
+    }
+
+    async fn create_run_with(&self, new: NewRun, strict: bool) -> Result<Option<String>> {
         // Nothing starts on an archived repository. A deleted one is never
         // found to start anything on.
         if new.repo.archived() {
@@ -710,8 +722,15 @@ impl Actions {
         if inserted.is_none() {
             return Ok(None);
         }
+        let mut unregistered = None;
         if let Some(run) = self.run_row(&id).await? {
-            self.report_pending(&run).await?;
+            if strict {
+                if let Err(error) = self.try_report_pending(&run).await {
+                    unregistered = Some((run, error));
+                }
+            } else {
+                self.report_pending(&run).await?;
+            }
         }
 
         // Every job, waiting; each is expanded when the jobs it needs are done.
@@ -734,6 +753,10 @@ impl Actions {
             );
         }
         self.db.batch(statements).await?;
+        if let Some((run, error)) = unregistered {
+            self.cancel_run(&run, "Its pending status could not be registered.", false).await?;
+            return Err(error);
+        }
 
         // A pull request's run from outside waits to be approved; it joins
         // its concurrency group once it is (protection.rs, approve_run).
@@ -2025,7 +2048,16 @@ impl Actions {
 
     /// Tells the pull request a run has started on its head.
     pub async fn report_pending(&self, run: &RunRow) -> Result<()> {
-        let _: Result<Value> = g1t_kit::call(
+        if let Err(error) = self.try_report_pending(run).await {
+            worker::console_warn!("pending status for run {} not reported: {error}", run.id);
+        }
+        Ok(())
+    }
+
+    /// Reports a run as pending on its commit, failing when Work did not
+    /// store it.
+    pub async fn try_report_pending(&self, run: &RunRow) -> Result<()> {
+        let stored: Outcome<bool> = g1t_kit::call(
             &self.work,
             "set_commit_status",
             &json!({
@@ -2042,8 +2074,11 @@ impl Actions {
                 "source": "actions",
             }),
         )
-        .await;
-        Ok(())
+        .await?;
+        match stored {
+            Outcome::Ok(_) => Ok(()),
+            Outcome::Fail(failure) => Err(worker::Error::RustError(format!("pending status refused: {}", failure.message))),
+        }
     }
 
     /// Cancels a run: its waiting and queued jobs at once, and its running

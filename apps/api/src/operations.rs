@@ -1519,7 +1519,7 @@ impl Op {
                 "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (replacing the set, as set_issue_labels does); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after."
             }
             Op::RecordSession => {
-                "Append entries to a pull request's session: the prompt you were given, your reasoning, the tools you ran. This is how people later see why a change was made, so record as you work, not only at the end."
+                "Append entries to a pull request's session: the task you were given, public decision summaries and evidence, and the tools you ran. Never record private chain-of-thought or credentials. This is how people later see why a change was made, so record as you work, not only at the end."
             }
             Op::ReadSession => "The recorded session of a pull request, oldest entry first.",
             Op::RecordDecision => {

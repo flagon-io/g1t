@@ -9,6 +9,7 @@
 //! claims that went quiet are found when the repository's coordination is
 //! next touched (`sweep`), and announced then as ended or expired.
 
+pub(crate) mod updates;
 mod claims;
 mod context;
 mod dependencies;
@@ -47,7 +48,7 @@ const SESSION_COLUMNS: &str = "id, repo_id, issue, pull, branch, actor_id, actor
 const CLAIM_COLUMNS: &str = "id, repo_id, issue, session_id, actor_id, actor_name, harness, note, state,
   ttl_minutes, created_at, expires_at, ended_at, end_reason, handoff_to";
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub(crate) struct SessionRow {
     id: String,
     repo_id: String,
@@ -157,21 +158,24 @@ pub(crate) fn tidy(text: Option<&str>, limit: usize) -> Option<String> {
     (!text.is_empty()).then(|| text.chars().take(limit).collect())
 }
 
-/// Ends a repository's (`?1`) sessions last seen at or before `?2` as
-/// `timed_out`, as of when they were last seen.
+/// The most sessions, and claims, one sweep ends; the rest wait for the next.
+const SWEEP_LIMIT: u32 = 50;
+
+/// Ends a repository's (`?1`) session `?3` if last seen at or before `?2`,
+/// as `timed_out`, as of when it was last seen.
 pub(crate) fn time_out_sessions_sql() -> String {
     format!(
         "UPDATE sessions SET state = 'ended', ended_at = last_seen_at, end_reason = 'timed_out'
-         WHERE repo_id = ?1 AND state = 'active' AND last_seen_at <= ?2
+         WHERE repo_id = ?1 AND state = 'active' AND last_seen_at <= ?2 AND id = ?3
          RETURNING {SESSION_COLUMNS}"
     )
 }
 
-/// Expires a repository's (`?1`) active claims due at or before `?2`.
+/// Expires a repository's (`?1`) active claim `?3` if due at or before `?2`.
 pub(crate) fn expire_claims_sql() -> String {
     format!(
         "UPDATE claims SET state = 'expired', ended_at = expires_at, end_reason = 'expired'
-         WHERE repo_id = ?1 AND state = 'active' AND expires_at <= ?2
+         WHERE repo_id = ?1 AND state = 'active' AND expires_at <= ?2 AND id = ?3
          RETURNING {CLAIM_COLUMNS}"
     )
 }
@@ -211,29 +215,105 @@ impl Work {
         let now = now_ms();
         let quiet_since = rfc3339(now.saturating_sub(SESSION_TIMEOUT_MS));
         let at = rfc3339(now);
-        let results = self
+        // Read first: most of the time nothing is due, and nothing is written.
+        let due = self
             .db
             .batch(vec![
-                self.db.prepare(time_out_sessions_sql()).bind(&[repo_id.into(), quiet_since.as_str().into()])?,
-                self.db.prepare(expire_claims_sql()).bind(&[repo_id.into(), at.as_str().into()])?,
+                self.db
+                    .prepare(format!(
+                        "SELECT {SESSION_COLUMNS} FROM sessions
+                         WHERE repo_id = ?1 AND state = 'active' AND last_seen_at <= ?2 LIMIT ?3"
+                    ))
+                    .bind(&[repo_id.into(), quiet_since.as_str().into(), SWEEP_LIMIT.into()])?,
+                self.db
+                    .prepare(format!(
+                        "SELECT {CLAIM_COLUMNS} FROM claims
+                         WHERE repo_id = ?1 AND state = 'active' AND expires_at <= ?2 LIMIT ?3"
+                    ))
+                    .bind(&[repo_id.into(), at.as_str().into(), SWEEP_LIMIT.into()])?,
             ])
             .await?;
-        let mut results = results.into_iter();
-        let ended: Vec<SessionRow> = match results.next() {
+        let mut due = due.into_iter();
+        let quiet: Vec<SessionRow> = match due.next() {
             Some(result) => result.results()?,
             None => Vec::new(),
         };
-        let expired: Vec<ClaimRow> = match results.next() {
+        let lapsed: Vec<ClaimRow> = match due.next() {
             Some(result) => result.results()?,
             None => Vec::new(),
         };
-        for row in ended {
-            let session = row.at(now);
-            self.publish_as("session.ended", repo_id, None, SessionEvent::of(&session)).await?;
+        if quiet.is_empty() && lapsed.is_empty() {
+            return Ok(());
         }
-        for row in expired {
+        // Each one's end and its updates are one change: a sweep running at
+        // the same moment ends it, and delivers it, once.
+        let mut statements = Vec::new();
+        let mut sessions = Vec::new();
+        for row in quiet {
+            statements.push(
+                self.db
+                    .prepare(time_out_sessions_sql())
+                    .bind(&[repo_id.into(), quiet_since.as_str().into(), row.id.as_str().into()])?,
+            );
+            let index = statements.len() - 1;
+            let ended_at = row.last_seen_at.clone();
+            let expected = SessionRow {
+                state: "ended".to_owned(),
+                ended_at: Some(ended_at.clone()),
+                end_reason: Some("timed_out".to_owned()),
+                ..row
+            }
+            .at(now);
+            let delivery = self.delivery(
+                "session.ended",
+                repo_id,
+                serde_json::to_value(SessionEvent::of(&expected))?,
+                &format!("{}:ended:{ended_at}", expected.id),
+                "EXISTS (SELECT 1 FROM sessions WHERE id = ?7 AND state = 'ended' AND ended_at = ?8)",
+                vec![expected.id.as_str().into(), ended_at.as_str().into()],
+            )?;
+            sessions.push((index, updates::push_delivery(&mut statements, delivery)));
+        }
+        let mut claims = Vec::new();
+        for row in lapsed {
+            statements.push(
+                self.db.prepare(expire_claims_sql()).bind(&[repo_id.into(), at.as_str().into(), row.id.as_str().into()])?,
+            );
+            let index = statements.len() - 1;
+            let held = Claim::from(row);
+            let expected = Claim {
+                state: ClaimState::Expired,
+                ended_at: Some(held.expires_at.clone()),
+                end_reason: Some("expired".to_owned()),
+                ..held
+            };
+            let delivery = self.delivery(
+                "work.claim_expired",
+                repo_id,
+                serde_json::to_value(ClaimEvent::of(&expected))?,
+                &format!("{}:{}", expected.id, ClaimState::Expired.as_str()),
+                "EXISTS (SELECT 1 FROM claims WHERE id = ?7 AND state = 'expired')",
+                vec![expected.id.as_str().into()],
+            )?;
+            claims.push((index, updates::push_delivery(&mut statements, delivery)));
+        }
+        let results = self.db.batch(statements).await?;
+        let returned = |index: usize| results.get(index);
+        for (index, sent) in sessions {
+            let Some(row) = returned(index).map(|result| result.results::<SessionRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
+            else {
+                continue;
+            };
+            let session = row.at(now);
+            self.delivered(sent, "session.ended", repo_id, None, serde_json::to_value(SessionEvent::of(&session))?).await?;
+        }
+        for (index, sent) in claims {
+            let Some(row) = returned(index).map(|result| result.results::<ClaimRow>()).transpose()?.and_then(|rows| rows.into_iter().next())
+            else {
+                continue;
+            };
             let claim = Claim::from(row);
-            self.publish_as("work.claim_expired", repo_id, None, ClaimEvent::of(&claim)).await?;
+            self.delivered(sent, "work.claim_expired", repo_id, None, serde_json::to_value(ClaimEvent::of(&claim))?).await?;
         }
         Ok(())
     }

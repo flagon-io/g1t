@@ -251,7 +251,8 @@ $G1T_SESSION"`) and they lead back to it.
 
 When a file a session touched was touched by another active session as
 well (outside its own parents and subagents), g1t sends `overlap.detected`
-to both, naming each other and the files: once per pair.
+to both, naming each other and the files: once per pair, and again when
+they touch another file in common, naming the new files.
 
 ## Start a session on your Anthropic account
 
@@ -396,7 +397,8 @@ Sessions overlap too, before there is a pull request: when a session says
 it touched a file that another active session touched (see
 [What a session worked on](#what-a-session-worked-on)), each gets
 `overlap.detected` with `session_id`, `other_session_id`, `other_actor`
-and `files`, once per pair.
+and `files`, once per pair, and again with the new `files` when another
+file in common joins.
 
 ## Events
 
@@ -435,3 +437,80 @@ With an access token, sessions (and `start_agent_session`) need
 `pull_requests:read` or `pull_requests:write`, and claims and `get_work`
 need `issues:read` or `issues:write`, as
 [scopes](/guides/authentication/#scopes) say.
+
+## Pending coordination updates
+
+These commands work with Codex, Claude, or another harness using the same
+session API. There is no provider-specific acknowledgement protocol:
+
+```sh
+g1t session updates --json
+g1t session acknowledge upd_ID --note "My scope is separate; no plan change"
+```
+
+They use `G1T_SESSION` (or the working copy's remembered session).
+`session updates`, `session acknowledge` and `session heartbeat` first say
+which files the working copy has changed (from `git status`), as
+`session touch --file` would, so overlapping edits are noticed whichever
+harness makes them; `G1T_TOUCH=0` turns that off. To avoid
+shared-checkout ambiguity, `updates SESSION_ID` and `acknowledge --session
+SESSION_ID` select a session explicitly. The acknowledgement command records
+a decision note before clearing updates, with an idempotency key for retries.
+The raw API below also works with older CLI installations.
+
+`g1t api get_session -f id=SESSION_ID` returns up to 100 pending `updates`,
+oldest first, separately from transcript entries (give `after=4294967295` to
+leave the entries out). Updates are claims, releases, hand-offs and expiries,
+overlaps, dependency changes, decisions, integration results, and sessions
+starting and ending.
+
+An active session receives the updates that concern it:
+
+| The session is | It receives |
+| --- | --- |
+| Attached to an issue or pull request, or tied to one (a claim, its branch, a `#N` it named) | Updates about that issue or pull request: its claims, decisions, overlaps, dependency changes and integration results, and those that name it, such as an integration failure listing it as a suspect or an issue newly blocked by it |
+| Not on anything yet | Every update, so it can find who else is working and on what |
+| Either | Updates about nothing in particular, such as a session starting without an issue; and an overlap between its own files and another session's, which goes only to the two sessions |
+
+A session does not receive its own start or end, or the claims it made,
+released or handed off. It does hear when its claim expires. New sessions
+should still load issue context: an inbox is not a replay of what happened
+before the session started.
+
+Reading does not clear an update. After considering it and recording any
+change of plan, the session owner acknowledges exact IDs:
+
+```sh
+g1t api record_session_entries -f id=SESSION_ID -f 'acknowledge[]=UPDATE_ID'
+```
+
+Repeat the field for multiple IDs, at most 100 per request, then read again
+for the next page. Acknowledgement is idempotent and scoped to that session.
+It means considered, not resolved. The response's `acknowledged` says how
+many of the IDs name updates of that session, so a mistyped ID or one from
+another session shows up as a shortfall (the CLI warns). The session page
+shows pending updates.
+
+Claude Code hooks retrieve updates in the background, at most once per ten
+seconds when a successful cached response exists, and at once after an
+acknowledgement. Every prompt shows what is pending; before a tool, pending
+updates are shown when they change and again every two minutes. Delivery
+repeats until acknowledged. Other
+harnesses, including managed sessions, should poll between work steps using
+the coordination skill. Neither a disconnected harness nor an idle session
+is interrupted in real time.
+
+An update is written in the same transaction as the change it announces: a
+claim, release, hand-off, expiry, session start or end, overlap, decision or
+change to what an issue is blocked by is never kept without its updates, and
+updates never announce a change that was not made. Each update's ID is
+derived from its change, so a retried request, or two requests making the
+same change at once, delivers it once. The one exception is the notice that
+an issue's blocker closed or merged, which follows the close or merge: it
+is written right after, once per close or merge. Updates are still a
+summary: re-read current issue and pull request state before consequential
+actions.
+
+Acknowledged updates are kept as receipts for 30 days. Pending updates stay
+until acknowledged, including those of a session that ended, so whoever
+takes over its work can see what it never considered.

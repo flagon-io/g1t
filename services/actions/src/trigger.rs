@@ -1297,6 +1297,12 @@ pub struct MergeGroupArgs {
     pub ahead: Vec<u32>,
 }
 
+impl MergeGroupArgs {
+    fn event_key(&self) -> String {
+        format!("merge_group:{}:{}:{}", self.entry, self.head_ref, self.sha)
+    }
+}
+
 impl Actions {
     /// `merge_group`: the merge queue built a state and its checks passed.
     /// Starts the workflows that run `on: merge_group` on it, as GitHub's
@@ -1356,8 +1362,11 @@ impl Actions {
                 merge: None,
             };
             let info = self.run_info(&repo, &workflow, "merge_group", &subject, &repo.namespace, None);
+            // Its pending status must be registered: the queue waits on
+            // this attempt's runs, and one it was never told about would
+            // read as finished. A failure fails the dispatch (Work retests).
             let created = self
-                .create_run(NewRun {
+                .create_run_registered(NewRun {
                     repo: repo.clone(),
                     path: file.path.clone(),
                     source: file.source.clone(),
@@ -1367,7 +1376,7 @@ impl Actions {
                     pull: Some(a.number),
                     title: subject.title.clone(),
                     inputs: Map::new(),
-                    event_key: format!("merge_group:{}:{}", a.entry, a.sha),
+                    event_key: a.event_key(),
                     actor_id: None,
                     actor: None,
                     trusted: true,
@@ -1375,9 +1384,9 @@ impl Actions {
                     head_sha: None,
                 })
                 .await?;
-            if created.is_some() {
-                started += 1;
-            }
+            // Retried dispatches still await runs already registered for the group.
+            let _ = created;
+            started += 1;
         }
         Ok(Outcome::Ok(json!({ "runs": started })))
     }
@@ -1471,6 +1480,19 @@ fn event_inputs(inputs: &Map<String, Value>) -> Map<String, Value> {
 mod tests {
     use super::*;
     use g1t_contracts::work::{Pull, g1t_author};
+
+    #[test]
+    fn merge_group_retries_deduplicate_but_new_attempts_run_again() {
+        let mut args = MergeGroupArgs { repo_id: "repo".into(), entry: "entry".into(), sha: "tested".into(),
+            head_ref: "refs/heads/g1t-queue/entry-first".into(), base_sha: Some("base".into()), number: 1, ahead: vec![] };
+        let first = args.event_key();
+        assert_eq!(first, args.event_key());
+        args.head_ref = "refs/heads/g1t-queue/entry-second".into();
+        assert_ne!(first, args.event_key());
+        let second = args.event_key();
+        args.sha = "different".into();
+        assert_ne!(second, args.event_key());
+    }
 
     #[test]
     fn every_event_a_workflow_runs_on_is_sent_to_this_queue() {

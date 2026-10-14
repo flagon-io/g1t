@@ -10,7 +10,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use crate::cli::{
-    SessionAttachArgs, SessionCommand, SessionEndArgs, SessionListArgs, SessionLogArgs,
+    SessionAcknowledgeArgs, SessionAttachArgs, SessionCommand, SessionEndArgs, SessionListArgs, SessionLogArgs,
     SessionStartArgs, SessionState, SessionTouchArgs, SessionViewArgs,
 };
 use crate::client::Client;
@@ -28,6 +28,8 @@ pub fn run(ctx: &Ctx, command: SessionCommand) -> Result<()> {
         SessionCommand::End(args) => end(ctx, args),
         SessionCommand::List(args) => list(ctx, args),
         SessionCommand::View(args) => view(ctx, args),
+        SessionCommand::Updates(args) => updates(ctx, args),
+        SessionCommand::Acknowledge(args) => acknowledge(ctx, args),
         SessionCommand::Touch(args) => touch(ctx, args),
     }
 }
@@ -124,10 +126,66 @@ fn start(ctx: &Ctx, args: SessionStartArgs) -> Result<()> {
     Ok(())
 }
 
+/// The most files said at once, as the server takes them.
+const MAX_CHANGED: usize = 200;
+
+/// The files changed in this working copy, from its root: modified, added,
+/// deleted, renamed (by the new name) and untracked, never ignored. Empty
+/// outside a working copy, or with `G1T_TOUCH=0`.
+fn working_changes() -> Vec<String> {
+    if std::env::var("G1T_TOUCH").is_ok_and(|value| value.trim() == "0") {
+        return Vec::new();
+    }
+    crate::git::run(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+        .map(|out| changed_paths(&out))
+        .unwrap_or_default()
+}
+
+/// The paths in `git status --porcelain=v1 -z` output, at most
+/// [`MAX_CHANGED`]. A rename or copy names its new path, then its old one.
+fn changed_paths(status: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut records = status.split('\0').filter(|record| !record.is_empty());
+    while let Some(record) = records.next() {
+        let Some((code, path)) = record.split_at_checked(3) else {
+            continue;
+        };
+        if code.starts_with('R') || code.starts_with('C') {
+            records.next();
+        }
+        if !path.is_empty() && !paths.iter().any(|known: &String| known == path) {
+            paths.push(path.to_owned());
+        }
+        if paths.len() == MAX_CHANGED {
+            break;
+        }
+    }
+    paths
+}
+
+/// Says what this working copy changed as touched by session `id`, so that
+/// another session changing the same files is an `overlap.detected` for
+/// both whichever harness either runs in. A file is kept once, so saying it
+/// again does nothing. Never fails the command it is part of.
+fn say_changes(client: &crate::client::Client, repo: &crate::repo::Repo, id: &str) {
+    let files: Vec<Value> = working_changes().into_iter().map(|file| json!({ "kind": "file", "value": file })).collect();
+    if files.is_empty() {
+        return;
+    }
+    let _ = client
+        .op("record_session_entries")
+        .repo(repo)
+        .arg("id", id)
+        .field("entries", json!([]))
+        .field("touched", Value::Array(files))
+        .send();
+}
+
 fn heartbeat(ctx: &Ctx) -> Result<()> {
     let id = required()?;
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     let found = client.op("update_session").repo(&repo).arg("id", &id).send()?;
+    say_changes(&client, &repo, &id);
     if ctx.out.structured() {
         return ctx.out.emit(&session_of(found));
     }
@@ -325,6 +383,56 @@ fn touch(ctx: &Ctx, args: SessionTouchArgs) -> Result<()> {
     Ok(())
 }
 
+fn updates(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
+    let id = match args.id { Some(id) => id, None => required()? };
+    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
+    // First, so an overlap the changes make is among the updates read.
+    say_changes(&client, &repo, &id);
+    let found = client.op("get_session").repo(&repo).arg("id", &id).query("after", u32::MAX).send()?;
+    // A server without inbox support must not masquerade as an empty inbox.
+    let updates = found.get("updates").and_then(Value::as_array)
+        .ok_or_else(|| Error::failed("This server does not expose session updates yet."))?;
+    if ctx.out.structured() { return ctx.out.emit(&json!({ "session_id": id, "updates": updates })); }
+    if updates.is_empty() { println!("No pending updates for {id}."); }
+    for update in updates {
+        println!("{} {} {}", s(update, "id"), s(update, "kind"), s(update, "at"));
+        println!("{}", serde_json::to_string_pretty(&update["data"]).expect("JSON values serialize"));
+    }
+    Ok(())
+}
+
+fn acknowledgement_entries(ids: &[String], note: &str) -> Value {
+    use sha2::{Digest, Sha256};
+    // Sorting makes a retry with the same IDs in another order idempotent.
+    let mut ids = ids.to_vec();
+    ids.sort();
+    ids.dedup();
+    let key = hex::encode(Sha256::digest(serde_json::to_vec(&ids).expect("strings serialize")));
+    json!([{ "kind": "note", "text": format!("Coordination updates {}: {}", ids.join(", "), note.trim()), "key": format!("ack:{key}") }])
+}
+
+fn acknowledge(ctx: &Ctx, args: SessionAcknowledgeArgs) -> Result<()> {
+    if args.note.trim().is_empty() { return Err(Error::usage("Say what you decided in --note.")); }
+    let id = match args.session { Some(id) => id, None => required()? };
+    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
+    let touched: Vec<Value> = working_changes().into_iter().map(|file| json!({ "kind": "file", "value": file })).collect();
+    let found = client.op("record_session_entries").repo(&repo).arg("id", &id)
+        .field("entries", acknowledgement_entries(&args.updates, &args.note))
+        .field("touched", Value::Array(touched))
+        .field("acknowledge", json!(args.updates)).send()?;
+    let mut given = args.updates.clone();
+    given.sort();
+    given.dedup();
+    // An older server does not count; only a count that falls short is news.
+    let missed = found.get("acknowledged").and_then(Value::as_u64).map(|n| given.len() as u64 - n.min(given.len() as u64)).unwrap_or(0);
+    if ctx.out.structured() { return ctx.out.emit(&found); }
+    println!("Recorded your decision and acknowledged the named updates for {id}.");
+    if missed > 0 {
+        eprintln!("{missed} of those IDs are not updates of {id}: check them with `g1t session updates {id}`.");
+    }
+    Ok(())
+}
+
 fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     let id = match args.id {
         Some(id) => id,
@@ -335,7 +443,7 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
     let mut session = session_of(found.clone());
     if let Some(map) = session.as_object_mut() {
         map.insert("entries".into(), found.get("entries").cloned().unwrap_or_else(|| json!([])));
-        for key in ["children", "touched", "links", "skills", "root"] {
+        for key in ["children", "touched", "links", "skills", "root", "updates"] {
             if let Some(value) = found.get(key) {
                 map.insert(key.into(), value.clone());
             }
@@ -504,4 +612,22 @@ mod tests {
         assert_eq!(place(&json!({ "issue": 12, "pull": 14, "branch": "fix-x" })), "#12, pull #14, fix-x");
         assert_eq!(place(&json!({ "issue": null, "branch": "" })), "");
     }
+    #[test]
+    fn changed_files_are_read_from_porcelain_status() {
+        let status = " M src/a.rs\0?? notes/new.md\0R  src/new.rs\0src/old.rs\0R  b.rs\0a\0D  gone.rs\0 M src/a.rs\0";
+        assert_eq!(changed_paths(status), ["src/a.rs", "notes/new.md", "src/new.rs", "b.rs", "gone.rs"]);
+        assert!(changed_paths("").is_empty());
+        let many: String = (0..300).map(|n| format!("?? f{n}\0")).collect();
+        assert_eq!(changed_paths(&many).len(), MAX_CHANGED);
+    }
+
+    #[test]
+    fn acknowledgement_notes_are_idempotent_for_the_same_update_set() {
+        let first = acknowledgement_entries(&["upd_b".into(), "upd_a".into()], "Scopes are separate");
+        let retry = acknowledgement_entries(&["upd_a".into(), "upd_b".into(), "upd_a".into()], "Scopes are separate");
+        assert_eq!(first, retry);
+        assert_ne!(first[0]["key"], acknowledgement_entries(&["upd_c".into()], "Scopes are separate")[0]["key"]);
+        assert!(first[0]["text"].as_str().unwrap().contains("upd_a, upd_b"));
+    }
+
 }

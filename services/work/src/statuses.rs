@@ -7,6 +7,7 @@
 //! refuses the merge, for everyone and for the merge queue (`g1t_rules`
 //! says so).
 
+use g1t_contracts::actions::{Job, WorkflowRun};
 use g1t_contracts::checks::StatusEvent;
 use g1t_contracts::events::ChecksEvent;
 use g1t_contracts::time::rfc3339;
@@ -64,6 +65,12 @@ pub(crate) struct WorkflowFacts {
 }
 
 impl WorkflowFacts {
+    /// Missing and pending required checks are not evidence of a passing build.
+    pub(crate) fn passed(&self) -> bool {
+        self.pending.is_empty() && self.failed.is_empty()
+            && self.required.iter().all(|check| check.state == RequiredState::Success)
+    }
+
     /// `required` names the checks the default branch's protection requires.
     pub(crate) fn of(statuses: &[CommitStatus], required: &[String]) -> WorkflowFacts {
         WorkflowFacts {
@@ -85,6 +92,97 @@ impl WorkflowFacts {
     /// The required checks nothing has reported on the commit yet.
     pub(crate) fn expected(&self) -> Vec<String> {
         self.required_in(RequiredState::Expected)
+    }
+}
+
+/// One merge-queue attempt (or probe) whose evidence is being read: the
+/// commit it built, the branch its `merge_group` runs were started on, when
+/// it was claimed, and how many runs its dispatch registered.
+pub(crate) struct Attempt<'a> {
+    pub(crate) sha: &'a str,
+    pub(crate) head_ref: String,
+    pub(crate) since: Option<&'a str>,
+    pub(crate) runs: u32,
+}
+
+/// What reported on the commit for this attempt, and only for it.
+pub(crate) struct AttemptEvidence {
+    /// Workflow-level statuses of this attempt's runs, and other tools'
+    /// statuses set since the attempt was claimed.
+    pub(crate) statuses: Vec<CommitStatus>,
+    /// This attempt's runs' jobs, as statuses (required checks named for jobs).
+    pub(crate) jobs: Vec<CommitStatus>,
+    /// Fewer of its runs were found than its dispatch registered.
+    pub(crate) runs_missing: bool,
+}
+
+/// The same commit can be built by several attempts (a fast-forward merge
+/// is the pull request's own head), and statuses are kept per commit and
+/// context: an earlier attempt's result, or the pull request's own checks,
+/// would otherwise decide this one. Actions' statuses are replaced by this
+/// attempt's own runs (started on its own branch); anything else counts
+/// only once set after the attempt was claimed.
+pub(crate) fn attempt_evidence(
+    statuses: &[CommitStatus],
+    runs: &[(WorkflowRun, Vec<Job>)],
+    attempt: &Attempt<'_>,
+) -> AttemptEvidence {
+    let mut kept: Vec<CommitStatus> = statuses
+        .iter()
+        .filter(|status| status.source.as_deref() != Some("actions"))
+        .filter(|status| attempt.since.is_none_or(|since| status.updated_at.as_str() >= since))
+        .cloned()
+        .collect();
+    let ours: Vec<(WorkflowRun, Vec<Job>)> = runs
+        .iter()
+        .filter(|(run, _)| run.sha == attempt.sha && run.git_ref == attempt.head_ref)
+        .cloned()
+        .collect();
+    let latest = g1t_contracts::checks::latest_runs(&ours);
+    for (run, _) in &latest {
+        let state = match (run.status.as_str(), run.conclusion.as_deref()) {
+            ("completed", Some("success" | "skipped" | "neutral")) => "success",
+            ("completed", _) => "failure",
+            _ => "pending",
+        };
+        kept.push(CommitStatus {
+            context: format!("{} / {}", run.name, run.event),
+            state: state.to_owned(),
+            description: run.error.clone(),
+            target_url: None,
+            updated_at: run.finished_at.clone().unwrap_or_else(|| run.created_at.clone()),
+            source: Some("actions".to_owned()),
+            check_run_id: None,
+        });
+    }
+    AttemptEvidence {
+        statuses: kept,
+        jobs: g1t_contracts::checks::job_statuses(&ours, attempt.sha),
+        runs_missing: (latest.len() as u32) < attempt.runs,
+    }
+}
+
+impl AttemptEvidence {
+    /// Where the attempt stands against the required checks. Runs its
+    /// dispatch registered but that cannot be found are still to come.
+    pub(crate) fn facts(&self, required: &[String]) -> WorkflowFacts {
+        let mut facts = WorkflowFacts::of(&self.statuses, required);
+        if !required.is_empty() {
+            let mut all = self.statuses.clone();
+            all.extend(self.jobs.iter().cloned());
+            facts.required = required_checks(required, &all);
+        }
+        if self.runs_missing {
+            facts.pending.push("merge_group workflows".to_owned());
+        }
+        facts
+    }
+
+    /// Everything the attempt's rules are judged against.
+    pub(crate) fn all(&self) -> Vec<CommitStatus> {
+        let mut all = self.statuses.clone();
+        all.extend(self.jobs.iter().cloned());
+        all
     }
 }
 
@@ -156,6 +254,28 @@ impl Work {
             facts.required = required_checks(required, &self.with_job_checks(repo_id, sha, statuses.to_vec()).await?);
         }
         Ok(facts)
+    }
+
+    /// This attempt's evidence on its commit ([`attempt_evidence`]).
+    pub(crate) async fn attempt_statuses(&self, repo_id: &str, attempt: &Attempt<'_>) -> Result<AttemptEvidence> {
+        let (statuses, runs) = futures_util::future::try_join(
+            self.statuses(repo_id, Some(attempt.sha)),
+            self.actions_runs(g1t_contracts::checks::ActionsChecksArgs {
+                repo_id: repo_id.to_owned(),
+                shas: vec![attempt.sha.to_owned()],
+                ..Default::default()
+            }),
+        )
+        .await?;
+        let runs: Vec<_> = runs.into_iter().map(|detail| (detail.run, detail.jobs)).collect();
+        Ok(attempt_evidence(&statuses, &runs, attempt))
+    }
+
+    /// Where one attempt stands against the default branch's required checks.
+    pub(crate) async fn attempt_facts(&self, repo_id: &str, attempt: &Attempt<'_>) -> Result<WorkflowFacts> {
+        let (evidence, settings) =
+            futures_util::future::try_join(self.attempt_statuses(repo_id, attempt), self.settings_by_id(repo_id)).await?;
+        Ok(evidence.facts(&settings.required_checks))
     }
 
     /// `statuses` and, for each g1t Actions job on `sha`, the status its
@@ -267,14 +387,16 @@ impl Work {
         if a.state == "pending" {
             return Ok(Outcome::Ok(true));
         }
+        // A merge queue state waiting on its merge_group workflows: judged
+        // on its own attempt's evidence, whatever else is pending on the
+        // commit (the pull request's own checks, an earlier attempt's).
+        self.merge_group_finished(&a.repo_id, &a.sha).await?;
         // Once every workflow on a pull request's head has finished, its
         // lifecycle moves on, as it does when its checks finish.
         let facts = self.facts(&a.repo_id, Some(&a.sha)).await?;
         if !facts.pending.is_empty() {
             return Ok(Outcome::Ok(true));
         }
-        // A merge queue state waiting on its merge_group workflows.
-        self.merge_group_finished(&a.repo_id, &a.sha, &facts).await?;
         let heads = self
             .db
             .prepare("SELECT id, number FROM pulls WHERE repo_id = ? AND head_commit = ? AND status IN ('draft', 'open')")
@@ -348,6 +470,87 @@ mod tests {
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    fn run(id: &str, git_ref: &str, event: &str, status: &str, conclusion: Option<&str>) -> (WorkflowRun, Vec<Job>) {
+        let run: WorkflowRun = serde_json::from_value(serde_json::json!({
+            "id": id, "workflowId": "wf", "path": ".g1t/workflows/ci.yml", "name": "CI", "title": "t",
+            "number": 1, "attempt": 1, "event": event, "ref": git_ref, "sha": "same", "pull": null,
+            "status": status, "conclusion": conclusion, "error": null, "actor": null,
+            "createdAt": "2026-10-14T10:00:00.000Z", "startedAt": null, "finishedAt": null,
+        }))
+        .unwrap();
+        let job: Job = serde_json::from_value(serde_json::json!({
+            "id": format!("job_{id}"), "runId": id, "key": "test", "name": "test", "needs": [],
+            "status": status, "conclusion": conclusion, "steps": [], "annotations": [],
+            "reason": null, "startedAt": null, "finishedAt": null,
+        }))
+        .unwrap();
+        (run, vec![job])
+    }
+
+    fn attempt(head_ref: &str, runs: u32) -> Attempt<'static> {
+        Attempt { sha: "same", head_ref: head_ref.into(), since: Some("2026-10-14T10:00:00.000Z"), runs }
+    }
+
+    #[test]
+    fn a_retry_on_the_same_commit_is_not_decided_by_the_earlier_attempt() {
+        const OLD: &str = "refs/heads/g1t-queue/qen_1-old";
+        const NEW: &str = "refs/heads/g1t-queue/qen_1-new";
+        let required = names(&["CI"]);
+        // The commit's statuses: the flaky earlier attempt's failure under
+        // the shared context, and the pull request's own passing checks.
+        let mut flaky = status("CI / merge_group", "failure");
+        flaky.source = Some("actions".into());
+        let mut own = status("CI / pull_request", "success");
+        own.source = Some("actions".into());
+        let statuses = [flaky, own];
+        let old = run("run_old", OLD, "merge_group", "completed", Some("failure"));
+        let pr = run("run_pr", "refs/heads/feature", "pull_request", "completed", Some("success"));
+        // Read right after the retry's dispatch: its run is still going.
+        let going = run("run_new", NEW, "merge_group", "in_progress", None);
+        let runs = [going.clone(), pr.clone(), old.clone()];
+        let facts = attempt_evidence(&statuses, &runs, &attempt(NEW, 1)).facts(&required);
+        assert!(facts.failed.is_empty(), "the earlier attempt's failure is not this one's: {facts:?}");
+        assert!(!facts.pending.is_empty() && !facts.passed());
+        // Nor does the pull request's own run satisfy the required check.
+        let none = attempt_evidence(&statuses, &[pr.clone(), old.clone()], &attempt(NEW, 0)).facts(&required);
+        assert!(!none.passed());
+        assert_eq!(none.expected(), ["CI"]);
+        let done = run("run_new", NEW, "merge_group", "completed", Some("success"));
+        let facts = attempt_evidence(&statuses, &[done, pr, old], &attempt(NEW, 1)).facts(&required);
+        assert!(facts.passed(), "{facts:?}");
+    }
+
+    #[test]
+    fn runs_the_dispatch_registered_but_cannot_be_read_are_still_pending() {
+        // The actions service could not be read: no runs at all.
+        let facts = attempt_evidence(&[], &[], &attempt("refs/heads/g1t-queue/x", 2)).facts(&[]);
+        assert!(!facts.passed(), "never a pass from missing evidence");
+        assert!(!facts.pending.is_empty());
+        let one = run("run_a", "refs/heads/g1t-queue/x", "merge_group", "completed", Some("success"));
+        assert!(!attempt_evidence(&[], &[one.clone()], &attempt("refs/heads/g1t-queue/x", 2)).facts(&[]).passed());
+        assert!(attempt_evidence(&[], &[one], &attempt("refs/heads/g1t-queue/x", 1)).facts(&[]).passed());
+    }
+
+    #[test]
+    fn other_tools_count_only_once_set_after_the_attempt_was_claimed() {
+        let mut before = status("deploy / preview", "failure");
+        before.updated_at = "2026-10-14T09:59:59.999Z".into();
+        let mut after = status("lint", "success");
+        after.updated_at = "2026-10-14T10:00:00.000Z".into();
+        let evidence = attempt_evidence(&[before, after], &[], &attempt("refs/heads/g1t-queue/x", 0));
+        let contexts: Vec<&str> = evidence.statuses.iter().map(|status| status.context.as_str()).collect();
+        assert_eq!(contexts, ["lint"]);
+    }
+
+    #[test]
+    fn integration_evidence_requires_completed_checks() {
+        let required = names(&["CI"]);
+        assert!(!WorkflowFacts::of(&[], &required).passed());
+        assert!(!WorkflowFacts::of(&[status("CI", "pending")], &required).passed());
+        assert!(!WorkflowFacts::of(&[status("CI", "failure")], &required).passed());
+        assert!(WorkflowFacts::of(&[status("CI", "success")], &required).passed());
     }
 
     #[test]
