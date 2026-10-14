@@ -15,6 +15,7 @@ import type { Route } from "./+types/settings";
 import { page } from "../../lib/meta";
 import { useAddresses } from "../../lib/addresses";
 import { AvatarField } from "../../components/avatar-field";
+import { GettingStartedButton } from "../../components/onboarding";
 import { DangerAction, DangerZone } from "../../components/danger-zone";
 import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import {
@@ -156,6 +157,17 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
   const { workspace } = loaderData;
   return (
     <div className="max-w-lg space-y-10">
+      <section>
+        <h2 className="font-medium">Getting started</h2>
+        <p className="mt-1.5 text-sm text-muted">
+          The setup guide that opened on Home: an AI provider, Ask&apos;s model, your code, your coding agent, your team and a
+          runner, each ticked off as the workspace has it. Open it again any time.
+        </p>
+        <div className="mt-3">
+          <GettingStartedButton slug={workspace.slug} />
+        </div>
+      </section>
+
       <section>
         <h2 className="font-medium">Icon</h2>
         <div className="mt-4">

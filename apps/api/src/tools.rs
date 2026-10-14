@@ -30,6 +30,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -618,6 +619,9 @@ pub const REST_ONLY: &[Op] = &[
     Op::Telemetry(TelemetryOp::UpdateExport),
     Op::Telemetry(TelemetryOp::DeleteExport),
     Op::Telemetry(TelemetryOp::GetUsage),
+    // A person's own Getting started is about them at a page, not for agents.
+    Op::Onboarding(OnboardingOp::GetOnboarding),
+    Op::Onboarding(OnboardingOp::UpdateOnboarding),
 ];
 
 /// Operations that cannot be undone, or reach beyond g1t's own records:

@@ -1161,6 +1161,73 @@ pub struct SetDockPinsArgs {
     pub apps: Vec<String>,
 }
 
+// --- Getting started in a workspace ----------------------------------------
+//
+// The setup guide a workspace's owners see on its Home until they finish
+// or dismiss it: adding an AI provider, Ask's model, bringing code,
+// connecting a harness, inviting people and a runner. Whether each step is
+// done is read from the workspace itself (its providers, repositories,
+// members, runners), never kept here; identity keeps only what the person
+// chose: that they dismissed it, and the steps they skipped. Each person's
+// own, per workspace. Mirrors `Onboarding` in
+// packages/contracts/src/identity.ts.
+
+/// The steps of the guide, in order. `ask`, `people` and `runner` can be
+/// skipped; the rest are what a workspace needs to get going.
+pub const ONBOARDING_STEPS: [&str; 6] = ["ai", "ask", "code", "harness", "people", "runner"];
+
+/// A person's own state of the guide in one workspace, as kept and as
+/// answered. Wire fields are snake_case, as the API's are.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Onboarding {
+    /// When they dismissed it, so it no longer opens by itself; null while
+    /// it still does. Opening it again from Settings or the AI page leaves
+    /// this as it is.
+    #[serde(default)]
+    pub dismissed_at: Option<String>,
+    /// The steps they chose to skip, in [`ONBOARDING_STEPS`] order: shown
+    /// as skipped rather than to do, and not counted against finishing.
+    #[serde(default)]
+    pub skipped: Vec<String>,
+    /// When they last changed it; null when they never have.
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// A change to it: only what is sent changes. `dismissed` true dismisses
+/// it now (a second dismissal keeps the first time), false brings it back
+/// to opening by itself. `skipped` replaces the skipped steps.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OnboardingChange {
+    #[serde(default)]
+    pub dismissed: Option<bool>,
+    #[serde(default)]
+    pub skipped: Option<Vec<String>>,
+}
+
+/// `onboarding`: `user`'s own state of the guide in the workspace
+/// `workspace` (a slug). Returns `Outcome<Onboarding>`: the defaults (not
+/// dismissed, nothing skipped) when they never changed it, `not_found`
+/// when they are not one of its members. People only.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingArgs {
+    pub user: User,
+    pub workspace: String,
+}
+
+/// `set_onboarding`: changes `user`'s own state of the guide in
+/// `workspace`. Returns `Outcome<Onboarding>`: as kept, or `invalid` for a
+/// step the guide does not have.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetOnboardingArgs {
+    pub user: User,
+    pub workspace: String,
+    #[serde(default)]
+    pub change: OnboardingChange,
+}
+
 // --- Sounds and desktop notifications --------------------------------------
 //
 // What a person hears when chat moves, kept with their account so a phone,

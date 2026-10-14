@@ -1270,6 +1270,10 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("create_workspace_managed_workflow", Scope::WorkspaceAdmin),
     ("update_workspace_managed_workflow", Scope::WorkspaceAdmin),
     ("delete_workspace_managed_workflow", Scope::WorkspaceAdmin),
+    // A person's own Getting started in a workspace: reading it is reading
+    // the workspace; dismissing it changes only their own account.
+    ("get_onboarding", Scope::WorkspaceRead),
+    ("update_onboarding", Scope::AccountWrite),
     // A workspace's rules for personal access tokens, and the members'
     // tokens that reach it: who has access.
     ("get_token_policy", Scope::WorkspaceRead),

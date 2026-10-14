@@ -190,6 +190,8 @@ export function identityClient(service: ServiceBinding): IdentityApi {
       call("profile_workspaces", { username, viewer, public: publicIn }),
     dockPins: (user, workspace) => call("dock_pins", { user, workspace }),
     setDockPins: (user, workspace, apps) => call("set_dock_pins", { user, workspace, apps }),
+    onboarding: (user, workspace) => call("onboarding", { user, workspace }),
+    setOnboarding: (user, workspace, change) => call("set_onboarding", { user, workspace, change }),
     soundSettings: (user) => call("sound_settings", { user }),
     setSoundSettings: (user, change) => call("set_sound_settings", { user, change }),
     listSshKeys: (user) => call("list_ssh_keys", { user }),

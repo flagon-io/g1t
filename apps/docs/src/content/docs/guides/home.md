@@ -14,6 +14,10 @@ It answers three questions, in this order:
 
 **Start here** picks the one item to do first.
 
+For a workspace's owners, Home also opens
+[Getting started](/guides/workspaces/#getting-started), the setup guide,
+until they finish or close it; `?setup=1` opens it again.
+
 Every number on the page comes from what g1t has recorded. Nothing is
 estimated. When a part of g1t does not answer, the section it feeds says
 so, and the rest of the page still shows.

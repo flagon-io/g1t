@@ -12185,6 +12185,32 @@
     },
     "notes": "From each token's next request, tokens made for all of a member's workspaces no longer reach this one (tokens made for it alone still do), and neither does a token that lasts longer than 90 days or never expires. They keep working everywhere else."
   },
+  "get_onboarding": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "dismissed_at": null,
+      "skipped": [],
+      "updated_at": null
+    },
+    "notes": "Your own: each person has their own Getting started in each workspace they belong to. A person who never dismissed it gets `dismissed_at` null, and the guide opens by itself on the workspace's Home while they own it and steps are left. Whether a step is done is not kept here but read from the workspace: its AI providers (`GET /workspaces/{workspace}/ai/providers`), repositories, members and runners. `404` for anyone who is not a member. See [Getting started](/guides/workspaces/#getting-started)."
+  },
+  "update_onboarding": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "dismissed": true,
+      "skipped": ["people", "runner"]
+    },
+    "response": {
+      "dismissed_at": "2026-10-14T21:05:00.000Z",
+      "skipped": ["people", "runner"],
+      "updated_at": "2026-10-14T21:05:00.000Z"
+    },
+    "notes": "Dismissing it again keeps the first `dismissed_at`; `\"dismissed\": false` makes it open by itself again. A step that is not one of `ai`, `ask`, `code`, `harness`, `people` and `runner` is refused with `422`. Opening the guide again from the workspace's settings or its AI page changes nothing here."
+  },
   "list_member_tokens": {
     "params": {
       "workspace": "flagon-io"

@@ -7,6 +7,7 @@ import { type AiConnection, type AiProvider, type AskSetup, AI_PROVIDERS, aiOwnA
 import type { Route } from "./+types/ai";
 import { page } from "../../lib/meta";
 import { AiProviderMark } from "../../components/connectors";
+import { GettingStartedButton } from "../../components/onboarding";
 import { ConsoleWorkspaceField, ModelCatalog, ModelProviderFields } from "../../components/model-providers";
 import { AI_PROVIDER_LOOKS, isEndpoint } from "../../lib/ai-providers";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
@@ -115,12 +116,15 @@ export default function WorkspaceAi({ loaderData, actionData }: Route.ComponentP
 
   return (
     <div>
-      <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight [&_svg]:size-5">
-        <span className="text-muted">
-          <Sparkles size={16} />
-        </span>
-        AI
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight [&_svg]:size-5">
+          <span className="text-muted">
+            <Sparkles size={16} />
+          </span>
+          AI
+        </h1>
+        {owner && <GettingStartedButton slug={slug} />}
+      </div>
       <p className="mt-1.5 mb-6 border-b border-line pb-6 text-sm text-muted">
         The models g1t works with in {slug}, on your own keys: Ask and @g1t in Chat answer with one, and an Anthropic key
         starts sessions on issues. Use a frontier lab or a platform, or a model you host yourself. g1t hosts no model for

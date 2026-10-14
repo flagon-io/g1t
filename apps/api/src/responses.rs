@@ -122,6 +122,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Deployments(_) => return as_is,
         // So does telemetry.
         Op::Telemetry(_) => return as_is,
+        // So does Getting started, from identity.
+        Op::Onboarding(_) => return through::<g1t_contracts::identity::Onboarding>(op, as_is),
         // Artifacts are shaped by the API itself, in `snake_case`.
         Op::Artifacts(_) => return as_is,
         // The cache's entries travel in `snake_case` from the actions service.
