@@ -949,6 +949,12 @@ impl Billing {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(());
         }
+        // Not before last month's final count of git operations: a
+        // workspace whose usage passed the free amount in the month's last
+        // hours has no pending row yet, so nothing else would hold it.
+        if !self.last_month_final().await? {
+            return Ok(());
+        }
         let now = rfc3339(now_ms());
         let month_start = format!("{}-01", &now[..7]);
         let closing = previous_month(&now[..7]);

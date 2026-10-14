@@ -133,6 +133,35 @@ pub(crate) fn git_cost(operations: u64, included: u64, micros_per_thousand: f64)
     (past as f64 * micros_per_thousand / 1000.0).ceil() as i64
 }
 
+/// How long after a month is over its last git operations are given to
+/// land before its final count: the repos service adds each to its hourly
+/// counts after the answer has gone back.
+pub(crate) const FINAL_MEASURE_AFTER_MS: u64 = 60 * 60 * 1000;
+
+/// How long a month's charge and close wait for its final count of git
+/// operations before going ahead without it (logged): an outage of the
+/// repos service never holds every workspace's invoice for good.
+pub(crate) const FINAL_MEASURE_WAIT_MS: u64 = 3 * 24 * 60 * 60 * 1000;
+
+/// How long ago `month` ended, at `now_ms`; none while it is not over.
+fn since_month_end(now_ms: u64, month: &str) -> Option<u64> {
+    let end = g1t_contracts::time::parse_rfc3339(&credits::next_month_start(month))?;
+    now_ms.checked_sub(end)
+}
+
+/// Whether the final count of `month`'s git operations may be taken at
+/// `now_ms`: the month is over, and its last hour has had time to land.
+pub(crate) fn final_measure_due(now_ms: u64, month: &str) -> bool {
+    since_month_end(now_ms, month).is_some_and(|ms| ms >= FINAL_MEASURE_AFTER_MS)
+}
+
+/// Whether `month`'s metered usage may be charged and the month closed:
+/// its final count of git operations was taken (`measured`), or it has
+/// waited for it long enough.
+pub(crate) fn month_final(measured: bool, now_ms: u64, month: &str) -> bool {
+    since_month_end(now_ms, month).is_some_and(|ms| measured || ms >= FINAL_MEASURE_WAIT_MS)
+}
+
 /// The first hour of `month` to count git operations from.
 pub(crate) fn git_since(month: &str) -> String {
     let start = format!("{month}-01T00");
@@ -325,6 +354,9 @@ impl Billing {
             cost_micros: Option<i64>,
         }
         let marks = CHARGED_HERE.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(", ");
+        // Last month waits for its final count of git operations: the
+        // months before it are due.
+        let due_before = if self.last_month_final().await? { current.clone() } else { crate::limits::previous_month(&current) };
         let due = self
             .db
             // Less what was metered before a test-mode detach: not charged.
@@ -332,70 +364,82 @@ impl Billing {
                 "SELECT workspace, source, month, {NET_COST} AS cost_micros FROM pending_usage
                  WHERE month < ? AND charged_at IS NULL AND source IN ({marks}) ORDER BY month LIMIT 50"
             ))
-            .bind(&[current.as_str().into()])?
+            .bind(&[due_before.as_str().into()])?
             .all()
             .await?
             .results::<Row>()?;
+        // Each row on its own: one that fails (and gives back what it drew)
+        // is logged and tried again next tick, and never holds back the
+        // rest, whose months could otherwise not close.
         for row in due {
-            // Marked charged in the same batch as its ledger entry, never
-            // before: a failure in between leaves it to the next tick, and
-            // the ledger's unique reference keeps two crons from charging
-            // it twice.
-            let mark = || {
-                self.db
-                    .prepare(
-                        "UPDATE pending_usage SET charged_at = ?1
-                         WHERE workspace = ?2 AND source = ?3 AND month = ?4 AND charged_at IS NULL",
-                    )
-                    .bind(&[now.as_str().into(), row.workspace.as_str().into(), row.source.as_str().into(), row.month.as_str().into()])
-            };
-            let cost = row.cost_micros.unwrap_or(0);
-            if cost <= 0 {
-                mark()?.run().await?;
-                continue;
-            }
-            let base = credits::with_margin(cost, self.margin_percent);
-            let (charge, terms_note, discount) = self.charged(&row.workspace, base).await?;
-            // The plan as it was in that month, not as it is now: a plan
-            // started since does not pay for it, and one ended since still
-            // does.
-            let plan = self.had_plan_in(&row.workspace, &row.month).await?;
-            let eligible = month_end_eligible(&row.source, plan);
-            let drawn = self.draw_as(&row.workspace, charge, &row.month, &eligible, plan).await?;
-            let detail = if row.source == "storage" {
-                let gb_months = self.gb_months(&row.workspace, &row.month).await?;
-                format!(": {gb_months:.2} GB-months")
-            } else {
-                String::new()
-            };
-            let description = format!("{} in {}{detail}{terms_note}{}", title(&row.source), row.month, drawn.note());
-            let reference = format!("{}/{}/{}", row.source, row.workspace, row.month);
-            let created_at = credits::month_end(&row.month);
-            let line = UsageLine {
-                workspace: &row.workspace,
-                charged: charge - drawn.total(),
-                description: &description,
-                repo: None,
-                task: &row.source,
-                cost,
-                reference: &reference,
-                created_at: &created_at,
-                drawn,
-            };
-            let posted = match self.post_usage_with(line, vec![mark()?]).await {
-                Ok(posted) => posted,
-                Err(error) => {
-                    // Nothing was written: what was drawn goes back.
-                    self.undraw(&row.workspace, &row.month, &drawn, None).await?;
-                    return Err(error);
+            let charged = async {
+                // Marked charged in the same batch as its ledger entry, never
+                // before: a failure in between leaves it to the next tick, and
+                // the ledger's unique reference keeps two crons from charging
+                // it twice.
+                let mark = || {
+                    self.db
+                        .prepare(
+                            "UPDATE pending_usage SET charged_at = ?1
+                             WHERE workspace = ?2 AND source = ?3 AND month = ?4 AND charged_at IS NULL",
+                        )
+                        .bind(&[now.as_str().into(), row.workspace.as_str().into(), row.source.as_str().into(), row.month.as_str().into()])
+                };
+                let cost = row.cost_micros.unwrap_or(0);
+                if cost <= 0 {
+                    mark()?.run().await?;
+                    return Ok(());
                 }
+                let base = credits::with_margin(cost, self.margin_percent);
+                let (charge, terms_note, discount) = self.charged(&row.workspace, base).await?;
+                // The plan as it was in that month, not as it is now: a plan
+                // started since does not pay for it, and one ended since still
+                // does.
+                let plan = self.had_plan_in(&row.workspace, &row.month).await?;
+                let eligible = month_end_eligible(&row.source, plan);
+                // Read before the draw: nothing between the draw and the
+                // entry may fail without giving it back.
+                let detail = if row.source == "storage" {
+                    let gb_months = self.gb_months(&row.workspace, &row.month).await?;
+                    format!(": {gb_months:.2} GB-months")
+                } else {
+                    String::new()
+                };
+                let marking = mark()?;
+                let drawn = self.draw_as(&row.workspace, charge, &row.month, &eligible, plan).await?;
+                let description = format!("{} in {}{detail}{terms_note}{}", title(&row.source), row.month, drawn.note());
+                let reference = format!("{}/{}/{}", row.source, row.workspace, row.month);
+                let created_at = credits::month_end(&row.month);
+                let line = UsageLine {
+                    workspace: &row.workspace,
+                    charged: charge - drawn.total(),
+                    description: &description,
+                    repo: None,
+                    task: &row.source,
+                    cost,
+                    reference: &reference,
+                    created_at: &created_at,
+                    drawn,
+                };
+                let posted = match self.post_usage_with(line, vec![marking]).await {
+                    Ok(posted) => posted,
+                    Err(error) => {
+                        // Nothing was written: what was drawn goes back.
+                        self.undraw(&row.workspace, &row.month, &drawn, None).await?;
+                        return Err(error);
+                    }
+                };
+                if !posted {
+                    // Charged already (another tick won): give back the draw.
+                    self.undraw(&row.workspace, &row.month, &drawn, None).await?;
+                    return Ok(());
+                }
+                self.record_discount(&reference, discount).await?;
+                Ok::<(), worker::Error>(())
             };
-            if !posted {
-                // Charged already (another tick won): give back the draw.
-                self.undraw(&row.workspace, &row.month, &drawn, None).await?;
-                continue;
+            if let Err(error) = charged.await {
+                worker::console_error!("{}: charging {} for {} failed; tried again next tick: {error}", row.workspace, row.source, row.month);
             }
-            self.record_discount(&reference, discount).await?;
         }
         Ok(())
     }
@@ -582,6 +626,83 @@ impl Billing {
         Ok(())
     }
 
+    /// Once last month is over and its last hour has landed: its final
+    /// count of git operations, for workspaces that had the plan in it,
+    /// then the month marked measured (`measured_months`), which lets its
+    /// usage be charged and the month close. The daily measure ran hours
+    /// before the month ended; charging on it would leave out the
+    /// operations after it. Called every tick until it is done.
+    pub(crate) async fn measure_last_month_git(&self) -> Result<()> {
+        let Some(repos) = &self.repos else { return Ok(()) };
+        let now = now_ms();
+        let previous = crate::limits::previous_month(&credits::month_of(&rfc3339(now)));
+        if !final_measure_due(now, &previous) || self.measured("git", &previous).await? {
+            return Ok(());
+        }
+        let list: Vec<WorkspaceGitOperations> = g1t_kit::call(
+            repos,
+            "git_operations",
+            &GitOperationsArgs { since: Some(git_since(&previous)), month: previous.clone(), namespace: None },
+        )
+        .await?;
+        let price = self.price("git_operations").await?.map_or(GIT_MICROS_PER_THOUSAND as f64, |(cost, _)| cost);
+        for workspace in list {
+            let slug = workspace.namespace.to_lowercase();
+            // The plan as it was that month, as `charge_pending` charges it.
+            if !self.had_plan_in(&slug, &previous).await? {
+                continue;
+            }
+            let cost = git_cost(workspace.operations, self.plans.git_included, price);
+            if cost > 0 {
+                let detail = format!(
+                    "{} operations, {} of them free",
+                    crate::features::thousands(workspace.operations),
+                    crate::features::thousands(self.plans.git_included)
+                );
+                self.set_pending(&slug, "git", &previous, cost, Some(&detail)).await?;
+            }
+        }
+        self.db
+            .prepare("INSERT OR IGNORE INTO measured_months (source, month, measured_at) VALUES ('git', ?1, ?2)")
+            .bind(&[previous.as_str().into(), rfc3339(now).into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Whether `source`'s final count of `month` was taken.
+    async fn measured(&self, source: &str, month: &str) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct Row {
+            #[allow(dead_code)]
+            month: String,
+        }
+        Ok(self
+            .db
+            .prepare("SELECT month FROM measured_months WHERE source = ? AND month = ?")
+            .bind(&[source.into(), month.into()])?
+            .first::<Row>(None)
+            .await?
+            .is_some())
+    }
+
+    /// Whether last month's metered usage may be charged and the month
+    /// closed (`month_final`). Without a repos service there are no git
+    /// operations to wait for.
+    pub(crate) async fn last_month_final(&self) -> Result<bool> {
+        if self.repos.is_none() {
+            return Ok(true);
+        }
+        let now = now_ms();
+        let previous = crate::limits::previous_month(&credits::month_of(&rfc3339(now)));
+        let measured = self.measured("git", &previous).await?;
+        let ready = month_final(measured, now, &previous);
+        if ready && !measured {
+            worker::console_error!("closing {previous} without its final count of git operations: it was never taken");
+        }
+        Ok(ready)
+    }
+
     /// The workspace's git operations this month, as last measured.
     pub(crate) async fn git_operations_this_month(&self, workspace: &str) -> Result<u64> {
         let Some(repos) = &self.repos else { return Ok(0) };
@@ -706,6 +827,33 @@ mod tests {
         // One past it: a fraction of a cent, rounded up to a millionth.
         assert_eq!(git_cost(50_001, free, per_thousand), 150);
         assert_eq!(title("git"), "Git operations past the free amount");
+    }
+
+    #[test]
+    fn a_month_is_charged_and_closed_only_after_its_final_count_of_git_operations() {
+        let at = |text: &str| g1t_contracts::time::parse_rfc3339(text).unwrap();
+        // The quarter-hour just after October ends: the daily measure ran at
+        // 04:17 on the 31st, so its count leaves out nearly 20 hours of
+        // operations. Neither due to measure yet, nor final.
+        let midnight = at("2026-11-01T00:00:00Z");
+        assert!(!final_measure_due(midnight, "2026-10"));
+        assert!(!month_final(false, midnight, "2026-10"));
+        // An hour on, the last hour has landed: the final count is taken,
+        // and once it is, the month is charged and closed.
+        let hour = at("2026-11-01T01:00:00Z");
+        assert!(final_measure_due(hour, "2026-10"));
+        assert!(!month_final(false, hour, "2026-10"));
+        assert!(month_final(true, hour, "2026-10"));
+        // A month not over is never final, measured or not.
+        assert!(!final_measure_due(at("2026-10-31T23:59:59Z"), "2026-10"));
+        assert!(!month_final(true, at("2026-10-31T23:59:59Z"), "2026-10"));
+        // Three days without it (the repos service down), the close goes
+        // ahead regardless.
+        assert!(!month_final(false, at("2026-11-03T23:59:59Z"), "2026-10"));
+        assert!(month_final(false, at("2026-11-04T00:00:00Z"), "2026-10"));
+        // December's ends with the year.
+        assert!(final_measure_due(at("2027-01-01T01:00:00Z"), "2026-12"));
+        assert!(!final_measure_due(at("2027-01-01T00:59:59Z"), "2026-12"));
     }
 
     #[test]

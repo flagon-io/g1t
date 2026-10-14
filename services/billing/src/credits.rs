@@ -190,19 +190,31 @@ impl Drawn {
     }
 }
 
-/// How `gross` is paid for from sources with `available` left each, in
-/// order: each takes what it can of what is still unpaid. The rest is
-/// charged.
-pub(crate) fn split(gross: i64, available: &[i64]) -> Vec<i64> {
-    let mut left = gross.max(0);
-    available
-        .iter()
-        .map(|available| {
-            let take = left.min((*available).max(0));
-            left -= take;
-            take
-        })
-        .collect()
+/// Draw from each source using what the preceding source actually gave,
+/// not a balance read before concurrent charges consumed it. On failure,
+/// return the partial allocation so the caller can return it.
+async fn draw_in_order<F, Fut>(gross: i64, mut take: F) -> std::result::Result<Drawn, (worker::Error, Drawn)>
+where
+    F: FnMut(usize, i64) -> Fut,
+    Fut: std::future::Future<Output = Result<i64>>,
+{
+    let mut drawn = Drawn::default();
+    for source in 0..3 {
+        let remaining = (gross - drawn.total()).max(0);
+        if remaining == 0 {
+            break;
+        }
+        let amount = match take(source, remaining).await {
+            Ok(amount) => amount,
+            Err(error) => return Err((error, drawn)),
+        };
+        match source {
+            0 => drawn.credit = amount,
+            1 => drawn.trial = amount,
+            _ => drawn.oss = amount,
+        }
+    }
+    Ok(drawn)
 }
 
 /// What a budget with `cap` and `used` so far has left.
@@ -584,7 +596,17 @@ impl Billing {
         let cap = self.oss_repo_cap(workspace).await?;
         let room = left(cap, self.allowance_used("oss_repo", &repo, month).await?);
         let from_pool = self.draw_allowance("oss_pool", "", month, want.min(room), self.plans.oss_pool_micros).await?;
-        let for_repo = self.draw_allowance("oss_repo", &repo, month, from_pool, cap).await?;
+        // The repository's share failing to draw gives the pool back what it
+        // gave: the caller only knows to return what this hands back.
+        let for_repo = match self.draw_allowance("oss_repo", &repo, month, from_pool, cap).await {
+            Ok(for_repo) => for_repo,
+            Err(error) => {
+                if let Err(undo) = self.return_allowance("oss_pool", "", month, from_pool).await {
+                    worker::console_error!("{workspace}: {from_pool} drawn from the open-source pool for {repo} was not given back: {undo}");
+                }
+                return Err(error);
+            }
+        };
         // The repository's cap filled up meanwhile: give the pool back the rest.
         self.return_allowance("oss_pool", "", month, from_pool - for_repo).await?;
         Ok(for_repo)
@@ -610,34 +632,24 @@ impl Billing {
         if gross <= 0 {
             return Ok(Drawn::default());
         }
-        let credit_left = if plan {
-            left(self.plans.plan_included_micros, self.allowance_used("plan_credit", workspace, month).await?)
-        } else {
-            0
+        let allocation = draw_in_order(gross, |source, want| async move {
+            match source {
+                0 if plan => self.draw_allowance("plan_credit", workspace, month, want, self.plans.plan_included_micros).await,
+                1 if eligible.trial => self.draw_trial(workspace, want).await,
+                2 => match &eligible.repo {
+                    Some(repo) if self.is_public(repo).await => self.draw_oss(workspace, repo, month, want).await,
+                    _ => Ok(0),
+                },
+                _ => Ok(0),
+            }
+        }).await;
+        let mut drawn = match allocation {
+            Ok(drawn) => drawn,
+            Err((error, partial)) => {
+                self.undraw(workspace, month, &partial, eligible.repo.as_deref()).await?;
+                return Err(error);
+            }
         };
-        let trial_left = if eligible.trial {
-            self.grant_of(workspace).await?.map_or(0, |grant| left(grant.granted_micros, grant.used_micros))
-        } else {
-            0
-        };
-        // Asked only when the rest has not paid for it all.
-        let public_repo = match &eligible.repo {
-            Some(repo) if gross > credit_left + trial_left && self.is_public(repo).await => Some(repo.clone()),
-            _ => None,
-        };
-        let oss_left = match &public_repo {
-            Some(repo) => self.oss_left(workspace, repo, month).await?,
-            None => 0,
-        };
-        let planned = split(gross, &[credit_left, trial_left, oss_left]);
-        let mut drawn = Drawn {
-            credit: self.draw_allowance("plan_credit", workspace, month, planned[0], self.plans.plan_included_micros).await?,
-            trial: self.draw_trial(workspace, planned[1]).await?,
-            ..Drawn::default()
-        };
-        if let Some(repo) = &public_repo {
-            drawn.oss = self.draw_oss(workspace, repo, month, planned[2]).await?;
-        }
         if eligible.cover_rest && !plan {
             drawn.given = (gross - drawn.credit - drawn.trial - drawn.oss).max(0);
         }
@@ -701,6 +713,39 @@ pub(crate) fn with_margin(cost_micros: i64, margin_percent: u32) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::FutureExt;
+
+    fn split(gross: i64, available: &[i64]) -> Vec<i64> {
+        let drawn = draw_in_order(gross, |source, want| {
+            std::future::ready(Ok(want.min(available.get(source).copied().unwrap_or(0).max(0))))
+        }).now_or_never().unwrap().unwrap();
+        [drawn.credit, drawn.trial, drawn.oss][..available.len()].to_vec()
+    }
+
+    #[test]
+    fn concurrent_consumption_of_included_usage_falls_through_to_trial() {
+        let mut requested = Vec::new();
+        let drawn = draw_in_order(500_000, |source, want| {
+            requested.push((source, want));
+            // Another charge has already taken the included balance that
+            // an earlier read would have said could pay for all of this.
+            std::future::ready(Ok(if source == 0 { 0 } else { want }))
+        }).now_or_never().unwrap().unwrap();
+        assert_eq!(requested, [(0, 500_000), (1, 500_000)]);
+        assert_eq!(drawn.credit, 0);
+        assert_eq!(drawn.trial, 500_000);
+        assert_eq!(drawn.total(), 500_000);
+    }
+
+    #[test]
+    fn a_failed_source_returns_the_actual_prior_draw_for_compensation() {
+        let failed = draw_in_order(500_000, |source, _| {
+            std::future::ready(if source == 0 { Ok(200_000) } else { Err(worker::Error::RustError("unavailable".into())) })
+        }).now_or_never().unwrap().unwrap_err();
+        assert_eq!(failed.1.credit, 200_000);
+        assert_eq!(failed.1.trial, 0);
+        assert_eq!(failed.1.total(), 200_000);
+    }
 
     #[test]
     fn included_usage_pays_first_then_the_trial_then_the_pool_then_the_workspace() {

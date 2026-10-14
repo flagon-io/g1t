@@ -126,14 +126,33 @@ pub(crate) fn pay_outcome(status: Option<&str>, error: Option<&str>) -> PayOutco
 }
 
 /// The idempotency key of a workspace invoice's draft and lines: the same
-/// workspace, customer, reason, period and total is the same invoice
-/// however often it is attempted, until one of its invoices is paid
-/// (`paid_today` counts the workspace's invoices paid that day) or voided
-/// (`voided` counts them), when the next is a new one. With the customer
-/// in it, a key never comes back with another customer's fields, which
-/// Stripe refuses.
-pub(crate) fn invoice_key(workspace: &str, customer: &str, reason: &str, period: &str, owed: i64, paid_today: u32, voided: u32) -> String {
-    let key = format!("ws-invoice/{workspace}/{customer}/{reason}/{period}/{}/p{paid_today}", owed / 10_000);
+/// workspace, customer, reason, period and lines (each as the cents sent
+/// to Stripe) is the same invoice however often it is attempted, until one
+/// of its invoices is paid (`paid_today` counts the workspace's invoices
+/// paid that day) or voided (`voided` counts them), when the next is a new
+/// one. With the customer in it, a key never comes back with another
+/// customer's fields, which Stripe refuses. With every line's cents in it,
+/// a retry after usage moved a line (but not the total's cent) is a new
+/// draft, never the old key with other parameters, which Stripe refuses
+/// until the key expires.
+pub(crate) fn invoice_key(
+    workspace: &str,
+    customer: &str,
+    reason: &str,
+    period: &str,
+    lines: &[(&str, i64)],
+    paid_today: u32,
+    voided: u32,
+) -> String {
+    let total: i64 = lines.iter().map(|(_, cents)| cents).sum();
+    // FNV-1a over every line, so the key stays short however many there are.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for (description, cents) in lines {
+        for byte in format!("{description}={cents};").bytes() {
+            hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    let key = format!("ws-invoice/{workspace}/{customer}/{reason}/{period}/{total}/{hash:016x}/p{paid_today}");
     if voided == 0 { key } else { format!("{key}/v{voided}") }
 }
 
@@ -382,7 +401,8 @@ impl Billing {
         let paid_today =
             count("SELECT COUNT(*) AS n FROM workspace_invoices WHERE workspace = ?1 AND status = 'paid' AND substr(paid_at, 1, 10) = ?2")
                 .await?;
-        let key = invoice_key(workspace, &customer, reason, period, owed, paid_today, voided);
+        let keyed: Vec<(&str, i64)> = lines.iter().zip(&cents).map(|(line, cents)| (line.description.as_str(), *cents)).collect();
+        let key = invoice_key(workspace, &customer, reason, period, &keyed, paid_today, voided);
         let description = match reason {
             "month" => format!("g1t usage for {workspace}, {period}"),
             _ => format!("g1t usage for {workspace}, charged as it neared its limit"),
@@ -916,15 +936,38 @@ mod tests {
 
     #[test]
     fn an_invoice_attempted_again_is_the_same_until_one_is_paid_or_voided() {
-        let key = invoice_key("acme", "cus_1", "month", "2026-09", 40_001_500, 0, 0);
-        assert_eq!(key, "ws-invoice/acme/cus_1/month/2026-09/4000/p0");
-        assert_eq!(key, invoice_key("acme", "cus_1", "month", "2026-09", 40_000_100, 0, 0));
+        let lines = [("Sandbox time", 3_500), ("Git operations", 501)];
+        let key = invoice_key("acme", "cus_1", "month", "2026-09", &lines, 0, 0);
+        assert!(key.starts_with("ws-invoice/acme/cus_1/month/2026-09/4001/"), "{key}");
+        assert!(key.ends_with("/p0"), "{key}");
+        assert_eq!(key, invoice_key("acme", "cus_1", "month", "2026-09", &lines, 0, 0));
         // A voided invoice is never handed back for the next.
-        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", 40_001_500, 0, 1));
+        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", &lines, 0, 1));
         // Nor one paid earlier the same day for the same total.
-        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", 40_001_500, 1, 0));
+        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", &lines, 1, 0));
         // Nor one made for another customer.
-        assert_ne!(key, invoice_key("acme", "cus_2", "month", "2026-09", 40_001_500, 0, 0));
+        assert_ne!(key, invoice_key("acme", "cus_2", "month", "2026-09", &lines, 0, 0));
+    }
+
+    #[test]
+    fn a_retry_whose_lines_moved_is_a_new_draft_not_the_old_key_with_other_amounts() {
+        // Owed 40.000000 then 40.000001 after a sliver more usage: the old
+        // key (whole cents of what was owed, rounded down) was 4000 for
+        // both, while the lines sent are 4000 and 4001 cents. Stripe refuses
+        // a key sent again with other parameters, so the retry was stuck
+        // until the key expired or the total crossed a cent.
+        let before = line_cents(&items(&[40_000_000]));
+        let after = line_cents(&items(&[40_000_001]));
+        assert_ne!(before, after);
+        let key = |cents: &[i64]| {
+            let lines: Vec<(&str, i64)> = cents.iter().map(|c| ("Sandbox time", *c)).collect();
+            invoice_key("acme", "cus_1", "threshold", "2026-10-14", &lines, 0, 0)
+        };
+        assert_ne!(key(&before), key(&after));
+        // The same total spread over other lines is another invoice too.
+        let a = invoice_key("acme", "cus_1", "month", "2026-09", &[("Sandbox time", 300), ("Git operations", 200)], 0, 0);
+        let b = invoice_key("acme", "cus_1", "month", "2026-09", &[("Sandbox time", 200), ("Git operations", 300)], 0, 0);
+        assert_ne!(a, b);
     }
 
     fn items(micros: &[i64]) -> Vec<InvoiceItem> {

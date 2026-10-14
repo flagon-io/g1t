@@ -53,7 +53,7 @@
 		// secret fails closed. "off" (a self-hosted g1t without payments)
 		// gates and charges nothing. Unset, it follows whether the key is set.
 		"CHARGING": "on",
-		// The g1t plan (src/features.rs): $20 a month per workspace, never
+		// The g1t plan (src/features.rs): $21 a month per workspace, never
 		// per person. It includes $10 of usage a month at cost plus 20%, used
 		// first and not rolled over; the other $10 pays for running g1t, the
 		// free forge for everyone, and the people building it. No quotas:

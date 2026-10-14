@@ -845,6 +845,15 @@ impl Billing {
         let (charge, terms_note, discount) = self.charged(&workspace, price).await?;
         let eligible = credits::eligible_for(a.kind, a.repo.as_deref());
         let month = credits::month_of(&timestamp);
+        // The price versions it was charged at (pricing.rs), read before the
+        // draw: nothing between the draw and the entry may fail without
+        // giving it back.
+        let meters: &[&str] = if parts.is_some() { &["sandbox_base_second", "sandbox_cpu_second"] } else { &["sandbox_second"] };
+        let mut versions = Vec::new();
+        for meter in meters {
+            versions.extend(self.version_now(meter).await?);
+        }
+        let price_version = versions.join(",");
         let drawn = self.draw(&workspace, charge, &month, &eligible).await?;
         let charge = charge - drawn.total();
         let description = format!(
@@ -855,13 +864,6 @@ impl Billing {
             instance.machine,
             drawn.note()
         );
-        // The price versions it was charged at (pricing.rs).
-        let meters: &[&str] = if parts.is_some() { &["sandbox_base_second", "sandbox_cpu_second"] } else { &["sandbox_second"] };
-        let mut versions = Vec::new();
-        for meter in meters {
-            versions.extend(self.version_now(meter).await?);
-        }
-        let price_version = versions.join(",");
         // The ledger's unique reference decides between duplicate
         // deliveries: the entry goes in, and the balance moves, only for the
         // first; a later one gives back what it drew.
@@ -1092,6 +1094,11 @@ async fn tick(billing: &Billing, env: &Env) {
         && let Err(error) = billing.autopay(users).await {
             worker::console_error!("paying at the limit failed: {error}");
         }
+    // Last month's final count of git operations, once it is over: until
+    // it is taken, last month is neither charged nor closed.
+    if let Err(error) = billing.measure_last_month_git().await {
+        worker::console_error!("measuring last month's git operations failed: {error}");
+    }
     // Last month's metered usage (scans, embeddings, storage) goes on the
     // ledger before the month is closed and invoiced.
     if let Err(error) = billing.charge_pending().await {
