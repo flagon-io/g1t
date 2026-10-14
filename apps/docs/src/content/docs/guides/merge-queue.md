@@ -9,11 +9,10 @@ merge without a conflict and still break each other. With the merge queue
 on, a pull request is tested together with everything ahead of it before it
 lands, and `main` only ever moves to a state whose required checks passed.
 
-The merge queue runs in g1t's sandboxes, which need
-[the g1t plan](/guides/usage-and-billing/#the-g1t-plan) or the trial after
-a card check; a public repository can use the open-source pool instead.
-Without one, an entry fails at once with a message saying so; turn the
-queue off to merge directly.
+g1t builds the queue's states in the repository itself, without a
+sandbox. What checks them is the repository's `merge_group`
+[workflows](/guides/actions/), which run and are billed like any other
+workflow run.
 
 ## Turn it on
 
@@ -60,9 +59,9 @@ queue**. Closing a pull request also takes it out.
 
 ## How entries are tested
 
-g1t takes up to four entries (the rule's `max_entries_to_build`) from the front of the queue and tests them all
-at once, speculatively, each in its own sandbox. Each sandbox builds `main`
-with that entry and every entry ahead of it merged in, in queue order:
+g1t takes up to four entries (the rule's `max_entries_to_build`) from the
+front of the queue and tests them all at once, speculatively. Each entry's
+state is the one before it with that entry landed on top, in queue order:
 
 | Entry | Tested as |
 | --- | --- |
@@ -70,6 +69,31 @@ with that entry and every entry ahead of it merged in, in queue order:
 | 2nd | `main` + #41 + #44 |
 | 3rd | `main` + #41 + #44 + #46 |
 | 4th | `main` + #41 + #44 + #46 + #47 |
+
+Each entry is landed on the state ahead of it by its own
+[merge method](/guides/pull-requests/#merge-methods), exactly as merging it
+there would:
+
+- **Merge commit**: a merge commit, with the message for the repository's
+  merge commits or the one written when it was queued.
+- **Squash**: one commit, by the pull request's author, with the squash
+  message and its `Co-authored-by:` trailers.
+- **Rebase**: each of its commits made again on top, keeping their authors.
+- **Fast-forward**: its own head, which must already contain everything
+  ahead of it; otherwise it fails, saying to bring it up to date or merge
+  it another way.
+
+The method is the one asked for when it was merged into the queue (the
+merge box's choice, `merge_method` in the API), else the merge queue
+rule's `merge_method` (merge commit unless set). Both must be methods the
+repository and the branch's [rules](/guides/rules/) allow, or merging is
+refused, saying which are; linear history rules out merge commits.
+A commit message written then (`commit_title`, `commit_message`) is kept
+with the entry; otherwise the repository's default message is used, worked
+out when the entry is first built. Sign-off is added where the repository
+requires it. The same limits apply as to merging directly: g1t makes at
+most 1,000 changed files, 100 files merged line by line and 250 rebased
+commits itself.
 
 If every entry passes, the four can land one after another without being
 tested again. The next batch starts when nothing is being tested. A batch
@@ -110,19 +134,22 @@ what is ahead of it.
 Each build has its own attempt token. A result from an old attempt cannot
 replace a retry or put a removed entry back in the queue. Workflow results
 apply only to the combined commit still being checked.
-Retries use separate Git branches, so a late sandbox cannot overwrite the
+Retries use separate Git branches, so a late build cannot overwrite the
 new attempt's branch. Workflow results wait until the whole group has been
 registered; a dispatch error does not count as a pass.
 
 ## How entries land
 
 Entries land in order. When an entry has passed and everything ahead of it
-has landed, `main` moves to exactly the state that was tested. The issue
-closes and the other pull requests for it are superseded, as with any
-merge.
+has landed, `main` moves to exactly the state that was tested: since each
+state was built on the one ahead of it, that is a fast-forward to the
+commits its method made, which are the commits its checks ran on. The pull
+request is recorded as merged by its method, with the commit `main` moved
+to as its merge commit. The issue closes and the other pull requests for
+it are superseded, as with any merge.
 
 Current reviews and branch rules are checked again before publication,
-against the combined commit's checks. Once publication starts, removal,
+against the combined commit's checks and the entry's merge method. Once publication starts, removal,
 closing or conversion to draft returns a conflict until it finishes. If the
 service stops after updating Git, the next queue poll resumes bookkeeping
 for that same commit instead of publishing a different branch tip.
@@ -145,8 +172,11 @@ date, [catch it up](/guides/pull-requests/#keeping-it-up-to-date) first: when it
 ## When an entry fails
 
 An entry fails when its `merge_group` workflows or required checks fail
-on the combined state, when it does not merge cleanly with what is ahead of it, or
-when the state cannot be built.
+on the combined state, when its change clashes with what is ahead of it, or
+when the state cannot be built (a fast-forward that does not contain what
+is ahead, or more than g1t makes itself). One that cannot be built leaves
+the queue, and the entries behind it are built in the next batch without
+it.
 
 ### Who answers for it
 
@@ -210,8 +240,9 @@ g1t retains the last failing combination: the failure may involve several
 changes together, or may not be deterministic. Diagnosis stops after three
 extra builds, retaining the last combination demonstrated to fail.
 
-These combinations are built in sandboxes as the queue's states are, on
-`g1t-queue/<id>` branches that are deleted afterwards, and never land. They
+These combinations are built as the queue's states are, each entry by
+its own method and with the same commit messages, on `g1t-queue/<id>`
+branches that are deleted afterwards, and never land. They
 do not hold up the queue: the entries behind are tested again at once. When
 a combination cannot be built or checked, or its checks are still running
 past the rule's timeout when the queue next moves, g1t stops and reports

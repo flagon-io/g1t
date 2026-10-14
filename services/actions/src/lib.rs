@@ -128,6 +128,8 @@ pub struct Actions {
     blob_key: Option<String>,
     /// Log retention and free workspaces' caps, from wrangler vars (limits.rs).
     limits: limits::Limits,
+    /// Whether repositories' Actions are on, read once per request.
+    actions_on: protection::ActionsOn,
 }
 
 impl Actions {
@@ -147,6 +149,7 @@ impl Actions {
             sealer: env.secret("ACTIONS_KEY").ok().and_then(|key| Sealer::new(&key.to_string())),
             blob_key: env.secret("ACTIONS_KEY").ok().map(|key| runtime::blob_key(&key.to_string())),
             limits: limits::Limits::from_env(env),
+            actions_on: protection::ActionsOn::default(),
         })
     }
 

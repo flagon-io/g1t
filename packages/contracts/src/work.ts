@@ -1119,6 +1119,12 @@ export type QueueStackItem = {
   source: RepoPath;
   branch: string;
   commit: string;
+  /** How it lands: the state is built with its commits made this way. */
+  method?: MergeMethod;
+  /** For merge and squash: the commit's message. */
+  message?: string;
+  /** For squash: who the commit is by. */
+  author?: User;
 };
 
 /** What a sandbox needs to build and check one combined state. */

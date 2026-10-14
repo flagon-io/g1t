@@ -824,10 +824,11 @@ impl Work {
         commit: &str,
         bypass_rules: bool,
         statuses: Vec<g1t_contracts::work::CommitStatus>,
+        method: MergeMethod,
     ) -> Result<Gate> {
-        // The tested state lands as it was built, which the queue rule's
-        // method does not change (queue.rs): no method is judged.
-        let gate = self.merge_gate_at(repo, pull, Some(actor), false, true, Some((commit, statuses)), None).await?;
+        // The tested state was built by the entry's method (queue.rs), which
+        // the rules judge as they are now.
+        let gate = self.merge_gate_at(repo, pull, Some(actor), false, true, Some((commit, statuses)), Some(method)).await?;
         Ok(if landing_honors_bypass(actor, bypass_rules) { gate } else { gate.without_bypass() })
     }
 

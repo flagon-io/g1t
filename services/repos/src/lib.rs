@@ -2863,6 +2863,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "behind" => reply(&repos.behind(args(body)?).await?),
         "divergence" => reply(&repos.divergence(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
+        "build_queue_step" => reply(&repos.build_queue_step(args(body)?).await?),
         "update_pull_branch" => reply(&repos.update_pull_branch(args(body)?).await?),
         // Services only: a pull request's test merge commit (test_merge.rs).
         "pull_merge_ref" => reply(&repos.pull_merge_ref(args(body)?).await?),

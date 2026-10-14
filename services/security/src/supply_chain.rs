@@ -7,14 +7,15 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use g1t_contracts::repos::RepoPath;
+use g1t_contracts::access::Capability;
+use g1t_contracts::repos::{Comparison, FileDiff, LineKind, RepoPath};
 use g1t_contracts::security::{FindLockfilesArgs, Lockfiles};
 use g1t_contracts::security_suite::{
     DEPENDENCY_REVIEW_CHECK, DependencyGraph, DependencyGraphArgs, DependencyReview, DependencyReviewArgs, GraphDependency,
-    GraphManifest, PaidFeature, ReviewChange, ReviewVulnerability, SbomArgs,
+    GraphManifest, PaidFeature, PullScanningArgs, RepoSecuritySettings, ReviewChange, ReviewVulnerability, SbomArgs,
 };
-use g1t_contracts::work::AddCommentArgs;
-use g1t_contracts::{Outcome, User};
+use g1t_contracts::work::{AddCommentArgs, Comment, CommentActionArgs, PullStatus};
+use g1t_contracts::{FailureCode, Outcome, User};
 use g1t_scan::graph::{self, Dependency, Relationship};
 use g1t_scan::lockfiles::{Ecosystem, Lockfile, Package};
 use g1t_scan::osv::{self, Severity};
@@ -25,7 +26,7 @@ use worker::Result;
 
 use crate::Security;
 use crate::store::RepoRow;
-use crate::suite_store::DependencyRow;
+use crate::suite_store::{DependencyRow, PullCheckRow};
 
 /// Added packages a review asks OSV about, at most; the rest are listed
 /// without.
@@ -272,17 +273,69 @@ impl Security {
         if !settings.dependency_review || !self.entitled(&repo).await? {
             return Ok(());
         }
-        let Some(pull) = self.pull_by_number(&repo, number).await? else { return Ok(()) };
-        let Some(head) = pull.head_commit.clone() else { return Ok(()) };
-        if let Some(previous) = self.store.pull_check(&repo.repo_id, number, "review").await?
+        self.check_pull(&repo, &settings, number, false).await.map(|_| ())
+    }
+
+    /// `rerun_dependency_review`: the `Dependency review` check run again on
+    /// a pull request's head, asked for by someone who may start runs. Its
+    /// comment is changed in place. Returns `Outcome<DependencyReview>`.
+    pub(crate) async fn rerun_dependency_review(&self, a: PullScanningArgs) -> Result<Outcome<DependencyReview>> {
+        let repo = match self.member_repo(&a.repo, &a.viewer, Capability::Run).await? {
+            Outcome::Ok(repo) => repo,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        if let Some(refusal) = self.gate(&repo, PaidFeature::DependencyReview).await? {
+            return Ok(refusal);
+        }
+        let (settings, _) = self.store.repo_settings(&repo.repo_id).await?;
+        if !settings.dependency_review {
+            return Ok(Outcome::fail(FailureCode::Conflict, "Dependency review is off for this repository. Turn it on in its Security settings."));
+        }
+        Ok(match self.check_pull(&repo, &settings, a.number, true).await? {
+            Some(view) => Outcome::Ok(view),
+            None => Outcome::fail(FailureCode::NotFound, "No open pull request with that number has a head to review."),
+        })
+    }
+
+    /// Reviews a pull request's head and reports the check, unless its head
+    /// was reviewed already. A head whose lockfile changes are the ones
+    /// reviewed before (the base merged into it, say) takes that result
+    /// without another review, and its comment is left alone. `again`
+    /// reviews it whatever was reviewed before.
+    async fn check_pull(&self, repo: &RepoRow, settings: &RepoSecuritySettings, number: u32, again: bool) -> Result<Option<DependencyReview>> {
+        let Some(detail) = self.pull_detail(repo, number).await? else { return Ok(None) };
+        let pull = &detail.pull;
+        // Asked for again: only while it is open.
+        if again && pull.status != PullStatus::Open {
+            return Ok(None);
+        }
+        let Some(head) = pull.head_commit.clone() else { return Ok(None) };
+        let previous = self.store.pull_check(&repo.repo_id, number, "review").await?;
+        let previous_view = |row: &PullCheckRow| serde_json::from_str::<DependencyReview>(&row.detail).unwrap_or_default();
+        if !again
+            && let Some(previous) = &previous
             && previous.commit_sha == head
         {
-            return Ok(());
+            return Ok(Some(previous_view(previous)));
         }
-        let Some(comparison) = self.pull_comparison(&repo, &pull).await? else { return Ok(()) };
+        let Some(comparison) = self.pull_comparison(repo, pull).await? else { return Ok(None) };
         let policy = policy_of(&settings.review_fail_on, &settings.review_deny_licenses);
+        let key = review_key(&comparison, &policy);
+        if !again
+            && let Some(previous) = &previous
+            && key.is_some()
+            && stored_key(&previous.commented) == key
+        {
+            let mut view = previous_view(previous);
+            view.head = head.clone();
+            self.store
+                .set_pull_check(&repo.repo_id, number, "review", &head, &previous.state, &previous.description, &serde_json::to_value(&view)?, &memo(key.as_deref()))
+                .await?;
+            self.set_status(repo, &head, DEPENDENCY_REVIEW_CHECK, &previous.state, &previous.description, number).await;
+            return Ok(Some(view));
+        }
         let paths: Vec<String> = comparison.files.iter().map(|file| file.path.clone()).collect();
-        let (state, description, detail, summary) = if !touches_lockfiles(&paths) {
+        let (state, description, view, summary) = if !touches_lockfiles(&paths) {
             let view = DependencyReview {
                 head: head.clone(),
                 passed: true,
@@ -291,35 +344,116 @@ impl Security {
                 deny_licenses: policy.deny_licenses.clone(),
                 ..DependencyReview::default()
             };
-            ("success", view.headline.clone(), view, None)
+            ("success", view.headline.clone(), view, review::unchanged_summary())
         } else {
             let base = comparison.base.clone().unwrap_or_else(|| "HEAD".to_owned());
             let head_repo = pull.source_id().to_owned();
             let (verdict, view) = self.review(&repo.repo_id, &base, &head_repo, &head, &policy).await?;
             let summary = verdict.summary(&policy);
-            (if verdict.passed { "success" } else { "failure" }, verdict.headline(), view, Some(summary))
+            (if verdict.passed { "success" } else { "failure" }, verdict.headline(), view, summary)
         };
         self.store
-            .set_pull_check(&repo.repo_id, number, "review", &head, state, &description, &serde_json::to_value(&detail)?, &[])
+            .set_pull_check(&repo.repo_id, number, "review", &head, state, &description, &serde_json::to_value(&view)?, &memo(key.as_deref()))
             .await?;
-        self.set_status(&repo, &head, DEPENDENCY_REVIEW_CHECK, state, &description, number).await;
-        if let (Some(summary), true) = (summary, settings.review_comment) {
-            let _: Result<Outcome<Value>> = g1t_kit::call(
-                &self.work,
-                "add_comment",
-                &AddCommentArgs {
-                    actor: User::system(&repo.namespace),
-                    repo: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
-                    number,
-                    body: summary,
-                    path: None,
-                    line: None,
-                    verdict: None,
-                },
-            )
-            .await;
+        self.set_status(repo, &head, DEPENDENCY_REVIEW_CHECK, state, &description, number).await;
+        if settings.review_comment {
+            self.keep_review_comment(repo, number, &detail.comments, summary, !view.changes.is_empty()).await;
         }
-        Ok(())
+        Ok(Some(view))
+    }
+
+    /// The pull request's one dependency review comment: changed in place
+    /// when the review says something new, left alone when it says the
+    /// same, and added only for a review with changes to show.
+    async fn keep_review_comment(&self, repo: &RepoRow, number: u32, comments: &[Comment], body: String, changes: bool) {
+        let actor = User::system(&repo.namespace);
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
+        let done: Result<Outcome<Value>> = match comment_plan(our_comment(comments), &body, changes) {
+            CommentPlan::Leave => return,
+            CommentPlan::Edit(comment_id) => {
+                g1t_kit::call(&self.work, "edit_comment", &CommentActionArgs { actor, repo: path, comment_id, body }).await
+            }
+            CommentPlan::Add => {
+                g1t_kit::call(&self.work, "add_comment", &AddCommentArgs { actor, repo: path, number, body, path: None, line: None, verdict: None })
+                    .await
+            }
+        };
+        match done {
+            Ok(Outcome::Fail(failure)) => worker::console_error!("security: dependency review comment on #{number}: {}", failure.message),
+            Err(error) => worker::console_error!("security: dependency review comment on #{number}: {error}"),
+            Ok(Outcome::Ok(_)) => {}
+        }
+    }
+}
+
+/// What a review of a pull request depends on, as a key: the lines each
+/// lockfile changes (not where they are, which moves when the base is
+/// merged in) and the policy. None when a lockfile's lines are not all
+/// listed, so the review has to be made to know.
+pub fn review_key(comparison: &Comparison, policy: &Policy) -> Option<String> {
+    if comparison.truncated {
+        return None;
+    }
+    let mut lockfiles: Vec<&FileDiff> = comparison.files.iter().filter(|file| Lockfile::for_path(&file.path).is_some()).collect();
+    if lockfiles.iter().any(|file| file.binary || file.omitted) {
+        return None;
+    }
+    lockfiles.sort_by(|a, b| a.path.cmp(&b.path));
+    let mut text = format!(
+        "fail_on {}\ndeny {}\n",
+        policy.fail_on.map_or("none", |severity| severity.as_str()),
+        policy.deny_licenses.join(",")
+    );
+    for file in lockfiles {
+        text.push_str(&format!("file {} {:?}\n", file.path, file.status));
+        for line in file.hunks.iter().flat_map(|hunk| &hunk.lines) {
+            match line.kind {
+                LineKind::Add => text.push('+'),
+                LineKind::Delete => text.push('-'),
+                LineKind::Context => continue,
+            }
+            text.push_str(&line.text);
+            text.push('\n');
+        }
+    }
+    Some(review::key(&text))
+}
+
+/// The review row's memo (`pull_checks.commented`): the key of what was
+/// reviewed, if there was one.
+fn memo(key: Option<&str>) -> Vec<String> {
+    key.map(|key| vec![format!("key:{key}")]).unwrap_or_default()
+}
+
+fn stored_key(commented: &str) -> Option<String> {
+    serde_json::from_str::<Vec<String>>(commented)
+        .ok()?
+        .into_iter()
+        .find_map(|entry| entry.strip_prefix("key:").map(str::to_owned))
+}
+
+/// g1t's dependency review comment on a pull request: the first comment g1t
+/// wrote that starts with the review's heading.
+pub fn our_comment(comments: &[Comment]) -> Option<&Comment> {
+    comments
+        .iter()
+        .find(|comment| g1t_contracts::system::is_system_id(&comment.author.id) && comment.body.trim_start().starts_with(review::HEADING))
+}
+
+/// What to do with the review comment.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CommentPlan {
+    Leave,
+    Edit(String),
+    Add,
+}
+
+pub fn comment_plan(existing: Option<&Comment>, body: &str, changes: bool) -> CommentPlan {
+    match existing {
+        Some(comment) if comment.body.trim() == body.trim() => CommentPlan::Leave,
+        Some(comment) => CommentPlan::Edit(comment.id.clone()),
+        None if changes => CommentPlan::Add,
+        None => CommentPlan::Leave,
     }
 }
 
@@ -360,6 +494,103 @@ mod tests {
     fn only_lockfile_changes_need_a_review() {
         assert!(!touches_lockfiles(&["src/app.ts".into(), "README.md".into()]));
         assert!(touches_lockfiles(&["src/app.ts".into(), "web/package-lock.json".into()]));
+    }
+
+    fn lockfile(path: &str, lines: &[(LineKind, u32, &str)]) -> FileDiff {
+        use g1t_contracts::repos::{DiffLine, FileStatus, Hunk};
+        FileDiff {
+            path: path.into(),
+            status: FileStatus::Modified,
+            additions: 0,
+            deletions: 0,
+            binary: false,
+            hunks: vec![Hunk {
+                lines: lines
+                    .iter()
+                    .map(|(kind, at, text)| DiffLine { kind: *kind, old: Some(*at), new: Some(*at), text: (*text).into() })
+                    .collect(),
+            }],
+            omitted: false,
+        }
+    }
+
+    fn compared(files: Vec<FileDiff>) -> Comparison {
+        Comparison { base: Some("base".into()), head: "head".into(), files, truncated: false }
+    }
+
+    #[test]
+    fn the_base_merged_in_keeps_the_review_key_and_a_lockfile_change_moves_it() {
+        let policy = policy_of("high", &[]);
+        let bump = [(LineKind::Context, 10, "\"lodash\": {"), (LineKind::Delete, 11, "\"version\": \"4.17.21\""), (LineKind::Add, 11, "\"version\": \"4.17.20\"")];
+        let first = review_key(&compared(vec![lockfile("package-lock.json", &bump)]), &policy).unwrap();
+        // The base merged in: other files, and the same lockfile lines
+        // further down with other context around them.
+        let moved = [(LineKind::Context, 40, "\"lodash\": { "), (LineKind::Delete, 41, "\"version\": \"4.17.21\""), (LineKind::Add, 41, "\"version\": \"4.17.20\"")];
+        let mut caught_up = vec![lockfile("package-lock.json", &moved), lockfile("src/app.ts", &[(LineKind::Add, 1, "x")])];
+        caught_up.reverse();
+        assert_eq!(review_key(&compared(caught_up), &policy).as_deref(), Some(first.as_str()));
+        // Another version, or another policy, is another review.
+        let other = [(LineKind::Delete, 11, "\"version\": \"4.17.21\""), (LineKind::Add, 11, "\"version\": \"4.17.19\"")];
+        assert_ne!(review_key(&compared(vec![lockfile("package-lock.json", &other)]), &policy).unwrap(), first);
+        assert_ne!(review_key(&compared(vec![lockfile("package-lock.json", &bump)]), &policy_of("critical", &[])).unwrap(), first);
+        // No lockfile changed: one key for that too.
+        assert!(review_key(&compared(vec![]), &policy).is_some());
+        // Lines not listed: no key, so the review is made.
+        let mut omitted = lockfile("package-lock.json", &bump);
+        omitted.omitted = true;
+        assert_eq!(review_key(&compared(vec![omitted]), &policy), None);
+        let mut truncated = compared(vec![lockfile("package-lock.json", &bump)]);
+        truncated.truncated = true;
+        assert_eq!(review_key(&truncated, &policy), None);
+    }
+
+    #[test]
+    fn the_review_key_is_kept_in_the_row() {
+        let commented = serde_json::to_string(&memo(Some("abc"))).unwrap();
+        assert_eq!(stored_key(&commented).as_deref(), Some("abc"));
+        assert_eq!(stored_key("[]"), None);
+        assert!(memo(None).is_empty());
+    }
+
+    fn comment(id: &str, author: User, body: &str) -> Comment {
+        Comment {
+            id: id.into(),
+            kind: Default::default(),
+            author,
+            body: body.into(),
+            path: None,
+            line: None,
+            verdict: None,
+            created_at: String::new(),
+            edited_at: None,
+            agent: None,
+            acting_for: None,
+            advisory: false,
+        }
+    }
+
+    #[test]
+    fn one_comment_is_kept_and_changed_only_when_the_review_says_something_new() {
+        let person = User { id: "usr_1".into(), username: "ana".into(), ..User::default() };
+        let ours = review::unchanged_summary();
+        let comments = vec![
+            comment("cmt_1", person.clone(), &ours),
+            comment("cmt_2", User::system("acme"), "Something else g1t said."),
+            comment("cmt_3", User::system("acme"), &ours),
+            comment("cmt_4", User::system("acme"), &ours),
+        ];
+        // A person quoting it is not it; the first of g1t's is.
+        assert_eq!(our_comment(&comments).map(|found| found.id.as_str()), Some("cmt_3"));
+        let found = our_comment(&comments);
+        // The same review: left alone, however its text ends.
+        assert_eq!(comment_plan(found, &format!("{ours}\n"), true), CommentPlan::Leave);
+        // Something new: that comment changes, none is added.
+        assert_eq!(comment_plan(found, "### Dependency review\n\n**Failed.**", true), CommentPlan::Edit("cmt_3".into()));
+        assert_eq!(comment_plan(found, &ours, false), CommentPlan::Leave);
+        // None yet: one is added for a review with changes only.
+        assert_eq!(comment_plan(None, "### Dependency review\n\n**Passed.**", true), CommentPlan::Add);
+        assert_eq!(comment_plan(None, &ours, false), CommentPlan::Leave);
+        assert!(our_comment(&comments[..2]).is_none());
     }
 
     #[test]
