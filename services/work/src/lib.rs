@@ -2642,8 +2642,11 @@ impl Work {
                     .find(|issue| issue.repo_id == pull.repo_id && issue.number == number)
                     .cloned()
             });
-            // Only a pull request g1t is seeing through has a lifecycle.
-            let lifecycle = if !lifecycle::made_by_g1t(&pull) || snapshot.managed == 0 {
+            // Every open pull request has a lifecycle (lifecycle.rs), kept
+            // fresh by what moves it (`advance`, on each event that can);
+            // anyone's draft but g1t's has none.
+            let managed = lifecycle::made_by_g1t(&pull) && snapshot.managed != 0;
+            let lifecycle = if pull.status == PullStatus::Draft && !managed {
                 None
             } else if let (Some(stage), Some(detail)) = (snapshot.stage, snapshot.stage_detail) {
                 Some(Lifecycle {
@@ -2652,7 +2655,8 @@ impl Work {
                     revisions: snapshot.revisions,
                 })
             } else {
-                let behind = self.is_behind(&pull).await?;
+                // Never worked out yet: once, and remembered.
+                let behind = self.behind_now(&pull).await?;
                 self.assess(&pull, &issue, behind)
                     .await?
                     .map(|(lifecycle, _)| lifecycle)

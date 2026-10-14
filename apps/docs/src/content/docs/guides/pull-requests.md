@@ -422,6 +422,12 @@ turns it off, or until someone other than whoever turned it on pushes to it,
 so a push nobody reviewed never lands by itself. Turning it on and off
 publishes `pull.auto_merge_enabled` and `pull.auto_merge_disabled`.
 
+When auto-merge turns off without you, you get a notification saying
+why, since it will not merge on its own now. Where the repository uses a
+merge queue, a pull request auto-merge hands to the queue lands as the
+queue decides; that turns auto-merge off too, but nothing is left for you
+to do, so it tells no one.
+
 ### Closing issues
 
 When a pull request merges into the default branch, it closes the issue it

@@ -116,6 +116,11 @@ pub(crate) fn step(facts: &Facts, who: &str, base: &str) -> Step {
     Step::Merge
 }
 
+/// Why g1t turns auto-merge off when the merge queue takes the pull
+/// request: the queue lands it, so `pull.auto_merge_disabled` says
+/// `queued` and tells nobody's inbox.
+pub(crate) const JOINED_QUEUE: &str = "It joined the merge queue.";
+
 /// Whether a push by `pusher` (a user id) turns auto-merge off: anyone's
 /// but whoever turned it on. A push g1t made itself, with no one behind
 /// it, does not.
@@ -157,6 +162,7 @@ impl Work {
         let event = PullEvent {
             detail: reason.map(str::to_owned),
             auto_merge_by: pull.auto_merge.as_ref().map(|auto| auto.enabled_by.clone()),
+            queued: by.is_none() && reason == Some(JOINED_QUEUE),
             ..Self::pull_event(pull)
         };
         match by {
@@ -355,7 +361,7 @@ impl Work {
             Outcome::Ok(merged) => {
                 if merged.status == PullStatus::Open && self.queued_entry(&pull.id).await?.is_some() {
                     // In the merge queue it lands as the queue decides.
-                    self.disable_auto_merge(&pull, None, Some("It joined the merge queue.")).await?;
+                    self.disable_auto_merge(&pull, None, Some(JOINED_QUEUE)).await?;
                 }
             }
             Outcome::Fail(failure) => {

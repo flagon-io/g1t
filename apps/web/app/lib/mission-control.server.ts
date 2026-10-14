@@ -197,7 +197,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
 
   const activeList = (active ?? []).flatMap((item) => {
     const repo = known.get(item.pull.repoId);
-    return repo ? [{ pull: item.pull, repo }] : [];
+    return repo ? [{ pull: item.pull, lifecycle: item.lifecycle, repo }] : [];
   });
   const overviewList = okOr(overview ?? null);
   const projectsOk = okOr(projectList ?? null);
@@ -285,9 +285,32 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       });
     }
   }
-  for (const { pull, repo } of activeList) {
+  for (const { pull, lifecycle, repo } of activeList) {
+    if (pull.status !== "open") continue;
+    // In this workspace, when the page is for one.
+    if (slug && !inWorkspace(repo)) continue;
+    const where = `${repo.namespace}/${repo.name}#${pull.number}`;
+    const to = `/${repo.namespace}/${repo.name}/pull/${pull.number}`;
+    // Your pull request, where its lifecycle says it stands (work keeps it
+    // fresh as checks, reviews and pushes arrive): someone has to step in,
+    // or everything is met and it lands when you merge it.
+    if (lifecycle?.stage === "needs_you") {
+      const conflict = /conflict/i.test(lifecycle.detail);
+      const key = `pull:${pull.id}`;
+      needs.push({ key, kind: conflict ? "conflict" : "stalled", title: pull.title, detail: lifecycle.detail, to, action: conflict ? "Resolve" : "Decide", at: Date.parse(pull.updatedAt), where });
+      extras.set(key, { ...pullExtra(pull, repo), quick: null });
+      continue;
+    }
+    if (lifecycle?.stage === "ready") {
+      const key = `ready:${pull.id}`;
+      needs.push({ key, kind: "ready", title: pull.title, detail: "Ready to land when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
+      // Its lifecycle says the required checks passed, which a list's merge-queue status does not.
+      const [, ...rest] = pullExtra(pull, repo).facts ?? [];
+      extras.set(key, { ...pullExtra(pull, repo), facts: [{ label: "Required checks", value: "Passing", tone: "good" }, ...rest], quick: null });
+      continue;
+    }
     // Taken out of the merge queue: its change failed combined with what was ahead.
-    if (pull.status !== "open" || pull.checkStatus !== "failed") continue;
+    if (pull.checkStatus !== "failed") continue;
     const key = `pull:${pull.id}`;
     needs.push({
       key,
