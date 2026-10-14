@@ -77,7 +77,9 @@ import { Label } from "./ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
-import { PersonLink } from "./work";
+import { Markdown } from "./markdown";
+import { PersonLink, TimelineItem } from "./work";
+import { repoAt } from "../lib/markdown-plugins";
 import { IssueIcon, PullIcon } from "./work-icons";
 
 /** Text with each `#N` linked to that issue or pull request (the issue's address leads to a pull request too). */
@@ -220,6 +222,92 @@ export function SessionLine({
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * A session in an issue's or pull request's conversation, where it
+ * started, as a card like a comment or a review: g1t working for someone
+ * (a session g1t started on the workspace's Claude, when it was assigned
+ * the issue or asked in the thread), or someone working in their own
+ * harness. What it is about, where it stands now, its branch, and what it
+ * reported once it ended, linked to its page.
+ */
+export function TimelineSession({ session, base }: { session: WorkSession; base: string }) {
+  const g1t = session.harness === "claude_managed_agents";
+  const ended = session.state === "ended";
+  return (
+    <TimelineItem
+      id={session.id}
+      author={g1t ? "g1t" : session.actor.username}
+      bot={g1t}
+      at={session.startedAt}
+      action={
+        <>
+          {g1t ? (
+            <span>
+              {ended ? "worked on this for" : "is working on this for"}{" "}
+              <PersonLink name={session.actor.username} className="font-medium text-fg hover:underline">
+                @{session.actor.username}
+              </PersonLink>
+            </span>
+          ) : (
+            <span>{ended ? "worked on this in a session" : "is working on this in a session"}</span>
+          )}
+          <HarnessBadge harness={session.harness} />
+          <SessionStateBadge state={session.state} />
+        </>
+      }
+      aside={
+        <Link
+          to={`${base}/work/sessions/${session.id}`}
+          prefetch="intent"
+          className="inline-flex items-center gap-1 text-xs text-faint hover:text-fg"
+        >
+          <Activity size={12} />
+          View session
+        </Link>
+      }
+    >
+      <Link to={`${base}/work/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
+        {sessionTitle(session)}
+      </Link>
+      <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+        {ended ? (
+          <span>
+            Ended <TimeAgo at={session.endedAt ?? session.lastSeenAt} />
+          </span>
+        ) : (
+          <span>
+            Last heard from <TimeAgo at={session.lastSeenAt} />
+          </span>
+        )}
+        {session.branch && (
+          <span className="inline-flex min-w-0 items-center gap-1 font-mono">
+            · <GitBranch size={11} />
+            <span className="truncate">{session.branch}</span>
+          </span>
+        )}
+        {session.pull != null && (
+          <span>
+            · on{" "}
+            <Link to={`${base}/pull/${session.pull}`} className="text-fg hover:text-accent">
+              #{session.pull}
+            </Link>
+          </span>
+        )}
+        {(session.subagents ?? 0) > 0 && (
+          <span>
+            · {session.subagents} {session.subagents === 1 ? "subagent" : "subagents"}
+          </span>
+        )}
+      </p>
+      {ended && session.result && (
+        <div className="mt-3 border-t border-line pt-3 text-sm">
+          <Markdown source={session.result} repo={repoAt(base)} />
+        </div>
+      )}
+    </TimelineItem>
   );
 }
 
