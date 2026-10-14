@@ -98,6 +98,17 @@ fn owner_only<T>(actor: &User, workspace: &str) -> Option<Outcome<T>> {
         .then(|| fail(FailureCode::Forbidden, "Only an owner of the workspace can manage its AI providers."))
 }
 
+/// A Console workspace's id from the id itself or any Console address in
+/// that workspace (`…/workspaces/<id>/…`).
+fn console_workspace(given: &str) -> Option<String> {
+    let id = match given.split_once("/workspaces/") {
+        Some((_, rest)) => rest.split(['/', '?', '#']).next().unwrap_or_default(),
+        None => given,
+    };
+    let valid = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    valid.then(|| id.to_owned())
+}
+
 /// Checks an AI provider's settings, tidying them. The message says what
 /// to fix.
 fn check_config(provider: AiProvider, config: &mut AiConfig, secret: Option<&str>) -> std::result::Result<(), String> {
@@ -110,6 +121,12 @@ fn check_config(provider: AiProvider, config: &mut AiConfig, secret: Option<&str
     for value in [&mut config.model, &mut config.auth_header] {
         *value = value.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
     }
+    config.console_workspace = match config.console_workspace.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        Some(given) if provider == AiProvider::Anthropic => Some(console_workspace(given).ok_or_else(|| {
+            "Give the Console workspace's id, such as wrkspc_01AbC…, or paste an address from that workspace in the Console.".to_owned()
+        })?),
+        _ => None,
+    };
     let needs = |present: bool, what: &str| if present { Ok(()) } else { Err(what.to_owned()) };
     match provider {
         AiProvider::AzureOpenai => {
@@ -706,6 +723,29 @@ mod tests {
         assert!(check_config(AiProvider::AzureOpenai, &mut azure, key).is_err());
         azure.model = Some("gpt-5".into());
         assert!(check_config(AiProvider::AzureOpenai, &mut azure, key).is_ok());
+    }
+
+    #[test]
+    fn an_anthropic_providers_console_workspace_is_its_id_from_an_address_or_itself() {
+        let key = Some("sk-test");
+        let mut pasted = AiConfig {
+            console_workspace: Some(" https://platform.claude.com/workspaces/wrkspc_01AbC/sessions/sesn_1?event=e ".into()),
+            ..AiConfig::default()
+        };
+        assert!(check_config(AiProvider::Anthropic, &mut pasted, key).is_ok());
+        assert_eq!(pasted.console_workspace.as_deref(), Some("wrkspc_01AbC"));
+        let mut bare = AiConfig { console_workspace: Some("wrkspc_01AbC".into()), ..AiConfig::default() };
+        assert!(check_config(AiProvider::Anthropic, &mut bare, key).is_ok());
+        assert_eq!(bare.console_workspace.as_deref(), Some("wrkspc_01AbC"));
+        let mut empty = AiConfig { console_workspace: Some("  ".into()), ..AiConfig::default() };
+        assert!(check_config(AiProvider::Anthropic, &mut empty, key).is_ok());
+        assert_eq!(empty.console_workspace, None);
+        let mut wrong = AiConfig { console_workspace: Some("not a workspace".into()), ..AiConfig::default() };
+        assert!(check_config(AiProvider::Anthropic, &mut wrong, key).is_err());
+        // Only Anthropic's Console has workspaces to link to.
+        let mut other = AiConfig { console_workspace: Some("wrkspc_01AbC".into()), ..AiConfig::default() };
+        assert!(check_config(AiProvider::Openai, &mut other, key).is_ok());
+        assert_eq!(other.console_workspace, None);
     }
 
     fn connection(provider: AiProvider, model: Option<&str>, models: &[&str]) -> AiConnection {

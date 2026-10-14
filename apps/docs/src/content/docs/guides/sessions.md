@@ -276,8 +276,13 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   under [**AI**](/guides/ai/)), g1t starts a
   [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview)
   session on that account, with its key, on the model Ask is set to use
-  (or `claude-opus-5-5`). It runs in a sandbox on Anthropic's side and
-  reaches g1t through g1t's MCP server and git, with a token made for you
+  (or `claude-opus-5-5`). It runs in a sandbox on Anthropic's side. Its
+  first step installs the [g1t CLI](/guides/cli/) from g1t, sets git up to
+  send the token, clones the repository and ties the clone to the session,
+  so it works the way the work-on-issue skill describes: `g1t work
+  context`, `g1t work claim`, `g1t pr create`, `g1t pr checks --watch`.
+  g1t's MCP server is attached too, for anything the CLI has no command
+  for. Both reach g1t with a token made for you
   and that repository only, which lasts the session and is revoked when it
   ends. The token is kept in a vault on the Anthropic account: the MCP
   server's credential, and `G1T_TOKEN`, which the sandbox holds only as a
@@ -293,8 +298,11 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   The session that starts attaches to the issue.
 
 The answer has the `session` on g1t, its `session_url`, and
-`provider_session_url`, where the Anthropic Console shows it (its
-`default` workspace; another workspace's sessions are under its own id).
+`provider_session_url`, where the Anthropic Console shows it. The Console
+keeps sessions in the workspace the key belongs to, and a session does not
+say which that is: if the key is not in the account's Default workspace,
+set the provider's **Console workspace** under [**AI**](/guides/ai/#anthropic-console-workspace)
+so the link opens there.
 The session is recorded as harness `claude_managed_agents`: its messages,
 the tools it called and with what (never what they returned), the skills
 it read, what it touched, and each thread as a subagent with its task and

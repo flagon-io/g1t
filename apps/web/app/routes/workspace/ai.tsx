@@ -7,7 +7,7 @@ import { type AiConnection, type AiProvider, type AskSetup, AI_PROVIDERS, aiOwnA
 import type { Route } from "./+types/ai";
 import { page } from "../../lib/meta";
 import { AiProviderMark } from "../../components/connectors";
-import { ModelCatalog, ModelProviderFields } from "../../components/model-providers";
+import { ConsoleWorkspaceField, ModelCatalog, ModelProviderFields } from "../../components/model-providers";
 import { AI_PROVIDER_LOOKS, isEndpoint } from "../../lib/ai-providers";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
@@ -80,6 +80,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         ...connection.config,
         model: text(form, "model"),
         ...(form.has("baseUrl") ? { baseUrl: text(form, "baseUrl") } : {}),
+        ...(form.has("consoleWorkspace") ? { consoleWorkspace: text(form, "consoleWorkspace") } : {}),
       },
       secret: text(form, "secret"),
     });
@@ -94,6 +95,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       baseUrl: text(form, "baseUrl"),
       authHeader: text(form, "authHeader"),
       model: text(form, "model"),
+      consoleWorkspace: text(form, "consoleWorkspace"),
     },
     secret: text(form, "secret"),
   });
@@ -349,7 +351,7 @@ function ProviderSettings({ connection, updated }: { connection: AiConnection; u
     <details className="group mt-3" open={updated || undefined}>
       <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs text-muted hover:text-fg">
         <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
-        Change its model, address or key
+        {connection.provider === "anthropic" ? "Change its model, Console workspace or key" : "Change its model, address or key"}
       </summary>
       <Form method="post" className="mt-3 max-w-2xl space-y-3">
         <input type="hidden" name="intent" value="provider" />
@@ -376,6 +378,7 @@ function ProviderSettings({ connection, updated }: { connection: AiConnection; u
             ))}
           </datalist>
         )}
+        {connection.provider === "anthropic" && <ConsoleWorkspaceField defaultValue={connection.config.consoleWorkspace} />}
         <Field label="Replace the key" hint="Write-only: g1t never shows it again. Leave it empty to keep the key you have.">
           <Input
             name="secret"

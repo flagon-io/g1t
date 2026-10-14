@@ -89,6 +89,28 @@ export function ModelProviderFields({ provider }: { provider: AiProvider }): Rea
       <Field label="Model" hint="Optional. The model your team uses on it. g1t lists the key's models when it checks the key.">
         <Input name="model" placeholder={look.model} />
       </Field>
+      {provider === "anthropic" && <ConsoleWorkspaceField />}
     </>
+  );
+}
+
+/**
+ * The Console workspace an Anthropic key belongs to: links to the sessions
+ * it starts open there. Sessions don't say which workspace they are in.
+ */
+export function ConsoleWorkspaceField({ defaultValue }: { defaultValue?: string }) {
+  return (
+    <Field
+      label="Console workspace"
+      hint="Optional. Paste any Console address from the workspace the key belongs to, or its wrkspc_ id, so session links open there. Empty means the Default workspace."
+    >
+      <Input
+        name="consoleWorkspace"
+        defaultValue={defaultValue ?? ""}
+        placeholder="https://platform.claude.com/workspaces/wrkspc_…"
+        className="max-w-sm font-mono text-[0.8125rem]"
+        autoComplete="off"
+      />
+    </Field>
   );
 }

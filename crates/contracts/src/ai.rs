@@ -165,6 +165,11 @@ pub struct AiConfig {
     /// The model the team uses on it; for Azure OpenAI, the deployment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// For Anthropic: the Console workspace the key belongs to, as its
+    /// Console address names it (`wrkspc_…`), so links to the sessions it
+    /// starts open there. Without it, the account's Default workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub console_workspace: Option<String>,
 }
 
 /// One of a workspace's AI providers, as any member sees it. Its key is

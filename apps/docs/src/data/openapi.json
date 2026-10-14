@@ -49082,6 +49082,10 @@
                       "model": {
                         "type": "string",
                         "description": "The model the team uses on it; for Azure OpenAI, the deployment."
+                      },
+                      "console_workspace": {
+                        "type": "string",
+                        "description": "For anthropic: the Console workspace the key belongs to (wrkspc_…), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace."
                       }
                     }
                   },
@@ -49259,6 +49263,10 @@
                       "model": {
                         "type": "string",
                         "description": "The model the team uses on it; for Azure OpenAI, the deployment."
+                      },
+                      "console_workspace": {
+                        "type": "string",
+                        "description": "For anthropic: the Console workspace the key belongs to (wrkspc_…), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace."
                       }
                     }
                   },

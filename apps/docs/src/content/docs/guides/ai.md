@@ -47,6 +47,17 @@ key is sent as `x-api-key` (Anthropic's header) or
 You can name the model your team uses on each provider. It is optional,
 except for Azure OpenAI, where it is the deployment.
 
+### Anthropic Console workspace
+
+Sessions on issues run on the Anthropic provider's account, and the
+Anthropic Console shows each one in the Console workspace its key belongs
+to. A session does not say which workspace that is, so if the key is not
+in the account's Default workspace, tell g1t: paste any Console address
+from that workspace (such as
+`https://platform.claude.com/workspaces/wrkspc_01AbC…/sessions`), or its
+`wrkspc_` id, into the provider's **Console workspace**. Links to its
+sessions then open there. Left empty, they open in the Default workspace.
+
 ## Look after a provider
 
 - **Test.** g1t checks a key when it is saved, and again whenever you
@@ -55,7 +66,8 @@ except for Azure OpenAI, where it is the deployment.
   provider, until it next works. An endpoint that does not list its
   models is reached, but its key cannot be checked this way.
 - **Change.** **Change its model, address or key** sets a new model or
-  address, or replaces the key. The old key is gone once the new one is
+  address, or replaces the key (for Anthropic, its model, Console
+  workspace or key). The old key is gone once the new one is
   saved.
 - **Remove.** The **×** on a provider removes it and deletes its key. If
   Ask was using it, Ask is turned off until an owner chooses another.

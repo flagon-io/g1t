@@ -525,6 +525,7 @@ fn ai_config_schema(description: &str) -> Value {
             "base_url": { "type": "string", "description": "The address of a self-hosted endpoint or an Azure OpenAI resource, over https. An Anthropic-compatible one without /v1; an OpenAI-compatible one up to and including the version." },
             "auth_header": { "type": "string", "enum": ["x-api-key", "authorization"], "description": "For an endpoint: send the key as x-api-key, or as authorization: Bearer." },
             "model": { "type": "string", "description": "The model the team uses on it; for Azure OpenAI, the deployment." },
+            "console_workspace": { "type": "string", "description": "For anthropic: the Console workspace the key belongs to (wrkspc_…), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace." },
         },
     })
 }

@@ -104,12 +104,15 @@ pub const METHODS: [&str; 5] = ["start_agent_session", "agent_sessions_setup", "
 pub fn system_prompt() -> String {
     "You work on issues in a g1t repository (g1t is a git forge), for the person who started you, with their own Claude. \
      Each session's first message says which repository and issue, what kind of work, and how to reach them.\n\n\
-     - g1t's MCP server (the `g1t` tools) acts as that person on that repository only: read the issue and its work context (`issue` action `work`), \
-     claim it (`issue` action `claim`), see who else is on it (`session` action `list` with the issue), open and update pull requests, read checks and runs.\n\
-     - `G1T_TOKEN` is set for git and the g1t CLI. Use git with it as a header, never in a URL: \
-     `git -c http.extraHeader=\"Authorization: Bearer $G1T_TOKEN\" clone …`, then `git config http.extraHeader \"Authorization: Bearer $G1T_TOKEN\"` in the clone. \
-     Never print it, write it to a file, or put it anywhere else.\n\
-     - Follow the work-on-issue skill. Check get_work and the sessions on the issue before you start, and claim only what you take. \
+     - Run the setup in your first message before anything else: it installs the g1t CLI, has git send your token to g1t, \
+     clones the repository and ties the clone to this g1t session.\n\
+     - Use the g1t CLI from the clone, as the work-on-issue skill does: `g1t work context N`, `g1t work claim N --note …`, \
+     `g1t pr create --issue N --draft --fill`, `g1t pr checks --watch --fail-fast`, `g1t run logs --failed`. \
+     Add `--json` when you need fields; `g1t <command> --help` says the rest.\n\
+     - g1t's MCP server (the `g1t` tools) does the same as that person on that repository only. Use it when the CLI has no command for something.\n\
+     - `G1T_TOKEN` is set for the CLI and git. In the sandbox it is a placeholder that becomes the token only in a header on the way to g1t, \
+     never in a URL. Never print it or send it anywhere else.\n\
+     - Follow the work-on-issue skill. Check the work context and the sessions on the issue before you start, and claim only what you take. \
      When work splits into independent parts, you may give a part to a copy of yourself; each is recorded on g1t as a subagent and sees the others.\n\
      - Put the trailer `G1t-Session: <the session id in your first message>` on every commit, so g1t ties the commits to this session.\n\
      - Work on a branch whose name starts with the issue number, and open a draft pull request early. Never push to the default branch.\n\
@@ -213,9 +216,12 @@ pub fn multipart(boundary: &str, files: &[(String, String)]) -> String {
     body
 }
 
-/// Where Anthropic's Console shows a session.
-pub fn console_url(provider_session_id: &str) -> String {
-    format!("https://platform.claude.com/workspaces/default/sessions/{provider_session_id}")
+/// Where Anthropic's Console shows a session: in the Console workspace the
+/// key belongs to. Sessions do not say which that is, so the provider's
+/// settings do; without it, the account's Default workspace.
+pub fn console_url(console_workspace: Option<&str>, provider_session_id: &str) -> String {
+    let workspace = console_workspace.filter(|id| !id.is_empty()).unwrap_or("default");
+    format!("https://platform.claude.com/workspaces/{workspace}/sessions/{provider_session_id}")
 }
 
 /// What a session is asked to do.
@@ -261,9 +267,9 @@ pub fn kickoff(k: &Kickoff) -> String {
         text.push_str(&format!("\nAlso: {}\n", cut(instruction, MAX_INSTRUCTION_CHARS)));
     }
     if k.managed {
-        let host = site.trim_start_matches("https://").trim_start_matches("http://");
+        text.push_str(&format!("\nSet up first, as one command:\n\n```sh\n{}\n```\n", setup_command(site, &repo, &k.repo.name, k.session_id)));
         text.push_str(&format!(
-            "\nThe repository: `git -c http.extraHeader=\"Authorization: Bearer $G1T_TOKEN\" clone https://{host}/{repo}.git /workspace/{}`.\n",
+            "\nIf /usr/local/bin cannot be written, install without G1T_INSTALL_DIR and run ~/.local/bin/g1t. Then work in /workspace/{}.\n",
             k.repo.name
         ));
     }
@@ -272,6 +278,23 @@ pub fn kickoff(k: &Kickoff) -> String {
     }
     text.push_str(&format!("\nStart with the work-on-issue skill for #{}.", k.issue));
     text
+}
+
+/// What a sandbox runs before it works: the g1t CLI from the site, git
+/// sending `G1T_TOKEN` to the site in a header (the vault swaps the
+/// placeholder there), the clone, and the clone's g1t session where the
+/// CLI keeps it, so claims and notes are this session's.
+pub fn setup_command(site: &str, repo: &str, name: &str, session_id: Option<&str>) -> String {
+    let site = site.trim_end_matches('/');
+    let mut steps = vec![
+        format!("curl -fsSL {site}/install | G1T_INSTALL_DIR=/usr/local/bin sh"),
+        format!("git config --global http.{site}/.extraHeader \"Authorization: Bearer $G1T_TOKEN\""),
+        format!("git clone {site}/{repo}.git /workspace/{name}"),
+    ];
+    if let Some(id) = session_id {
+        steps.push(format!("mkdir -p /workspace/{name}/.git/g1t && echo {id} > /workspace/{name}/.git/g1t/session"));
+    }
+    steps.join(" \\\n  && ")
 }
 
 /// Quotes `text` for a POSIX shell.
@@ -954,7 +977,7 @@ impl Integrations {
             session_url: Some(format!("{}/{repo_name}/work/sessions/{}", self.site_url.trim_end_matches('/'), session.id)),
             session: Some(session),
             provider: Some("anthropic".to_owned()),
-            provider_session_url: Some(console_url(&provider_session)),
+            provider_session_url: Some(console_url(row.config().console_workspace.as_deref(), &provider_session)),
             provider_session_id: Some(provider_session),
             handoff: false,
             command: None,
@@ -1357,6 +1380,14 @@ mod tests {
         // Nothing secret is in what the agent is: its credentials are the vault's.
         assert!(!body.to_string().contains("g1t_"));
         assert!(system_prompt().contains("never in a URL"));
+        assert!(system_prompt().contains("g1t pr checks --watch --fail-fast"));
+    }
+
+    #[test]
+    fn console_links_open_in_the_keys_console_workspace() {
+        assert_eq!(console_url(Some("wrkspc_01AbC"), "sesn_1"), "https://platform.claude.com/workspaces/wrkspc_01AbC/sessions/sesn_1");
+        assert_eq!(console_url(None, "sesn_1"), "https://platform.claude.com/workspaces/default/sessions/sesn_1");
+        assert_eq!(console_url(Some(""), "sesn_1"), "https://platform.claude.com/workspaces/default/sessions/sesn_1");
     }
 
     #[test]
@@ -1391,7 +1422,10 @@ mod tests {
         assert!(prompt.contains("Work on issue #4 in acme/web on g1t (https://g1t.sh/acme/web/issues/4): Greet"));
         assert!(prompt.contains("<issue>\nSay hello.\n</issue>"));
         assert!(prompt.contains("Also: Keep it short."));
-        assert!(prompt.contains("Authorization: Bearer $G1T_TOKEN\" clone https://g1t.sh/acme/web.git /workspace/web"));
+        assert!(prompt.contains("curl -fsSL https://g1t.sh/install | G1T_INSTALL_DIR=/usr/local/bin sh"));
+        assert!(prompt.contains("git config --global http.https://g1t.sh/.extraHeader \"Authorization: Bearer $G1T_TOKEN\""));
+        assert!(prompt.contains("git clone https://g1t.sh/acme/web.git /workspace/web"));
+        assert!(prompt.contains("echo ses_1 > /workspace/web/.git/g1t/session"));
         assert!(prompt.contains("G1t-Session: ses_1"));
         let environment = environment_body("g1t-acme-con_1", &hosts);
         assert_eq!(environment["config"]["networking"]["allowed_hosts"], json!(hosts));
