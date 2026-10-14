@@ -248,6 +248,8 @@ export default [
   route(":owner/:repo/production-elsewhere.jpg", "routes/repo/production-elsewhere.ts"),
   // A file as it is, sent on to the usercontent origin (lib/usercontent.ts).
   route(":owner/:repo/raw/:ref/*", "routes/repo/raw.ts"),
+  // A file's blame as JSON, fetched by its blame view (routes/repo/blob.tsx).
+  route(":owner/:repo/blame/:ref/*", "routes/repo/blame-data.ts"),
   // A project: its overview first, its repository's code under Code. The
   // 1:1 project of a repository has the repository's name, so every
   // repository address below keeps working.

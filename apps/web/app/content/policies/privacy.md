@@ -153,7 +153,7 @@ g1t isn't meant for children under 13, and we don't knowingly collect informatio
 
 ## Changes to this policy
 
-When we change this policy, we'll update the date on the [policies](/policies) page and list the change in its history. **We'll tell you before material changes take effect**, by email to account holders, at least 30 days ahead.
+When we change this policy, we'll update the date on the [policies](/policies) page and list the change in its history. Changes take effect when they're posted there, so **please check it from time to time**.
 
 ## Contact
 
