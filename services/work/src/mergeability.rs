@@ -10,6 +10,9 @@
 //! probe in a sandbox, which merges the two without an agent and reports the
 //! files that conflict. Only so many probes run at once per repository; the
 //! rest wait their turn and start as earlier ones report.
+//!
+//! After a push, the commits a pull request's default merge messages read
+//! are kept for the same pair of commits (`keep_commit_texts`, merging.rs).
 
 use std::collections::HashSet;
 
@@ -113,8 +116,14 @@ impl Work {
     /// being. Settles it at once where it can, and asks for a probe where
     /// it cannot.
     pub(crate) async fn assess_mergeability(&self, pull: &Pull) -> Result<()> {
+        self.assess_for(pull).await.map(|_| ())
+    }
+
+    /// [`Work::assess_mergeability`], saying what it was worked out for:
+    /// the pull request's divergence from its target, if it has one.
+    async fn assess_for(&self, pull: &Pull) -> Result<Option<Divergence>> {
         if !pull.status.is_active() {
-            return Ok(());
+            return Ok(None);
         }
         let divergence: Option<Divergence> = g1t_kit::call(
             &self.repos,
@@ -129,7 +138,7 @@ impl Work {
         .await?;
         // Nothing pushed yet.
         let Some(divergence) = divergence else {
-            return Ok(());
+            return Ok(None);
         };
         let key = key(&divergence);
         let now = now_ms();
@@ -155,7 +164,7 @@ impl Work {
                 _ => false,
             };
             if settled {
-                return Ok(());
+                return Ok(Some(divergence));
             }
         }
         if !needs_probe(&divergence) {
@@ -173,7 +182,7 @@ impl Work {
             if row.is_some_and(|row| row.mergeable.as_deref() == Some("conflicting")) {
                 self.announce_mergeability(pull).await?;
             }
-            return Ok(());
+            return Ok(Some(divergence));
         }
         self.db
             .prepare(
@@ -190,7 +199,8 @@ impl Work {
             ])?
             .run()
             .await?;
-        self.ask_for_probe(pull, &divergence.head).await
+        self.ask_for_probe(pull, &divergence.head).await?;
+        Ok(Some(divergence))
     }
 
     async fn ask_for_probe(&self, pull: &Pull, head: &str) -> Result<()> {
@@ -244,7 +254,14 @@ impl Work {
                     if moved.contains(&id) {
                         self.keep_pull_refs(&pull).await;
                     }
-                    self.assess_mergeability(&pull).await?;
+                    // The commits its default messages read are kept for
+                    // the same pair of commits (merging.rs), so that the
+                    // merge box need not read them from its source.
+                    if let Some(divergence) = self.assess_for(&pull).await?
+                        && let Err(error) = self.keep_commit_texts(&pull, &divergence).await
+                    {
+                        worker::console_warn!("commits for the merge messages of {id} not kept: {error}");
+                    }
                 }
                 Ok::<_, worker::Error>(())
             };

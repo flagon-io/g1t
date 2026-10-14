@@ -88,6 +88,30 @@ pub fn added(pack: &Pack, tip: &str, limit: usize) -> Option<Vec<String>> {
     Some(out)
 }
 
+/// The commits of `ids` as default merge messages read them: message,
+/// addresses and parents, from the pack alone. No files are listed and no
+/// signature is decided, so nothing is read from the repository.
+pub fn messages(pack: &Pack, ids: &[String]) -> Vec<CommitFacts> {
+    ids.iter()
+        .filter_map(|id| {
+            let Some((ObjectKind::Commit, data)) = pack.get(id) else {
+                return None;
+            };
+            let commit = read_commit(data);
+            Some(CommitFacts {
+                sha: id.clone(),
+                message: commit.message,
+                author_email: commit.author_email,
+                committer_email: commit.committer_email,
+                parents: commit.parents.len() as u32,
+                signature: Signature::default(),
+                files: Vec::new(),
+                files_complete: false,
+            })
+        })
+        .collect()
+}
+
 /// The files that differ between two trees, deletions included, with the
 /// size of each new blob the pack holds. Whether the list is complete.
 /// Each level of the trees is read at once.
@@ -303,6 +327,38 @@ mod tests {
         assert_eq!(added(&pack, &second_id, 10), Some(vec![second_id.clone(), first_id.clone()]));
         assert_eq!(added(&pack, &second_id, 1), None, "past the limit");
         assert_eq!(added(&pack, &"0".repeat(40), 10), Some(Vec::new()), "a tip the pack does not hold adds nothing");
+    }
+
+    #[test]
+    fn messages_are_read_from_the_pack_alone() {
+        use g1t_scan::pack::write_pack;
+        let first = b"tree t
+author Ada <ada@x> 1 +0000
+committer A <a@x> 1 +0000
+
+feat: one
+".to_vec();
+        let first_id = g1t_scan::pack::object_id(ObjectKind::Commit, &first);
+        let merge = format!("tree t
+parent {first_id}
+parent {}
+author B <b@x> 1 +0000
+committer B <b@x> 1 +0000
+
+Merge main
+", "f".repeat(40)).into_bytes();
+        let merge_id = g1t_scan::pack::object_id(ObjectKind::Commit, &merge);
+        let pack = Pack::parse(&write_pack(&[(ObjectKind::Commit, first), (ObjectKind::Commit, merge)])).unwrap();
+        let ids = added(&pack, &merge_id, 10).unwrap();
+        let read = messages(&pack, &ids);
+        assert_eq!(read.iter().map(|commit| commit.message.as_str()).collect::<Vec<_>>(), ["Merge main
+", "feat: one
+"]);
+        assert_eq!(read[0].parents, 2);
+        assert_eq!(read[1].author_email.as_deref(), Some("ada@x"));
+        assert!(read.iter().all(|commit| commit.files.is_empty() && commit.signature == Signature::Unsigned));
+        // An id the pack does not hold is left out.
+        assert_eq!(messages(&pack, &["0".repeat(40)]).len(), 0);
     }
 
     /// Histories by where they start; a start missing from it fails.

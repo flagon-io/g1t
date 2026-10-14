@@ -8,11 +8,13 @@
 
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::PullEvent;
-use g1t_contracts::repos::{CreateBranchArgs, HeadArgs, RemoveBranchArgs, Repo, RepoPath};
+use g1t_contracts::repos::{CreateBranchArgs, Divergence, HeadArgs, RemoveBranchArgs, Repo, RepoPath};
 use g1t_contracts::rules::{InspectCommitsArgs, InspectedCommits, MergeMethod};
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User};
+use g1t_kit::now_ms;
 use g1t_rules::merge::{Requirements, method_label};
+use serde::Deserialize;
 use worker::Result;
 
 use crate::merge_message::{self, CommitText, MessageFacts};
@@ -31,6 +33,116 @@ macro_rules! check {
 
 /// How many of a pull request's commits its default messages read.
 const MESSAGE_COMMITS: u32 = 250;
+/// The most JSON of commits kept for one pull request (D1 holds 2 MB to a
+/// row); a pull request with more has them read each time.
+const MAX_KEPT_COMMITS: usize = 1_000_000;
+
+/// The commits kept for a pull request's default messages
+/// (`pull_message_commits`), with its mergeability's pair beside them.
+#[derive(Deserialize)]
+struct KeptCommitsRow {
+    #[serde(default)]
+    head: Option<String>,
+    #[serde(default)]
+    pair: Option<String>,
+    #[serde(default)]
+    commits: Option<String>,
+    #[serde(default)]
+    mergeable_key: Option<String>,
+}
+
+/// Whether commits kept for `kept_head`, last confirmed for the pair of
+/// commits `kept_pair`, are a pull request's now: its head is `kept_head`
+/// and its mergeability was last worked out for that same pair. A push to
+/// either side moves `mergeable_key` before they are kept again, so a list
+/// read for another head or another base is never used.
+pub(crate) fn kept_is_current(kept_head: Option<&str>, kept_pair: Option<&str>, head: Option<&str>, mergeable_key: Option<&str>) -> bool {
+    let (Some(kept_head), Some(kept_pair), Some(head), Some(mergeable_key)) = (kept_head, kept_pair, head, mergeable_key) else {
+        return false;
+    };
+    kept_head == head && kept_pair == mergeable_key && mergeable_key.split_once("..").is_some_and(|(of, _)| of == head)
+}
+
+/// What to do with the commits kept for a pull request when its
+/// mergeability is worked out for a divergence.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Keeping {
+    /// Kept for this pair of commits already.
+    Current,
+    /// The list holds (same head, same merge base: its base moved without
+    /// taking any of its commits); only the pair it holds for moves on.
+    Confirm,
+    /// Read them again: its head or where it left its base moved, or none
+    /// are kept.
+    Read,
+    /// Keep nothing: it shares no history with its base, so its commits
+    /// are read live each time.
+    Nothing,
+}
+
+/// See [`Keeping`]. `kept` is what is stored: head, merge base and pair.
+pub(crate) fn keeping(kept: Option<(&str, Option<&str>, &str)>, divergence: &Divergence) -> Keeping {
+    let Some(merge_base) = divergence.merge_base.as_deref() else {
+        return Keeping::Nothing;
+    };
+    let pair = format!("{}..{}", divergence.head, divergence.base);
+    match kept {
+        Some((head, kept_base, kept_pair)) if head == divergence.head && kept_base == Some(merge_base) => {
+            if kept_pair == pair { Keeping::Current } else { Keeping::Confirm }
+        }
+        _ => Keeping::Read,
+    }
+}
+
+/// A pull request's commits as its default messages read them, oldest
+/// first, merge commits left out.
+fn texts_of(inspected: InspectedCommits) -> Vec<CommitText> {
+    inspected
+        .commits
+        .into_iter()
+        .rev()
+        .filter(|commit| commit.parents <= 1)
+        .map(|commit| CommitText { message: commit.message, author_email: commit.author_email })
+        .collect()
+}
+
+/// The default title and body of the commit each of `methods` makes for
+/// `pull`, from its `commits` (oldest first): `None` for one that makes no
+/// commit of its own.
+fn messages_for(
+    repo: &Repo,
+    pull: &Pull,
+    settings: &RepoSettings,
+    methods: &[MergeMethod],
+    commits: &[CommitText],
+) -> Vec<(MergeMethod, Option<(String, String)>)> {
+    let owner = pull.owner().username.clone();
+    let (head_owner, head_repo) = match (&pull.fork, &pull.head_repo) {
+        // A working copy is whoever asked for the change's.
+        (Some(copy), _) => (owner.clone(), format!("{}/{}", copy.namespace, copy.name)),
+        (None, Some(fork)) => (fork.namespace.clone(), format!("{}/{}", fork.namespace, fork.name)),
+        (None, None) => (repo.namespace.clone(), format!("{}/{}", repo.namespace, repo.name)),
+    };
+    let branch = pull
+        .branch
+        .clone()
+        .or_else(|| pull.fork.as_ref().map(|copy| copy.name.clone()))
+        .unwrap_or_default();
+    let issues = issues_to_close(pull, repo, settings, false);
+    let facts = MessageFacts {
+        number: pull.number,
+        title: &pull.title,
+        body: pull.body.as_deref().unwrap_or_default(),
+        branch: &branch,
+        head_owner: &head_owner,
+        head_repo: &head_repo,
+        base: pull.base_branch(&repo.default_branch),
+        author: &owner,
+        commits,
+        issues: &issues,
+    };
+    methods.iter().map(|method| (*method, merge_message::default_message(*method, settings, &facts))).collect()
+}
 
 /// Methods named for people, joined: "squash or rebase".
 fn labels(methods: &[MergeMethod]) -> String {
@@ -178,9 +290,16 @@ pub(crate) fn issues_to_close(pull: &Pull, repo: &Repo, settings: &RepoSettings,
 }
 
 impl Work {
-    /// A pull request's commits as its default messages read them, oldest
-    /// first, merge commits left out. None when they cannot be read.
-    async fn commit_texts(&self, repo: &Repo, pull: &Pull) -> Result<Vec<CommitText>> {
+    /// A pull request's commits as its default messages read them, read
+    /// from its source now: only their messages, from a pack fetched from
+    /// `merge_base` when that is known. Empty when they cannot be read.
+    async fn read_commit_texts(
+        &self,
+        pull: &Pull,
+        target_id: &str,
+        base_branch: &str,
+        merge_base: Option<String>,
+    ) -> Result<Vec<CommitText>> {
         let Some(head) = pull.head_commit.clone() else {
             return Ok(Vec::new());
         };
@@ -190,23 +309,129 @@ impl Work {
             &InspectCommitsArgs {
                 source_id: pull.source_id().to_owned(),
                 head,
-                target_id: repo.id.clone(),
-                base_branch: pull.base_branch(&repo.default_branch).to_owned(),
+                target_id: target_id.to_owned(),
+                base_branch: base_branch.to_owned(),
                 limit: Some(MESSAGE_COMMITS),
+                merge_base,
+                messages_only: true,
             },
         )
         .await?;
-        let Outcome::Ok(inspected) = found else {
-            return Ok(Vec::new());
-        };
-        // Read newest first.
-        Ok(inspected
-            .commits
-            .into_iter()
-            .rev()
-            .filter(|commit| commit.parents <= 1)
-            .map(|commit| CommitText { message: commit.message, author_email: commit.author_email })
-            .collect())
+        Ok(match found {
+            Outcome::Ok(inspected) => texts_of(inspected),
+            Outcome::Fail(_) => Vec::new(),
+        })
+    }
+
+    /// The commits kept for a pull request's default messages, if they are
+    /// its commits as it is now ([`kept_is_current`]). One database read.
+    async fn kept_commit_texts(&self, pull: &Pull) -> Result<Option<Vec<CommitText>>> {
+        if !pull.status.is_active() || pull.head_commit.is_none() {
+            return Ok(None);
+        }
+        let row = self
+            .timing
+            .db(
+                1,
+                self.db
+                    .prepare(
+                        "SELECT kept.head, kept.pair, kept.commits, pulls.mergeable_key
+                         FROM pulls LEFT JOIN pull_message_commits AS kept ON kept.pull_id = pulls.id
+                         WHERE pulls.id = ?",
+                    )
+                    .bind(&[pull.id.as_str().into()])?
+                    .first::<KeptCommitsRow>(None),
+            )
+            .await?;
+        let Some(row) = row else { return Ok(None) };
+        if !kept_is_current(row.head.as_deref(), row.pair.as_deref(), pull.head_commit.as_deref(), row.mergeable_key.as_deref()) {
+            return Ok(None);
+        }
+        Ok(row.commits.as_deref().and_then(|commits| serde_json::from_str(commits).ok()))
+    }
+
+    /// A pull request's commits as its default messages read them, oldest
+    /// first, merge commits left out: those kept for it when they are
+    /// current, else read now.
+    async fn commit_texts(&self, repo: &Repo, pull: &Pull) -> Result<Vec<CommitText>> {
+        if let Some(kept) = self.kept_commit_texts(pull).await? {
+            return Ok(kept);
+        }
+        self.read_commit_texts(pull, &repo.id, pull.base_branch(&repo.default_branch), None).await
+    }
+
+    /// Keeps a pull request's commits for its default messages, once its
+    /// mergeability was worked out for `divergence` after a push, so that
+    /// the merge box reads them from here. They are read again only when
+    /// its head or where it left its base moved; a push to its base that
+    /// took none of its commits only moves the pair they hold for. Nothing
+    /// is read when no method the repository allows writes commits into a
+    /// message.
+    pub(crate) async fn keep_commit_texts(&self, pull: &Pull, divergence: &Divergence) -> Result<()> {
+        if !pull.status.is_active() || pull.head_commit.as_deref() != Some(divergence.head.as_str()) {
+            return Ok(());
+        }
+        #[derive(Deserialize)]
+        struct Kept {
+            head: String,
+            merge_base: Option<String>,
+            pair: String,
+        }
+        let (settings, kept) = futures_util::future::try_join(
+            self.settings(&pull.repo_id),
+            self.db
+                .prepare("SELECT head, merge_base, pair FROM pull_message_commits WHERE pull_id = ?")
+                .bind(&[pull.id.as_str().into()])?
+                .first::<Kept>(None),
+        )
+        .await?;
+        if !settings.allowed_methods().into_iter().any(|method| merge_message::needs_commits(method, &settings)) {
+            return Ok(());
+        }
+        let pair = format!("{}..{}", divergence.head, divergence.base);
+        let now = g1t_contracts::time::rfc3339(now_ms());
+        match keeping(kept.as_ref().map(|kept| (kept.head.as_str(), kept.merge_base.as_deref(), kept.pair.as_str())), divergence) {
+            Keeping::Current | Keeping::Nothing => Ok(()),
+            Keeping::Confirm => {
+                self.db
+                    .prepare("UPDATE pull_message_commits SET pair = ?, updated_at = ? WHERE pull_id = ? AND head = ?")
+                    .bind(&[pair.into(), now.into(), pull.id.as_str().into(), divergence.head.as_str().into()])?
+                    .run()
+                    .await?;
+                Ok(())
+            }
+            Keeping::Read => {
+                let texts = self
+                    .read_commit_texts(pull, &pull.repo_id, pull.base.as_deref().unwrap_or_default(), divergence.merge_base.clone())
+                    .await?;
+                let commits = serde_json::to_string(&texts)?;
+                if commits.len() > MAX_KEPT_COMMITS {
+                    self.db
+                        .prepare("DELETE FROM pull_message_commits WHERE pull_id = ?")
+                        .bind(&[pull.id.as_str().into()])?
+                        .run()
+                        .await?;
+                    return Ok(());
+                }
+                self.db
+                    .prepare(
+                        "INSERT INTO pull_message_commits (pull_id, head, merge_base, pair, commits, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                         ON CONFLICT (pull_id) DO UPDATE SET head = ?2, merge_base = ?3, pair = ?4, commits = ?5, updated_at = ?6",
+                    )
+                    .bind(&[
+                        pull.id.as_str().into(),
+                        divergence.head.as_str().into(),
+                        crate::optional(&divergence.merge_base),
+                        pair.into(),
+                        commits.into(),
+                        now.into(),
+                    ])?
+                    .run()
+                    .await?;
+                Ok(())
+            }
+        }
     }
 
     /// The default title and body of the commit each of `methods` makes
@@ -224,32 +449,7 @@ impl Work {
         } else {
             Vec::new()
         };
-        let owner = pull.owner().username.clone();
-        let (head_owner, head_repo) = match (&pull.fork, &pull.head_repo) {
-            // A working copy is whoever asked for the change's.
-            (Some(copy), _) => (owner.clone(), format!("{}/{}", copy.namespace, copy.name)),
-            (None, Some(fork)) => (fork.namespace.clone(), format!("{}/{}", fork.namespace, fork.name)),
-            (None, None) => (repo.namespace.clone(), format!("{}/{}", repo.namespace, repo.name)),
-        };
-        let branch = pull
-            .branch
-            .clone()
-            .or_else(|| pull.fork.as_ref().map(|copy| copy.name.clone()))
-            .unwrap_or_default();
-        let issues = issues_to_close(pull, repo, settings, false);
-        let facts = MessageFacts {
-            number: pull.number,
-            title: &pull.title,
-            body: pull.body.as_deref().unwrap_or_default(),
-            branch: &branch,
-            head_owner: &head_owner,
-            head_repo: &head_repo,
-            base: pull.base_branch(&repo.default_branch),
-            author: &owner,
-            commits: &commits,
-            issues: &issues,
-        };
-        Ok(methods.iter().map(|method| (*method, merge_message::default_message(*method, settings, &facts))).collect())
+        Ok(messages_for(repo, pull, settings, methods, &commits))
     }
 
     /// The whole message of the commit a merge by `method` makes: what the
@@ -281,8 +481,14 @@ impl Work {
         let (repo, mut pull) = check!(self.pull_at(&a.repo, a.number, &a.viewer).await?);
         crate::fill_base(&mut pull, &repo);
         let base = pull.base_branch(&repo.default_branch).to_owned();
-        let ((settings, requirements), behind) =
-            futures_util::future::try_join(self.settings_and_requirements(&repo, &pull), self.behind_now(&pull)).await?;
+        // The commits kept for its messages are read beside its settings;
+        // only when none are current are they read from its source.
+        let ((settings, requirements), behind, kept) = futures_util::future::try_join3(
+            self.settings_and_requirements(&repo, &pull),
+            self.behind_now(&pull),
+            self.kept_commit_texts(&pull),
+        )
+        .await?;
         let methods = offered(&settings, &requirements);
         let default_method = choose_method(None, &settings, &requirements, &base).ok();
         let viewer = a.viewer.as_ref();
@@ -295,7 +501,17 @@ impl Work {
             (None, true) => true,
             (None, false) => access::can(Some(viewer), &repo, Capability::Push),
         });
-        let messages = self.default_messages(&repo, &pull, &settings, &methods).await?;
+        let commits = if !methods.iter().any(|method| merge_message::needs_commits(*method, &settings)) {
+            Vec::new()
+        } else if let Some(kept) = kept {
+            kept
+        } else if pull.status.is_active() {
+            self.read_commit_texts(&pull, &repo.id, &base, None).await?
+        } else {
+            // A merged or closed one merges no more.
+            Vec::new()
+        };
+        let messages = messages_for(&repo, &pull, &settings, &methods, &commits);
         let options = messages
             .into_iter()
             .map(|(method, message)| {
@@ -625,6 +841,67 @@ mod tests {
         assert!(issues_to_close(&fixes, &repo, &off, false).is_empty());
         fixes.base = Some("release".into());
         assert!(issues_to_close(&fixes, &repo, &settings, false).is_empty());
+    }
+
+    fn diverged(head: &str, base: &str, merge_base: Option<&str>) -> Divergence {
+        Divergence { head: head.into(), base: base.into(), merge_base: merge_base.map(Into::into), ..Divergence::default() }
+    }
+
+    #[test]
+    fn kept_commits_are_used_only_for_the_head_and_pair_they_were_kept_for() {
+        let current = |kept_head, kept_pair, head, key| kept_is_current(kept_head, kept_pair, head, key);
+        assert!(current(Some("h1"), Some("h1..b1"), Some("h1"), Some("h1..b1")));
+        // Its head moved: pushed to since they were kept.
+        assert!(!current(Some("h1"), Some("h1..b1"), Some("h2"), Some("h1..b1")));
+        // Its base moved and mergeability was worked out again without them
+        // being confirmed for the new pair.
+        assert!(!current(Some("h1"), Some("h1..b1"), Some("h1"), Some("h1..b2")));
+        // Mergeability worked out for another head than the one it has now.
+        assert!(!current(Some("h1"), Some("h1..b1"), Some("h1"), Some("h0..b1")));
+        assert!(!current(Some("h1"), Some("h0..b1"), Some("h1"), Some("h0..b1")));
+        // Nothing kept, nothing worked out, or nothing pushed.
+        assert!(!current(None, None, Some("h1"), Some("h1..b1")));
+        assert!(!current(Some("h1"), Some("h1..b1"), Some("h1"), None));
+        assert!(!current(Some("h1"), Some("h1..b1"), None, Some("h1..b1")));
+    }
+
+    #[test]
+    fn commits_are_read_again_only_when_the_head_or_merge_base_moves() {
+        let now = diverged("h1", "b1", Some("m1"));
+        assert_eq!(keeping(None, &now), Keeping::Read, "none kept");
+        assert_eq!(keeping(Some(("h1", Some("m1"), "h1..b1")), &now), Keeping::Current);
+        // Its base moved on without taking any of its commits.
+        assert_eq!(keeping(Some(("h1", Some("m1"), "h1..b0")), &now), Keeping::Confirm);
+        // Pushed to.
+        assert_eq!(keeping(Some(("h0", Some("m1"), "h0..b1")), &now), Keeping::Read);
+        // Its base took some of its commits, or it caught up with its base.
+        assert_eq!(keeping(Some(("h1", Some("m0"), "h1..b0")), &now), Keeping::Read);
+        assert_eq!(keeping(Some(("h1", None, "h1..b0")), &now), Keeping::Read);
+        // No history in common: nothing is kept, and the box reads them live.
+        assert_eq!(keeping(Some(("h1", Some("m1"), "h1..b1")), &diverged("h1", "b1", None)), Keeping::Nothing);
+    }
+
+    #[test]
+    fn kept_commits_read_back_as_they_were_written() {
+        let texts = vec![
+            CommitText { message: "feat: one\n\nWhy.".into(), author_email: Some("ada@acme.com".into()) },
+            CommitText { message: "fix: two".into(), author_email: None },
+        ];
+        let json = serde_json::to_string(&texts).unwrap();
+        assert_eq!(serde_json::from_str::<Vec<CommitText>>(&json).unwrap(), texts);
+    }
+
+    #[test]
+    fn merge_commits_are_left_out_of_the_messages_oldest_first() {
+        let commit = |sha: &str, parents| g1t_contracts::rules::CommitFacts {
+            sha: sha.into(),
+            message: sha.into(),
+            parents,
+            ..g1t_contracts::rules::CommitFacts::default()
+        };
+        let inspected = InspectedCommits { commits: vec![commit("newest", 1), commit("merge", 2), commit("oldest", 0)], complete: true };
+        let texts: Vec<String> = texts_of(inspected).into_iter().map(|text| text.message).collect();
+        assert_eq!(texts, ["oldest", "newest"]);
     }
 
     #[test]

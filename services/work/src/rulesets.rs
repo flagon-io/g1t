@@ -979,6 +979,8 @@ impl Work {
                 target_id: repo.id.clone(),
                 base_branch: base.to_owned(),
                 limit: None,
+                merge_base: None,
+                messages_only: false,
             },
         )
         .await?;
