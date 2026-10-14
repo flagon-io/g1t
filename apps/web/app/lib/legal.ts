@@ -102,7 +102,7 @@ export const POLICY_HISTORY: { date: string; change: string }[] = [
   {
     date: "2026-10-14",
     change:
-      "Removed the draft banner. Standardized contact addresses on support@g1t.sh and named Delaware in the governing-law clause. Clarified automatic renewal, consumer cancellation and refund rights, and consent for changes where required. Privacy Policy: clarified analytics consent and the limits of credential redaction; removed unverified assurances about provider contracts and transfer arrangements. Privacy Policy and Subprocessors: Cloudflare Turnstile protects email sign-up. Privacy Policy: distinguished ordinary closure from personal-data erasure requests, shared content review, and minimal deletion records.",
+      "Removed the draft banner. Standardized contact addresses on support@g1t.sh and named Delaware in the governing-law clause. Clarified automatic renewal, consumer cancellation and refund rights, and consent for changes where required. Privacy Policy: clarified analytics consent and the limits of credential redaction; removed unverified assurances about provider contracts and transfer arrangements. Privacy Policy and Subprocessors: Cloudflare Turnstile protects email sign-up. Privacy Policy: distinguished ordinary closure from personal-data erasure requests, shared content review, and minimal deletion records. Terms, Privacy Policy and this page: material changes are emailed to account holders, without a fixed 30-day notice period.",
   },
   {
     date: "2026-10-13",
