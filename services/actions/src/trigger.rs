@@ -760,6 +760,8 @@ impl Actions {
     }
 
     pub async fn on_event(&self, event: &Event) -> Result<()> {
+        // Each queued event reads repositories' settings afresh.
+        self.actions_on.clear();
         let Some(repo_id) = event.repo_id.as_deref() else { return Ok(()) };
         let mut mapped = github_events(&event.kind);
         // A new branch or tag is also `create`.
@@ -779,7 +781,9 @@ impl Actions {
         }
         // Nothing starts while the repository's Actions are off (a fork's
         // are, until someone turns them on). Its workflows are still synced
-        // above, so turning them on finds them listed.
+        // above, so turning them on finds them listed. `create_run` holds
+        // the gate; asking here (the same read) skips reading workflows
+        // from git for nothing.
         if !self.actions_on(&repo).await? {
             return Ok(());
         }
@@ -1012,7 +1016,7 @@ impl Actions {
         problem: &str,
     ) -> Result<()> {
         let row = self.workflow_row(repo, path, path, source).await?;
-        self.record_failed_run(&row, subject.git_ref.as_str(), &subject.sha, event_key, actor_id, sender, problem).await
+        self.record_failed_run(repo, &row, subject.git_ref.as_str(), &subject.sha, event_key, actor_id, sender, problem).await
     }
 
     /// Scheduled workflows that run this minute, on the default branch: at
