@@ -80,6 +80,15 @@ test("Code's needs become rows with what is at stake", () => {
   assert.equal(deploy.stake?.text, "Production on an older build");
   assert.equal(codeRow(need({ key: "review:p2", reason: "needs_review", facts: [{ label: "Lines", value: "+10 −2", tone: null }] })).stake?.text, "+10 −2");
   assert.equal(codeRow(need({ key: "runner:j1", reason: "stalled", facts: [{ label: "Waiting", value: "2 h", tone: "warn" }] })).stake?.text, "Waiting 2 h");
+  // Your pull request that meets everything: merge it, beside reviews asked of you.
+  const ready = codeRow(need({ key: "ready:p3", reason: "ready", ask: "Ready to land when you merge it." }));
+  assert.equal(ready.kind, "ready");
+  assert.equal(ready.stake?.text, "Ready to merge");
+  assert.equal(ready.action.label, "Merge");
+  // One that needs you (a conflict, a request for changes) blocks it.
+  const conflict = codeRow(need({ key: "pull:p4", reason: "blocking", ask: "It conflicts with the branch it will land on." }));
+  assert.equal(conflict.kind, "pull_blocked");
+  assert.equal(conflict.stake?.text, "Blocking");
 });
 
 const row = (over: Partial<AttentionRow>): AttentionRow => ({

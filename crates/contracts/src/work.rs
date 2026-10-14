@@ -1565,8 +1565,11 @@ pub struct StallArgs {
     pub by: Option<String>,
 }
 
-/// `managed_pulls`: ids of the open pull requests g1t is seeing through,
-/// in one repository or in all of them. Returns `Vec<String>`.
+/// `managed_pulls`: ids of the open pull requests to move along (`advance`):
+/// those g1t merges by itself or someone set to auto-merge, in one
+/// repository or in all of them; in one repository, also every open one
+/// whose lifecycle is remembered, to bring it up to date after a merge
+/// there. Returns `Vec<String>`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManagedPullsArgs {

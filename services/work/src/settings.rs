@@ -281,6 +281,8 @@ impl Work {
         if before.allow_auto_merge && !settings.allow_auto_merge {
             self.auto_merge_turned_off(&repo, &a.actor).await?;
         }
+        // What its pull requests need may have changed with it.
+        self.forget_stages(&repo.id).await?;
         Ok(Outcome::Ok(self.default_branch_settings(&repo).await?))
     }
 

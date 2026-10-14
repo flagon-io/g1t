@@ -37,6 +37,8 @@ test("each kind of need gets its reason chip", () => {
   assert.equal(reasonFor({ kind: "invitation" }), "invited");
   assert.equal(reasonFor({ kind: "checks" }), "checks_failing");
   assert.equal(reasonFor({ kind: "runner" }), "stalled");
+  // Ready to merge is not a review asked of anyone.
+  assert.equal(reasonFor({ kind: "ready" }), "ready");
 });
 
 test("why a need needs a person is said for every reason", () => {

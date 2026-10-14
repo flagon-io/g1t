@@ -132,6 +132,7 @@ const ICON: Record<AttentionKind, ReactNode> = {
   pull_blocked: <GitPullRequest size={16} className="text-warn" />,
   review: <GitPullRequest size={16} className="text-info" />,
   invitation: <Mail size={16} className="text-info" />,
+  ready: <GitMerge size={16} className="text-success" />,
   runner: <Server size={16} className="text-warn" />,
   notification: <Bell size={16} className="text-warn" />,
   chat: <AtSign size={16} className="text-accent" />,
