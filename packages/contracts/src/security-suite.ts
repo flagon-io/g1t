@@ -324,6 +324,8 @@ export interface SecuritySuiteApi {
   codeAlert(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<CodeAlertDetail>>;
   setCodeAlertState(actor: User, repo: RepoPath, number: number, state: "open" | "dismissed", reason: DismissReason | null, comment: string): Promise<Result<CodeAlert>>;
   pullScanning(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<PullScanning>>;
+  /** The Dependency review check run again on an open pull request's head; its comment changes in place. */
+  rerunDependencyReview(actor: User, repo: RepoPath, number: number): Promise<Result<DependencyReview>>;
   dependencyGraph(repo: RepoPath, viewer: Viewer): Promise<Result<DependencyGraph>>;
   sbom(repo: RepoPath, viewer: Viewer): Promise<Result<unknown>>;
   overview(workspace: string, viewer: Viewer, days?: number): Promise<Result<WorkspaceOverview>>;
@@ -371,6 +373,7 @@ export function securitySuiteClient(service: ServiceBinding): SecuritySuiteApi {
     setCodeAlertState: (actor, repo, number, state, reason, comment) =>
       call("set_code_alert_state", { actor, repo, number, state, reason, comment }),
     pullScanning: (repo, number, viewer) => call("pull_code_scanning", { repo, number, viewer }),
+    rerunDependencyReview: (actor, repo, number) => call("rerun_dependency_review", { repo, number, viewer: actor }),
     dependencyGraph: (repo, viewer) => call("dependency_graph", { repo, viewer }),
     sbom: (repo, viewer) => call("sbom", { repo, viewer }),
     overview: (workspace, viewer, days) => call("security_overview", { workspace, viewer, days: days ?? null }),

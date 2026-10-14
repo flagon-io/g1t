@@ -439,7 +439,7 @@ impl Work {
                 &a.repo_id,
                 None,
                 ChecksEvent {
-                    pull_id: head.id,
+                    pull_id: head.id.clone(),
                     repo_id: a.repo_id.clone(),
                     number: head.number,
                     status: if facts.failed.is_empty() { "passed" } else { "failed" },
@@ -447,6 +447,12 @@ impl Work {
                 },
             )
             .await?;
+            // A merge that brought it up to date and waits for its required
+            // checks on this commit lands, or stops on one that failed. The
+            // status is kept either way.
+            if let Err(error) = self.land_when_checked(&head.id).await {
+                worker::console_error!("landing {} after its checks: {error}", head.id);
+            }
         }
         Ok(Outcome::Ok(true))
     }

@@ -1885,8 +1885,8 @@ pub struct MergeChoices {
     pub suggest_update: bool,
     /// The repository requires it to be up to date before it merges.
     pub require_up_to_date: bool,
-    /// It merges through the merge queue, which lands it as tested
-    /// whatever method is chosen.
+    /// It merges through the merge queue, which builds and tests it by the
+    /// method chosen (the queue rule's when none is) and lands it as tested.
     pub merge_queue: bool,
     /// The viewer may turn on auto-merge for it: the repository allows it,
     /// it is open or a draft, and they may merge it.
@@ -2245,9 +2245,11 @@ pub struct QueueArgs {
     pub viewer: Viewer,
 }
 
-/// `queue_build`: the next batch to test for a repository, if nothing is
-/// being tested now. Returns `Vec<QueueJob>`, one per entry, each testing
-/// the default branch with that entry and everything ahead of it.
+/// `queue_build`: builds the next batch to test for a repository, if
+/// nothing is being tested now: each entry landed by its method on the
+/// state of the entries ahead of it, in the repository itself, with its
+/// `merge_group` workflows started. Returns `Vec<QueueJob>`, which is now
+/// always empty: no state is left for a sandbox to build.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueBuildArgs {
@@ -2265,9 +2267,22 @@ pub struct QueueStackItem {
     /// The branch of `source` holding it.
     pub branch: String,
     pub commit: String,
+    /// How it lands: the state is built with its commits made this way.
+    /// States recorded before methods were merged in by merge commit.
+    #[serde(default = "merge_method")]
+    pub method: MergeMethod,
+    /// For `merge` and `squash`: the commit's message, worked out when
+    /// the state was first built, so that building it again makes the
+    /// same commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// For `squash`: who the commit is by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<User>,
 }
 
-/// What a sandbox needs to build and check one combined state.
+/// One combined state to build and check. The work service builds every
+/// state in the repository itself now, so `queue_build` returns none.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueJob {
@@ -2293,7 +2308,7 @@ pub struct QueueJob {
     pub actor: User,
 }
 
-/// `report_queue`: a sandbox's result for one combined state. Returns
+/// `report_queue`: the result of building one combined state. Returns
 /// `Outcome<QueueState>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

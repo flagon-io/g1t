@@ -36,7 +36,7 @@ fn repeated_admission_is_atomic() {
     let enqueue = |id: &str| {
         db.query_row(
             ENQUEUE,
-            params![id, "repo", "pull", 1, "{}", 0, "later", 0],
+            params![id, "repo", "pull", 1, "{}", 0, "later", 0, "merge", None::<String>, None::<String>],
             |_| Ok(()),
         )
         .optional()
@@ -507,7 +507,7 @@ fn only_a_reset_attempt_gives_up_its_branch() {
 fn a_bypass_asked_for_at_admission_is_kept_for_landing() {
     let db = database();
     db.execute("DELETE FROM queue_entries", []).unwrap();
-    assert!(exists(&db, ENQUEUE, params!["first", "repo", "pull", 1, "{}", 0, "later", 1]));
+    assert!(exists(&db, ENQUEUE, params!["first", "repo", "pull", 1, "{}", 0, "later", 1, "merge", None::<String>, None::<String>]));
     assert_eq!(
         db.query_row("SELECT bypass_rules FROM queue_entries", [], |row| row.get::<_, u32>(0)).unwrap(),
         1
@@ -596,4 +596,54 @@ fn an_entry_whose_branch_is_gone_leaves_instead_of_blocking_those_behind() {
         super::gone_note(super::BRANCH_GONE),
         "its branch no longer exists, so it cannot be tested or landed. Push the branch again and merge to rejoin."
     );
+}
+
+#[test]
+fn an_entry_keeps_how_it_lands_and_one_queued_before_methods_merges() {
+    let db = database();
+    db.execute("DELETE FROM queue_entries", []).unwrap();
+    assert!(exists(&db, ENQUEUE, params!["first", "repo", "pull", 1, "{}", 0, "later", 0, "squash", "Ship it", "All of it"]));
+    let (method, title, body): (String, String, String) = db
+        .query_row("SELECT merge_method, commit_title, commit_message FROM queue_entries", [], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .unwrap();
+    assert_eq!((method.as_str(), title.as_str(), body.as_str()), ("squash", "Ship it", "All of it"));
+    let row = |method: serde_json::Value| -> super::EntryRow {
+        serde_json::from_value(serde_json::json!({
+            "id": "e", "repo_id": "r", "pull_id": "p", "number": 1, "state": "waiting", "enqueued_by": "{}",
+            "keep_issue_open": 0, "head_commit": null, "base_commit": null, "ahead": null, "combined_commit": null,
+            "results": null, "error": null, "tested_at": null, "created_at": "now", "finished_at": null,
+            "merge_method": method,
+        }))
+        .unwrap()
+    };
+    use g1t_contracts::rules::MergeMethod;
+    assert_eq!(row("rebase".into()).method(), MergeMethod::Rebase);
+    assert_eq!(row("fast_forward".into()).method(), MergeMethod::FastForward);
+    // Its states were built with merge commits then.
+    assert_eq!(row(serde_json::Value::Null).method(), MergeMethod::Merge);
+}
+
+#[test]
+fn a_clash_names_the_nearest_entry_ahead_that_changed_the_same_file() {
+    let item = |number: u32| g1t_contracts::work::QueueStackItem {
+        number,
+        title: String::new(),
+        source: g1t_contracts::repos::RepoPath { namespace: "n".into(), name: "r".into() },
+        branch: "b".into(),
+        commit: "c".into(),
+        method: g1t_contracts::rules::MergeMethod::Squash,
+        message: None,
+        author: None,
+    };
+    let ahead = vec![
+        (item(1), vec!["a.rs".to_owned(), "b.rs".to_owned()]),
+        (item(2), vec!["b.rs".to_owned()]),
+        (item(3), vec!["c.rs".to_owned()]),
+    ];
+    assert_eq!(super::clashed_with(&ahead, &["b.rs".to_owned()]), Some(2));
+    assert_eq!(super::clashed_with(&ahead, &["a.rs".to_owned()]), Some(1));
+    // With the default branch itself.
+    assert_eq!(super::clashed_with(&ahead, &["d.rs".to_owned()]), None);
 }

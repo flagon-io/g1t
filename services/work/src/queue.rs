@@ -2,13 +2,18 @@
 //! of them, and only a combination that passed reaches the default branch.
 //!
 //! A batch of up to the merge queue rule's `max_entries_to_build` entries (4 unless
-//! the default branch's rules say otherwise) is tested at once, speculatively: one
-//! sandbox per entry builds the default branch with that entry and every
-//! entry ahead of it merged in, and pushes the result to
+//! the default branch's rules say otherwise) is tested at once, speculatively.
+//! Each entry's state is built in the repository itself (repos
+//! `build_queue_step`): the entry landed by its own method (merge commit,
+//! squash, rebase or fast-forward: the one asked for when it was queued,
+//! else the merge queue rule's) on the state of the entry ahead of it, or
+//! on the default branch for the first, and pushed to
 //! `g1t-queue/<entry>-<attempt>`. The repository's `merge_group` workflows then run
 //! on that commit, and the default branch's required checks must pass
 //! there. Entries land in order, each by moving the default branch to its
-//! tested state, once everything ahead has landed. One that fails leaves
+//! tested state once everything ahead has landed: a fast-forward to
+//! exactly the commits that were tested, each built as its method makes
+//! them. One that fails leaves
 //! the queue with a failed check run; the entries behind it are tested
 //! again without it. Which entry answers for a failure, which entries
 //! ahead it breaks with, who is told and how it rejoins: integration.rs.
@@ -16,10 +21,11 @@
 use futures_util::future::try_join_all;
 use g1t_contracts::events::{ChecksEvent, QueueChanged};
 use g1t_contracts::repos::{
-    DeleteBranchArgs, GetByIdArgs, HeadArgs, LandArgs, Landed, Repo, RepoPath,
+    BuildQueueStepArgs, DeleteBranchArgs, GetByIdArgs, HeadArgs, LandArgs, Landed, QueueStep, Repo, RepoPath,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
+use g1t_contracts::rules::MergeMethod;
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -44,8 +50,9 @@ const CLAIM_BUILD: &str = "UPDATE queue_entries
     WHERE id = ?6 AND state = 'waiting' RETURNING id AS value";
 
 const ENQUEUE: &str = "INSERT INTO queue_entries
-    (id, repo_id, pull_id, number, state, enqueued_by, keep_issue_open, created_at, bypass_rules)
-    SELECT ?1, ?2, ?3, ?4, 'waiting', ?5, ?6, ?7, ?8
+    (id, repo_id, pull_id, number, state, enqueued_by, keep_issue_open, created_at, bypass_rules,
+     merge_method, commit_title, commit_message)
+    SELECT ?1, ?2, ?3, ?4, 'waiting', ?5, ?6, ?7, ?8, ?9, ?10, ?11
     WHERE NOT EXISTS (SELECT 1 FROM queue_entries WHERE pull_id = ?3 AND state IN ('waiting', 'testing', 'passed'))
     RETURNING id AS value";
 
@@ -149,6 +156,15 @@ pub(crate) struct EntryRow {
     /// How many merge_group runs this attempt's dispatch registered.
     #[serde(default)]
     workflow_runs: u32,
+    /// How it lands (`MergeMethod`); none for an entry queued before
+    /// methods, whose states were built with merge commits.
+    #[serde(default)]
+    merge_method: Option<String>,
+    /// What whoever queued it wrote for a merge or squash commit.
+    #[serde(default)]
+    commit_title: Option<String>,
+    #[serde(default)]
+    commit_message: Option<String>,
 }
 
 impl EntryRow {
@@ -178,6 +194,14 @@ impl EntryRow {
         attempt_branch(&self.id, self.attempt_id.as_deref())
     }
 
+    /// How it lands.
+    pub(crate) fn method(&self) -> MergeMethod {
+        MergeMethod::ALL
+            .into_iter()
+            .find(|method| self.merge_method.as_deref() == Some(method.as_str()))
+            .unwrap_or(MergeMethod::Merge)
+    }
+
     /// Exactly what this attempt built, as recorded when it was claimed.
     pub(crate) fn tested_stack(&self) -> Option<Vec<QueueStackItem>> {
         self.tested_stack.as_deref().and_then(|stack| serde_json::from_str(stack).ok())
@@ -199,6 +223,26 @@ fn attempt_branch(id: &str, attempt: Option<&str>) -> String {
         Some(attempt) => format!("{BRANCH_PREFIX}{id}-{attempt}"),
         None => format!("{BRANCH_PREFIX}{id}"),
     }
+}
+
+/// What building one entry's state in the repository came to.
+pub(crate) enum Built {
+    /// The state's commit.
+    State(String),
+    /// Its change clashes with the state ahead in these files.
+    Conflict { message: String, paths: Vec<String> },
+    /// It could not be built, and why.
+    Failed(String),
+}
+
+/// The nearest entry ahead (each with the files its pull request changes)
+/// that changed one of `paths`, which an entry's change clashed in.
+pub(crate) fn clashed_with(ahead: &[(QueueStackItem, Vec<String>)], paths: &[String]) -> Option<u32> {
+    ahead
+        .iter()
+        .rev()
+        .find(|(_, files)| paths.iter().any(|path| files.contains(path)))
+        .map(|(item, _)| item.number)
 }
 
 /// Why an entry left because what it would build is gone.
@@ -268,8 +312,10 @@ impl Work {
         .await
     }
 
-    /// Puts a pull request that may merge into the queue instead. Merging
-    /// it again while it is queued changes nothing.
+    /// Puts a pull request that may merge into the queue instead, to land
+    /// by `method` with the commit message `message` (title, body) asked
+    /// for, if any. Merging it again while it is queued changes nothing.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn enqueue(
         &self,
         repo: &Repo,
@@ -277,6 +323,8 @@ impl Work {
         actor: &User,
         keep_issue_open: bool,
         bypass_rules: bool,
+        method: MergeMethod,
+        message: (Option<&str>, Option<&str>),
     ) -> Result<Outcome<Pull>> {
         if self.queued_entry(&pull.id).await?.is_some() {
             return Ok(Outcome::Ok(pull.clone()));
@@ -294,6 +342,9 @@ impl Work {
                 u32::from(keep_issue_open).into(),
                 rfc3339(now).into(),
                 u32::from(bypass_rules).into(),
+                method.as_str().into(),
+                message.0.map_or(JsValue::NULL, JsValue::from),
+                message.1.map_or(JsValue::NULL, JsValue::from),
             ])?
             .first::<crate::rows::ValueRow>(None)
             .await?;
@@ -537,21 +588,23 @@ impl Work {
         Ok(())
     }
 
-    /// The next batch to test, if nothing is being tested now: one job per
-    /// entry, each building the default branch with that entry and every
-    /// entry ahead of it.
+    /// Builds the next batch, if nothing is being tested now: each entry
+    /// landed by its own method on the state of the entries ahead of it,
+    /// in the repository itself (`build_step`), and its `merge_group`
+    /// workflows started there. No sandbox builds anything, so the jobs
+    /// returned are always none.
     ///
     /// Smaller combinations a failure is being narrowed down with
     /// (integration.rs) are built alongside, whatever the queue is doing.
     pub(crate) async fn queue_build(&self, a: QueueBuildArgs) -> Result<Vec<QueueJob>> {
         // Also resumes a publication interrupted after the Git update.
         self.settle(&a.repo_id).await?;
-        let mut jobs = self.probe_jobs(&a.repo_id).await?;
-        jobs.extend(self.queue_batch(a).await?);
-        Ok(jobs)
+        self.build_probes(&a.repo_id).await?;
+        self.queue_batch(a).await?;
+        Ok(Vec::new())
     }
 
-    async fn queue_batch(&self, a: QueueBuildArgs) -> Result<Vec<QueueJob>> {
+    async fn queue_batch(&self, a: QueueBuildArgs) -> Result<()> {
         let active = self.entries(&a.repo_id, true).await?;
         // How the default branch's merge queue rule batches (rulesets.rs).
         let rule = self.queue_rule(&a.repo_id).await?;
@@ -572,24 +625,24 @@ impl Work {
             return Box::pin(self.queue_batch(a)).await;
         }
         if active.iter().any(|row| row.state() != QueueState::Waiting) {
-            return Ok(Vec::new());
+            return Ok(());
         }
         let batch: Vec<EntryRow> = active
             .into_iter()
             .take(rule.max_entries_to_build.max(1) as usize)
             .collect();
         let Some(first) = batch.first() else {
-            return Ok(Vec::new());
+            return Ok(());
         };
         // Too few to start yet, and the oldest has not waited long enough.
         if batch.len() < rule.min_entries_to_merge as usize
             && first.created_at.as_str()
                 > minutes_ago(u64::from(rule.min_entries_wait_minutes)).as_str()
         {
-            return Ok(Vec::new());
+            return Ok(());
         }
         let Some(actor) = first.actor() else {
-            return Ok(Vec::new());
+            return Ok(());
         };
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
@@ -601,7 +654,7 @@ impl Work {
         )
         .await?;
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
-            return Ok(Vec::new());
+            return Ok(());
         };
         let base: Option<String> = g1t_kit::call(
             &self.repos,
@@ -613,9 +666,10 @@ impl Work {
         )
         .await?;
         let Some(base) = base else {
-            return Ok(Vec::new());
+            return Ok(());
         };
 
+        let settings = self.settings(&repo.id).await?;
         // Each entry's change, as it is now.
         let mut items: Vec<(EntryRow, Pull, QueueStackItem)> = Vec::new();
         for row in batch {
@@ -648,6 +702,20 @@ impl Work {
                 namespace: repo.namespace.clone(),
                 name: repo.name.clone(),
             });
+            // How it lands, and the commit message it lands with: worked
+            // out once, so that the state is the one landing makes and
+            // building it again makes the same commits.
+            let method = row.method();
+            let message = match self
+                .merge_message_for(&repo, &pull, &settings, method, row.commit_title.as_deref(), row.commit_message.as_deref())
+                .await?
+            {
+                Ok(message) => message,
+                Err(problem) => {
+                    self.leave(&repo.id, &pull, QueueState::Removed, Some(problem)).await?;
+                    continue;
+                }
+            };
             let item = QueueStackItem {
                 number: pull.number,
                 title: pull.title.clone(),
@@ -657,26 +725,29 @@ impl Work {
                     .clone()
                     .unwrap_or_else(|| repo.default_branch.clone()),
                 commit,
+                method,
+                message,
+                author: crate::merging::squash_author(&pull, method),
             };
             items.push((row, pull, item));
         }
 
+        // Each built on the one before it: landing them in order moves the
+        // default branch to each tested state in turn.
         let now = rfc3339(now_ms());
-        let mut jobs = Vec::new();
-        for index in 0..items.len() {
-            let (row, pull, _) = &items[index];
-            let stack: Vec<QueueStackItem> = items[..=index]
-                .iter()
-                .map(|(_, _, item)| item.clone())
-                .collect();
-            let ahead: Vec<u32> = stack[..index].iter().map(|item| item.number).collect();
+        let mut onto = base.clone();
+        let mut built: Vec<(QueueStackItem, Vec<String>)> = Vec::new();
+        for (row, pull, item) in items {
+            let mut stack: Vec<QueueStackItem> = built.iter().map(|(item, _)| item.clone()).collect();
+            stack.push(item.clone());
+            let ahead: Vec<u32> = built.iter().map(|(item, _)| item.number).collect();
             let token = new_token();
             let claimed = self
                 .db
                 .prepare(CLAIM_BUILD)
                 .bind(&[
                     hash(&token).into(),
-                    stack[index].commit.as_str().into(),
+                    item.commit.as_str().into(),
                     base.as_str().into(),
                     serde_json::to_string(&ahead)?.into(),
                     now.as_str().into(),
@@ -686,36 +757,105 @@ impl Work {
                 ])?
                 .first::<crate::rows::ValueRow>(None)
                 .await?;
+            // Another request is building it: what follows waits for it.
             if claimed.is_none() {
-                continue;
+                break;
             }
-            // The sandbox reads the change and pushes the tested state as
-            // the pull request's owner (whoever asked g1t for it, or its
-            // author): a real account, whose token carries its memberships.
-            // (Whoever queued it may be g1t itself.)
-            let actor = pull.owner().clone();
+            let Some(actor) = row.actor() else { break };
             let branch = attempt_branch(&row.id, Some(&hash(&token)));
-            jobs.push(QueueJob {
+            let step = self.build_step(&repo, &onto, &item, &branch, &actor, settings.require_web_commit_sign_off).await?;
+            let mut report = ReportQueueArgs {
                 entry_id: row.id.clone(),
                 token,
-                repo: RepoPath {
-                    namespace: repo.namespace.clone(),
-                    name: repo.name.clone(),
-                },
-                default_branch: repo.default_branch.clone(),
-                base_commit: base.clone(),
-                branch,
-                // The state is checked by its merge_group workflows.
-                contract_checks: Vec::new(),
-                stack,
-                checks: Vec::new(),
-                actor,
-            });
+                combined_commit: None,
+                results: Vec::new(),
+                error: None,
+                conflict_with: None,
+                conflicts: Vec::new(),
+            };
+            let next = match step {
+                Built::State(commit) => {
+                    report.combined_commit = Some(commit.clone());
+                    Some(commit)
+                }
+                Built::Conflict { message, paths } => {
+                    // The entry ahead whose change touched the same files.
+                    report.conflict_with = clashed_with(&built, &paths);
+                    report.error = Some(message);
+                    report.conflicts = paths;
+                    None
+                }
+                Built::Failed(message) => {
+                    report.error = Some(message);
+                    None
+                }
+            };
+            self.report_queue(report).await?;
+            // One that could not be built leaves; those behind it are built
+            // in the next batch, without it.
+            let Some(next) = next else { break };
+            onto = next;
+            built.push((item, pull.files.iter().map(|file| file.path.clone()).collect()));
         }
-        Ok(jobs)
+        Ok(())
     }
 
-    /// A sandbox's result for one combined state.
+    /// `item` landed by its method on `onto`, a state of the queue, in the
+    /// repository itself (repos `build_queue_step`), and `branch` pointed at
+    /// the state that makes, as `actor` (whoever queued it).
+    pub(crate) async fn build_step(
+        &self,
+        repo: &Repo,
+        onto: &str,
+        item: &QueueStackItem,
+        branch: &str,
+        actor: &User,
+        sign_off: bool,
+    ) -> Result<Built> {
+        let Some(source_id) = self.source_of(repo, item).await? else {
+            return Ok(Built::Failed(format!("#{}'s repository is no longer there.", item.number)));
+        };
+        // A state recorded before methods: merged in as it was then.
+        let message = item.message.clone().or_else(|| {
+            matches!(item.method, MergeMethod::Merge | MergeMethod::Squash).then(|| format!("Merge #{}: {}", item.number, item.title))
+        });
+        let step: Outcome<QueueStep> = g1t_kit::call(
+            &self.repos,
+            "build_queue_step",
+            &BuildQueueStepArgs {
+                target_id: repo.id.clone(),
+                onto: onto.to_owned(),
+                source_id,
+                branch: item.branch.clone(),
+                commit: item.commit.clone(),
+                method: item.method,
+                message,
+                author: item.author.clone(),
+                sign_off,
+                actor: actor.clone(),
+                push_branch: branch.to_owned(),
+            },
+        )
+        .await?;
+        Ok(match step {
+            Outcome::Ok(QueueStep::Built { commit, .. }) => Built::State(commit),
+            Outcome::Ok(QueueStep::Conflict { message, paths }) => Built::Conflict { message, paths },
+            Outcome::Ok(QueueStep::Refused { message }) => Built::Failed(message),
+            Outcome::Fail(failure) => Built::Failed(failure.message),
+        })
+    }
+
+    /// The repository holding a stack item's change: the queue's own, or
+    /// its pull request's fork.
+    async fn source_of(&self, repo: &Repo, item: &QueueStackItem) -> Result<Option<String>> {
+        if item.source.namespace == repo.namespace && item.source.name == repo.name {
+            return Ok(Some(repo.id.clone()));
+        }
+        // A fork's, through its pull request, whoever can read the fork.
+        Ok(self.pull(&repo.id, item.number).await?.map(|pull| pull.source_id().to_owned()))
+    }
+
+    /// The result of building one combined state.
     pub(crate) async fn report_queue(&self, a: ReportQueueArgs) -> Result<Outcome<QueueState>> {
         // A smaller combination built to narrow down a failure.
         if a.entry_id.starts_with("qpr_") {
@@ -1201,7 +1341,7 @@ impl Work {
             // the merge record exists, only queue bookkeeping remains.
             if row.landing_commit.is_some()
                 && pull.status == PullStatus::Merged
-                && pull.head_commit == row.landing_commit
+                && pull.merge_commit == row.landing_commit
             {
                 self.finish_landing(&row).await?;
                 continue;
@@ -1254,6 +1394,7 @@ impl Work {
                         row.combined_commit.as_deref().unwrap(),
                         row.bypass_rules != 0,
                         evidence.all(),
+                        row.method(),
                     )
                     .await?;
                 if let Some(refusal) = gate.refusal() {
@@ -1289,9 +1430,10 @@ impl Work {
                 target_branch: None,
                 expected_commit: row.combined_commit.clone(),
                 target_id: None,
-                // The state the queue tested lands as it is: the queue
-                // rule's method is not applied to it.
-                method: Some(g1t_contracts::rules::MergeMethod::FastForward),
+                // The state tested was built by the entry's method on what
+                // landed before it: it lands exactly as tested, the default
+                // branch moving to it.
+                method: Some(MergeMethod::FastForward),
                 message: None,
                 author: None,
                 sign_off: false,
@@ -1309,7 +1451,8 @@ impl Work {
                 landed = g1t_kit::call(&self.repos, "land", &land).await?;
             }
             let landed = match landed {
-                Outcome::Ok(landed) => landed,
+                // Recorded as the method it was built by.
+                Outcome::Ok(landed) => Landed { method: row.method(), ..landed },
                 Outcome::Fail(_) => {
                     let abandoned = self
                         .db

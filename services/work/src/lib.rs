@@ -2250,16 +2250,28 @@ impl Work {
 
         // A repository that merges through a queue: it joins the queue, and
         // lands once its state together with everything ahead has passed.
-        // The queue lands the state it tested, whatever the method.
+        // Its state is built by the method asked for, else the merge queue
+        // rule's, and lands exactly as tested (queue.rs).
         if settings.merge_queue {
             if !a.actor.verified {
                 return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
             }
             check!(allowed(Some(&a.actor), &repo, Capability::Merge));
+            let queued = match a.merge_method {
+                Some(_) => method,
+                None => {
+                    let rule = self.queue_rule(&repo.id).await?;
+                    match merging::choose_method(Some(rule.merge_method), &choosing, &requirements, &base) {
+                        Ok(method) => method,
+                        Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+                    }
+                }
+            };
             self.record_merge_evaluations(&repo, &pull, &gate).await;
             // Landing honours the same bypass request against the rules as
             // they are then (queue.rs `settle`).
-            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open, a.bypass_rules).await;
+            let message = (a.commit_title.as_deref(), a.commit_message.as_deref());
+            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open, a.bypass_rules, queued, message).await;
         }
 
         // The commit it makes, for a merge or a squash: what the merger
@@ -2287,11 +2299,23 @@ impl Work {
                 check!(allowed(Some(&a.actor), &repo, Capability::Merge));
                 self.record_merge_evaluations(&repo, &pull, &gate).await;
                 // Brought up to date here, without a sandbox: the merge is
-                // recorded first, and lands when the push that catches it up
-                // arrives (lifecycle.rs `land_if_requested`).
-                self.request_landing(&pull, &a.actor, a.keep_issue_open, a.delete_branch)
-                    .await?;
-                let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
+                // recorded first, and lands once the push that catches it up
+                // arrives and the required checks pass on that commit
+                // (lifecycle.rs `land_if_requested`, `land_when_checked`).
+                // Merging past failing checks, where that is allowed, carries
+                // over: it then lands without waiting for them.
+                self.request_landing(
+                    &pull,
+                    &a.actor,
+                    a.keep_issue_open,
+                    a.delete_branch,
+                    a.ignore_checks && settings.allow_ignoring_checks,
+                )
+                .await?;
+                // Bounded: a repository that does not answer gets a clear
+                // failure back to whoever clicked, not a request that hangs
+                // until the site gives up on it.
+                let updated: Option<Outcome<PullBranchUpdate>> = g1t_kit::call_within(
                     &self.repos,
                     "update_pull_branch",
                     &UpdatePullBranchArgs {
@@ -2305,8 +2329,11 @@ impl Work {
                         method: if requirements.linear_history { UpdateMethod::Rebase } else { UpdateMethod::Merge },
                         expected_head: pull.head_commit.clone(),
                     },
+                    lifecycle::REPOS_WRITE_WITHIN,
                 )
                 .await?;
+                // A push that still arrives later only brings it up to date.
+                let updated = updated.unwrap_or_else(lifecycle::repository_unreachable);
                 match updated {
                     Outcome::Ok(PullBranchUpdate::Updated { .. }) => return Ok(Outcome::Ok(pull)),
                     // Moved again in between, or already caught up: land it now.
@@ -2341,7 +2368,10 @@ impl Work {
 
         // Whether the actor may write to the repository is decided by repos.
         let head = pull.head_commit.clone();
-        let landed: Outcome<Landed> = g1t_kit::call(
+        // Bounded like the catch-up above. Landing the same checked commit
+        // again is recognised as done (repos `land`), so trying again after
+        // a land that finished late records it.
+        let landed: Option<Outcome<Landed>> = g1t_kit::call_within(
             &self.repos,
             "land",
             &LandArgs {
@@ -2358,9 +2388,10 @@ impl Work {
                 author: merging::squash_author(&pull, method),
                 sign_off: settings.require_web_commit_sign_off,
             },
+            lifecycle::REPOS_WRITE_WITHIN,
         )
         .await?;
-        let landed = check!(landed);
+        let landed = check!(landed.unwrap_or_else(lifecycle::repository_unreachable));
         self.record_merge_evaluations(&repo, &pull, &gate).await;
         let merged = self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed).await?;
         // Its branch, where the merger or the repository says it goes.

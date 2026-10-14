@@ -618,6 +618,7 @@ refused with `402` without it.
 | [`dependency_graph`](/reference/api/supply-chain/get-dependency-graph/) | Every package the lockfiles resolve, direct or transitive, with licenses. | `repo` | `security:read` |
 | [`sbom`](/reference/api/supply-chain/get-sbom/) | The dependency graph as an SPDX 2.3 document, in `sbom`. | `repo` | `security:read` |
 | [`compare_dependencies`](/reference/api/supply-chain/compare-dependencies/) | What changes between `basehead` (`base...head`), and whether it passes dependency review. | `repo`, `basehead` | `security:read` |
+| [`rerun_dependency_review`](/reference/api/supply-chain/rerun-dependency-review/) | Runs a pull request's Dependency review check again; its one comment changes in place. Write role. | `repo`, `number` | `security:write` |
 | [`settings`](/reference/api/security-settings/get-security-settings/) | A repository's security settings, and whether the paid features are on. | `repo` | `security:read` |
 | [`update_settings`](/reference/api/security-settings/update-security-settings/) | Change `code_scanning_gate`, `dependency_review`, `review_fail_on`, `review_deny_licenses`, `review_comment`. Admin role, or a security manager. | `repo` | `security:write` |
 | [`workspace_settings`](/reference/api/security-settings/get-workspace-security-settings/) | A workspace's delegated bypass and validity checks. | `workspace` | `security:read` |

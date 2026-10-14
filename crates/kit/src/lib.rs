@@ -64,6 +64,66 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
     read_answer(method, &text)
 }
 
+/// Calls `method` like [`call`], waiting at most `within` for the answer:
+/// `None` when none came in time. Nothing on Workers ends a subrequest that
+/// stops answering, so a caller that must answer someone (a click on Merge)
+/// bounds the calls it makes this way and says what happened instead of
+/// hanging until its own caller gives up. The call is not cancelled: what
+/// it was doing may still finish, so only a call that is safe to make
+/// again (or whose late result is harmless) should be bounded.
+pub async fn call_within<A: Serialize, R: DeserializeOwned>(
+    service: &Fetcher,
+    method: &str,
+    arguments: &A,
+    within: std::time::Duration,
+) -> Result<Option<R>> {
+    match first_of(call(service, method, arguments), worker::Delay::from(within)).await {
+        Some(answer) => answer.map(Some),
+        None => {
+            worker::console_error!("{method} did not answer within {} s", within.as_secs());
+            Ok(None)
+        }
+    }
+}
+
+/// `work`'s output if it finishes before `deadline` does, `None` otherwise.
+pub async fn first_of<W: std::future::Future, D: std::future::Future>(work: W, deadline: D) -> Option<W::Output> {
+    use std::task::Poll;
+    let mut work = Box::pin(work);
+    let mut deadline = Box::pin(deadline);
+    std::future::poll_fn(|cx| {
+        if let Poll::Ready(output) = work.as_mut().poll(cx) {
+            return Poll::Ready(Some(output));
+        }
+        if deadline.as_mut().poll(cx).is_ready() {
+            return Poll::Ready(None);
+        }
+        Poll::Pending
+    })
+    .await
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::first_of;
+    use std::future::{pending, ready};
+    use std::task::{Context, Poll, Waker};
+
+    fn now<F: std::future::Future>(future: F) -> Poll<F::Output> {
+        let mut future = Box::pin(future);
+        future.as_mut().poll(&mut Context::from_waker(Waker::noop()))
+    }
+
+    #[test]
+    fn an_answer_in_time_is_passed_through_and_a_late_one_is_not_waited_for() {
+        assert_eq!(now(first_of(ready(7), pending::<()>())), Poll::Ready(Some(7)));
+        assert_eq!(now(first_of(pending::<u8>(), ready(()))), Poll::Ready(None));
+        // Both ready: the answer wins.
+        assert_eq!(now(first_of(ready(1), ready(()))), Poll::Ready(Some(1)));
+        assert_eq!(now(first_of(pending::<u8>(), pending::<()>())), Poll::Pending);
+    }
+}
+
 /// A method's answer, read from its body.
 pub fn read_answer<R: DeserializeOwned>(method: &str, text: &str) -> Result<R> {
     serde_json::from_str(text).map_err(|error| {
