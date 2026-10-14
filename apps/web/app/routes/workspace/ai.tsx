@@ -361,10 +361,20 @@ function ProviderSettings({ connection, updated }: { connection: AiConnection; u
             <Input name="baseUrl" type="url" required defaultValue={connection.config.baseUrl ?? ""} className="max-w-sm" />
           </Field>
         )}
-        <Field label={azure ? "Deployment" : "Model"} hint={azure ? undefined : "Optional. The model your team uses on it."}>
+        <Field
+          label={azure ? "Deployment" : "Model"}
+          hint={
+            azure
+              ? undefined
+              : connection.provider === "anthropic"
+                ? "Optional, and separate from Ask's model above. Sessions on issues run on Ask's model when it names one, else this one, else claude-opus-5-5."
+                : "Optional, and separate from Ask's model above: the model your team uses on it."
+          }
+        >
           <Input
             name="model"
             required={azure}
+            placeholder={azure ? undefined : "None"}
             defaultValue={connection.config.model ?? ""}
             list={connection.models.length > 0 ? `models-${connection.id}` : undefined}
             className="max-w-sm font-mono text-[0.8125rem]"
