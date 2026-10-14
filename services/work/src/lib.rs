@@ -2211,11 +2211,17 @@ impl Work {
             check!(allowed(Some(&a.actor), &repo, Capability::Merge));
             self.record_merge_evaluations(&repo, &pull, &gate).await;
             // Brought up to date here, without a sandbox: the merge is
-            // recorded first, and lands when the push that catches it up
-            // arrives (lifecycle.rs `land_if_requested`).
-            self.request_landing(&pull, &a.actor, a.keep_issue_open)
+            // recorded first, and lands once the push that catches it up
+            // arrives and the required checks pass on that commit
+            // (lifecycle.rs `land_if_requested`, `land_when_checked`).
+            // Merging past failing checks, where that is allowed, carries
+            // over: it then lands without waiting for them.
+            self.request_landing(&pull, &a.actor, a.keep_issue_open, a.ignore_checks && settings.allow_ignoring_checks)
                 .await?;
-            let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
+            // Bounded: a repository that does not answer gets a clear
+            // failure back to whoever clicked, not a request that hangs
+            // until the site gives up on it.
+            let updated: Option<Outcome<PullBranchUpdate>> = g1t_kit::call_within(
                 &self.repos,
                 "update_pull_branch",
                 &UpdatePullBranchArgs {
@@ -2225,8 +2231,11 @@ impl Work {
                     actor: a.actor.clone(),
                     target_branch: pull.base.clone(),
                 },
+                lifecycle::REPOS_WRITE_WITHIN,
             )
             .await?;
+            // A push that still arrives later only brings it up to date.
+            let updated = updated.unwrap_or_else(lifecycle::repository_unreachable);
             match updated {
                 Outcome::Ok(PullBranchUpdate::Updated { .. }) => return Ok(Outcome::Ok(pull)),
                 // Moved again in between, or already caught up: land it now.
@@ -2249,7 +2258,10 @@ impl Work {
         }
 
         // Whether the actor may write to the repository is decided by repos.
-        let landed: Outcome<Landed> = g1t_kit::call(
+        // Bounded like the catch-up above. Landing the same checked commit
+        // again is recognised as done (repos `land`), so trying again after
+        // a land that finished late records it.
+        let landed: Option<Outcome<Landed>> = g1t_kit::call_within(
             &self.repos,
             "land",
             &LandArgs {
@@ -2260,9 +2272,10 @@ impl Work {
                 target_branch: Some(base.clone()),
                 expected_commit: pull.head_commit.clone(),
             },
+            lifecycle::REPOS_WRITE_WITHIN,
         )
         .await?;
-        let landed = check!(landed);
+        let landed = check!(landed.unwrap_or_else(lifecycle::repository_unreachable));
         self.record_merge_evaluations(&repo, &pull, &gate).await;
         Ok(Outcome::Ok(
             self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed)

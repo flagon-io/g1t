@@ -8,8 +8,10 @@
 //! branch's rules ask for is met, attributed to `g1t` (`POLICY_ACTOR_ID`).
 //!
 //! A merge asked for while a pull request is behind is recorded here
-//! (`request_landing`) and lands once the push that brings it up to date
-//! arrives (`land_if_requested`).
+//! (`request_landing`). Once the push that brings it up to date arrives
+//! (`land_if_requested`), it lands when the checks the branch requires
+//! pass on that new commit, as they must for any merge (`land_when_checked`,
+//! also called as each of the commit's checks finishes).
 
 use g1t_contracts::repos::{GetByIdArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
@@ -31,6 +33,57 @@ use crate::rows::ValueRow;
 /// How long a claimed step is waited for before it may be taken again.
 const CATCH_UP_MINUTES: u64 = 30;
 const MERGE_MINUTES: u64 = 2;
+/// How long a merge that was brought up to date waits for the required
+/// checks on the new commit; after that it is no longer pending.
+const CHECKS_MINUTES: u64 = 180;
+/// The step under way while it does (`working_on`).
+const WAITING_FOR_CHECKS: &str = "checks";
+
+/// How long a merge waits on the repository service for one write (the
+/// catch-up push, the landing): long enough for a large merge, short
+/// enough that the person who clicked hears back well before the site
+/// stops waiting on the merge (apps/web/app/lib/deadline.ts, 60 s).
+pub(crate) const REPOS_WRITE_WITHIN: std::time::Duration = std::time::Duration::from_secs(25);
+
+/// What a merge says when the repository service did not answer in time.
+pub(crate) fn repository_unreachable<T>() -> Outcome<T> {
+    Outcome::fail(
+        FailureCode::Unavailable,
+        "g1t couldn't reach the repository to merge this. Try again in a moment.",
+    )
+}
+
+/// What becomes of a merge that was brought up to date, by the checks the
+/// branch requires on the commit that did it.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Landing {
+    /// None are required, or all of them passed.
+    Now,
+    /// Some are still running or have not reported yet.
+    Wait,
+    /// One failed: a person has to push a fix.
+    Stall(String),
+}
+
+/// Whether a merge that was brought up to date lands now, by its new
+/// commit's checks. The same checks hold it as hold any merge
+/// (`merge_gate`): landing it before they report would only be refused.
+pub(crate) fn landing_step(facts: &WorkflowFacts) -> Landing {
+    let failed = facts.required_failed();
+    if !failed.is_empty() {
+        let one = failed.len() == 1;
+        return Landing::Stall(format!(
+            "It was brought up to date, but the required {} {} failed on that commit, so it was not merged. Push a fix, then merge again.",
+            if one { "check" } else { "checks" },
+            statuses::list(&failed),
+        ));
+    }
+    if facts.required.iter().any(|check| check.state != RequiredState::Success) {
+        return Landing::Wait;
+    }
+    Landing::Now
+}
+
 /// Who a merge made by a repository's settings is attributed to. Not an
 /// account: `g1t` cannot be registered.
 pub(crate) const POLICY_ACTOR_ID: &str = "g1t_policy";
@@ -54,6 +107,10 @@ struct Progress {
 struct LandRequest {
     actor: User,
     keep_issue_open: bool,
+    /// The merger asked to merge past the checks, and the repository
+    /// allows that: it lands without waiting for them.
+    #[serde(default)]
+    ignore_checks: bool,
 }
 
 #[derive(Deserialize)]
@@ -61,6 +118,8 @@ struct LandRow {
     land_requested: Option<String>,
     land_requested_at: Option<String>,
     stalled: Option<String>,
+    #[serde(default)]
+    working_on: Option<String>,
 }
 
 /// What should happen next, if it is g1t's turn.
@@ -158,6 +217,12 @@ fn decide(facts: Facts) -> (Lifecycle, Next) {
             return wait(Stage::CatchingUp, "Bringing it up to date with the branch it will land on.");
         }
         Some("merge") => return wait(Stage::Ready, "Merging."),
+        Some(WAITING_FOR_CHECKS) => {
+            return wait(
+                Stage::Checking,
+                "Brought up to date. It lands once the required checks pass on that commit.",
+            );
+        }
         _ => {}
     }
     if let Some(name) = &facts.person_request {
@@ -507,11 +572,13 @@ impl Work {
         pull: &Pull,
         actor: &User,
         keep_issue_open: bool,
+        ignore_checks: bool,
     ) -> Result<()> {
         let now = now_ms();
         let request = serde_json::to_string(&LandRequest {
             actor: actor.clone(),
             keep_issue_open,
+            ignore_checks,
         })?;
         self.db
             .prepare(
@@ -541,9 +608,17 @@ impl Work {
     /// enough to still stand.
     async fn land_request(&self, pull_id: &str) -> Result<Option<LandRequest>> {
         let row = self.land_row(pull_id).await?;
-        let oldest = rfc3339(now_ms().saturating_sub(CATCH_UP_MINUTES * 60 * 1000));
+        let now = now_ms();
         Ok(row
             .filter(|row| {
+                // Waiting for checks on the caught-up commit stands longer
+                // than waiting for the push.
+                let minutes = if row.working_on.as_deref() == Some(WAITING_FOR_CHECKS) {
+                    CHECKS_MINUTES
+                } else {
+                    CATCH_UP_MINUTES
+                };
+                let oldest = rfc3339(now.saturating_sub(minutes * 60 * 1000));
                 row.land_requested_at
                     .as_deref()
                     .is_some_and(|at| at >= oldest.as_str())
@@ -566,41 +641,87 @@ impl Work {
             return found.first::<LandRow>(Slot::Pull);
         }
         self.db
-            .prepare("SELECT land_requested, land_requested_at, stalled FROM pulls WHERE id = ?")
+            .prepare("SELECT land_requested, land_requested_at, stalled, working_on FROM pulls WHERE id = ?")
             .bind(&[pull_id.into()])?
             .first::<LandRow>(None)
             .await
     }
 
     /// Forgets a merge that was waiting on a pull request, and the step
-    /// that was bringing it up to date.
+    /// that was bringing it up to date or waiting for its checks.
     pub(crate) async fn forget_landing(&self, pull_id: &str) -> Result<()> {
-        self.db
+        self.take_landing(pull_id).await?;
+        Ok(())
+    }
+
+    /// Forgets a merge that was waiting on a pull request and returns it,
+    /// in one statement, so that of two callers deciding to land it at
+    /// once (two checks finishing together) only one does.
+    async fn take_landing(&self, pull_id: &str) -> Result<Option<LandRequest>> {
+        // SET sees the row as it was: the CASEs read the old `working_on`.
+        let taken = self
+            .db
             .prepare(
                 "UPDATE pulls SET land_requested = NULL, land_requested_at = NULL,
-                   working_on = CASE WHEN working_on = 'catch_up' THEN NULL ELSE working_on END,
-                   working_until = CASE WHEN working_on = 'catch_up' THEN NULL ELSE working_until END
-                 WHERE id = ?",
+                   working_on = CASE WHEN working_on IN ('catch_up', 'checks') THEN NULL ELSE working_on END,
+                   working_until = CASE WHEN working_on IN ('catch_up', 'checks') THEN NULL ELSE working_until END
+                 WHERE id = ? AND land_requested IS NOT NULL
+                 RETURNING land_requested AS value",
             )
             .bind(&[pull_id.into()])?
+            .first::<ValueRow>(None)
+            .await?;
+        Ok(taken.and_then(|row| serde_json::from_str(&row.value).ok()))
+    }
+
+    /// Notes that a merge which was brought up to date waits for the
+    /// required checks on its new commit, from now: on the first look at
+    /// this commit (a later push clears the step and starts it again).
+    async fn wait_for_checks(&self, pull_id: &str) -> Result<()> {
+        let now = now_ms();
+        self.db
+            .prepare(
+                "UPDATE pulls SET working_on = 'checks', working_until = ?1, land_requested_at = ?2
+                 WHERE id = ?3 AND land_requested IS NOT NULL AND status = 'open'
+                   AND (working_on IS NULL OR working_on <> 'checks')",
+            )
+            .bind(&[
+                rfc3339(now + CHECKS_MINUTES * 60 * 1000).into(),
+                rfc3339(now).into(),
+                pull_id.into(),
+            ])?
             .run()
             .await?;
         Ok(())
     }
 
-    /// Lands a pull request whose head has just moved, if a merge of it was
-    /// waiting for exactly that. What it was caught up to was already
-    /// checked and reviewed apart from the merge, so the checks are not
-    /// waited for again; a repository that wants them rerun turns on
-    /// "require up to date", and then nothing is landed this way.
+    /// Moves on a merge that was waiting for a pull request's head to move
+    /// (the push that brought it up to date): it lands once the checks the
+    /// branch requires pass on that commit ([`Work::land_when_checked`]).
+    /// The commit is new, so they are waited for, as for any merge: a
+    /// ruleset that requires them refuses a merge that skips them.
     pub(crate) async fn land_if_requested(&self, pull_id: &str) -> Result<()> {
+        if self.land_request(pull_id).await?.is_none() {
+            return Ok(());
+        }
+        self.land_when_checked(pull_id).await
+    }
+
+    /// Lands a pull request that was brought up to date for a merge, once
+    /// the checks the branch requires pass on its head: at once when none
+    /// are required, never when one failed (it stops and says which), and
+    /// otherwise when the last of them reports (statuses.rs `store_status`
+    /// calls this as the commit's checks finish).
+    pub(crate) async fn land_when_checked(&self, pull_id: &str) -> Result<()> {
         let Some(request) = self.land_request(pull_id).await? else {
             return Ok(());
         };
-        self.forget_landing(pull_id).await?;
         let Some(pull) = self.pull_by_id(pull_id).await? else {
             return Ok(());
         };
+        if pull.status != PullStatus::Open {
+            return self.forget_landing(pull_id).await;
+        }
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
@@ -611,6 +732,33 @@ impl Work {
         )
         .await?;
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
+            return self.forget_landing(pull_id).await;
+        };
+        let step = if request.ignore_checks {
+            Landing::Now
+        } else {
+            let settings = self.settings_on(&repo, &pull).await?;
+            let statuses = self.statuses(&pull.repo_id, pull.head_commit.as_deref()).await?;
+            let facts = self
+                .workflow_facts(&pull.repo_id, pull.head_commit.as_deref(), &statuses, &settings.required_checks)
+                .await?;
+            landing_step(&facts)
+        };
+        match step {
+            Landing::Wait => return self.wait_for_checks(pull_id).await,
+            Landing::Stall(reason) => {
+                self.stall(StallArgs {
+                    pull_id: pull.id,
+                    reason,
+                    by: None,
+                })
+                .await?;
+                return Ok(());
+            }
+            Landing::Now => {}
+        }
+        // Taken by one caller: two checks finishing together land it once.
+        let Some(request) = self.take_landing(pull_id).await? else {
             return Ok(());
         };
         let merged = self
@@ -623,7 +771,7 @@ impl Work {
                 number: pull.number,
                 summary: String::new(),
                 keep_issue_open: request.keep_issue_open,
-                ignore_checks: true,
+                ignore_checks: request.ignore_checks,
                 bypass_rules: false,
             })
             .await?;
@@ -843,7 +991,67 @@ mod tests {
     }
 
     #[test]
+    fn a_merge_brought_up_to_date_lands_once_its_required_checks_pass_on_the_new_commit() {
+        // The catch-up's merge commit, just pushed: nothing has reported yet.
+        assert_eq!(landing_step(&checks(&[], &["CI"])), Landing::Wait);
+        assert_eq!(landing_step(&checks(&[("CI / pull_request", "pending")], &["CI"])), Landing::Wait);
+        assert_eq!(landing_step(&checks(&[("CI / pull_request", "success")], &["CI"])), Landing::Now);
+        // Every required one, not just the first to report.
+        assert_eq!(
+            landing_step(&checks(&[("CI / pull_request", "success")], &["CI", "Deploy"])),
+            Landing::Wait
+        );
+        // Nothing required: it lands at once, whatever else runs or failed.
+        assert_eq!(landing_step(&checks(&[], &[])), Landing::Now);
+        assert_eq!(landing_step(&checks(&[("Lint / pull_request", "failure")], &[])), Landing::Now);
+        assert_eq!(
+            landing_step(&checks(&[("CI / pull_request", "success"), ("Lint / pull_request", "failure")], &["CI"])),
+            Landing::Now
+        );
+        // A required one that failed stops it, saying which.
+        let Landing::Stall(reason) = landing_step(&checks(&[("CI / pull_request", "failure")], &["CI"])) else {
+            panic!("a failing required check must stop it");
+        };
+        assert_eq!(
+            reason,
+            "It was brought up to date, but the required check CI failed on that commit, so it was not merged. Push a fix, then merge again."
+        );
+        let Landing::Stall(reason) =
+            landing_step(&checks(&[("CI / push", "error"), ("Deploy", "failure")], &["CI", "Deploy"]))
+        else {
+            panic!("failing required checks must stop it");
+        };
+        assert!(reason.contains("required checks CI and Deploy failed"), "{reason}");
+    }
+
+    #[test]
+    fn a_merge_that_cannot_reach_the_repository_says_so() {
+        let Outcome::Fail(failure) = repository_unreachable::<()>() else {
+            panic!("it must fail");
+        };
+        assert_eq!(failure.code, FailureCode::Unavailable);
+        assert!(failure.message.contains("couldn't reach the repository"));
+        assert!(failure.message.contains("Try again"));
+        // Well inside the site's own 60 s wait on a merge, catch-up and landing both.
+        assert!(REPOS_WRITE_WITHIN.as_secs() * 2 < 60);
+    }
+
+    #[test]
+    fn a_landing_asked_for_before_it_carried_ignore_checks_still_reads() {
+        let old: LandRequest = serde_json::from_value(serde_json::json!({
+            "actor": serde_json::to_value(User::default()).unwrap(),
+            "keepIssueOpen": true,
+        }))
+        .unwrap();
+        assert!(old.keep_issue_open && !old.ignore_checks);
+    }
+
+    #[test]
     fn drafts_steps_under_way_and_stops_wait() {
+        assert_eq!(
+            outcome(Facts { working_on: Some(WAITING_FOR_CHECKS.into()), auto_merge: true, ..facts() }),
+            (Stage::Checking, "wait")
+        );
         assert_eq!(outcome(Facts { draft: true, ..facts() }), (Stage::Working, "wait"));
         assert_eq!(outcome(Facts { working_on: Some("catch_up".into()), auto_merge: true, ..facts() }), (Stage::CatchingUp, "wait"));
         assert_eq!(outcome(Facts { working_on: Some("merge".into()), auto_merge: true, ..facts() }), (Stage::Ready, "wait"));
