@@ -11,15 +11,24 @@ import type {
   ActivityDigest,
   ActorCount,
   ChatActivity,
+  Commit,
   Deployment,
+  Harness,
   InboxItem,
   ProjectDeploys,
   Pull,
+  PullSessions,
   RepoDigest,
   RepoPath,
+  ShipState,
+  ShippedRepo,
   Statement,
   WorkflowRun,
 } from "@g1t/contracts";
+
+import { HARNESS_NAMES } from "./coordination.ts";
+import { type PushRecord, pushedByPerson, pushedCommits } from "./mission-control.ts";
+import { settledLine } from "./inbox.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -164,6 +173,9 @@ export function within(at: number | string | null | undefined, span: Pick<Span, 
 /** A pull request with where it is: what Home reads from Code. */
 export type CodePull = Pick<Pull, "number" | "title" | "status" | "mergedAt" | "createdAt" | "updatedAt"> & {
   repo: RepoPath;
+  /** The repository's id, and the commit the merge put on the base branch: what deployments ship. */
+  repoId?: string;
+  mergeCommit?: string | null;
   author: { username: string; kind?: string };
   /** Who merged it, when it merged. */
   mergedBy?: string | null;
@@ -504,7 +516,26 @@ export type LandedChange = {
   detail: string;
   to: string;
   at: number;
+  /** A merge's or a push's commit on the default branch, and its repository's id: what a deployment ships. */
+  sha?: string | null;
+  repoId?: string | null;
+  /** Whether it is live yet (`withShipped`); null when its project does not deploy, or it could not be read. */
+  shipped?: ShipInfo | null;
+  /** Made in a harness session (`withSessions`, or a `G1t-Session:` trailer): the agent marker, and the session. */
+  agent?: AgentMark | null;
 };
+
+/** Whether a change is live: shipped by a production deployment, on its way, waiting, or the deployment after it failed. */
+export type ShipInfo = {
+  state: ShipState;
+  /** Epoch ms: when the deployment that shipped it went live. */
+  at: number | null;
+  /** The deployment (or the run that deploys it). */
+  to: string | null;
+};
+
+/** A change made in a harness session: which harness when known, and the session's page. */
+export type AgentMark = { harness: Harness | null; to: string | null };
 
 /** Every pull request that merged in the span, newest first. */
 export function landedIn(pulls: CodePull[], span: Pick<Span, "from" | "now">): LandedChange[] {
@@ -520,6 +551,8 @@ export function landedIn(pulls: CodePull[], span: Pick<Span, "from" | "now">): L
         detail: `${pull.repo.name}#${pull.number} · by ${agent ? `@${pull.author.username}` : pull.author.username}${mergedBy}`,
         to: `/${pull.repo.namespace}/${pull.repo.name}/pull/${pull.number}`,
         at: Date.parse(pull.mergedAt!),
+        sha: pull.mergeCommit ?? null,
+        repoId: pull.repoId ?? null,
       };
     })
     .sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
@@ -599,6 +632,211 @@ export function landedDeploys(deploys: DeployRow[]): LandedChange[] {
 /** Everything that landed, newest first. */
 export function landed(parts: LandedChange[][]): LandedChange[] {
   return parts.flat().sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
+}
+
+// --- Pushes straight to a default branch, each ---------------------------------
+
+/** A push to a default branch, with the history it brought read back. */
+export type DirectPush = {
+  repoId: string;
+  repo: RepoRef;
+  push: PushRecord & { id: string };
+  /** Who pushed, by name; `someone` when it could not be read. */
+  by: string;
+};
+
+/** The sessions a commit message names in `G1t-Session:` trailers. */
+export function sessionTrailers(message: string): string[] {
+  const ids = [...message.matchAll(/^G1t-Session:\s*(ses_[0-9a-z]+)\s*$/gim)].map((match) => match[1]!.toLowerCase());
+  return [...new Set(ids)];
+}
+
+/** A commit message's first line. */
+const subject = (message: string) => message.split("\n", 1)[0]!.trim();
+
+/**
+ * Each person's push to a default branch in the span, newest first, as a
+ * landed change: its commit when it brought one ("Fix the bell's count"),
+ * else how many; the session a commit names in a `G1t-Session:` trailer
+ * as its agent mark. `history` is each repository's default branch read
+ * back from its newest push, newest first; a push whose commits are not
+ * in it (rewritten since) is left out, and so is g1t's own (a pull
+ * request landing: Landed lists the merge).
+ */
+export function pushRows(
+  pushes: DirectPush[],
+  history: Record<string, Pick<Commit, "hash" | "parents" | "message">[]>,
+  span: Pick<Span, "from" | "now">,
+  byG1t: (commit: Pick<Commit, "hash" | "parents" | "message">) => boolean = () => false,
+): LandedChange[] {
+  const rows: LandedChange[] = [];
+  for (const { repoId, repo, push, by } of pushes) {
+    if (!pushedByPerson(push) || !within(push.time, span)) continue;
+    const commits = history[repoId] ?? [];
+    const start = commits.findIndex((commit) => commit.hash === push.data.after);
+    if (start === -1) continue;
+    const brought = pushedCommits(commits.slice(start), push.data.before, byG1t);
+    if (brought.length === 0) continue;
+    const newest = brought[0]!;
+    const session = brought.flatMap((commit) => sessionTrailers(commit.message))[0] ?? null;
+    const branch = repo.defaultBranch;
+    rows.push({
+      key: `push:${repoId}:${push.id}`,
+      kind: "push",
+      title: brought.length === 1 ? subject(newest.message) || `1 commit pushed to ${branch}` : `${plural(brought.length, "commit")} pushed to ${branch}`,
+      detail: `${repo.name} · ${brought.length === 1 ? `pushed to ${branch}` : subject(newest.message)} · by ${by}`,
+      to: brought.length === 1 ? `/${repo.namespace}/${repo.name}/commit/${newest.hash}` : `/${repo.namespace}/${repo.name}/activity`,
+      at: Date.parse(push.time),
+      sha: push.data.after,
+      repoId,
+      agent: session ? { harness: null, to: `/${repo.namespace}/${repo.name}/work/sessions/${session}` } : null,
+    });
+  }
+  return rows;
+}
+
+// --- Shipped: merge to deploy --------------------------------------------------
+
+/**
+ * Each merge and push with whether it is live yet, from what deployments
+ * recorded as production deployed (`shipped`). A project that does not
+ * deploy says nothing; a change deployments did not answer for keeps none.
+ */
+export function withShipped(rows: LandedChange[], answers: ShippedRepo[] | null): LandedChange[] {
+  if (!answers) return rows;
+  const byRepo = new Map(answers.map((answer) => [answer.repo_id, answer]));
+  return rows.map((row) => {
+    if (!row.sha || !row.repoId || (row.kind !== "merge" && row.kind !== "push")) return row;
+    const answer = byRepo.get(row.repoId);
+    const commit = answer?.deploys ? answer.commits.find((c) => c.sha === row.sha) : null;
+    if (!commit) return row;
+    return { ...row, shipped: { state: commit.state, at: commit.deployed_at ? Date.parse(commit.deployed_at) : null, to: commit.url } };
+  });
+}
+
+/** What to ask deployments: each repository's merges and pushes with their commit and when they landed. */
+export function shippedAsks(rows: LandedChange[]): { repo_id: string; commits: { sha: string; landed_at: string }[] }[] {
+  const byRepo = new Map<string, { sha: string; landed_at: string }[]>();
+  for (const row of rows) {
+    if (!row.sha || !row.repoId || (row.kind !== "merge" && row.kind !== "push")) continue;
+    const list = byRepo.get(row.repoId) ?? [];
+    list.push({ sha: row.sha, landed_at: new Date(row.at).toISOString() });
+    byRepo.set(row.repoId, list);
+  }
+  return [...byRepo].map(([repo_id, commits]) => ({ repo_id, commits }));
+}
+
+/** How long something took, short: "1 min", "45 min", "3 h", "2 d". */
+function took(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / MINUTE));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} d`;
+}
+
+/** "Live 9 min after merge", "Waiting to deploy", "Deploying", "Deploy failed". */
+export function shippedLabel(ship: ShipInfo, row: Pick<LandedChange, "kind" | "at">): string {
+  switch (ship.state) {
+    case "live":
+      return ship.at != null ? `Live ${took(ship.at - row.at)} after ${row.kind === "merge" ? "merge" : "push"}` : "Live";
+    case "deploying":
+      return "Deploying";
+    case "failed":
+      return "Deploy failed";
+    default:
+      return "Waiting to deploy";
+  }
+}
+
+// --- Done with an agent --------------------------------------------------------
+
+/**
+ * Each merged pull request with the harness session that made it, when
+ * work tied one to it (`pullSessions`): the first, by when it started.
+ */
+export function withSessions(rows: LandedChange[], sessions: { repo: RepoPath; pulls: PullSessions[] }[] | null): LandedChange[] {
+  if (!sessions) return rows;
+  const found = new Map<string, AgentMark>();
+  for (const { repo, pulls } of sessions) {
+    for (const pull of pulls) {
+      const first = pull.sessions[0];
+      if (first) found.set(`landed:${pullKey(repo, pull.number)}`, { harness: first.harness, to: `/${repo.namespace}/${repo.name}/work/sessions/${first.id}` });
+    }
+  }
+  return rows.map((row) => (row.agent || !found.has(row.key) ? row : { ...row, agent: found.get(row.key)! }));
+}
+
+/** The agent mark's words: "Made in a Claude Code session", or "Made in a session". */
+export function agentLabel(mark: AgentMark): string {
+  return mark.harness ? `Made in a ${HARNESS_NAMES[mark.harness] ?? "harness"} session` : "Made in a session";
+}
+
+// --- Day by day ----------------------------------------------------------------
+
+/** What landed on one day, newest first: "Today", "Yesterday", "Mon, Oct 12". */
+export type LandedDay = { key: string; label: string; rows: LandedChange[] };
+
+/** What landed, by the day it landed in the reader's time zone, newest day first. */
+export function landedByDay(rows: LandedChange[], now: number, timeZone: string | null): LandedDay[] {
+  const days: LandedDay[] = [];
+  const today = dayIn(now, timeZone);
+  const yesterday = dayIn(now - DAY, timeZone);
+  for (const row of [...rows].sort((a, b) => b.at - a.at || a.key.localeCompare(b.key))) {
+    const key = dayIn(row.at, timeZone);
+    let day = days.find((d) => d.key === key);
+    if (!day) {
+      const label = key === today ? "Today" : key === yesterday ? "Yesterday" : formatIn(row.at, timeZone, { weekday: "short", month: "short", day: "numeric" });
+      day = { key, label, rows: [] };
+      days.push(day);
+    }
+    day.rows.push(row);
+  }
+  return days;
+}
+
+// --- While you were away -------------------------------------------------------
+
+/** Something that settled by itself in the span: what it was, why it settled, where. */
+export type SettledRow = { key: string; title: string; why: string; where: string | null; to: string; at: number };
+
+/** What g1t settled for you, what shipped, and what still needs you, in the span. */
+export type Away = {
+  settled: SettledRow[];
+  /** Merges and pushes in the span that went live, are waiting, deploying, or whose deployment failed. */
+  shipped: number;
+  waiting: number;
+  deploying: number;
+  failed: number;
+  /** Rows in Where you're needed. */
+  needs: number;
+};
+
+/**
+ * Your notifications that settled by themselves in the span (a later run
+ * passed, it merged, it deployed), newest first; one marked done by hand
+ * is yours, not g1t's. Only this workspace's, and none about a repository
+ * for a member without Code access.
+ */
+export function settledIn(items: InboxItem[] | null, slug: string, code: boolean, span: Pick<Span, "from" | "now">): SettledRow[] {
+  return (items ?? [])
+    .filter((item) => item.doneAt != null && settledLine(item) && within(item.doneAt, span))
+    .filter((item) => (item.workspace ?? item.repo?.split("/")[0] ?? "").toLowerCase() === slug && (code || !item.repo))
+    .map((item) => ({
+      key: `settled:${item.id}`,
+      // An issue's or pull request's own title; else the item's ("CI failed on main in acme/web").
+      title: item.number != null ? item.body || item.title : item.title,
+      why: settledLine(item),
+      where: item.repo ? `${item.repo}${item.number != null ? `#${item.number}` : ""}` : null,
+      to: item.url,
+      at: Date.parse(item.doneAt!),
+    }))
+    .sort((a, b) => b.at - a.at || a.key.localeCompare(b.key));
+}
+
+export function awayOf(input: { settled: SettledRow[]; landed: LandedChange[] | null; needs: number }): Away {
+  const count = (state: ShipState) => (input.landed ?? []).filter((row) => row.shipped?.state === state).length;
+  return { settled: input.settled, shipped: count("live"), waiting: count("waiting"), deploying: count("deploying"), failed: count("failed"), needs: input.needs };
 }
 
 /** A deployment's maker as a member key: an id becomes `user:<id>`, a key stays as it is. */
@@ -1099,6 +1337,11 @@ export function waited(at: number, now: number): string {
   if (minutes < 60) return `${minutes} min`;
   if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h`;
   return `${Math.floor(minutes / (24 * 60))} d`;
+}
+
+/** "3:40 PM": the time of day alone, for a row under its day's heading. */
+export function timeOfDay(at: number, timeZone: string | null): string {
+  return formatIn(at, timeZone, { hour: "numeric", minute: "2-digit" });
 }
 
 /** "3:40 PM" when it is the same day as `now`, else "Oct 7". */

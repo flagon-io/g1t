@@ -85,6 +85,14 @@ export type InboxItem = {
   doneAt: string | null;
   saved: boolean;
   snoozedUntil: string | null;
+  /**
+   * Why it settled by itself, in a few words (`CI passed in run 330`,
+   * `Merged`): set when the event that left nothing to do marked it done.
+   * Absent when it is not done, or was marked done by hand.
+   */
+  settledReason?: string | null;
+  /** Who settled it, when a person or g1t did: a username, or `g1t`. */
+  settledBy?: string | null;
 };
 
 /** One thing that happened on a thread, as the person was told of it. */

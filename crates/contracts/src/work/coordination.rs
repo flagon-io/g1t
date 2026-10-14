@@ -767,6 +767,35 @@ pub struct SessionDetail {
     pub root: Option<Session>,
 }
 
+/// `pull_sessions`: the harness sessions tied to some of a repository's
+/// pull requests (`numbers`, at most 100) any way a session is tied to
+/// one, for Home's marks on what landed. Returns
+/// `Outcome<Vec<PullSessions>>`, one entry for each pull request that has
+/// any, its top-level sessions first: a subagent counts as the session
+/// that started it.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PullSessionsArgs {
+    pub viewer: Viewer,
+    pub repo: RepoPath,
+    pub numbers: Vec<u32>,
+}
+
+/// The sessions tied to one pull request.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullSessions {
+    pub number: u32,
+    pub sessions: Vec<SessionRef>,
+}
+
+/// A session, as a mark on something it made: its id and harness.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRef {
+    pub id: String,
+    pub harness: Harness,
+}
+
 /// `list_work_sessions`: a repository's sessions, most recently heard from
 /// first. Returns `Outcome<Vec<Session>>`. Subagents are left out unless
 /// `subagents`; with `issue` or `pull`, the sessions tied to it any way

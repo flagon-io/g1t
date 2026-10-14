@@ -480,6 +480,32 @@ export type NewDeploymentStatus = {
   auto_inactive?: boolean | null;
 };
 
+/**
+ * Whether a change that landed on a default branch is live in production:
+ * shipped by a production deployment that succeeded (`live`), not yet
+ * deployed (`waiting`), on its way (`deploying`), or the production
+ * deployment after it failed and none has shipped it since (`failed`).
+ */
+export type ShipState = "live" | "waiting" | "deploying" | "failed";
+
+/** One change asked about: its commit on the default branch, and when it landed there. */
+export type ShippedAsk = { sha: string; landed_at: string };
+
+/** A change's ship state, from what deployments recorded when production deployed. */
+export type ShippedCommit = {
+  sha: string;
+  state: ShipState;
+  /** RFC 3339: when the deployment that shipped it went live; null until then. */
+  deployed_at: string | null;
+  /** Where that deployment is on the site (or the failed or running one, for `failed` and `deploying`). */
+  url: string | null;
+  /** The environment it went to, such as `production`. */
+  environment: string | null;
+};
+
+/** A repository's answer: whether it deploys to production at all, and each change asked about. */
+export type ShippedRepo = { repo_id: string; deploys: boolean; commits: ShippedCommit[] };
+
 export interface DeploymentsApi {
   /** Members of the workspace only. */
   settings(project: ProjectRef, viewer: Viewer): Promise<Result<DeploySettings>>;
@@ -518,4 +544,11 @@ export interface DeploymentsApi {
   createDeployment(actor: User, repo: RepoPath, input: NewDeployment): Promise<Result<DeploymentDetail>>;
   /** Adds a status to a reported deployment. Takes the Write role. */
   createDeploymentStatus(actor: User, repo: RepoPath, id: string, input: NewDeploymentStatus): Promise<Result<DeploymentStatus>>;
+  /**
+   * Whether changes that landed on default branches went live, and when:
+   * read from what was recorded as each production deployment succeeded
+   * (src/shipped.ts). Members of the workspace only; at most 20
+   * repositories and 300 commits a call.
+   */
+  shipped(workspace: string, viewer: Viewer, repos: { repo_id: string; commits: ShippedAsk[] }[]): Promise<Result<ShippedRepo[]>>;
 }

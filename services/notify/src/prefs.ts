@@ -137,6 +137,7 @@ export function cleanNotification(value: unknown): FeedNotification | null {
     },
     channel_id: text(n.channel_id, 100) || null,
     thread_root: text(n.thread_root, 100) || null,
+    ...(text(n.inbox_thread, 300) ? { inbox_thread: text(n.inbox_thread, 300) } : {}),
     ...(card ? { card } : {}),
     created_at: text(n.created_at, 40) || new Date().toISOString(),
   };
@@ -235,4 +236,17 @@ export function pushPayload(n: FeedNotification): PushPayload {
     actions,
     card: actions.length && n.card ? { channel_id: n.card.channel_id, message_id: n.card.message_id } : null,
   };
+}
+
+/** The most settled threads one `set_inbox` names. */
+const MAX_SETTLED = 200;
+
+/**
+ * The threads events says settled, with `set_inbox`: strings only, each
+ * once, at most MAX_SETTLED; anything else names none.
+ */
+export function settledThreads(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const threads = value.filter((thread): thread is string => typeof thread === "string" && thread.length > 0 && thread.length <= 300);
+  return [...new Set(threads)].slice(0, MAX_SETTLED);
 }

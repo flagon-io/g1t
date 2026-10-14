@@ -5,6 +5,7 @@ import { hasCodeAccess } from "@g1t/contracts";
 
 import type { Route } from "./+types/home";
 import {
+  AwayCard,
   Card,
   DeploysCard,
   LandedCard,
@@ -22,8 +23,10 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
   type Attention,
+  type Away,
   type Digest,
   attention,
+  awayOf,
   deploysIn,
   digestOf,
   landed,
@@ -31,10 +34,15 @@ import {
   landedFromActivity,
   landedIn,
   parseWindow,
+  pushRows,
+  settledIn,
+  withSessions,
+  withShipped,
   running,
   runningDeploys,
   runningWorkflows,
   spanFor,
+  within,
   spanSentence,
   waitingSentence,
 } from "../../lib/home";
@@ -44,9 +52,13 @@ import {
   loadChatActivity,
   loadCodeWork,
   loadDeploys,
+  loadDirectPushes,
   loadLastVisit,
   loadNames,
+  loadPullSessions,
   loadRepos,
+  loadSettled,
+  loadShipped,
   loadSpend,
   loadWorkflowRuns,
   reachFor,
@@ -117,26 +129,49 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const deploysP = code ? loadDeploys(viewer, slug, span.from).catch(() => null) : Promise.resolve(null);
   const activityP = reposP.then((owned) => loadActivity(slug, span, owned)).catch(() => null);
   const chatActivityP = loadChatActivity(viewer, slug, span).catch(() => null);
-  const namesP = Promise.all([activityP, chatActivityP, deploysP])
-    .then(([activity, chatActivity, deploys]) => loadNames(actorKeys(activity, chatActivity, deploys)))
+  // Each push to a default branch, with the commits it brought: the projects the digest says were pushed to.
+  const pushesP = code ? Promise.all([activityP, reposP]).then(([activity, owned]) => loadDirectPushes(viewer, activity, owned, span)).catch(() => null) : Promise.resolve(null);
+  const namesP = Promise.all([activityP, chatActivityP, deploysP, pushesP])
+    .then(([activity, chatActivity, deploys, pushes]) => loadNames([...actorKeys(activity, chatActivity, deploys), ...(pushes?.pushes ?? []).map((push) => push.actorKey)]))
     .catch(() => ({}) as Record<string, string>);
 
   // What people did, from events and chat.
   const digest: Promise<Digest | null> = Promise.all([activityP, chatActivityP, namesP, reposP])
     .then(([activity, chatActivity, names, owned]) => digestOf({ slug, repos: repoRefs(owned), activity, chat: chatActivity, names, code }))
     .catch(() => null);
-  const happened = Promise.all([codeWorkP, deploysP, activityP, namesP, reposP])
-    .then(([codeWork, deploys, activity, names, owned]) => {
+  const happened = Promise.all([codeWorkP, deploysP, activityP, namesP, reposP, pushesP])
+    .then(async ([codeWork, deploys, activity, names, owned, pushes]) => {
       const deployRows = deploys ? deploysIn(deploys.projects, slug, span, names) : null;
       const merges = codeWork && codeWork !== "no_access" ? landedIn(codeWork.pulls, span) : null;
+      // Each push on its own where its project's pushes were read; the digest's one row a project elsewhere.
+      const named = (key: string) => (key ? (names[key] ?? "someone") : "an import");
+      const each = pushes ? pushRows(pushes.pushes.map((push) => ({ ...push, by: named(push.actorKey) })), pushes.history, span) : [];
+      const fromActivity = landedFromActivity(activity, repoRefs(owned), names, slug).filter((row) => !(row.kind === "push" && pushes?.history[row.key.slice("push:".length)]));
+      const all = merges == null && activity == null ? null : landed([merges ?? [], each, fromActivity, landedDeploys(deployRows ?? [])]);
+      // Whether each merge and push is live, and which pull requests a harness session made: read together.
+      const [shipped, sessions] = all
+        ? await Promise.all([
+            loadShipped(viewer, slug, all).catch(() => null),
+            codeWork && codeWork !== "no_access" ? loadPullSessions(viewer, codeWork.pulls.filter((pull) => pull.status === "merged" && within(pull.mergedAt, span))).catch(() => null) : null,
+          ])
+        : [null, null];
       return {
         // What landed: merges, direct pushes, releases and packages, production builds; null when nothing of Code could be read.
-        landed: merges == null && activity == null ? null : landed([merges ?? [], landedFromActivity(activity, repoRefs(owned), names, slug), landedDeploys(deployRows ?? [])]),
-        landedMissing: [...(code && merges == null ? ["Pull requests"] : []), ...(code && activity == null ? ["Pushes and releases"] : []), ...(code && deployRows == null ? ["Deployments"] : [])],
+        landed: all ? withSessions(withShipped(all, shipped), sessions) : null,
+        landedMissing: [
+          ...(code && merges == null ? ["Pull requests"] : []),
+          ...(code && activity == null ? ["Pushes and releases"] : []),
+          ...(code && deployRows == null ? ["Deployments"] : []),
+        ],
         deploys: deployRows,
         deploysComplete: deploys?.complete ?? true,
       };
     })
+    .catch(() => null);
+  // What g1t settled for you in the span, what shipped, and what still needs you.
+  const settledP = loadSettled(viewer, span).catch(() => null);
+  const away: Promise<Away | null> = Promise.all([settledP, happened, waiting])
+    .then(([settled, value, att]) => (settled == null ? null : awayOf({ settled: settledIn(settled, slug, code, span), landed: value?.landed ?? null, needs: att.rows.length })))
     .catch(() => null);
   const workflowsP = code ? Promise.all([activityP, reposP]).then(([activity, owned]) => loadWorkflowRuns(viewer, activity, owned)).catch(() => null) : Promise.resolve(null);
   const runningNow = Promise.all([deploysP, workflowsP])
@@ -156,6 +191,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     digest,
     happened,
     attention: waiting,
+    away,
     running: runningNow,
     /** The sentence under the heading needs the digest, what landed and what waits. */
     head: Promise.all([digest, happened, waiting]),
@@ -201,7 +237,7 @@ function useMarkSeen(slug: string, loadedAt: number) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { slug, now, tz, span, digest, happened, attention: waiting, running: runningNow, head, spend } = loaderData;
+  const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, head, spend } = loaderData;
   useMarkSeen(slug, now);
   return (
     <div className="mx-auto w-full max-w-260 space-y-5 px-4 py-5 md:px-10 md:py-8">
@@ -226,7 +262,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
       {/* 1. Where you're needed now: no window, first and biggest. Start here beside it on wide screens, under it on phones. */}
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <div className="lg:col-start-1 lg:row-start-1">
+        <div id="needed" className="scroll-mt-4 lg:col-start-1 lg:row-start-1">
           <Card
             title="Where you're needed"
             hint="Everything waiting on you, however long ago it started"
@@ -260,6 +296,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             {span.key === "last" && span.note == null ? `${span.words} · ${span.length}` : spanNote(span.note)}
           </p>
         </div>
+        <Suspense
+          fallback={
+            <Card title={span.key === "last" && span.note == null ? "While you were away" : "Settled for you"}>
+              <RowsSkeleton rows={2} />
+            </Card>
+          }
+        >
+          <Await resolve={away}>{(value) => <AwayCard away={value} span={span} now={now} />}</Await>
+        </Suspense>
         <Suspense fallback={<SpanSkeleton />}>
           <Await resolve={digest}>{(value) => <PeopleCard digest={value} span={span} code={loaderData.code} />}</Await>
         </Suspense>
@@ -272,7 +317,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Card>
               }
             >
-              <Await resolve={happened}>{(value) => <LandedCard landed={value?.landed ?? null} missing={value?.landedMissing ?? []} code={loaderData.code} now={now} tz={tz} />}</Await>
+              <Await resolve={happened}>
+                {(value) => <LandedCard landed={value?.landed ?? null} missing={value?.landedMissing ?? []} code={loaderData.code} now={now} tz={tz} byDay={span.key === "7d"} />}
+              </Await>
             </Suspense>
             <Suspense fallback={null}>
               <Await resolve={happened}>

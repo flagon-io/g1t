@@ -1239,6 +1239,12 @@ export type Contributions = {
 /** The harness a session runs in. */
 export type Harness = "claude_code" | "claude_managed_agents" | "codex" | "cursor" | "copilot" | "other";
 
+/** A session as a mark on something it made. */
+export type SessionRef = { id: string; harness: Harness };
+
+/** The sessions tied to one pull request (`pullSessions`). */
+export type PullSessions = { number: number; sessions: SessionRef[] };
+
 /** Active: heard from in 15 minutes; idle: not since; ended: ended, or quiet for 2 hours. */
 export type SessionState = "active" | "idle" | "ended";
 
@@ -1507,6 +1513,12 @@ export interface CoordinationApi {
     filter?: { state?: SessionState; issue?: number; pull?: number; path?: string; subagents?: boolean },
   ): Promise<Result<WorkSession[]>>;
   getWorkSession(repo: RepoPath, id: string, viewer: Viewer, afterSeq?: number): Promise<Result<WorkSessionDetail>>;
+  /**
+   * The harness sessions tied to some pull requests (at most 100), any way
+   * a session is tied to one; a subagent's as the session that started it.
+   * Only pull requests with any are listed.
+   */
+  pullSessions(repo: RepoPath, viewer: Viewer, numbers: number[]): Promise<Result<PullSessions[]>>;
   /** An issue's (with its pull requests') or a pull request's, oldest first. */
   listDecisions(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<Decision[]>>;
 }

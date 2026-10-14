@@ -58,6 +58,13 @@ export type FeedNotification = {
   /** The thread it is in, for a reply: quick replies go there. */
   thread_root?: string | null;
   /**
+   * For an inbox item: its thread's key (events' `inbox_items.thread`).
+   * Once the item settles by itself, events names the thread to notify
+   * (`set_inbox` with `settled`): the notification is no longer replayed
+   * to tabs that open later, and open tabs drop it.
+   */
+  inbox_thread?: string | null;
+  /**
    * The chat card it is about, when that card has something to press,
    * such as a draft issue (File issue, Discard). The toast and the notifications panel show these
    * actions, and pressing one goes to the site's `card_action`, exactly as
@@ -230,8 +237,12 @@ export type FeedEvent =
   | { type: "notification"; notification: FeedNotification; toast: boolean }
   | ({ type: "counts" } & FeedCounts)
   | { type: "preferences"; preferences: NotifyPreferences }
-  /** The person's inbox count as it now is, after items arrive or are marked anywhere. */
-  | { type: "inbox"; unread: number }
+  /**
+   * The person's inbox count as it now is, after items arrive or are
+   * marked anywhere; `settled`, the threads of items that settled by
+   * themselves, whose notifications tabs drop.
+   */
+  | { type: "inbox"; unread: number; settled?: string[] }
   /**
    * People in a workspace: everyone known on connect (`full`), then each
    * one as they change.

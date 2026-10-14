@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { FeedNotification } from "@g1t/contracts";
 
 import { applyCounts, totals } from "./counts.ts";
-import { STALE_MS, anyFocused, cleanCard, cleanNotification, decide, levelFor, mergePreferences, pushActions, pushPayload, readPreferences, wants } from "./prefs.ts";
+import { STALE_MS, anyFocused, cleanCard, cleanNotification, decide, levelFor, mergePreferences, pushActions, pushPayload, readPreferences, settledThreads, wants } from "./prefs.ts";
 
 const NOW = 1_800_000_000_000;
 const dms = { level: "dms_mentions" as const, workspaces: {} };
@@ -83,6 +83,16 @@ test("notifications are cleaned: kinds checked, links kept on the site, text tri
   assert.equal(n.actor.avatar, "abc");
   assert.equal(n.actor.avatar_seed, null);
   assert.equal(cleanNotification({ id: "n2", kind: "dm", title: "t", href: "/acme/-/chat/dm/chn_1", actor: { kind: "robot" } })!.actor.kind, "system");
+  // An inbox item keeps its thread, so it stops being replayed once it settles.
+  assert.equal(cleanNotification({ id: "inbox:e1", kind: "inbox", title: "t", inbox_thread: "rep_1#7" })!.inbox_thread, "rep_1#7");
+  assert.equal("inbox_thread" in cleanNotification({ id: "n3", kind: "dm", title: "t" })!, false);
+});
+
+test("settled threads are strings, each once, and bounded", () => {
+  assert.deepEqual(settledThreads(["rep_1#7", "rep_1#7", 3, "", "rep_1/deploy/*/7"]), ["rep_1#7", "rep_1/deploy/*/7"]);
+  assert.deepEqual(settledThreads("rep_1#7"), []);
+  assert.deepEqual(settledThreads(undefined), []);
+  assert.equal(settledThreads(Array.from({ length: 500 }, (_, i) => `t${i}`)).length, 200);
 });
 
 test("a push is small and collapses by conversation", () => {

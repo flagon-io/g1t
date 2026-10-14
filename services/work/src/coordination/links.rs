@@ -102,6 +102,50 @@ pub(crate) const BRANCH_SESSIONS: &str = "SELECT DISTINCT t.session_id AS id FRO
        AND p.fork_repo_id IS NULL AND p.head_repo_id IS NULL
      WHERE t.repo_id = ?1 AND t.kind = 'branch' AND p.number IN (SELECT value FROM json_each(?2)) LIMIT 200";
 
+/// The sessions tied to repository `?1`'s pull requests numbered in `?2`
+/// (JSON): by a link, by saying so when they started, or by pushing the
+/// branch. A subagent is named with the session that started it.
+pub(crate) const PULL_SESSIONS: &str = "WITH asked(n) AS (SELECT value FROM json_each(?2)),
+   tied(number, session_id) AS (
+     SELECT l.number, l.session_id FROM session_links l WHERE l.repo_id = ?1 AND l.kind = 'pull' AND l.number IN asked
+     UNION SELECT s.pull, s.id FROM sessions s WHERE s.repo_id = ?1 AND s.pull IN asked
+     UNION SELECT p.number, t.session_id FROM session_touches t
+       JOIN pulls p ON p.repo_id = t.repo_id AND p.source_branch = t.value AND p.fork_repo_id IS NULL AND p.head_repo_id IS NULL
+       WHERE t.repo_id = ?1 AND t.kind = 'branch' AND p.number IN asked)
+ SELECT tied.number AS number, s.id AS id, s.harness AS harness, s.parent_id AS parent_id, s.started_at AS started_at,
+   (SELECT p.harness FROM sessions p WHERE p.id = s.parent_id) AS parent_harness
+ FROM tied JOIN sessions s ON s.id = tied.session_id
+ ORDER BY tied.number, s.started_at LIMIT 1000";
+
+/// A row of [`PULL_SESSIONS`].
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct PullSessionRow {
+    pub number: u32,
+    pub id: String,
+    pub harness: String,
+    pub parent_id: Option<String>,
+    pub parent_harness: Option<String>,
+}
+
+/// Each pull request's sessions, a subagent's as the session that started
+/// it, each once, oldest first.
+pub(crate) fn pull_sessions_of(rows: Vec<PullSessionRow>) -> Vec<PullSessions> {
+    let mut out: Vec<PullSessions> = Vec::new();
+    for row in rows {
+        let (id, harness) = match (row.parent_id, row.parent_harness) {
+            (Some(parent), Some(harness)) => (parent, harness),
+            _ => (row.id, row.harness),
+        };
+        let session = SessionRef { id, harness: Harness::parse(&harness).unwrap_or(Harness::Other) };
+        match out.iter_mut().find(|entry| entry.number == row.number) {
+            Some(entry) if entry.sessions.iter().any(|known| known.id == session.id) => {}
+            Some(entry) => entry.sessions.push(session),
+            None => out.push(PullSessions { number: row.number, sessions: vec![session] }),
+        }
+    }
+    out
+}
+
 /// Announces the pair `?2`, `?3` of repository `?1` as overlapping on
 /// `?4` (JSON) at `?5`: returns it the first time, and again whenever a
 /// file it was not announced for joins, so a pair that first met on a
