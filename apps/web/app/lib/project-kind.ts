@@ -47,11 +47,11 @@ export const KIND_CHOICE_SETS: Record<KindChoice, { kind: ProjectKind | "auto"; 
 /** The choices for "What it is" in a project's settings, in order. */
 export const KIND_CHOICES: { value: KindChoice; label: string; hint: string }[] = [
   { value: "auto", label: "Detect automatically", hint: "From whether Deployments are on, the packages it publishes and the files at its root." },
-  { value: "g1t", label: "App or site, deployed on g1t", hint: "g1t builds it: production on g1t.page from the default branch, and a preview for every pull request." },
+  { value: "g1t", label: "App or site, hosted on g1t.page", hint: "g1t builds and hosts it: production on g1t.page from the default branch, and a preview for every pull request." },
   {
     value: "elsewhere",
-    label: "App or site, deployed elsewhere",
-    hint: "Your own pipeline deploys it. Its overview shows production at the address you give.",
+    label: "App or site that deploys itself",
+    hint: "Its own workflows on g1t Actions, or another pipeline, deploy it to your hosting. Its overview shows production at the address it reports or you give.",
   },
   { value: "library", label: "Library or package", hint: "Installed by other code: its overview shows its packages and releases." },
   { value: "tool", label: "Tool or CLI", hint: "Installed and run by people: its overview shows its releases and packages." },
@@ -77,13 +77,13 @@ export function neverDeploys(project: Pick<Project, "setting">): boolean {
 export function kindLabel(project: Pick<Project, "kind" | "runs">): string {
   switch (project.kind) {
     case "app":
-      return project.runs === "g1t" ? "App on g1t" : project.runs === "elsewhere" ? "App, deployed elsewhere" : "App";
+      return project.runs === "g1t" ? "App on g1t.page" : project.runs === "elsewhere" ? "App, deploys itself" : "App";
     case "library":
       return "Library";
     case "tool":
       return "Tool";
     case "docs":
-      return project.runs === "g1t" ? "Docs on g1t" : "Docs";
+      return project.runs === "g1t" ? "Docs on g1t.page" : "Docs";
     default:
       return "Project";
   }

@@ -59,8 +59,8 @@ checks, who is working on it, its deployments and About.
 
 | Part | What it shows |
 | --- | --- |
-| **What it is** | A badge, such as **App, deployed elsewhere** or **Library**, beside its homepage and docs. People who can change its settings open the badge to change [what it is](#what-a-project-is) in one click. |
-| **Production** | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [deployed on g1t](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app deployed elsewhere: production's address and **Visit**, with its latest reported production deployment or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
+| **What it is** | A badge, such as **App, deploys itself** or **Library**, beside its homepage and docs. People who can change its settings open the badge to change [what it is](#what-a-project-is) in one click. |
+| **Production** | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [hosted on g1t.page](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app that deploys itself: production's address and **Visit**, with its latest reported production deployment (and the workflow run that made it, when g1t Actions did) or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
 | **Packages** | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
 | **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage. |
 | **Facts** | Under production: its latest release (or, where the card does not already say it, production's state), how often checks pass, and either how many changes pass on the first try and what is open, or, for people with a role when [Observability](/guides/observability/) has data, requests and the error rate over the last day with how many errors are open. |
@@ -78,11 +78,11 @@ checks, who is working on it, its deployments and About.
 The production card always has a picture of the app, wherever it runs.
 It is the first of these there is:
 
-1. **A screenshot of production.** For an app deployed on g1t, g1t takes
+1. **A screenshot of production.** For an app hosted on g1t.page, g1t takes
    one each time production goes live (see
    [the production screenshot](/guides/deployments/#the-production-screenshot));
    people with a role on the repository see it, like the rest of its
-   deployments. For an app deployed elsewhere, g1t takes one of
+   deployments. For an app that deploys itself, g1t takes one of
    production's address: the address its latest production deployment
    reported to g1t gives, or else the one set for it under **What it is**.
    Anyone who can see the project sees it.
@@ -92,7 +92,7 @@ It is the first of these there is:
    the project's settings see **Add an image of your app** on it, which
    opens **Production image**.
 
-A screenshot of production deployed elsewhere is taken:
+A screenshot of an app that deploys itself is taken:
 
 - when its address is set or changed;
 - when a production deployment of it is reported to g1t and succeeds,
@@ -123,8 +123,8 @@ private project, so upload only what you would show.
   first one, when one cannot be taken, or for an app with no production
   address.
 - **Use the uploaded image instead of a screenshot** shows it in place of
-  any screenshot. While it is on, g1t takes no screenshots of production
-  deployed elsewhere.
+  any screenshot. While it is on, g1t takes no screenshots of an app
+  that deploys itself.
 - **Remove** takes it away; the card goes back to the screenshot or the
   frame.
 
@@ -138,8 +138,8 @@ A project is one of these, and its overview follows:
 
 | What it is | Its overview shows |
 | --- | --- |
-| **App or site, deployed on g1t** | Production on g1t.page, with previews and domains. |
-| **App or site, deployed elsewhere** | Production at the address you give, deployed by your own pipeline, with **Visit**. It is never asked to turn on Deployments; Deployment settings stay one link away. |
+| **App or site, hosted on g1t.page** | g1t builds and hosts it: production on g1t.page, with previews and domains. |
+| **App or site that deploys itself** | Its own [workflows](/guides/deployments/#deploying-from-a-workflow) on g1t Actions, or another pipeline, deploy it to hosting of its own. Production at the address its deployments report or you give, with **Visit**. It is never asked to turn on Deployments; Deployment settings stay one link away. |
 | **Library or package** | The packages its repository publishes and how to install them. |
 | **Tool or CLI** | The same as a library: its packages and releases. |
 | **Documentation** | Where its docs are read. Docs can be published on g1t.page too, by turning on Deployments. |
@@ -152,7 +152,7 @@ Its **Deployments** page stays in the sidebar whatever it is.
 Until you say, g1t works it out for itself, in this order:
 
 1. If [Deployments](/guides/deployments/) are on for the project, it is
-   an app deployed on g1t.
+   an app hosted on g1t.page.
 2. If its repository publishes a package other than a container image,
    such as a [Composer](/guides/composer/) or [npm](/guides/npm/)
    package, it is a library.
@@ -178,7 +178,7 @@ The files are read again on every push to the default branch.
 
 An app found this way runs on g1t only while Deployments are on. Until
 you say where it runs, its overview asks, in place of production:
-**Deploy on g1t**, **It's deployed elsewhere** (with production's
+**Deploy on g1t**, **It deploys itself** (with production's
 address), or **It isn't deployed** (a library, a tool, documentation or
 something else).
 
@@ -187,14 +187,14 @@ something else).
 From the overview, open the badge beside its name, such as **App**, and
 choose one. Or open **Settings**, then **General**, and under **What it
 is** choose **Detect automatically**, which shows what was detected and
-why, or one of the kinds above. **App or site, deployed elsewhere** asks
+why, or one of the kinds above. **App or site that deploys itself** asks
 for production's address.
 
 Choosing a library, a tool or something else while Deployments are on is
 refused: turn them off first under **Settings**, then **Deployments**;
 g1t does not turn them off for you. While it is set that way, Deployments
-cannot be turned on. Turning Deployments on for an app deployed elsewhere
-makes it an app deployed on g1t.
+cannot be turned on. Turning Deployments on for an app that deploys itself
+makes it an app hosted on g1t.page.
 
 Changing what it is needs the role that changes the project's settings.
 

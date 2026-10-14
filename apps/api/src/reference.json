@@ -7191,7 +7191,7 @@
         "kind": "app",
         "kind_reason": {
           "by": "set",
-          "detail": "Set to an app that runs elsewhere."
+          "detail": "Set in its settings: it deploys itself."
         },
         "runs": "elsewhere",
         "production_url": "https://g1t.sh",
@@ -7290,7 +7290,7 @@
       "kind": "app",
       "kind_reason": {
         "by": "set",
-        "detail": "Set to an app that runs elsewhere."
+        "detail": "Set in its settings: it deploys itself."
       },
       "runs": "elsewhere",
       "production_url": "https://g1t.sh",
@@ -7357,7 +7357,7 @@
       "kind": "app",
       "kind_reason": {
         "by": "set",
-        "detail": "Set to an app that runs elsewhere."
+        "detail": "Set in its settings: it deploys itself."
       },
       "runs": "elsewhere",
       "production_url": "https://g1t.sh",

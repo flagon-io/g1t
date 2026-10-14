@@ -61,7 +61,7 @@ export const LANGUAGE_OF: Record<ProjectEcosystem, string> = {
   python: "Python",
 };
 
-/** What the list needs of a project, with whether its Deployments are on. */
+/** What the list needs of a project, with whether it deploys: on g1t.page, or by its own workflows. */
 export type Listed = Pick<
   Project,
   "id" | "slug" | "name" | "description" | "private" | "archived" | "kind" | "ecosystem" | "updatedAt" | "pushedAt" | "activity"

@@ -65,7 +65,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     updatedAt: project.updatedAt,
     pushedAt: project.pushedAt ?? null,
     activity: project.activity ?? 0,
-    deploying: live.get(project.slug)?.enabled ?? false,
+    // Hosted on g1t.page, or an app that deploys itself (its own workflows or pipeline).
+    deploying: (live.get(project.slug)?.enabled ?? false) || (project.kind === "app" && project.runs === "elsewhere"),
   }));
   const matched = filterProjects(all, query);
   const shown = pageOf(matched, query.page);
@@ -101,11 +102,10 @@ function Facts({ project }: { project: Item }) {
     <>
       {language && <span>{language}</span>}
       {project.kind !== "app" && <span>{kindLabel(project)}</span>}
-      {project.kind === "app" && project.runs === "elsewhere" && <span>Deployed elsewhere</span>}
       {project.deploying && (
         <span className="inline-flex items-center gap-1 text-success">
           <Rocket size={11} />
-          Deploys
+          {project.runs === "elsewhere" ? "Deploys itself" : "Deploys"}
         </span>
       )}
       <span className="text-faint">

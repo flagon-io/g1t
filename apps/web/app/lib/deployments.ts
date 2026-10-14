@@ -142,9 +142,10 @@ export function productionEnvironment<T extends Ordered & Pick<DeploymentEnviron
 
 /**
  * Production deployed somewhere other than g1t.page (by g1t Actions, or
- * reported through the API), as an app deployed elsewhere shows it: the
+ * reported through the API), as an app that deploys itself shows it: the
  * production environment's latest deployment, when it is not a g1t.page
- * build. `created_at` is its latest status.
+ * build. `created_at` is its latest status; `run_url` the workflow run
+ * that made it, for one g1t Actions made.
  */
 export function reportedProduction(environments: readonly DeploymentEnvironment[]): {
   environment: string;
@@ -152,6 +153,7 @@ export function reportedProduction(environments: readonly DeploymentEnvironment[
   state: string;
   sha: string;
   created_at: string;
+  run_url: string | null;
 } | null {
   const reported = productionEnvironment(environments);
   if (!reported?.latest || reported.latest.source === "g1t_page") return null;
@@ -161,6 +163,7 @@ export function reportedProduction(environments: readonly DeploymentEnvironment[
     state: reported.latest.state,
     sha: reported.latest.sha,
     created_at: reported.latest.updated_at,
+    run_url: reported.latest.source === "actions" ? reported.latest.run_url : null,
   };
 }
 

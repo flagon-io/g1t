@@ -78,13 +78,14 @@ them off again.
 Production starts building at once from the default branch. Every pull
 request opened or pushed to from then on gets a preview.
 
-Deployments are for projects g1t runs. Not every project is one: a
+Deployments are for projects g1t.page hosts. Not every project is one: a
 library, a tool or documentation is published rather than deployed, and
-an app may be deployed by its own pipeline somewhere else. Only a project
-that is [an app or site deployed on g1t](/guides/projects/#what-a-project-is)
+an app may deploy itself, with [a workflow](#deploying-from-a-workflow)
+or another pipeline, to hosting of its own. Only a project that is
+[an app or site hosted on g1t.page](/guides/projects/#what-a-project-is)
 is asked to turn deployments on. Any other project's **Deployments** page
-still turns them on; doing so makes it an app deployed on g1t, including
-one that was deployed elsewhere. A project set to be a library, a tool or
+still turns them on; doing so makes it an app hosted on g1t.page,
+including one that deployed itself. A project set to be a library, a tool or
 something else cannot have deployments turned on until that setting
 changes.
 
@@ -423,7 +424,7 @@ When production goes live, g1t takes a screenshot of its home page, as a
   uploaded image shows instead.
 - Screenshots are not charged.
 
-An app deployed elsewhere gets a screenshot of its production address
+An app that deploys itself gets a screenshot of its production address
 too, and any project can show an uploaded image instead. See
 [production's picture](/guides/projects/#productions-picture).
 

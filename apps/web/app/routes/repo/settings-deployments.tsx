@@ -142,7 +142,7 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
             {notDeploying ? (
               <p className="mt-4 text-sm text-muted">
                 This project is set to be something that doesn't deploy, such as a library or a tool. To deploy it, choose
-                App or site, deployed on g1t, under{" "}
+                App or site, hosted on g1t.page, under{" "}
                 <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
                   General
                 </Link>{" "}

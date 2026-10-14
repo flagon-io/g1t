@@ -134,7 +134,7 @@ export function LinkFields({ links, compact = false }: { links: ProjectLinks; co
 
 /**
  * What a project is, as a choice of one, with production's address beside
- * Deployed elsewhere. Posts `choice` and `productionUrl`. `blocked` says
+ * Deploys itself. Posts `choice` and `productionUrl`. `blocked` says
  * why a choice that stops it deploying cannot be saved yet.
  */
 export function KindFields({
@@ -193,8 +193,8 @@ const DETECTED: Record<Project["kind"], string> = {
 
 /** The one-click choices the overview offers, without Detect, in order. */
 const MENU: { value: KindChoice; label: string }[] = [
-  { value: "g1t", label: "Deployed on g1t" },
-  { value: "elsewhere", label: "Deployed elsewhere" },
+  { value: "g1t", label: "Hosted on g1t.page" },
+  { value: "elsewhere", label: "Deploys itself" },
   { value: "library", label: "Library or package" },
   { value: "tool", label: "Tool or CLI" },
   { value: "docs", label: "Documentation" },

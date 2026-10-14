@@ -1745,7 +1745,7 @@ impl Op {
             Op::GetContents => crate::contents::description(),
             Op::ListCommits => crate::commits::description(),
             Op::ListProjects => {
-                "A workspace's projects that you can see, by name. A project is what a workspace builds and runs, from a repository or a root directory in one; every repository has a project of its own name. Each has what it is (`kind`: app, library, tool, docs or other) and why (`kind_reason`), where it runs (`runs`: `g1t` when g1t deploys it, `elsewhere` when it is deployed by other means, at `production_url`), and its `links`."
+                "A workspace's projects that you can see, by name. A project is what a workspace builds and runs, from a repository or a root directory in one; every repository has a project of its own name. Each has what it is (`kind`: app, library, tool, docs or other) and why (`kind_reason`), where it runs (`runs`: `g1t` when it is hosted on g1t.page, `elsewhere` when it deploys itself to hosting of its own, with a workflow on g1t Actions or another pipeline, at `production_url`), and its `links`."
             }
             Op::GetProject => {
                 "A project: what it is (`kind`, and `kind_reason` saying why), where it runs (`runs` and `production_url`), what you set and what detection decides (`setting` and `detected`), its repository and `root_dir`, and its homepage, docs and other `links`. A private repository's project is found only by those who can see the repository."
@@ -3050,9 +3050,9 @@ impl Op {
                     "runs": {
                         "type": "string",
                         "enum": ["auto", "g1t", "elsewhere"],
-                        "description": "Where it runs: g1t when g1t deploys it, elsewhere when it is deployed by other means. auto leaves it to Deployments.",
+                        "description": "Where it runs: g1t when it is hosted on g1t.page, elsewhere when it deploys itself (a workflow on g1t Actions, or another pipeline) to hosting of its own. auto leaves it to Deployments, and to whether it has deployed production itself.",
                     },
-                    "production_url": { "type": ["string", "null"], "description": "Production's address when it runs elsewhere. null or \"\" clears it." },
+                    "production_url": { "type": ["string", "null"], "description": "Production's address when it deploys itself. null or \"\" clears it." },
                     "homepage": { "type": ["string", "null"], "description": "Its homepage. null or \"\" follows its repository's website again." },
                     "docs_url": { "type": ["string", "null"], "description": "Where its documentation is read. null or \"\" clears it." },
                     "links": {

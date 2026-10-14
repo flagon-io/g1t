@@ -710,8 +710,8 @@ function PagesOff({ pages, base, can, quiet }: { pages: Pages; base: string; can
       </p>
       {pages.notDeploying ? (
         <p className="mt-4 max-w-2xl text-sm text-muted">
-          This project is set to be something that doesn't deploy here, such as a library, a tool or an app deployed
-          elsewhere. To host it on g1t.page, choose App or site, deployed on g1t, in{" "}
+          This project is set to be something that doesn't deploy here, such as a library, a tool or an app that
+          deploys itself. To host it on g1t.page, choose App or site, hosted on g1t.page, in{" "}
           <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
             its settings
           </Link>{" "}

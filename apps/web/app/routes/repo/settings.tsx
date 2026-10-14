@@ -67,7 +67,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     description: form.get("inherit") === "description" ? null : String(form.get("description") ?? ""),
     rootDir: String(form.get("rootDir") ?? ""),
     ...(set ?? {}),
-    // Production's address is asked for beside Deployed elsewhere, and kept otherwise.
+    // Production's address is asked for beside Deploys itself, and kept otherwise.
     ...(form.has("productionUrl") ? { productionUrl: String(form.get("productionUrl")) } : {}),
     homepage: String(form.get("homepage") ?? ""),
     docsUrl: String(form.get("docsUrl") ?? ""),
@@ -173,7 +173,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           </h2>
           <p className="max-w-2xl text-xs text-muted">
             Its overview follows: production for what is deployed, packages and releases for a library or a tool, and
-            the steps that apply to it. Only an app or site deployed on g1t is asked to turn on Deployments.
+            the steps that apply to it. Only an app or site hosted on g1t.page is asked to turn on Deployments.
           </p>
           <KindFields project={project} choice={choice} onChoice={setChoice} />
           {blocked && (
@@ -229,8 +229,8 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           Production image
         </h2>
         <p className="max-w-2xl text-xs text-muted">
-          The picture on its overview's production card. A screenshot is taken by itself for an app deployed on g1t,
-          and of production's address for one deployed elsewhere, about once a day and after each production deployment
+          The picture on its overview's production card. A screenshot is taken by itself for an app hosted on g1t.page,
+          and of production's address for one that deploys itself, about once a day and after each production deployment
           reported to g1t.
         </p>
         <ProductionImageField

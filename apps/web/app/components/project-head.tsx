@@ -1,6 +1,6 @@
 /**
- * The top of a project's overview for what g1t does not deploy: an app
- * deployed elsewhere, an app nobody has said where it runs, docs, and
+ * The top of a project's overview for what g1t.page does not host: an app
+ * that deploys itself, an app nobody has said where it runs, docs, and
  * anything else. An app on g1t keeps its production card, and a library
  * or a tool its packages (routes/repo/overview.tsx).
  */
@@ -17,9 +17,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Hint } from "./ui/hint";
 
 /**
- * A deployment reported to g1t from outside it, such as by a pipeline that
- * deploys production itself. When there is one for production, the card
- * shows it.
+ * A deployment g1t.page did not build: one a workflow's job made, or one
+ * reported by another pipeline. When there is one for production, the
+ * card shows it.
  */
 export type ExternalDeployment = {
   environment: string;
@@ -28,6 +28,8 @@ export type ExternalDeployment = {
   state: string;
   sha: string;
   created_at: string;
+  /** The workflow run that made it, when g1t Actions did. */
+  run_url?: string | null;
 };
 
 /** A reported deployment's state, as g1t's own deployments show theirs. */
@@ -120,7 +122,7 @@ function DeployQuietly({ base, canDeploy, what }: { base: string; canDeploy: boo
 }
 
 /**
- * An app deployed by its own pipeline: production at the address it was
+ * An app that deploys itself (its workflows, or another pipeline): production at the address it was
  * given, with the latest reported deployment, or else the default branch's
  * latest commit and its checks.
  */
@@ -161,11 +163,22 @@ export function ElsewhereHead({
                     </span>
                     <span>
                       deployed <TimeAgo at={deployment.created_at} />
+                      {deployment.run_url ? (
+                        <>
+                          {" "}
+                          by{" "}
+                          <Link to={deployment.run_url} className="underline-offset-4 hover:text-fg hover:underline">
+                            its workflow
+                          </Link>
+                        </>
+                      ) : (
+                        " by its own pipeline"
+                      )}
                     </span>
                   </>
                 ) : (
                   <>
-                    <span>Deployed by its own pipeline</span>
+                    <span>Deploys itself</span>
                     {commit && (
                       <span className="inline-flex items-center gap-1.5">
                         <span className="text-faint">·</span>
@@ -185,12 +198,12 @@ export function ElsewhereHead({
             <>
               <p className="mt-2 text-lg font-medium">Where is production?</p>
               <p className="mt-1 max-w-lg text-sm text-muted">
-                {project.name} is deployed by its own pipeline. Give production's address, and this card links to it.
+                {project.name} deploys itself. Give production's address, and this card links to it.
               </p>
               <AddressForm field="productionUrl" placeholder="https://example.com" label="Production's address" extra={{ intent: "kind", choice: "elsewhere" }} />
             </>
           ) : (
-            <p className="mt-2 text-sm text-muted">Deployed by its own pipeline.</p>
+            <p className="mt-2 text-sm text-muted">Deploys itself.</p>
           )}
           <DeployQuietly base={base} canDeploy={canDeploy} what="it" />
         </div>
@@ -251,7 +264,7 @@ export function WhereItRuns({ project, base, canChange, canDeploy }: Head) {
           variant="outline"
         >
           <Globe size={14} />
-          It's deployed elsewhere
+          It deploys itself
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

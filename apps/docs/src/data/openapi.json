@@ -11713,7 +11713,7 @@
           "Projects"
         ],
         "summary": "List a workspace's projects",
-        "description": "A workspace's projects that you can see, by name. A project is what a workspace builds and runs, from a repository or a root directory in one; every repository has a project of its own name. Each has what it is (`kind`: app, library, tool, docs or other) and why (`kind_reason`), where it runs (`runs`: `g1t` when g1t deploys it, `elsewhere` when it is deployed by other means, at `production_url`), and its `links`.\n\nBy name. Projects whose repository you cannot see are left out; without a token you see public ones only. `kind` is what the project is, from `setting` where a person set it and from detection otherwise (`detected`, shown beside it); `kind_reason` says why. `runs` is null for what is not deployed. `homepage_inherited` is true while the homepage is its repository's website. `pushed_at` is null until its repository is pushed to. See [Projects](/guides/projects/).",
+        "description": "A workspace's projects that you can see, by name. A project is what a workspace builds and runs, from a repository or a root directory in one; every repository has a project of its own name. Each has what it is (`kind`: app, library, tool, docs or other) and why (`kind_reason`), where it runs (`runs`: `g1t` when it is hosted on g1t.page, `elsewhere` when it deploys itself to hosting of its own, with a workflow on g1t Actions or another pipeline, at `production_url`), and its `links`.\n\nBy name. Projects whose repository you cannot see are left out; without a token you see public ones only. `kind` is what the project is, from `setting` where a person set it and from detection otherwise (`detected`, shown beside it); `kind_reason` says why. `runs` is null for what is not deployed. `homepage_inherited` is true while the homepage is its repository's website. `pushed_at` is null until its repository is pushed to. See [Projects](/guides/projects/).",
         "x-operation": "list_projects",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "list_projects",
@@ -11761,7 +11761,7 @@
                     "kind": "app",
                     "kind_reason": {
                       "by": "set",
-                      "detail": "Set to an app that runs elsewhere."
+                      "detail": "Set in its settings: it deploys itself."
                     },
                     "runs": "elsewhere",
                     "production_url": "https://g1t.sh",
@@ -12137,7 +12137,7 @@
                   "kind": "app",
                   "kind_reason": {
                     "by": "set",
-                    "detail": "Set to an app that runs elsewhere."
+                    "detail": "Set in its settings: it deploys itself."
                   },
                   "runs": "elsewhere",
                   "production_url": "https://g1t.sh",
@@ -12278,7 +12278,7 @@
                   "kind": "app",
                   "kind_reason": {
                     "by": "set",
-                    "detail": "Set to an app that runs elsewhere."
+                    "detail": "Set in its settings: it deploys itself."
                   },
                   "runs": "elsewhere",
                   "production_url": "https://g1t.sh",
@@ -12404,14 +12404,14 @@
                       "g1t",
                       "elsewhere"
                     ],
-                    "description": "Where it runs: g1t when g1t deploys it, elsewhere when it is deployed by other means. auto leaves it to Deployments."
+                    "description": "Where it runs: g1t when it is hosted on g1t.page, elsewhere when it deploys itself (a workflow on g1t Actions, or another pipeline) to hosting of its own. auto leaves it to Deployments, and to whether it has deployed production itself."
                   },
                   "production_url": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "description": "Production's address when it runs elsewhere. null or \"\" clears it."
+                    "description": "Production's address when it deploys itself. null or \"\" clears it."
                   },
                   "homepage": {
                     "type": [

@@ -129,6 +129,8 @@ type Row = {
   detected_commit?: string | null;
   linked_package?: string | null;
   deployments_on?: number | null;
+  /** Whether it has deployed production itself (migrations/0013_reports_production.sql). */
+  reports_production?: number | null;
   /** When its repository was last pushed to (migrations/0009_activity.sql). */
   pushed_at?: string | null;
   /** How active it is lately, as of `active_at` (src/activity.ts). */
@@ -158,6 +160,7 @@ function toProject(row: Row): Project {
   const setting = { kind: kindSetting(row.kind_setting), runs: runsSetting(row.runs_setting) };
   const facts: Omit<KindFacts, "setting"> = {
     deploymentsOn: row.deployments_on == null ? null : !!row.deployments_on,
+    reportsProduction: !!row.reports_production,
     linkedPackage: row.linked_package ?? null,
     detected: row.detected_commit == null ? null : { kind: kindSetting(row.detected_kind), detail: row.detected_detail ?? "" },
   };
@@ -601,12 +604,15 @@ class Projects {
       .prepare("SELECT * FROM projects WHERE repo_id = ? AND repo_deleted_at IS NULL ORDER BY is_primary DESC")
       .bind(data.repoId)
       .all<Row>();
-    // The repository's own project first: the overview shows the reported
-    // production on it, as running elsewhere when nobody has said otherwise.
+    // The repository's own project first: the one that deploys itself, or
+    // else one nobody has placed and that could run (not one on g1t.page,
+    // nor one set to a library, a tool or other), which now deploys itself.
     const project = rows.results
       .map(toProject)
-      .find((one) => one.runs === "elsewhere" || (one.runs === null && one.kind === "app"));
-    if (!project || project.productionImage?.preferred) return;
+      .find((one) => one.runs === "elsewhere" || (one.runs === null && !neverRuns(one.setting)));
+    if (!project) return;
+    await this.db.prepare("UPDATE projects SET reports_production = 1 WHERE id = ? AND reports_production IS NOT 1").bind(project.id).run();
+    if (project.productionImage?.preferred) return;
     const url = deploymentStatus.environment_url ?? deployment.environment_url ?? project.productionUrl;
     if (url) await this.capture(url, deployment.sha);
   }

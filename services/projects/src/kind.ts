@@ -1,6 +1,7 @@
 /**
  * What a project is (an app, a library, a tool, docs or other) and where
- * it runs (on g1t, elsewhere, or nowhere). A person can say either in its
+ * it runs (hosted on g1t.page, deploying itself to hosting of its own, or
+ * nowhere). A person can say either in its
  * settings; left to detection, it is worked out here from what the project
  * has: Deployments being on, packages its repository publishes, and the
  * files at its root. The functions are pure so the rules can be tested on
@@ -165,6 +166,8 @@ export type KindFacts = {
   setting: ProjectSetting;
   /** Whether Deployments are on for it; null while unknown. */
   deploymentsOn: boolean | null;
+  /** Whether it has deployed production itself: a workflow's or the API's deployment, not g1t.page's, succeeded. */
+  reportsProduction: boolean;
   /** A package its repository publishes, other than a container image, as `Composer package psr/log`; null for none. */
   linkedPackage: string | null;
   /** What its files say; null before they have been read. */
@@ -190,26 +193,30 @@ export const RUNNABLE: readonly ProjectKind[] = ["app", "docs"];
  * say so, decide; anything else is an app, so nothing that deploys loses
  * its production card to a guess.
  *
- * Only an app or docs runs anywhere: where it is set to, or on g1t while
- * Deployments are on, and otherwise nobody has said (null).
+ * Only an app or docs runs anywhere: where it is set to; on g1t.page
+ * while Deployments are on; deploying itself once it has deployed
+ * production itself; and otherwise nobody has said (null).
  */
 export function resolveKind(facts: KindFacts): { kind: ProjectKind; reason: KindReason; runs: ProjectRuns | null } {
   const { kind, reason } = kindOf(facts);
-  const runs = RUNNABLE.includes(kind) ? (facts.setting.runs ?? (facts.deploymentsOn ? "g1t" : null)) : null;
+  const runs = RUNNABLE.includes(kind)
+    ? (facts.setting.runs ?? (facts.deploymentsOn ? "g1t" : facts.reportsProduction ? "elsewhere" : null))
+    : null;
   return { kind, reason, runs };
 }
 
 function kindOf(facts: KindFacts): { kind: ProjectKind; reason: KindReason } {
   const { setting } = facts;
   if (setting.kind) return { kind: setting.kind, reason: { by: "set", detail: `Set in its settings: ${KIND_PHRASE[setting.kind]}.` } };
-  if (setting.runs === "g1t") return { kind: "app", reason: { by: "set", detail: "Set in its settings: it deploys on g1t." } };
-  if (setting.runs === "elsewhere") return { kind: "app", reason: { by: "set", detail: "Set in its settings: it is deployed elsewhere." } };
+  if (setting.runs === "g1t") return { kind: "app", reason: { by: "set", detail: "Set in its settings: it is hosted on g1t.page." } };
+  if (setting.runs === "elsewhere") return { kind: "app", reason: { by: "set", detail: "Set in its settings: it deploys itself." } };
   return detectedKind(facts);
 }
 
 /** What detection alone decides, whatever the setting is. */
 export function detectedKind(facts: Omit<KindFacts, "setting">): { kind: ProjectKind; reason: KindReason } {
   if (facts.deploymentsOn) return { kind: "app", reason: { by: "deployments", detail: "Deployments are on for it." } };
+  if (facts.reportsProduction) return { kind: "app", reason: { by: "deployments", detail: "It deploys production itself." } };
   if (facts.linkedPackage) {
     return { kind: "library", reason: { by: "packages", detail: `Its repository publishes the ${facts.linkedPackage}.` } };
   }

@@ -92,7 +92,7 @@ test("the language's manifest decides before package.json, and a Workers config 
   assert.deepEqual(detectKind(root({}, { entries: ["README.md"] })), { kind: null, detail: "No manifest at the root says what it is.", ecosystem: null });
 });
 
-const auto: KindFacts = { setting: { kind: null, runs: null }, deploymentsOn: false, linkedPackage: null, detected: null };
+const auto: KindFacts = { setting: { kind: null, runs: null }, deploymentsOn: false, reportsProduction: false, linkedPackage: null, detected: null };
 
 test("the setting wins over everything", () => {
   assert.equal(resolveKind({ ...auto, setting: { kind: "app", runs: "g1t" }, linkedPackage: "Composer package psr/log" }).kind, "app");
@@ -117,6 +117,19 @@ test("where it runs: set, or on g1t while Deployments are on, or nobody has said
   for (const kind of ["library", "tool", "other"] as const) {
     assert.equal(resolveKind({ ...auto, setting: { kind, runs: "g1t" }, deploymentsOn: true }).runs, null);
   }
+});
+
+test("an app that deploys production itself deploys itself, until something says otherwise", () => {
+  // Its own workflow deployed production: an app that deploys itself, whatever its files say.
+  const itself = resolveKind({ ...auto, reportsProduction: true, detected: { kind: "library", detail: "" } });
+  assert.deepEqual(itself, { kind: "app", reason: { by: "deployments", detail: "It deploys production itself." }, runs: "elsewhere" });
+  // Hosted on g1t.page wins: Deployments being on, or the setting.
+  assert.equal(resolveKind({ ...auto, reportsProduction: true, deploymentsOn: true }).runs, "g1t");
+  assert.equal(resolveKind({ ...auto, reportsProduction: true, setting: { kind: null, runs: "g1t" } }).runs, "g1t");
+  // Set to something that never runs, it doesn't.
+  assert.equal(resolveKind({ ...auto, reportsProduction: true, setting: { kind: "library", runs: null } }).runs, null);
+  // Docs published by its own pipeline deploy themselves too.
+  assert.equal(resolveKind({ ...auto, reportsProduction: true, setting: { kind: "docs", runs: null } }).runs, "elsewhere");
 });
 
 test("a change to the setting keeps it coherent", () => {

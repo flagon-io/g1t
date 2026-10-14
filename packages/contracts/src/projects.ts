@@ -39,13 +39,14 @@ export type Project = {
   /** Why it is that kind. */
   kindReason: KindReason;
   /**
-   * Where it runs: `g1t` when g1t deploys it (Deployments, on g1t.page),
-   * `elsewhere` when it is deployed by other means, at `productionUrl`.
-   * Null for what is not deployed (a library, a tool) and for an app nobody
-   * has said yet while Deployments are off.
+   * Where it runs: `g1t` when it is hosted on g1t.page (Deployments),
+   * `elsewhere` when it deploys itself (a workflow on g1t Actions, or
+   * another pipeline) to hosting of its own, at `productionUrl`. Null for
+   * what is not deployed (a library, a tool) and for an app nobody has
+   * placed that has neither Deployments on nor deployed production itself.
    */
   runs: ProjectRuns | null;
-  /** Where production is when it runs elsewhere; null when nobody has given one. */
+  /** Where production is when it deploys itself; null when nobody has given one. */
   productionUrl: string | null;
   /**
    * An image of production someone uploaded, shown on its overview when
@@ -84,7 +85,7 @@ export type ProjectKind = "app" | "library" | "tool" | "docs" | "other";
 /** Every kind, in the order pages offer them. */
 export const PROJECT_KINDS: readonly ProjectKind[] = ["app", "library", "tool", "docs", "other"];
 
-/** Where an app or a site runs: deployed by g1t on g1t.page, or deployed by other means. */
+/** Where an app or a site runs: hosted on g1t.page, or deploying itself to hosting of its own. */
 export type ProjectRuns = "g1t" | "elsewhere";
 
 /** What a person set; null for each part left to detection. */
@@ -141,7 +142,7 @@ export type ProjectChanges = {
   kind?: ProjectKind | "auto";
   /** Where it runs; `auto` leaves it to Deployments. Setting it makes it an app unless it is docs. */
   runs?: ProjectRuns | "auto";
-  /** Production's address when it runs elsewhere; null or blank clears it. */
+  /** Production's address when it deploys itself; null or blank clears it. */
   productionUrl?: string | null;
   /** Null or blank goes back to the repository's website. */
   homepage?: string | null;
