@@ -190,6 +190,7 @@ pub enum Op {
     AddComment,
     EditComment,
     DeleteComment,
+    React,
     ReviewPullRequest,
     ListPullRequests,
     GetPullRequest,
@@ -811,7 +812,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 405] = [
+    pub const ALL: [Op; 406] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -885,6 +886,7 @@ impl Op {
         Op::AddComment,
         Op::EditComment,
         Op::DeleteComment,
+        Op::React,
         Op::ReviewPullRequest,
         Op::ListPullRequests,
         Op::GetPullRequest,
@@ -1299,6 +1301,7 @@ impl Op {
             Op::AddComment => "add_comment",
             Op::EditComment => "edit_comment",
             Op::DeleteComment => "delete_comment",
+            Op::React => "react",
             Op::ReviewPullRequest => "review_pull_request",
             Op::ListPullRequests => "list_pull_requests",
             Op::GetPullRequest => "get_pull_request",
@@ -1662,6 +1665,9 @@ impl Op {
             }
             Op::DeleteComment => {
                 "Delete a comment on an issue or a pull request, named by comment_id. Its author may delete it, and so may anyone with the Maintain role or higher. A review that approved or requested changes cannot be deleted, only edited, and notes of what happened cannot be deleted. This cannot be undone. Publishes comment.deleted with the comment as it was."
+            }
+            Op::React => {
+                "React to an issue or a pull request with an emoji: to its description, or with comment_id to one of its comments. content is one of +1, -1, laugh, hooray, confused, heart, rocket and eyes; remove true takes your reaction back. Anyone who can read the repository may. Answers with the reactions it has now, each with its count and the usernames of who reacted (`g1t` for g1t, which reacts eyes to what it was asked to take on). get_issue and get_pull_request give each comment's reactions, and the description's as reactions."
             }
             Op::ReviewPullRequest => {
                 "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened, or one g1t made for you (you are its requested_by)."
@@ -2715,6 +2721,20 @@ impl Op {
             Op::DeleteComment => object(
                 json!({ "repo": repo_schema(), "comment_id": comment_id_schema() }),
                 &["repo", "comment_id"],
+            ),
+            Op::React => object(
+                numbered(json!({
+                    "content": {
+                        "type": "string",
+                        "enum": ["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"],
+                    },
+                    "comment_id": {
+                        "type": "string",
+                        "description": "A comment on it, to react to that comment rather than to its description.",
+                    },
+                    "remove": { "type": "boolean", "description": "Take your reaction back." },
+                })),
+                &["repo", "number", "content"],
             ),
             Op::ReviewPullRequest => object(
                 numbered(json!({
@@ -5238,6 +5258,20 @@ impl Op {
             Op::ClosePullRequest => pass(work, "close_pull", &pull_action()).await,
             Op::ReopenPullRequest => pass(work, "reopen_pull", &pull_action()).await,
             Op::ConvertPullRequestToDraft => pass(work, "convert_pull_to_draft", &pull_action()).await,
+            Op::React => {
+                let Some(content) = input["content"].as_str().and_then(ReactionContent::parse) else {
+                    return failed(FailureCode::Invalid, "content must be one of +1, -1, laugh, hooray, confused, heart, rocket and eyes.");
+                };
+                let asked = ReactArgs {
+                    actor: actor(),
+                    repo,
+                    number,
+                    comment_id: optional_text(input, "comment_id"),
+                    content,
+                    remove: input["remove"].as_bool().unwrap_or(false),
+                };
+                pass(work, "react", &asked).await
+            }
             Op::EditComment | Op::DeleteComment => {
                 let asked = CommentActionArgs {
                     actor: actor(),

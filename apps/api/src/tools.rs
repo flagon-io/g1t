@@ -165,6 +165,7 @@ pub const TOOLS: &[Tool] = &[
             a("comment", Op::AddComment, "Comment on an issue or pull request; path and line for one line of a change"),
             a("edit_comment", Op::EditComment, "Change a comment's text: your own, or any with the Maintain role"),
             a("delete_comment", Op::DeleteComment, "Delete a comment: your own, or any with the Maintain role"),
+            a("react", Op::React, "React with an emoji to it, or with comment_id to one of its comments; remove takes it back"),
             a("import", Op::ImportIssue, "Open an issue from a Jira, Linear or Sentry item"),
             a("work", Op::Coordination(CoordinationOp::GetWork), "Everything to pick it up: done means, claims, sessions, pull requests, blockers, decisions, recent events"),
             a("claim", Op::Coordination(CoordinationOp::ClaimIssue), "Say you are working on it; lists who else is, and what it is blocked by"),

@@ -22,6 +22,8 @@ export const AGENT_MODES: { mode: AgentMode; label: string; hint: string }[] = [
 /** What `start_agent_session` started, or the hand-off to run. */
 export type AgentSessionStarted = {
   issue: number;
+  /** The pull request it carries on with, when it was started on one. */
+  pull?: number | null;
   session: WorkSession | null;
   sessionUrl: string | null;
   provider: string | null;

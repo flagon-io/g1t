@@ -566,6 +566,7 @@ mod tests {
             agent: None,
             acting_for: None,
             advisory: false,
+            reactions: Vec::new(),
         }
     }
 

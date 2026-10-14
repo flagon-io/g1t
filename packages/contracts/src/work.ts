@@ -334,6 +334,30 @@ export type Comment = {
    * approvals or code owners, and never blocks a merge.
    */
   advisory?: boolean;
+  /** How people (and g1t) reacted to it. Absent when nobody has. */
+  reactions?: ReactionGroup[];
+};
+
+/** An emoji reaction: the same eight as everywhere else people react to code. */
+export type ReactionContent = "+1" | "-1" | "laugh" | "hooray" | "confused" | "heart" | "rocket" | "eyes";
+
+/** The reactions, in the order they are offered, with the emoji each shows. */
+export const REACTIONS: { content: ReactionContent; emoji: string; label: string }[] = [
+  { content: "+1", emoji: "👍", label: "Thumbs up" },
+  { content: "-1", emoji: "👎", label: "Thumbs down" },
+  { content: "laugh", emoji: "😄", label: "Laugh" },
+  { content: "hooray", emoji: "🎉", label: "Hooray" },
+  { content: "confused", emoji: "😕", label: "Confused" },
+  { content: "heart", emoji: "❤️", label: "Heart" },
+  { content: "rocket", emoji: "🚀", label: "Rocket" },
+  { content: "eyes", emoji: "👀", label: "Eyes" },
+];
+
+/** Everyone who reacted one way to the same thing, first to react first; `g1t` for g1t. */
+export type ReactionGroup = {
+  content: ReactionContent;
+  count: number;
+  users: string[];
 };
 
 /**
@@ -381,6 +405,8 @@ export type IssueDetail = {
   /** Every pull request made against it, oldest first. */
   pulls: Pull[];
   comments: Comment[];
+  /** How people (and g1t) reacted to its description. */
+  reactions: ReactionGroup[];
 };
 
 export type PullDetail = {
@@ -388,6 +414,8 @@ export type PullDetail = {
   /** The issue it is for, if any. */
   issue: Issue | null;
   comments: Comment[];
+  /** How people (and g1t) reacted to its description. */
+  reactions: ReactionGroup[];
   /** The latest record against its head: the merge queue taking it out. */
   checks: CheckRun | null;
   /** Other pull requests in progress that change the same files. */
@@ -867,6 +895,17 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * higher. A review that gave a verdict cannot be deleted, only edited.
    */
   deleteComment(actor: User, repo: RepoPath, commentId: string): Promise<Result<boolean>>;
+  /**
+   * Reacts to comment `commentId` on issue or pull request `number`, or to
+   * its description without one; with `remove`, takes it back. Anyone who
+   * can read the repository may. What it has now.
+   */
+  react(
+    actor: User,
+    repo: RepoPath,
+    number: number,
+    reaction: { commentId?: string; content: ReactionContent; remove?: boolean },
+  ): Promise<Result<ReactionGroup[]>>;
 
   /**
    * What a sandbox says about a run from before checks were workflows: so

@@ -477,6 +477,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("add_comment", { actor, repo, number, ...comment }),
     editComment: (actor, repo, commentId, body) => call("edit_comment", { actor, repo, commentId, body }),
     deleteComment: (actor, repo, commentId) => call("delete_comment", { actor, repo, commentId }),
+    react: (actor, repo, number, reaction) => call("react", { actor, repo, number, ...reaction }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
     startMergecheck: (pullId) => call("start_mergecheck", { pullId }),
