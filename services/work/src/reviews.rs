@@ -132,6 +132,29 @@ impl Work {
         self.timing.rpc(g1t_kit::call(&self.repos, "behind", &asked)).await
     }
 
+    /// Whether a pull request is behind, as stored with its mergeability
+    /// when that was worked out for its head as it is now (the last push
+    /// to either side); otherwise asked of the repos service.
+    pub(crate) async fn behind_now(&self, pull: &Pull) -> Result<bool> {
+        if !pull.status.is_active() || pull.head_commit.is_none() {
+            return Ok(false);
+        }
+        let stored = self
+            .timing
+            .db(
+                1,
+                self.db
+                    .prepare("SELECT behind, mergeable_key FROM pulls WHERE id = ?")
+                    .bind(&[pull.id.as_str().into()])?
+                    .first::<crate::StoredBehind>(None),
+            )
+            .await?;
+        match stored.and_then(|stored| stored.for_head(pull.head_commit.as_deref())) {
+            Some(behind) => Ok(behind),
+            None => self.is_behind(pull).await,
+        }
+    }
+
     /// Where a pull request lives, for a tool that knows only its id (its
     /// fork is named after it).
     pub(crate) async fn locate_pull(&self, a: LocatePullArgs) -> Result<Outcome<LocatedPull>> {

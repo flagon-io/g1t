@@ -22,7 +22,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Await, Form, Link, redirect } from "react-router";
 
 import {
@@ -143,8 +143,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const pullFound = work.getPull(path, number, viewer);
   // Its labels and milestone, with the repository's to choose from.
   const labelsFound = work.listLabels(path, viewer);
-  // How it may merge now, for the merge box: beside the rest.
-  const choicesFound = tab === "conversation" ? work.mergeChoices(viewer, path, number).catch(() => null) : Promise.resolve(null);
+  // How it may merge now, for the merge box: streamed, since its default
+  // messages are read from the branch's commits, which takes seconds. Only
+  // one still open or a draft can merge.
+  const choicesFound =
+    tab === "conversation"
+      ? pullFound
+          .then((found) =>
+            found.ok && (found.value.pull.status === "open" || found.value.pull.status === "draft")
+              ? work.mergeChoices(viewer, path, number)
+              : null,
+          )
+          .catch(() => null)
+      : Promise.resolve(null);
   const milestonesFound = work.listMilestones(path, viewer);
   labelsFound.catch(() => null);
   milestonesFound.catch(() => null);
@@ -232,7 +243,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     tab === "conversation" && pull.issue != null && (found.value.issue?.pullCount ?? 0) > 1
       ? attemptsFor(path, viewer, pull, found.value.comments).catch(() => [] as Attempt[])
       : null;
-  const [labels, milestones, served] = await Promise.all([labelsFound, milestonesFound, choicesFound]);
+  const [labels, milestones] = await Promise.all([labelsFound, milestonesFound]);
+  // The merge box opens on what the settings allow, then takes the
+  // service's answer, with its messages, when it arrives.
+  const settledChoices = mergeChoicesOf(settings.ok ? settings.value : null, found.value.behind);
+  const servedChoices = choicesFound.then((served) =>
+    served?.ok && served.value.methods.length > 0 ? choicesFromService(served.value) : settledChoices,
+  );
   const repoDefault = repo.ok ? repo.value.defaultBranch : "main";
   const viewerOwns = viewer != null && viewer.id === workOwner(pull).id;
   // The default branch's protection covers pull requests into it only.
@@ -291,10 +308,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     canProtect: can.manage_protection,
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
     // What the merge box offers: methods, messages, the branch afterwards.
-    choices:
-      served?.ok && served.value.methods.length > 0
-        ? choicesFromService(served.value)
-        : mergeChoicesOf(settings.ok ? settings.value : null, found.value.behind),
+    // At first from the settings; the service's answer is streamed.
+    choices: settledChoices,
+    servedChoices,
     // Auto-merge on: whoever may merge it, since it merges as them. Off:
     // they, or whoever it is for.
     canAutoMerge: can.merge,
@@ -670,6 +686,22 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
 }
 
 /** The box at the foot of the conversation saying what stands before a merge. */
+/** `initial` until `promise` settles, then what it resolved to. */
+function useArrived<T>(promise: Promise<T>, initial: T): T {
+  const [arrived, setArrived] = useState<{ from: Promise<T>; value: T } | null>(null);
+  useEffect(() => {
+    let current = true;
+    promise.then(
+      (value) => current && setArrived({ from: promise, value }),
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [promise]);
+  return arrived?.from === promise ? arrived.value : initial;
+}
+
 function StatusBox({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex gap-3">
@@ -751,11 +783,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     canManage,
     canModerate,
     defaultBranch: repoDefault,
-    choices,
+    choices: settledChoices,
+    servedChoices,
     canAutoMerge,
     canStopAutoMerge,
     canChangeBranch,
   } = loaderData;
+  // The merge box takes the service's choices in place when they arrive,
+  // keeping what the viewer already picked or has open.
+  const choices = useArrived(servedChoices, settledChoices);
   // The branch it merges into: what every line below names.
   const defaultBranch = pull.base ?? repoDefault;
   const base = `/${params.owner}/${params.repo}`;
