@@ -52,7 +52,7 @@ export default function DeploymentPage({ loaderData, params }: Route.ComponentPr
   const { deployment, build } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   return (
-    <div className="mx-auto max-w-5xl">
+    <div>
       <Link to={`${base}/deployments`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
         <ArrowLeft size={14} />
         Deployments

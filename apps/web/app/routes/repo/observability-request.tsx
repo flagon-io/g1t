@@ -37,7 +37,7 @@ export default function RequestPage({ loaderData, params }: Route.ComponentProps
     ["Environment", r.environment ?? "—"],
   ];
   return (
-    <div className="mx-auto max-w-5xl">
+    <div>
       <Link to={`${base}/observability/requests`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
         <ChevronLeft size={14} />
         Requests

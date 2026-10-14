@@ -34,7 +34,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export default function ProjectUsage({ loaderData }: Route.ComponentProps) {
   const { slug, project, owner, filters, url, report } = loaderData;
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+    <div>
       <h1 className="mb-4 text-lg font-semibold tracking-tight">Usage</h1>
       <Suspense
         fallback={

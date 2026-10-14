@@ -58,7 +58,7 @@ export function SoonView({
   const siblings = roadmapIn(item.section).filter((other) => other.key !== item.key);
   const inWorkspace = item.section === "Workspace";
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       {/* A project's tabs already say where this is; the workspace's need saying. */}
       {inWorkspace && (
         <p className="mb-4 flex items-center gap-2 text-sm text-muted">

@@ -113,7 +113,7 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
   const submit = useSubmit();
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="max-w-4xl">
       <ObservabilityHeader title="Observability settings" about="Where the project's telemetry comes from, how long it is kept, and where else it goes." />
       <div className="mt-4 min-h-5">
         {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}

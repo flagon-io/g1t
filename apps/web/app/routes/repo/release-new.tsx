@@ -48,7 +48,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 export default function NewRelease({ loaderData, actionData }: Route.ComponentProps) {
   const { tags, branches, defaultBranch } = loaderData;
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="max-w-3xl space-y-5">
       <div>
         <h2 className="text-xl font-semibold tracking-tight">New release</h2>
         <p className="mt-1 text-sm text-muted">
