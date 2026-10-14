@@ -10,7 +10,7 @@ it is written.
 
 Ask answers with **your workspace's own AI provider**, on your workspace's
 own key: one of [your AI providers](/guides/integrations/#your-ai-providers),
-and the model an owner chose for it. g1t hosts no model for Ask and bills
+and **Auto** or the model an owner chose for it. g1t hosts no model for Ask and bills
 nothing for it; what an answer costs is on your provider's bill. Your key
 stays sealed in g1t: it is used to call the provider and is never sent to
 your browser.
@@ -24,9 +24,11 @@ An owner of the workspace sets it up once:
 2. Connect a provider if there is none yet: Anthropic, OpenAI, Gemini or
    any of the others, or your own Anthropic- or OpenAI-compatible
    endpoint.
-3. Under **Ask g1t**, choose the provider and one of the models it offers,
-   then **Use for Ask**. For Azure OpenAI, give the deployment's name; for
-   an endpoint that does not list its models, the model's name.
+3. Under **Ask g1t**, choose the provider and its model, then **Use for
+   Ask**. The model starts at **Auto** (see [Auto](#auto)); choose one of
+   the models the provider offers to use that one for every answer. For
+   Azure OpenAI, give the deployment's name; for an endpoint that does not
+   list its models, the model's name.
 
 Every member can then ask. Until a provider is chosen, Ask says so: owners
 get a link to set it up, and members are told to ask an owner. A message
@@ -37,6 +39,31 @@ uses does too.
 Every AI provider g1t connects works with Ask: Anthropic and
 Anthropic-compatible endpoints through Anthropic's Messages API, and the
 rest through OpenAI's Chat Completions API.
+
+### Auto
+
+**Auto**, the default, picks one of the provider's models for each
+question, by a fixed rule and with no extra call to the provider:
+
+| The question | Auto answers with |
+| --- | --- |
+| A lookup: who has an issue, a link, how many pull requests are open | The provider's newest fast model: Haiku, a `mini` or `flash` model, an `instant` one |
+| One that needs several reads or reasoning: why or how something happened, what shipped, a day or a week summed up, a failure to diagnose, work to plan; a long question, several at once, or a long conversation | Its newest standard model: Sonnet, GPT, Gemini Pro, a `versatile` or `large` one |
+
+Auto tells models apart by the words in their names, from the list the
+provider gave when it was last tested, so it works the same for every
+provider. The largest and most expensive models, such as Opus or OpenAI's
+`pro` models, are used only when the provider offers nothing else: every
+answer is on your workspace's key. When a tier is missing, Auto uses the
+nearest one. A provider that lists no models (an endpoint, an Azure
+deployment) answers with its own model. If Auto has nothing to choose
+from, Ask says so: test the provider to list its models again, or choose
+one.
+
+Each answer names the model that wrote it, such as **Anthropic · Auto ·
+claude-sonnet-5-5**. Workspaces that chose Ask's model before Auto existed
+and kept the one the picker started at moved to Auto; a model an owner
+picked stays picked.
 
 ## What it can read
 
@@ -77,6 +104,30 @@ activity first: merged pull requests, releases, deployments, workflow runs
 and pushes across every repository you can read, in one read
 (`activity` on the MCP server's `workspace` tool, or
 [`GET /workspaces/{workspace}/activity`](/reference/api/workspaces/get-workspace-activity/)).
+
+### What Ask means by shipped
+
+A change ships when it reaches a repository's default branch, pushed or
+merged from a pull request, and then production. Production is a
+successful deployment:
+
+- a project's production deployment on g1t.page, or
+- for a repository that deploys itself, a successful run of its deploy
+  workflow on the default branch: a workflow whose name or file says
+  deploy, such as `.g1t/workflows/deploy.yml`, and not one for previews.
+
+Releases and tags are one more signal, not what shipping means. So "What
+shipped today?" is answered with the commits that reached default branches
+since the start of your day (in your profile's time zone), grouped by what
+changed, and for each: **live** (with the deploy that carried it), **still
+deploying**, **failed to deploy** (with the run, linked), or **not
+deployed**. A deploy carries the commit it ran for and every commit before
+it on the branch.
+
+People are named by their g1t username. A commit's author is matched to
+the account their address belongs to (a confirmed address or the account's
+noreply address, as commits on g1t.sh show them); a commit by an address
+no account has is named as git recorded it, without an @.
 
 Answers link to what they name on g1t, and every number, title and link
 comes from what Ask read; when something does not exist, it says so.
@@ -138,7 +189,7 @@ it. Nobody else can read it, and it stays until you delete it or
 - **Answer again**, under g1t's latest answer, has it write that answer
   anew.
 - **Copy** copies an answer as Markdown. Each answer shows the provider
-  and model that wrote it.
+  and model that wrote it, with **Auto** when Auto chose the model.
 
 Answers are Markdown: code is highlighted with its language and a Copy
 button, tables scroll within the answer, and issues, pull requests and

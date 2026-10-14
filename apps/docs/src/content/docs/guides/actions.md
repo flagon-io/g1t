@@ -1989,7 +1989,7 @@ usually work once they point at `https://api.g1t.sh`.
 | --- | --- |
 | `list` | `GET /repos/{owner}/{repo}/actions/workflows` |
 | `get` | `GET /repos/{owner}/{repo}/actions/workflows/{workflow}`, with `ref`: the workflow, with `source`, its file on that branch or tag |
-| `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha` |
+| `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha`, `status`, and `since` and `until` (RFC 3339) for when they were created |
 | `get_run` | `GET /repos/{owner}/{repo}/actions/runs/{id}` |
 | `job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=`, or `?format=text` for the whole log as plain text |
 | `get_run` with `attempt` | `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}` |

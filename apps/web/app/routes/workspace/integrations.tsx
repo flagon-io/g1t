@@ -32,6 +32,7 @@ import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { Combobox } from "../../components/ui/combobox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { autoOffered, defaultModel as startingModel, modelLabel, modelOptions } from "../../lib/ask-model";
 import { integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -461,8 +462,9 @@ function ConnectionRow({
 
 /**
  * Ask g1t's provider and model: one of the workspace's AI providers, and
- * one of the models it offered when last checked (or any name, for one
- * that lists none). Owners choose; members see what it is.
+ * Auto (the default: a model for each question) or one of the models it
+ * offered when last checked (or any name, for one that lists none). Owners
+ * choose; members see what it is.
  */
 function AskSetting({
   connections,
@@ -481,8 +483,7 @@ function AskSetting({
   const [chosen, setChosen] = useState(current?.id ?? connections[0]?.id ?? "");
   const connection = connections.find((c) => c.id === chosen) ?? null;
   const azure = connection?.provider === "azure_openai";
-  const defaultModel =
-    connection && connection.id === current?.id ? (setup?.model ?? "") : (connection?.config.model ?? connection?.models[0] ?? "");
+  const defaultModel = startingModel(connection, setup);
   return (
     <Card asChild className="mb-6 scroll-mt-20 p-4">
       <section id="ask" aria-labelledby="ask-heading">
@@ -496,7 +497,7 @@ function AskSetting({
         {setup?.connection_id && !setup.problem && (
           <p className="mt-3 text-sm">
             Answers with <span className="font-medium">{setup.connection_name}</span> ·{" "}
-            <span className="font-mono text-[0.8125rem]">{setup.model}</span>
+            <span className="font-mono text-[0.8125rem]">{modelLabel(setup)}</span>
           </p>
         )}
         {setup?.problem && <p className="mt-3 text-sm text-warn">{setup.problem}</p>}
@@ -523,15 +524,15 @@ function AskSetting({
                 </Select>
               </Field>
               <Field label={azure ? "Deployment" : "Model"}>
-                {connection && connection.models.length > 0 && !azure ? (
+                {autoOffered(connection) && connection ? (
                   <Combobox
                     key={connection.id}
                     name="model"
-                    defaultValue={connection.models.includes(defaultModel) ? defaultModel : (connection.models[0] ?? "")}
+                    defaultValue={defaultModel}
                     aria-label="Model"
                     searchPlaceholder="Find a model"
                     emptyText="It offers no model by that name."
-                    options={connection.models.map((model) => ({ value: model, label: model }))}
+                    options={modelOptions(connection)}
                     className="font-mono text-[0.8125rem]"
                   />
                 ) : (

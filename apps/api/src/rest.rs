@@ -769,7 +769,7 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/repos/:owner/:name/actions/workflows/:workflow/runs",
         Op::ListWorkflowRuns,
-        &[("branch", "branch"), ("event", "event"), ("status", "status"), ("head_sha", "sha"), ("per_page", "limit")],
+        &[("branch", "branch"), ("event", "event"), ("status", "status"), ("head_sha", "sha"), ("since", "since"), ("until", "until"), ("per_page", "limit")],
     ),
     route(
         "POST",
@@ -799,7 +799,7 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/repos/:owner/:name/actions/runs",
         Op::ListWorkflowRuns,
-        &[("workflow", "workflow"), ("branch", "branch"), ("event", "event"), ("pull", "pull"), ("head_sha", "sha"), ("status", "status"), ("per_page", "limit")],
+        &[("workflow", "workflow"), ("branch", "branch"), ("event", "event"), ("pull", "pull"), ("head_sha", "sha"), ("status", "status"), ("since", "since"), ("until", "until"), ("per_page", "limit")],
     ),
     route(
         "GET",

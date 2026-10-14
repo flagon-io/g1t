@@ -295,7 +295,8 @@ pub fn system_prompt(context: &Context) -> String {
     );
     match local {
         Some((zone, date, started)) => prompt.push_str(&format!(
-            " They are in {zone}, where it is {date}: \"today\" means since {started} unless they say otherwise,              and \"yesterday\" the day before that. Give times in their zone where it helps."
+            " They are in {zone}, where it is {date}: \"today\" means since {started} unless they say otherwise, \
+             and \"yesterday\" the day before that. Give times in their zone where it helps."
         )),
         None => prompt.push_str(&format!(" Today is {today} (UTC): \"today\" means since {today}T00:00:00Z unless they say otherwise.")),
     }
@@ -307,12 +308,22 @@ pub fn system_prompt(context: &Context) -> String {
              something you have not tried to read. Read first, then answer from what you read.\n\
              - For anything across the workspace (what shipped, what happened today or this week, who did what, \
              what is in flight), start with the workspace tool's `activity` action with workspace \"{slug}\" and a \
-             `since`: one call covers every repository they can read. \"What shipped\" means merged pull requests, \
-             releases, production deployments and pushes to a default branch; its `landed` lists the commits those \
-             pushes carried, one line each, so say what changed (group related commits, lead with what matters to \
-             people), not only how many. Pass `since` as the start of their today for \"today\". If `complete` is \
-             false, narrow `kinds` (such as merged, releases, deployments, pushes) or the span and read again rather \
-             than guessing.\n\
+             `since`: one call covers every repository they can read. Pass `since` as the start of their today for \
+             \"today\". If `complete` is false, narrow `kinds` (such as merged, releases, deployments, pushes) or the \
+             span and read again rather than guessing.\n\
+             - What shipping means on g1t: a change ships when it reaches a repository's default branch (pushed, or \
+             a pull request merged; many teams push straight to it) and then production. Production is a successful \
+             deployment: a project's production deployment, or, for a repository that deploys itself, a successful \
+             run of its deploy workflow (such as Deploy, .g1t/workflows/deploy.yml) on the default branch, which \
+             `activity` marks `production` and counts in `summary.production_deployments`. Releases and tags are one \
+             more signal, never the definition: nothing merged or released does not mean nothing shipped. \
+             `activity`'s `landed` lists the commits that reached default branches, one line each, with `production` \
+             (`live` with the `deploy` that carried it, `deploying`, `failed`, `not_deployed`) where the repository \
+             deploys, and `summary.shipped` counts them. Answer \"what shipped\" with what is live, then what is still \
+             deploying and what failed to deploy (name the run, link it), each with links; say what changed (group \
+             related commits, lead with what matters to people), not only how many. For more, the workflow tool's \
+             `list_runs` with `workflow` (deploy.yml), `branch` (the default branch) and `since`, and \
+             `list_deployments` with `environment` production.\n\
              - To find a repository, use the repository tool's `list` or the search tool. Repositories are \
              \"owner/name\", here usually \"{slug}/…\".\n\
              - Keep to {slug}. Other repositories on g1t they can see (public ones, other workspaces') come into an \
@@ -373,7 +384,15 @@ pub fn system_prompt(context: &Context) -> String {
          its page on g1t with a full address: {site}/owner/repo for a repository, {site}/owner/repo/pull/N for a pull \
          request, {site}/owner/repo/issues/N for an issue, {site}/owner/repo/releases/tag/TAG for a release, \
          {site}/owner/repo/commit/SHA for a commit, {site}/owner/repo/actions/runs/ID for a workflow run. Use a \
-         tool's `url` when it gives one. Name people as @username.\n\
+         tool's `url` when it gives one.\n\
+         Name people by the g1t username a tool returned for them (an `actor`, a `username`, a commit's \
+         `author.username`), as @username. A commit's author name (`author`, `author.name`) and an email address \
+         are what git recorded, not usernames: never make an @mention from them. When no username is given, write \
+         the name as git has it, without @. The same person is one person: never list a name and a username as \
+         two people.\n\
+         Write each answer once. Settle what you read before you write, and never correct yourself in the answer \
+         (no \"wait\", \"actually\" or \"I'll correct that\"); if something you were about to say is wrong, say the \
+         right thing instead.\n\
          Every number (#N, a run's number, a count), title, name, commit, time and link you write must come from \
          what a tool returned in this answer or from the conversation. Never invent one, never write example or \
          placeholder rows, and never link to something a tool did not show you. When asked for a table, fill it \
@@ -967,6 +986,18 @@ mod tests {
         assert!(prompt.contains("latest 40 messages"));
         assert!(prompt.contains("have no other memory"));
         assert!(prompt.contains("never take an earlier answer back"));
+        // People are named by their usernames, never by an @ made from a git name.
+        assert!(prompt.contains("`author.username`), as @username"));
+        assert!(prompt.contains("never make an @mention from them"));
+        assert!(prompt.contains("write the name as git has it, without @"));
+        // One answer, no corrections in it.
+        assert!(prompt.contains("never correct yourself in the answer"));
+        // Shipping is the default branch, then production; releases are a signal.
+        assert!(prompt.contains("a change ships when it reaches a repository's default branch"));
+        assert!(prompt.contains("a successful run of its deploy workflow"));
+        assert!(prompt.contains("nothing merged or released does not mean nothing shipped"));
+        assert!(prompt.contains("what is live, then what is still deploying and what failed to deploy"));
+        assert!(!prompt.contains("  "), "no runs of spaces from a broken line");
         let bare = system_prompt(&Context { name: "acme", ..context(&AskPage::default(), &[], false) });
         assert!(bare.contains("workspace acme,"));
         assert!(!bare.contains("## Where they are"));
@@ -979,6 +1010,7 @@ mod tests {
         });
         assert!(local.contains("They are in America/Denver, where it is 2026-10-12: \"today\" means since 2026-10-12T06:00:00Z"));
         assert!(!local.contains("(UTC): \"today\""));
+        assert!(local.contains("unless they say otherwise, and \"yesterday\""));
     }
 
     #[test]

@@ -273,6 +273,7 @@ export class AnswerReader {
           ...this.answer,
           provider_label: typeof event.provider_label === "string" ? event.provider_label : null,
           model: typeof event.model === "string" ? event.model : null,
+          ...(event.auto === true ? { auto: true } : {}),
         };
         return true;
       case "text":

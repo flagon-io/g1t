@@ -41,6 +41,9 @@ test("an answer streams into its message, then the stored one takes over", () =>
   list = applyLive(list, { type: "message.streaming", channel_id: "chn_1", id: "msg_2", body: "Tw", answer: { state: "streaming" } }, "chn_1");
   assert.equal(list[1]!.body, "Two pull requests.");
   assert.equal(answerLabel(list[1]!.answer), "Anthropic · m");
+  // Auto names the model it chose.
+  assert.equal(answerLabel({ state: "done", provider_label: "Anthropic", model: "claude-sonnet-5-5", auto: true }), "Anthropic · Auto · claude-sonnet-5-5");
+  assert.equal(answerLabel({ state: "thinking" }), null);
 });
 
 test("other conversations, thread replies and deletions", () => {

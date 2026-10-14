@@ -285,6 +285,16 @@ impl Actions {
             binds.push(status.into());
             binds.push(status.into());
         }
+        // When they were created: kept as RFC 3339 to the millisecond, so a
+        // time written the same way compares as text.
+        for (bound, op) in [(&a.since, ">="), (&a.until, "<")] {
+            let Some(text) = bound.as_deref().map(str::trim).filter(|text| !text.is_empty()) else { continue };
+            let Some(at) = g1t_contracts::time::parse_rfc3339(text) else {
+                return Ok(fail(FailureCode::Invalid, "since and until must be RFC 3339 times, such as 2026-10-14T00:00:00Z."));
+            };
+            sql.push_str(&format!(" AND created_at {op} ?"));
+            binds.push(g1t_contracts::time::rfc3339(at).into());
+        }
         sql.push_str(" ORDER BY id DESC LIMIT ?");
         binds.push(a.limit.unwrap_or(RUNS_SHOWN).clamp(1, 100).into());
         let rows = self.db.prepare(sql).bind(&binds)?.all().await?.results::<RunRow>()?;

@@ -461,6 +461,10 @@ pub const ASK_MAX_TOTAL_CHARS: usize = 64_000;
 /// The most tokens one answer may run to.
 pub const ASK_MAX_OUTPUT_TOKENS: u32 = 4_096;
 
+/// The model name that means Auto in [`SetAskSettingsArgs`]: Ask picks one
+/// of the connection's models for each question.
+pub const ASK_AUTO_MODEL: &str = "auto";
+
 /// What Ask g1t answers with in a workspace: the connection and model an
 /// owner chose, or why it cannot answer yet.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -469,7 +473,14 @@ pub struct AskSetup {
     /// The connection's name, as its owner named it.
     pub connection_name: Option<String>,
     pub provider: Option<Provider>,
+    /// The model chosen. With `auto`, none, or the connection's own model
+    /// when it lists none (an endpoint's, an Azure deployment).
     pub model: Option<String>,
+    /// Auto: each question goes to the connection's model that suits it (a
+    /// fast one for a lookup, a stronger one for a question that needs
+    /// several reads or reasoning). The default.
+    #[serde(default)]
+    pub auto: bool,
     /// Why Ask cannot answer, in words for the person asking. `None` when
     /// it can.
     pub problem: Option<String>,
@@ -492,8 +503,8 @@ pub struct SetAskSettingsArgs {
     pub workspace: String,
     #[serde(default)]
     pub connection_id: Option<String>,
-    /// One of the models the connection offers; its own model (an Azure
-    /// deployment) when not given.
+    /// One of the models the connection offers, or [`ASK_AUTO_MODEL`] for
+    /// Auto; its own model (an Azure deployment) when not given.
     #[serde(default)]
     pub model: Option<String>,
 }
@@ -595,7 +606,14 @@ pub struct AskSource {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AskEvent {
     /// Who is answering.
-    Meta { provider: Provider, provider_label: String, model: String },
+    /// `model` is the one answering; `auto` when Auto chose it.
+    Meta {
+        provider: Provider,
+        provider_label: String,
+        model: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        auto: bool,
+    },
     /// The next piece of the answer.
     Text { text: String },
     /// A step taken to answer: one of g1t's tools, run as the person
@@ -686,7 +704,14 @@ mod tests {
             serde_json::from_str(r#"{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude"}"#).unwrap();
         assert_eq!(
             meta,
-            AskEvent::Meta { provider: Provider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into() }
+            AskEvent::Meta { provider: Provider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into(), auto: false }
+        );
+        // Auto says so; a chosen model's line is as it was.
+        assert!(!serde_json::to_string(&meta).unwrap().contains("auto"));
+        let auto = AskEvent::Meta { provider: Provider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into(), auto: true };
+        assert_eq!(
+            serde_json::to_string(&auto).unwrap(),
+            r#"{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude","auto":true}"#
         );
         let page: AskPage = serde_json::from_str("{}").unwrap();
         assert_eq!(page, AskPage::default());

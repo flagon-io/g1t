@@ -223,6 +223,8 @@ export type ChatAnswer = {
   /** The provider's name and the model, once the provider said. */
   provider_label?: string | null;
   model?: string | null;
+  /** Auto chose `model` for this question. */
+  auto?: boolean;
   /** `max_tokens`, `length`: cut off at its limit. */
   stop_reason?: string | null;
   /** What went wrong, for `error`. */

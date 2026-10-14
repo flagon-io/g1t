@@ -11,9 +11,18 @@
 //! not carry, come from the work service's newest pull requests of the
 //! repositories that had any; people's names from identity. Everything
 //! after the reads is [`shape`], a plain function, tested on its own.
+//!
+//! Shipping on g1t is reaching the default branch, then production. For the
+//! repositories whose default branch moved, `landed` lists the commits, each
+//! with its author's g1t username where their address is one's
+//! (commits.rs), and whether it is in production ([`production`]): carried
+//! by a successful deploy (a run of a deploy workflow on the default branch,
+//! for a repository that deploys itself, or a project's production
+//! deployment on g1t.page), still deploying, or failed to.
 
 use std::collections::{BTreeSet, HashMap};
 
+use g1t_contracts::actions::{RunsArgs, WorkflowRun};
 use g1t_contracts::events::{Event, ListArgs as ListEventsArgs, MAX_LIST_REPOS};
 use g1t_contracts::identity::UsernamesArgs;
 use g1t_contracts::repos::{Commit, ListArgs as ListReposArgs, LogArgs, Repo, RepoPath};
@@ -23,6 +32,7 @@ use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde_json::{Value, json};
 use worker::Result;
 
+use crate::commits::{self, Authors};
 use crate::operations::Services;
 
 /// The span when none is given: the last day.
@@ -52,13 +62,16 @@ const LANDED_REPOS: usize = 8;
 const LANDED_MAX: usize = 40;
 /// How far back each of those repositories' history is read.
 const LANDED_LOG: u32 = 60;
+/// How many of each of those repositories' default-branch runs in the span
+/// are read for its deploys.
+const LANDED_RUNS: u32 = 100;
 
 /// What is read when no kinds are given: everything but comments, which
 /// would crowd out the rest on a busy day.
 const DEFAULT_KINDS: &[&str] = &["pulls", "issues", "releases", "deployments", "pushes", "reviews", "packages", "runs"];
 
 pub fn description() -> &'static str {
-    "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments, default-branch pushes and failed runs: what shipped, and what broke. `landed` lists the commits made on default branches in the span, one line each (`repo`, `commit`, `subject`, `author`, `time`, `url`): what shipped where it was pushed rather than merged. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events."
+    "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run, and `production` true for a run of a deploy workflow on the default branch: a repository that deploys itself). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments (projects' production deployments and successful deploy runs on default branches), failed ones, default-branch pushes and failed runs, and in `shipped` the landed commits by where they are. `landed` lists the commits made on default branches in the span, one line each (`repo`, `commit`, `subject`, `author` as git wrote it, `username` when the author's address is a g1t account's, `time`, `url`), and, where the repository deploys, `production`: `live` (a successful deploy carried it, named in `deploy` with its `url`), `deploying`, `failed` (its deploy failed and none since succeeded) or `not_deployed`. That is what shipped: what reached the default branch, and which of it is live. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events."
 }
 
 pub fn input() -> Value {
@@ -296,6 +309,20 @@ pub fn shape(found: &Found) -> Value {
                 if conclusion == "failure" {
                     runs_failed += 1;
                 }
+                // A repository that deploys itself: its deploy workflow's
+                // runs on the default branch are its production deployments.
+                let on_default = text(data, "ref") == Some(format!("refs/heads/{}", repo.default_branch).as_str());
+                if on_default
+                    && text(data, "event") != Some("pull_request")
+                    && deploy_workflow(text(data, "workflow").unwrap_or_default(), text(data, "path").unwrap_or_default())
+                {
+                    shown["production"] = json!(true);
+                    match conclusion {
+                        "success" => production += 1,
+                        "failure" | "timed_out" => failed += 1,
+                        _ => {}
+                    }
+                }
             }
             "package.published" => {
                 for key in ["ecosystem", "name", "version"] {
@@ -320,6 +347,9 @@ pub fn shape(found: &Found) -> Value {
             "failed_deployments": failed,
             "default_branch_pushes": landed,
             "failed_runs": runs_failed,
+            // The landed commits by where they are in production (`run`
+            // fills it in).
+            "shipped": shipped(&[]),
         },
         // What landed on default branches in the span, one line a commit
         // (`run` fills it in): what shipped where nothing was merged.
@@ -329,26 +359,180 @@ pub fn shape(found: &Found) -> Value {
     })
 }
 
+/// Whether a workflow deploys: its name or file says so (Deploy,
+/// deploy.yml, deploy-production.yml), and it is not for previews.
+pub fn deploy_workflow(name: &str, path: &str) -> bool {
+    let file = path.rsplit('/').next().unwrap_or_default();
+    let named = format!("{name} {file}").to_lowercase();
+    named.contains("deploy") && !named.contains("preview")
+}
+
+/// Where a deploy of a commit to production is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeployState {
+    Succeeded,
+    /// Queued, waiting or running.
+    Running,
+    Failed,
+}
+
+/// One deploy of a commit to production: a run of a repository's deploy
+/// workflow on its default branch, or a project's production deployment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Deploy {
+    pub sha: String,
+    pub state: DeployState,
+    /// What it was, for a person: "Deploy #311".
+    pub label: String,
+    pub url: String,
+}
+
+/// A run as a deploy to production, when it is one: its deploy workflow's,
+/// on the default branch and not for a pull request. Cancelled and skipped
+/// runs deployed nothing.
+pub fn run_deploy(site: &str, repo: &str, default_branch: &str, run: &WorkflowRun) -> Option<Deploy> {
+    if run.git_ref != format!("refs/heads/{default_branch}") || run.event == "pull_request" || !deploy_workflow(&run.name, &run.path) {
+        return None;
+    }
+    let state = match (run.status.as_str(), run.conclusion.as_deref()) {
+        ("completed", Some("success")) => DeployState::Succeeded,
+        ("completed", Some("failure" | "timed_out")) => DeployState::Failed,
+        ("completed", _) => return None,
+        _ => DeployState::Running,
+    };
+    Some(Deploy {
+        sha: run.sha.clone(),
+        state,
+        label: format!("{} #{}", run.name, run.number),
+        url: format!("{}/{repo}/actions/runs/{}", site.trim_end_matches('/'), run.id),
+    })
+}
+
+/// A repository's deploys to production that the events name: projects'
+/// production deployments, and its deploy workflow's finished runs.
+pub fn event_deploys(site: &str, repo: &Repo, events: &[Event]) -> Vec<Deploy> {
+    let site = site.trim_end_matches('/');
+    let full = format!("{}/{}", repo.namespace, repo.name);
+    let mut found = Vec::new();
+    for event in events.iter().filter(|event| event.repo_id.as_deref() == Some(repo.id.as_str())) {
+        let data = &event.data;
+        match event.kind.as_str() {
+            "deployment.succeeded" | "deployment.failed" if text(data, "kind") == Some("production") => {
+                let Some(sha) = text(data, "commit") else { continue };
+                found.push(Deploy {
+                    sha: sha.to_owned(),
+                    state: if event.kind == "deployment.succeeded" { DeployState::Succeeded } else { DeployState::Failed },
+                    label: format!("{}'s production deployment", text(data, "project").unwrap_or(&repo.name)),
+                    url: match text(data, "path") {
+                        Some(path) => format!("{site}{path}"),
+                        None => format!("{site}/{full}/deployments"),
+                    },
+                });
+            }
+            "workflow.completed" => {
+                let run = WorkflowRun {
+                    id: text(data, "runId").unwrap_or_default().to_owned(),
+                    path: text(data, "path").unwrap_or_default().to_owned(),
+                    name: text(data, "workflow").unwrap_or_default().to_owned(),
+                    number: data.get("number").and_then(Value::as_u64).unwrap_or_default(),
+                    event: text(data, "event").unwrap_or_default().to_owned(),
+                    git_ref: text(data, "ref").unwrap_or_default().to_owned(),
+                    sha: text(data, "sha").unwrap_or_default().to_owned(),
+                    status: "completed".to_owned(),
+                    conclusion: text(data, "conclusion").map(str::to_owned),
+                    ..WorkflowRun::default()
+                };
+                if run.id.is_empty() || run.sha.is_empty() {
+                    continue;
+                }
+                found.extend(run_deploy(site, &full, &repo.default_branch, &run));
+            }
+            _ => {}
+        }
+    }
+    found
+}
+
+/// Where each commit of a default branch's history (newest first) is in
+/// production, given the deploys seen: `live` when a successful deploy was
+/// of it or of a commit after it (which carries it), else `deploying` when
+/// one is under way, `failed` when one failed, or `not_deployed`; with the
+/// deploy that says so. None for every commit when the repository was not
+/// seen deploying at all.
+pub fn production<'a>(log: &[Commit], deploys: &'a [Deploy]) -> Vec<Option<(&'static str, Option<&'a Deploy>)>> {
+    if deploys.is_empty() {
+        return vec![None; log.len()];
+    }
+    let same = |sha: &str, hash: &str| !sha.is_empty() && (hash.starts_with(sha) || sha.starts_with(hash));
+    // Each deploy at its commit's place in the history.
+    let placed: Vec<(usize, &Deploy)> = deploys
+        .iter()
+        .filter_map(|deploy| log.iter().position(|commit| same(&deploy.sha, &commit.hash)).map(|at| (at, deploy)))
+        .collect();
+    // The nearest deploy at or after a commit in the given state: the one
+    // that first carried it.
+    let nearest = |index: usize, state: DeployState| {
+        placed.iter().filter(|(at, deploy)| *at <= index && deploy.state == state).max_by_key(|(at, _)| *at).map(|(_, deploy)| *deploy)
+    };
+    (0..log.len())
+        .map(|index| {
+            Some(if let Some(deploy) = nearest(index, DeployState::Succeeded) {
+                ("live", Some(deploy))
+            } else if let Some(deploy) = nearest(index, DeployState::Running) {
+                ("deploying", Some(deploy))
+            } else if let Some(deploy) = nearest(index, DeployState::Failed) {
+                ("failed", Some(deploy))
+            } else {
+                ("not_deployed", None)
+            })
+        })
+        .collect()
+}
+
 /// One repository's default-branch commits made in the span, newest first,
 /// each as one line: its short sha, the first line of its message, who
-/// wrote it, when, and its page.
-pub fn landed(site: &str, repo: &str, commits: &[Commit], since: u64, until: u64) -> Vec<Value> {
+/// wrote it (and their username, when known), when, its page, and where it
+/// is in production when the repository deploys.
+pub fn landed(site: &str, repo: &str, commits: &[Commit], since: u64, until: u64, authors: &Authors, deploys: &[Deploy]) -> Vec<Value> {
     let site = site.trim_end_matches('/');
+    let states = production(commits, deploys);
     commits
         .iter()
-        .filter(|commit| parse_rfc3339(&commit.authored_at).is_some_and(|at| at >= since && at < until))
-        .map(|commit| {
+        .zip(states)
+        .filter(|(commit, _)| parse_rfc3339(&commit.authored_at).is_some_and(|at| at >= since && at < until))
+        .map(|(commit, state)| {
             let subject: String = commit.message.lines().next().unwrap_or_default().trim().chars().take(160).collect();
-            json!({
+            let mut line = json!({
                 "repo": repo,
                 "commit": commit.hash.chars().take(12).collect::<String>(),
                 "subject": subject,
                 "author": commit.author.name,
                 "time": commit.authored_at,
                 "url": format!("{site}/{repo}/commit/{}", commit.hash),
-            })
+            });
+            if let Some(username) = commits::username(commit, authors) {
+                line["username"] = json!(username);
+            }
+            if let Some((state, deploy)) = state {
+                line["production"] = json!(state);
+                if let Some(deploy) = deploy {
+                    line["deploy"] = json!({ "name": deploy.label, "url": deploy.url });
+                }
+            }
+            line
         })
         .collect()
+}
+
+/// How many landed commits are where, for the summary.
+pub fn shipped(lines: &[Value]) -> Value {
+    let count = |state: &str| lines.iter().filter(|line| line["production"] == state).count();
+    json!({
+        "live": count("live"),
+        "deploying": count("deploying"),
+        "failed": count("failed"),
+        "not_deployed": count("not_deployed"),
+    })
 }
 
 pub async fn run(services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
@@ -463,20 +647,55 @@ pub async fn run(services: &Services, viewer: &Viewer, input: &Value) -> Result<
     }
     pushed.sort_by(|a, b| b.1.cmp(&a.1));
     let by_id: HashMap<&str, &Repo> = repos.iter().map(|repo| (repo.id.as_str(), repo)).collect();
+    // Each one's history, and its default branch's runs in the span: the
+    // deploys among them, finished or not, say what reached production.
     let logs = pushed.iter().take(LANDED_REPOS).filter_map(|(id, _)| by_id.get(id.as_str()).copied()).map(|repo| async move {
         let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
-        let log: Result<Outcome<Vec<Commit>>> =
-            g1t_kit::call(&services.repos, "log", &LogArgs { path, viewer: viewer.clone(), git_ref: None, limit: LANDED_LOG }).await;
-        (format!("{}/{}", repo.namespace, repo.name), log)
+        let log_args = LogArgs { path: path.clone(), viewer: viewer.clone(), git_ref: None, limit: LANDED_LOG };
+        let runs_args = RunsArgs {
+            repo: path,
+            viewer: viewer.clone(),
+            workflow: None,
+            branch: Some(repo.default_branch.clone()),
+            event: None,
+            pull: None,
+            sha: None,
+            status: None,
+            since: Some(rfc3339(since)),
+            until: None,
+            limit: Some(LANDED_RUNS),
+        };
+        let (log, runs) = futures_util::future::join(
+            g1t_kit::call::<_, Outcome<Vec<Commit>>>(&services.repos, "log", &log_args),
+            g1t_kit::call::<_, Outcome<Vec<WorkflowRun>>>(&services.actions, "runs", &runs_args),
+        )
+        .await;
+        (repo, log, runs)
     });
-    let mut lines = Vec::new();
-    for (repo, log) in futures_util::future::join_all(logs).await {
+    let mut histories = Vec::new();
+    for (repo, log, runs) in futures_util::future::join_all(logs).await {
         // A history that cannot be read leaves the events to say it.
-        if let Ok(Outcome::Ok(commits)) = log {
-            lines.extend(landed(&site, &repo, &commits, since, until));
+        let Ok(Outcome::Ok(commits)) = log else { continue };
+        let full = format!("{}/{}", repo.namespace, repo.name);
+        let mut deploys = event_deploys(&site, repo, &events);
+        if let Ok(Outcome::Ok(runs)) = runs {
+            for deploy in runs.iter().filter_map(|run| run_deploy(&site, &full, &repo.default_branch, run)) {
+                // A run the events named too is the same deploy; the run says
+                // where it is now.
+                deploys.retain(|known| known.url != deploy.url);
+                deploys.push(deploy);
+            }
         }
+        histories.push((full, commits, deploys));
+    }
+    let all: Vec<&Commit> = histories.iter().flat_map(|(_, commits, _)| commits.iter()).collect();
+    let authors = commits::read_authors(services, &all).await;
+    let mut lines = Vec::new();
+    for (repo, commits, deploys) in &histories {
+        lines.extend(landed(&site, repo, commits, since, until, &authors, deploys));
     }
     lines.truncate(LANDED_MAX);
+    answer["summary"]["shipped"] = shipped(&lines);
     answer["landed"] = json!(lines);
     Ok(Outcome::Ok(answer))
 }
@@ -551,12 +770,113 @@ The long why.", "2026-10-13T05:00:00Z"),
         ];
         let since = parse_rfc3339("2026-10-12T06:00:00Z").unwrap();
         let until = parse_rfc3339("2026-10-13T06:00:00Z").unwrap();
-        let lines = landed("https://g1t.sh/", "acme/web", &commits, since, until);
+        let lines = landed("https://g1t.sh/", "acme/web", &commits, since, until, &Authors::new(), &[]);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["subject"], "Ask reads g1t");
         assert_eq!(lines[0]["commit"], "aaaaaaaaaaaa");
         assert_eq!(lines[0]["author"], "Chase");
         assert_eq!(lines[0]["url"], "https://g1t.sh/acme/web/commit/aaaaaaaaaaaaaaaa");
+        // Nobody known by the address, and no deploys seen: no username made
+        // up from the name, and nothing said about production.
+        assert!(lines[0].get("username").is_none());
+        assert!(lines[0].get("production").is_none());
+    }
+
+    fn by(hash: &str, email: &str, at: &str) -> Commit {
+        Commit {
+            hash: hash.to_owned(),
+            tree_hash: String::new(),
+            message: format!("Change {hash}"),
+            author: g1t_contracts::repos::Signature { name: "Chase Pierce".into(), email: email.into() },
+            parents: Vec::new(),
+            authored_at: at.to_owned(),
+        }
+    }
+
+    fn run(id: &str, name: &str, number: u64, sha: &str, status: &str, conclusion: Option<&str>) -> WorkflowRun {
+        WorkflowRun {
+            id: id.into(),
+            path: ".g1t/workflows/deploy.yml".into(),
+            name: name.into(),
+            number,
+            event: "push".into(),
+            git_ref: "refs/heads/main".into(),
+            sha: sha.into(),
+            status: status.into(),
+            conclusion: conclusion.map(str::to_owned),
+            ..WorkflowRun::default()
+        }
+    }
+
+    #[test]
+    fn what_shipped_is_what_reached_the_default_branch_and_which_of_it_is_live() {
+        // Newest first: e was pushed last and is still deploying, which
+        // carries d, whose own deploy failed; c went out with Deploy #311,
+        // which carried b and a too.
+        let log = [
+            by("eeee0000", "syntaqx@gmail.com", "2026-10-14T13:00:00Z"),
+            by("dddd0000", "syntaqx@gmail.com", "2026-10-14T11:00:00Z"),
+            by("cccc0000", "syntaqx@gmail.com", "2026-10-14T09:00:00Z"),
+            by("bbbb0000", "someone@example.com", "2026-10-14T08:00:00Z"),
+            by("aaaa0000", "syntaqx@gmail.com", "2026-10-13T08:00:00Z"),
+        ];
+        let site = "https://g1t.sh";
+        let runs = [
+            run("run_313", "Deploy", 313, "eeee0000", "in_progress", None),
+            run("run_312", "Deploy", 312, "dddd0000", "completed", Some("failure")),
+            run("run_311", "Deploy", 311, "cccc0000", "completed", Some("success")),
+            // CI is not a deploy; a cancelled deploy deployed nothing; a
+            // deploy of another branch is not production.
+            WorkflowRun { path: ".g1t/workflows/ci.yml".into(), ..run("run_9", "CI", 9, "eeee0000", "completed", Some("success")) },
+            run("run_310", "Deploy", 310, "dddd0000", "completed", Some("cancelled")),
+            WorkflowRun { git_ref: "refs/heads/next".into(), ..run("run_8", "Deploy", 8, "eeee0000", "completed", Some("success")) },
+        ];
+        let deploys: Vec<Deploy> = runs.iter().filter_map(|found| run_deploy(site, "flagon-io/g1t", "main", found)).collect();
+        assert_eq!(deploys.len(), 3);
+        assert_eq!(deploys[2], Deploy {
+            sha: "cccc0000".into(),
+            state: DeployState::Succeeded,
+            label: "Deploy #311".into(),
+            url: "https://g1t.sh/flagon-io/g1t/actions/runs/run_311".into(),
+        });
+        let owners = HashMap::from([(
+            "syntaqx@gmail.com".to_owned(),
+            g1t_contracts::accounts::EmailOwner { id: "usr_1".into(), username: "syntaqx".into(), avatar: None },
+        )]);
+        let authors = commits::authors(&log.iter().collect::<Vec<_>>(), &owners);
+        let since = parse_rfc3339("2026-10-14T06:00:00Z").unwrap();
+        let until = parse_rfc3339("2026-10-14T20:00:00Z").unwrap();
+        let lines = landed(site, "flagon-io/g1t", &log, since, until, &authors, &deploys);
+        let states: Vec<&str> = lines.iter().map(|line| line["production"].as_str().unwrap()).collect();
+        assert_eq!(states, ["deploying", "deploying", "live", "live"], "a is yesterday's");
+        assert_eq!(lines[2]["deploy"], json!({ "name": "Deploy #311", "url": "https://g1t.sh/flagon-io/g1t/actions/runs/run_311" }));
+        assert_eq!(lines[1]["deploy"]["name"], "Deploy #313");
+        // The author by their username; someone unknown by their name alone.
+        assert_eq!(lines[0]["username"], "syntaqx");
+        assert_eq!(lines[0]["author"], "Chase Pierce");
+        assert!(lines[3].get("username").is_none());
+        assert_eq!(shipped(&lines), json!({ "live": 2, "deploying": 2, "failed": 0, "not_deployed": 0 }));
+        // Before #313 started: d failed to deploy, and e is not deployed.
+        let lines = landed(site, "flagon-io/g1t", &log, since, until, &authors, &deploys[1..]);
+        assert_eq!(shipped(&lines), json!({ "live": 2, "deploying": 0, "failed": 1, "not_deployed": 1 }));
+        assert_eq!(lines[1]["deploy"]["name"], "Deploy #312");
+        assert!(lines[0].get("deploy").is_none());
+        // Once #313 succeeds, everything is live; before any deploy of today's
+        // commits, they are not deployed.
+        let done = [Deploy { state: DeployState::Succeeded, ..deploys[0].clone() }];
+        assert!(production(&log, &done).iter().all(|state| state.map(|(state, _)| state) == Some("live")));
+        let old = [Deploy { sha: "ffff9999".into(), ..deploys[2].clone() }];
+        assert!(production(&log, &old).iter().all(|state| state.map(|(state, _)| state) == Some("not_deployed")));
+        assert!(production(&log, &[]).iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn deploy_workflows_are_known_by_name_or_file() {
+        assert!(deploy_workflow("Deploy", ".g1t/workflows/deploy.yml"));
+        assert!(deploy_workflow("Ship it", ".g1t/workflows/deploy-production.yml"));
+        assert!(deploy_workflow("Deploy site", ".g1t/workflows/site.yml"));
+        assert!(!deploy_workflow("CI", ".g1t/workflows/ci.yml"));
+        assert!(!deploy_workflow("Deploy preview", ".g1t/workflows/preview.yml"));
     }
 
     #[test]
@@ -589,7 +909,10 @@ The long why.", "2026-10-13T05:00:00Z"),
         });
         assert_eq!(
             shown["summary"],
-            json!({ "merged_pull_requests": 1, "releases": 1, "production_deployments": 1, "failed_deployments": 0, "default_branch_pushes": 1, "failed_runs": 1 })
+            json!({
+                "merged_pull_requests": 1, "releases": 1, "production_deployments": 1, "failed_deployments": 1, "default_branch_pushes": 1, "failed_runs": 1,
+                "shipped": { "live": 0, "deploying": 0, "failed": 0, "not_deployed": 0 },
+            })
         );
         let listed = shown["events"].as_array().unwrap();
         assert_eq!(listed.len(), 6, "{listed:#?}");
@@ -605,7 +928,7 @@ The long why.", "2026-10-13T05:00:00Z"),
         assert_eq!(listed[3]["actor"], "bo");
         assert_eq!(
             listed[4],
-            json!({ "kind": "workflow_completed", "time": "2026-10-12T11:30:00Z", "repo": "acme/web", "actor": "ana", "workflow": "Deploy", "run_number": 257, "conclusion": "failure", "branch": "main", "commit": "fedcba987654", "run_id": "run_257", "url": "https://g1t.sh/acme/web/actions/runs/run_257" })
+            json!({ "kind": "workflow_completed", "time": "2026-10-12T11:30:00Z", "repo": "acme/web", "actor": "ana", "workflow": "Deploy", "run_number": 257, "conclusion": "failure", "branch": "main", "commit": "fedcba987654", "run_id": "run_257", "url": "https://g1t.sh/acme/web/actions/runs/run_257", "production": true })
         );
         assert_eq!(listed[5]["resolved_by"], 7);
         assert_eq!(shown["complete"], true);

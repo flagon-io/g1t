@@ -7061,7 +7061,7 @@
     "notes": "Name every pinned project once; anything else is refused with `422 invalid`."
   },
   "list_commits": {
-    "notes": "With `path`, `last_changed` is the commit that last changed that file or directory.",
+    "notes": "With `path`, `last_changed` is the commit that last changed that file or directory. `author.username` is the g1t account the author's address belongs to, when one does; the address is never returned.",
     "params": {
       "owner": "flagon-io",
       "name": "g1t"
@@ -7076,7 +7076,7 @@
         {
           "sha": "85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5",
           "message": "The runner's broker test reads the relayed answer's body as chunks.",
-          "author": { "name": "Chase Pierce" },
+          "author": { "name": "Chase Pierce", "username": "syntaqx" },
           "authored_at": "2026-10-12T22:04:11Z",
           "parents": ["75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809"],
           "html_url": "https://g1t.sh/flagon-io/g1t/commit/85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5"
@@ -7086,7 +7086,7 @@
       "last_changed": {
         "sha": "5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e",
         "message": "Installs in cloud jobs retry when npm's download breaks off.",
-        "author": { "name": "Chase Pierce" },
+        "author": { "name": "Chase Pierce", "username": "syntaqx" },
         "authored_at": "2026-10-13T01:12:40Z",
         "parents": ["0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3"],
         "html_url": "https://g1t.sh/flagon-io/g1t/commit/5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"
@@ -7114,7 +7114,7 @@
     }
   },
   "get_workspace_activity": {
-    "notes": "What shipped today across a workspace: `since` at midnight UTC and `kinds=merged,releases,deployments,pushes`. Each event links to its page on g1t (`url`). Ask g1t reads this to answer questions about a workspace.",
+    "notes": "What shipped today across a workspace: `since` at the start of the day and `kinds=merged,releases,deployments,pushes,runs`. Each event links to its page on g1t (`url`). `landed` is what reached default branches, each commit with `production` where its repository deploys. Ask g1t reads this to answer questions about a workspace.",
     "params": {
       "workspace": "flagon-io"
     },
@@ -7133,8 +7133,22 @@
         "production_deployments": 1,
         "failed_deployments": 0,
         "default_branch_pushes": 0,
-        "failed_runs": 0
+        "failed_runs": 0,
+        "shipped": { "live": 1, "deploying": 0, "failed": 0, "not_deployed": 0 }
       },
+      "landed": [
+        {
+          "repo": "flagon-io/g1t",
+          "commit": "75c6704f2b1a",
+          "subject": "Ask g1t answers with the workspace's own AI provider",
+          "author": "Chase Pierce",
+          "time": "2026-10-12T17:58:40Z",
+          "url": "https://g1t.sh/flagon-io/g1t/commit/75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809",
+          "username": "syntaqx",
+          "production": "live",
+          "deploy": { "name": "g1t's production deployment", "url": "https://g1t.sh/flagon-io/g1t/deployments/dpl_01kkp3m8w2f6t9qh4c7d1r5n0x" }
+        }
+      ],
       "events": [
         {
           "kind": "deployment_succeeded",

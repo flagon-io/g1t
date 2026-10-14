@@ -11892,7 +11892,7 @@
           "Workspaces"
         ],
         "summary": "Get a workspace's activity",
-        "description": "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments, default-branch pushes and failed runs: what shipped, and what broke. `landed` lists the commits made on default branches in the span, one line each (`repo`, `commit`, `subject`, `author`, `time`, `url`): what shipped where it was pushed rather than merged. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events.\n\nWhat shipped today across a workspace: `since` at midnight UTC and `kinds=merged,releases,deployments,pushes`. Each event links to its page on g1t (`url`). Ask g1t reads this to answer questions about a workspace.",
+        "description": "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run, and `production` true for a run of a deploy workflow on the default branch: a repository that deploys itself). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments (projects' production deployments and successful deploy runs on default branches), failed ones, default-branch pushes and failed runs, and in `shipped` the landed commits by where they are. `landed` lists the commits made on default branches in the span, one line each (`repo`, `commit`, `subject`, `author` as git wrote it, `username` when the author's address is a g1t account's, `time`, `url`), and, where the repository deploys, `production`: `live` (a successful deploy carried it, named in `deploy` with its `url`), `deploying`, `failed` (its deploy failed and none since succeeded) or `not_deployed`. That is what shipped: what reached the default branch, and which of it is live. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events.\n\nWhat shipped today across a workspace: `since` at the start of the day and `kinds=merged,releases,deployments,pushes,runs`. Each event links to its page on g1t (`url`). `landed` is what reached default branches, each commit with `production` where its repository deploys. Ask g1t reads this to answer questions about a workspace.",
         "x-operation": "get_workspace_activity",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "activity",
@@ -11985,8 +11985,30 @@
                     "production_deployments": 1,
                     "failed_deployments": 0,
                     "default_branch_pushes": 0,
-                    "failed_runs": 0
+                    "failed_runs": 0,
+                    "shipped": {
+                      "live": 1,
+                      "deploying": 0,
+                      "failed": 0,
+                      "not_deployed": 0
+                    }
                   },
+                  "landed": [
+                    {
+                      "repo": "flagon-io/g1t",
+                      "commit": "75c6704f2b1a",
+                      "subject": "Ask g1t answers with the workspace's own AI provider",
+                      "author": "Chase Pierce",
+                      "time": "2026-10-12T17:58:40Z",
+                      "url": "https://g1t.sh/flagon-io/g1t/commit/75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809",
+                      "username": "syntaqx",
+                      "production": "live",
+                      "deploy": {
+                        "name": "g1t's production deployment",
+                        "url": "https://g1t.sh/flagon-io/g1t/deployments/dpl_01kkp3m8w2f6t9qh4c7d1r5n0x"
+                      }
+                    }
+                  ],
                   "events": [
                     {
                       "kind": "deployment_succeeded",
@@ -27411,7 +27433,7 @@
           "Repositories"
         ],
         "summary": "List commits",
-        "description": "A branch's commits, newest first (the default branch unless `ref` names a branch, tag or commit): each with its `sha`, `message` (why it was made: g1t's commit messages say), `author`, `authored_at` and `html_url`. `limit` is 30 unless you say, at most 100. With `path` (a file or directory), only the commits that changed it, newest first (its history: added, changed, removed), with `last_changed`, the newest of them, and `complete` false when a long history was not walked to its start in time.\n\nWith `path`, `last_changed` is the commit that last changed that file or directory.",
+        "description": "A branch's commits, newest first (the default branch unless `ref` names a branch, tag or commit): each with its `sha`, `message` (why it was made: g1t's commit messages say), `author` (`name` as git wrote it, and `username`, the g1t account the author's address belongs to, when one does), `authored_at` and `html_url`. `limit` is 30 unless you say, at most 100. With `path` (a file or directory), only the commits that changed it, newest first (its history: added, changed, removed), with `last_changed`, the newest of them, and `complete` false when a long history was not walked to its start in time.\n\nWith `path`, `last_changed` is the commit that last changed that file or directory. `author.username` is the g1t account the author's address belongs to, when one does; the address is never returned.",
         "x-operation": "list_commits",
         "x-mcp-tool": "repository",
         "x-mcp-action": "commits",
@@ -27485,7 +27507,8 @@
                       "sha": "85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5",
                       "message": "The runner's broker test reads the relayed answer's body as chunks.",
                       "author": {
-                        "name": "Chase Pierce"
+                        "name": "Chase Pierce",
+                        "username": "syntaqx"
                       },
                       "authored_at": "2026-10-12T22:04:11Z",
                       "parents": [
@@ -27499,7 +27522,8 @@
                     "sha": "5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e",
                     "message": "Installs in cloud jobs retry when npm's download breaks off.",
                     "author": {
-                      "name": "Chase Pierce"
+                      "name": "Chase Pierce",
+                      "username": "syntaqx"
                     },
                     "authored_at": "2026-10-13T01:12:40Z",
                     "parents": [
@@ -48270,7 +48294,7 @@
           "Actions"
         ],
         "summary": "List a workflow's runs",
-        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, or a status or conclusion (`status`: failure for the failed ones, in_progress for those still going). A run whose `status` is not completed has no result yet.",
+        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, a status or conclusion (`status`: failure for the failed ones, in_progress for those still going), or created between `since` and `until` (RFC 3339; today's deploys are `workflow` deploy.yml, the default branch and `since` the start of the day). A run whose `status` is not completed has no result yet.",
         "x-operation": "list_workflow_runs",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runs",
@@ -48344,6 +48368,24 @@
               "type": "string"
             },
             "description": "A commit."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only runs created at or after it."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only runs created before it."
           },
           {
             "name": "per_page",
@@ -48890,7 +48932,7 @@
           "Actions"
         ],
         "summary": "List workflow runs",
-        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, or a status or conclusion (`status`: failure for the failed ones, in_progress for those still going). A run whose `status` is not completed has no result yet.\n\nA run's `status` is `queued`, `pending` (waiting for its concurrency group), `in_progress` or `completed`; `conclusion` is set once it completes.",
+        "description": "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, a status or conclusion (`status`: failure for the failed ones, in_progress for those still going), or created between `since` and `until` (RFC 3339; today's deploys are `workflow` deploy.yml, the default branch and `since` the start of the day). A run whose `status` is not completed has no result yet.\n\nA run's `status` is `queued`, `pending` (waiting for its concurrency group), `in_progress` or `completed`; `conclusion` is set once it completes.",
         "x-operation": "list_workflow_runs",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "list_runs",
@@ -48973,6 +49015,24 @@
               "type": "string"
             },
             "description": "Only runs with this status (queued, in_progress, waiting, completed) or conclusion (success, failure, cancelled, skipped, timed_out): failure finds the failed ones."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only runs created at or after it."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "RFC 3339: only runs created before it."
           },
           {
             "name": "per_page",

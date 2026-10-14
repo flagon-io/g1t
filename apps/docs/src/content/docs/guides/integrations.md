@@ -117,7 +117,7 @@ Keys are sealed when they are saved and never shown again, to anyone; the
 page shows only their last four characters.
 
 **Ask**, in the top bar, answers with one of these providers: an owner
-chooses which, and its model, under **Ask g1t** on this page. See
+chooses which, and its model (**Auto**, the default, picks one for each question), under **Ask g1t** on this page. See
 [Ask g1t](/guides/ask/).
 
 With an **Anthropic** connection, members can also start a session on an

@@ -20,10 +20,11 @@ export function anyAnswering(messages: readonly ChatMessage[]): boolean {
   return messages.some((message) => !message.deleted_at && answering(message.answer));
 }
 
-/** Who wrote an answer: "Anthropic · claude-…", once the provider said. */
+/** Who wrote an answer: "Anthropic · claude-…", or "Anthropic · Auto · claude-…" when Auto chose it, once the provider said. */
 export function answerLabel(answer: ChatAnswer | null | undefined): string | null {
   if (!answer?.provider_label) return null;
-  return answer.model ? `${answer.provider_label} · ${answer.model}` : answer.provider_label;
+  if (!answer.model) return answer.provider_label;
+  return answer.auto ? `${answer.provider_label} · Auto · ${answer.model}` : `${answer.provider_label} · ${answer.model}`;
 }
 
 /** Whether an answer was cut off at its length limit. */

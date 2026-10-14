@@ -143,11 +143,21 @@ export const ASK_MAX_TOTAL_CHARS = 64_000;
 export const ASK_MAX_OUTPUT_TOKENS = 4_096;
 
 /** What Ask answers with in a workspace, or why it cannot yet. */
+/** The model name that chooses Auto in `setAskSettings`. */
+export const ASK_AUTO_MODEL = "auto";
+
 export type AskSetup = {
   connection_id: string | null;
   connection_name: string | null;
   provider: Provider | null;
+  /** The model chosen. With `auto`, null, or the connection's own model when it lists none. */
   model: string | null;
+  /**
+   * Auto: each question goes to the connection's model that suits it (a fast
+   * one for a lookup, a stronger one for a question that needs several reads
+   * or reasoning). The default.
+   */
+  auto?: boolean;
   /** Why Ask cannot answer, for the person asking. Null when it can. */
   problem: string | null;
 };
@@ -193,7 +203,7 @@ export type AskSource = { title: string; url: string; cited: boolean };
  * same `id` twice), then `sources` and `done`, or `error` at any point.
  */
 export type AskEvent =
-  | { type: "meta"; provider: Provider; provider_label: string; model: string }
+  | { type: "meta"; provider: Provider; provider_label: string; model: string; /** Auto chose `model`. */ auto?: boolean }
   | { type: "text"; text: string }
   | {
       type: "tool";

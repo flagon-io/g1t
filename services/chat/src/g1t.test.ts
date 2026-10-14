@@ -188,6 +188,16 @@ test("an answer is read as it streams, and unknown events are kept as steps, nev
   assert.deepEqual(reader.answer.steps, [{ type: "tool", name: "search", input: { q: "x" } }]);
 });
 
+test("an answer Auto chose a model for says so; a chosen model's does not", () => {
+  const auto = new AnswerReader();
+  auto.feed('{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude-sonnet-5-5","auto":true}\n');
+  assert.equal(auto.answer.model, "claude-sonnet-5-5");
+  assert.equal(auto.answer.auto, true);
+  const chosen = new AnswerReader();
+  chosen.feed('{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude-haiku-5-5"}\n');
+  assert.equal(chosen.answer.auto, undefined);
+});
+
 test("a tool step is kept once, as it last was, and sources are kept whole", () => {
   const reader = new AnswerReader();
   const step = { type: "tool", id: "step_0_0", name: "workspace", action: "activity", label: "Read activity", status: "running", summary: null, link: null };
