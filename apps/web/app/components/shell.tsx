@@ -1118,7 +1118,7 @@ function CodeSidebar({
           <Rule />
         </>
       )}
-      <ModeHeader title={browsing ? "Explore" : "Code"} />
+      <ModeHeader title={browsing?.owner?.kind === "workspace" ? "Workspace" : browsing ? "Explore" : "Code"} />
       <Drill trail={trail} />
     </div>
   );
@@ -1176,6 +1176,44 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
   const stars = atMine && query.get("tab") === "stars";
   const shown = useBrowsedOwner(owner);
   const profileTab = query.get("tab");
+  const workspace = useRouteLoaderData("routes/workspace/layout") as
+    | { workspace: { slug: string }; projects?: { namespace: string; name: string; title: string }[] }
+    | undefined;
+  if (owner?.kind === "workspace" && shown) {
+    const base = `/${owner.name}`;
+    const projects = workspace?.workspace.slug.toLowerCase() === owner.name.toLowerCase() ? workspace.projects ?? [] : [];
+    return (
+      <nav aria-label={`${owner.name} workspace`} className={PANEL}>
+        <NavRows>
+          <SidebarLink to={base} icon={<Avatar name={owner.name} image={shown.avatar} size={16} square />} current={false}>
+            {shown.name}
+          </SidebarLink>
+          <SidebarLink to={base} icon={<LayoutDashboard size={15} />} current={path.toLowerCase() === base.toLowerCase()}>
+            Overview
+          </SidebarLink>
+        </NavRows>
+        <Rule />
+        <NavGroup title="Projects">
+          {projects.slice(0, 8).map((project) => (
+            <SidebarLink key={project.name} to={`/${project.namespace}/${project.name}`} icon={<Box size={15} />}>
+              {project.title}
+            </SidebarLink>
+          ))}
+          <SidebarLink to={`${base}/-/projects`} icon={<LayoutGrid size={15} />} count={projects.length || undefined}>
+            All projects
+          </SidebarLink>
+        </NavGroup>
+        <Rule />
+        <NavRows>
+          <SidebarLink to={`${base}/-/packages`} icon={<Package size={15} />}>Packages</SidebarLink>
+        </NavRows>
+        <Rule />
+        <NavRows>
+          <SidebarLink to="/explore" icon={<Compass size={15} />}>Explore</SidebarLink>
+        </NavRows>
+      </nav>
+    );
+  }
   return (
     <nav aria-label="Explore" className={PANEL}>
       <NavRows>
@@ -1202,20 +1240,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
         <>
           <Rule />
           <NavGroup title="You are viewing">
-            {owner.kind === "workspace" ? (
-              <>
-                <SidebarLink
-                  to={`/${owner.name}`}
-                  icon={<Avatar name={owner.name} image={shown.avatar} size={16} square />}
-                  current={path.toLowerCase() === `/${owner.name}`.toLowerCase()}
-                >
-                  {shown.name}
-                </SidebarLink>
-                <SidebarLink to={`/${owner.name}/-/projects`} icon={<LayoutGrid size={15} />}>
-                  Projects
-                </SidebarLink>
-              </>
-            ) : (
+            {owner.kind === "person" && (
               <>
                 <SidebarLink
                   to={`/u/${owner.name}`}

@@ -12,6 +12,7 @@ import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed } from "../../lib/renamed.server";
 import { rememberWorkspace } from "../../lib/workspace-choice";
 import { workspacePage, workspaceRedirect } from "../../lib/workspace-nav";
+import { shortcutOf, workspaceProjects } from "../../lib/workspace-projects.server";
 import { WorkspacePageSkeleton } from "../../components/workspace-skeletons";
 import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
@@ -35,7 +36,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   }
   const role = roleIn(viewer, workspace.slug);
   // Opening one of your workspaces makes it the one you are in.
-  if (!role) return { workspace, role, welcome: false };
+  if (!role) {
+    const listed = await workspaceProjects(workspace.slug, viewer);
+    return { workspace, role, welcome: false, projects: listed.ok ? listed.value.map(shortcutOf) : [] };
+  }
   const secure = new URL(request.url).protocol === "https:";
   const headers = new Headers({ "Set-Cookie": rememberWorkspace(workspace.slug, secure) });
   // Just joined with an invite: welcomed once (routes/invite.tsx).
@@ -203,6 +207,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
                 <h1 className="truncate text-2xl font-semibold tracking-tight">
                   {workspace.name}
                 </h1>
+                <Badge size="md">Workspace</Badge>
                 {role && <Badge size="md">{role}</Badge>}
               </div>
               <p className="font-mono text-sm text-muted">g1t.sh/{workspace.slug}</p>
@@ -213,8 +218,6 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
                 New project
               </ButtonLink>
             ) : (
-              // A visitor's sidebar is not this workspace's: its packages
-              // are a link here, as its projects are below.
               <ButtonLink to={`/${workspace.slug}/-/packages`} variant="outline" prefetch="intent">
                 <Package size={15} />
                 Packages

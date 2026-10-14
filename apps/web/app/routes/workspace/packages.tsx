@@ -38,28 +38,27 @@ function pick<T extends string>(value: string | null, options: readonly T[], fal
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
-  // Members only for now; a workspace's public packages are found through
-  // their repositories and search.
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  const member = roleIn(viewer, params.owner) != null;
   const url = new URL(request.url);
   const type = url.searchParams.get("type");
   const ecosystem = type && (ECOSYSTEMS as readonly string[]).includes(type) ? (type as Ecosystem) : null;
   const query = url.searchParams.get("q")?.trim() || null;
   const visibility = pick<VisibilityFilter>(url.searchParams.get("visibility"), ["all", "public", "private"], "all");
   const sort = pick<PackageSort>(url.searchParams.get("sort"), ["updated", "downloads", "name"], "updated");
-  const view = url.searchParams.get("view") === "deleted" ? "deleted" : "active";
+  const view = member && url.searchParams.get("view") === "deleted" ? "deleted" : "active";
   // Deleted packages are listed for those who administer them, and only
   // then is there a Deleted packages view.
   const [found, deletedFound] = await Promise.all([
     packages.list(params.owner, viewer, { ecosystem, query }),
-    packages.deleted(params.owner, viewer),
+    member ? packages.deleted(params.owner, viewer) : null,
   ]);
   const listed = unwrap(found);
-  const deleted = deletedFound.ok ? deletedFound.value : [];
+  const deleted = deletedFound?.ok ? deletedFound.value : [];
   // Whether the workspace has any at all decides between a filtered-out
   // list and the first-package page.
   const any = listed.length > 0 || deleted.length > 0 || ecosystem != null || query != null;
   return {
+    member,
     list: arrange(listed, visibility, sort),
     deleted,
     view,
@@ -104,7 +103,7 @@ function hrefWith(workspace: string, current: Filters, change: Partial<Filters>)
 /** The packages a workspace publishes: filtered, sorted, or, with none yet, how to start. */
 export default function Packages({ loaderData, actionData }: Route.ComponentProps) {
   const { list, deleted, view, any, ecosystem, query, visibility, sort, workspace } = loaderData;
-  if (!any) return <ChooseRegistry workspace={workspace} />;
+  if (!any) return loaderData.member ? <ChooseRegistry workspace={workspace} /> : <EmptyState title="No public packages">This workspace has no packages you can view yet.</EmptyState>;
   if (view === "deleted") return <DeletedPackages workspace={workspace} deleted={deleted} outcome={actionData as Outcome | undefined} />;
   const filters: Filters = { type: ecosystem, q: query, visibility, sort };
   const filtered = ecosystem != null || query != null || visibility !== "all";
