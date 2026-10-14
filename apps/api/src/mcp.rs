@@ -148,7 +148,7 @@ fn card(addresses: &crate::addresses::Addresses) -> Value {
         "connect": format!("claude mcp add --transport http g1t {}", addresses.mcp),
         "claude_code_plugin": {
             "install": [
-                "claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git",
+                "claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git",
                 "claude plugin install g1t@g1t",
             ],
             "note": "The plugin adds this server (listed in /mcp as plugin:g1t:g1t) and records your sessions on g1t. With it installed, skip `connect`, or each tool is listed twice.",

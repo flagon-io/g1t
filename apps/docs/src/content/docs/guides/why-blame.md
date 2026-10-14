@@ -38,7 +38,7 @@ Your coding agent records its session in one of two ways.
 agent having to remember:
 
 ```sh
-claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
 claude plugin install g1t@g1t
 ```
 

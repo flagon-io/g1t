@@ -1808,8 +1808,9 @@ change or delete a file under `.g1t/workflows/` or `.github/workflows/`,
 even with `contents: write`. A push that does is declined, naming the file,
 so a workflow cannot rewrite the workflows that run with its repository's
 secrets. To change workflows from a job, push with a
-[personal access token](/guides/authentication/#workflow-files) that has
-Workflow files: write, kept as a secret.
+[workspace access token](/guides/workspaces/#workspace-access-tokens) that
+has [Workflow files: write](/guides/authentication/#workflow-files), kept
+as a secret.
 
 The job's token is the repository's workspace acting with the Write role
 at most, never Admin: it cannot manage webhooks, secrets, deploy keys or who

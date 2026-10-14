@@ -7,9 +7,7 @@
 #   curl -fsSL https://g1t.sh/install/claude.sh | sh
 #   curl -fsSL https://g1t.sh/install/claude.sh | sh -s -- --cli
 #
-# It changes nothing else. An earlier version of this script installed a
-# hook in ~/.g1t; if that is there, it is brought up to date, and you can
-# remove it once the plugin is installed (see below).
+# It changes nothing else.
 set -eu
 
 BASE="${G1T_SITE:-https://g1t.sh}"
@@ -18,18 +16,12 @@ if [ "${1:-}" = "--cli" ]; then
   curl -fsSL "$BASE/install" | sh
 fi
 
-if [ -f "$HOME/.g1t/hook.mjs" ]; then
-  curl -fsSL "$BASE/install/hook.mjs" -o "$HOME/.g1t/hook.mjs"
-  echo "Updated the earlier g1t hook in ~/.g1t/hook.mjs. The plugin replaces it:"
-  echo "once the plugin is installed, remove the \`node \"$HOME/.g1t/hook.mjs\"\`"
-  echo "entries from ~/.claude/settings.json, so a session is not recorded twice."
-  echo
-fi
-
+# The plugin's marketplace is published only on g1t.sh, whichever g1t it
+# works with (a self-hosted one is G1T_HOST to its hooks).
 cat <<EOF
 Install g1t's plugin for Claude Code:
 
-  claude plugin marketplace add $BASE/flagon-io/g1t.git
+  claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
   claude plugin install g1t@g1t
 
 The plugin's hooks use the g1t CLI (0.3.2 or later) and Node 18 or later.

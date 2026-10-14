@@ -45,7 +45,9 @@ git config --global credential.helper store
 
 Pushing to a repository that does not exist, in a workspace you belong to,
 creates it as a private repository, so nothing pushed by mistake is
-published. To make it public, see
+published. An access token can create one only where it reaches all of the
+workspace's repositories; a token for chosen repositories is refused. To
+make it public, see
 [change who can see a repository](/guides/managing-repositories/#change-who-can-see-a-repository).
 
 ```sh

@@ -16,7 +16,7 @@
     "test:deploy": "node --test \"scripts/deploy/*.test.mjs\"",
     "test:ops": "node --test \"scripts/ops/*.test.mjs\"",
     "test:conformance": "node --test \"conformance/*.test.mjs\"",
-    "test:release": "node --test \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\" \"scripts/cli-release.test.mjs\""
+    "test:release": "node --test \"scripts/desktop-release.test.mjs\" \"scripts/mobile-release.test.mjs\" \"scripts/cli-release.test.mjs\" \"scripts/plugins-release.test.mjs\""
   },
   "devDependencies": {
     "typescript": "^5.9.3",

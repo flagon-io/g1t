@@ -30,7 +30,7 @@ g1t auth login
 
 # 3. Install g1t's Claude Code plugin. It adds g1t's MCP server and records
 #    your sessions; run /mcp in Claude Code and sign plugin:g1t:g1t in.
-claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
 claude plugin install g1t@g1t
 ```
 
@@ -143,7 +143,7 @@ sets up other harnesses. An assistant can do it for you from
 | `crates/sshd` | Git over SSH, bridged to Cloudflare Artifacts. Not deployed. | Rust |
 | `packages/contracts` | The same interfaces for TypeScript callers. | TypeScript |
 | `packages/theme` | Design tokens and the logo, shared by the site and the docs. | CSS |
-| `plugins/claude-code` | g1t's Claude Code plugin: hooks, skills and commands. | JavaScript |
+| `plugins/claude-code` | g1t's Claude Code plugin: hooks, skills and commands, published to `flagon-io/g1t-plugins` on every change. | JavaScript |
 | `plugins/other-harnesses` | The AGENTS.md snippet for Codex, Cursor and other harnesses. | Markdown |
 | `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. | JSON, Docker Compose |
 

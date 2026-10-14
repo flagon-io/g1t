@@ -39,18 +39,21 @@ them. Claude Code's native installer does not bring Node with it: run
 2. Add g1t's plugin marketplace and install the plugin:
 
    ```sh
-   claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+   claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
    claude plugin install g1t@g1t
    ```
 
    Or run `/plugin` inside Claude Code and choose the marketplace there.
 
+   The marketplace, `flagon-io/g1t-plugins`, holds the plugin and nothing
+   else, so adding it downloads about 100 KB. On Windows, use Claude Code
+   2.1.296 or later for PowerShell session support.
+
 3. Start Claude Code again, run `/mcp` and choose **plugin:g1t:g1t** to
    sign g1t's MCP server in through your browser.
 
-The plugin adds g1t's MCP server itself. If you added it before with
-`claude mcp add … g1t https://mcp.g1t.sh`, remove that one
-(`claude mcp remove g1t`), or Claude sees every g1t tool twice.
+The plugin adds g1t's MCP server itself, so do not also add it with
+`claude mcp add`, or Claude sees every g1t tool twice.
 
 `curl -fsSL https://g1t.sh/install/claude.sh | sh` prints the same
 commands; add `-s -- --cli` to have it install the CLI too.
@@ -58,6 +61,26 @@ commands; add `-s -- --cli` to have it install the CLI too.
 The plugin works in any working copy whose git remote is on g1t.sh, or on
 the host in `G1T_HOST` for a self-hosted g1t. Everywhere else its hooks do
 nothing.
+
+### Update
+
+Each release of the plugin has a new version, tagged `g1t--v<version>` in
+`flagon-io/g1t-plugins`. To get the newest:
+
+```sh
+claude plugin marketplace update g1t
+claude plugin update g1t@g1t
+```
+
+Then start Claude Code again. `claude plugin list` says which version you
+have.
+
+### Where the plugin is made
+
+`flagon-io/g1t-plugins` is published from g1t's repository, where the
+plugin is developed and tested (`plugins/claude-code/`). Every change there
+is published automatically, so the two never differ; issues and changes
+go to [flagon-io/g1t](https://g1t.sh/flagon-io/g1t).
 
 ## What it records
 
@@ -263,15 +286,6 @@ A recorded session can be read on its own page, linked from the issue, the
 pull request's **Session** tab and the repository's **Work** page: who ran
 it, its subagents as a tree, the skills used, what it touched, and the
 issues and pull requests it worked on.
-
-## The earlier hook installer
-
-An earlier `curl -fsSL https://g1t.sh/install/claude.sh | sh` added a hook
-of its own, `node ~/.g1t/hook.mjs`, to `~/.claude/settings.json`. The
-plugin replaces it. Once the plugin is installed, remove those entries from
-`~/.claude/settings.json` so a session is not recorded twice. Running the
-installer again brings the old hook up to date and prints the plugin's
-commands.
 
 ## Other coding agents
 

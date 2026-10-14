@@ -20,7 +20,7 @@ install g1t's [plugin](/guides/claude-code-plugin/), which adds the server
 (`plugin:g1t:g1t` in `/mcp`) and records your sessions:
 
 ```sh
-claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
 claude plugin install g1t@g1t
 ```
 

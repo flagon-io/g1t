@@ -51,6 +51,11 @@ curl https://api.g1t.sh/user \
 same, so Octokit and the actions built on it, such as `actions/checkout`
 and `actions/github-script`, are signed in with the token they are given.
 
+For CI and other automation that works for a team rather than for you, use
+one of the workspace's own
+[workspace access tokens](/guides/workspaces/#workspace-access-tokens):
+it acts as the workspace and keeps working when you leave.
+
 Public data can be read without a token. A token that is not valid is
 rejected with `401` rather than treated as anonymous. Each endpoint's page
 says whether it needs a token.
