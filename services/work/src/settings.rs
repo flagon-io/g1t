@@ -3,7 +3,7 @@
 //! protection" ruleset (rulesets.rs).
 //!
 //! What a merge needs is decided by the rules of the branch it merges into
-//! (`Work::merge_gate`); `approvals_gap` asks them for what people must
+//! (`Work::merge_gate_by`, `Work::merge_gate_seen`); `approvals_gap` asks them for what people must
 //! still do, as g1t sees it when it merges by itself.
 
 use g1t_contracts::time::rfc3339;
