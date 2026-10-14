@@ -635,7 +635,8 @@ impl Actions {
             return Ok(None);
         }
         // Nor while its Actions are off (Settings, Actions; a fork's are
-        // until someone turns them on), whatever started it.
+        // until someone turns them on), whatever started it. This is the
+        // gate; read once per request, so the runs of one push share it.
         if !self.actions_on(&new.repo).await? {
             return Ok(None);
         }
@@ -808,10 +809,12 @@ impl Actions {
         self.advance(&run.id).await
     }
 
-    /// A run that could not start, such as for a workflow file that does not read.
+    /// A run that could not start, such as for a workflow file that does
+    /// not read. None while `repo`'s Actions are off, as for `create_run`.
     #[allow(clippy::too_many_arguments)]
     pub async fn record_failed_run(
         &self,
+        repo: &Repo,
         row: &WorkflowRow,
         git_ref: &str,
         sha: &str,
@@ -820,6 +823,9 @@ impl Actions {
         actor: &str,
         problem: &str,
     ) -> Result<()> {
+        if !self.actions_on(repo).await? {
+            return Ok(());
+        }
         let numbered = self
             .db
             .prepare("UPDATE workflows SET run_count = run_count + 1 WHERE id = ? RETURNING run_count AS n")

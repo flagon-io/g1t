@@ -29,6 +29,8 @@ use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use worker::Result;
 
 use crate::plan::{JobRow, RunRow};
@@ -322,19 +324,24 @@ impl Actions {
     }
 
     /// Whether `repo`'s workflows run at all: as chosen, else on, and off
-    /// for a fork. Nothing starts a run while they are off.
+    /// for a fork. Nothing starts a run while they are off. Read once per
+    /// request ([`ActionsOn`]), however many runs it starts.
     pub(crate) async fn actions_on(&self, repo: &Repo) -> Result<bool> {
         #[derive(Deserialize)]
         struct Enabled {
             enabled: Option<u32>,
         }
-        let row = self
-            .db
-            .prepare("SELECT enabled FROM repo_settings WHERE repo_id = ?")
-            .bind(&[repo.id.as_str().into()])?
-            .first::<Enabled>(None)
-            .await?;
-        Ok(actions_enabled(row.and_then(|row| row.enabled).map(|on| on == 1), repo.forked_from.is_some()))
+        self.actions_on
+            .get(&repo.id, || async {
+                let row = self
+                    .db
+                    .prepare("SELECT enabled FROM repo_settings WHERE repo_id = ?")
+                    .bind(&[repo.id.as_str().into()])?
+                    .first::<Enabled>(None)
+                    .await?;
+                Ok(actions_enabled(row.and_then(|row| row.enabled).map(|on| on == 1), repo.forked_from.is_some()))
+            })
+            .await
     }
 
     /// What a workflow without `permissions:` gets in the repository, and
@@ -433,6 +440,7 @@ impl Actions {
             ])?
             .run()
             .await?;
+        self.actions_on.forget(&repo.id);
         Ok(Outcome::Ok(self.repo_settings(&repo).await?))
     }
 
@@ -1178,6 +1186,40 @@ impl Actions {
     }
 }
 
+/// Whether repositories' Actions are on, as this request read them: a push
+/// or a minute's schedules that start several runs read each repository's
+/// setting once. The service is made afresh for each request, and
+/// `Actions::on_event` clears it for each queued event, so a change is
+/// seen by the next one.
+#[derive(Default)]
+pub(crate) struct ActionsOn(RefCell<HashMap<String, bool>>);
+
+impl ActionsOn {
+    /// `repo_id`'s, from `read` the first time it is asked for.
+    pub(crate) async fn get<F, Fut>(&self, repo_id: &str, read: F) -> Result<bool>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<bool>>,
+    {
+        if let Some(on) = self.0.borrow().get(repo_id).copied() {
+            return Ok(on);
+        }
+        let on = read().await?;
+        self.0.borrow_mut().insert(repo_id.to_owned(), on);
+        Ok(on)
+    }
+
+    /// Reads `repo_id`'s again next time, after it was changed.
+    pub(crate) fn forget(&self, repo_id: &str) {
+        self.0.borrow_mut().remove(repo_id);
+    }
+
+    /// Reads every repository's again.
+    pub(crate) fn clear(&self) {
+        self.0.borrow_mut().clear();
+    }
+}
+
 /// A workflow job's own token may not approve or change what keeps runs
 /// safe: a workflow could otherwise let itself through.
 fn refuse_job_token<T>(actor: &User) -> Option<Outcome<T>> {
@@ -1206,6 +1248,53 @@ mod tests {
             g1t_contracts::actions::actions_disabled_message("ada", "fork"),
             "Actions is turned off for ada/fork. Turn it on in Settings → Actions."
         );
+    }
+
+    /// Runs a future that never waits, as `ActionsOn`'s do here.
+    fn ready<T>(future: impl Future<Output = T>) -> T {
+        let mut future = std::pin::pin!(future);
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        match future.as_mut().poll(&mut cx) {
+            std::task::Poll::Ready(value) => value,
+            std::task::Poll::Pending => panic!("the future waited"),
+        }
+    }
+
+    #[test]
+    fn a_request_reads_each_repositorys_setting_once() {
+        let on = ActionsOn::default();
+        let reads = std::cell::Cell::new(0);
+        let read = |enabled: bool| {
+            reads.set(reads.get() + 1);
+            async move { Ok(enabled) }
+        };
+        // A fork with Actions off: every run of one push is refused, from
+        // one read.
+        for _ in 0..5 {
+            assert!(!ready(on.get("rep_fork", || read(actions_enabled(None, true)))).unwrap());
+        }
+        assert_eq!(reads.get(), 1);
+        // Another repository is its own read.
+        for _ in 0..3 {
+            assert!(ready(on.get("rep_main", || read(actions_enabled(None, false)))).unwrap());
+        }
+        assert_eq!(reads.get(), 2);
+        // Turned on in Settings: read again, and runs start.
+        on.forget("rep_fork");
+        assert!(ready(on.get("rep_fork", || read(actions_enabled(Some(true), true)))).unwrap());
+        assert_eq!(reads.get(), 3);
+        // The next queued event reads both afresh.
+        on.clear();
+        assert!(!ready(on.get("rep_fork", || read(false))).unwrap());
+        assert!(ready(on.get("rep_main", || read(true))).unwrap());
+        assert_eq!(reads.get(), 5);
+    }
+
+    #[test]
+    fn a_failed_read_is_not_kept() {
+        let on = ActionsOn::default();
+        assert!(ready(on.get("rep_a", || async { Err(worker::Error::RustError("D1 is down".into())) })).is_err());
+        assert!(ready(on.get("rep_a", || async { Ok(true) })).unwrap());
     }
 
     fn env(reviewers: &[(&str, &str)]) -> Environment {
