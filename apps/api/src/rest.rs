@@ -332,6 +332,7 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/dependency-graph", Op::Security(SecurityOp::GetDependencyGraph), &[]),
     route("GET", "/repos/:owner/:name/dependency-graph/sbom", Op::Security(SecurityOp::GetSbom), &[]),
     route("GET", "/repos/:owner/:name/dependency-graph/compare/:basehead", Op::Security(SecurityOp::CompareDependencies), &[]),
+    route("POST", "/repos/:owner/:name/pulls/:number/dependency-review/rerun", Op::Security(SecurityOp::RerunDependencyReview), &[]),
     route("GET", "/repos/:owner/:name/security/settings", Op::Security(SecurityOp::GetSettings), &[]),
     route("PATCH", "/repos/:owner/:name/security/settings", Op::Security(SecurityOp::UpdateSettings), &[]),
     route("GET", "/workspaces/:workspace/security/settings", Op::Security(SecurityOp::GetWorkspaceSettings), &[]),

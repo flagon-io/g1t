@@ -445,6 +445,7 @@ export const OPERATION_SCOPES = [
   ["get_dependency_graph", "security:read"],
   ["get_sbom", "security:read"],
   ["compare_dependencies", "security:read"],
+  ["rerun_dependency_review", "security:write"],
   ["get_security_settings", "security:read"],
   ["get_workspace_security_settings", "security:read"],
   ["get_security_overview", "security:read"],

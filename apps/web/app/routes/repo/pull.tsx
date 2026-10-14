@@ -85,7 +85,7 @@ import { ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../..
 import { ViolationList } from "../../components/rules";
 import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { notFound } from "../../lib/not-found.server";
-import { actions, deployments, identity, inbox, repos, work } from "../../lib/services.server";
+import { actions, deployments, identity, inbox, repos, securitySuite, work } from "../../lib/services.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { CommitChecksBadge } from "../../components/commit-checks";
 import { DeployLink } from "../../components/deploy";
@@ -337,6 +337,7 @@ function deploymentOf(
 const PULL_NEEDS: Record<string, Capability> = {
   "rerun-workflow": "run",
   "rerun-failed": "run",
+  "rerun-dependency-review": "run",
   merge: "merge",
   unqueue: "merge",
   milestone: "triage",
@@ -399,6 +400,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // A workflow run's failed jobs, run again. Who may is the actions service's call.
   if (action === "rerun-workflow") {
     const rerun = await actions.rerun(user, path, String(form.get("run") ?? ""), true);
+    return rerun.ok ? null : { error: rerun.error.message, action };
+  }
+  // The Dependency review check, made again on its head: its comment
+  // changes in place. Who may is the security service's call.
+  if (action === "rerun-dependency-review") {
+    const rerun = await securitySuite.rerunDependencyReview(user, path, number);
     return rerun.ok ? null : { error: rerun.error.message, action };
   }
   // Every failed run on its head, run again: Mission control's quick action.
@@ -667,7 +674,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       canRerunWorkflows={canMerge}
       settingsUrl={canProtect ? `${base}/settings/branches` : null}
       conflicting={mergeable === "conflicting" && !noChecks}
-      error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" ? actionData.error : null}
+      error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" || actionData?.action === "rerun-dependency-review"
+          ? actionData.error
+          : null}
       loading={loading}
     />
   );
@@ -1349,7 +1358,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
+                  !["merge", "comment", "rerun-failed", "rerun-workflow", "rerun-dependency-review", "update", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>

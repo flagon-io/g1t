@@ -483,6 +483,7 @@ pub const TOOLS: &[Tool] = &[
             a("dependency_graph", Op::Security(SecurityOp::GetDependencyGraph), "Every package the lockfiles resolve, direct or transitive"),
             a("sbom", Op::Security(SecurityOp::GetSbom), "The dependency graph as an SPDX 2.3 document"),
             a("compare_dependencies", Op::Security(SecurityOp::CompareDependencies), "What changes in dependencies between base...head"),
+            a("rerun_dependency_review", Op::Security(SecurityOp::RerunDependencyReview), "Run a pull request's Dependency review check again"),
             a("settings", Op::Security(SecurityOp::GetSettings), "A repository's security settings"),
             a("update_settings", Op::Security(SecurityOp::UpdateSettings), "Change when checks fail and dependency review's policy"),
             a("workspace_settings", Op::Security(SecurityOp::GetWorkspaceSettings), "A workspace's delegated bypass and validity checks"),

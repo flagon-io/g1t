@@ -21,7 +21,16 @@ import {
 import { useMemo, useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { CheckResult, CheckRun, CommitStatus, Job, Mergeable, Pull, RequiredCheck } from "@g1t/contracts";
+import {
+  type CheckResult,
+  type CheckRun,
+  type CommitStatus,
+  DEPENDENCY_REVIEW_CHECK,
+  type Job,
+  type Mergeable,
+  type Pull,
+  type RequiredCheck,
+} from "@g1t/contracts";
 
 import { useAddresses } from "../lib/addresses";
 import { duration } from "./actions";
@@ -406,6 +415,9 @@ export function ChecksSection({
     pull.fork ? `/${pull.fork.namespace}/${pull.fork.name}/commit/${sha}` : `${base}/commit/${sha}`;
   const older = run != null && pull.headCommit != null && run.headCommit !== pull.headCommit;
   const failedRuns = statuses.filter((status) => statusStanding(status) === "failed" && runIdOf(status));
+  // g1t's own Dependency review check, which anyone who may start runs can
+  // have made again (after an advisory is published, say).
+  const dependencyReview = statuses.some((status) => status.context === DEPENDENCY_REVIEW_CHECK && status.source === "security");
 
   return (
     <div aria-busy={loading || undefined}>
@@ -458,6 +470,17 @@ export function ChecksSection({
                 </Hint>
               </Form>
             ))}
+          {canRerunWorkflows && dependencyReview && !settled && (
+            <Form method="post">
+              <input type="hidden" name="action" value="rerun-dependency-review" />
+              <Hint label="Review its dependency changes again, with the advisories known now">
+                <SubmitButton variant="outline" match={{ action: "rerun-dependency-review" }} pending="Re-running…">
+                  <RotateCw size={13} />
+                  Re-run dependency review
+                </SubmitButton>
+              </Hint>
+            </Form>
+          )}
         </div>
       </div>
       {error && (

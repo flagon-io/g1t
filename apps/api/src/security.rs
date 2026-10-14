@@ -54,6 +54,7 @@ pub enum SecurityOp {
     GetDependencyGraph,
     GetSbom,
     CompareDependencies,
+    RerunDependencyReview,
     GetSettings,
     UpdateSettings,
     GetWorkspaceSettings,
@@ -73,7 +74,7 @@ impl SecurityOp {
     /// Every one: `Op::ALL` lists each as `Op::Security(…)`, which a test
     /// checks against this.
     #[cfg(test)]
-    pub const ALL: [SecurityOp; 38] = [
+    pub const ALL: [SecurityOp; 39] = [
         SecurityOp::ListSecretAlerts,
         SecurityOp::GetSecretAlert,
         SecurityOp::UpdateSecretAlert,
@@ -99,6 +100,7 @@ impl SecurityOp {
         SecurityOp::GetDependencyGraph,
         SecurityOp::GetSbom,
         SecurityOp::CompareDependencies,
+        SecurityOp::RerunDependencyReview,
         SecurityOp::GetSettings,
         SecurityOp::UpdateSettings,
         SecurityOp::GetWorkspaceSettings,
@@ -141,6 +143,7 @@ impl SecurityOp {
             SecurityOp::GetDependencyGraph => "get_dependency_graph",
             SecurityOp::GetSbom => "get_sbom",
             SecurityOp::CompareDependencies => "compare_dependencies",
+            SecurityOp::RerunDependencyReview => "rerun_dependency_review",
             SecurityOp::GetSettings => "get_security_settings",
             SecurityOp::UpdateSettings => "update_security_settings",
             SecurityOp::GetWorkspaceSettings => "get_workspace_security_settings",
@@ -185,6 +188,7 @@ impl SecurityOp {
             SecurityOp::GetDependencyGraph => "Get the dependency graph",
             SecurityOp::GetSbom => "Export an SBOM",
             SecurityOp::CompareDependencies => "Compare dependencies",
+            SecurityOp::RerunDependencyReview => "Re-run dependency review",
             SecurityOp::GetSettings => "Get a repository's security settings",
             SecurityOp::UpdateSettings => "Update a repository's security settings",
             SecurityOp::GetWorkspaceSettings => "Get a workspace's security settings",
@@ -228,6 +232,7 @@ impl SecurityOp {
             SecurityOp::GetDependencyGraph => "Get the dependency graph: every package the lockfiles on the default branch resolve, per lockfile, with whether it is direct or transitive (where the lockfile says), for development, its license when recorded, its package URL and its open vulnerability alerts.",
             SecurityOp::GetSbom => "Export the dependency graph as an SPDX 2.3 JSON document, in sbom. Every package is named by its package URL.",
             SecurityOp::CompareDependencies => "Compare the dependencies at two commits, branches or tags (basehead, as base...head): what was added and removed per lockfile, with the known vulnerabilities of what was added and whether it passes the repository's dependency review policy. Needs the g1t plan on a private repository.",
+            SecurityOp::RerunDependencyReview => "Run the Dependency review check again on an open pull request's head, with the advisories known now: its status is set again and its one comment on the pull request is changed in place (or added, when it has dependency changes to show and none is there yet). Returns the review. g1t reviews a pull request by itself when it opens and when its head moves, carrying the result over when the head's lockfile changes are the ones reviewed before. Takes the Write role. Needs the g1t plan on a private repository.",
             SecurityOp::GetSettings => "Get a repository's security settings: when the Code scanning check fails, dependency review and its policy, whether secrets in the history open alerts, whether it takes private vulnerability reports, its workspace's settings, and whether the paid features are on for it.",
             SecurityOp::UpdateSettings => "Change a repository's security settings: code_scanning_gate (none, errors, critical, high, medium or any), dependency_review, review_fail_on (critical, high, medium, low or none), review_deny_licenses (SPDX ids), review_comment, history_alerts (whether secrets found in the history open alerts; push protection stays on) and private_vulnerability_reporting. Takes the Admin role, or a security manager of the workspace. Require the Code scanning and Dependency review checks in branch protection to gate merges on them.",
             SecurityOp::GetWorkspaceSettings => "Get a workspace's security settings (delegated bypass, validity checks) and whether it has Security and quality, which comes with the g1t plan.",
@@ -428,6 +433,10 @@ impl SecurityOp {
                 &["repo", "id", "state"],
             ),
             SecurityOp::GetDependencyGraph | SecurityOp::GetSbom | SecurityOp::GetSettings => (json!({ "repo": repo() }), &["repo"]),
+            SecurityOp::RerunDependencyReview => (
+                json!({ "repo": repo(), "number": { "type": "integer", "description": "The pull request's number." } }),
+                &["repo", "number"],
+            ),
             SecurityOp::CompareDependencies => (
                 json!({
                     "repo": repo(),
@@ -1037,6 +1046,13 @@ pub async fn run(op: SecurityOp, services: &Services, viewer: &Viewer, input: &V
             };
             pass(services, "dependency_review", &DependencyReviewArgs { viewer: viewer.clone(), repo, base, head }).await
         }
+        SecurityOp::RerunDependencyReview => {
+            let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
+            let Some(number) = whole(input, "number").filter(|number| *number > 0) else {
+                return failed(FailureCode::Invalid, "number is the pull request's number.");
+            };
+            pass(services, "rerun_dependency_review", &PullScanningArgs { viewer: viewer.clone(), repo, number }).await
+        }
         SecurityOp::GetSettings => {
             let Some(repo) = repo else { return failed(FailureCode::Invalid, &need_repo()) };
             pass(services, "security_settings", &SecuritySettingsArgs { viewer: viewer.clone(), repo }).await
@@ -1241,6 +1257,7 @@ mod tests {
         }
         assert_eq!(scope_for("get_sbom"), Some(Scope::SecurityRead));
         assert_eq!(scope_for("upload_sarif"), Some(Scope::SecurityWrite));
+        assert_eq!(scope_for("rerun_dependency_review"), Some(Scope::SecurityWrite));
         // No run decides about security.
         for name in ["bypass_push_protection", "review_bypass_request", "update_security_settings"] {
             assert!(g1t_contracts::credentials::NEVER.contains(&name), "{name}");

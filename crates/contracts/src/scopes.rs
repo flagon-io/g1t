@@ -1077,6 +1077,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_dependency_graph", Scope::SecurityRead),
     ("get_sbom", Scope::SecurityRead),
     ("compare_dependencies", Scope::SecurityRead),
+    ("rerun_dependency_review", Scope::SecurityWrite),
     ("get_security_settings", Scope::SecurityRead),
     ("get_workspace_security_settings", Scope::SecurityRead),
     ("get_security_overview", Scope::SecurityRead),

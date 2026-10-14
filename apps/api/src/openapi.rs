@@ -260,6 +260,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Security(SecurityOp::GetDependencyGraph),
             Op::Security(SecurityOp::GetSbom),
             Op::Security(SecurityOp::CompareDependencies),
+            Op::Security(SecurityOp::RerunDependencyReview),
         ],
     ),
     (
