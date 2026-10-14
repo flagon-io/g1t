@@ -37,6 +37,7 @@ mod network;
 mod pack_cache;
 mod pack_limits;
 mod push_checks;
+mod push_feedback;
 mod push_commits;
 mod refs;
 mod refs_cache;
@@ -2257,9 +2258,12 @@ impl<S: GitStore> Repos<S> {
             // only then goes back. Whoever fetches after it sees the push.
             let headers = response.headers().clone();
             headers.delete("content-length")?;
-            let report = response.bytes().await?;
+            let mut report = response.bytes().await?;
             self.refs_moved(&repo.id).await;
             timing.mark("refs");
+            if status == 200 {
+                push_feedback::add(&mut report, self.security.as_ref(), &repo, &viewer).await;
+            }
             response = Response::from_bytes(report)?.with_headers(headers).with_status(status);
         } else if let (Some(kept_key), 200) = (&kept_key, status) {
             // A miss: this answer is kept for the next to ask.

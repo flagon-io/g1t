@@ -606,6 +606,8 @@ pub struct SecurityOverview {
 
 /// `overview`: members of the workspace only. Returns
 /// `Outcome<SecurityOverview>`.
+/// Also used by `push_summary`, returning `Outcome<SeverityCounts>` for
+/// open vulnerabilities from the latest scan, without starting a scan.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OverviewArgs {
     pub repo: RepoPath,
