@@ -80,6 +80,8 @@ test("an old agent's entry is shown with whom it acted for", () => {
   assert.equal(ruleLabel("never"), "never allowed for agents (an old entry)");
   assert.equal(ruleLabel("run:implement/tools"), "implement run tools");
   assert.equal(ruleLabel("run:update/runner:push"), "update run runner (push)");
+  assert.equal(ruleLabel("workspace-token"), "the workspace token's access");
+  assert.equal(ruleLabel("deploy-key"), "the deploy key's access");
 });
 
 test("the CSV quotes what it must and keeps formulas as text", () => {

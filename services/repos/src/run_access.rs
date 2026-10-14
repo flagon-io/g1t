@@ -25,9 +25,46 @@ pub enum Admitted {
         request: Request,
         viewer: Viewer,
         /// To be finished with the result and recorded.
-        entry: Option<Box<NewAuditEntry>>,
+        entry: Option<Box<GitEntry>>,
     },
     Refused(Response),
+}
+
+/// A git request's audit entry, before its result is known.
+pub struct GitEntry {
+    pub entry: NewAuditEntry,
+    /// Recorded only if the request is refused: git's first request of a
+    /// push, which is where a credential that may not push is turned away.
+    pub refused_only: bool,
+}
+
+/// The rule a push by someone other than a run is recorded under: who
+/// pushed, as the repository's own rules then decide.
+pub(crate) fn push_rule(user: &g1t_contracts::User) -> &'static str {
+    match user.kind {
+        PrincipalKind::Workspace if user.token.as_deref().is_some_and(|token| token.deploy_key.is_some()) => "deploy-key",
+        PrincipalKind::Workspace => "workspace-token",
+        PrincipalKind::Agent => "agent-token",
+        PrincipalKind::User => "person",
+        PrincipalKind::System => "g1t",
+    }
+}
+
+/// Whether a request of a push is recorded: the pack (`Some(false)`,
+/// always) and git's first request for the refs it may push to
+/// (`Some(true)`, only if refused). Fetches by people and workspace
+/// tokens are not recorded.
+pub(crate) fn push_entry(post: bool, write: bool, endpoint: &str) -> Option<bool> {
+    match (write, post) {
+        (true, true) if endpoint == "git-receive-pack" => Some(false),
+        (true, false) => Some(true),
+        _ => None,
+    }
+}
+
+/// Whether an entry is kept, given the HTTP status git was answered with.
+pub(crate) fn kept(refused_only: bool, status: u16) -> bool {
+    !refused_only || status >= 400
 }
 
 /// The refs a receive-pack request asks to change, deletions included,
@@ -159,22 +196,15 @@ impl<S: GitStore> Repos<S> {
         };
 
         let Some(scope) = run_scope else {
-            // People and workspace tokens: their pushes are recorded; the
+            // People, workspace tokens and deploy keys: their pushes are
+            // recorded, and so is a push refused at its first request; the
             // repository's own rules decide.
-            let pushing = post && write && git.endpoint == "git-receive-pack";
-            let entry = if pushing {
-                let rule = match user.kind {
-                    PrincipalKind::Workspace => "workspace-token",
-                    PrincipalKind::Agent => "agent-token",
-                    PrincipalKind::User => "person",
-                    PrincipalKind::System => "g1t",
-                };
-                Some(Box::new(entry(
-                    self.audit_target_of(&git.path, found).await?,
-                    &Decision::allow(rule),
-                )))
-            } else {
-                None
+            let entry = match push_entry(post, write, git.endpoint) {
+                Some(refused_only) => Some(Box::new(GitEntry {
+                    entry: entry(self.audit_target_of(&git.path, found).await?, &Decision::allow(push_rule(&user))),
+                    refused_only,
+                })),
+                None => None,
             };
             return Ok(Admitted::Go {
                 request,
@@ -211,7 +241,7 @@ impl<S: GitStore> Repos<S> {
             request,
             viewer: person,
             // Only the requests that move data are worth a line each.
-            entry: post.then(|| Box::new(entry(target, &decision))),
+            entry: post.then(|| Box::new(GitEntry { entry: entry(target, &decision), refused_only: false })),
         })
     }
 
@@ -219,13 +249,16 @@ impl<S: GitStore> Repos<S> {
     /// HTTP status git was answered with.
     pub(crate) async fn finish_git(
         &self,
-        entry: Option<Box<NewAuditEntry>>,
+        entry: Option<Box<GitEntry>>,
         status: u16,
         message: Option<String>,
     ) {
-        let Some(mut entry) = entry.map(|entry| *entry) else {
+        let Some(GitEntry { mut entry, refused_only }) = entry.map(|entry| *entry) else {
             return;
         };
+        if !kept(refused_only, status) {
+            return;
+        }
         if status == 200 {
             entry.result = Some("ok".to_owned());
         } else {
@@ -237,6 +270,59 @@ impl<S: GitStore> Repos<S> {
             entry.message = message;
         }
         self.record_git(entry).await;
+    }
+}
+
+#[cfg(test)]
+mod audit_tests {
+    use super::{kept, push_entry, push_rule};
+    use g1t_contracts::User;
+    use g1t_contracts::audit::{ActorKind, AuditActor};
+
+    fn workspace_token() -> User {
+        serde_json::from_value(serde_json::json!({
+            "id": "wsp_flagon",
+            "username": "flagon-io",
+            "kind": "workspace",
+            "token": { "token_id": "tok_publish", "scopes": ["code:read", "code:write"] },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_workspace_tokens_push_is_the_workspaces_with_its_token() {
+        let user = workspace_token();
+        let actor = AuditActor::of(&user);
+        assert_eq!(actor.actor_kind, Some(ActorKind::Workspace));
+        assert_eq!((actor.actor.as_str(), actor.actor_id.as_str()), ("flagon-io", "wsp_flagon"));
+        assert_eq!(actor.credential_id.as_deref(), Some("tok_publish"));
+        assert_eq!(actor.on_behalf_of, None);
+        assert_eq!(push_rule(&user), "workspace-token");
+    }
+
+    #[test]
+    fn a_deploy_key_is_told_apart_from_a_workspace_token() {
+        let key = g1t_contracts::deploy_keys::principal(
+            "wsp_acme",
+            "acme",
+            g1t_contracts::deploy_keys::access("dk_1", "CI", "acme/rocket", false),
+        );
+        assert_eq!(push_rule(&key), "deploy-key");
+        assert_eq!(AuditActor::of(&key).credential_id.as_deref(), Some("dk_1"));
+    }
+
+    #[test]
+    fn a_push_is_recorded_and_so_is_one_refused_at_its_first_request() {
+        // The pack: always.
+        assert_eq!(push_entry(true, true, "git-receive-pack"), Some(false));
+        // git's first request for the refs it may push to: if refused.
+        assert_eq!(push_entry(false, true, "info/refs"), Some(true));
+        assert!(kept(true, 404) && kept(true, 403) && kept(true, 401));
+        assert!(!kept(true, 200), "an allowed push is recorded once, with its pack");
+        assert!(kept(false, 200));
+        // Fetches are not recorded.
+        assert_eq!(push_entry(false, false, "info/refs"), None);
+        assert_eq!(push_entry(true, false, "git-upload-pack"), None);
     }
 }
 

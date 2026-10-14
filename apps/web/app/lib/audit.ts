@@ -198,6 +198,7 @@ export function ruleLabel(rule: string): string {
   if (rule === "service" || rule === "repository") return "refused by the repository's rules";
   if (rule === "person") return "the person's own access";
   if (rule === "workspace-token") return "the workspace token's access";
+  if (rule === "deploy-key") return "the deploy key's access";
   const run = /^run:([a-z]+)\/(runner|tools)(?::(push|read))?$/.exec(rule);
   if (run) return `${run[1]} run ${run[2] === "tools" ? "tools" : "runner"}${run[3] ? ` (${run[3]})` : ""}`;
   return rule;

@@ -157,13 +157,15 @@ pub fn shape(
 
 /// An event's actor as a member key, or empty for nobody. Actors are
 /// people (`user:<id>`), but some events name an agent by its own id, and
-/// g1t's own upkeep names the workspace or `g1t`: those read as the agent
-/// (`agent:<id>`) and as g1t (`user:usr_g1t_agent`), so the digest never
-/// counts a robot among the people.
+/// g1t's own upkeep names `g1t`: those read as the agent (`agent:<id>`) and
+/// as g1t (`user:usr_g1t_agent`). A workspace's own token, and g1t's upkeep
+/// as the workspace, stay the workspace (`user:wsp_<id>`), never g1t or a
+/// person; the site counts none of these among the people (apps/web
+/// home.ts, `isRobotKey`).
 fn member_key(actor: Option<&str>) -> String {
     match actor {
         Some(id) if id.starts_with("agt_") => format!("agent:{id}"),
-        Some(id) if id == "g1t" || id.starts_with("wsp_") => "user:usr_g1t_agent".to_owned(),
+        Some("g1t") => "user:usr_g1t_agent".to_owned(),
         Some(id) if !id.is_empty() => format!("user:{id}"),
         _ => String::new(),
     }
@@ -433,7 +435,7 @@ mod tests {
     fn robots_never_count_among_the_people() {
         assert_eq!(member_key(Some("usr_ana")), "user:usr_ana");
         assert_eq!(member_key(Some("agt_margo")), "agent:agt_margo");
-        assert_eq!(member_key(Some("wsp_acme")), "user:usr_g1t_agent");
+        assert_eq!(member_key(Some("wsp_acme")), "user:wsp_acme", "a workspace token is the workspace");
         assert_eq!(member_key(Some("g1t")), "user:usr_g1t_agent");
         assert_eq!(member_key(Some("")), "");
         assert_eq!(member_key(None), "");
