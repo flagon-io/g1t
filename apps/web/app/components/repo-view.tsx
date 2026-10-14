@@ -334,7 +334,6 @@ export function TreeView({
   checks = null,
   about = null,
   canPush = false,
-  homepage = null,
   deployments = null,
 }: {
   tree: Tree;
@@ -347,8 +346,6 @@ export function TreeView({
   about?: AboutData | null;
   /** Whether the viewer may push, for the About's "Create a new release". */
   canPush?: boolean;
-  /** The project's homepage; the repository's website when null. */
-  homepage?: string | null;
   /** The repository's environments, for the About's Deployments section. */
   deployments?: DeploymentEnvironments | null;
 }) {
@@ -424,7 +421,6 @@ export function TreeView({
           readme={Boolean(readme)}
           data={about ?? { about: null, watchers: null, packages: null, tags: null }}
           canPush={canPush}
-          homepage={homepage}
           deployments={<DeploymentsPanel base={base} summary={deployments} className="border-t border-line pt-4" />}
         />
       )}

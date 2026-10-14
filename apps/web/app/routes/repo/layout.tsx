@@ -1,5 +1,5 @@
 import { waitUntil } from "cloudflare:workers";
-import { Box, Lock } from "lucide-react";
+import { Box, Link2, Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, useRouteLoaderData } from "react-router";
 
@@ -7,6 +7,7 @@ import type { Project } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
 import { Topics } from "../../components/topics";
+import { projectHomepage } from "../../lib/about";
 import { page } from "../../lib/meta";
 import { type Tab as PageTab, tabsFor } from "../../lib/project-nav";
 import { Badge } from "../../components/ui/badge";
@@ -170,11 +171,11 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const base = `/${repo.namespace}/${repo.name}`;
   // The project's own description, else the repository's as it is now.
   const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
+  // Its homepage, else the repository's website.
+  const site = projectHomepage(project) ?? repo.website ?? null;
   const { pathname } = useLocation();
   const rest = pathname.slice(base.length + 1);
   const tabs = tabsFor(rest, member, access.can);
-  // The files' own About says what it is and its topics, as the one place.
-  const filesPage = /^(code|tree|blob|commits?|branches|tags|releases|compare)(\/|$)/.test(rest);
   // One row of tabs for the project's pages, along the header's border (a
   // member's sidebar has them on a computer), and the views of the section
   // the page is in as a quieter row at the top of its content.
@@ -201,9 +202,19 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
               ) : null
             }
           />
-          {/* On the files' pages, About says what it is and shows its topics, as the one place. */}
-          {!filesPage && description && <p className="mt-2 line-clamp-2 max-w-3xl text-sm text-muted">{description}</p>}
-          {!filesPage && <Topics topics={repo.topics} className="mt-3" />}
+          {/* What it is, where it lives and its topics, the same on every page of it. */}
+          {description && <p className="mt-2 line-clamp-2 max-w-3xl text-sm text-muted">{description}</p>}
+          {site && (
+            <a
+              href={site}
+              rel="noopener nofollow"
+              className="mt-1.5 flex w-fit max-w-full min-w-0 items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+            >
+              <Link2 size={14} className="shrink-0" />
+              <span className="truncate">{site.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
+            </a>
+          )}
+          <Topics topics={repo.topics} className="mt-3" />
           <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>
             <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} />
           </div>

@@ -1,6 +1,6 @@
 ---
 title: Managing a repository
-description: What a repository's About shows, and how to rename it or a branch, change its default branch, website and topics, make it public or private, archive it, and delete and restore it.
+description: What a repository's header and Code page show, and how to rename it or a branch, change its default branch, website and topics, make it public or private, archive it, and delete and restore it.
 ---
 
 A repository's details and its lifecycle are managed from its
@@ -9,14 +9,18 @@ A repository's details and its lifecycle are managed from its
 server. This guide covers each change, who can make it, and what happens
 when you do.
 
-## The About beside the files
+## What it is, and the facts beside the files
 
-A repository's **Code** page shows its files with an **About** beside them,
-the way most code hosts lay it out. On a phone it comes after the files.
+The header at the top of every page of a repository (Code, Issues, Pull
+requests, Actions, Settings and the rest) shows its description, website
+and topics, as you set them under [Edit the details](#edit-the-details).
+The website is the project's homepage when it has one.
+
+The **Code** page shows its files with its facts beside them. On a phone
+they come after the files.
 
 | Part | What it shows |
 | --- | --- |
-| Description, website, topics | What you set under [Edit the details](#edit-the-details). |
 | **Readme** | A link to the README shown under the files. |
 | **License** | The license its `LICENSE` file holds, such as **MIT license**, linked to the file. **View license** when the text is not one g1t recognizes. `LICENCE`, `COPYING` and `UNLICENSE` are read too, with or without an extension, and an `SPDX-License-Identifier` line says it outright. |
 | **Security policy** | A link to `SECURITY.md` at the root, or in `.g1t`, `.github` or `docs`. |

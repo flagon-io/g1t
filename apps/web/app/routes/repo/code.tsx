@@ -8,7 +8,6 @@ import { lastCommitsFor } from "../../lib/last-commits.server";
 import { showOneCommit } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
-import { projectHomepage } from "../../lib/about";
 import { useProject } from "./layout";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
@@ -53,7 +52,6 @@ export default function Code({ loaderData }: Route.ComponentProps) {
       checks={loaderData.checks}
       about={loaderData.about}
       canPush={Boolean(project?.access.can.push)}
-      homepage={projectHomepage(project?.project ?? null)}
       deployments={loaderData.deployments}
     />
   );

@@ -1,7 +1,8 @@
 /**
- * The About beside a repository's files: what it is (description, home
- * page, topics), what its files say (readme, license, security policy),
- * how people follow it (activity, stars, watching), then its releases,
+ * The facts beside a repository's files (what it is, its home page and
+ * topics are the header's, on every page of it): what its files say
+ * (readme, license, security policy), how people follow it (activity,
+ * stars, watching), then its releases,
  * deployments, packages, contributors and languages, each a section.
  *
  * What is read from the default branch (license, languages, contributors)
@@ -13,7 +14,6 @@ import {
   Activity,
   BookOpen,
   Eye,
-  Link2,
   Package as PackageIcon,
   Plus,
   Scale,
@@ -31,7 +31,6 @@ import { contributorPerson, profileHref, shownName } from "../lib/commit-people"
 import { CommitAvatar, CommitName } from "./commit-person";
 import { UserCard } from "./user-card";
 import { PackageIcon as EcosystemIcon } from "./package-icon";
-import { Topics } from "./topics";
 import { TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
@@ -409,7 +408,6 @@ export function RepoAboutPanel({
   readme,
   data,
   canPush,
-  homepage,
   deployments = null,
 }: {
   repo: Repo;
@@ -417,27 +415,15 @@ export function RepoAboutPanel({
   readme: boolean;
   data: AboutData;
   canPush: boolean;
-  /** The project's homepage (lib/about.ts `projectHomepage`); the repository's website when null. */
-  homepage?: string | null;
   /** The Deployments section (deployments-panel.tsx): each environment's latest. */
   deployments?: ReactNode;
 }) {
   const base = `/${repo.namespace}/${repo.name}`;
-  const site = homepage ?? repo.website ?? null;
   const facts = (about: RepoAbout | null, watchers: number | null) => <Facts base={base} gitRef={gitRef} about={about} watchers={watchers} />;
   return (
     <aside className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold">About</h2>
-        <p className="mt-2.5 text-sm text-fg-soft">{repo.description ?? (site || repo.topics.length > 0 ? "No description." : "No description, website, or topics provided.")}</p>
-        {site && (
-          <a href={site} rel="noopener nofollow" className="mt-2.5 flex min-w-0 items-center gap-2 text-sm font-medium text-accent hover:underline">
-            <Link2 size={15} className="shrink-0" />
-            <span className="truncate">{site.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
-          </a>
-        )}
-        <Topics topics={repo.topics} className="mt-3" />
-        <ul className="mt-4 space-y-2.5 text-sm text-muted">
+        <ul className="space-y-2.5 text-sm text-muted">
           {readme && (
             <Row icon={<BookOpen size={15} />}>
               <a href="#readme" className={ROW_LINK}>
