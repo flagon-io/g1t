@@ -254,6 +254,15 @@ struct Owned {
     status: Option<String>,
 }
 
+/// What a workspace's own token reaches: that workspace only, all of its
+/// repositories or the ones chosen. Never none: without a reach a token
+/// is not held to a workspace, and could open issues or comment on any
+/// public repository as the workspace.
+fn workspace_token_reach(slug: String, selection: RepositorySelection, repo_ids: Vec<String>) -> TokenReach {
+    let selection = if selection == RepositorySelection::Selected { selection } else { RepositorySelection::All };
+    TokenReach { workspace: Some(slug), repositories: selection, repo_ids }
+}
+
 impl Identity {
     /// Cuts `user`, resolved from the token `token_id`, down to what the
     /// token reaches. `personal` is whether it is a person's token (not a
@@ -266,14 +275,12 @@ impl Identity {
             // A workspace's own token: Write on its repositories, or Admin
             // when it holds Repositories: admin; the selected ones only
             // when it has a selection.
-            let selected = facts.selection() == RepositorySelection::Selected;
-            let repo_ids = if selected { self.token_repo_ids(token_id).await? } else { Vec::new() };
+            let selection = facts.selection();
+            let repo_ids = if selection == RepositorySelection::Selected { self.token_repo_ids(token_id).await? } else { Vec::new() };
             let slug = user.username.clone();
             if let Some(access) = user.token.as_deref_mut() {
                 access.admin = facts.admin.is_some_and(|admin| admin >= 1.0);
-                if selected {
-                    access.reach = Some(TokenReach { workspace: Some(slug), repositories: RepositorySelection::Selected, repo_ids });
-                }
+                access.reach = Some(workspace_token_reach(slug, selection, repo_ids));
             }
             return Ok(());
         }
@@ -1265,6 +1272,40 @@ mod tests {
     use std::collections::BTreeMap;
 
     const DAY: u64 = 86_400_000;
+
+    fn workspace_token(selection: RepositorySelection) -> g1t_contracts::scopes::TokenAccess {
+        g1t_contracts::scopes::TokenAccess {
+            scopes: Some(vec!["repo:read".into(), "code:write".into(), "issues:write".into()]),
+            reach: Some(workspace_token_reach("acme".into(), selection, vec!["rep_1".into()])),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_workspace_token_never_writes_outside_its_workspace() {
+        use g1t_contracts::scopes::decide;
+        for selection in [RepositorySelection::All, RepositorySelection::Selected] {
+            let token = workspace_token(selection);
+            let issue = |repo: &str| serde_json::json!({ "repo": repo, "title": "spam" });
+            let elsewhere = decide(&token, "create_issue", &issue("other/public"));
+            assert!(!elsewhere.allowed, "{selection:?}");
+            assert_eq!(elsewhere.rule, "token:resource-owner");
+            assert!(decide(&token, "create_issue", &issue("acme/rocket")).allowed, "{selection:?}");
+            // Reading a public repository elsewhere is as anyone may.
+            assert!(decide(&token, "get_repo", &serde_json::json!({ "repo": "other/public" })).allowed, "{selection:?}");
+        }
+    }
+
+    #[test]
+    fn a_workspace_token_for_all_repositories_covers_its_own_only() {
+        let all = workspace_token(RepositorySelection::All);
+        assert!(all.covers_repo("rep_9", "acme"));
+        assert!(all.covers_repo("rep_9", "ACME"));
+        assert!(!all.covers_repo("rep_9", "other"));
+        let selected = workspace_token(RepositorySelection::Selected);
+        assert!(selected.covers_repo("rep_1", "acme"));
+        assert!(!selected.covers_repo("rep_9", "acme"));
+    }
 
     #[test]
     fn asks_credential_skips_the_rules_for_held_tokens_but_not_revoking() {
