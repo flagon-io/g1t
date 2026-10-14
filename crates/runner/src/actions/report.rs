@@ -565,17 +565,31 @@ mod tests {
     #[test]
     fn a_long_wait_says_so_in_the_log_as_it_goes() {
         let mut log = log(&[]);
+        // The work answers once the log has told of the wait twice, so the
+        // test does not hang on how fast the machine is; a minute at most.
+        let told_so_far = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = told_so_far.clone();
         let started = Instant::now();
-        let answer = log.waiting(Duration::from_millis(50), |_| {
-            std::thread::sleep(Duration::from_millis(180));
-            42
-        }, |seconds| format!("still waiting ({seconds}s)"));
-        // A busy machine sleeps longer than asked: one line per 50 ms the
-        // wait really took, never more.
+        let answer = log.waiting(
+            Duration::from_millis(50),
+            move |_| {
+                let deadline = Instant::now() + Duration::from_secs(60);
+                while seen.load(std::sync::atomic::Ordering::SeqCst) < 2 && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                42
+            },
+            move |seconds| {
+                told_so_far.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                format!("still waiting ({seconds}s)")
+            },
+        );
         let took = started.elapsed().as_millis() as usize;
         assert_eq!(answer, 42);
         let lines = log.buffered();
         let told = lines.lines().filter(|line| line.starts_with("still waiting (")).count();
+        // At least the two it waited for, and never more than one per 50 ms
+        // the wait really took.
         assert!(told >= 2 && told <= took / 50, "a line each time the wait goes on ({took} ms): {lines:?}");
         // A wait that ends at once writes nothing.
         let mut quick = super::tests::log(&[]);
