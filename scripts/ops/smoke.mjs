@@ -20,13 +20,16 @@ export const CHECKS = [
   { name: "Sign up", path: "/register", expect: ["Create your account", "Create account"] },
   { name: "Pricing", path: "/pricing", expect: ["Pricing"] },
   {
-    name: "Sign up reaches identity",
+    name: "Sign up refuses a bad form",
     path: "/register",
-    // Not an address, so identity answers "Enter a valid email address."
-    // before its sign-up rate limit and before any write.
+    // Not an address and no Turnstile answer, so nothing is written or
+    // counted: with Turnstile on, the site refuses it first (no person
+    // solved the check); with it off, identity answers "Enter a valid
+    // email address." before its sign-up rate limit.
     form: { username: "smoke-test", email: "smoke-test-not-an-address", password: "not-a-real-password" },
     status: 422,
-    expect: ["Enter a valid email address."],
+    expect: [],
+    expectOne: ["We could not tell that a person sent this form.", "Enter a valid email address."],
   },
 ];
 
@@ -49,7 +52,12 @@ export function verdict(check, status, html) {
   if (status !== want) return `answered ${status}, expected ${want}`;
   const text = pageText(html);
   const missing = check.expect.filter((phrase) => !text.includes(phrase));
-  return missing.length ? `missing ${missing.map((m) => JSON.stringify(m)).join(", ")}` : null;
+  if (missing.length) return `missing ${missing.map((m) => JSON.stringify(m)).join(", ")}`;
+  // `expectOne`: at least one of these phrases.
+  if (check.expectOne && !check.expectOne.some((phrase) => text.includes(phrase))) {
+    return `missing one of ${check.expectOne.map((m) => JSON.stringify(m)).join(", ")}`;
+  }
+  return null;
 }
 
 async function run(site) {
