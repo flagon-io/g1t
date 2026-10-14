@@ -1631,7 +1631,7 @@ impl Work {
             self.settings_on(&repo, &pull),
             async {
                 if pull.status.is_active() {
-                    self.merge_gate(&repo, &pull, viewer.as_ref(), false, true).await.map(Some)
+                    self.merge_gate_seen(&repo, &pull, viewer.as_ref(), behind).await.map(Some)
                 } else {
                     Ok(None)
                 }

@@ -1,11 +1,13 @@
 //! Where a pull request stands, and merging it on the repository's say.
 //!
-//! A pull request g1t's agent once made (`made_by_g1t`, `managed = 1`)
-//! still shows where it stands: its checks, the approvals the branch
-//! wants, the merge queue, and whether a person has to step in. Where the
-//! repository's settings say ready pull requests land by themselves
-//! (`auto_merge`), such a pull request is merged here once everything its
-//! branch's rules ask for is met, attributed to `g1t` (`POLICY_ACTOR_ID`).
+//! Every open pull request shows where it stands: its checks, the
+//! approvals the branch wants, the merge queue, whether a person has to
+//! step in, and when it is ready for whoever merges it. Only one g1t's
+//! agent once made (`made_by_g1t`, `managed = 1`) is merged here by
+//! itself, where the repository's settings say ready pull requests land
+//! by themselves (`auto_merge`), once everything its branch's rules ask
+//! for is met, attributed to `g1t` (`POLICY_ACTOR_ID`). Anyone else's
+//! waits for a person to merge it.
 //!
 //! A merge asked for while a pull request is behind is recorded here
 //! (`request_landing`). Once the push that brings it up to date arrives
@@ -369,9 +371,15 @@ impl Work {
                     .await?
             }
         };
-        let Some(progress) = progress.filter(|progress| progress.managed != 0) else {
+        let Some(progress) = progress else {
             return Ok(None);
         };
+        // g1t merges by itself only what it is seeing through. Anyone
+        // else's draft is theirs to finish, with nothing to say yet.
+        let managed = progress.managed != 0;
+        if !managed && pull.status == PullStatus::Draft {
+            return Ok(None);
+        }
         let now = rfc3339(now_ms());
         let working_on = progress
             .working_until
@@ -385,7 +393,7 @@ impl Work {
         // merges by itself: what people must still do, and whether an
         // agent's change may land here unattended.
         let gate = match self.repo_for(pull).await? {
-            Some(repo) => Some(self.merge_gate(&repo, pull, Some(&User::system(&repo.namespace)), false, true).await?),
+            Some(repo) => Some(self.merge_gate_seen(&repo, pull, Some(&User::system(&repo.namespace)), behind).await?),
             None => None,
         };
         let rules_allow_auto_merge = gate
@@ -399,7 +407,7 @@ impl Work {
             revisions: progress.revisions,
             behind,
             conflicting: self.conflicting_files(pull).await?.is_some(),
-            auto_merge: settings.auto_merge && rules_allow_auto_merge,
+            auto_merge: managed && settings.auto_merge && rules_allow_auto_merge,
             require_up_to_date: settings.require_up_to_date,
             approvals_missing: gate.as_ref().and_then(|gate| gate.people_gap()),
             person_request: self.person_request(pull, progress.revised_at.as_deref()).await?,
