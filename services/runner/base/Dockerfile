@@ -1,22 +1,20 @@
 # syntax=docker/dockerfile:1.7
 #
 # g1t-runner-base: everything a g1t sandbox has apart from the g1t runner
-# itself. Agents, checks, the merge queue, workflow jobs and g1t.page
+# itself. Checks, the merge queue, workflow jobs and g1t.page
 # builds all run in it: git, Node, Python, Go, Rust (with the formatter,
 # the linter, and the wasm32 and musl targets), Java (Temurin 21), .NET
 # (SDK 8), Ruby (3.3), the usual build tools, Docker (Engine, Buildx,
-# Compose), and the Claude Code CLI.
+# Compose).
 #
 # Built and pushed by `node scripts/deploy.mjs build-base` (by hand, or by
 # .g1t/workflows/runner-base.yml), which records what it pushed in
 # services/runner/base.json. The runner's own image
 # (services/runner/Dockerfile) is this plus one file, so a change to the
-# runner builds in seconds. docs/DEPLOYING.md explains the two.
+# runner builds in seconds. The deploy-to-cloudflare guide explains the two.
 #
 # Layers go from what changes least to what changes most: the system's
-# packages, Docker, then Go, then Rust, then Java, .NET and Ruby, then the
-# Claude Code CLI on top, so a new CLI version rebuilds and pushes one
-# layer.
+# packages, Docker, then Go, then Rust, then Java, .NET and Ruby.
 #
 # Java and Ruby live in the runner's tool cache (RUNNER_TOOL_CACHE,
 # /home/runner/_tool), laid out as the setup actions look for them, so
@@ -100,7 +98,7 @@ RUN curl -fsSLo /tmp/go.tgz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.g
  && rm -rf /tmp/go.tgz /usr/local/go/test /usr/local/go/api /usr/local/go/doc \
  && ln -s /usr/local/go/bin/go /usr/local/go/bin/gofmt /usr/local/bin/
 
-# Claude Code refuses to skip permission prompts as root.
+# Install the Rust toolchain for the unprivileged job user.
 USER node
 ENV HOME=/home/node
 ENV PATH=/home/node/.cargo/bin:/home/node/go/bin:$PATH
@@ -192,18 +190,4 @@ RUN prefix="/home/runner/_tool/Ruby/${RUBY_VERSION}/x64" \
  && chown -R node:node "/home/runner/_tool/Ruby"
 ENV PATH=${JAVA_HOME}/bin:/home/runner/_tool/Ruby/${RUBY_VERSION}/x64/bin:$PATH
 
-USER node
-
-# Commits are the g1t agent's; the harness does not sign them as its own.
-RUN mkdir -p /home/node/.claude \
- && echo '{"includeCoAuthoredBy": false}' > /home/node/.claude/settings.json
-
-# The Claude Code CLI, pinned, on top: it changes most often of anything
-# here, and is one layer to rebuild and push.
-ARG CLAUDE_CODE_VERSION=2.1.291
-USER root
-# npm's cache stays in BuildKit's cache, out of the image.
-RUN --mount=type=cache,target=/tmp/npm-cache \
-    npm install --global --no-audit --no-fund --cache /tmp/npm-cache "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
- && claude --version
 USER node

@@ -276,7 +276,7 @@ workflow jobs and deploy builds) from one Containers image in two parts:
 
 | Image | Built from | Rebuilt |
 | --- | --- | --- |
-| The base | `services/runner/base/Dockerfile`: Debian, Node, Python, Docker, Go, Rust, Java, .NET, Ruby and the Claude Code CLI | When its folder changes, weekly by `runner-base.yml`, or by hand with `build-base` |
+| The base | `services/runner/base/Dockerfile`: Debian, Node, Python, Docker, Go, Rust, Java, .NET and Ruby | When its folder changes, weekly by `runner-base.yml`, or by hand with `build-base` |
 | The runner | `services/runner/Dockerfile`: the base plus the `g1t-runner` binary | When the binary or the base changes |
 
 `services/runner/base.json` records the base that was pushed;

@@ -1,5 +1,5 @@
 # Rebuilds the base image of g1t's sandboxes (services/runner/base/Dockerfile:
-# the OS, toolchains and the Claude Code CLI), pushes it to Cloudflare's
+# the OS and toolchains), pushes it to Cloudflare's
 # registry, and opens a pull request that records it in
 # services/runner/base.json. Merging that pull request is what rolls it out:
 # the next deploy builds the runner's image on it, in seconds.

@@ -2,7 +2,7 @@
 // (docs.g1t.sh/guides/deploy-to-cloudflare/#the-runners-images):
 //
 //   base    g1t-runner:base-<date>-<inputs>   services/runner/base/Dockerfile:
-//           the OS, toolchains and the Claude Code CLI. Rebuilt only when
+//           the OS and toolchains. Rebuilt only when
 //           its folder changes, or weekly (.g1t/workflows/runner-base.yml),
 //           and recorded in services/runner/base.json.
 //   runner  g1t-runner:<content>              services/runner/Dockerfile: the
@@ -221,7 +221,6 @@ export async function baseVersions(ref) {
     'echo "dotnet=$(dotnet --version)"',
     'echo "ruby=$(ruby --version | cut -d" " -f2)"',
     'echo "git=$(git --version | cut -d" " -f3)"',
-    'echo "claude_code=$(claude --version | cut -d" " -f1)"',
     'echo "docker=$(dockerd --version | cut -d" " -f3 | tr -d ,)"',
     'echo "debian=$(cat /etc/debian_version)"',
   ].join("; ");
