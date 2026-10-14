@@ -9286,6 +9286,52 @@
       "deny_licenses": []
     }
   },
+  "rerun_dependency_review": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "number": 12
+    },
+    "response": {
+      "base": "4b1d7c0e9a2f6e3d8c5b0a7f4e1d2c3b4a5f6e7d",
+      "head": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "changes": [
+        {
+          "change_type": "added",
+          "manifest": "package-lock.json",
+          "ecosystem": "npm",
+          "name": "lodash",
+          "version": "4.17.21",
+          "relationship": "direct",
+          "development": false,
+          "license": "MIT",
+          "purl": "pkg:npm/lodash@4.17.21",
+          "vulnerabilities": [],
+          "denied_license": false,
+          "failing": false
+        },
+        {
+          "change_type": "removed",
+          "manifest": "package-lock.json",
+          "ecosystem": "npm",
+          "name": "lodash",
+          "version": "4.17.20",
+          "relationship": "direct",
+          "development": false,
+          "license": "MIT",
+          "purl": "pkg:npm/lodash@4.17.20",
+          "vulnerabilities": [],
+          "denied_license": false,
+          "failing": false
+        }
+      ],
+      "passed": true,
+      "headline": "2 dependency changes, none vulnerable",
+      "fail_on": "high",
+      "deny_licenses": []
+    },
+    "notes": "The pull request's one dependency review comment is changed in place; nothing new is posted when the review says the same."
+  },
   "get_security_settings": {
     "params": {
       "owner": "flagon-io",

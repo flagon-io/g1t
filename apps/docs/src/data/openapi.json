@@ -303,7 +303,8 @@
         "update_vulnerability_alert",
         "get_dependency_graph",
         "get_sbom",
-        "compare_dependencies"
+        "compare_dependencies",
+        "rerun_dependency_review"
       ]
     },
     {
@@ -24471,6 +24472,159 @@
           "owner": "flagon-io",
           "name": "hello",
           "basehead": "main...upgrade-deps"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/dependency-review/rerun": {
+      "post": {
+        "operationId": "rerun_dependency_review",
+        "tags": [
+          "Supply chain"
+        ],
+        "summary": "Re-run dependency review",
+        "description": "Run the Dependency review check again on an open pull request's head, with the advisories known now: its status is set again and its one comment on the pull request is changed in place (or added, when it has dependency changes to show and none is there yet). Returns the review. g1t reviews a pull request by itself when it opens and when its head moves, carrying the result over when the head's lockfile changes are the ones reviewed before. Takes the Write role. Needs the g1t plan on a private repository.\n\nThe pull request's one dependency review comment is changed in place; nothing new is posted when the review says the same.",
+        "x-operation": "rerun_dependency_review",
+        "x-mcp-tool": "security",
+        "x-mcp-action": "rerun_dependency_review",
+        "x-scope": "security:write",
+        "security": [
+          {
+            "token": [
+              "security:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The pull request's number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "base": "4b1d7c0e9a2f6e3d8c5b0a7f4e1d2c3b4a5f6e7d",
+                  "head": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "changes": [
+                    {
+                      "change_type": "added",
+                      "manifest": "package-lock.json",
+                      "ecosystem": "npm",
+                      "name": "lodash",
+                      "version": "4.17.21",
+                      "relationship": "direct",
+                      "development": false,
+                      "license": "MIT",
+                      "purl": "pkg:npm/lodash@4.17.21",
+                      "vulnerabilities": [],
+                      "denied_license": false,
+                      "failing": false
+                    },
+                    {
+                      "change_type": "removed",
+                      "manifest": "package-lock.json",
+                      "ecosystem": "npm",
+                      "name": "lodash",
+                      "version": "4.17.20",
+                      "relationship": "direct",
+                      "development": false,
+                      "license": "MIT",
+                      "purl": "pkg:npm/lodash@4.17.20",
+                      "vulnerabilities": [],
+                      "denied_license": false,
+                      "failing": false
+                    }
+                  ],
+                  "passed": true,
+                  "headline": "2 dependency changes, none vulnerable",
+                  "fail_on": "high",
+                  "deny_licenses": []
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "number": 12
         }
       }
     },

@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::graph::Dependency;
 use crate::osv::Severity;
@@ -111,6 +112,21 @@ pub struct Reviewed {
     pub denied_license: bool,
 }
 
+/// How the pull request comment starts: g1t finds its own comment again
+/// by it, to change it rather than add another.
+pub const HEADING: &str = "### Dependency review";
+
+/// The comment on a pull request that changes no dependencies.
+pub fn unchanged_summary() -> String {
+    format!("{HEADING}\n\nThis pull request changes no dependencies.\n")
+}
+
+/// A short, stable key for `text`: what a review was of, so that the same
+/// change is not reviewed twice.
+pub fn key(text: &str) -> String {
+    Sha256::digest(text.as_bytes())[..16].iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 /// The whole review.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Verdict {
@@ -180,11 +196,10 @@ impl Verdict {
     /// The pull request comment: what changed, per lockfile, and why the
     /// check failed if it did. Markdown.
     pub fn summary(&self, policy: &Policy) -> String {
-        let mut text = String::from("### Dependency review\n\n");
         if self.added.is_empty() && self.removed.is_empty() {
-            text.push_str("This pull request changes no dependencies.\n");
-            return text;
+            return unchanged_summary();
         }
+        let mut text = format!("{HEADING}\n\n");
         text.push_str(if self.passed { "**Passed.** " } else { "**Failed.** " });
         text.push_str(&self.headline());
         text.push_str(".\n\n");
@@ -293,6 +308,18 @@ mod tests {
             .collect();
         assert_eq!(changes, ["Added chalk@5.0.0", "Removed left-pad@1.3.0", "Added lodash@4.17.20", "Removed lodash@4.17.21"]);
         assert!(diff(&head, &head).is_empty());
+    }
+
+    #[test]
+    fn every_summary_starts_with_the_heading_g1t_finds_it_by() {
+        let policy = Policy { fail_on: Some(Severity::High), deny_licenses: Vec::new() };
+        let none = judge(&[], &BTreeMap::new(), &policy);
+        assert_eq!(none.summary(&policy), unchanged_summary());
+        let some = judge(&diff(&[], &[dep("chalk", "5.0.0", None)]), &BTreeMap::new(), &policy);
+        assert!(unchanged_summary().starts_with(HEADING) && some.summary(&policy).starts_with(&format!("{HEADING}\n\n**Passed.**")));
+        assert_eq!(key("a"), key("a"));
+        assert_ne!(key("a"), key("b"));
+        assert_eq!(key("a").len(), 32);
     }
 
     #[test]

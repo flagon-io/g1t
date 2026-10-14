@@ -6449,6 +6449,20 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[],
     },
     Operation {
+        id: "rerun_dependency_review",
+        method: "POST",
+        path: "/repos/{owner}/{name}/pulls/{number}/dependency-review/rerun",
+        tag: "Supply chain",
+        summary: "Re-run dependency review",
+        scope: Some("security:write"),
+        params: &[
+            Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
         id: "update_vulnerability_alert",
         method: "PATCH",
         path: "/repos/{owner}/{name}/vulnerability-alerts/{id}",
