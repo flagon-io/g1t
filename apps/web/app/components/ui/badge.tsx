@@ -5,7 +5,8 @@ import { cn } from "../../lib/cn";
 
 // shadcn/ui's badge, styled with g1t's tokens: a small outlined label whose
 // tone says how much it matters. `sm` (the default) is the 11px label beside
-// a title or in a table; `md` the 12px pill in a list of properties.
+// a title or in a table; `md` the 12px pill in a list of properties. Shape
+// `mark` is a round 24px cap for a step's number or tick.
 
 export const badgeVariants = cva("inline-flex shrink-0 items-center gap-1 border whitespace-nowrap", {
   variants: {
@@ -25,6 +26,8 @@ export const badgeVariants = cva("inline-flex shrink-0 items-center gap-1 border
     shape: {
       pill: "rounded-full",
       tag: "rounded",
+      // A step's number or tick: a 24px round mark with one glyph centred.
+      mark: "size-6 justify-center rounded-full p-0",
     },
   },
   defaultVariants: { tone: "neutral", size: "sm", shape: "pill" },

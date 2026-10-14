@@ -487,7 +487,9 @@ pub const NEVER: &[&str] = &[
     "set_repo_subscription",
     "delete_repo_subscription",
     "list_watched_repos",
-    // Pins are a person's own, as the inbox is.
+    // Pins are a person's own, as the inbox is, and so is Getting started.
+    "get_onboarding",
+    "update_onboarding",
     "list_pinned_projects",
     "pin_project",
     "unpin_project",

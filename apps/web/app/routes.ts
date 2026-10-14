@@ -116,6 +116,9 @@ export default [
     route("-/insights", "routes/workspace/insights.tsx"),
     // Pinning its projects, for the person signed in.
     route("-/pins", "routes/workspace/pins.ts"),
+    // Getting started, for its owners: the guide's state, and dismissing
+    // it or skipping a step (components/onboarding.tsx).
+    route("-/onboarding", "routes/workspace/onboarding.ts"),
     // Code's Overview: Mission control's code panels, for this workspace.
     route("-/overview", "routes/workspace/code-overview.tsx"),
     // The workspace itself, at a glance: members, plan and spend.

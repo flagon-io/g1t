@@ -53,6 +53,8 @@ import {
   repoRefs,
 } from "../../lib/home.server";
 import { readCookie } from "../../lib/mission";
+import { loadOnboarding } from "../../lib/onboarding.server";
+import { OnboardingOnPage } from "../../components/onboarding";
 import { loadMissionControl } from "../../lib/mission-control.server";
 import { page } from "../../lib/meta";
 import { inbox } from "../../lib/services.server";
@@ -86,7 +88,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const code = hasCodeAccess(membership);
   const now = Date.now();
   const tz = readCookie(request.headers.get("cookie"), "g1t_tz");
-  const windowKey = parseWindow(new URL(request.url).searchParams.get("window"));
+  const url = new URL(request.url);
+  const windowKey = parseWindow(url.searchParams.get("window"));
+  // Getting started, for an owner: streamed, and opened by itself until dismissed (`?setup` opens it anyway).
+  const setupAsked = url.searchParams.has("setup");
+  const onboarding = loadOnboarding(viewer, slug, !setupAsked).catch(() => null);
 
   // What needs you has no window: read at once, beside the last visit.
   const missionP = code ? loadMissionControl(viewer, request, slug).then(({ value }) => value).catch(() => null) : Promise.resolve(null);
@@ -154,6 +160,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     /** The sentence under the heading needs the digest, what landed and what waits. */
     head: Promise.all([digest, happened, waiting]),
     spend,
+    onboarding,
+    setupAsked,
   };
 }
 
@@ -197,6 +205,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   useMarkSeen(slug, now);
   return (
     <div className="mx-auto w-full max-w-260 space-y-5 px-4 py-5 md:px-10 md:py-8">
+      <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-[1.75rem] leading-tight font-semibold tracking-tight">{span.key === "last" && span.note == null ? "Welcome back" : "Home"}</h1>

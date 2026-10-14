@@ -6,6 +6,8 @@ import type { Route } from "./+types/workspace-overview";
 
 import { UsageCard } from "../../components/usage-card";
 import { identity } from "../../lib/services.server";
+import { loadOnboarding } from "../../lib/onboarding.server";
+import { OnboardingOnPage } from "../../components/onboarding";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { usageFor } from "../../lib/workspace-usage.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
@@ -26,11 +28,14 @@ const MAX_FACES = 10;
  * projects, and the month's usage against its plan. Each part is left out
  * when its service does not answer.
  */
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const slug = params.owner.toLowerCase();
   const role = roleIn(viewer, slug);
   if (!role) throw data(null, { status: 404 });
+  // Getting started, for an owner, as on Home: streamed beside the rest.
+  const setupAsked = new URL(request.url).searchParams.has("setup");
+  const onboarding = loadOnboarding(viewer, slug, !setupAsked).catch(() => null);
   const [members, usage, projects] = await Promise.all([
     identity.listMembers(slug, viewer).catch(() => null),
     usageFor(slug, viewer),
@@ -39,6 +44,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     slug,
     role,
+    onboarding,
+    setupAsked,
     members: members?.ok ? members.value : null,
     usage,
     projects: projects?.ok ? projects.value.length : null,
@@ -64,6 +71,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
   const { slug, role, members, usage, projects } = loaderData;
   return (
     <div className="space-y-8">
+      <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Tile icon={<Users size={12} />} label="Members" value={members ? String(members.length) : "—"} to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
         <Tile icon={<Box size={12} />} label="Projects" value={projects == null ? "—" : String(projects)} to={`/${slug}/-/projects`} action="Open Code" />

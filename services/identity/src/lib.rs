@@ -21,6 +21,7 @@ mod github;
 mod invites;
 mod members;
 mod oauth;
+mod onboarding;
 mod paid;
 mod people;
 mod privacy;
@@ -1021,6 +1022,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         // Each person's dock pins, per workspace; see dock.rs.
         "dock_pins" => reply(&identity.dock_pins(args(body)?).await?),
         "set_dock_pins" => reply(&identity.set_dock_pins(args(body)?).await?),
+        // Each person's own state of a workspace's Getting started; see onboarding.rs.
+        "onboarding" => reply(&identity.onboarding(args(body)?).await?),
+        "set_onboarding" => reply(&identity.set_onboarding(args(body)?).await?),
         // Each person's chat sounds and desktop notifications; see sounds.rs.
         "sound_settings" => reply(&identity.sound_settings(args(body)?).await?),
         "set_sound_settings" => reply(&identity.set_sound_settings(args(body)?).await?),

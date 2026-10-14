@@ -24,6 +24,11 @@ Only workspace owners add, test, change and remove providers, and choose
 what Ask uses. Members see which providers there are and what Ask answers
 with.
 
+Adding a provider is the first step of
+[Getting started](/guides/workspaces/#getting-started), the setup guide a
+new workspace's owners see on Home; owners can add one and choose Ask's
+model right there. **Getting started** on this page opens it again.
+
 ## Choose where models come from
 
 **Add a provider** lists them in three groups. A workspace can have any

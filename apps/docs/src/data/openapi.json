@@ -84,6 +84,14 @@
       ]
     },
     {
+      "name": "Getting started",
+      "description": "Each person's own state of a workspace's setup guide, which opens on its Home for its owners until they finish or dismiss it: whether they dismissed it, and the steps they skipped. Whether a step is done is read from the workspace itself. People only, each their own.",
+      "x-tools": [
+        "get_onboarding",
+        "update_onboarding"
+      ]
+    },
+    {
       "name": "Personal access tokens",
       "description": "A workspace's rules for its members' personal access tokens: whether tokens made for all of a member's workspaces reach it, whether tokens may be made for it alone and wait for an owner's approval, and how long a token may last; the tokens that reach it, approving or denying the ones that wait, and revoking one there. Owners only, as people.",
       "x-tools": [
@@ -2366,7 +2374,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The invite's id, such as inv_01k…"
+            "description": "The invite's id, such as inv_01kâ€¦"
           }
         ],
         "responses": {
@@ -2476,7 +2484,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The invite's id, such as inv_01k…"
+            "description": "The invite's id, such as inv_01kâ€¦"
           }
         ],
         "responses": {
@@ -3101,6 +3109,235 @@
               }
             }
           }
+        }
+      }
+    },
+    "/workspaces/{workspace}/onboarding": {
+      "get": {
+        "operationId": "get_onboarding",
+        "tags": [
+          "Getting started"
+        ],
+        "summary": "Get your Getting started in a workspace",
+        "description": "Your own state of a workspace's Getting started, the setup guide that opens on its Home for its owners: dismissed_at (when you dismissed it, so it no longer opens by itself; null while it does), skipped (the steps you chose to skip, in the guide's order: ai, ask, code, harness, people, runner) and updated_at (null when you never changed it). Whether a step is done is not here: it is the workspace's own state, such as its AI providers, repositories, members and runners. Members only, as people; each person's own.\n\nYour own: each person has their own Getting started in each workspace they belong to. A person who never dismissed it gets `dismissed_at` null, and the guide opens by itself on the workspace's Home while they own it and steps are left. Whether a step is done is not kept here but read from the workspace: its AI providers (`GET /workspaces/{workspace}/ai/providers`), repositories, members and runners. `404` for anyone who is not a member. See [Getting started](/guides/workspaces/#getting-started).",
+        "x-operation": "get_onboarding",
+        "x-mcp-tool": "",
+        "x-mcp-action": "",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "dismissed_at": null,
+                  "skipped": [],
+                  "updated_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "patch": {
+        "operationId": "update_onboarding",
+        "tags": [
+          "Getting started"
+        ],
+        "summary": "Dismiss or skip steps of Getting started",
+        "description": "Change your own Getting started in a workspace; fields left out stay as they are. dismissed true dismisses it, so it no longer opens by itself on the workspace's Home (dismissing it again keeps the first time); false makes it open by itself again. skipped replaces the steps you skipped: any of ai, ask, code, harness, people and runner. Opening the guide from Settings or the AI page changes nothing here. Members only, as people; each person's own.\n\nDismissing it again keeps the first `dismissed_at`; `\"dismissed\": false` makes it open by itself again. A step that is not one of `ai`, `ask`, `code`, `harness`, `people` and `runner` is refused with `422`. Opening the guide again from the workspace's settings or its AI page changes nothing here.",
+        "x-operation": "update_onboarding",
+        "x-mcp-tool": "",
+        "x-mcp-action": "",
+        "x-scope": "account:write",
+        "security": [
+          {
+            "token": [
+              "account:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "dismissed_at": "2026-10-14T21:05:00.000Z",
+                  "skipped": [
+                    "people",
+                    "runner"
+                  ],
+                  "updated_at": "2026-10-14T21:05:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dismissed": {
+                    "type": "boolean",
+                    "description": "True dismisses it, so it no longer opens by itself; false makes it open by itself again."
+                  },
+                  "skipped": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "ai",
+                        "ask",
+                        "code",
+                        "harness",
+                        "people",
+                        "runner"
+                      ]
+                    },
+                    "description": "The steps you skip, replacing those you skipped before. An empty list skips none."
+                  }
+                }
+              },
+              "example": {
+                "dismissed": true,
+                "skipped": [
+                  "people",
+                  "runner"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },
@@ -19090,7 +19327,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The alert's id, from list_security_alerts: sec_… for a secret, vul_… for a dependency."
+            "description": "The alert's id, from list_security_alerts: sec_â€¦ for a secret, vul_â€¦ for a dependency."
           }
         ],
         "responses": {
@@ -19272,7 +19509,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The alert's id, from list_security_alerts: sec_… for a secret, vul_… for a dependency."
+            "description": "The alert's id, from list_security_alerts: sec_â€¦ for a secret, vul_â€¦ for a dependency."
           }
         ],
         "responses": {
@@ -49239,7 +49476,7 @@
                       },
                       "console_workspace": {
                         "type": "string",
-                        "description": "For anthropic: the Console workspace the key belongs to (wrkspc_…), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace."
+                        "description": "For anthropic: the Console workspace the key belongs to (wrkspc_â€¦), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace."
                       }
                     }
                   },
@@ -49420,7 +49657,7 @@
                       },
                       "console_workspace": {
                         "type": "string",
-                        "description": "For anthropic: the Console workspace the key belongs to (wrkspc_…), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace."
+                        "description": "For anthropic: the Console workspace the key belongs to (wrkspc_â€¦), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace."
                       }
                     }
                   },
@@ -50375,7 +50612,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "push, pull_request, schedule, workflow_dispatch…"
+            "description": "push, pull_request, schedule, workflow_dispatchâ€¦"
           },
           {
             "name": "status",
@@ -51013,7 +51250,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "push, pull_request, schedule, workflow_dispatch…"
+            "description": "push, pull_request, schedule, workflow_dispatchâ€¦"
           },
           {
             "name": "pull",
@@ -62789,7 +63026,7 @@
           "Decisions and why"
         ],
         "summary": "Record a decision",
-        "description": "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the issue the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"…\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge.\n\nKept as `claimed`. g1t records `integration_failure`, `integration_passed`, `approval` and `merge` itself. Publishes `decision.recorded`. See [decision records](/guides/why-blame/#decision-records).",
+        "description": "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the issue the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"â€¦\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge.\n\nKept as `claimed`. g1t records `integration_failure`, `integration_passed`, `approval` and `merge` itself. Publishes `decision.recorded`. See [decision records](/guides/why-blame/#decision-records).",
         "x-operation": "record_decision",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "record_decision",

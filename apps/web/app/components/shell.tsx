@@ -58,6 +58,7 @@ import {
   pagePath,
   workspaceSettingsPage,
 } from "../lib/workspace-nav";
+import { setupPath } from "../lib/onboarding";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
 import { Rail, ShortcutsDialog, WorkspaceSwitcher, sidebarKeyLabel } from "./rail";
@@ -1825,6 +1826,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: "Members", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members`, icon: <Users size={15} /> },
       ...(membership.role === "owner"
         ? [
+            { label: "Getting started", hint: `${membership.slug} · Set up the workspace`, to: setupPath(membership.slug), icon: <Rocket size={15} /> },
             { label: "Invitations", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members/invitations`, icon: <Mail size={15} /> },
             { label: "Permissions", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/permissions`, icon: <ShieldCheck size={15} /> },
           ]

@@ -1,6 +1,6 @@
 ---
 title: Workspaces
-description: Workspaces, their names and icons, renaming and deleting one, members, owners and the roles that add to a member, inviting people, Workspace mode's settings pages, requiring two-factor authentication, and access tokens that belong to a workspace.
+description: Workspaces, their names and icons, renaming and deleting one, members, owners and the roles that add to a member, inviting people, Workspace mode's settings pages, requiring two-factor authentication, access tokens that belong to a workspace, and Getting started, the setup guide for its owners.
 ---
 
 A workspace owns repositories and is the first part of their address:
@@ -53,6 +53,58 @@ thing wherever it appears. Your username is reserved for you: only you can
 create a workspace with that name, and nobody can register a username that
 is already a workspace. The names `g1t` and `g1t-agent` belong to g1t,
 and nobody can register them.
+
+## Getting started
+
+**Getting started** is a setup guide for a workspace's owners. It opens
+by itself on the workspace's [Home](/guides/home/) and on its
+**Workspace** page, for each owner, until that owner finishes or closes
+it. A workspace made before the guide existed opens it once for each of
+its owners too.
+
+It has six steps. Each is ticked from what the workspace has, never from
+what you clicked, so a step you did elsewhere is ticked here as well:
+
+| Step | Done when |
+| --- | --- |
+| **Add an AI provider** | The workspace has an [AI provider](/guides/ai/) whose key passed its last check. You can add one in the guide: choose a provider, paste its key, and **Add and check the key** saves it and checks it at once, as the AI page does. **Test** checks one again. |
+| **Choose Ask's model** | [Ask g1t](/guides/ask/) answers with one of the workspace's providers, and has no problem with it. Choose the provider and a model, or Auto, and **Use for Ask**. |
+| **Bring your code** | The workspace has a project, or [GitHub is connected](/guides/github/). **New project** starts one; **Connect GitHub** installs g1t's GitHub App in one step, then you choose the repositories to bring across. |
+| **Connect your harness** | You signed in the [g1t CLI](/guides/cli/) (`g1t auth login`), or signed in an app with g1t, as the [Claude Code plugin](/guides/claude-code-plugin/) does from `/mcp`. The guide shows the install commands for macOS and Linux and for Windows, ready to copy. |
+| **Invite your team** | The workspace has another member, or an invitation waiting for an answer. Workspace invites come with the plan: on a free workspace the step says so, links to the plan, and offers [inviting a friend to g1t](/guides/authentication/#invite-a-friend) instead. |
+| **Add a runner** | The workspace has a [self-hosted runner](/guides/self-hosted-runners/), such as [the desktop app](/guides/desktop/). |
+
+Every step but the AI provider can be skipped with **Skip for now**; a
+skipped step counts as settled, and **Don't skip** takes it back. When
+every step is done or skipped, the guide says **All set**, and **Finish**
+puts it away.
+
+Closing the guide puts it away too: it stops opening by itself for you,
+in this workspace, on every device. Nothing else changes. Open it again
+any time from **Settings → General** (**Getting started**), from the
+workspace's **AI** page, or by typing *Getting started* in the command
+palette, which opens Home with `?setup=1`. Each owner has their own:
+closing it does not close it for anyone else.
+
+Members who are not owners do not see it.
+
+From the API, `GET /workspaces/{workspace}/onboarding` says whether you
+dismissed it (`dismissed_at`) and which steps you skipped (`skipped`), and
+`PATCH /workspaces/{workspace}/onboarding` changes them: `dismissed`
+true puts it away, false makes it open by itself again, and `skipped`
+replaces the skipped steps (any of `ai`, `ask`, `code`, `harness`,
+`people`, `runner`). Whether a step is done is not stored: it is read from
+the workspace each time.
+
+```sh
+curl -X PATCH https://api.g1t.sh/workspaces/acme/onboarding \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dismissed": true}'
+```
+
+Reading it takes a token with `workspace:read`; changing it, which
+changes only your own, takes `account:write`.
 
 ## Display name, slug and icon
 
