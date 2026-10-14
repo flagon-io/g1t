@@ -565,14 +565,18 @@ mod tests {
     #[test]
     fn a_long_wait_says_so_in_the_log_as_it_goes() {
         let mut log = log(&[]);
+        let started = Instant::now();
         let answer = log.waiting(Duration::from_millis(50), |_| {
             std::thread::sleep(Duration::from_millis(180));
             42
         }, |seconds| format!("still waiting ({seconds}s)"));
+        // A busy machine sleeps longer than asked: one line per 50 ms the
+        // wait really took, never more.
+        let took = started.elapsed().as_millis() as usize;
         assert_eq!(answer, 42);
         let lines = log.buffered();
         let told = lines.lines().filter(|line| line.starts_with("still waiting (")).count();
-        assert!((2..=4).contains(&told), "a line each time the wait goes on: {lines:?}");
+        assert!(told >= 2 && told <= took / 50, "a line each time the wait goes on ({took} ms): {lines:?}");
         // A wait that ends at once writes nothing.
         let mut quick = super::tests::log(&[]);
         assert_eq!(quick.waiting(Duration::from_secs(5), |api| api.job, |_| "never".into()), "job_1");
