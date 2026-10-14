@@ -121,7 +121,7 @@ impl Security {
     /// What is open of one type, by severity. A secret in the history that
     /// looks real, or stopped at a push and not yet decided, is critical; a
     /// likely test value is low.
-    async fn open_counts(&self, repo: &RepoRow, alert_type: AlertType) -> Result<SeverityCounts> {
+    pub(crate) async fn open_counts(&self, repo: &RepoRow, alert_type: AlertType) -> Result<SeverityCounts> {
         Ok(match alert_type {
             AlertType::SecretScanning => {
                 let secrets = self.store.secret_counts(&repo.repo_id).await?;

@@ -229,6 +229,16 @@ impl Security {
         }
     }
 
+    /// The latest completed dependency scan, without starting work on the
+    /// push response path. Uses the same access check as the Security page.
+    async fn push_summary(&self, a: OverviewArgs) -> Result<Outcome<SeverityCounts>> {
+        let repo = match self.member_repo(&a.repo, &a.viewer, SEE_FINDINGS).await? {
+            Outcome::Ok(repo) => repo,
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        Ok(Outcome::Ok(self.open_counts(&repo, g1t_contracts::security_suite::AlertType::Vulnerability).await?))
+    }
+
     async fn overview(&self, a: OverviewArgs) -> Result<Outcome<SecurityOverview>> {
         let mut repo = match self.member_repo(&a.repo, &a.viewer, SEE_FINDINGS).await? {
             Outcome::Ok(repo) => repo,
@@ -708,6 +718,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let body: serde_json::Value = request.json().await?;
     match method.as_str() {
         "overview" => reply(&security.overview(args(body)?).await?),
+        "push_summary" => reply(&security.push_summary(args(body)?).await?),
         "dismiss" => reply(&security.dismiss(args(body)?).await?),
         "reopen" => reply(&security.reopen(args(body)?).await?),
         "rescan" => reply(&security.rescan(args(body)?).await?),
