@@ -17,6 +17,8 @@ test("every AI provider is shown, once, in a group", () => {
     const look = AI_PROVIDER_LOOKS[provider];
     assert.ok(look.blurb.length > 0, provider);
     if (look.keyUrl) assert.ok(look.keyUrl.startsWith("https://"), provider);
+    // Every provider that takes a key says where to get one, and how.
+    assert.equal(Boolean(look.keyUrl && look.keyHow), !isEndpoint(provider), provider);
     // Only the endpoints show an icon in place of initials.
     assert.equal(look.mark === "", isEndpoint(provider), provider);
   }

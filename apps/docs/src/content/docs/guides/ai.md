@@ -52,6 +52,28 @@ key is sent as `x-api-key` (Anthropic's header) or
 You can name the model your team uses on each provider. It is optional,
 except for Azure OpenAI, where it is the deployment.
 
+### Get a key
+
+Each provider's form links to the page where its keys are made, and says
+how. Most show a key only once, so copy it straight into g1t. The API is
+billed apart from a chat subscription: a Claude.ai or ChatGPT plan does
+not include it.
+
+| Provider | Where | How |
+| --- | --- | --- |
+| Anthropic | [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys) | Sign in to the Claude Console and choose **Create key**. Add credits under **Billing**. |
+| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Choose **Create new secret key**. Add credit under **Settings → Billing**. |
+| Google Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Sign in with a Google account and choose **Create API key**. The free tier needs no card. |
+| xAI | [console.x.ai](https://console.x.ai) | Open **API Keys** and choose **Create API key**. Add credits under **Billing**. |
+| Mistral | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) | Choose **Create new key**. Pick a plan under **Billing**; the free Experiment plan works. |
+| DeepSeek | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) | Choose **Create new API key**. Add a balance under **Top up**. |
+| Azure OpenAI | [portal.azure.com](https://portal.azure.com) | Open your Azure OpenAI resource, then **Resource Management → Keys and Endpoint**: copy **KEY 1** and the endpoint. Deployments are listed in the Azure AI Foundry portal. |
+| OpenRouter | [openrouter.ai/keys](https://openrouter.ai/keys) | Choose **Create Key**. Paid models need credits under **Credits**. |
+| Groq | [console.groq.com/keys](https://console.groq.com/keys) | Choose **Create API Key**. The free tier needs no card. |
+| Together AI | [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys) | Copy the key shown there, or create one. |
+| Fireworks AI | [fireworks.ai/account/api-keys](https://fireworks.ai/account/api-keys) | Choose **Create API Key**. |
+| Cerebras | [cloud.cerebras.ai](https://cloud.cerebras.ai) | Open **API Keys** and choose **Generate API Key**. |
+
 ### Anthropic Console workspace
 
 Sessions on issues run on the Anthropic provider's account, and the

@@ -35,7 +35,7 @@ export function ModelProviderFields({ provider }: { provider: AiProvider }): Rea
         <Field label="Endpoint" hint="Your resource's endpoint, from the Azure portal: Keys and Endpoint.">
           <Input name="baseUrl" type="url" required placeholder="https://acme.openai.azure.com" />
         </Field>
-        <Field label="Key" hint="KEY 1 or KEY 2 of the resource. Sealed when saved: nobody sees it again.">
+        <Field label="Key" hint={<KeyHelp provider={provider} />}>
           <Input name="secret" type="password" required autoComplete="new-password" />
         </Field>
         <Field label="Deployment" hint="The name of the model deployment. Add one provider for each deployment your team uses.">
@@ -80,16 +80,33 @@ export function ModelProviderFields({ provider }: { provider: AiProvider }): Rea
   }
   return (
     <>
-      <Field
-        label="API key"
-        hint={`${look.keyUrl ? `Get one at ${new URL(look.keyUrl).host}. ` : ""}Sealed when saved: nobody sees it again.`}
-      >
+      <Field label="API key" hint={<KeyHelp provider={provider} />}>
         <Input name="secret" type="password" required placeholder={look.keyPlaceholder} autoComplete="new-password" />
       </Field>
       <Field label="Model" hint="Optional. The model your team uses on it. g1t lists the key's models when it checks the key.">
         <Input name="model" placeholder={look.model} />
       </Field>
       {provider === "anthropic" && <ConsoleWorkspaceField />}
+    </>
+  );
+}
+
+/** Where to get a provider's key and how, as the hint under its key. */
+function KeyHelp({ provider }: { provider: AiProvider }) {
+  const { keyUrl, keyHow } = AI_PROVIDER_LOOKS[provider];
+  return (
+    <>
+      {keyUrl && (
+        <>
+          Get a key at{" "}
+          <a href={keyUrl} target="_blank" rel="noreferrer" className="text-accent underline-offset-2 hover:underline">
+            {new URL(keyUrl).host}
+          </a>
+          .{" "}
+        </>
+      )}
+      {keyHow && `${keyHow} `}
+      Sealed when saved: nobody sees it again.
     </>
   );
 }
