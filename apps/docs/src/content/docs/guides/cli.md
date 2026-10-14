@@ -38,7 +38,32 @@ The script picks the build for your system, checks it against the
 release's `SHA256SUMS`, and puts `g1t` in `~/.local/bin` (Windows:
 `%LOCALAPPDATA%\g1t\bin`, which it adds to your `PATH`). Set
 `G1T_INSTALL_DIR` to put it elsewhere, or `G1T_VERSION` to install a
-version other than the latest. Run it again to update.
+version other than the latest.
+
+### Upgrade
+
+From 0.3.4 on, `g1t upgrade` updates g1t to the newest release:
+
+```sh
+g1t upgrade          # download and install the newest release
+g1t upgrade --check  # only say whether there is one
+```
+
+It reads the newest release's manifest, `latest.json`, and checks its
+signature (`latest.json.sig`) against g1t's release key, which is built
+into every release. It then downloads the build for your system, checks
+its SHA-256 against the manifest, and puts it where the running `g1t` is.
+If anything does not check out, nothing changes. Releases come from
+`https://g1t.sh/downloads/cli`, or from `G1T_DOWNLOAD_URL` if you set it.
+
+In a terminal, g1t looks for a newer release about once a day, in the
+background, and says so after a command when there is one. It never looks
+in CI or when its output is not a terminal. Set `G1T_NO_UPDATE_NOTIFIER=1`
+to turn it off.
+
+A g1t built from source has no release key and cannot upgrade itself.
+Neither can versions before 0.3.4. Update those by running the install
+script again.
 
 ### Without the script
 

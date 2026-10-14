@@ -250,7 +250,8 @@ that takes every command the hooks run), the hooks record nothing and
 Claude Code says so once. The plugin never installs anything itself.
 Install the CLI or run `g1t auth login`, and the next session is recorded.
 
-To update the CLI, run its installer again:
+To update the CLI, run `g1t upgrade` (0.3.4 and later). For an older CLI,
+run its installer again:
 
 ```sh
 curl -fsSL https://g1t.sh/install | sh
@@ -259,6 +260,11 @@ curl -fsSL https://g1t.sh/install | sh
 On Windows, `irm https://g1t.sh/install.ps1 | iex`. `g1t --version` says
 which you have. A CLI that refuses a command the hooks send is taken as
 out of date, and said the same way.
+
+A CLI older than 0.3.3 records sessions but cannot acknowledge
+[coordination updates](#working-on-g1t). The hooks then show
+pending updates only when they change, not before every prompt, and ask
+Claude to tell you once to update the CLI.
 
 The hooks run on Node. Without Node 18 or later they record nothing:
 with an older Node, Claude Code says so once; with no `node` on your

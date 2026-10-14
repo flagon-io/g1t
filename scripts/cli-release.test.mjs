@@ -16,6 +16,9 @@ test("a workflow's build uses the job's Cargo registry, which the crates cache r
   assert.equal(job.at(-1), BUILDER);
   // Elsewhere a Docker volume keeps it.
   assert.ok(builderArgs({ root: "/x", env: {}, home: "/h" }).includes("g1t-cargo-registry:/usr/local/cargo/registry"));
+  // The release key's public half goes into the build, for `g1t upgrade`; without it, nothing is passed.
+  assert.ok(builderArgs({ root: "/x", env: { G1T_RUNNER_RELEASE_KEY: "pub=" }, home: "/h" }).includes("G1T_RUNNER_RELEASE_KEY=pub="));
+  assert.ok(!builderArgs({ root: "/x", env: {}, home: "/h" }).some((arg) => arg.includes("RELEASE_KEY")));
   // What the container wrote as root goes back to the user, even when the build fails.
   const script = builderScript("x86_64-unknown-linux-musl", "1000:1000");
   assert.match(script, /^trap 'chown -R 1000:1000 \/src\/target\/zig \/usr\/local\/cargo\/registry' EXIT; set -e;/);
