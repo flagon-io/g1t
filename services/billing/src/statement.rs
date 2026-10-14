@@ -55,7 +55,7 @@ pub(crate) const RUNNER_MINUTES: &str = "Runner minutes, ";
 /// first (the plan's included usage, the trial, a pool, g1t), and what a
 /// discount took off. `line_price`, for a whole column. The one measure of
 /// usage every page shows.
-pub(crate) const PRICE_SQL: &str = "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
+pub(crate) const PRICE_SQL: &str = "(-amount_micros + COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0)
       + COALESCE(given_micros, 0) + COALESCE(discount_micros, 0))";
 
 /// Whether a usage line is an agent run's own line (`run_…`, from when g1t
@@ -174,15 +174,16 @@ pub(crate) fn git_and_storage(operations: u64, private_bytes: i64) -> Option<Str
 
 /// What paid for usage before it was charged, as the statement names it,
 /// with the ledger column that holds it.
-pub(crate) const COVERED: [(&str, &str, &str); 4] = [
+pub(crate) const COVERED: [(&str, &str, &str); 5] = [
     ("included", "credit_micros", "Paid by your plan's included usage"),
+    ("complimentary", "gift_micros", "Paid by your complimentary allowance"),
     ("trial", "trial_micros", "Paid by your trial credit"),
     ("oss_pool", "oss_micros", "Paid by g1t's open-source pool"),
     ("given", "given_micros", "Covered by g1t"),
 ];
 
 /// The statement's lines for what paid: each source with anything to show.
-pub(crate) fn covered_lines(sums: [i64; 4]) -> Vec<Covered> {
+pub(crate) fn covered_lines(sums: [i64; 5]) -> Vec<Covered> {
     COVERED
         .iter()
         .zip(sums)
@@ -210,6 +211,8 @@ struct Row {
     amount: Option<i64>,
     cost: Option<i64>,
     credit: Option<i64>,
+    #[serde(default)]
+    gift: Option<i64>,
     trial: Option<i64>,
     oss: Option<i64>,
     given: Option<i64>,
@@ -267,7 +270,7 @@ impl Billing {
             .prepare(format!(
                 "SELECT {group_sql} AS group_key, {KIND_SQL} AS kind, COUNT(*) AS count,
                         SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
-                        SUM(credit_micros) AS credit, SUM(trial_micros) AS trial, SUM(oss_micros) AS oss,
+                        SUM(credit_micros) AS credit, SUM(gift_micros) AS gift, SUM(trial_micros) AS trial, SUM(oss_micros) AS oss,
                         SUM(given_micros) AS given, SUM(discount_micros) AS discount,
                         SUM(CASE WHEN task = 'sandbox' AND machine IS NOT NULL THEN quantity END) AS minutes
                  FROM ledger WHERE workspace = ?1 AND created_at >= ?2 AND created_at < ?3
@@ -279,11 +282,11 @@ impl Billing {
             .results::<Row>()?;
 
         let mut groups: Vec<StatementGroup> = vec![];
-        let mut covered = [0i64; 4];
+        let mut covered = [0i64; 5];
         for row in rows {
             let key = row.group_key.unwrap_or_default();
             let amount = row.amount.unwrap_or(0);
-            let paid_for = [row.credit.unwrap_or(0), row.trial.unwrap_or(0), row.oss.unwrap_or(0), row.given.unwrap_or(0)];
+            let paid_for = [row.credit.unwrap_or(0), row.gift.unwrap_or(0), row.trial.unwrap_or(0), row.oss.unwrap_or(0), row.given.unwrap_or(0)];
             for (total, micros) in covered.iter_mut().zip(paid_for) {
                 *total += micros;
             }
@@ -643,13 +646,15 @@ mod tests {
 
     #[test]
     fn the_statement_says_what_paid_before_the_workspace_did() {
-        let lines = covered_lines([0, 250_000, 120_000, 0]);
+        let lines = covered_lines([0, 0, 250_000, 120_000, 0]);
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].label, "Paid by your trial credit");
         assert_eq!(lines[1], Covered { source: "oss_pool".into(), label: "Paid by g1t's open-source pool".into(), micros: 120_000 });
-        assert!(covered_lines([0, 0, 0, 0]).is_empty());
-        let lines = covered_lines([4_000_000, 0, 0, 30_000]);
+        assert!(covered_lines([0, 0, 0, 0, 0]).is_empty());
+        let lines = covered_lines([4_000_000, 0, 0, 0, 30_000]);
         assert_eq!(lines[0].label, "Paid by your plan's included usage");
         assert_eq!(lines[1].label, "Covered by g1t");
+        let lines = covered_lines([0, 7_000_000, 0, 0, 0]);
+        assert_eq!(lines[0].label, "Paid by your complimentary allowance");
     }
 }

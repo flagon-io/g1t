@@ -43,7 +43,14 @@ pub(crate) const STATEMENTS: &[&str] = &[
      SELECT ?1, enabled, threshold_micros, target_micros, monthly_max_micros, updated_by, updated_at, failed_at, error FROM ai_reload WHERE workspace = ?2",
     "DELETE FROM ai_reload WHERE workspace = ?2",
     "UPDATE workspace_invoices SET workspace = ?1 WHERE workspace = ?2",
+    // Keep the immutable Stripe payload under its original slug; only
+    // local ownership moves. Conflicting attempts fail the rename safely.
+    "UPDATE invoice_attempts SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE sales_notes SET workspace = ?1 WHERE workspace = ?2",
+    // An enrollment and its periods follow the workspace; the Stripe
+    // subscription's metadata keeps the slug it was made under.
+    "UPDATE OR IGNORE complimentary SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE complimentary_periods SET workspace = ?1 WHERE workspace = ?2",
     // Repositories are named `<slug>/<name>`. Compared exactly rather than
     // with LIKE, so nothing in a slug is read as a wildcard.
     "UPDATE ledger SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",

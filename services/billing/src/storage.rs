@@ -89,12 +89,46 @@ pub(crate) const SET_PENDING: &str = "INSERT INTO pending_usage (workspace, sour
        charge_micros = ?4, cost_micros = ?5, updated_at = ?6, detail = COALESCE(?7, detail)
      WHERE pending_usage.charged_at IS NULL";
 
+/// A late report's new high-water mark for a month already charged (or
+/// closed with no row): written only if the row still holds the figure the
+/// correction was worked out from (`?8`), so of two late reports at once
+/// only one moves it. `?1` workspace, `?2` source, `?3` month, `?4` charge,
+/// `?5` cost, `?6` now, `?7` detail, `?8` the cost it was worked out from.
+pub(crate) const LATE_RAISE: &str = "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, detail, charged_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'late: ' || ?6)
+     ON CONFLICT (workspace, source, month) DO UPDATE SET
+       charge_micros = ?4, cost_micros = ?5, updated_at = ?6, detail = COALESCE(?7, detail)
+     WHERE pending_usage.charged_at IS NOT NULL AND pending_usage.cost_micros = ?8";
+
+/// The correction's ledger line, entered only if this batch's `LATE_RAISE`
+/// moved the row to its figure (`?11`); its reference names that figure, so
+/// the same report again is the same line. `?1` id, `?2` workspace, `?3`
+/// amount, `?4` description, `?5` source, `?6` cost, `?7` reference, `?8`
+/// created_at, `?9` price version, `?10` month, `?11` the new cost.
+pub(crate) const LATE_LEDGER: &str = "INSERT INTO ledger
+       (id, workspace, kind, amount_micros, description, repo, task, cost_micros, reference,
+        created_at, billed_to, credit_micros, trial_micros, oss_micros, given_micros, price_version)
+     SELECT ?1, ?2, 'usage', ?3, ?4, NULL, ?5, ?6, ?7, ?8, 'g1t', 0, 0, 0, 0, ?9
+     WHERE (SELECT cost_micros FROM pending_usage WHERE workspace = ?2 AND source = ?5 AND month = ?10) = ?11
+     ON CONFLICT (reference) DO NOTHING RETURNING id";
+
+/// What a late report changes, from the figure charged (`charged`, net of
+/// any baseline) and the new one: the cost to charge on top, or nothing.
+/// A lower figure is never refunded on its own; it is logged for staff,
+/// and the high-water mark stays, so a later rise is never charged twice.
+pub(crate) fn late_delta(charged_net: i64, new_net: i64) -> i64 {
+    (new_net - charged_net).max(0)
+}
+
 /// Whether a workspace had the plan in a month by what it paid or drew:
-/// a plan payment in the month that a test-mode detach has not reversed
+/// a plan payment in the month (not a complimentary enrollment's fee, paid
+/// while enrolled) that a test-mode detach has not reversed
 /// (its `_test_detach` row nets it to nothing), or the plan's included
 /// usage drawn in it. `?1` workspace, `?2` the month's first day, `?3` the
 /// next month's, `?4` the month.
 pub(crate) const PLAN_EVIDENCE: &str = "SELECT (EXISTS (SELECT 1 FROM plan_payments p WHERE p.workspace = ?1 AND p.paid_at >= ?2 AND p.paid_at < ?3
+                        AND NOT EXISTS (SELECT 1 FROM complimentary_periods c WHERE c.workspace = ?1 AND c.starts_at <= p.paid_at
+                                         AND (c.ends_at IS NULL OR c.ends_at > p.paid_at) AND p.amount_micros = c.fee_cents * 10000)
                         AND p.amount_micros > 0 AND substr(p.invoice_id, -12) <> '_test_detach'
                         AND p.amount_micros + COALESCE((SELECT SUM(q.amount_micros) FROM plan_payments q
                                                         WHERE q.invoice_id = p.invoice_id || '_test_detach'), 0) > 0)
@@ -215,12 +249,17 @@ pub(crate) fn title(source: &str) -> &'static str {
 /// Whether a batch's first statement, an insert `RETURNING id`, wrote its
 /// row: none comes back when `ON CONFLICT … DO NOTHING` skipped it.
 pub(crate) fn posted(results: &[worker::D1Result]) -> Result<bool> {
+    posted_at(results, 0)
+}
+
+/// `posted`, for the batch's statement at `index`.
+pub(crate) fn posted_at(results: &[worker::D1Result], index: usize) -> Result<bool> {
     #[derive(Deserialize)]
     struct Row {
         #[allow(dead_code)]
         id: String,
     }
-    match results.first() {
+    match results.get(index) {
         Some(result) => Ok(!result.results::<Row>()?.is_empty()),
         None => Ok(false),
     }
@@ -244,14 +283,16 @@ impl Billing {
     /// Puts a usage entry on the ledger and takes it off the balance, as
     /// one write. False when an entry with its reference is already there
     /// (another delivery of the same usage wrote it first): nothing is
-    /// written, and the caller gives back what it drew (`undraw`).
+    /// written, and no allowance is consumed.
     pub(crate) async fn post_usage(&self, line: UsageLine<'_>) -> Result<bool> {
-        self.post_usage_with(line, vec![]).await
+        let month = credits::month_of(line.created_at);
+        let plan = self.has_plan(line.workspace).await?;
+        self.post_usage_with(line, vec![], Some((&month, &credits::Eligible::default(), plan))).await
     }
 
     /// `post_usage`, with `also` written in the same batch, whether or not
     /// the entry was new.
-    pub(crate) async fn post_usage_with(&self, line: UsageLine<'_>, also: Vec<worker::D1PreparedStatement>) -> Result<bool> {
+    pub(crate) async fn post_usage_with(&self, line: UsageLine<'_>, also: Vec<worker::D1PreparedStatement>, allocation: Option<(&str, &credits::Eligible, bool)>) -> Result<bool> {
         // The price versions it was charged at (pricing.rs).
         let mut versions = Vec::new();
         for meter in crate::pricing::meters_of(line.task) {
@@ -288,8 +329,11 @@ impl Billing {
                     (line.drawn.given as f64).into(),
                     optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
                 ])?,
-            self.balance_if_posted(line.workspace, line.charged, &id)?,
         ];
+        if let Some((month, eligible, plan)) = allocation {
+            statements.extend(self.allocation_statements(&id, line.workspace, month, eligible, plan).await?);
+        }
+        statements.push(self.balance_if_posted(line.workspace, &id)?);
         statements.extend(also);
         let results = self.db.batch(statements).await?;
         posted(&results)
@@ -297,14 +341,14 @@ impl Billing {
 
     /// Takes `charged` off the workspace's balance, only if the ledger entry
     /// `id` was written in the same batch.
-    pub(crate) fn balance_if_posted(&self, workspace: &str, charged: i64, id: &str) -> Result<worker::D1PreparedStatement> {
+    pub(crate) fn balance_if_posted(&self, workspace: &str, id: &str) -> Result<worker::D1PreparedStatement> {
         self.db
             .prepare(
                 "INSERT INTO accounts (workspace, balance_micros, created_at)
-                 SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM ledger WHERE id = ?4)
-                 ON CONFLICT (workspace) DO UPDATE SET balance_micros = balance_micros + ?2",
+                 SELECT ?1, amount_micros, ?2 FROM ledger WHERE id = ?3
+                 ON CONFLICT (workspace) DO UPDATE SET balance_micros = balance_micros + excluded.balance_micros",
             )
-            .bind(&[workspace.into(), (-(charged as f64)).into(), rfc3339(now_ms()).into(), id.into()])
+            .bind(&[workspace.into(), rfc3339(now_ms()).into(), id.into()])
     }
 
     /// Writes down what a source cost g1t so far in `month`, what it will
@@ -368,7 +412,7 @@ impl Billing {
             .all()
             .await?
             .results::<Row>()?;
-        // Each row on its own: one that fails (and gives back what it drew)
+        // Each row on its own: one whose atomic posting fails
         // is logged and tried again next tick, and never holds back the
         // rest, whose months could otherwise not close.
         for row in due {
@@ -397,8 +441,7 @@ impl Billing {
                 // does.
                 let plan = self.had_plan_in(&row.workspace, &row.month).await?;
                 let eligible = month_end_eligible(&row.source, plan);
-                // Read before the draw: nothing between the draw and the
-                // entry may fail without giving it back.
+                // Resolve the description before the atomic allocation and posting.
                 let detail = if row.source == "storage" {
                     let gb_months = self.gb_months(&row.workspace, &row.month).await?;
                     format!(": {gb_months:.2} GB-months")
@@ -406,7 +449,7 @@ impl Billing {
                     String::new()
                 };
                 let marking = mark()?;
-                let drawn = self.draw_as(&row.workspace, charge, &row.month, &eligible, plan).await?;
+                let drawn = Drawn::default();
                 let description = format!("{} in {}{detail}{terms_note}{}", title(&row.source), row.month, drawn.note());
                 let reference = format!("{}/{}/{}", row.source, row.workspace, row.month);
                 let created_at = credits::month_end(&row.month);
@@ -421,17 +464,7 @@ impl Billing {
                     created_at: &created_at,
                     drawn,
                 };
-                let posted = match self.post_usage_with(line, vec![marking]).await {
-                    Ok(posted) => posted,
-                    Err(error) => {
-                        // Nothing was written: what was drawn goes back.
-                        self.undraw(&row.workspace, &row.month, &drawn, None).await?;
-                        return Err(error);
-                    }
-                };
-                if !posted {
-                    // Charged already (another tick won): give back the draw.
-                    self.undraw(&row.workspace, &row.month, &drawn, None).await?;
+                if !self.post_usage_with(line, vec![marking], Some((&row.month, &eligible, plan))).await? {
                     return Ok(());
                 }
                 self.record_discount(&reference, discount).await?;
@@ -442,6 +475,134 @@ impl Billing {
             }
         }
         Ok(())
+    }
+
+    /// A source's figure for a month already charged or closed, reported
+    /// late: what it adds is charged as a correction on that month (drawing
+    /// on that month's allowances, at most once for any figure), and the
+    /// row keeps the highest figure seen. Only sources billing charges
+    /// itself; true when the report was taken.
+    pub(crate) async fn late_correction(&self, workspace: &str, source: &str, month: &str, cost_micros: i64, detail: Option<&str>) -> Result<bool> {
+        if !CHARGED_HERE.contains(&source) {
+            return Ok(false);
+        }
+        #[derive(Deserialize)]
+        struct Charged {
+            cost_micros: Option<i64>,
+            net: Option<i64>,
+            baseline: Option<i64>,
+            charged_at: Option<String>,
+        }
+        let row = self
+            .db
+            .prepare(format!(
+                "SELECT cost_micros, charged_at, {NET_COST} AS net,
+                   (SELECT b.cost_micros FROM pending_baselines b WHERE b.workspace = pending_usage.workspace
+                     AND b.source = pending_usage.source AND b.month = pending_usage.month) AS baseline
+                 FROM pending_usage WHERE workspace = ?1 AND source = ?2 AND month = ?3"
+            ))
+            .bind(&[workspace.into(), source.into(), month.into()])?
+            .first::<Charged>(None)
+            .await?;
+        let new_cost = cost_micros.max(0);
+        // A closed month whose row is not charged yet: the month-end charge
+        // still takes it, so the higher figure goes on the row for it.
+        if let Some(row) = row.as_ref().filter(|r| r.charged_at.is_none()) {
+            if new_cost > row.cost_micros.unwrap_or(0) {
+                self.db
+                    .prepare(
+                        "UPDATE pending_usage SET cost_micros = MAX(cost_micros, ?4), charge_micros = MAX(charge_micros, ?5), updated_at = ?6
+                         WHERE workspace = ?1 AND source = ?2 AND month = ?3 AND charged_at IS NULL",
+                    )
+                    .bind(&[
+                        workspace.into(),
+                        source.into(),
+                        month.into(),
+                        (new_cost as f64).into(),
+                        (credits::with_margin(new_cost, self.margin_percent) as f64).into(),
+                        rfc3339(now_ms()).into(),
+                    ])?
+                    .run()
+                    .await?;
+            }
+            return Ok(true);
+        }
+        let (raw_old, net_old, baseline) = row.map_or((0, 0, 0), |r| (r.cost_micros.unwrap_or(0), r.net.unwrap_or(0), r.baseline.unwrap_or(0)));
+        let delta = late_delta(net_old, (new_cost - baseline).max(0));
+        if new_cost < raw_old {
+            worker::console_warn!(
+                "{workspace}: late {source} figure for {month} is lower than what was charged ({} < {}); nothing refunded on its own",
+                new_cost,
+                raw_old
+            );
+            // Once per source and month: a reporter repeats its figure daily.
+            let account = self.account_of(workspace).await?;
+            let subject = format!("{source} for {month} reported lower after it was charged");
+            let noted = self
+                .db
+                .prepare("SELECT 1 AS found FROM admin_actions WHERE account = ?1 AND action = 'late_usage' AND substr(detail, 1, length(?2)) = ?2 LIMIT 1")
+                .bind(&[account.id.as_str().into(), subject.as_str().into()])?
+                .first::<serde_json::Value>(None)
+                .await?;
+            if noted.is_none() {
+                self.audit(
+                    &account.id,
+                    "late_usage",
+                    &format!("{subject}: {} cost now, {} charged. Review for a refund.", crate::features::dollars(new_cost), crate::features::dollars(raw_old)),
+                    "billing",
+                )
+                .await?;
+            }
+            return Ok(true);
+        }
+        if delta == 0 || new_cost == raw_old {
+            return Ok(true);
+        }
+        let now = rfc3339(now_ms());
+        let base = credits::with_margin(delta, self.margin_percent);
+        let (charge, terms_note, discount) = self.charged(workspace, base).await?;
+        let plan = self.had_plan_in(workspace, month).await?;
+        let eligible = month_end_eligible(source, plan);
+        let mut versions = Vec::new();
+        for meter in crate::pricing::meters_of(source) {
+            versions.extend(self.version_now(meter).await?);
+        }
+        let price_version = versions.join(",");
+        let id = new_id("led", now_ms());
+        let reference = format!("{source}/{workspace}/{month}/late/{new_cost}");
+        let description = format!("{} in {month}, reported after the month was charged{terms_note}", title(source));
+        let mut statements = vec![
+            self.db.prepare(LATE_RAISE).bind(&[
+                workspace.into(),
+                source.into(),
+                month.into(),
+                (credits::with_margin(new_cost, self.margin_percent) as f64).into(),
+                (new_cost as f64).into(),
+                now.as_str().into(),
+                optional(detail),
+                (raw_old as f64).into(),
+            ])?,
+            self.db.prepare(LATE_LEDGER).bind(&[
+                id.as_str().into(),
+                workspace.into(),
+                (-(charge as f64)).into(),
+                description.as_str().into(),
+                source.into(),
+                (delta as f64).into(),
+                reference.as_str().into(),
+                credits::month_end(month).into(),
+                optional(Some(price_version.as_str()).filter(|v| !v.is_empty())),
+                month.into(),
+                (new_cost as f64).into(),
+            ])?,
+        ];
+        statements.extend(self.allocation_statements(&id, workspace, month, &eligible, plan).await?);
+        statements.push(self.balance_if_posted(workspace, &id)?);
+        let results = self.db.batch(statements).await?;
+        if posted_at(&results, 1)? {
+            self.record_discount(&reference, discount).await?;
+        }
+        Ok(true)
     }
 
     /// Whether the workspace had the plan in `month`: g1t's own,

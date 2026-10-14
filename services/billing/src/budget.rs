@@ -110,7 +110,8 @@ pub(crate) fn share(cost: i64, charged: i64, drawn: &Drawn, comped: bool, real_m
         return Share { unpaid: cost, ..Share::default() };
     }
     let part = |paid: i64| (i128::from(cost) * i128::from(paid.max(0)) / i128::from(gross)) as i64;
-    let (trial, oss, given) = (part(drawn.trial), part(drawn.oss), part(drawn.given));
+    // A complimentary allowance is g1t's money, as what it covers past it is.
+    let (trial, oss, given) = (part(drawn.trial), part(drawn.oss), part(drawn.given + drawn.gift));
     let unpaid = if real_money { 0 } else { (cost - trial - oss - given).max(0) };
     Share { comped: 0, trial, oss, given, unpaid }
 }
@@ -596,7 +597,14 @@ mod tests {
     use super::*;
 
     fn drawn(credit: i64, trial: i64, oss: i64, given: i64) -> Drawn {
-        Drawn { credit, trial, oss, given }
+        Drawn { credit, gift: 0, trial, oss, given }
+    }
+
+    #[test]
+    fn a_complimentary_allowance_is_g1t_s_spend() {
+        let gifted = Drawn { gift: 8_000_000, given: 2_000_000, ..Drawn::default() };
+        let s = share(1_000_000, 0, &gifted, false, true);
+        assert_eq!((s.given, s.total()), (1_000_000, 1_000_000));
     }
 
     #[test]

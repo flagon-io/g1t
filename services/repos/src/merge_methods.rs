@@ -880,7 +880,12 @@ impl<S: GitStore> Repos<S> {
             };
             let pack = pack_for(held, source_git, &new, &merge_base, &objects).await?;
             let target_access = target_git.access(Scope::Write).await?;
+            if !self.registry.reserve_public(target, pack.len() as u64, self.free_public_bytes).await? {
+                return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+            }
+            let bytes = pack.len() as u64;
             let pushed = land::push_pack(&target_access, branch, Some(&base.hash), &made.commit, pack).await?;
+            self.registry.finish_public(target, bytes, bytes).await?;
             self.refs_moved(&target.id).await;
             match pushed {
                 Ok(()) => {
@@ -970,7 +975,12 @@ impl<S: GitStore> Repos<S> {
         };
         let old = target_git.log(&a.push_branch, 1).await?.into_iter().next().map(|commit| commit.hash);
         let target_access = target_git.access(Scope::Write).await?;
+        if !self.registry.reserve_public(&target, pack.len() as u64, self.free_public_bytes).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+        }
+        let bytes = pack.len() as u64;
         let pushed = land::push_pack(&target_access, &a.push_branch, old.as_deref(), &commit, pack).await?;
+        self.registry.finish_public(&target, bytes, bytes).await?;
         self.refs_moved(&target.id).await;
         Ok(match pushed {
             Ok(()) => Outcome::Ok(QueueStep::Built { commit, rebased }),

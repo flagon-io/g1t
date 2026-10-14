@@ -28,6 +28,8 @@ use worker::wasm_bindgen::JsValue;
 
 use crate::{Billing, LedgerRow, optional};
 
+pub(crate) const FEE_WAIVER_SUBSCRIPTIONS: &str = "SELECT subscription_id FROM subscriptions WHERE workspace = ? AND status <> 'canceled' LIMIT 1";
+
 #[derive(Deserialize)]
 struct AccountRow {
     id: String,
@@ -146,6 +148,19 @@ fn describe(terms: &Terms) -> String {
 }
 
 impl Billing {
+    /// Local terms never cancel or discount an existing Stripe subscription.
+    /// Refuse a fee waiver until those subscriptions are actually ended, so
+    /// sudo cannot promise no charge while Stripe continues charging monthly.
+    async fn fee_waiver_conflict(&self, account: &BillingAccount) -> Result<bool> {
+        for workspace in &account.workspaces {
+            if self.db.prepare(FEE_WAIVER_SUBSCRIPTIONS)
+                .bind(&[workspace.as_str().into()])?.first::<serde_json::Value>(None).await?.is_some() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     async fn account_row(&self, id: &str) -> Result<Option<AccountRow>> {
         self.db
             .prepare("SELECT * FROM billing_accounts WHERE id = ?")
@@ -466,6 +481,10 @@ impl Billing {
         let Some(account) = self.find_account(&a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
         };
+        if a.terms.full_discount() && self.fee_waiver_conflict(&account).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict,
+                "An existing Stripe subscription can still charge its monthly fee. End that subscription before granting a full discount; changing usage terms does not cancel it."));
+        }
         let now = rfc3339(now_ms());
         // A workspace's own account gets a row the first time its terms change.
         self.db
@@ -514,6 +533,10 @@ impl Billing {
         let Some(account) = self.find_account(&a.id).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such account."));
         };
+        if a.allowances.plan && self.fee_waiver_conflict(&account).await? {
+            return Ok(Outcome::fail(FailureCode::Conflict,
+                "An existing Stripe subscription can still charge its monthly fee. End that subscription before granting the plan without its price."));
+        }
         let now = rfc3339(now_ms());
         let opt = |m: Option<i64>| m.map_or(JsValue::NULL, |m| (m as f64).into());
         // A workspace's own account gets a row the first time anything is set.

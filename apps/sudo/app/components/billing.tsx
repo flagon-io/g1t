@@ -245,7 +245,7 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
               Custom
             </Segment>
           </div>
-          <p className="mt-1.5 text-xs text-faint">Off every usage charge. 100%: nothing is charged, and the statement shows usage at price with the discount beside it.</p>
+          <p className="mt-1.5 text-xs text-faint">Off usage charges. This does not change an existing Stripe subscription's monthly fee. A full discount requires ending that subscription first.</p>
         </fieldset>
         <div className="when-custom">
           <Field label="Custom discount %" hint="A whole percent, 1 to 100.">
@@ -253,7 +253,7 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Limit $" hint="Unpaid usage allowed; blank: trust decides. At 100%: g1t's monthly budget for it, at cost; blank: the default ($150).">
+          <Field label="Limit $" hint="Unpaid usage allowed; blank: trust decides. At 100%: g1t's monthly budget at cost; blank: $150; zero: unlimited. This is not a monthly usage credit.">
             <Input name="ceiling" inputMode="decimal" placeholder="By trust" defaultValue={values?.ceiling ?? dollarsField(terms.ceilingMicros)} />
           </Field>
           <Field label="Until" hint="Blank: no end. UTC.">

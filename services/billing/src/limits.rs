@@ -383,7 +383,7 @@ impl Billing {
                     "SELECT
                        SUM(CASE WHEN kind = 'usage' THEN
                              CASE WHEN COALESCE(billed_to, 'g1t') = 'g1t'
-                                  THEN MAX(COALESCE(cost_micros, 0) - COALESCE(credit_micros, 0)
+                                  THEN MAX(COALESCE(cost_micros, 0) - COALESCE(credit_micros, 0) - COALESCE(gift_micros, 0)
                                              - COALESCE(trial_micros, 0) - COALESCE(oss_micros, 0)
                                              - COALESCE(given_micros, 0),
                                            -amount_micros)
@@ -719,7 +719,7 @@ impl Billing {
                 "SELECT
                    SUM(CASE WHEN created_at >= '{month_start}' THEN {price} END) AS price,
                    SUM(CASE WHEN created_at >= '{month_start}' THEN COALESCE(discount_micros, 0) END) AS discount,
-                   SUM(CASE WHEN created_at >= '{month_start}' THEN COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0)
+                   SUM(CASE WHEN created_at >= '{month_start}' THEN COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0)
                             + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0) END) AS covered,
                    -SUM(CASE WHEN created_at >= '{last_start}' AND created_at < '{month_start}' THEN amount_micros END) AS last_month
                  FROM ledger WHERE kind = 'usage' AND workspace IN ({marks}) AND created_at >= '{last_start}'",
@@ -848,9 +848,15 @@ impl Billing {
                 .await?;
             let (charged, closed) = open.map_or((0, 0), |o| (o.charged.unwrap_or(0), o.closed.unwrap_or(0)));
             if charged > 0 || closed > 0 {
-                let why = if closed > 0 { "the month is closed" } else { "the month's figure is charged already" };
-                worker::console_warn!("note_pending refused for {workspace} ({}) in {month}: {why}", a.source);
-                return Ok(false);
+                // Late: what it adds is charged as a correction on that month,
+                // once for any figure (`late_correction`).
+                let detail = a.detail.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(|d| d.chars().take(200).collect::<String>());
+                let taken = self.late_correction(&workspace, &a.source, &month, a.cost_micros, detail.as_deref()).await?;
+                if !taken {
+                    let why = if closed > 0 { "the month is closed" } else { "the month's figure is charged already" };
+                    worker::console_warn!("note_pending refused for {workspace} ({}) in {month}: {why}", a.source);
+                }
+                return Ok(taken);
             }
         }
         let detail = a.detail.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(|d| d.chars().take(200).collect::<String>());

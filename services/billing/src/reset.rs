@@ -30,6 +30,7 @@ use crate::accounts::own_account;
 pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM workspace_invoice_lines WHERE invoice_id IN (SELECT invoice_id FROM workspace_invoices WHERE workspace = ?1)",
     "DELETE FROM workspace_invoices WHERE workspace = ?1",
+    "DELETE FROM invoice_attempts WHERE workspace = ?1",
     "DELETE FROM ledger WHERE workspace = ?1",
     "DELETE FROM runs WHERE workspace = ?1",
     "DELETE FROM reservations WHERE workspace = ?1",
@@ -41,6 +42,8 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM plan_payments WHERE workspace = ?1",
     "DELETE FROM disputes WHERE workspace = ?1",
     "DELETE FROM subscriptions WHERE workspace = ?1",
+    "DELETE FROM complimentary_periods WHERE workspace = ?1",
+    "DELETE FROM complimentary WHERE workspace = ?1",
     "DELETE FROM limits WHERE workspace = ?1",
     "DELETE FROM limit_requests WHERE workspace = ?1",
     "DELETE FROM trial_grants WHERE workspace = ?1",
@@ -193,6 +196,7 @@ mod tests {
             "token_usage", "reservations", "spikes", "limit_requests", "plan_payments",
             "card_checks", "alerts_sent", "price_notices", "closed_workspaces", "workspace_costs",
             "margin_alerts", "budget_alerts", "ai_reload", "ai_reloads", "tax_and_fees", "gateway_requests",
+            "complimentary", "complimentary_periods",
         ] {
             assert!(!kept.contains(&table));
             assert!(all.contains(&format!("DELETE FROM {table} WHERE")), "{table}");
