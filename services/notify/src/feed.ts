@@ -659,13 +659,24 @@ export class Feed extends DurableObject<FeedEnv> {
     return { ok: true, forgotten };
   }
 
-  /** The inbox count as it now is (events, after items arrive or are marked): every tab shows it at once. */
-  async setInbox(value: number): Promise<{ ok: boolean }> {
+  /**
+   * The inbox count as it now is (events, after items arrive or are
+   * marked): every tab shows it at once. With `settled`, the threads of
+   * items that settled by themselves: their notifications are no longer
+   * kept to replay to a tab that opens later, and open tabs drop them.
+   */
+  async setInbox(value: number, settled: string[] = []): Promise<{ ok: boolean }> {
     if (this.erased()) return { ok: true };
     const unread = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-    if (unread === this.inboxUnread()) return { ok: true };
+    if (settled.length > 0) {
+      this.sql.exec(
+        "DELETE FROM notifications WHERE json_extract(json, '$.inbox_thread') IN (SELECT value FROM json_each(?))",
+        JSON.stringify(settled),
+      );
+    }
+    if (unread === this.inboxUnread() && settled.length === 0) return { ok: true };
     this.setMeta("inbox_unread", String(unread));
-    this.send({ type: "inbox", unread });
+    this.send(settled.length > 0 ? { type: "inbox", unread, settled } : { type: "inbox", unread });
     return { ok: true };
   }
 

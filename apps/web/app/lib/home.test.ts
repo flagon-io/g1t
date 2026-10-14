@@ -7,8 +7,19 @@ import {
   type AttentionRow,
   type CodeNeed,
   type CodePull,
+  type LandedChange,
   actorKind,
+  agentLabel,
   attention,
+  awayOf,
+  landedByDay,
+  pushRows,
+  sessionTrailers,
+  settledIn,
+  shippedAsks,
+  shippedLabel,
+  withSessions,
+  withShipped,
   chatRow,
   codeRow,
   dayIn,
@@ -645,4 +656,127 @@ test("spend in the span: the UTC days it covers across months, at price, without
   // The month so far is billing's usage report, the top bar's figure, not the statement: it carries what is not yet closed.
   assert.equal(spend.monthMicros, 13_609_000);
   assert.equal(spendIn([september, october], { from: Date.parse("2026-09-29T15:00:00Z"), now: NOW }, null).monthMicros, null);
+});
+
+
+// --- What landed: shipped, made in a session, day by day -----------------------
+
+const merge = (over: Partial<LandedChange> = {}): LandedChange => ({
+  key: "landed:acme/web#12",
+  kind: "merge",
+  title: "Add retries",
+  detail: "web#12 · by ana",
+  to: "/acme/web/pull/12",
+  at: NOW - 2 * HOUR,
+  sha: "m12",
+  repoId: "rep_web",
+  ...over,
+});
+
+test("each merge and push says whether it is live, from what deployments recorded", () => {
+  const push = merge({ key: "push:rep_web:evt_1", kind: "push", sha: "p1", at: NOW - HOUR });
+  const release = merge({ key: "release:rep_web:v1", kind: "release", sha: null });
+  assert.deepEqual(shippedAsks([merge(), push, release]), [
+    { repo_id: "rep_web", commits: [{ sha: "m12", landed_at: iso(NOW - 2 * HOUR) }, { sha: "p1", landed_at: iso(NOW - HOUR) }] },
+  ]);
+  const answers = [
+    {
+      repo_id: "rep_web",
+      deploys: true,
+      commits: [
+        { sha: "m12", state: "live" as const, deployed_at: iso(NOW - 2 * HOUR + 9 * 60_000), url: "/acme/web/actions/runs/run_1", environment: "production" },
+        { sha: "p1", state: "waiting" as const, deployed_at: null, url: null, environment: null },
+      ],
+    },
+  ];
+  const [shippedMerge, shippedPush, untouched] = withShipped([merge(), push, release], answers);
+  assert.deepEqual(shippedMerge!.shipped, { state: "live", at: NOW - 2 * HOUR + 9 * 60_000, to: "/acme/web/actions/runs/run_1" });
+  assert.equal(shippedLabel(shippedMerge!.shipped!, shippedMerge!), "Live 9 min after merge");
+  assert.equal(shippedLabel(shippedPush!.shipped!, shippedPush!), "Waiting to deploy");
+  assert.equal(shippedLabel({ state: "failed", at: null, to: "/x" }, push), "Deploy failed");
+  assert.equal(shippedLabel({ state: "deploying", at: null, to: null }, push), "Deploying");
+  assert.equal(shippedLabel({ state: "live", at: push.at + 3 * HOUR, to: null }, push), "Live 3 h after push");
+  assert.equal(untouched!.shipped, undefined);
+  // A project that does not deploy says nothing; deployments not answering leaves rows as they were.
+  assert.equal(withShipped([merge()], [{ repo_id: "rep_web", deploys: false, commits: [] }])[0]!.shipped, undefined);
+  assert.deepEqual(withShipped([merge()], null), [merge()]);
+});
+
+test("a change made in a harness session carries the agent mark, linked to the session", () => {
+  const [marked, plain] = withSessions([merge(), merge({ key: "landed:acme/web#13", sha: "m13" })], [
+    { repo: { namespace: "acme", name: "web" }, pulls: [{ number: 12, sessions: [{ id: "ses_1", harness: "claude_code" }, { id: "ses_2", harness: "codex" }] }] },
+  ]);
+  assert.deepEqual(marked!.agent, { harness: "claude_code", to: "/acme/web/work/sessions/ses_1" });
+  assert.equal(agentLabel(marked!.agent!), "Made in a Claude Code session");
+  assert.equal(plain!.agent, undefined);
+  assert.equal(agentLabel({ harness: null, to: null }), "Made in a session");
+  assert.deepEqual(sessionTrailers("Fix the bell\n\nG1t-Session: ses_01ABC\ng1t-session: ses_01abc\nG1t-Session: ses_02x"), ["ses_01abc", "ses_02x"]);
+  assert.deepEqual(sessionTrailers("Mentions G1t-Session: ses_1 in prose"), []);
+});
+
+test("each person's push to a default branch is a row: its commit, who pushed, and its session", () => {
+  const repo = { namespace: "acme", name: "web", defaultBranch: "main" };
+  const history = {
+    rep_web: [
+      { hash: "c3", parents: ["c2"], message: "Fix the bell's count\n\nG1t-Session: ses_9" },
+      { hash: "c2", parents: ["c1"], message: "Tidy" },
+      { hash: "c1", parents: ["c0"], message: "Start" },
+      { hash: "c0", parents: [], message: "Root" },
+    ],
+  };
+  const push = (id: string, after: string, before: string, at: number, actor = "usr_ana") => ({
+    repoId: "rep_web",
+    repo,
+    push: { id, time: iso(at), actor, data: { after, before } },
+    by: "ana",
+  });
+  const span = { from: NOW - DAY, now: NOW };
+  const rows = pushRows([push("evt_2", "c3", "c2", NOW - HOUR), push("evt_1", "c2", "c0", NOW - 2 * HOUR), push("evt_0", "c1", "c0", NOW - 2 * DAY)], history, span);
+  assert.deepEqual(
+    rows.map((row) => [row.title, row.detail, row.sha, row.to, row.agent?.to ?? null]),
+    [
+      ["Fix the bell's count", "web · pushed to main · by ana", "c3", "/acme/web/commit/c3", "/acme/web/work/sessions/ses_9"],
+      ["2 commits pushed to main", "web · Tidy · by ana", "c2", "/acme/web/activity", null],
+    ],
+  );
+  // g1t's own pushes (a pull request landing) are listed as the merge instead.
+  assert.deepEqual(pushRows([push("evt_3", "c3", "c2", NOW - HOUR, "usr_g1t_agent")], history, span), []);
+});
+
+test("what landed over the week reads day by day, newest first", () => {
+  const tz = "America/Los_Angeles";
+  const days = landedByDay([merge({ at: NOW - DAY }), merge({ key: "b", at: NOW - HOUR }), merge({ key: "c", at: NOW - 3 * DAY })], NOW, tz);
+  assert.deepEqual(days.map((day) => [day.label, day.rows.length]), [["Today", 1], ["Yesterday", 1], ["Tue, Oct 6", 1]]);
+});
+
+test("while you were away: what settled by itself, what shipped, and what still needs you", () => {
+  const span = { from: NOW - DAY, now: NOW };
+  const settled = settledIn(
+    [
+      item({ id: "n1", doneAt: iso(NOW - HOUR), settledReason: "CI passed in run 330" }),
+      item({ id: "n2", doneAt: iso(NOW - 2 * HOUR), settledReason: "Merged", settledBy: "ana" }),
+      // Marked done by hand: yours, not g1t's.
+      item({ id: "n3", doneAt: iso(NOW - HOUR) }),
+      // Before the span, or another workspace's.
+      item({ id: "n4", doneAt: iso(NOW - 2 * DAY), settledReason: "Merged" }),
+      item({ id: "n5", doneAt: iso(NOW - HOUR), settledReason: "Merged", workspace: "other", repo: "other/x" }),
+    ],
+    "acme",
+    true,
+    span,
+  );
+  assert.deepEqual(
+    settled.map((row) => [row.key, row.why, row.where]),
+    [
+      ["settled:n1", "CI passed in run 330", "acme/web#12"],
+      ["settled:n2", "Merged by @ana", "acme/web#12"],
+    ],
+  );
+  assert.equal(settledIn([item({ doneAt: iso(NOW - HOUR), settledReason: "Merged" })], "acme", false, span).length, 0, "nothing about repositories without Code");
+  const away = awayOf({
+    settled,
+    landed: [merge({ shipped: { state: "live", at: NOW, to: null } }), merge({ key: "x", shipped: { state: "waiting", at: null, to: null } }), merge({ key: "y" })],
+    needs: 3,
+  });
+  assert.deepEqual({ ...away, settled: away.settled.length }, { settled: 2, shipped: 1, waiting: 1, deploying: 0, failed: 0, needs: 3 });
 });

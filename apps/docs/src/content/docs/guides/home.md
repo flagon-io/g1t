@@ -8,8 +8,9 @@ It answers three questions, in this order:
 
 1. **Where you're needed**: everything waiting on you, however long ago
    it started, with the action beside each item.
-2. **What happened while you were away**: what people did; what landed;
-   deploys, decisions and spend, since you were last here.
+2. **What happened while you were away**: what settled by itself and
+   what went live; what people did; what landed; deploys and spend,
+   since you were last here.
 3. **What is running now**: workflow runs and builds still going.
 
 **Start here** picks the one item to do first.
@@ -103,9 +104,25 @@ all was counted, it says so plainly:
 When Code and Chat both failed to answer, the sentence ends with "what
 people did couldn't be read" rather than reading as quiet.
 
+### While you were away
+
+The first card says what finished by itself in the span, and what is
+live. (Over **Last 24 hours** and **Last 7 days** it is called **Settled
+for you**.) Its first line counts:
+
+| Count | What it is |
+| --- | --- |
+| *4 notifications settled* | Your notifications in this workspace that [settled themselves](/guides/notifications/#threads-that-settle-themselves) in the span: a later run passed, the pull request merged, the deployment went out. One you marked done yourself is not counted |
+| *3 changes live*, *1 deploying*, *1 waiting to deploy*, *1 deploy failed* | The merges and pushes under [Landed](#landed), by whether each is [live](#live-after-merge) |
+| *2 things still need you* | The rows of [Where you're needed](#where-youre-needed); it takes you there |
+
+Under it, each notification that settled, newest first, with why it
+settled and who did it, such as **CI passed in run 330** or **Merged by
+@ana**. **Done** opens the notifications that are done.
+
 ### People
 
-The first card, **People**, lists what people did in the span, one line
+The second card, **People**, lists what people did in the span, one line
 per kind of thing with its count, and each line opens the place that lists
 them: a project's Activity tab for pushes, its pull requests or issues,
 Artifacts, Chat. Beside the heading are the faces of the five most active,
@@ -135,13 +152,47 @@ Everything that landed in the span, newest first:
 | Row | What it is |
 | --- | --- |
 | A pull request merged | With who wrote it, and who merged it when that was someone else |
-| Commits pushed to a default branch | One row per project with any: how many commits landed on its default branch without a pull request, in how many pushes, and by whom |
+| A push to a default branch | One row per push a person made straight to a default branch: its commit's first line when it brought one, else how many commits, and who pushed. For the ten projects pushed to most in the span; past those, one row per project with how many commits and pushes |
 | A production build that went live | A project's production build that built and was served (previews stay under Deploys) |
 | A release published | Its tag and name, and who released it |
 | A package version published | Its name and version, and who published it |
 
 The card's line counts them by kind. The first
-five show; **Show more** opens the rest. When one of its sources (pull
+five show; **Show more** opens the rest. Over **Last 7 days** the rows are
+grouped by day (**Today**, **Yesterday**, **Sun, Oct 11**), five of each
+day showing.
+
+#### Live after merge
+
+Each merge and push says whether it is live yet, for a project that
+deploys to production. Landing on `main` is not shipping: a change is
+shipped once a production deployment that contains it succeeds.
+
+| Label | When |
+| --- | --- |
+| **Live 9 min after merge** | A production deployment that succeeded shipped it, this long after it landed. The label opens that deployment, or the workflow run that deployed it |
+| **Deploying** | A production deployment after it is under way |
+| **Deploy failed** | The production deployment after it failed, and none has shipped it since |
+| **Waiting to deploy** | Nothing has deployed it yet |
+
+How g1t knows: when a production deployment succeeds, a
+[g1t.page build](/guides/deployments/) or one a workflow or the API
+reported, g1t reads its commit's history back and writes down each
+commit no production deployment shipped before as shipped by this one.
+So a commit's first production deployment is the one that took it live,
+and a rollback to an older commit ships nothing new. Home reads only what
+was written down, so this costs nothing when the page loads. A change
+that landed before g1t began writing this down for its project goes live
+with the first production deployment that succeeded after it.
+
+#### Made with an agent
+
+A merge or push made in a harness session, such as Claude Code working
+for you, carries the agent marker beside its title; it opens the
+session. A pull request is marked when a session is tied to it (it
+pushed the branch, named the pull request, or a commit on it carries a
+`G1t-Session:` trailer); a push when one of its commits carries the
+trailer. The change is still yours, and stays in the same list. When one of its sources (pull
 requests, pushes and releases, deployments) didn't answer, the card says
 so under the list.
 
@@ -200,7 +251,10 @@ When one does not answer:
 - People counts what could be read, and names the part that is missing
   (Code or Chat). If nothing could be read, the card says so, and the
   sentence under the heading says what people did couldn't be read.
-- Landed, Deploys and Spent each say their part didn't answer.
+- Landed, Deploys and Spent each say their part didn't answer. When
+  deployments or sessions can't be read, Landed shows its rows without
+  their live labels or agent markers.
+- While you were away says when your notifications can't be read.
 - If your last visit can't be read, the span is the last 24 hours and the
   page says why.
 
