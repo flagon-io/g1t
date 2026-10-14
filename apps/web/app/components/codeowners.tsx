@@ -219,8 +219,12 @@ export function CodeownersFileErrors({ report, path, base }: { report: Codeowner
   );
 }
 
-/** Where one rule's review stands, in a few words. */
-function ReviewStatus({ review }: { review: OwnerReview }) {
+/**
+ * Where one rule's review stands, in a few words. When the ruleset does not
+ * require code owners' approval (`required` false), a rule nobody approved
+ * yet is said plainly, not as something merging waits for.
+ */
+function ReviewStatus({ review, required }: { review: OwnerReview; required: boolean }) {
   const names = (list: string[]) => list.join(", ");
   if (review.changes_requested_by.length > 0) {
     return (
@@ -246,6 +250,13 @@ function ReviewStatus({ review }: { review: OwnerReview }) {
       </span>
     );
   }
+  if (!required) {
+    return (
+      <span className="text-xs text-faint">
+        {review.approved_by.length > 0 ? `Approved by ${names(review.approved_by)}` : "No approval yet"}
+      </span>
+    );
+  }
   const more = Math.max(review.required - review.approved_by.length, 1);
   return (
     <span className="flex items-center gap-1 text-xs text-warn">
@@ -257,7 +268,16 @@ function ReviewStatus({ review }: { review: OwnerReview }) {
 }
 
 /** One rule: its section, pattern and line, its owners, the files it covers, and where its review stands. */
-function OwnerReviewRow({ review, fileHref }: { review: OwnerReview; fileHref: (line: number) => string }) {
+function OwnerReviewRow({
+  review,
+  required,
+  fileHref,
+}: {
+  review: OwnerReview;
+  /** Whether the ruleset requires code owners' approval to merge. */
+  required: boolean;
+  fileHref: (line: number) => string;
+}) {
   const many = review.files.length > 3;
   const files = (
     <ul className="mt-1 space-y-0.5">
@@ -277,7 +297,7 @@ function OwnerReviewRow({ review, fileHref }: { review: OwnerReview; fileHref: (
           line {review.line}
         </Link>
         <span className="ml-auto">
-          <ReviewStatus review={review} />
+          <ReviewStatus review={review} required={required} />
         </span>
       </div>
       <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
@@ -343,7 +363,7 @@ export function PullCodeOwnersPanel({
         ) : (
           <ul className="divide-y divide-line">
             {owners.reviews.map((review) => (
-              <OwnerReviewRow key={`${review.section ?? ""}:${review.line}`} review={review} fileHref={fileHref} />
+              <OwnerReviewRow key={`${review.section ?? ""}:${review.line}`} review={review} required={owners.required} fileHref={fileHref} />
             ))}
           </ul>
         )}

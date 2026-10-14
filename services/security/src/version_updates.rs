@@ -1040,7 +1040,7 @@ impl Security {
         Ok(true)
     }
 
-    async fn pull_detail(&self, repo: &RepoRow, number: u32) -> Result<Option<PullDetail>> {
+    pub(crate) async fn pull_detail(&self, repo: &RepoRow, number: u32) -> Result<Option<PullDetail>> {
         let found: Outcome<PullDetail> = g1t_kit::call(
             &self.work,
             "get_pull",

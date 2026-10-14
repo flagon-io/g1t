@@ -807,7 +807,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 402] = [
+    pub const ALL: [Op; 403] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1040,6 +1040,7 @@ impl Op {
         Op::Security(SecurityOp::GetDependencyGraph),
         Op::Security(SecurityOp::GetSbom),
         Op::Security(SecurityOp::CompareDependencies),
+        Op::Security(SecurityOp::RerunDependencyReview),
         Op::Security(SecurityOp::GetSettings),
         Op::Security(SecurityOp::UpdateSettings),
         Op::Security(SecurityOp::GetWorkspaceSettings),

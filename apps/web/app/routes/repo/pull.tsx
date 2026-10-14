@@ -38,6 +38,7 @@ import {
   type RepoSettings,
   type SessionEntry,
   type Viewer,
+  fail,
   pullComparison,
   workOwner,
 } from "@g1t/contracts";
@@ -89,7 +90,7 @@ import { METHOD_INFO, type MergeChoicesView, choicesFromService, choicesFromSett
 import { ViolationList } from "../../components/rules";
 import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { notFound } from "../../lib/not-found.server";
-import { actions, deployments, identity, inbox, repos, work } from "../../lib/services.server";
+import { actions, deployments, identity, inbox, repos, securitySuite, work } from "../../lib/services.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { CommitChecksBadge } from "../../components/commit-checks";
 import { DeployLink } from "../../components/deploy";
@@ -394,6 +395,7 @@ function mergeOptions(form: FormData): MergeOptions {
 const PULL_NEEDS: Record<string, Capability> = {
   "rerun-workflow": "run",
   "rerun-failed": "run",
+  "rerun-dependency-review": "run",
   merge: "merge",
   unqueue: "merge",
   milestone: "triage",
@@ -487,6 +489,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const rerun = await actions.rerun(user, path, String(form.get("run") ?? ""), true);
     return rerun.ok ? null : { error: rerun.error.message, action };
   }
+  // The Dependency review check, made again on its head: its comment
+  // changes in place. Who may is the security service's call.
+  if (action === "rerun-dependency-review") {
+    const rerun = await securitySuite.rerunDependencyReview(user, path, number);
+    return rerun.ok ? null : { error: rerun.error.message, action };
+  }
   // Every failed run on its head, run again: Mission control's quick action.
   if (action === "rerun-failed") {
     const found = await work.getPull(path, number, user);
@@ -516,7 +524,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
   const result =
     action === "merge"
-      ? await work.mergePull(user, path, number, mergeOptions(form))
+      ? // A merge that did not answer in time (lib/deadline.ts) or broke
+        // off says so in the merge box, not as an error page: trying again
+        // is safe, as a merge that went through meanwhile is recognised.
+        await work
+          .mergePull(user, path, number, mergeOptions(form))
+          .catch(() => fail("unavailable", "g1t couldn't reach the repository to merge this. Try again in a moment."))
       : action === "unqueue"
         ? await work.removeFromQueue(user, path, number)
       : action === "close"
@@ -688,6 +701,14 @@ function StatusRow({
   );
 }
 
+/** The required checks a caught-up merge still waits for: "CI passes", "CI and Deploy pass". */
+function awaitedChecks(checks: { name: string; state: string }[]): string {
+  const names = checks.filter((check) => check.state !== "success").map((check) => check.name);
+  if (names.length === 0) return "the required checks pass";
+  if (names.length === 1) return `the required check ${names[0]} passes`;
+  return `the required checks ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} pass`;
+}
+
 export default function PullPage({ loaderData, actionData, params }: Route.ComponentProps) {
   const {
     pull,
@@ -753,7 +774,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       canRerunWorkflows={canMerge}
       settingsUrl={canProtect ? `${base}/settings/branches` : null}
       conflicting={mergeable === "conflicting" && !noChecks}
-      error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" ? actionData.error : null}
+      error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" || actionData?.action === "rerun-dependency-review"
+          ? actionData.error
+          : null}
       loading={loading}
     />
   );
@@ -1267,12 +1290,21 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       </StatusRow>
                     )}
                     {landing ? (
+                      // Brought up to date first, then landed once the
+                      // required checks pass on that new commit.
                       <StatusRow
                         icon={<Loader size={16} className="animate-spin text-accent" />}
-                        title="Merging"
+                        title={!behind && unchecked ? "Merging once checks pass" : "Merging"}
                       >
-                        {defaultBranch} has moved, so it is being brought up to date first. It
-                        lands as soon as that is done.
+                        {behind
+                          ? `${defaultBranch} has moved, so it is being brought up to date first. ${
+                              requiredChecks.length > 0
+                                ? "It lands once the required checks pass on that commit."
+                                : "It lands as soon as that is done."
+                            }`
+                          : unchecked
+                            ? `Brought up to date with ${defaultBranch}. It lands once ${awaitedChecks(requiredChecks)} on that commit.`
+                            : `Brought up to date with ${defaultBranch}. Landing now.`}
                       </StatusRow>
                     ) : conflicting ? (
                       <ConflictsSection
@@ -1449,7 +1481,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "reviewers", "assign", "edit-comment", "delete-comment", "auto-merge-on", "auto-merge-off", "delete-branch", "restore-branch"].includes(
+                  !["merge", "comment", "rerun-failed", "rerun-workflow", "rerun-dependency-review", "update", "reviewers", "assign", "edit-comment", "delete-comment", "auto-merge-on", "auto-merge-off", "delete-branch", "restore-branch"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>

@@ -1,16 +1,17 @@
-import { ArrowLeft, CircleAlert, CircleCheck } from "lucide-react";
-import { Link } from "react-router";
+import { ArrowLeft, CircleAlert, CircleCheck, RotateCw } from "lucide-react";
+import { Form, Link } from "react-router";
 
 import type { Route } from "./+types/security-pull";
 import { page } from "../../lib/meta";
 import { SeverityBadge } from "../../components/security";
 import { CARD, LIST, SectionHeader, shortRule } from "../../components/security-suite";
+import { ErrorText, SubmitButton } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { cn } from "../../lib/cn";
 import { securitySuite } from "../../lib/services.server";
-import { getViewer, requireUser, unwrap } from "../../lib/session.server";
-import { requireInsider } from "../../lib/access.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { refusal, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security checks · #${params.number} · ${params.owner}/${params.repo} · g1t` });
@@ -23,6 +24,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   return { scanning: unwrap(await securitySuite.pullScanning(repo, Number(params.number) || 0, viewer)) };
 }
 
+/** The Dependency review check made again on the pull request's head; its comment changes in place. */
+export async function action({ params, context, request }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  const user = requireUser(context, request);
+  const refused = await refusal(context, params, "run");
+  if (refused) return { error: refused };
+  const repo = { namespace: params.owner, name: params.repo };
+  const rerun = await securitySuite.rerunDependencyReview(user, repo, Number(params.number) || 0);
+  return rerun.ok ? null : { error: rerun.error.message };
+}
+
 function Verdict({ passed, text }: { passed: boolean; text: string }) {
   return (
     <p className={`flex items-center gap-1.5 text-sm ${passed ? "text-success" : "text-danger"}`}>
@@ -33,7 +45,7 @@ function Verdict({ passed, text }: { passed: boolean; text: string }) {
 }
 
 /** What the Code scanning and Dependency review checks found on a pull request: the page their statuses link to. */
-export default function PullSecurity({ loaderData, params }: Route.ComponentProps) {
+export default function PullSecurity({ loaderData, actionData, params }: Route.ComponentProps) {
   const { scanning } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const onLines = scanning.results.filter((result) => result.new && result.onChangedLine);
@@ -82,7 +94,16 @@ export default function PullSecurity({ loaderData, params }: Route.ComponentProp
         )}
       </section>
       <section className="space-y-3">
-        <h3 className="text-base font-semibold tracking-tight">Dependency review</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-base font-semibold tracking-tight">Dependency review</h3>
+          <Form method="post">
+            <SubmitButton variant="outline" pending="Re-running…">
+              <RotateCw size={13} />
+              Re-run
+            </SubmitButton>
+          </Form>
+        </div>
+        {actionData?.error && <ErrorText>{actionData.error}</ErrorText>}
         {!scanning.review ? (
           <p className="text-sm text-muted">Not reviewed yet: it runs when a pull request opens and each time its head moves.</p>
         ) : (

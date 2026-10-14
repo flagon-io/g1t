@@ -80,6 +80,17 @@ lockfile of what was added and removed, and the check links to
 `g1t.sh/<owner>/<project>/security/pulls/<number>`. Require **Dependency
 review** under **Settings → Branches** to block merges on it.
 
+A pull request has one review comment. When a later review says something
+new, that comment is changed in place; when it says the same, the comment
+is left alone. A push whose lockfile changes are the ones already reviewed,
+such as catching the branch up with its base, is not reviewed again: the
+check's result carries over to the new head.
+
+Advisories are published every day, so a review can be made again: **Re-run
+dependency review** in the pull request's checks, or **Re-run** on its
+Security checks page, takes the Write role. It updates the check and the
+same comment.
+
 In the repository's **Security settings**:
 
 | Setting | Default | |
@@ -115,12 +126,13 @@ be dismissed with a reason and reopened.
 | `GET /repos/{owner}/{name}/dependency-graph` | The graph, per lockfile. | `security:read` |
 | `GET /repos/{owner}/{name}/dependency-graph/sbom` | The SPDX document, in `sbom`. | `security:read` |
 | `GET /repos/{owner}/{name}/dependency-graph/compare/{basehead}` | What changed between two commits, and whether it passes review. | `security:read` |
+| `POST /repos/{owner}/{name}/pulls/{number}/dependency-review/rerun` | Runs a pull request's Dependency review check again and returns the review. | `security:write` |
 | `GET /repos/{owner}/{name}/vulnerability-alerts` | Lists alerts; filter with `state`, `severity`, `ecosystem`, `package`. | `security:read` |
 | `GET /workspaces/{workspace}/vulnerability-alerts` | The same across a workspace. | `security:read` |
 | `GET /repos/{owner}/{name}/vulnerability-alerts/{id}` | One alert. | `security:read` |
 | `PATCH /repos/{owner}/{name}/vulnerability-alerts/{id}` | `state` `dismissed` with `reason` and `comment`, or `open`. | `security:write` |
 
 Over MCP, the [`security` tool](/reference/mcp/#security) has
-`dependency_graph`, `sbom`, `compare_dependencies`, `vulnerability_alerts`,
+`dependency_graph`, `sbom`, `compare_dependencies`, `rerun_dependency_review`, `vulnerability_alerts`,
 `vulnerability_alert` and `update_vulnerability_alert`. Webhooks:
 `vulnerability_alert.created`, `.fixed`, `.dismissed` and `.reopened`.

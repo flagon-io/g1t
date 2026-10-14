@@ -735,6 +735,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "dependency_graph" => reply(&security.dependency_graph(args(body)?).await?),
         "sbom" => reply(&security.sbom(args(body)?).await?),
         "dependency_review" => reply(&security.dependency_review(args(body)?).await?),
+        "rerun_dependency_review" => reply(&security.rerun_dependency_review(args(body)?).await?),
         "security_settings" => reply(&security.security_settings(args(body)?).await?),
         "set_security_settings" => reply(&security.set_security_settings(args(body)?).await?),
         "workspace_security_settings" => reply(&security.workspace_security_settings(args(body)?).await?),
