@@ -47,6 +47,7 @@ mod security;
 mod tools;
 mod why;
 mod token_policy;
+mod onboarding;
 mod toolkit;
 
 use g1t_contracts::identity::{

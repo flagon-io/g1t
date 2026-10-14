@@ -765,6 +765,10 @@ impl Identity {
                 self.db
                     .prepare("DELETE FROM dock_pins WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
+                // Each member's Getting started in it (onboarding.rs).
+                self.db
+                    .prepare("DELETE FROM onboarding WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
+                    .bind(&[id.into()])?,
                 // Its teams, their people and the roles they gave (teams.rs).
                 self.db
                     .prepare("DELETE FROM team_members WHERE team_id IN (SELECT id FROM teams WHERE workspace_id = ?1) AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")

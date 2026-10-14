@@ -120,7 +120,7 @@ const READS = new Set(
     "github_enabled stars about public_links branch_drift tags last_commits languages contributors " +
     "license releases release stargazers starred commit_checks shortcuts spend usage_report templates " +
     "people_directory team_members github_visible_installations last_visit " +
-    "activity_digest activity"
+    "activity_digest activity onboarding ai_list ask_settings free_workspaces"
   ).split(" "),
 );
 

@@ -41,6 +41,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::onboarding::OnboardingOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
@@ -342,6 +343,8 @@ pub enum Op {
     /// A workspace's rules for personal access tokens, its members'
     /// tokens and approving them: token_policy.rs.
     Tokens(TokenOp),
+    /// A person's own Getting started in a workspace: onboarding.rs.
+    Onboarding(OnboardingOp),
     /// Workflow run artifacts, and how long they are kept: run_artifacts.rs.
     Artifacts(ArtifactsOp),
     /// A repository's actions/cache entries: caches.rs.
@@ -525,7 +528,7 @@ fn ai_config_schema(description: &str) -> Value {
             "base_url": { "type": "string", "description": "The address of a self-hosted endpoint or an Azure OpenAI resource, over https. An Anthropic-compatible one without /v1; an OpenAI-compatible one up to and including the version." },
             "auth_header": { "type": "string", "enum": ["x-api-key", "authorization"], "description": "For an endpoint: send the key as x-api-key, or as authorization: Bearer." },
             "model": { "type": "string", "description": "The model the team uses on it; for Azure OpenAI, the deployment." },
-            "console_workspace": { "type": "string", "description": "For anthropic: the Console workspace the key belongs to (wrkspc_…), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace." },
+            "console_workspace": { "type": "string", "description": "For anthropic: the Console workspace the key belongs to (wrkspc_â€¦), or any Console address in it, so links to the sessions it starts open there. Without it, the account's Default workspace." },
         },
     })
 }
@@ -803,12 +806,12 @@ fn commit_message_default(input: &Value, key: &str) -> std::result::Result<Optio
 fn alert_id_schema() -> Value {
     json!({
         "type": "string",
-        "description": "The alert's id, from list_security_alerts: sec_… for a secret, vul_… for a dependency.",
+        "description": "The alert's id, from list_security_alerts: sec_â€¦ for a secret, vul_â€¦ for a dependency.",
     })
 }
 
 impl Op {
-    pub const ALL: [Op; 403] = [
+    pub const ALL: [Op; 405] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1166,6 +1169,8 @@ impl Op {
         Op::Tokens(TokenOp::ListTokenRequests),
         Op::Tokens(TokenOp::ReviewTokenRequest),
         Op::Tokens(TokenOp::RevokeMemberToken),
+        Op::Onboarding(OnboardingOp::GetOnboarding),
+        Op::Onboarding(OnboardingOp::UpdateOnboarding),
         Op::Packages(PackagesOp::ListPackages),
         Op::Packages(PackagesOp::GetPackage),
         Op::Packages(PackagesOp::ListVersions),
@@ -1436,6 +1441,7 @@ impl Op {
             Op::Telemetry(op) => op.name(),
             Op::Protection(op) => op.name(),
             Op::Tokens(op) => op.name(),
+            Op::Onboarding(op) => op.name(),
             Op::Artifacts(op) => op.name(),
             Op::Caches(op) => op.name(),
             Op::Archives(op) => op.name(),
@@ -1677,7 +1683,7 @@ impl Op {
             }
             Op::ReadSession => "The recorded session of a pull request, oldest entry first.",
             Op::RecordDecision => {
-                "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the issue the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"…\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge."
+                "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the issue the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"â€¦\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge."
             }
             Op::ListDecisions => {
                 "The decision records on an issue (with those on its pull requests) or on a pull request, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed: someone said so; tested: a check or a combination of pull requests proved it; approved: a person approved it), who recorded it (absent for g1t), its summary and its evidence. Issues and pull requests share numbers, so number names either."
@@ -2035,6 +2041,7 @@ impl Op {
             Op::Telemetry(op) => op.description(),
             Op::Protection(op) => op.description(),
             Op::Tokens(op) => op.description(),
+            Op::Onboarding(op) => op.description(),
             Op::Artifacts(op) => op.description(),
             Op::Caches(op) => op.description(),
             Op::Archives(op) => op.description(),
@@ -2133,7 +2140,7 @@ impl Op {
                 &["email"],
             ),
             Op::RevokeInvite | Op::ResendInvite => object(
-                json!({ "id": { "type": "string", "description": "The invite's id, such as inv_01k…" } }),
+                json!({ "id": { "type": "string", "description": "The invite's id, such as inv_01kâ€¦" } }),
                 &["id"],
             ),
             Op::ListWorkspaceInvites => object(json!({ "workspace": workspace_schema() }), &["workspace"]),
@@ -3030,7 +3037,7 @@ impl Op {
                     "repo": repo_schema(),
                     "workflow": { "type": "string", "description": "A workflow's id or file name, such as ci.yml." },
                     "branch": { "type": "string" },
-                    "event": { "type": "string", "description": "push, pull_request, schedule, workflow_dispatch…" },
+                    "event": { "type": "string", "description": "push, pull_request, schedule, workflow_dispatchâ€¦" },
                     "pull": { "type": "integer", "description": "A pull request's number." },
                     "sha": { "type": "string", "description": "A commit." },
                     "status": { "type": "string", "description": "Only runs with this status (queued, in_progress, waiting, completed) or conclusion (success, failure, cancelled, skipped, timed_out): failure finds the failed ones." },
@@ -3677,6 +3684,7 @@ impl Op {
             Op::Telemetry(op) => op.input(),
             Op::Protection(op) => op.input(),
             Op::Tokens(op) => op.input(),
+            Op::Onboarding(op) => op.input(),
             Op::Artifacts(op) => op.input(),
             Op::Caches(op) => op.input(),
             Op::Archives(op) => op.input(),
@@ -3806,7 +3814,7 @@ impl Op {
             return op.needs_repo();
         }
         // A workspace's, never one repository's.
-        if let Op::Tokens(_) = self {
+        if let Op::Tokens(_) | Op::Onboarding(_) = self {
             return false;
         }
         !matches!(
@@ -6240,6 +6248,7 @@ impl Op {
             Op::Telemetry(op) => crate::telemetry::run(op, services, viewer, input).await,
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
+            Op::Onboarding(op) => crate::onboarding::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
             Op::Caches(op) => crate::caches::run(op, services, viewer, input).await,
             Op::Archives(op) => crate::archives::run(op, services, viewer, input).await,

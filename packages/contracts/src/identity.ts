@@ -959,6 +959,20 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   setDockPins(user: User, workspace: string, apps: string[]): Promise<Result<string[]>>;
 
   /**
+   * `user`'s own state of Getting started, the setup guide on the
+   * workspace's Home, in `workspace` (a slug): whether they dismissed it
+   * and the steps they skipped. The defaults (open, nothing skipped) when
+   * they never changed it; `not_found` when they are not a member.
+   */
+  onboarding(user: User, workspace: string): Promise<Result<Onboarding>>;
+  /**
+   * Changes it: `dismissed` true dismisses it (a second time keeps the
+   * first), false makes it open by itself again; `skipped` replaces the
+   * skipped steps. Returns it as kept.
+   */
+  setOnboarding(user: User, workspace: string, change: OnboardingChange): Promise<Result<Onboarding>>;
+
+  /**
    * How chat sounds and desktop notifications reach `user`, kept with the
    * account so every device and the desktop app behave the same
    * (`SoundSettings`). The defaults when they never changed them.
@@ -1012,6 +1026,30 @@ export type AgentScope = { repo: RepoPath; operations: string[]; run?: RunBindin
 
 /** The most apps a person pins in one workspace. Mirrors `MAX_DOCK_PINS` in `crates/contracts/src/identity.rs`. */
 export const MAX_DOCK_PINS = 24;
+
+/**
+ * The steps of Getting started, a workspace's setup guide, in order.
+ * Mirrors `ONBOARDING_STEPS` in `crates/contracts/src/identity.rs`.
+ */
+export const ONBOARDING_STEPS = ["ai", "ask", "code", "harness", "people", "runner"] as const;
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
+/**
+ * A person's own state of Getting started in one workspace, kept by
+ * identity. Whether each step is done is read from the workspace itself.
+ * Mirrors `Onboarding` in `crates/contracts/src/identity.rs`.
+ */
+export type Onboarding = {
+  /** When they dismissed it, so it no longer opens by itself; null while it does. */
+  dismissed_at: string | null;
+  /** The steps they chose to skip, in `ONBOARDING_STEPS` order. */
+  skipped: OnboardingStep[];
+  /** When they last changed it; null when never. */
+  updated_at: string | null;
+};
+
+/** A change to it: only what is sent changes. */
+export type OnboardingChange = { dismissed?: boolean; skipped?: OnboardingStep[] };
 
 /** The most characters each profile field takes. Mirrors `crates/contracts/src/identity.rs`. */
 export const PROFILE_LIMITS = { name: 80, bio: 160, location: 80, website: 200, pronouns: 40, timezone: 64 } as const;

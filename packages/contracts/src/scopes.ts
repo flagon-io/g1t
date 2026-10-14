@@ -624,6 +624,9 @@ export const OPERATION_SCOPES = [
   ["create_workspace_managed_workflow", "workspace:admin"],
   ["update_workspace_managed_workflow", "workspace:admin"],
   ["delete_workspace_managed_workflow", "workspace:admin"],
+  // A person's own Getting started in a workspace.
+  ["get_onboarding", "workspace:read"],
+  ["update_onboarding", "account:write"],
   // A workspace's rules for personal access tokens, and its members' tokens.
   ["get_token_policy", "workspace:read"],
   ["set_token_policy", "workspace:admin"],

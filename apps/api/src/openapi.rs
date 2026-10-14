@@ -19,6 +19,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -67,6 +68,11 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         "Workspaces",
         "A workspace owns repositories and is the first part of their address. People and agents work in workspaces.",
         &[Op::GetWorkspace, Op::CreateWorkspace, Op::UpdateWorkspace, Op::DeleteWorkspace, Op::GetWorkspaceActivity],
+    ),
+    (
+        "Getting started",
+        "Each person's own state of a workspace's setup guide, which opens on its Home for its owners until they finish or dismiss it: whether they dismissed it, and the steps they skipped. Whether a step is done is read from the workspace itself. People only, each their own.",
+        &[Op::Onboarding(OnboardingOp::GetOnboarding), Op::Onboarding(OnboardingOp::UpdateOnboarding)],
     ),
     (
         "Personal access tokens",
@@ -869,6 +875,7 @@ fn title(op: Op) -> &'static str {
         Op::Telemetry(op) => op.title(),
         Op::Protection(op) => op.title(),
         Op::Tokens(op) => op.title(),
+        Op::Onboarding(op) => op.title(),
         Op::Artifacts(op) => op.title(),
         Op::Caches(op) => op.title(),
         Op::Archives(op) => op.title(),

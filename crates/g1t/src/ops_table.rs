@@ -1883,6 +1883,33 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "get_onboarding",
+        method: "GET",
+        path: "/workspaces/{workspace}/onboarding",
+        tag: "Getting started",
+        summary: "Get your Getting started in a workspace",
+        scope: Some("workspace:read"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
+        id: "update_onboarding",
+        method: "PATCH",
+        path: "/workspaces/{workspace}/onboarding",
+        tag: "Getting started",
+        summary: "Dismiss or skip steps of Getting started",
+        scope: Some("account:write"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "dismissed", kind: "boolean", required: false, values: &[] },
+            Field { name: "skipped", kind: "array", required: false, values: &[] },
+        ],
+    },
+    Operation {
         id: "connect_integration",
         method: "POST",
         path: "/workspaces/{workspace}/integrations",
