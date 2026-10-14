@@ -231,6 +231,45 @@ pub struct WhyIssue {
     pub body: String,
 }
 
+/// The commit `why` names. Its author is named as git wrote them and by the
+/// g1t account their address belongs to, when one does; the address itself
+/// is never shown.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhyCommit {
+    pub hash: String,
+    pub tree_hash: String,
+    pub message: String,
+    pub author: WhyAuthor,
+    pub parents: Vec<String>,
+    /// RFC 3339.
+    pub authored_at: String,
+}
+
+/// Who wrote a commit, without their address.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WhyAuthor {
+    pub name: String,
+    /// The g1t account the author's address belongs to: a confirmed or
+    /// noreply address of one, or g1t's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+}
+
+impl WhyCommit {
+    /// `commit` as `why` shows it, its author's account `username` when known.
+    pub fn of(commit: Commit, username: Option<String>) -> WhyCommit {
+        WhyCommit {
+            hash: commit.hash,
+            tree_hash: commit.tree_hash,
+            message: commit.message,
+            author: WhyAuthor { name: commit.author.name, username },
+            parents: commit.parents,
+            authored_at: commit.authored_at,
+        }
+    }
+}
+
 /// `why`: why a line is the way it is. The commit that last changed it,
 /// the merged pull request it arrived in, that pull request's issue, the
 /// decisions recorded on them, and the session entries behind the commit.
@@ -239,7 +278,7 @@ pub struct WhyIssue {
 pub struct Why {
     pub path: String,
     pub line: u32,
-    pub commit: Commit,
+    pub commit: WhyCommit,
     pub pull: Option<WhyPull>,
     pub issue: Option<WhyIssue>,
     pub decisions: Vec<Decision>,
@@ -249,6 +288,24 @@ pub struct Why {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn why_names_an_author_by_account_never_by_address() {
+        let commit = Commit {
+            hash: "7d3e".into(),
+            tree_hash: "c1d2".into(),
+            message: "Read retry_limit".into(),
+            author: crate::repos::Signature { name: "Chase Pierce".into(), email: "syntaqx@gmail.com".into() },
+            parents: vec![],
+            authored_at: "2026-10-14T00:00:00Z".into(),
+        };
+        let known = serde_json::to_value(WhyCommit::of(commit.clone(), Some("syntaqx".into()))).unwrap();
+        assert_eq!(known["author"], serde_json::json!({ "name": "Chase Pierce", "username": "syntaqx" }));
+        let unknown = serde_json::to_value(WhyCommit::of(commit, None)).unwrap();
+        assert_eq!(unknown["author"], serde_json::json!({ "name": "Chase Pierce" }));
+        assert!(!known.to_string().contains("gmail") && !unknown.to_string().contains("gmail"));
+    }
+
 
     #[test]
     fn kinds_read_and_write_as_their_names() {

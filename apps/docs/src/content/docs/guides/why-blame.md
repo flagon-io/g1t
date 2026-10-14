@@ -108,7 +108,7 @@ curl "https://api.g1t.sh/repos/acme/web/why?path=src/config.rs&line=42" \
 
 | Field | |
 | --- | --- |
-| `commit` | The commit that last changed the line: `hash`, `message`, `author`, `parents`, `authored_at`. |
+| `commit` | The commit that last changed the line: `hash`, `message`, `author` (`name` as git wrote it, and `username`, the g1t account the author's address belongs to, when one does; never the address), `parents`, `authored_at`. |
 | `pull` | The merged pull request it arrived in: `number`, `title`, `author`, `agent`, `merged_by`, `merged_at`. Absent when it did not arrive through one. |
 | `issue` | That pull request's issue: `number`, `title`, `state` and `body` (cut at 900 characters). |
 | `decisions` | The [decision records](#decision-records) on the pull request, oldest first. |

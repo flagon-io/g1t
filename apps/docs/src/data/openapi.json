@@ -61079,7 +61079,7 @@
           "Decisions and why"
         ],
         "summary": "Explain a line",
-        "description": "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch), the merged pull request it arrived in, that pull request's issue, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, issue, decisions and sessions are empty when the commit did not arrive through a pull request.\n\n`ref` reads the file at a branch, tag or commit. See [sessions and why-blame](/guides/why-blame/#why-over-the-api).",
+        "description": "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch; its author named as git wrote them, with `username`, the g1t account their address belongs to, when one does, and never the address), the merged pull request it arrived in, that pull request's issue, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, issue, decisions and sessions are empty when the commit did not arrive through a pull request.\n\n`ref` reads the file at a branch, tag or commit. See [sessions and why-blame](/guides/why-blame/#why-over-the-api).",
         "x-operation": "why",
         "x-mcp-tool": "repository",
         "x-mcp-action": "why",
@@ -61154,7 +61154,7 @@
                     "message": "Read retry_limit, as #12 names it",
                     "author": {
                       "name": "Ana Lima",
-                      "email": "ana@example.com"
+                      "username": "ana"
                     },
                     "parents": [
                       "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b"
