@@ -11,6 +11,8 @@
  * Who sends what:
  * - chat: `deliver`, for every message (counts for each person in the
  *   conversation, a notification for those it is for) and every read;
+ *   `forget_conversation`, when someone clears their direct message with
+ *   @g1t (src/forget.ts);
  * - events: `notify`, for every inbox item, and `set_inbox`, the count after
  *   items arrive or are marked, naming the person by username;
  * - the site: `subscribe`, `unsubscribe`, `status`, `set_preferences`,
@@ -44,6 +46,7 @@ import {
 } from "@g1t/contracts";
 
 import { FEED_USERNAME_HEADER, FEED_USER_ID_HEADER, Feed, type FeedEnv } from "./feed.ts";
+import { cleanChannelId } from "./forget.ts";
 import { onlyPeople } from "./presence.ts";
 import { visitWorkspace } from "./visits.ts";
 import { byRepo, cleanRepoId, cleanRepoPath } from "./watch.ts";
@@ -136,6 +139,13 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
       const repo = cleanRepoPath(args.repo);
       if (!repoId || !repo) return Response.json({ ok: false, until: null });
       return Response.json(await stub.watchRepo(userId, repoId, repo));
+    }
+    case "forget_conversation": {
+      // For chat, after the person cleared their direct message with @g1t (src/forget.ts).
+      const channelId = cleanChannelId(args.channel_id);
+      const workspace = visitWorkspace(args.workspace);
+      if (!channelId || !workspace) return Response.json({ ok: false });
+      return Response.json(await stub.forgetConversation(workspace, channelId));
     }
     case "test":
       return Response.json(await stub.test(typeof args.username === "string" ? args.username : ""));

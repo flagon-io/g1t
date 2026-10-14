@@ -215,3 +215,18 @@ export async function notifyMuted(notify: Notify | undefined, input: { slug: str
     { user_id: input.user_id, workspace: input.slug, counts: { channel_id: input.channel_id, unread: 0, mentions: 0, muted: input.muted }, notification: null },
   ]);
 }
+
+/**
+ * After the person cleared their conversation with @g1t (src/clear.ts):
+ * notify forgets the notifications it kept from it (their text is a
+ * preview of messages that no longer exist), and its counts go to nothing.
+ */
+export async function notifyCleared(notify: Notify | undefined, input: { slug: string; channel_id: string; user_id: string }): Promise<void> {
+  if (!notify) return;
+  const response = await notify.fetch("https://service/rpc/forget_conversation", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ user_id: input.user_id, workspace: input.slug, channel_id: input.channel_id }),
+  });
+  if (!response.ok) throw new Error(`forget_conversation failed with status ${response.status}`);
+}

@@ -49,6 +49,7 @@ import {
 } from "@g1t/contracts";
 
 import { applyCounts, totals } from "./counts.ts";
+import { beforeForgetting, forgotKey } from "./forget.ts";
 import { cleanDevice, sendExpo } from "./expopush.ts";
 import { cleanNotification, decide, mergePreferences, pushPayload, readPreferences, type PushPayload, type TabState } from "./prefs.ts";
 import {
@@ -515,6 +516,9 @@ export class Feed extends DurableObject<FeedEnv> {
     const told: FeedNotification[] = [];
     for (const item of items) {
       const workspace = String(item.workspace ?? "").toLowerCase();
+      // Of a message from a conversation cleared since: it is gone, so neither counted nor told.
+      const channel = item.counts?.channel_id ?? item.notification?.channel_id ?? null;
+      if (channel && workspace && item.notification && beforeForgetting(item.notification, this.meta(forgotKey(workspace, channel)))) continue;
       if (item.counts?.channel_id && workspace) {
         const before = this.sql
           .exec<{ unread: number; mentions: number; muted: number }>(
@@ -543,6 +547,26 @@ export class Feed extends DurableObject<FeedEnv> {
     for (const workspace of changed) this.send(this.counts(workspace));
     await Promise.all(told.map((n) => this.tell(n)));
     return { ok: true };
+  }
+
+  /**
+   * The person cleared a conversation (chat's `g1t_clear`): the
+   * notifications kept from it go, its counts go to nothing, and from now
+   * on a late one of a message from before is dropped (src/forget.ts).
+   * Pushes already shown by a browser or phone stay there: they cannot be
+   * taken back.
+   */
+  async forgetConversation(workspace: string, channelId: string): Promise<{ ok: boolean; forgotten: number }> {
+    const slug = workspace.toLowerCase();
+    let forgotten = 0;
+    this.ctx.storage.transactionSync(() => {
+      forgotten = this.sql.exec("DELETE FROM notifications WHERE json_extract(json, '$.channel_id') = ?", channelId).rowsWritten;
+      this.sql.exec("UPDATE counts SET unread = 0, mentions = 0 WHERE workspace = ? AND channel_id = ?", slug, channelId);
+      this.setMeta(forgotKey(slug, channelId), new Date().toISOString());
+    });
+    this.send({ type: "forgotten", workspace: slug, channel_id: channelId });
+    this.send(this.counts(slug));
+    return { ok: true, forgotten };
   }
 
   /** The inbox count as it now is (events, after items arrive or are marked): every tab shows it at once. */

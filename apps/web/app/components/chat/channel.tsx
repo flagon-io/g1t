@@ -50,7 +50,8 @@ import { MessageText, type TextContext } from "./text";
 import { AskedFrom, ConversationMark, G1tAnswer } from "./answer";
 import type { ResponseContext } from "../ai-elements/response";
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
-import { anyAnswering, applyLive, fromG1t, suggestions } from "../../lib/g1t-chat";
+import { anyAnswering, applyLive, fromG1t, isClearCommand, suggestions } from "../../lib/g1t-chat";
+import { ClearG1tDialog } from "./clear-g1t";
 import { FolioUnfurls } from "../folios/unfurl";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { threadLink } from "../../lib/write-up";
@@ -236,6 +237,21 @@ export function ChannelView({ data }: { data: Loaded }) {
     },
     [send, data.channel.id],
   );
+  // Clear conversation (the header's menu, or `/clear`): everything here deleted for good.
+  const [clearing, setClearing] = useState(false);
+  const emptied = useCallback(() => {
+    setMessages([]);
+    setOlder(null);
+    setThread((now) => (now ? [] : now));
+    setThreadRoot(null);
+  }, []);
+  const clearG1t = useCallback(async (): Promise<string | null> => {
+    const done = await send<{ cleared: number }>({ intent: "g1t_clear", channel_id: data.channel.id });
+    if (!done.ok) return done.error.message;
+    emptied();
+    refresh();
+    return null;
+  }, [send, data.channel.id, emptied, refresh]);
 
   // The details panel: open by default on a wide screen, as last left.
   useEffect(() => {
@@ -384,6 +400,10 @@ export function ChannelView({ data }: { data: Loaded }) {
         // @g1t shows it is thinking in its answer itself.
         if (event.member.kind === "system") return;
         setTyping((now) => new Map(now).set(`${event.member.kind}:${event.member.id}`, { member: event.member, until: new Date(event.until).getTime() }));
+      } else if (event.type === "channel.cleared") {
+        // Cleared, here or in another tab: nothing in it is left.
+        if (event.channel_id !== data.channel.id) return;
+        emptied();
       } else if (event.type === "channel.updated") {
         // Renamed, a new topic, archived or back: everyone looking sees it at once.
         if (event.channel.id !== data.channel.id) return;
@@ -391,7 +411,7 @@ export function ChannelView({ data }: { data: Loaded }) {
         refresh();
       }
     },
-    [data.channel.id, data.channel.kind, muted, threadId, me?.id, countReply, refresh],
+    [data.channel.id, data.channel.kind, muted, threadId, me?.id, countReply, refresh, emptied],
   );
   // Back after a drop: what was missed.
   const onReconnect = useCallback(async () => {
@@ -669,6 +689,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           onStar={() => void toggleStar()}
           onInfo={toggleInfo}
           onNewConversation={withG1t ? () => void g1tSend("g1t_reset") : undefined}
+          onClear={withG1t ? () => setClearing(true) : undefined}
         />
         <div
           ref={scroller}
@@ -762,7 +783,15 @@ export function ChannelView({ data }: { data: Loaded }) {
                 <span>{formerAgentLine(formerAgent)}</span>
               </Card>
             ) : joined ? (
-              <Composer draftKey={data.channel.id} placeholder={withG1t ? "Ask g1t about your work" : placeholder} people={people} onSend={(body) => void post(body, null)} onTyping={onTyping} autoFocus />
+              <Composer
+                draftKey={data.channel.id}
+                placeholder={withG1t ? "Ask g1t about your work" : placeholder}
+                people={people}
+                // To @g1t, `/clear` asks to clear the conversation; it is never sent.
+                onSend={(body) => (withG1t && isClearCommand(body) ? setClearing(true) : void post(body, null))}
+                onTyping={onTyping}
+                autoFocus
+              />
             ) : (
               <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="text-sm text-muted">
@@ -836,6 +865,7 @@ export function ChannelView({ data }: { data: Loaded }) {
           if (!done.ok) setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: null } : m)));
         }}
       />
+      {withG1t && <ClearG1tDialog open={clearing} onOpenChange={setClearing} onClear={clearG1t} />}
       <BottomSheet open={editing != null && !editing.inline} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
         {editing && !editing.inline && (
           <div className="space-y-3 px-1 pt-1">
@@ -863,9 +893,12 @@ function ChannelHeader({
   onStar,
   onInfo,
   onNewConversation,
+  onClear,
 }: {
   /** In your direct message with @g1t: start a new conversation. */
   onNewConversation?: () => void;
+  /** In your direct message with @g1t: clear it, after asking (components/chat/clear-g1t.tsx). */
+  onClear?: () => void;
   /** A phone: back to the list of conversations. */
   onBack: () => void;
   data: Loaded;
@@ -962,6 +995,23 @@ function ChannelHeader({
             <span className="max-sm:sr-only">New conversation</span>
           </Button>
         </Hint>
+      )}
+      {onClear && (
+        <DropdownMenu>
+          <Hint label="Conversation actions">
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-bar" aria-label="Conversation actions">
+                <Ellipsis size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+          </Hint>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem variant="destructive" onSelect={onClear}>
+              <Trash2 />
+              Clear conversation…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
       {channel.kind === "dm" && (
         <Hint label={info ? "Hide details" : "Details"}>

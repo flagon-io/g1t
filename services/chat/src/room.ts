@@ -63,13 +63,19 @@ export type AnswerJob = {
   messages: AskMessage[];
   page: AskPage;
   message: ChatMessage;
+  /**
+   * The person's newest message the answer read. Gone when it is looked
+   * for: the conversation was cleared after it was read, and the answer
+   * is thrown away (`clear`). Absent on a job handed over before it was.
+   */
+  question_id?: string;
 };
 
 export class ChannelRoom extends DurableObject<RoomEnv> {
   /** When each socket last said it was typing; lost on hibernation, which only lets one more through. */
   private typedAt = new WeakMap<WebSocket, number>();
   /** The answer being written now, to stop; one at a time per room. */
-  private running: { id: string; stop: AbortController; superseded: boolean } | null = null;
+  private running: { id: string; stop: AbortController; superseded: boolean; cleared: boolean } | null = null;
 
   constructor(ctx: DurableObjectState, env: RoomEnv) {
     super(ctx, env);
@@ -129,6 +135,11 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
    * answer is not cut short when the request that asked ends.
    */
   async startAnswer(job: AnswerJob): Promise<void> {
+    // Read before a clear that has deleted its question since: thrown away, never asked.
+    if (await this.questionGone(job)) {
+      await this.discard(job.channel.id, job.message.id);
+      return;
+    }
     const times = answerAllowed((await this.ctx.storage.get<number[]>("answered")) ?? [], Date.now());
     await this.ctx.storage.put("answered", times.times);
     if (!times.ok) {
@@ -160,8 +171,14 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
     const job = await this.ctx.storage.get<AnswerJob>("job");
     if (!job) return;
     await this.ctx.storage.delete("job");
-    const run = { id: job.message.id, stop: new AbortController(), superseded: false };
+    const run = { id: job.message.id, stop: new AbortController(), superseded: false, cleared: false };
+    // Running before it looks again, so a clear from now on finds it and stops it.
     this.running = run;
+    if (await this.questionGone(job)) {
+      if (this.running === run) this.running = null;
+      await this.discard(job.channel.id, job.message.id);
+      return;
+    }
     const ask = integrationsClient(this.env.INTEGRATIONS as ServiceBinding);
     try {
       await runAnswer(
@@ -175,9 +192,11 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
           ask: (signal) => ask.ask(job.actor, job.slug, job.messages, job.page, signal),
           typing: () =>
             this.broadcast({ type: "typing", channel_id: job.channel.id, member: G1T_PROFILE, until: new Date(Date.now() + G1T_TYPING_MS).toISOString() }),
-          show: (body, answer) => this.broadcast({ type: "message.streaming", channel_id: job.channel.id, id: job.message.id, body, answer }),
-          save: (body, answer) => this.store(job.message.id, body, answer),
-          finish: (body, answer) => this.end(job, body, answer, run.superseded),
+          show: (body, answer) => {
+            if (!run.cleared) this.broadcast({ type: "message.streaming", channel_id: job.channel.id, id: job.message.id, body, answer });
+          },
+          save: (body, answer) => (run.cleared ? Promise.resolve() : this.store(job.message.id, body, answer)),
+          finish: (body, answer) => (run.cleared ? this.discard(job.channel.id, job.message.id) : this.end(job, body, answer, run.superseded)),
           now: () => Date.now(),
         },
         run.stop.signal,
@@ -187,6 +206,41 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
     } finally {
       if (this.running === run) this.running = null;
     }
+  }
+
+  /**
+   * The conversation was just cleared (src/index.ts `g1tClear`, after its
+   * rows were deleted): an answer waiting to start is dropped, one being
+   * written is stopped and thrown away, not saved, so nothing it read
+   * comes back; and every tab looking empties. What it had already sent
+   * the workspace's AI provider has gone to that provider.
+   */
+  async clear(channelId: string): Promise<void> {
+    const pending = await this.ctx.storage.get<AnswerJob>("job");
+    await this.ctx.storage.delete("job");
+    const ids = new Set<string>();
+    if (pending) ids.add(pending.message.id);
+    if (this.running) {
+      this.running.cleared = true;
+      this.running.stop.abort();
+      ids.add(this.running.id);
+    }
+    // Written after the rows went, an answer's own message would outlive the clear.
+    for (const id of ids) await this.env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(id).run();
+    this.broadcast({ type: "channel.cleared", channel_id: channelId });
+  }
+
+  /** Whether the question a job answers has been deleted by a clear. */
+  private async questionGone(job: AnswerJob): Promise<boolean> {
+    if (!job.question_id) return false;
+    const row = await this.env.DB.prepare("SELECT id FROM messages WHERE id = ?").bind(job.question_id).first<{ id: string }>();
+    return !row;
+  }
+
+  /** An answer to a cleared conversation: its message goes for good, and tabs drop it. */
+  private async discard(channelId: string, id: string): Promise<void> {
+    await this.env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(id).run();
+    this.broadcast({ type: "message.deleted", channel_id: channelId, id });
   }
 
   /** Saves an answer as it is now. */
@@ -216,10 +270,12 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
       return;
     }
     const at = new Date().toISOString();
-    await this.env.DB.batch([
+    const [saved] = await this.env.DB.batch([
       this.env.DB.prepare("UPDATE messages SET body = ?, meta = ? WHERE id = ?").bind(body, metaColumn({ answer }), message.id),
-      this.env.DB.prepare("UPDATE channels SET last_message_at = ? WHERE id = ?").bind(at, channel.id),
+      this.env.DB.prepare("UPDATE channels SET last_message_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM messages WHERE id = ?)").bind(at, channel.id, message.id),
     ]);
+    // Its message is gone: the conversation was cleared meanwhile. Nobody is shown or told it.
+    if (saved && saved.meta && saved.meta.changes === 0) return;
     this.broadcast({ type: "message.updated", message: { ...message, body, answer } });
     if (answer.state === "stopped") return;
     await notifyMessage(

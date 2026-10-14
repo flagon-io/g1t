@@ -338,6 +338,11 @@ export function useChannelLive(channelId: string) {
           case "channel.updated":
             void queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) });
             break;
+          case "channel.cleared":
+            // The person cleared their conversation with @g1t (in the site): nothing in it is left.
+            updatePages(queries, chatKeys.messages(slug, live.channel_id, null), () => []);
+            void queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) });
+            break;
         }
       },
     });

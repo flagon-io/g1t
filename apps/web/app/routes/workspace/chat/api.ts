@@ -86,6 +86,9 @@ export async function action({ params, context, request }: Route.ActionArgs) {
         return chat.g1tRetry(slug, channel, viewer);
       case "g1t_stop":
         return chat.g1tStop(slug, channel, viewer);
+      // Deletes the viewer's own conversation with @g1t for good; the chat service refuses any other.
+      case "g1t_clear":
+        return chat.g1tClear(slug, channel, viewer);
       case "edit":
         return chat.edit(slug, channel, viewer, sent.id ?? "", (sent.body ?? "").trim());
       case "remove":

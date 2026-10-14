@@ -4,7 +4,7 @@
  * owner who can choose; with `?sessions`, whether sessions can start on the
  * workspace's Anthropic account. The conversation itself is the viewer's
  * direct message with @g1t in chat (`-/chat/api`, intents `g1t_dm`, `post`,
- * `g1t_stop`, `g1t_reset`, `g1t_retry`): the chat service has g1t answer
+ * `g1t_stop`, `g1t_reset`, `g1t_retry`, `g1t_clear`): the chat service has g1t answer
  * there, with the provider an owner chose, on the workspace's own key.
  *
  * `POST -/ask` starts a session g1t proposed in an answer (the proposal

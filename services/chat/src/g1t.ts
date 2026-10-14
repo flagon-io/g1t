@@ -167,6 +167,19 @@ export function latestPage(rows: readonly SaidRow[]): AskPage | null {
 }
 
 /**
+ * The id of the question an answer is for: the person's newest message.
+ * Clearing the conversation deletes it, which is how the room knows an
+ * answer it was handed read what is gone (src/room.ts).
+ */
+export function latestQuestion(rows: readonly SaidRow[]): string | null {
+  for (let at = rows.length - 1; at >= 0; at--) {
+    const row = rows[at]!;
+    if (row.author.startsWith("user:") && !row.deleted_at) return row.id;
+  }
+  return null;
+}
+
+/**
  * A page as a person's message may carry it: only what Ask reads, of the
  * shapes it reads. Null when nothing of it is usable.
  */

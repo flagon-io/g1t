@@ -35,15 +35,21 @@ export function DropdownMenuContent({
 
 export function DropdownMenuItem({
   className,
+  variant = "default",
   ...props
-}: ComponentProps<typeof Primitive.Item>) {
+}: ComponentProps<typeof Primitive.Item> & {
+  /** `destructive`: an item that deletes something, in the danger color (shadcn's variant). */
+  variant?: "default" | "destructive";
+}) {
   return (
     <Primitive.Item
+      data-variant={variant}
       className={cn(
         // Taller rows under a finger, so each is a fair target.
         "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-fg/90 outline-none select-none pointer-coarse:min-h-10",
         "data-highlighted:bg-line data-highlighted:text-fg data-disabled:opacity-50",
         "[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-faint",
+        "data-[variant=destructive]:text-danger data-[variant=destructive]:data-highlighted:bg-danger/10 data-[variant=destructive]:data-highlighted:text-danger data-[variant=destructive]:[&_svg]:text-danger",
         className,
       )}
       {...props}

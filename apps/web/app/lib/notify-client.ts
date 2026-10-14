@@ -488,6 +488,10 @@ function onEvent(event: FeedEvent): void {
       sink.deliver(event.notification, { toast: event.toast, focused: focused() });
       heard(event.notification, event.toast);
       break;
+    case "forgotten":
+      // A conversation cleared (your direct message with @g1t): its notifications are gone everywhere.
+      set({ recent: state.recent.filter((n) => !(n.channel_id === event.channel_id && n.workspace.toLowerCase() === event.workspace)) });
+      break;
     case "preferences":
       set({ preferences: event.preferences });
       break;

@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { ChatLiveEvent, ChatMessage } from "@g1t/contracts";
 
-import { askedFrom, answerLabel, anyAnswering, applyLive, cutOff, fromG1t, refTarget, suggestions } from "./g1t-chat.ts";
+import { askedFrom, answerLabel, anyAnswering, applyLive, cutOff, fromG1t, isClearCommand, refTarget, suggestions } from "./g1t-chat.ts";
 
 const g1t = { kind: "system" as const, id: "g1t", name: "g1t", display_name: "g1t", avatar: null, role: null };
 const ana = { kind: "user" as const, id: "u1", name: "ana", display_name: "Ana", avatar: null, role: null };
@@ -51,6 +51,21 @@ test("other conversations, thread replies and deletions", () => {
   assert.deepEqual(applyLive(list, { type: "message.deleted", channel_id: "chn_1", id: "msg_1" }, "chn_1").map((m) => m.id), ["msg_2"]);
   // Out of order arrivals land in order.
   assert.deepEqual(applyLive([message("msg_3")], { type: "message.created", message: message("msg_2") }, "chn_1").map((m) => m.id), ["msg_2", "msg_3"]);
+});
+
+test("a cleared conversation empties, and only that one", () => {
+  const list = [message("msg_1"), message("msg_2", { author: g1t, answer: { state: "streaming" } })];
+  assert.deepEqual(applyLive(list, { type: "channel.cleared", channel_id: "chn_1" }, "chn_1"), []);
+  assert.equal(applyLive(list, { type: "channel.cleared", channel_id: "chn_2" }, "chn_1").length, 2);
+  // An answer's late frame after the clear brings nothing back.
+  assert.deepEqual(applyLive([], { type: "message.streaming", channel_id: "chn_1", id: "msg_2", body: "Two", answer: { state: "streaming" } }, "chn_1"), []);
+});
+
+test("/clear, typed to g1t, is the command and nothing else is", () => {
+  assert.ok(isClearCommand("/clear"));
+  assert.ok(isClearCommand("  /CLEAR \n"));
+  assert.ok(!isClearCommand("/clear the cache for me"));
+  assert.ok(!isClearCommand("clear"));
 });
 
 test("who g1t is, and answers cut off at their limit", () => {

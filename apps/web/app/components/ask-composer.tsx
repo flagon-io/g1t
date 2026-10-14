@@ -1,4 +1,4 @@
-import { ArrowUp, MessageSquare, RotateCcw, Settings2, Square } from "lucide-react";
+import { ArrowUp, Ellipsis, MessageSquare, RotateCcw, Settings2, Square, Trash2 } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -6,16 +6,18 @@ import { type AskSetup, type ChatLiveEvent, type ChatMessage, type Result } from
 
 import { askPage, askWhere } from "../lib/ask";
 import { browserTimeZone } from "../lib/time-zone";
-import { anyAnswering, applyLive, fromG1t, suggestions } from "../lib/g1t-chat";
+import { anyAnswering, applyLive, fromG1t, isClearCommand, suggestions } from "../lib/g1t-chat";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "./ai-elements/conversation";
 import { Message, MessageContent } from "./ai-elements/message";
 import type { ResponseContext } from "./ai-elements/response";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
 import { AskedFrom, G1tAnswer } from "./chat/answer";
+import { ClearG1tDialog } from "./chat/clear-g1t";
 import { useChatLive } from "./chat/live";
 import { MarkGlyph } from "./logo";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
 import { Kbd } from "./ui/kbd";
 import { SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -33,7 +35,8 @@ import { Textarea } from "./ui/textarea";
  * service has g1t answer, and the answer streams into the direct message
  * over its live socket, so it shows here and in Chat at once. The panel
  * shows the current conversation, since the latest "New conversation";
- * everything before it stays in Chat.
+ * everything before it stays in Chat. Clear conversation (the menu, or
+ * `/clear`) deletes all of it, here and in Chat, for good.
  */
 
 type Setup = AskSetup & { owner: boolean };
@@ -203,7 +206,18 @@ function useG1tConversation(slug: string, open: boolean) {
     [channel, slug],
   );
 
-  return { channelId, messages, loaded, problem, ask, act, load, onEvent };
+  /** Deletes the whole conversation for good (the chat service's `g1t_clear`): null when done, else why not. */
+  const clear = useCallback(async (): Promise<string | null> => {
+    const id = await channel();
+    if (!id) return "g1t could not be reached. Check your connection and try again.";
+    const done = await chatApi<{ cleared: number }>(slug, { intent: "g1t_clear", channel_id: id });
+    if (!done.ok) return done.error.message;
+    setMessages([]);
+    setProblem(null);
+    return null;
+  }, [channel, slug]);
+
+  return { channelId, messages, loaded, problem, ask, act, clear, load, onEvent };
 }
 
 type G1tConversation = ReturnType<typeof useG1tConversation>;
@@ -240,7 +254,8 @@ function LiveSocket({ slug, channelId, onEvent, onReconnect }: { slug: string; c
 
 function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; conversation: G1tConversation }) {
   const { pathname } = useLocation();
-  const { channelId, messages, loaded, problem, ask, act, load, onEvent } = conversation;
+  const { channelId, messages, loaded, problem, ask, act, clear, load, onEvent } = conversation;
+  const [clearing, setClearing] = useState(false);
   const [setup, setSetup] = useState<Setup | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -299,6 +314,12 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
   const context = useMemo<ResponseContext>(() => ({ slug, repo: where.repo ?? null }), [slug, where.repo?.namespace, where.repo?.name]);
 
   const send = (text: string) => {
+    // `/clear` asks to clear the conversation; it is never sent to g1t.
+    if (isClearCommand(text)) {
+      setDraft("");
+      setClearing(true);
+      return;
+    }
     if (!ready || busy || !text.trim()) return;
     setDraft("");
     void ask(text, pathname);
@@ -362,6 +383,21 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
                 New conversation
               </Button>
             </Hint>
+            <DropdownMenu>
+              <Hint label="More">
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-xs" aria-label="More">
+                    <Ellipsis size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+              </Hint>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem variant="destructive" disabled={messages.length === 0} onSelect={() => setClearing(true)}>
+                  <Trash2 />
+                  Clear conversation…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </span>
         </div>
       </SheetHeader>
@@ -468,12 +504,20 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
           </div>
         </div>
         <p className="mt-2 px-1 text-[0.6875rem] leading-relaxed text-faint">
-          Answers come from your workspace&apos;s own AI provider and can be wrong. Kept in your direct message with g1t.{" "}
+          Answers come from your workspace&apos;s own AI provider and can be wrong. Kept in your direct message with g1t until you clear it.{" "}
           <span className="whitespace-nowrap max-sm:hidden">
             <Kbd>Shift</Kbd> <Kbd>Enter</Kbd> for a new line.
           </span>
         </p>
       </form>
+      <ClearG1tDialog
+        open={clearing}
+        onOpenChange={(next) => {
+          setClearing(next);
+          if (!next) requestAnimationFrame(() => input.current?.focus());
+        }}
+        onClear={clear}
+      />
     </>
   );
 }

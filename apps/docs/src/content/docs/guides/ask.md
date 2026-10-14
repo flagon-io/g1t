@@ -123,11 +123,15 @@ What you ask in the panel is posted there, and g1t's answer is written
 there as it streams, so it shows in both places at once: start a question
 on an issue page, and read the answer later in Chat, on your phone, or
 in the desktop app. **Open in Chat** at the top of the panel takes you to
-it. Nobody else can read it, and it stays until you delete it.
+it. Nobody else can read it, and it stays until you delete it or
+[clear it](#clear-the-conversation).
 
 - **New conversation** leaves a mark in the direct message. From then on,
   g1t reads only what comes after it, and the panel shows only that; what
   came before stays in Chat to read.
+- **Clear conversation…**, in the panel's **⋯** menu, deletes the whole
+  conversation for good. Typing `/clear` and pressing **Enter** does the
+  same. See [Clear the conversation](#clear-the-conversation).
 - **Stop**, or **Esc** while an answer is coming, ends the answer; what had
   come so far stays. Writing again while g1t is still answering does the
   same: g1t stops and answers your newest words, reading both.
@@ -146,6 +150,39 @@ g1t itself; any other picture is a link.
 In the panel, **Enter** sends, **Shift+Enter** starts a new line, and
 **⌘K** (**Ctrl+K**) puts you back in the box. On an empty conversation,
 the panel suggests a few questions for the page you are on.
+
+## Clear the conversation
+
+**New conversation** only changes what g1t reads: everything said before
+the mark is still kept, and still in Chat. To delete it, clear the
+conversation:
+
+1. Open **Ask** in the top bar, or your direct message with **g1t** in
+   Chat.
+2. Choose **⋯ → Clear conversation…**, or type `/clear` in the box and
+   press **Enter**.
+3. Choose **Clear conversation** to confirm.
+
+Everything in your direct message with g1t is deleted for good, in Ask
+and in Chat, on every device. It can't be undone, and g1t remembers none
+of it: the next question starts with nothing before it.
+
+| Deleted | Kept |
+| --- | --- |
+| Your questions, and the page each was asked from | The direct message itself, empty, so Ask and Chat open it as before |
+| g1t's answers, with their steps, sources and proposed sessions | Chat's daily count of messages and bytes for the workspace, which has no text and no names in it and is kept for billing |
+| Thread replies, reactions, "New conversation" marks, and deleted messages' empty places | Issues, pull requests and sessions you started from an answer: they are your workspace's, not the conversation's |
+| Your read mark and unread count for it | What your AI provider was sent to answer: it went to the provider, under your workspace's agreement with them |
+| The notifications its answers sent you, in g1t's notifications panel | Browser and phone notifications already shown on a device |
+
+An answer still being written when you clear is stopped and thrown away,
+not saved: it never comes back to the conversation, and it does not
+notify you. A question you send after clearing is answered as the start
+of a new conversation.
+
+Clearing is only ever your own: nobody else can clear your conversation
+with g1t, not even a workspace owner, and you can't clear anyone else's
+or a channel. Clearing a conversation that is already empty does nothing.
 
 ## Limits
 

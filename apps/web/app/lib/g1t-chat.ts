@@ -57,9 +57,20 @@ export function applyLive(list: readonly ChatMessage[], event: ChatLiveEvent, ch
     case "message.deleted":
       if (event.channel_id !== channelId) return list as ChatMessage[];
       return list.filter((m) => m.id !== event.id);
+    case "channel.cleared":
+      // The person cleared the conversation: nothing in it is left.
+      return event.channel_id === channelId ? [] : (list as ChatMessage[]);
     default:
       return list as ChatMessage[];
   }
+}
+
+/**
+ * Whether what was typed to @g1t is `/clear`: it opens Clear conversation
+ * (components/chat/clear-g1t.tsx) rather than being sent to g1t.
+ */
+export function isClearCommand(text: string): boolean {
+  return text.trim().toLowerCase() === "/clear";
 }
 
 /**

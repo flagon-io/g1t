@@ -421,6 +421,11 @@ export type ChatLiveEvent =
   | { type: "typing"; channel_id: string; member: MemberProfile; until: string }
   | { type: "read"; channel_id: string; principal: Principal; last_read_id: string }
   | { type: "channel.updated"; channel: Channel }
+  /**
+   * Everything in the conversation was deleted for good: the person
+   * cleared their direct message with @g1t. Every message shown goes.
+   */
+  | { type: "channel.cleared"; channel_id: string }
   | { type: "reaction.added" | "reaction.removed"; channel_id: string; message_id: string; emoji: string; member: MemberProfile };
 
 /**
@@ -530,6 +535,14 @@ export type ChatApi = {
   g1tRetry(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
   /** Stops @g1t's answer still coming; what came stays. */
   g1tStop(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
+  /**
+   * Clears the viewer's own direct message with @g1t: every message in
+   * it, g1t's answers and their steps, reactions and the notifications
+   * from it are deleted for good, and an answer still coming is thrown
+   * away. `cleared` is how many messages went; 0 when it was empty, so
+   * clearing again is harmless. Refused for any other conversation.
+   */
+  g1tClear(workspace: string, channelId: string, viewer: User): Promise<Result<{ cleared: number }>>;
 };
 
 /**
@@ -619,5 +632,6 @@ export function chatClient(service: ServiceBinding): ChatApi {
     g1tReset: (workspace, channelId, viewer) => call("g1t_reset", { workspace, channel_id: channelId, viewer }),
     g1tRetry: (workspace, channelId, viewer) => call("g1t_retry", { workspace, channel_id: channelId, viewer }),
     g1tStop: (workspace, channelId, viewer) => call("g1t_stop", { workspace, channel_id: channelId, viewer }),
+    g1tClear: (workspace, channelId, viewer) => call("g1t_clear", { workspace, channel_id: channelId, viewer }),
   };
 }

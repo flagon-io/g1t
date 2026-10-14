@@ -77,12 +77,14 @@ import {
   conversation,
   g1tDmPerson,
   latestPage,
+  latestQuestion,
   metaColumn,
   pageFrom,
   parseMeta,
   shownAnswer,
   startsAnswer,
 } from "./g1t.ts";
+import { clearConversation, mayClear } from "./clear.ts";
 import { internalAnswer } from "./internal.ts";
 import { mentionedHandles, mentionsColumn } from "./mentions.ts";
 import { messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
@@ -91,7 +93,7 @@ import { ROOM_MEMBER_HEADER, type ChannelRoom, type RoomMember } from "./room.ts
 import { mayCreateChannel, mayManageChannel, permissionsFor, rowFor, settingsChange, settingsOf, type SettingsRow } from "./settings.ts";
 import { dmTitle, sidebarOrder, tally, type UnreadRow } from "./unread.ts";
 // Live notifications and counts (services/notify).
-import { notifyMessage, notifyMuted, notifyRead } from "./notify.ts";
+import { notifyCleared, notifyMessage, notifyMuted, notifyRead } from "./notify.ts";
 
 export { ChannelRoom } from "./room.ts";
 
@@ -1233,6 +1235,8 @@ class Chat {
     const rows = recent.results.reverse();
     const messages = conversation(rows);
     if (!messages.length) return;
+    // The question it answers: a clear that deletes it also throws this answer away (src/room.ts).
+    const question = latestQuestion(rows);
     const written = await this.write(place, G1T_KEY, { body: "", card: null, thread_root: null }, { meta: { answer: { state: "thinking" } }, notify: false });
     if (!written.ok) return;
     const { channel } = place;
@@ -1244,6 +1248,7 @@ class Chat {
       // The page of the newest question; one asked in Chat is on the direct message itself.
       page: { ...latestPage(rows), path: latestPage(rows)?.path ?? `/${place.slug}/-/chat/dm/${channel.id}` },
       message: written.value,
+      question_id: question ?? undefined,
     });
   }
 
@@ -1279,6 +1284,31 @@ class Chat {
         .run();
     }
     return written;
+  }
+
+  /**
+   * "Clear conversation": deletes everything in the viewer's own direct
+   * message with @g1t for good (src/clear.ts), so g1t remembers none of
+   * it. Only that person, in their own; never a channel or anyone else's.
+   * Then the room throws away an answer still being written, so it cannot
+   * write what it read back in, and notify forgets their notifications
+   * from it. Clearing an empty conversation does nothing and says 0.
+   */
+  async g1tClear(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<{ cleared: number }>> {
+    const found = await this.place(a.workspace, a.channel_id, a.viewer, "member");
+    if (!found.ok) return found;
+    const place = found.value;
+    const me = userKey(a.viewer!);
+    if (!mayClear({ channelKind: place.channel.kind, members: await this.memberKeys(place.channel.id), viewer: me })) {
+      return fail("invalid", "Only your own direct message with g1t can be cleared.");
+    }
+    // Deleted first, then the room: an answer that reads after this finds its question gone (src/room.ts).
+    const { messages } = await clearConversation(this.db, place.channel.id);
+    await this.room(place.channel.id).clear(place.channel.id);
+    await notifyCleared(this.env.NOTIFY, { slug: place.slug, channel_id: place.channel.id, user_id: a.viewer!.id }).catch((error: unknown) =>
+      console.error("chat could not have notify forget", place.channel.id, error),
+    );
+    return ok({ cleared: messages });
   }
 
   /** Answers the latest question again: g1t's last answer goes, and a new one is written. */
@@ -1763,6 +1793,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.g1tRetry(args));
     case "g1t_stop":
       return Response.json(await service.g1tStop(args));
+    case "g1t_clear":
+      return Response.json(await service.g1tClear(args));
     default:
       return new Response("Unknown method\n", { status: 404 });
   }

@@ -240,7 +240,12 @@ export type FeedEvent =
   /** Your own presence, status and Do Not Disturb, on connect and after every change. */
   | { type: "me"; me: OwnPresence }
   /** What changed in repositories you are watching the pages of (`watchRepo`). */
-  | { type: "repo"; changes: RepoChange[] };
+  | { type: "repo"; changes: RepoChange[] }
+  /**
+   * The person cleared a conversation (their direct message with @g1t):
+   * the notifications from it are gone, so tabs drop them too.
+   */
+  | { type: "forgotten"; workspace: string; channel_id: string };
 
 /**
  * What a tab sends over the feed socket: plain `ping` every 25 s (answered
@@ -344,6 +349,13 @@ export type NotifyApi = {
   watchRepo(user: Pick<User, "id">, repoId: string, repo: string): Promise<{ ok: boolean; until: string | null }>;
   /** For services: what changed in repositories (`crates/contracts/src/live.rs`), told to whoever watches each. */
   repoChanged(changes: RepoChange[]): Promise<{ ok: boolean }>;
+  /**
+   * For chat, after the person cleared a conversation: the notifications
+   * kept from it are deleted, its counts go to nothing, and a
+   * notification of a message from before the clear that arrives late is
+   * dropped. `workspace` is the slug.
+   */
+  forgetConversation(user: Pick<User, "id">, workspace: string, channelId: string): Promise<{ ok: boolean }>;
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
@@ -375,5 +387,6 @@ export function notifyClient(service: ServiceBinding): NotifyApi {
     markVisit: (user, workspace, at) => call("mark_visit", { user_id: user.id, workspace, at }),
     watchRepo: (user, repoId, repo) => call("watch_repo", { user_id: user.id, repo_id: repoId, repo }),
     repoChanged: (changes) => call("repo_changed", { changes }),
+    forgetConversation: (user, workspace, channelId) => call("forget_conversation", { user_id: user.id, workspace, channel_id: channelId }),
   };
 }
