@@ -477,7 +477,7 @@ export type Blame = {
   ranges: BlameRange[];
   /** The commits the ranges name, each once. */
   commits: Commit[];
-  /** True when the history was too long to read in full. */
+  /** True when the history was too long to read in full (too many commits, or too long to read). */
   partial: boolean;
 };
 

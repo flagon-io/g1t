@@ -460,6 +460,8 @@ export function BlobView({
   const toggle = (label: string, on: boolean, search: string) => (
     <Link
       to={{ search }}
+      // Blame is costly to work out and adds nothing to a search index.
+      rel={search ? "nofollow" : undefined}
       preventScrollReset
       className={`rounded px-2.5 py-1.5 transition-colors sm:px-2 sm:py-0.5 ${on ? "bg-raised text-fg" : "hover:text-fg"}`}
     >
