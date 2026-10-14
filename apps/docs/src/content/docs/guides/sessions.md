@@ -289,8 +289,9 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   placeholder that is swapped for the token on its way to g1t. It is never
   in the prompt, and the model never sees it. The session has g1t's skills
   (work-on-issue, coordinate and fix-integration, uploaded to the account
-  the first time) next to the account's own custom skills, up to 20 in
-  all. It may hand parts of the work to copies of itself; each is recorded
+  the first time, and as a new version whenever g1t changes them; the
+  agent uses the version g1t uploaded) next to the account's own custom
+  skills, at their latest version, up to 20 in all. It may hand parts of the work to copies of itself; each is recorded
   as a subagent.
 - **Without one**, or with `handoff: true`, nothing starts: you get
   `command`, a Claude Code command line to run in your working copy with

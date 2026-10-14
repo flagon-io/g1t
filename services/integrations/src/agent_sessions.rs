@@ -204,6 +204,50 @@ pub fn interrupt_event() -> Value {
     json!({ "events": [{ "type": "user.interrupt" }] })
 }
 
+/// One of g1t's skills on an account: its id there, the version g1t last
+/// uploaded, and the SHA-256 of what that version holds, so a changed
+/// SKILL.md is uploaded again as a new version.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, Deserialize)]
+pub struct OwnSkill {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+/// g1t's skills as stored for an agent, by name. Rows written before
+/// versions were kept hold the id alone, and are uploaded again once.
+pub fn own_skills(stored: &str) -> BTreeMap<String, OwnSkill> {
+    let parsed: BTreeMap<String, Value> = serde_json::from_str(stored).unwrap_or_default();
+    parsed
+        .into_iter()
+        .filter_map(|(name, value)| {
+            let skill = match value {
+                Value::String(id) => OwnSkill { id, ..OwnSkill::default() },
+                other => serde_json::from_value(other).ok()?,
+            };
+            (!skill.id.is_empty()).then_some((name, skill))
+        })
+        .collect()
+}
+
+/// How an agent names a skill: g1t's own at the version it uploaded, so a
+/// new version changes the agent and reaches it; the account's at its latest.
+pub fn skill_ref(id: &str, version: Option<&str>) -> Value {
+    json!({ "type": "custom", "skill_id": id, "version": version.unwrap_or("latest") })
+}
+
+/// The version an upload made: a new version's `version`, a new skill's
+/// `latest_version`, as a string whichever way it is written.
+fn uploaded_version(answer: &Value) -> Option<String> {
+    [&answer["version"], &answer["latest_version"]].into_iter().find_map(|value| match value {
+        Value::String(text) if !text.is_empty() => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        _ => None,
+    })
+}
+
 /// A request body of files, as `multipart/form-data` with `boundary`.
 pub fn multipart(boundary: &str, files: &[(String, String)]) -> String {
     let mut body = String::new();
@@ -676,27 +720,52 @@ impl Integrations {
         Ok(Outcome::Ok(self.anthropic_connection(&workspace).await?.0))
     }
 
-    /// g1t's skills on the account, uploaded the first time, and the
-    /// account's own custom skills: what the agent is given, at most 20.
-    async fn agent_skills(&self, key: &str, known: &BTreeMap<String, String>) -> Result<(Vec<Value>, BTreeMap<String, String>)> {
+    /// Uploads a skill's SKILL.md: a new skill, or a new version of `id`.
+    async fn upload_skill(&self, key: &str, id: Option<&str>, name: &str, content: &str) -> Result<http::Answer> {
+        let boundary = format!("g1t{}", g1t_secrets::random_hex(12));
+        let body = multipart(&boundary, &[(format!("{name}/SKILL.md"), content.to_owned())]);
+        let content_type = format!("multipart/form-data; boundary={boundary}");
+        let headers = [("x-api-key", key), ("anthropic-version", VERSION), ("content-type", content_type.as_str())];
+        let path = match id {
+            Some(id) => format!("{API}/v1/skills/{id}/versions"),
+            None => format!("{API}/v1/skills"),
+        };
+        http::send(Method::Post, &path, &headers, Some(body)).await
+    }
+
+    /// g1t's skills on the account, uploaded the first time and again as a
+    /// new version whenever g1t's copy changes, and the account's own
+    /// custom skills: what the agent is given, at most 20.
+    async fn agent_skills(&self, key: &str, known: &BTreeMap<String, OwnSkill>) -> Result<(Vec<Value>, BTreeMap<String, OwnSkill>)> {
         let mut ours = known.clone();
         for (name, content) in G1T_SKILLS {
-            if ours.contains_key(name) {
+            let sha256 = g1t_secrets::sha256_hex(content);
+            let held = ours.get(name).cloned();
+            if held.as_ref().is_some_and(|skill| skill.sha256.as_deref() == Some(sha256.as_str())) {
                 continue;
             }
-            let boundary = format!("g1t{}", g1t_secrets::random_hex(12));
-            let body = multipart(&boundary, &[(format!("{name}/SKILL.md"), content.to_owned())]);
-            let content_type = format!("multipart/form-data; boundary={boundary}");
-            let headers = [("x-api-key", key), ("anthropic-version", VERSION), ("content-type", content_type.as_str())];
-            let answer = http::send(Method::Post, &format!("{API}/v1/skills"), &headers, Some(body)).await?;
-            match answer.json()["id"].as_str() {
-                Some(id) if answer.ok() => {
-                    ours.insert(name.to_owned(), id.to_owned());
+            let mut on = held.as_ref().map(|skill| skill.id.clone());
+            let mut answer = self.upload_skill(key, on.as_deref(), name, content).await?;
+            // Someone deleted it on the account: make it again.
+            if on.is_some() && answer.status == 404 {
+                on = None;
+                answer = self.upload_skill(key, None, name, content).await?;
+            }
+            let uploaded = answer.json();
+            // A new skill answers with its id; a new version, with the skill's.
+            let id = match &on {
+                Some(id) => Some(id.as_str()),
+                None => uploaded["id"].as_str(),
+            };
+            match (answer.ok(), id) {
+                (true, Some(id)) => {
+                    ours.insert(name.to_owned(), OwnSkill { id: id.to_owned(), version: uploaded_version(&uploaded), sha256: Some(sha256) });
                 }
+                // The old version stays in use until an upload works.
                 _ => worker::console_error!("agent sessions: g1t's {name} skill was not uploaded: {}", answer.problem("Anthropic")),
             }
         }
-        let mut skills: Vec<Value> = ours.values().map(|id| json!({ "type": "custom", "skill_id": id, "version": "latest" })).collect();
+        let mut skills: Vec<Value> = ours.values().map(|skill| skill_ref(&skill.id, skill.version.as_deref())).collect();
         // The account's own skills, as many as fit.
         let headers = [("x-api-key", key), ("anthropic-version", VERSION)];
         let listed = http::send(Method::Get, &format!("{API}/v1/skills?source=custom&limit=100"), &headers, None).await?;
@@ -706,8 +775,8 @@ impl Integrations {
                 if skills.len() >= MAX_SKILLS {
                     break;
                 }
-                if !ours.values().any(|own| own == id) {
-                    skills.push(json!({ "type": "custom", "skill_id": id, "version": "latest" }));
+                if !ours.values().any(|own| own.id == id) {
+                    skills.push(skill_ref(id, None));
                 }
             }
         }
@@ -723,7 +792,7 @@ impl Integrations {
             .bind(&[row.id.as_str().into()])?
             .first::<AgentRow>(None)
             .await?;
-        let known: BTreeMap<String, String> = stored.as_ref().and_then(|stored| serde_json::from_str(&stored.skills).ok()).unwrap_or_default();
+        let known = stored.as_ref().map(|stored| own_skills(&stored.skills)).unwrap_or_default();
         let (skills, ours) = self.agent_skills(key, &known).await?;
         let body = agent_body(model, &self.mcp_url(), &skills);
         let hash = g1t_secrets::sha256_hex(&body.to_string());
@@ -1442,6 +1511,26 @@ mod tests {
         assert!(!prompt(AgentMode::Implement).contains("<issue>"), "no body, no block");
         assert!(!prompt(AgentMode::Implement).contains("clone"), "a hand-off is in a working copy already");
         assert_eq!(handoff_command(7, "it's #7"), "G1T_ISSUE=7 claude 'it'\"'\"'s #7'");
+    }
+
+    #[test]
+    fn g1ts_skills_on_an_account_keep_their_version_and_what_it_holds() {
+        // Before versions were kept: the id alone, so it is uploaded again once.
+        let old = own_skills(r#"{"work-on-issue":"skill_01A","coordinate":""}"#);
+        assert_eq!(old.len(), 1);
+        assert_eq!(old["work-on-issue"], OwnSkill { id: "skill_01A".into(), version: None, sha256: None });
+        let kept = BTreeMap::from([(
+            "work-on-issue".to_owned(),
+            OwnSkill { id: "skill_01A".into(), version: Some("1760000000".into()), sha256: Some("abc".into()) },
+        )]);
+        assert_eq!(own_skills(&serde_json::to_string(&kept).unwrap()), kept);
+        assert!(own_skills("not json").is_empty());
+        // g1t's own are pinned, so a new version changes the agent; others follow their latest.
+        assert_eq!(skill_ref("skill_01A", Some("1760000000")), json!({ "type": "custom", "skill_id": "skill_01A", "version": "1760000000" }));
+        assert_eq!(skill_ref("skill_02B", None)["version"], "latest");
+        assert_eq!(uploaded_version(&json!({ "version": "1760000001" })).as_deref(), Some("1760000001"));
+        assert_eq!(uploaded_version(&json!({ "id": "skill_01A", "latest_version": 1760000000 })).as_deref(), Some("1760000000"));
+        assert_eq!(uploaded_version(&json!({ "id": "skill_01A" })), None);
     }
 
     #[test]
