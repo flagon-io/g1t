@@ -26,7 +26,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use futures_util::future::{try_join, try_join_all};
 use g1t_contracts::repos::{
-    Branch, Commit, EntryKind, GitAccess, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, Repo, TreeEntry,
+    Branch, BuildQueueStepArgs, Commit, EntryKind, GitAccess, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, QueueStep,
+    Repo, TreeEntry,
 };
 use g1t_contracts::rules::MergeMethod;
 use g1t_contracts::time::parse_rfc3339;
@@ -536,6 +537,11 @@ pub(crate) fn name_files(paths: &[String]) -> String {
     }
 }
 
+/// A commit's short hash.
+fn short(hash: &str) -> &str {
+    &hash[..hash.len().min(7)]
+}
+
 /// A commit as people know it: its short hash and title.
 fn named_commit(commit: &Commit) -> String {
     let title = commit.message.lines().next().unwrap_or_default().trim();
@@ -553,12 +559,245 @@ struct Made {
 /// Why a landing was refused, or that it was there already.
 enum NotMade {
     Refused(Outcome<Landed>),
+    /// Lines clash in these files.
+    Clash { message: String, paths: Vec<String> },
     /// Nothing to make: the branch already has every change.
     AlreadyThere,
 }
 
 fn refused(code: FailureCode, message: String) -> NotMade {
     NotMade::Refused(Outcome::fail(code, message))
+}
+
+/// The pack that sends what was made: with what the pull request's commits
+/// bring that the repository lacks, from the fork, when it does not hold
+/// them (`held`).
+async fn pack_for<R: GitRepo>(
+    held: bool,
+    source_git: &R,
+    new: &str,
+    merge_base: &str,
+    objects: &[(ObjectKind, Vec<u8>)],
+) -> Result<Vec<u8>> {
+    if held {
+        return Ok(write_pack(objects));
+    }
+    let source_access = source_git.access(Scope::Read).await?;
+    let fetched = land::fetch_pack(&source_access, new, Some(merge_base)).await?;
+    extend_pack(&fetched, objects).map_err(worker::Error::RustError)
+}
+
+/// What `method` (any but `fast_forward`) makes of a pull request's
+/// commits (`history`, its first-parent chain, headed by `new`) on the
+/// head of `target_history`, with the objects made added to `objects`;
+/// and the merge base, which a pack from a fork starts at. `branch`
+/// names where it lands in what is said about a refusal.
+#[allow(clippy::too_many_arguments)]
+async fn make_on<R: GitRepo>(
+    method: MergeMethod,
+    reader: &Reader<'_, R>,
+    target_history: &[Commit],
+    history: &[Commit],
+    new: &str,
+    message: &str,
+    (author, by): (&Signature<'_>, &Signature<'_>),
+    sign_off: Option<&str>,
+    branch: &str,
+    objects: &mut Vec<(ObjectKind, Vec<u8>)>,
+) -> Result<std::result::Result<(Made, String), NotMade>> {
+    let Some(base) = target_history.first() else {
+        return Ok(Err(refused(FailureCode::Conflict, format!("{branch} has no commits yet."))));
+    };
+    let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
+    let merge_base = nearest_ancestor_in(reader, history, &shared).await?;
+    let Some((merge_base, merge_base_tree)) = merge_base.and_then(|hash| {
+        target_history.iter().find(|commit| commit.hash == hash).map(|commit| (hash, commit.tree_hash.clone()))
+    }) else {
+        return Ok(Err(refused(
+            FailureCode::Conflict,
+            format!("g1t could not find where this pull request left {branch}, so it cannot make its commits there."),
+        )));
+    };
+    let made = match method {
+        MergeMethod::Merge | MergeMethod::Squash => {
+            let squash = method == MergeMethod::Squash;
+            let co_authored = if squash {
+                let commits = match branch_commits(reader, history, &shared, MAX_ANCESTRY as usize).await? {
+                    Some(commits) => commits,
+                    // Too many to walk: those on the branch's own line.
+                    None => {
+                        let mut own: Vec<Commit> = history.iter().take_while(|commit| !shared.contains(&commit.hash)).cloned().collect();
+                        own.reverse();
+                        own
+                    }
+                };
+                co_authors(&commits, author.email)
+            } else {
+                Vec::new()
+            };
+            let head = &history[0];
+            made_merge(
+                reader,
+                (&merge_base_tree, &head.tree_hash, base),
+                new,
+                squash,
+                message,
+                &co_authored,
+                sign_off,
+                (author, by),
+                branch,
+                objects,
+            )
+            .await?
+        }
+        _ => {
+            let commits = match branch_commits(reader, history, &shared, MAX_REBASE_COMMITS).await? {
+                Some(commits) => commits,
+                None => {
+                    return Ok(Err(refused(
+                        FailureCode::Conflict,
+                        format!(
+                            "This pull request has more than {MAX_REBASE_COMMITS} commits, too many for g1t to rebase itself. Squash or merge it instead."
+                        ),
+                    )));
+                }
+            };
+            match replay(reader, &commits, (&base.hash, &base.tree_hash), by, sign_off, objects).await? {
+                Replay::Done(replayed) if replayed.made.is_empty() => Err(NotMade::AlreadyThere),
+                Replay::Done(replayed) => Ok(Made {
+                    commit: replayed.head,
+                    commits: Some(replayed.made.len() as u32),
+                    rebased: replayed.made,
+                }),
+                Replay::Conflict { commit, paths } => Err(NotMade::Clash {
+                    message: format!(
+                        "Rebasing stopped at {}: it and {branch} changed the same lines of {}. Rebase the branch onto {branch} and resolve them, or merge it another way.",
+                        named_commit(&commit),
+                        name_files(&paths)
+                    ),
+                    paths,
+                }),
+                Replay::Unsupported { commit, why } => Err(refused(
+                    FailureCode::Conflict,
+                    format!("g1t cannot rebase {} itself: {why}. Rebase the branch onto {branch}, or merge it another way.", named_commit(&commit)),
+                )),
+            }
+        }
+    };
+    Ok(made.map(|made| (made, merge_base)))
+}
+
+/// A merge commit (parents `base` and `new`) or a squashed commit
+/// (parent `base`) whose tree is the pull request's changes since
+/// `trees.0` (the merge base's tree; `trees.1` is its head's) applied
+/// to `base`'s.
+#[allow(clippy::too_many_arguments)]
+async fn made_merge<R: GitRepo>(
+    reader: &Reader<'_, R>,
+    trees: (&str, &str, &Commit),
+    new: &str,
+    squash: bool,
+    message: &str,
+    co_authored: &[String],
+    sign_off: Option<&str>,
+    (author, committer): (&Signature<'_>, &Signature<'_>),
+    branch: &str,
+    objects: &mut Vec<(ObjectKind, Vec<u8>)>,
+) -> Result<std::result::Result<Made, NotMade>> {
+    let (merge_base_tree, head_tree, base) = trees;
+    let verb = if squash { "squash" } else { "merge" };
+    let tree = match apply(reader, Some(merge_base_tree), head_tree, &base.tree_hash, objects).await? {
+        Applied::Tree(tree) => tree,
+        Applied::Conflict(paths) => {
+            return Ok(Err(NotMade::Clash {
+                message: format!(
+                    "This pull request and {branch} changed the same lines of {}. Bring the pull request up to date with {branch} and resolve them, then merge again.",
+                    name_files(&paths)
+                ),
+                paths,
+            }));
+        }
+        Applied::Unsupported(why) => {
+            return Ok(Err(refused(
+                FailureCode::Conflict,
+                format!("g1t cannot {verb} this pull request itself: {why}. Bring it up to date with {branch}, or merge it another way."),
+            )));
+        }
+    };
+    // Squashing what is there already would make an empty commit.
+    if squash && tree == base.tree_hash {
+        return Ok(Err(NotMade::AlreadyThere));
+    }
+    let mut trailers: Vec<String> = co_authored.to_vec();
+    trailers.extend(sign_off.map(str::to_owned));
+    let by = if squash { &author.email } else { &committer.email };
+    let message = with_trailers(&tidy_co_authors(message, by, co_authored), &trailers);
+    let bytes = if squash {
+        commit_object_by(&tree, &[&base.hash], author, committer, &message)
+    } else {
+        commit_object_by(&tree, &[&base.hash, new], committer, committer, &message)
+    };
+    let commit = object_id(ObjectKind::Commit, &bytes);
+    objects.push((ObjectKind::Commit, bytes));
+    Ok(Ok(Made { commit, rebased: Vec::new(), commits: squash.then_some(1) }))
+}
+
+/// What one merge queue entry made: the state with it in, and the merge
+/// base a pack from its fork starts at; or why it cannot be built.
+#[derive(Debug)]
+pub(crate) enum StepMade {
+    Made { commit: String, rebased: Vec<(String, String)>, merge_base: String },
+    Conflict { message: String, paths: Vec<String> },
+    Refused(String),
+}
+
+/// One merge queue entry (`history`, its first-parent chain from the
+/// commit queued) landed by `method` on the head of `onto_history`, a
+/// state of the queue: its commits made as landing would make them there,
+/// with the objects made added to `objects`. A fast-forward makes none and
+/// needs its head to contain that state; an entry whose changes are all
+/// there already leaves the state as it is. `held`: the repository holds
+/// the entry's commits (`git` reads a fork's otherwise).
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn queue_step_on<R: GitRepo>(
+    git: &Reader<'_, R>,
+    held: bool,
+    method: MergeMethod,
+    (onto_history, history): (&[Commit], &[Commit]),
+    message: Option<&str>,
+    signatures: (&Signature<'_>, &Signature<'_>),
+    sign_off: Option<&str>,
+    place: &str,
+    objects: &mut Vec<(ObjectKind, Vec<u8>)>,
+) -> Result<StepMade> {
+    let (Some(head), Some(base)) = (history.first(), onto_history.first()) else {
+        return Ok(StepMade::Refused("Its commit or the state it is built on is no longer there.".to_owned()));
+    };
+    let there = |commit: &str| StepMade::Made { commit: commit.to_owned(), rebased: Vec::new(), merge_base: base.hash.clone() };
+    if base.hash == head.hash || (held && descends_from(git, onto_history, &head.hash).await?) {
+        return Ok(there(&base.hash));
+    }
+    if method == MergeMethod::FastForward {
+        return Ok(if descends_from(git, history, &base.hash).await? {
+            there(&head.hash)
+        } else {
+            StepMade::Refused(format!(
+                "It lands by fast-forward, so its branch must contain {place} with everything queued ahead of it. Bring it up to date, or merge it another way."
+            ))
+        });
+    }
+    let message = match message.map(str::trim_end).filter(|text| !text.trim().is_empty()) {
+        Some(text) => text.to_owned(),
+        None if method == MergeMethod::Rebase => String::new(),
+        None => return Ok(StepMade::Refused("Say what the commit's message is: its first line is its title.".to_owned())),
+    };
+    Ok(match make_on(method, git, onto_history, history, &head.hash, &message, signatures, sign_off, place, objects).await? {
+        Ok((made, merge_base)) => StepMade::Made { commit: made.commit, rebased: made.rebased, merge_base },
+        Err(NotMade::AlreadyThere) => there(&base.hash),
+        Err(NotMade::Clash { message, paths }) => StepMade::Conflict { message, paths },
+        Err(NotMade::Refused(Outcome::Fail(failure))) => StepMade::Refused(failure.message),
+        Err(NotMade::Refused(Outcome::Ok(_))) => StepMade::Refused("It could not be built.".to_owned()),
+    })
 }
 
 impl<S: GitStore> Repos<S> {
@@ -624,101 +863,22 @@ impl<S: GitStore> Repos<S> {
                 };
                 return Ok(Outcome::Ok(Landed { commit, previous: None, method, rebased: Vec::new() }));
             }
-            let shared: HashSet<String> = target_history.iter().map(|commit| commit.hash.clone()).collect();
-            let merge_base = nearest_ancestor_in(&reader, history, &shared).await?;
-            let Some((merge_base, merge_base_tree)) = merge_base.and_then(|hash| {
-                target_history.iter().find(|commit| commit.hash == hash).map(|commit| (hash, commit.tree_hash.clone()))
-            }) else {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    format!("g1t could not find where this pull request left {branch}, so it cannot make its commits there."),
-                ));
-            };
             let mut objects: Vec<(ObjectKind, Vec<u8>)> = Vec::new();
             let seconds = now_ms() / 1000;
             let by = Signature { name: &committer.name, email: &committer.email, seconds };
-            let made = match method {
-                MergeMethod::Merge | MergeMethod::Squash => {
-                    let squash = method == MergeMethod::Squash;
-                    let co_authored = if squash {
-                        let commits = match branch_commits(&reader, history, &shared, MAX_ANCESTRY as usize).await? {
-                            Some(commits) => commits,
-                            // Too many to walk: those on the branch's own line.
-                            None => {
-                                let mut own: Vec<Commit> = history.iter().take_while(|commit| !shared.contains(&commit.hash)).cloned().collect();
-                                own.reverse();
-                                own
-                            }
-                        };
-                        co_authors(&commits, &author.email)
-                    } else {
-                        Vec::new()
-                    };
-                    let head = &history[0];
-                    self.made_merge(
-                        &reader,
-                        (&merge_base_tree, &head.tree_hash, &base),
-                        &new,
-                        squash,
-                        &message,
-                        &co_authored,
-                        sign_off.as_deref(),
-                        (&Signature { name: &author.name, email: &author.email, seconds }, &by),
-                        branch,
-                        &mut objects,
-                    )
-                    .await?
-                }
-                _ => {
-                    let commits = match branch_commits(&reader, history, &shared, MAX_REBASE_COMMITS).await? {
-                        Some(commits) => commits,
-                        None => {
-                            return Ok(Outcome::fail(
-                                FailureCode::Conflict,
-                                format!(
-                                    "This pull request has more than {MAX_REBASE_COMMITS} commits, too many for g1t to rebase itself. Squash or merge it instead."
-                                ),
-                            ));
-                        }
-                    };
-                    match replay(&reader, &commits, (&base.hash, &base.tree_hash), &by, sign_off.as_deref(), &mut objects).await? {
-                        Replay::Done(replayed) if replayed.made.is_empty() => Err(NotMade::AlreadyThere),
-                        Replay::Done(replayed) => Ok(Made {
-                            commit: replayed.head,
-                            commits: Some(replayed.made.len() as u32),
-                            rebased: replayed.made,
-                        }),
-                        Replay::Conflict { commit, paths } => Err(refused(
-                            FailureCode::Conflict,
-                            format!(
-                                "Rebasing stopped at {}: it and {branch} changed the same lines of {}. Rebase the branch onto {branch} and resolve them, or merge it another way.",
-                                named_commit(&commit),
-                                name_files(&paths)
-                            ),
-                        )),
-                        Replay::Unsupported { commit, why } => Err(refused(
-                            FailureCode::Conflict,
-                            format!("g1t cannot rebase {} itself: {why}. Rebase the branch onto {branch}, or merge it another way.", named_commit(&commit)),
-                        )),
-                    }
-                }
-            };
-            let made = match made {
+            let author = Signature { name: &author.name, email: &author.email, seconds };
+            let made =
+                make_on(method, &reader, &target_history, history, &new, &message, (&author, &by), sign_off.as_deref(), branch, &mut objects)
+                    .await?;
+            let (made, merge_base) = match made {
                 Ok(made) => made,
                 Err(NotMade::Refused(outcome)) => return Ok(outcome),
+                Err(NotMade::Clash { message, .. }) => return Ok(Outcome::fail(FailureCode::Conflict, message)),
                 Err(NotMade::AlreadyThere) => {
                     return Ok(Outcome::Ok(Landed { commit: base.hash.clone(), previous: None, method, rebased: Vec::new() }));
                 }
             };
-            // What the pull request's commits bring that the repository
-            // lacks comes from the fork, with what was made after it.
-            let pack = if held {
-                write_pack(&objects)
-            } else {
-                let source_access = source_git.access(Scope::Read).await?;
-                let fetched = land::fetch_pack(&source_access, &new, Some(&merge_base)).await?;
-                extend_pack(&fetched, &objects).map_err(worker::Error::RustError)?
-            };
+            let pack = pack_for(held, source_git, &new, &merge_base, &objects).await?;
             let target_access = target_git.access(Scope::Write).await?;
             let pushed = land::push_pack(&target_access, branch, Some(&base.hash), &made.commit, pack).await?;
             self.refs_moved(&target.id).await;
@@ -743,60 +903,79 @@ impl<S: GitStore> Repos<S> {
         }
     }
 
-    /// A merge commit (parents `base` and `new`) or a squashed commit
-    /// (parent `base`) whose tree is the pull request's changes since
-    /// `trees.0` (the merge base's tree; `trees.1` is its head's) applied
-    /// to `base`'s.
-    #[allow(clippy::too_many_arguments)]
-    async fn made_merge<R: GitRepo>(
-        &self,
-        reader: &Reader<'_, R>,
-        trees: (&str, &str, &Commit),
-        new: &str,
-        squash: bool,
-        message: &str,
-        co_authored: &[String],
-        sign_off: Option<&str>,
-        (author, committer): (&Signature<'_>, &Signature<'_>),
-        branch: &str,
-        objects: &mut Vec<(ObjectKind, Vec<u8>)>,
-    ) -> Result<std::result::Result<Made, NotMade>> {
-        let (merge_base_tree, head_tree, base) = trees;
-        let verb = if squash { "squash" } else { "merge" };
-        let tree = match apply(reader, Some(merge_base_tree), head_tree, &base.tree_hash, objects).await? {
-            Applied::Tree(tree) => tree,
-            Applied::Conflict(paths) => {
-                return Ok(Err(refused(
-                    FailureCode::Conflict,
-                    format!(
-                        "This pull request and {branch} changed the same lines of {}. Bring the pull request up to date with {branch} and resolve them, then merge again.",
-                        name_files(&paths)
-                    ),
-                )));
-            }
-            Applied::Unsupported(why) => {
-                return Ok(Err(refused(
-                    FailureCode::Conflict,
-                    format!("g1t cannot {verb} this pull request itself: {why}. Bring it up to date with {branch}, or merge it another way."),
-                )));
-            }
+    /// `build_queue_step`: one merge queue entry landed by its method on
+    /// `onto`, a commit of the target, as `land_by` would land it on a
+    /// branch whose head that is, and `push_branch` pointed at what was
+    /// made. Nothing else moves. The work service decides who may merge;
+    /// the committer must still be able to.
+    pub(crate) async fn build_queue_step(&self, a: BuildQueueStepArgs) -> Result<Outcome<QueueStep>> {
+        let actor = Some(a.actor.clone());
+        let (Some(target), Some(source)) = (self.registry.by_id(&a.target_id).await?, self.registry.by_id(&a.source_id).await?) else {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such repository."));
         };
-        // Squashing what is there already would make an empty commit.
-        if squash && tree == base.tree_hash {
-            return Ok(Err(NotMade::AlreadyThere));
+        if !crate::registry::can(&target, &actor, g1t_contracts::access::Capability::Merge) || !a.actor.verified {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Whoever queued it can no longer merge here."));
         }
-        let mut trailers: Vec<String> = co_authored.to_vec();
-        trailers.extend(sign_off.map(str::to_owned));
-        let by = if squash { &author.email } else { &committer.email };
-        let message = with_trailers(&tidy_co_authors(message, by, co_authored), &trailers);
-        let bytes = if squash {
-            commit_object_by(&tree, &[&base.hash], author, committer, &message)
-        } else {
-            commit_object_by(&tree, &[&base.hash, new], committer, committer, &message)
+        // A fork's change lands only on a repository in its network.
+        if source.id != target.id && self.pull_target(&source, Some(&target.id)).await?.is_none_or(|found| found.id != target.id) {
+            return Ok(Outcome::fail(FailureCode::NotFound, "No such repository."));
+        }
+        let from_fork = source.id != target.id;
+        self.live(&source).await?;
+        let source_git = self.store.open(&store_key(&source)).await?;
+        let target_git = self.store.open(&store_key(&target)).await?;
+        let refused = |message: String| Ok(Outcome::Ok(QueueStep::Refused { message }));
+        // What was queued is the commit: its branch may have moved since.
+        let (history, onto_history) = try_join(source_git.log(&a.commit, MAX_ANCESTRY), target_git.log(&a.onto, MAX_ANCESTRY)).await?;
+        let (Some(head), Some(base)) = (history.first(), onto_history.first()) else {
+            return refused(format!("{} or the state it is built on is no longer there.", short(&a.commit)));
         };
-        let commit = object_id(ObjectKind::Commit, &bytes);
-        objects.push((ObjectKind::Commit, bytes));
-        Ok(Ok(Made { commit, rebased: Vec::new(), commits: squash.then_some(1) }))
+        let new = head.hash.clone();
+        let base = base.hash.clone();
+        let held = !from_fork || !target_git.log(&new, 1).await?.is_empty();
+        let reader = Reader::new(&target_git, (!held).then_some(&source_git));
+        let place = target.default_branch.clone();
+        let mut objects: Vec<(ObjectKind, Vec<u8>)> = Vec::new();
+        let committer = self.commit_identity(&a.actor).await;
+        let author = match (&a.author, a.method) {
+            (Some(author), MergeMethod::Squash) => self.commit_identity(author).await,
+            _ => committer.clone(),
+        };
+        let sign_off = a.sign_off.then(|| sign_off_trailer(&committer.name, &committer.email));
+        let seconds = now_ms() / 1000;
+        let by = Signature { name: &committer.name, email: &committer.email, seconds };
+        let author = Signature { name: &author.name, email: &author.email, seconds };
+        let step = queue_step_on(
+            &reader,
+            held,
+            a.method,
+            (&onto_history, &history),
+            a.message.as_deref(),
+            (&author, &by),
+            sign_off.as_deref(),
+            &place,
+            &mut objects,
+        )
+        .await?;
+        let (commit, rebased, merge_base) = match step {
+            StepMade::Made { commit, rebased, merge_base } => (commit, rebased, merge_base),
+            StepMade::Conflict { message, paths } => return Ok(Outcome::Ok(QueueStep::Conflict { message, paths })),
+            StepMade::Refused(message) => return refused(message),
+        };
+        // Nothing new when it was there already.
+        let pack = if commit == base {
+            write_pack(&objects)
+        } else {
+            pack_for(held, &source_git, &new, &merge_base, &objects).await?
+        };
+        let old = target_git.log(&a.push_branch, 1).await?.into_iter().next().map(|commit| commit.hash);
+        let target_access = target_git.access(Scope::Write).await?;
+        let pushed = land::push_pack(&target_access, &a.push_branch, old.as_deref(), &commit, pack).await?;
+        self.refs_moved(&target.id).await;
+        Ok(match pushed {
+            Ok(()) => Outcome::Ok(QueueStep::Built { commit, rebased }),
+            Err(reason) => Outcome::fail(FailureCode::Conflict, format!("{} could not be updated: {reason}", a.push_branch)),
+        })
     }
 
     /// `update_pull_branch` by `rebase`: makes the commits of `branch` of
@@ -1269,5 +1448,89 @@ mod tests {
         let made = vec![(ObjectKind::Blob, b"made\n".to_vec())];
         git.keep(&made);
         assert_eq!(block_on(git.read_blob(&object_id(ObjectKind::Blob, b"made\n"))).unwrap().as_deref(), Some(&b"made\n"[..]));
+    }
+
+    /// A commit made in a test, as the store would list it.
+    fn made_commit(objects: &[(ObjectKind, Vec<u8>)], id: &str) -> Commit {
+        let bytes = objects
+            .iter()
+            .find(|(kind, bytes)| *kind == ObjectKind::Commit && object_id(ObjectKind::Commit, bytes) == id)
+            .map(|(_, bytes)| String::from_utf8(bytes.clone()).unwrap())
+            .expect("made");
+        let field = |name: &str| bytes.lines().filter_map(|line| line.strip_prefix(name)).map(str::to_owned).collect::<Vec<_>>();
+        Commit {
+            hash: id.to_owned(),
+            tree_hash: field("tree ").remove(0),
+            message: bytes.split_once("\n\n").map(|(_, message)| message.to_owned()).unwrap_or_default(),
+            author: Person { name: "Di".to_owned(), email: "di@example.com".to_owned() },
+            parents: field("parent "),
+            authored_at: "2026-10-01T00:00:00.000Z".to_owned(),
+        }
+    }
+
+    #[test]
+    fn each_queue_entry_lands_by_its_own_method_on_the_state_ahead_of_it() {
+        let (mut store, [m, b, h1, h2]) = diverged();
+        // A second change, from the same start, to another file.
+        let g = store.commit("g", &["m"], "eve", &[("README.md", "hi\n"), ("src/lib.rs", "a\nb\nc\nd\ne\n"), ("docs.md", "docs\n")]);
+        let k = store.commit("k", &["m"], "eve", &[("README.md", "hi\n"), ("src/lib.rs", "a\nb\nc\nd\ne\n"), ("k.md", "k\n")]);
+        let git = Reader::new(&store, None);
+        let by = Signature { name: "Di", email: "di@example.com", seconds: 7 };
+        let author = Signature { name: "bo", email: "bo@example.com", seconds: 7 };
+        let mut objects = Vec::new();
+        let step = |method, onto: &[Commit], history: &[Commit], objects: &mut Vec<_>| {
+            block_on(queue_step_on(&git, true, method, (onto, history), Some("Land it"), (&author, &by), None, "main", objects)).unwrap()
+        };
+        let onto = vec![b.clone(), m.clone()];
+
+        // The first squashes onto the default branch: one commit, one parent.
+        let StepMade::Made { commit: first, .. } = step(MergeMethod::Squash, &onto, &[h2.clone(), h1.clone(), m.clone()], &mut objects) else {
+            panic!("not squashed")
+        };
+        let first = made_commit(&objects, &first);
+        assert_eq!(first.parents, ["b"]);
+
+        // The second is a merge commit on the first's state, so landing it
+        // is a fast-forward from there.
+        let onto = vec![first.clone(), b.clone(), m.clone()];
+        let StepMade::Made { commit: second, .. } = step(MergeMethod::Merge, &onto, &[g.clone(), m.clone()], &mut objects) else {
+            panic!("not merged")
+        };
+        let second = made_commit(&objects, &second);
+        assert_eq!(second.parents, [first.hash.clone(), "g".to_owned()]);
+        assert_eq!(
+            Store::files(&git, &second.tree_hash),
+            files(&[("README.md", "hello\n"), ("docs.md", "docs\n"), ("src/lib.rs", "A\nb\nc\nd\nE\n"), ("src/new.rs", "new\n")])
+        );
+
+        // Queued again, its changes are there already: the state is kept.
+        let onto = vec![second.clone(), first.clone(), b.clone(), m.clone()];
+        let StepMade::Made { commit, .. } = step(MergeMethod::Rebase, &onto, &[h2.clone(), h1.clone(), m.clone()], &mut objects) else {
+            panic!("not kept")
+        };
+        assert_eq!(commit, second.hash);
+
+        // A fast-forward needs its head to hold the state ahead of it.
+        let StepMade::Refused(why) = step(MergeMethod::FastForward, &onto, &[k, m.clone()], &mut objects) else {
+            panic!("fast-forwarded")
+        };
+        assert!(why.contains("fast-forward"), "{why}");
+    }
+
+    #[test]
+    fn a_fast_forward_entry_is_its_own_head_and_a_clash_names_the_files() {
+        let (mut store, [m, b, h1, h2]) = diverged();
+        let ahead = store.commit("f", &["b"], "eve", &[("README.md", "hello\n"), ("src/lib.rs", "a\nb\nc\nd\nE\n"), ("f.md", "f\n")]);
+        let clash = store.commit("x", &["m"], "eve", &[("README.md", "hey\n"), ("src/lib.rs", "a\nb\nc\nd\ne\n")]);
+        let git = Reader::new(&store, None);
+        let by = Signature { name: "Di", email: "di@example.com", seconds: 7 };
+        let mut objects = Vec::new();
+        let onto = vec![b.clone(), m.clone()];
+        let made = block_on(queue_step_on(&git, true, MergeMethod::FastForward, (&onto, &[ahead.clone(), b.clone(), m.clone()]), None, (&by, &by), None, "main", &mut objects)).unwrap();
+        assert!(matches!(made, StepMade::Made { ref commit, .. } if commit == "f"), "{made:?}");
+        assert!(objects.is_empty());
+        let clashed = block_on(queue_step_on(&git, true, MergeMethod::Rebase, (&onto, &[clash, m.clone()]), None, (&by, &by), None, "main", &mut objects)).unwrap();
+        assert!(matches!(clashed, StepMade::Conflict { ref paths, .. } if paths == &["README.md".to_owned()]), "{clashed:?}");
+        let _ = (h1, h2);
     }
 }

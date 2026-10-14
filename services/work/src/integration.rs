@@ -50,7 +50,7 @@ use worker::wasm_bindgen::JsValue;
 use crate::Work;
 use crate::checks::{hash, new_token};
 use crate::decisions::NewDecision;
-use crate::queue::{BRANCH_PREFIX, EntryRow};
+use crate::queue::{BRANCH_PREFIX, Built, EntryRow};
 use crate::rows::ValueRow;
 
 /// The most extra combinations built to narrow down one failure.
@@ -120,7 +120,7 @@ pub(crate) struct Failure {
 }
 
 impl Failure {
-    /// What a sandbox reported for a state that failed. `unchecked` is set
+    /// What was reported for a state that failed. `unchecked` is set
     /// when the state was built but nothing could check it.
     pub(crate) fn of_report(report: &ReportQueueArgs, unchecked: Option<&[String]>) -> Failure {
         let (kind, check) = if report.conflict_with.is_some() || !report.conflicts.is_empty() {
@@ -231,7 +231,7 @@ pub(crate) fn plan(ahead: &[u32], failure: &Failure, passed_alone: bool) -> Plan
         };
     }
     match failure.kind {
-        // The sandbox names the entry ahead that changed the same files.
+        // The build names the entry ahead that changed the same files.
         FailureKind::Conflict => Plan::Blame(failure.conflict_with.filter(|n| ahead.contains(n)).into_iter().collect()),
         // Neither is about how the changes combine.
         FailureKind::Missing | FailureKind::Build => Plan::Blame(Vec::new()),
@@ -651,9 +651,9 @@ impl Work {
 
     // --- Smaller combinations -------------------------------------------------
 
-    /// One job for each smaller combination waiting to be built, and the
-    /// end of any that took too long.
-    pub(crate) async fn probe_jobs(&self, repo_id: &str) -> Result<Vec<QueueJob>> {
+    /// Builds each smaller combination waiting to be built, and ends any
+    /// that took too long.
+    pub(crate) async fn build_probes(&self, repo_id: &str) -> Result<()> {
         let probes = self
             .db
             .prepare("SELECT * FROM queue_probes WHERE repo_id = ? AND state IN ('waiting', 'testing')")
@@ -662,11 +662,10 @@ impl Work {
             .await?
             .results::<ProbeRow>()?;
         if probes.is_empty() {
-            return Ok(Vec::new());
+            return Ok(());
         }
         let rule = self.queue_rule(repo_id).await?;
         let stale = rfc3339(now_ms().saturating_sub(u64::from(rule.check_response_timeout_minutes.max(1)) * 60 * 1000));
-        let mut jobs = Vec::new();
         for probe in probes {
             if probe.state == "testing" {
                 if probe.tested_at.as_deref().is_none_or(|at| at < stale.as_str()) {
@@ -674,14 +673,15 @@ impl Work {
                 }
                 continue;
             }
-            if let Some(job) = self.probe_job(&probe).await? {
-                jobs.push(job);
-            }
+            self.build_probe(&probe).await?;
         }
-        Ok(jobs)
+        Ok(())
     }
 
-    async fn probe_job(&self, probe: &ProbeRow) -> Result<Option<QueueJob>> {
+    /// Builds a smaller combination as the queue builds a state: from the
+    /// base it was tested on, each entry landed by its method on the one
+    /// before, every step pushed to the probe's branch; then reports it.
+    async fn build_probe(&self, probe: &ProbeRow) -> Result<()> {
         let found = match self.entry_by_id(&probe.entry_id).await? {
             Some(row) => {
                 let diagnosis = row
@@ -698,22 +698,22 @@ impl Work {
             None => None,
         };
         // Nothing is waiting on it any more.
-        let Some((diagnosis, pull, actor)) = found else {
+        let Some((diagnosis, _, actor)) = found else {
             self.probe_result(probe, ProbeResult::Stopped, Some("Its failure was already reported.")).await?;
-            return Ok(None);
+            return Ok(());
         };
         let repo: Outcome<Repo> = g1t_kit::call(
             &self.repos,
             "get_by_id",
             &GetByIdArgs {
                 id: probe.repo_id.clone(),
-                viewer: Some(actor),
+                viewer: Some(actor.clone()),
             },
         )
         .await?;
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             self.probe_result(probe, ProbeResult::Stopped, Some("The repository is archived.")).await?;
-            return Ok(None);
+            return Ok(());
         };
         let subset = probe.subset();
         let mut stack = Vec::new();
@@ -749,26 +749,41 @@ impl Work {
             .first::<ValueRow>(None)
             .await?;
         if claimed.is_none() {
-            return Ok(None);
+            return Ok(());
         }
-        Ok(Some(QueueJob {
+        let sign_off = self.settings(&repo.id).await?.require_web_commit_sign_off;
+        let mut report = ReportQueueArgs {
             entry_id: probe.id.clone(),
             token,
-            repo: RepoPath {
-                namespace: repo.namespace.clone(),
-                name: repo.name.clone(),
-            },
-            default_branch: repo.default_branch.clone(),
-            base_commit: diagnosis.base_commit.clone(),
-            branch: probe.branch(),
-            stack,
-            checks: Vec::new(),
-            contract_checks: Vec::new(),
-            actor: pull.owner().clone(),
-        }))
+            combined_commit: None,
+            results: Vec::new(),
+            error: None,
+            conflict_with: None,
+            conflicts: Vec::new(),
+        };
+        let mut onto = diagnosis.base_commit.clone();
+        for item in &stack {
+            match self.build_step(&repo, &onto, item, &probe.branch(), &actor, sign_off).await? {
+                Built::State(commit) => onto = commit,
+                Built::Conflict { message, paths } => {
+                    report.error = Some(message);
+                    report.conflicts = paths;
+                    break;
+                }
+                Built::Failed(message) => {
+                    report.error = Some(message);
+                    break;
+                }
+            }
+        }
+        if report.error.is_none() {
+            report.combined_commit = Some(onto);
+        }
+        self.report_probe(report).await?;
+        Ok(())
     }
 
-    /// A sandbox's result for a smaller combination: built, it waits for
+    /// The result of building a smaller combination: built, it waits for
     /// its `merge_group` workflows as a queue state does.
     pub(crate) async fn report_probe(&self, a: ReportQueueArgs) -> Result<Outcome<QueueState>> {
         let probe = self

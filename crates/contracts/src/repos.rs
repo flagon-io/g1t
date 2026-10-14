@@ -614,6 +614,60 @@ pub struct LandArgs {
     pub sign_off: bool,
 }
 
+/// `build_queue_step`: one entry of a merge queue landed, by its method,
+/// on a commit of the target that is not a branch's head: the default
+/// branch, or the state built for the entries ahead. Makes the commits
+/// `land` would make there (`merge`, `squash` and `rebase` new ones; a
+/// `fast_forward` none, its head only if that contains `onto`) and points
+/// `push_branch` of the target at the result, so that landing it later is
+/// a fast-forward to exactly what was tested. The branch it merges into
+/// does not move. Returns `Outcome<QueueStep>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildQueueStepArgs {
+    /// The repository the queue lands on.
+    pub target_id: String,
+    /// The commit to build on.
+    pub onto: String,
+    /// Where the entry's change is: its fork, or the target itself.
+    pub source_id: String,
+    pub branch: String,
+    /// The entry's head as it was queued; refused if the branch moved.
+    pub commit: String,
+    pub method: crate::rules::MergeMethod,
+    /// For `merge` and `squash`: the commit's message. Required for those.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// For `squash`: who the commit is by; `actor` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<User>,
+    #[serde(default)]
+    pub sign_off: bool,
+    /// Whoever queued it: the committer, who must be able to merge.
+    pub actor: User,
+    /// The queue's branch of the target to point at the result.
+    pub push_branch: String,
+}
+
+/// What `build_queue_step` made.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum QueueStep {
+    /// The state with the entry in it, now at `push_branch`: `onto` itself
+    /// when it held the entry's changes already.
+    Built {
+        commit: String,
+        /// For `rebase`: each commit made, with the one it was made from.
+        #[serde(default)]
+        rebased: Vec<(String, String)>,
+    },
+    /// Its change clashes with `onto` in these files.
+    Conflict { message: String, paths: Vec<String> },
+    /// It cannot be built there, and why: a fast-forward that does not
+    /// contain `onto`, or more than g1t makes itself.
+    Refused { message: String },
+}
+
 /// How a pull request's branch is brought up to date with its base
 /// (`update_pull_branch`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

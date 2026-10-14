@@ -2250,16 +2250,28 @@ impl Work {
 
         // A repository that merges through a queue: it joins the queue, and
         // lands once its state together with everything ahead has passed.
-        // The queue lands the state it tested, whatever the method.
+        // Its state is built by the method asked for, else the merge queue
+        // rule's, and lands exactly as tested (queue.rs).
         if settings.merge_queue {
             if !a.actor.verified {
                 return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
             }
             check!(allowed(Some(&a.actor), &repo, Capability::Merge));
+            let queued = match a.merge_method {
+                Some(_) => method,
+                None => {
+                    let rule = self.queue_rule(&repo.id).await?;
+                    match merging::choose_method(Some(rule.merge_method), &choosing, &requirements, &base) {
+                        Ok(method) => method,
+                        Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+                    }
+                }
+            };
             self.record_merge_evaluations(&repo, &pull, &gate).await;
             // Landing honours the same bypass request against the rules as
             // they are then (queue.rs `settle`).
-            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open, a.bypass_rules).await;
+            let message = (a.commit_title.as_deref(), a.commit_message.as_deref());
+            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open, a.bypass_rules, queued, message).await;
         }
 
         // The commit it makes, for a merge or a squash: what the merger

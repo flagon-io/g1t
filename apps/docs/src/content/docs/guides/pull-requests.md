@@ -357,6 +357,11 @@ files merged line by line (1 MiB each) and 250 commits in a rebase. Beyond
 those it refuses and nothing changes: squash or merge instead of rebasing,
 or merge the base in a clone.
 
+With the [merge queue](/guides/merge-queue/#how-entries-are-tested) on,
+the method chosen (or the queue rule's, when none is) decides how the
+pull request's state is built in the queue, and what is tested is what
+lands.
+
 ### Commit messages
 
 A merge commit and a squash commit get a message. You can write it in the

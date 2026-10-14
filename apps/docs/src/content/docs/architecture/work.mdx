@@ -156,9 +156,12 @@ entry ahead of it. `integration.rs` works out which:
 [The merge queue](/guides/merge-queue/#who-answers-for-it) has the table of
 outcomes from a person's side.
 
-<Aside title="What a merge queue needs">
-	Building candidates takes sandboxes, so the merge queue needs a paid or
-	trial workspace, or the open-source pool for a public repository.
+<Aside title="How states are built">
+	`work` builds each candidate in the repository itself, through repos'
+	`build_queue_step`: the entry landed by its own merge method on the
+	state ahead of it, with the commits `land` would make there, pushed to
+	the attempt's `g1t-queue/` branch. Landing is then a fast-forward to
+	exactly that commit, and no sandbox is involved.
 	[The merge queue](/guides/merge-queue/) has the settings.
 </Aside>
 
