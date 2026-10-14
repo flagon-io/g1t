@@ -12,7 +12,7 @@
  */
 // The modules themselves, not the package's index, so the tests load them.
 import { G1T_KEY, type ChatAnswer, type MemberProfile } from "@g1t/contracts/chat";
-import { ASK_MAX_MESSAGES, ASK_MAX_MESSAGE_CHARS, ASK_MAX_TOTAL_CHARS, type AskMessage, type AskPage } from "@g1t/contracts/integrations";
+import { ASK_MAX_MESSAGES, ASK_MAX_MESSAGE_CHARS, ASK_MAX_TOTAL_CHARS, type AskMessage, type AskPage } from "@g1t/contracts/ai";
 
 /** How @g1t shows in chat: the g1t mark, never a person. */
 export const G1T_PROFILE: MemberProfile = {
@@ -206,7 +206,7 @@ export function notSetUpText(slug: string): string {
   return [
     "I answer with an AI provider your workspace connects, on its own key, and none is chosen for me yet.",
     "",
-    `An owner can choose one under [Integrations → Your AI providers → Ask g1t](/${slug}/-/integrations/models#ask). If you're not an owner, ask one of them to.`,
+    `An owner can choose one under [Settings → AI → Ask g1t](/${slug}/-/ai#ask). If you're not an owner, ask one of them to.`,
   ].join("\n");
 }
 

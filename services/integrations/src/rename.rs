@@ -4,13 +4,14 @@
 /// `?1` is the current slug, `?2` a stale one.
 pub const STATEMENTS: &[&str] = &[
     "UPDATE connections SET workspace = ?1 WHERE workspace = ?2",
+    "UPDATE ai_providers SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE links SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE links SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
     "UPDATE model_sessions SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE model_sessions SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
     "UPDATE deliveries SET issue = ?1 || substr(issue, length(?2) + 1) WHERE substr(issue, 1, length(?2) + 1) = ?2 || '/'",
-    "UPDATE OR IGNORE model_routes SET workspace = ?1 WHERE workspace = ?2",
-    "DELETE FROM model_routes WHERE workspace = ?2",
+    "UPDATE OR IGNORE ai_routes SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM ai_routes WHERE workspace = ?2",
     "UPDATE OR IGNORE github_installations SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM github_installations WHERE workspace = ?2",
     "UPDATE github_repos SET workspace = ?1 WHERE workspace = ?2",
@@ -21,7 +22,7 @@ pub const STATEMENTS: &[&str] = &[
 
 /// A repository transferred (see `g1t_kit::transfer`): its issues' links to
 /// outside trackers, and what was sent about them, follow its new path.
-/// The workspace's connections stay with the workspace.
+/// The workspace's connections and AI providers stay with the workspace.
 pub const TRANSFERRED: &[&str] = &[
     "UPDATE links SET workspace = ?3, repo = ?1 WHERE repo = ?2",
     "UPDATE model_sessions SET repo = ?1 WHERE repo = ?2",
@@ -56,13 +57,14 @@ pub async fn on_purged(db: &worker::D1Database, event: &g1t_contracts::events::E
     Ok(())
 }
 
-/// A workspace deleted: its connections, links and model routes go. `?1`
-/// its slug.
+/// A workspace deleted: its connections, links, AI providers and what Ask
+/// answers with go. `?1` its slug.
 pub const DELETED: &[&str] = &[
-    "DELETE FROM managed_agents WHERE connection_id IN (SELECT id FROM connections WHERE workspace = ?1)",
+    "DELETE FROM managed_agents WHERE connection_id IN (SELECT id FROM ai_providers WHERE workspace = ?1)",
     "DELETE FROM connections WHERE workspace = ?1",
+    "DELETE FROM ai_providers WHERE workspace = ?1",
     "DELETE FROM links WHERE workspace = ?1",
-    "DELETE FROM model_routes WHERE workspace = ?1",
+    "DELETE FROM ai_routes WHERE workspace = ?1",
     "DELETE FROM github_installations WHERE workspace = ?1",
     "DELETE FROM github_repos WHERE workspace = ?1",
     "DELETE FROM agent_runs WHERE workspace = ?1",

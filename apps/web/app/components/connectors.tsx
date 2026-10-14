@@ -21,10 +21,10 @@ import {
 import { type ReactNode, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { type Provider, PROVIDERS } from "@g1t/contracts";
+import { type AiProvider, AI_PROVIDERS, type Provider, PROVIDERS } from "@g1t/contracts";
 import { type ConnectorScope, type ConnectorView, connectorPath } from "@g1t/contracts/connectors";
 
-import { AI_PROVIDERS } from "../lib/ai-providers";
+import { AI_PROVIDER_LOOKS, isEndpoint } from "../lib/ai-providers";
 import { type BrandIcon, brandIcon } from "../lib/brand-icons";
 import { CONTACT } from "../lib/legal";
 import {
@@ -41,7 +41,7 @@ import {
   tileColor,
 } from "../lib/connectors";
 import { cn } from "../lib/cn";
-import { integrationsSection } from "../lib/integration-sections";
+import { providerPage } from "../lib/integration-sections";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
@@ -65,7 +65,7 @@ const CATEGORY_ICONS: Record<CategoryFilter, ReactNode> = {
   files: <FolderOpen size={15} />,
 };
 
-const PROVIDER_COLORS: Partial<Record<Provider, string>> = {
+const PROVIDER_COLORS: Record<Provider, string> = {
   sentry: "#a78bfa",
   datadog: "#a26ce6",
   webhook: "#5eead4",
@@ -109,33 +109,70 @@ function BrandGlyph({ icon, size }: { icon: BrandIcon; size: number }) {
   );
 }
 
-/** A provider's mark: its brand's icon, an icon for the generic ones, or its initials in its colour. */
-export function ProviderMark({ provider, size = 32 }: { provider: Provider; size?: number }) {
-  const brand = provider === "webhook" ? null : brandIcon(provider.replace(/_/g, "-"));
-  if (brand) {
-    return (
-      <MarkTile color={brand.color} size={size}>
-        <BrandGlyph icon={brand} size={size} />
-      </MarkTile>
-    );
-  }
-  const entry = AI_PROVIDERS[provider];
-  const content =
-    provider === "webhook" ? (
-      <Webhook size={size * 0.5} />
-    ) : provider.endsWith("_endpoint") ? (
-      <Bot size={size * 0.5} />
-    ) : (
-      entry?.mark || monogram(PROVIDERS[provider].label)
-    );
+/** A provider's brand icon, by its name, when Simple Icons has one. */
+function brandMark(name: string, size: number): ReactNode {
+  const brand = brandIcon(name.replace(/_/g, "-"));
+  if (!brand) return null;
   return (
-    <MarkTile color={entry?.color ?? PROVIDER_COLORS[provider] ?? "#a1a1aa"} size={size}>
-      {content}
+    <MarkTile color={brand.color} size={size}>
+      <BrandGlyph icon={brand} size={size} />
     </MarkTile>
   );
 }
 
-/** Providers to choose from, as compact tiles that open their form. */
+/** An integration's mark: its brand's icon, the webhook icon, or its initials in its colour. */
+export function ProviderMark({ provider, size = 32 }: { provider: Provider; size?: number }) {
+  if (provider === "webhook") {
+    return (
+      <MarkTile color={PROVIDER_COLORS.webhook} size={size}>
+        <Webhook size={size * 0.5} />
+      </MarkTile>
+    );
+  }
+  return (
+    brandMark(provider, size) ?? (
+      <MarkTile color={PROVIDER_COLORS[provider]} size={size}>
+        {monogram(PROVIDERS[provider].label)}
+      </MarkTile>
+    )
+  );
+}
+
+/** An AI provider's mark: its brand's icon, an icon for an endpoint, or its initials in its colour. */
+export function AiProviderMark({ provider, size = 32 }: { provider: AiProvider; size?: number }) {
+  const look = AI_PROVIDER_LOOKS[provider];
+  return (
+    brandMark(provider, size) ?? (
+      <MarkTile color={look.color} size={size}>
+        {isEndpoint(provider) ? <Bot size={size * 0.5} /> : look.mark || monogram(AI_PROVIDERS[provider].label)}
+      </MarkTile>
+    )
+  );
+}
+
+/** One provider to choose, as a compact tile that opens its form. */
+function ProviderTile({ to, mark, label, blurb, active }: { to: string; mark: ReactNode; label: string; blurb: string; active: boolean }) {
+  return (
+    <Link
+      to={to}
+      preventScrollReset
+      className={`group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+        active ? "border-accent-dim bg-surface" : "border-line hover:border-line-strong hover:bg-surface"
+      }`}
+    >
+      {mark}
+      <span className="min-w-0 grow">
+        <span className="block truncate text-sm font-medium">{label}</span>
+        <Hint label={blurb}>
+          <span className="block truncate text-xs text-muted">{blurb}</span>
+        </Hint>
+      </span>
+      <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
+/** Integrations to choose from, as compact tiles that open their form on their section's page. */
 export function ProviderTiles({
   providers,
   slug,
@@ -150,23 +187,32 @@ export function ProviderTiles({
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {providers.map((provider) => (
-        <Link
+        <ProviderTile
           key={provider}
-          to={`/${slug}/-/integrations/${integrationsSection(PROVIDERS[provider].kind)}?add=${provider}#add`}
-          preventScrollReset
-          className={`group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
-            adding === provider ? "border-accent-dim bg-surface" : "border-line hover:border-line-strong hover:bg-surface"
-          }`}
-        >
-          <ProviderMark provider={provider} size={28} />
-          <span className="min-w-0 grow">
-            <span className="block truncate text-sm font-medium">{PROVIDERS[provider].label}</span>
-            <Hint label={blurb(provider)}>
-              <span className="block truncate text-xs text-muted">{blurb(provider)}</span>
-            </Hint>
-          </span>
-          <ChevronRight size={14} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
-        </Link>
+          to={`/${slug}/-/${providerPage(PROVIDERS[provider].kind)}?add=${provider}#add`}
+          mark={<ProviderMark provider={provider} size={28} />}
+          label={PROVIDERS[provider].label}
+          blurb={blurb(provider)}
+          active={adding === provider}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** AI providers to choose from, as compact tiles that open their form on the workspace's AI page. */
+export function AiProviderTiles({ providers, slug, adding }: { providers: AiProvider[]; slug: string; adding: AiProvider | null }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {providers.map((provider) => (
+        <ProviderTile
+          key={provider}
+          to={`/${slug}/-/ai?add=${provider}#add`}
+          mark={<AiProviderMark provider={provider} size={28} />}
+          label={AI_PROVIDERS[provider].label}
+          blurb={AI_PROVIDER_LOOKS[provider].blurb}
+          active={adding === provider}
+        />
       ))}
     </div>
   );

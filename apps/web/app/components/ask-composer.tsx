@@ -354,7 +354,7 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
             <Skeleton className="h-4 w-40" />
           ) : ready ? (
             <span className="min-w-0 truncate">
-              Answers with {setup.connection_name} · <span className="font-mono">{modelLabel(setup)}</span>
+              Answers with {setup.provider_name} · <span className="font-mono">{modelLabel(setup)}</span>
             </span>
           ) : (
             <span>Not set up yet</span>
@@ -363,7 +363,7 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
             {setup?.owner && (
               <Hint label="Choose the provider and model">
                 <Button asChild variant="ghost" size="icon-xs" aria-label="Choose the provider and model">
-                  <Link to={`/${slug}/-/integrations/models#ask`}>
+                  <Link to={`/${slug}/-/ai#ask`}>
                     <Settings2 size={14} />
                   </Link>
                 </Button>
@@ -534,7 +534,7 @@ function NotSetUp({ slug, setup }: { slug: string; setup: Setup }) {
           {setup.owner ? (
             // Following it closes the panel, so the page it opens is not behind it.
             <SheetClose asChild>
-              <Link to={`/${slug}/-/integrations/models#ask`} className="text-accent hover:underline">
+              <Link to={`/${slug}/-/ai#ask`} className="text-accent hover:underline">
                 Connect a provider and choose it for Ask
               </Link>
             </SheetClose>

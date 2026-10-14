@@ -5,7 +5,7 @@ import type { AskSetup, ChatAnswer } from "@g1t/contracts";
 
 import { runAnswer, type AnswerDeps } from "./answer.ts";
 
-const ready: AskSetup = { connection_id: "int_1", connection_name: "Anthropic", provider: "anthropic", model: "m", problem: null };
+const ready: AskSetup = { provider_id: "ai_1", provider_name: "Anthropic", provider: "anthropic", model: "m", problem: null };
 
 function ndjson(lines: object[], { split = false } = {}): Response {
   const text = lines.map((line) => `${JSON.stringify(line)}\n`).join("");
@@ -62,11 +62,11 @@ test("an answer streams into the message and ends as a normal one", async () => 
 });
 
 test("with no provider chosen, g1t says so once, without asking", async () => {
-  const { deps, seen } = harness({ ...ready, connection_id: null, problem: "No AI provider is chosen for Ask in this workspace yet." }, () => ndjson([]));
+  const { deps, seen } = harness({ ...ready, provider_id: null, problem: "No AI provider is chosen for Ask in this workspace yet." }, () => ndjson([]));
   await runAnswer(deps, new AbortController().signal);
   assert.equal(seen.asked, 0);
   assert.equal(seen.finished!.answer.setup, "missing");
-  assert.match(seen.finished!.body, /Integrations → Your AI providers → Ask g1t/);
+  assert.match(seen.finished!.body, /Settings → AI → Ask g1t/);
 });
 
 test("a chosen provider that cannot answer is a short message, not silence", async () => {

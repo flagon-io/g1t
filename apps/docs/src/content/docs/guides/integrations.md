@@ -9,6 +9,10 @@ integration is listed in one directory, by category, whether it works
 today or is still being built. The directory is **Integrations**, at
 `g1t.sh/<workspace>/-/integrations`.
 
+The models g1t works with are not an integration. A workspace chooses
+them, managed or self-hosted, under **AI**, its own setting: see
+[AI providers](/guides/ai/).
+
 ## Workspace and personal
 
 There are two places to connect things, and they are for different people:
@@ -18,7 +22,7 @@ There are two places to connect things, and they are for different people:
 | Where | **Integrations**, at `g1t.sh/<workspace>/-/integrations`, with each integration's setup page under it | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
 | Who it is for | Everyone in that workspace | Just you, in every workspace you belong to |
 | Who connects | Workspace owners. Members see what is connected. | You |
-| Examples | Your AI providers, Sentry, Jira, Linear, GitHub imports, webhooks | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar |
+| Examples | Sentry, Jira, Linear, GitHub imports, webhooks | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar |
 
 Some tools have both sides. GitHub, for instance: a workspace owner
 installs g1t's GitHub App to import the team's repositories, and
@@ -31,7 +35,7 @@ Both pages are the same directory:
 
 - **Categories** down the side (along the top on a phone): Code & CI,
   Issues & projects, Chat & meetings, Calendar & email, Docs & knowledge,
-  Monitoring & incidents, Cloud & deploy, AI models, Data & analytics, CRM & support,
+  Monitoring & incidents, Cloud & deploy, AI & agents, Data & analytics, CRM & support,
   Design, Security & identity, and Files & storage. Each shows how many
   integrations it has. A link can open on one, with `?category=code` and
   so on.
@@ -56,11 +60,9 @@ repositories**, **Sets your status**, and so on.
 | Code & CI | [GitHub](/guides/github/) import, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github); [MCP clients](/guides/authentication/#signing-in-with-oauth): your [coding agent](/guides/bring-your-own-agent/), connected to g1t as you; [Claude Code plugin](/guides/claude-code-plugin/) |
 | Issues & projects | [Jira and Linear](#trackers) | |
 | Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) | |
-| AI models | [Your AI providers](#your-ai-providers): Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek, Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras, and any Anthropic- or OpenAI-compatible endpoint | |
 
-AI providers, alerts and trackers each have a setup page under the
-directory: `-/integrations/models`, `-/integrations/alerts` and
-`-/integrations/trackers`. GitHub and webhooks
+Alerts and trackers each have a setup page under the directory:
+`-/integrations/alerts` and `-/integrations/trackers`. GitHub and webhooks
 keep their own pages; the directory links to them.
 
 Secrets are sealed when they are saved and never shown again, to anyone.
@@ -87,45 +89,6 @@ integration and your workspace (or "for my own account") filled in. Add
 what you would use it for and send it. Searching for something that is
 not listed offers the same, for whatever you searched for. Requests decide
 what is built next.
-
-## Your AI providers
-
-**Your AI providers**, at `g1t.sh/<workspace>/-/integrations/models`, is
-where a workspace keeps the credentials for the AI providers its team
-uses, so g1t can hand work to them. Only workspace owners add, test,
-change and remove them; members see which are connected.
-
-- **Add one.** Choose a provider and paste its API key. Anthropic, OpenAI,
-  Google Gemini, xAI, Mistral, DeepSeek, OpenRouter, Groq, Together AI,
-  Fireworks AI and Cerebras need only the key. Azure OpenAI also needs
-  your resource's endpoint and the deployment's name. An Anthropic- or
-  OpenAI-compatible endpoint (your own gateway, LiteLLM, vLLM and the
-  like) needs its base URL over `https://`, and takes a key if it asks for
-  one, sent as `x-api-key` or `Authorization: Bearer`. You can name the
-  model your team uses on each.
-- **Test.** g1t checks a key as it is saved, and again whenever you choose
-  **Test**, by asking the provider for its models. A key that works shows
-  how many models it offers; one that fails says why, on the connection,
-  until it next works. An endpoint that does not list its models is
-  reached, but its key cannot be checked this way.
-- **Change.** **Change its model, address or key** sets a new model or
-  address, or replaces the key. The old key is gone once the new one is
-  saved.
-- **Remove.** The **×** on a connection disconnects it and deletes its key.
-
-Keys are sealed when they are saved and never shown again, to anyone; the
-page shows only their last four characters.
-
-**Ask**, in the top bar, answers with one of these providers: an owner
-chooses which, and its model (**Auto**, the default, picks one for each question), under **Ask g1t** on this page. See
-[Ask g1t](/guides/ask/).
-
-With an **Anthropic** connection, members can also start a session on an
-issue (**Start a session** on the issue, or `g1t work dispatch`): a Claude
-Managed Agents session on that account, with its key, recorded on g1t.
-g1t keeps one agent and one environment on the account for it, and
-uploads its own skills there the first time. See
-[Start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).
 
 ## Alerts
 
@@ -313,12 +276,11 @@ curl -X POST https://api.g1t.sh/workspaces/acme/integrations \
   -d '{"provider": "jira", "config": {"site": "https://acme.atlassian.net", "email": "dev@acme.com", "keys": ["TECH"]}, "secret": "<api token>"}'
 ```
 
-`provider` is an AI provider (`anthropic`, `openai`, `gemini`, `xai`,
-`mistral`, `deepseek`, `azure_openai`, `openrouter`, `groq`, `together`,
-`fireworks`, `cerebras`, `anthropic_endpoint` or `openai_endpoint`), or
-`sentry`, `datadog`, `webhook`, `jira` or `linear`. `config` takes `repo`,
-`label`, `write_back`, `organization`, `site`, `email` and `keys`, and for
-an AI provider `base_url`, `auth_header` and `model`; each provider uses
-the ones above. For `datadog`
+`provider` is `sentry`, `datadog`, `webhook`, `jira` or `linear`.
+`config` takes `repo`, `label`, `write_back`, `organization`, `site`,
+`email` and `keys`; each provider uses the ones above. For `datadog`
 and `webhook`, the response's `signing_secret` is the only time the secret
 is shown.
+
+AI providers have operations of their own: see
+[AI providers from the API](/guides/ai/#from-the-api).

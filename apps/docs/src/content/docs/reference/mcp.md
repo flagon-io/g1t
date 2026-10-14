@@ -4,10 +4,10 @@ description: The g1t MCP server's resource tools, each action they take with its
 ---
 
 The MCP server at `https://mcp.g1t.sh` is how a coding agent, such as
-Claude Code, Codex, Cursor or OpenCode, works on g1t. It exposes 18 tools,
+Claude Code, Codex, Cursor or OpenCode, works on g1t. It exposes 19 tools,
 one per kind of thing on g1t: `search`, `repository`, `issue`,
 `pull_request`, `session`, `workflow`, `observability`, `package`, `secret`,
-`security`, `webhook`, `access`, `team`, `workspace`, `billing`,
+`security`, `webhook`, `access`, `team`, `workspace`, `ai`, `billing`,
 `notifications`, `account` and `artifact`. Each tool takes an `action` that says what to do. Every
 action is the same operation as a route of the [REST API](/reference/api/),
 with the same inputs, permissions and results, so the two always agree.
@@ -176,7 +176,7 @@ token can see. Clients use them to decide when to ask you before a call.
 | --- | --- |
 | `title` | The tool's name for people, such as `Pull requests`. |
 | `readOnlyHint` | `true` when every action shown only reads. |
-| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting an integration, deleting a webhook, setting or deleting secrets and variables, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, changing runner settings, sharing an artifact, and deleting an artifact for good. |
+| `destructiveHint` | `true` when the tool is not read-only and an action shown cannot be undone or reaches beyond g1t's own records: deleting a workspace, deleting, purging or transferring a repository, changing its visibility, removing an email address or a collaborator, deleting a team or taking its role on a repository away, disconnecting or changing an integration, removing or changing an AI provider, deleting a webhook, setting or deleting secrets and variables, setting a workspace's base permission, removing a member, transferring a workspace's ownership, leaving a workspace, merging a pull request, removing a self-hosted runner, deleting a runner group, changing runner settings, sharing an artifact, and deleting an artifact for good. |
 | `idempotentHint` | The same as `readOnlyHint`. |
 | `openWorldHint` | Always `false`. |
 
@@ -688,7 +688,7 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`list_invites`](/reference/api/invites/list-workspace-invites/) | A workspace's invites. Owners only. | `workspace` | `workspace:read` |
 | [`invite_member`](/reference/api/invites/invite-member/) | Invite someone into a workspace by `username` or `email`, to join with `role` (`member` or `owner`; `member` when left out). Nobody joins without saying yes: they get an invitation to accept or decline. Owners only. A free workspace cannot invite: refused with `402` until it starts the plan. | `workspace`, and `username` or `email` | `workspace:admin` |
 | [`revoke_invite`](/reference/api/invites/revoke-workspace-invite/) | Revoke a workspace's pending invite. Owners only. | `workspace`, `id` | `workspace:admin` |
-| [`list_integrations`](/reference/api/integrations/list-integrations/) | The workspace's connections. Secrets are never returned. Members only. | `workspace` | `workspace:read` |
+| [`list_integrations`](/reference/api/integrations/list-integrations/) | The workspace's alert sources and issue trackers. Secrets are never returned. Members only. | `workspace` | `workspace:read` |
 | [`connect_integration`](/reference/api/integrations/connect-integration/) | Connect Sentry, Datadog, a webhook, Jira or Linear, with `config` and `secret`. Owners only. | `workspace`, `provider` | `workspace:admin` |
 | [`update_integration`](/reference/api/integrations/update-integration/) | Change one: its `name`, its `config` (replaced whole) or its `secret` (write-only, never returned). Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`disconnect_integration`](/reference/api/integrations/disconnect-integration/) | Remove it and its secrets. Owners only. | `workspace`, `id` | `workspace:admin` |
@@ -713,6 +713,25 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`list_token_requests`](/reference/api/personal-access-tokens/list-token-requests/) | Tokens made for it that wait for approval. Owners only, as people. | `workspace` | `access:read` |
 | [`review_token_request`](/reference/api/personal-access-tokens/review-token-request/) | Approve or deny one: `decision` is `approve` or `deny`, with an optional `reason` its owner is shown. Owners only, as people. | `workspace`, `id`, `decision` | `access:admin` |
 | [`revoke_member_token`](/reference/api/personal-access-tokens/revoke-member-token/) | Take a member's token out of the workspace, with an optional `reason`. A token made for it stops reaching it; one made for all of its owner's workspaces keeps working elsewhere. Owners only, as people. | `workspace`, `id` | `access:admin` |
+
+## `ai`
+
+A workspace's AI: the [AI providers](/guides/ai/) it keeps keys for
+(frontier labs, model platforms and self-hosted endpoints) and what
+[Ask g1t](/guides/ask/) answers with. `list_providers` is the default
+action. Keys are sealed and never returned. g1t hosts no model and bills
+nothing for it: it runs on the workspace's own account. Members read it;
+changing it is for owners.
+
+| Action | What it does | Required | Scope |
+| --- | --- | --- | --- |
+| [`list_providers`](/reference/api/ai/list-ai-providers/) | Its AI providers, each with its `group` (`labs`, `platforms` or `self_hosted`), `config`, `secret_hint`, the `models` it offered when last checked and its `last_error`. Members only. | `workspace` | `workspace:read` |
+| [`add_provider`](/reference/api/ai/add-ai-provider/) | Add one: `provider` (such as `anthropic`, `openai`, `openrouter`, `azure_openai`, `anthropic_endpoint` or `openai_endpoint`), `config` (`base_url`, `auth_header`, `model`) and `secret`, its key, checked as it is saved. Owners only. | `workspace`, `provider` | `workspace:admin` |
+| [`update_provider`](/reference/api/ai/update-ai-provider/) | Change one: its `name`, its `config` (replaced whole) or its `secret` (write-only, never returned). Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`remove_provider`](/reference/api/ai/remove-ai-provider/) | Remove it and its key. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`test_provider`](/reference/api/ai/test-ai-provider/) | Check its key against the provider. Owners only. | `workspace`, `id` | `workspace:admin` |
+| [`get_ask`](/reference/api/ai/get-ask-settings/) | What Ask answers with: `provider_id`, `provider_name`, `provider`, `model`, `auto`, and `problem` when it cannot answer. Members only. | `workspace` | `workspace:read` |
+| [`set_ask`](/reference/api/ai/set-ask-settings/) | Choose `provider_id` and `model` (one the provider offers, or `auto`); no `provider_id` turns Ask off. Owners only. | `workspace` | `workspace:admin` |
 
 ## `billing`
 

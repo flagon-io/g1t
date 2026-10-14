@@ -7,7 +7,7 @@
 //! encoded again, so that every field the type has is sent, not only the
 //! ones an example shows.
 
-use g1t_contracts::{access, actions, checks, codeowners, integrations, repos, rules, search, teams, webhooks, work};
+use g1t_contracts::{access, actions, ai, checks, codeowners, integrations, repos, rules, search, teams, webhooks, work};
 use g1t_kit::wire::{self, USER_KEYED};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -83,6 +83,8 @@ fn sample(op: Op, example: &Value) -> Value {
             return through::<access::RepoInvitation>(op, as_is);
         }
         Op::ListOutsideCollaborators => return through::<Vec<access::OutsideCollaborator>>(op, as_is),
+        // What Ask answers with, also `snake_case`.
+        Op::GetAskSettings | Op::SetAskSettings => return through::<ai::AskSetup>(op, as_is),
         // Members, also `snake_case`.
         Op::ListMembers => return through::<Vec<g1t_contracts::identity::Member>>(op, as_is),
         Op::UpdateMember => return through::<g1t_contracts::identity::Member>(op, as_is),
@@ -211,6 +213,10 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::CreateRunnerRegistrationToken => through::<g1t_contracts::runners::RegistrationToken>(op, sent),
         Op::ListWebhooks => through::<Vec<webhooks::Hook>>(op, sent),
         Op::ListIntegrations => through::<Vec<integrations::Connection>>(op, sent),
+        Op::ListAiProviders => through::<Vec<ai::AiConnection>>(op, sent),
+        Op::AddAiProvider | Op::UpdateAiProvider => through::<ai::AiConnection>(op, sent),
+        Op::RemoveAiProvider => through::<bool>(op, sent),
+        Op::TestAiProvider => through::<integrations::Tested>(op, sent),
         Op::ListEvents => through::<Vec<g1t_contracts::events::Event>>(op, sent),
         Op::ListEmails | Op::AddEmail | Op::RemoveEmail | Op::UpdateEmailSettings => {
             through::<g1t_contracts::accounts::AccountEmails>(op, sent)

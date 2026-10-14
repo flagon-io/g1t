@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { G1T_KEY, isG1t, parsePrincipalKey } from "@g1t/contracts/chat";
-import { ASK_MAX_MESSAGE_CHARS, ASK_MAX_TOTAL_CHARS } from "@g1t/contracts/integrations";
+import { ASK_MAX_MESSAGE_CHARS, ASK_MAX_TOTAL_CHARS } from "@g1t/contracts/ai";
 
 import { dmKey, dmMembers } from "./names.ts";
 import {
@@ -171,8 +171,8 @@ test("the page an answer is told is the newest question's, as sent from the top 
 
 test("with no provider chosen, g1t says where an owner chooses one", () => {
   const text = notSetUpText("acme");
-  assert.match(text, /Integrations → Your AI providers → Ask g1t/);
-  assert.match(text, /\(\/acme\/-\/integrations\/models#ask\)/);
+  assert.match(text, /Settings → AI → Ask g1t/);
+  assert.match(text, /\(\/acme\/-\/ai#ask\)/);
   assert.match(text, /ask one of them/);
 });
 

@@ -147,7 +147,7 @@ commits it makes, so g1t ties them, and the pull request they land in, to
 the session.
 
 A session started from a hand-off (**Start a session** without an
-Anthropic connection, or `g1t work dispatch N --handoff`) runs as
+Anthropic [AI provider](/guides/ai/), or `g1t work dispatch N --handoff`) runs as
 `G1T_ISSUE=N claude '…'`: the plugin attaches it to issue N as it starts.
 
 ## Work with no issue yet

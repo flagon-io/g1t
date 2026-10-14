@@ -1332,6 +1332,7 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
   rules: <Scale size={15} />,
   audit: <History size={15} />,
   integrations: <Plug size={15} />,
+  ai: <Sparkles size={15} />,
 };
 
 /**
@@ -1534,6 +1535,7 @@ const SECTIONS: Record<string, string> = {
   usage: "Usage",
   billing: "Billing and plans",
   integrations: "Integrations",
+  ai: "AI",
   webhooks: "Webhooks",
   emoji: "Emoji",
   domains: "Domains",
@@ -1792,6 +1794,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: "Billing and plans", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/billing`, icon: <CreditCard size={15} /> },
       { label: "Access tokens", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/tokens`, icon: <KeyRound size={15} /> },
       { label: "Integrations", hint: membership.slug, to: `/${membership.slug}/-/integrations`, icon: <Plug size={15} /> },
+      { label: "AI models", hint: `${membership.slug} · Settings`, to: `/${membership.slug}/-/ai`, icon: <Sparkles size={15} /> },
       { label: "Members", hint: `${membership.slug} · Access`, to: `/${membership.slug}/-/members`, icon: <Users size={15} /> },
       ...(membership.role === "owner"
         ? [

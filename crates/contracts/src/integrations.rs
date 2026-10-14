@@ -1,19 +1,14 @@
 //! The integrations service: a workspace's connections to systems outside
 //! g1t, and everything that crosses between them.
 //!
-//! - **AI providers.** A workspace keeps the credentials for the AI
-//!   providers its team uses (Anthropic, OpenAI, Gemini, and anything
-//!   compatible with either API), sealed, so work can be handed to them.
-//!   Workspace admins add, test, update and remove them.
 //! - **Alerts.** Sentry, Datadog or any signed webhook opens an issue in a
 //!   repository, once per problem however often it fires.
 //! - **Trackers.** A Jira or Linear key, such as `TECH-1234`, resolves to the
 //!   ticket: people and their tools read it, people import it as an issue,
 //!   and when the work lands the ticket is told.
-//! - **Ask g1t.** A conversation with g1t from the top bar, answered by the
-//!   AI provider and model an owner chose from the workspace's own
-//!   connections, on the workspace's own key. g1t hosts no model for it and
-//!   bills nothing for it; the key never leaves this service.
+//!
+//! A workspace's AI providers and Ask g1t are kept by the same service but
+//! are not integrations: see [`crate::ai`].
 //!
 //! Mirrors `packages/contracts/src/integrations.ts`.
 
@@ -26,30 +21,6 @@ use crate::{User, Viewer};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
-    // Model providers: the labs.
-    Anthropic,
-    Openai,
-    /// Through Gemini's OpenAI-compatible endpoint.
-    Gemini,
-    Xai,
-    Mistral,
-    Deepseek,
-    // Model providers: platforms that serve many labs' models.
-    /// A deployment on the workspace's own Azure OpenAI resource.
-    AzureOpenai,
-    Openrouter,
-    Groq,
-    Together,
-    Fireworks,
-    Cerebras,
-    // Model providers: anything else.
-    /// Any endpoint that speaks Anthropic's Messages API: the workspace's
-    /// own Cloudflare AI Gateway, LiteLLM, a proxy in front of Bedrock or
-    /// Vertex, or a self-hosted model.
-    AnthropicEndpoint,
-    /// Any endpoint that speaks OpenAI's Chat Completions API: vLLM,
-    /// Ollama behind a tunnel, LiteLLM, a gateway.
-    OpenaiEndpoint,
     // Alerts.
     Sentry,
     Datadog,
@@ -66,56 +37,14 @@ pub struct Spec {
     pub name: &'static str,
     pub label: &'static str,
     pub kind: ProviderKind,
-    /// For a model provider: the API it speaks, `anthropic` or `openai`.
-    pub api: &'static str,
-    /// For a model provider with a fixed address: where its API is, with
-    /// the version for OpenAI's API and without it for Anthropic's. Empty
-    /// when the connection gives its own.
-    pub base_url: &'static str,
-    /// The header the key goes in; `authorization` means `Bearer <key>`.
-    pub auth_header: &'static str,
-}
-
-const fn model(provider: Provider, name: &'static str, label: &'static str, api: &'static str, base_url: &'static str, auth_header: &'static str) -> Spec {
-    Spec {
-        provider,
-        name,
-        label,
-        kind: ProviderKind::Models,
-        api,
-        base_url,
-        auth_header,
-    }
 }
 
 const fn other(provider: Provider, name: &'static str, label: &'static str, kind: ProviderKind) -> Spec {
-    Spec {
-        provider,
-        name,
-        label,
-        kind,
-        api: "",
-        base_url: "",
-        auth_header: "",
-    }
+    Spec { provider, name, label, kind }
 }
 
 /// Every provider, in the order people are shown them.
-pub const PROVIDERS: [Spec; 19] = [
-    model(Provider::Anthropic, "anthropic", "Anthropic", "anthropic", "https://api.anthropic.com", "x-api-key"),
-    model(Provider::Openai, "openai", "OpenAI", "openai", "https://api.openai.com/v1", "authorization"),
-    model(Provider::Gemini, "gemini", "Google Gemini", "openai", "https://generativelanguage.googleapis.com/v1beta/openai", "authorization"),
-    model(Provider::Xai, "xai", "xAI", "openai", "https://api.x.ai/v1", "authorization"),
-    model(Provider::Mistral, "mistral", "Mistral", "openai", "https://api.mistral.ai/v1", "authorization"),
-    model(Provider::Deepseek, "deepseek", "DeepSeek", "openai", "https://api.deepseek.com/v1", "authorization"),
-    model(Provider::AzureOpenai, "azure_openai", "Azure OpenAI", "openai", "", "api-key"),
-    model(Provider::Openrouter, "openrouter", "OpenRouter", "openai", "https://openrouter.ai/api/v1", "authorization"),
-    model(Provider::Groq, "groq", "Groq", "openai", "https://api.groq.com/openai/v1", "authorization"),
-    model(Provider::Together, "together", "Together AI", "openai", "https://api.together.xyz/v1", "authorization"),
-    model(Provider::Fireworks, "fireworks", "Fireworks AI", "openai", "https://api.fireworks.ai/inference/v1", "authorization"),
-    model(Provider::Cerebras, "cerebras", "Cerebras", "openai", "https://api.cerebras.ai/v1", "authorization"),
-    model(Provider::AnthropicEndpoint, "anthropic_endpoint", "Anthropic-compatible endpoint", "anthropic", "", "x-api-key"),
-    model(Provider::OpenaiEndpoint, "openai_endpoint", "OpenAI-compatible endpoint", "openai", "", "authorization"),
+pub const PROVIDERS: [Spec; 5] = [
     other(Provider::Sentry, "sentry", "Sentry", ProviderKind::Alerts),
     other(Provider::Datadog, "datadog", "Datadog", ProviderKind::Alerts),
     other(Provider::Webhook, "webhook", "Webhook", ProviderKind::Alerts),
@@ -157,22 +86,11 @@ impl Provider {
         self.kind() == ProviderKind::Alerts
     }
 
-    /// For a model provider, the API it speaks: `anthropic` or `openai`.
-    pub fn api(self) -> &'static str {
-        self.spec().api
-    }
-
-    /// Whether the connection gives the address, rather than g1t knowing it.
-    pub fn own_address(self) -> bool {
-        self.kind() == ProviderKind::Models && self.spec().base_url.is_empty()
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
-    /// An AI provider whose credentials the workspace keeps.
-    Models,
     /// Problems that become issues.
     Alerts,
     /// Tickets that people read and import.
@@ -209,16 +127,6 @@ pub struct ConnectionConfig {
     /// such as `TECH`. Empty answers for every key.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keys: Vec<String>,
-    /// Your own endpoint: its base URL, without `/v1`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    /// Your own endpoint: send the key as `x-api-key` (the default) or as
-    /// `authorization: Bearer`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth_header: Option<String>,
-    /// For an AI provider: the model the team uses on it, when it names one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
 }
 
 fn yes() -> bool {
@@ -235,9 +143,6 @@ impl Default for ConnectionConfig {
             site: None,
             email: None,
             keys: Vec::new(),
-            base_url: None,
-            auth_header: None,
-            model: None,
         }
     }
 }
@@ -263,9 +168,6 @@ pub struct Connection {
     pub last_used_at: Option<String>,
     /// The last thing that went wrong talking to it, until it next works.
     pub last_error: Option<String>,
-    /// For a model provider: the models it offered when last checked.
-    #[serde(default)]
-    pub models: Vec<String>,
 }
 
 /// One request an outside system sent, and what g1t did with it.
@@ -450,209 +352,6 @@ pub struct LinksArgs {
     pub number: u32,
 }
 
-// --- Ask g1t ---------------------------------------------------------------
-
-/// The most messages one ask sends: the conversation's latest turns.
-pub const ASK_MAX_MESSAGES: usize = 40;
-/// The longest one message may be, in characters.
-pub const ASK_MAX_MESSAGE_CHARS: usize = 16_000;
-/// The longest a whole conversation may be, in characters.
-pub const ASK_MAX_TOTAL_CHARS: usize = 64_000;
-/// The most tokens one answer may run to.
-pub const ASK_MAX_OUTPUT_TOKENS: u32 = 4_096;
-
-/// The model name that means Auto in [`SetAskSettingsArgs`]: Ask picks one
-/// of the connection's models for each question.
-pub const ASK_AUTO_MODEL: &str = "auto";
-
-/// What Ask g1t answers with in a workspace: the connection and model an
-/// owner chose, or why it cannot answer yet.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct AskSetup {
-    pub connection_id: Option<String>,
-    /// The connection's name, as its owner named it.
-    pub connection_name: Option<String>,
-    pub provider: Option<Provider>,
-    /// The model chosen. With `auto`, none, or the connection's own model
-    /// when it lists none (an endpoint's, an Azure deployment).
-    pub model: Option<String>,
-    /// Auto: each question goes to the connection's model that suits it (a
-    /// fast one for a lookup, a stronger one for a question that needs
-    /// several reads or reasoning). The default.
-    #[serde(default)]
-    pub auto: bool,
-    /// Why Ask cannot answer, in words for the person asking. `None` when
-    /// it can.
-    pub problem: Option<String>,
-}
-
-/// `ask_settings`: what Ask answers with. Returns `Outcome<AskSetup>`.
-/// Members only.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AskSettingsArgs {
-    pub workspace: String,
-    pub viewer: Viewer,
-}
-
-/// `set_ask_settings`: chooses the connection and model Ask answers with;
-/// no `connection_id` turns Ask off. Returns `Outcome<AskSetup>`. Owners
-/// only.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SetAskSettingsArgs {
-    pub actor: User,
-    pub workspace: String,
-    #[serde(default)]
-    pub connection_id: Option<String>,
-    /// One of the models the connection offers, or [`ASK_AUTO_MODEL`] for
-    /// Auto; its own model (an Azure deployment) when not given.
-    #[serde(default)]
-    pub model: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AskRole {
-    User,
-    Assistant,
-}
-
-/// One turn of an Ask conversation.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AskMessage {
-    pub role: AskRole,
-    pub content: String,
-}
-
-/// Where the person asking is in g1t, so the answer is about their work.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct AskPage {
-    /// The page's path, such as `/acme/web/issues/12`.
-    #[serde(default)]
-    pub path: Option<String>,
-    #[serde(default)]
-    pub repo: Option<RepoPath>,
-    #[serde(default)]
-    pub issue: Option<u32>,
-    #[serde(default)]
-    pub pull: Option<u32>,
-    /// The browser's IANA time zone, such as `America/Denver`: what
-    /// "today" means when their profile names none.
-    #[serde(default)]
-    pub time_zone: Option<String>,
-}
-
-/// `ask`: one answer, streamed as newline-delimited JSON [`AskEvent`]s:
-/// `meta` first, then `text` as it comes and a `tool` line as each step
-/// starts and ends, then `sources` and `done`, or `error` at any point.
-/// Members only. The conversation alternates, starting and ending with the
-/// person; its turns are text only, since the steps of an answer live in
-/// that answer alone.
-///
-/// The provider reads g1t with the MCP server's own tools, as the person
-/// asking, on a read-only credential identity makes for the answer
-/// (`create_ask_token`), so it sees what they may see and changes nothing.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AskArgs {
-    pub actor: User,
-    pub workspace: String,
-    pub messages: Vec<AskMessage>,
-    #[serde(default)]
-    pub page: AskPage,
-}
-
-/// The most rounds of tool calls one answer takes before it must answer
-/// with what it has.
-pub const ASK_MAX_TOOL_ROUNDS: usize = 10;
-/// The most tool calls one answer makes, across its rounds.
-pub const ASK_MAX_TOOL_CALLS: usize = 30;
-/// The most characters of one tool's result the model is given; more is
-/// trimmed, long texts and lists first, with a note saying so.
-pub const ASK_MAX_TOOL_RESULT_CHARS: usize = 16_000;
-/// The most characters of tool results one answer gives the model in all.
-pub const ASK_MAX_TOOL_TOTAL_CHARS: usize = 120_000;
-/// How long one answer may spend calling tools, in seconds. After it, the
-/// model answers with what it has.
-pub const ASK_MAX_TOOL_SECONDS: u64 = 120;
-/// The most sources one answer lists.
-pub const ASK_MAX_SOURCES: usize = 12;
-
-/// Where a step of an answer is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AskToolStatus {
-    /// Started; its result has not come.
-    Running,
-    Done,
-    /// The tool answered with a refusal or an error: `summary` says what.
-    Failed,
-    /// Ask did not run it: it is not something Ask does (it only reads, and
-    /// hands work off), or the answer had used its tool calls.
-    Refused,
-}
-
-/// A page on g1t an answer drew on.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AskSource {
-    pub title: String,
-    /// An absolute address on the site, such as
-    /// `https://g1t.sh/acme/web/pull/7`.
-    pub url: String,
-    /// Whether the answer links to it, rather than only having read it.
-    pub cited: bool,
-}
-
-/// One line of an `ask` answer.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AskEvent {
-    /// Who is answering.
-    /// `model` is the one answering; `auto` when Auto chose it.
-    Meta {
-        provider: Provider,
-        provider_label: String,
-        model: String,
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        auto: bool,
-    },
-    /// The next piece of the answer.
-    Text { text: String },
-    /// A step taken to answer: one of g1t's tools, run as the person
-    /// asking. Sent when it starts, `running`, and again with the same `id`
-    /// when it ends, with what it found in `summary` and the page it was
-    /// about in `link`.
-    Tool {
-        id: String,
-        /// The tool, such as `pull_request`, and its `action`, such as `list`.
-        name: String,
-        action: Option<String>,
-        /// What it does, for a person: "Read pull requests in acme/web".
-        label: String,
-        status: AskToolStatus,
-        summary: Option<String>,
-        link: Option<String>,
-    },
-    /// What the answer drew on, cited first. Sent once, before `done`.
-    Sources { sources: Vec<AskSource> },
-    /// Work Ask proposes to hand to a session in the person's own harness:
-    /// on an issue, or on a new one with `title` and `body`. Nothing has
-    /// started; the person starts it, or copies the command, from the card
-    /// the answer shows. `mode` is `plan`, `implement` or `review`.
-    Proposal {
-        id: String,
-        repo: String,
-        issue: Option<u64>,
-        title: Option<String>,
-        body: Option<String>,
-        mode: String,
-        instruction: Option<String>,
-    },
-    /// The answer is complete. `stop_reason` as the provider said it, such
-    /// as `end_turn`, `stop` or `max_tokens`.
-    Done { stop_reason: Option<String> },
-    /// The answer stopped: what went wrong, for the person asking.
-    Error { message: String },
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -669,13 +368,8 @@ mod tests {
     }
 
     #[test]
-    fn ai_providers_are_connections_like_any_other() {
-        assert_eq!(Provider::parse("anthropic"), Some(Provider::Anthropic));
-        let stored: Provider = serde_json::from_str("\"openai_endpoint\"").unwrap();
-        assert_eq!(stored.kind(), ProviderKind::Models);
-        assert!(stored.own_address());
-        assert!(!Provider::Anthropic.own_address());
-        assert!(Provider::all().any(|provider| provider == Provider::Groq));
+    fn ai_providers_are_not_integrations() {
+        assert_eq!(Provider::parse("anthropic"), None);
         assert!(Provider::all().any(|provider| provider == Provider::Sentry));
     }
 
@@ -685,63 +379,5 @@ mod tests {
             serde_json::from_str(r#"{"repo":"acme/web","assign":true,"gatewayModels":["*"],"writeBack":false}"#).unwrap();
         assert_eq!(config.repo.as_deref(), Some("acme/web"));
         assert!(!config.write_back);
-    }
-
-    #[test]
-    fn model_providers_say_how_to_reach_them() {
-        for spec in PROVIDERS.iter().filter(|spec| spec.kind == ProviderKind::Models) {
-            assert!(spec.api == "anthropic" || spec.api == "openai", "{}", spec.name);
-            assert!(!spec.auth_header.is_empty(), "{}", spec.name);
-            assert!(spec.base_url.is_empty() || spec.base_url.starts_with("https://"), "{}", spec.name);
-        }
-    }
-
-    #[test]
-    fn ask_events_are_tagged_lines() {
-        let line = serde_json::to_string(&AskEvent::Text { text: "Hi".into() }).unwrap();
-        assert_eq!(line, r#"{"type":"text","text":"Hi"}"#);
-        let meta: AskEvent =
-            serde_json::from_str(r#"{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude"}"#).unwrap();
-        assert_eq!(
-            meta,
-            AskEvent::Meta { provider: Provider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into(), auto: false }
-        );
-        // Auto says so; a chosen model's line is as it was.
-        assert!(!serde_json::to_string(&meta).unwrap().contains("auto"));
-        let auto = AskEvent::Meta { provider: Provider::Anthropic, provider_label: "Anthropic".into(), model: "claude".into(), auto: true };
-        assert_eq!(
-            serde_json::to_string(&auto).unwrap(),
-            r#"{"type":"meta","provider":"anthropic","provider_label":"Anthropic","model":"claude","auto":true}"#
-        );
-        let page: AskPage = serde_json::from_str("{}").unwrap();
-        assert_eq!(page, AskPage::default());
-    }
-
-    #[test]
-    fn ask_steps_and_sources_are_snake_case_lines() {
-        let step = AskEvent::Tool {
-            id: "t1".into(),
-            name: "pull_request".into(),
-            action: Some("list".into()),
-            label: "Read pull requests in acme/web".into(),
-            status: AskToolStatus::Done,
-            summary: Some("12 results".into()),
-            link: Some("https://g1t.sh/acme/web/pulls".into()),
-        };
-        assert_eq!(
-            serde_json::to_value(&step).unwrap(),
-            serde_json::json!({
-                "type": "tool", "id": "t1", "name": "pull_request", "action": "list",
-                "label": "Read pull requests in acme/web", "status": "done",
-                "summary": "12 results", "link": "https://g1t.sh/acme/web/pulls",
-            })
-        );
-        let sources = AskEvent::Sources {
-            sources: vec![AskSource { title: "Fix login".into(), url: "https://g1t.sh/acme/web/pull/7".into(), cited: true }],
-        };
-        let line = serde_json::to_string(&sources).unwrap();
-        assert_eq!(line, r#"{"type":"sources","sources":[{"title":"Fix login","url":"https://g1t.sh/acme/web/pull/7","cited":true}]}"#);
-        assert_eq!(serde_json::from_str::<AskEvent>(&line).unwrap(), sources);
-        assert_eq!(serde_json::to_string(&AskToolStatus::Refused).unwrap(), r#""refused""#);
     }
 }

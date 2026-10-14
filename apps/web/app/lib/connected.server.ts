@@ -11,7 +11,7 @@ import { CONNECTORS } from "@g1t/contracts/connectors";
 import type { ConnectedState } from "./connectors";
 import { githubConnected } from "./github";
 import { githubApp } from "./github.server";
-import { integrationsSection } from "./integration-sections";
+import { providerPage } from "./integration-sections";
 import { integrations, webhooks } from "./services.server";
 
 /** What the workspace `slug` has connected, as `viewer` may see it. Each source that does not answer counts as nothing connected. */
@@ -41,7 +41,7 @@ export async function workspaceConnections(slug: string, viewer: User): Promise<
       connected[connector.id] = {
         detail: mine.length === 1 ? mine[0]!.name : `${mine.length} connections: ${mine.map((c) => c.name).join(", ")}`,
         problem: broken ? `${broken.name}: ${broken.lastError}` : null,
-        manage: `/${slug}/-/integrations/${integrationsSection(PROVIDERS[connector.provider].kind)}`,
+        manage: `/${slug}/-/${providerPage(PROVIDERS[connector.provider].kind)}`,
       };
     }
   }

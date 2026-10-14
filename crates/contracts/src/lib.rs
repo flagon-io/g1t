@@ -8,6 +8,7 @@ pub mod about;
 pub mod access;
 pub mod advisories;
 pub mod agent_sessions;
+pub mod ai;
 pub mod account_deletion;
 pub mod accounts;
 pub mod actions;

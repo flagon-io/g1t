@@ -1227,7 +1227,7 @@ g1t work dispatch [OPTIONS] <NUMBER|--title <TITLE>>
 | `--managed` | Start it on the workspace's Anthropic account, or fail. |
 
 ```text
-With the workspace's Anthropic connection, a Claude Managed Agents session starts on that
+With the workspace's Anthropic AI provider, a Claude Managed Agents session starts on that
 account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
 to run with g1t's plugin, whose session attaches to the issue as it starts.
 Examples:

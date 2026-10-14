@@ -401,7 +401,7 @@ g1t work dispatch --title "Add a healthcheck" --handoff  # open the issue; print
 ```
 
 `g1t work dispatch` starts work on an issue in a session on your own
-Claude: with the workspace's Anthropic connection, a Claude Managed Agents
+Claude: with the workspace's Anthropic [AI provider](/guides/ai/), a Claude Managed Agents
 session on that account (it prints the session's page on g1t); without
 one, or with `--handoff`, the `claude` command line to run in your working
 copy with g1t's [Claude Code plugin](/guides/claude-code-plugin/).

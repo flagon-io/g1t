@@ -3,12 +3,17 @@
 //! `g1t_contracts::integrations` for what each connection does and the
 //! methods and their arguments.
 //!
+//! It also keeps a workspace's AI providers and answers Ask g1t (ai.rs,
+//! `g1t_contracts::ai`). Those are not integrations, and have tables and
+//! methods of their own.
+//!
 //! Secrets are sealed at rest and never returned. A request an outside
 //! system sends is checked against the connection's signing secret,
 //! answered at once, and acted on afterwards, so a slow step never makes
 //! the sender give up and send it again.
 
 mod agent_sessions;
+mod ai;
 mod alerts;
 mod ask;
 mod ask_loop;
@@ -25,17 +30,17 @@ mod sentry;
 mod trackers;
 
 use g1t_contracts::events::Event;
-use g1t_contracts::identity::{AskToken, CreateAskTokenArgs, Profile, RevokeAskTokenArgs, SlugArgs, UsernameArgs, Workspace};
+use g1t_contracts::identity::{SlugArgs, Workspace};
 use g1t_contracts::integrations::*;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{AddCommentArgs, Issue, IssueActionArgs, IssueDetail, OpenIssueArgs, PullDetail, State, ViewArgs};
+use g1t_contracts::work::{AddCommentArgs, Issue, IssueActionArgs, IssueDetail, OpenIssueArgs, State, ViewArgs};
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use worker::wasm_bindgen::JsValue;
-use worker::{Context, D1Database, Env, Fetcher, Headers, MessageBatch, MessageExt, Method, Request, Response, Result, event};
+use worker::{Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event};
 
 use alerts::{Action, Signal};
 use g1t_secrets::{self as crypto, Sealer};
@@ -58,7 +63,6 @@ struct Row {
     created_at: String,
     last_used_at: Option<String>,
     last_error: Option<String>,
-    models: Option<String>,
 }
 
 impl Row {
@@ -69,21 +73,16 @@ impl Row {
     fn config(&self) -> ConnectionConfig {
         serde_json::from_str(&self.config).unwrap_or_default()
     }
-
-    /// The models it offered when last checked.
-    fn models(&self) -> Vec<String> {
-        self.models.as_deref().and_then(|models| serde_json::from_str(models).ok()).unwrap_or_default()
-    }
 }
 
 /// What is sealed for a connection.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Secrets {
+pub(crate) struct Secrets {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    secret: Option<String>,
+    pub(crate) secret: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    signing_secret: Option<String>,
+    pub(crate) signing_secret: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -122,11 +121,11 @@ struct Found {
     external_id: String,
 }
 
-fn optional(value: Option<&str>) -> JsValue {
+pub(crate) fn optional(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from)
 }
 
-fn fail<T>(code: FailureCode, message: impl Into<String>) -> Outcome<T> {
+pub(crate) fn fail<T>(code: FailureCode, message: impl Into<String>) -> Outcome<T> {
     Outcome::fail(code, message)
 }
 
@@ -138,7 +137,7 @@ fn repo_path(text: &str) -> Option<RepoPath> {
     })
 }
 
-fn https(url: &str) -> bool {
+pub(crate) fn https(url: &str) -> bool {
     url.starts_with("https://") && url.len() > "https://".len()
 }
 
@@ -151,7 +150,7 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
         .map(|key| key.trim().to_ascii_uppercase())
         .filter(|key| !key.is_empty())
         .collect();
-    for value in [&mut config.site, &mut config.base_url].into_iter().flatten() {
+    for value in [&mut config.site].into_iter().flatten() {
         *value = value.trim().trim_end_matches('/').to_owned();
         if !https(value) {
             return Err("Addresses must start with https://.".to_owned());
@@ -181,37 +180,20 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
             needs(secrets.secret.is_some(), "Paste a Jira API token.")
         }
         Provider::Linear => needs(secrets.secret.is_some(), "Paste a Linear API key."),
-        Provider::AzureOpenai => {
-            needs(config.base_url.is_some(), "Give your Azure OpenAI resource's endpoint, such as https://acme.openai.azure.com.")?;
-            needs(config.model.is_some(), "Give the name of the deployment to use.")?;
-            needs(secrets.secret.is_some(), "Paste the resource's key.")
-        }
-        Provider::AnthropicEndpoint | Provider::OpenaiEndpoint => {
-            needs(config.base_url.is_some(), "Give the endpoint's address.")?;
-            if let Some(header) = &config.auth_header
-                && header != "x-api-key"
-                && header != "authorization"
-            {
-                return Err("Send the key as x-api-key or authorization.".to_owned());
-            }
-            Ok(())
-        }
-        // Every other AI provider is at a known address and needs only a key.
-        _ => needs(secrets.secret.is_some(), &format!("Paste your {} API key.", provider.label())),
     }
 }
 
-struct Integrations {
-    db: D1Database,
-    sealer: Option<Sealer>,
-    identity: Fetcher,
-    work: Fetcher,
+pub(crate) struct Integrations {
+    pub(crate) db: D1Database,
+    pub(crate) sealer: Option<Sealer>,
+    pub(crate) identity: Fetcher,
+    pub(crate) work: Fetcher,
     /// Where the API is, for connections' webhook addresses.
     api_url: String,
     /// Where the site is, for links back to issues and pull requests.
-    site_url: String,
+    pub(crate) site_url: String,
     /// g1t's MCP server, which Ask reads g1t through as the person asking.
-    mcp_url: String,
+    pub(crate) mcp_url: String,
 }
 
 impl Integrations {
@@ -243,7 +225,6 @@ impl Integrations {
             created_at: row.created_at.clone(),
             last_used_at: row.last_used_at.clone(),
             last_error: row.last_error.clone(),
-            models: row.models(),
         }
     }
 
@@ -286,20 +267,6 @@ impl Integrations {
     }
 
     /// Notes that talking to a connection worked, or what went wrong.
-    /// Keeps what an AI provider's check found: its models, or what went wrong.
-    async fn after_check(&self, id: &str, checked: &std::result::Result<(String, Vec<String>), String>) -> Result<()> {
-        if let Ok((_, models)) = checked
-            && !models.is_empty()
-        {
-            self.db
-                .prepare("UPDATE connections SET models = ? WHERE id = ?")
-                .bind(&[serde_json::to_string(models)?.into(), id.into()])?
-                .run()
-                .await?;
-        }
-        self.note(id, checked.as_ref().err().map(String::as_str)).await
-    }
-
     async fn note(&self, id: &str, problem: Option<&str>) -> Result<()> {
         let now = rfc3339(now_ms());
         match problem {
@@ -401,11 +368,6 @@ impl Integrations {
             ])?
             .run()
             .await?;
-        // An AI provider is checked at once, which also learns its models.
-        if provider.kind() == ProviderKind::Models {
-            let checked = models::test(provider, &config, secrets.secret.as_deref()).await?;
-            self.after_check(&id, &checked).await?;
-        }
         let Some(row) = self.row(&id).await? else {
             return Ok(fail(FailureCode::NotFound, "The connection was not saved."));
         };
@@ -472,8 +434,6 @@ impl Integrations {
             .batch(vec![
                 self.db.prepare("DELETE FROM connections WHERE id = ?").bind(&[row.id.as_str().into()])?,
                 self.db.prepare("DELETE FROM deliveries WHERE connection_id = ?").bind(&[row.id.as_str().into()])?,
-                // Ask stops answering with it.
-                self.db.prepare("DELETE FROM model_routes WHERE connection_id = ?").bind(&[row.id.as_str().into()])?,
             ])
             .await?;
         Ok(Outcome::Ok(true))
@@ -491,14 +451,6 @@ impl Integrations {
         let config = row.config();
         let secrets = self.secrets(&row);
         let key = secrets.secret.as_deref();
-        if provider.kind() == ProviderKind::Models {
-            let checked = models::test(provider, &config, key).await?;
-            self.after_check(&row.id, &checked).await?;
-            return Ok(Outcome::Ok(match checked {
-                Ok((message, _)) => Tested { ok: true, message },
-                Err(message) => Tested { ok: false, message },
-            }));
-        }
         let tested = match provider {
             Provider::Sentry => match key {
                 Some(token) => sentry::test(&config, token).await?,
@@ -545,322 +497,6 @@ impl Integrations {
                 })
                 .collect(),
         ))
-    }
-
-    // --- Ask g1t ----------------------------------------------------------------
-
-    /// What Ask answers with: the owner's choice, kept as the workspace's
-    /// `ask` model route, and the connection it names.
-    async fn ask_setup(&self, workspace: &str) -> Result<(AskSetup, Option<Row>)> {
-        #[derive(Deserialize)]
-        struct Route {
-            connection_id: Option<String>,
-            model: Option<String>,
-            #[serde(default)]
-            auto: u32,
-        }
-        let route = self
-            .db
-            .prepare("SELECT connection_id, model, auto FROM model_routes WHERE workspace = ? AND task = ?")
-            .bind(&[workspace.into(), ASK_TASK.into()])?
-            .first::<Route>(None)
-            .await?;
-        let Some(id) = route.as_ref().and_then(|route| route.connection_id.clone()) else {
-            return Ok((
-                AskSetup {
-                    problem: Some("No AI provider is chosen for Ask in this workspace yet.".to_owned()),
-                    ..AskSetup::default()
-                },
-                None,
-            ));
-        };
-        let Some(row) = self.row_in(workspace, &id).await?.filter(|row| row.provider().kind() == ProviderKind::Models) else {
-            return Ok((
-                AskSetup {
-                    problem: Some("The AI provider chosen for Ask was removed. Choose another.".to_owned()),
-                    ..AskSetup::default()
-                },
-                None,
-            ));
-        };
-        let auto = route.as_ref().is_some_and(|route| route.auto == 1);
-        // With Auto, a model is named only when the connection offers just
-        // its own: an endpoint that lists none, or an Azure deployment.
-        let model = if auto {
-            auto_models(&row).is_empty().then(|| row.config().model).flatten()
-        } else {
-            route.and_then(|route| route.model).or_else(|| row.config().model)
-        }
-        .filter(|model| !model.trim().is_empty());
-        let problem = if auto && model.is_none() && auto_models(&row).is_empty() {
-            Some(format!("{} has listed no models for Auto to choose from. Test it to list them, or choose a model for Ask.", row.name))
-        } else if !auto && model.is_none() {
-            Some("No model is chosen for Ask.".to_owned())
-        } else if self.sealer.is_none() {
-            Some("Integrations are not set up on this g1t: it has no key to keep secrets with.".to_owned())
-        } else if !row.provider().own_address() && self.secrets(&row).secret.is_none() {
-            Some(format!("The key for {} cannot be read. Replace it.", row.name))
-        } else {
-            None
-        };
-        Ok((
-            AskSetup {
-                connection_id: Some(row.id.clone()),
-                connection_name: Some(row.name.clone()),
-                provider: Some(row.provider()),
-                model,
-                auto,
-                problem,
-            },
-            Some(row),
-        ))
-    }
-
-    async fn ask_settings(&self, a: AskSettingsArgs) -> Result<Outcome<AskSetup>> {
-        let workspace = a.workspace.to_lowercase();
-        if !a.viewer.is_some_and(|viewer| viewer.is_member(&workspace)) {
-            return Ok(fail(FailureCode::Forbidden, "Only members can use Ask in a workspace."));
-        }
-        Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0))
-    }
-
-    async fn set_ask_settings(&self, a: SetAskSettingsArgs) -> Result<Outcome<AskSetup>> {
-        let workspace = a.workspace.to_lowercase();
-        if let Some(refused) = Self::owner_only(&a.actor, &workspace) {
-            return Ok(refused);
-        }
-        let Some(id) = a.connection_id.map(|id| id.trim().to_owned()).filter(|id| !id.is_empty()) else {
-            self.db
-                .prepare("DELETE FROM model_routes WHERE workspace = ? AND task = ?")
-                .bind(&[workspace.as_str().into(), ASK_TASK.into()])?
-                .run()
-                .await?;
-            return Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0));
-        };
-        let Some(row) = self.row_in(&workspace, &id).await? else {
-            return Ok(fail(FailureCode::NotFound, "No such integration."));
-        };
-        if row.provider().kind() != ProviderKind::Models {
-            return Ok(fail(FailureCode::Invalid, "Ask can only answer with an AI provider."));
-        }
-        let connection = self.to_connection(&row);
-        let auto = chose_auto(a.model.as_deref());
-        let model = if auto {
-            None
-        } else {
-            match ask_model(&connection, a.model.as_deref()) {
-                Ok(model) => model,
-                Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
-            }
-        };
-        self.db
-            .prepare(
-                "INSERT INTO model_routes (workspace, task, connection_id, model, auto) VALUES (?, ?, ?, ?, ?)
-                 ON CONFLICT (workspace, task) DO UPDATE SET connection_id = excluded.connection_id, model = excluded.model, auto = excluded.auto",
-            )
-            .bind(&[workspace.as_str().into(), ASK_TASK.into(), row.id.as_str().into(), optional(model.as_deref()), u32::from(auto).into()])?
-            .run()
-            .await?;
-        Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0))
-    }
-
-    /// The issue or pull request the person is looking at, as they may see
-    /// it. Nothing when there is none or they cannot.
-    async fn ask_facts(&self, actor: &User, page: &AskPage) -> Result<Vec<ask::Fact>> {
-        let Some(repo) = &page.repo else {
-            return Ok(Vec::new());
-        };
-        let view = |number: u32| ViewArgs {
-            repo: repo.clone(),
-            number,
-            viewer: Some(actor.clone()),
-            after_seq: 0,
-        };
-        let state = |value: Value| value.as_str().unwrap_or_default().to_owned();
-        let mut facts = Vec::new();
-        if let Some(number) = page.issue {
-            let found: Outcome<IssueDetail> = g1t_kit::call(&self.work, "get_issue", &view(number)).await?;
-            if let Outcome::Ok(detail) = found {
-                facts.push(ask::Fact {
-                    kind: "issue",
-                    number,
-                    state: state(serde_json::to_value(detail.issue.state)?),
-                    title: detail.issue.title,
-                    body: http::shorten(&detail.issue.body, ASK_FACT_CHARS),
-                });
-            }
-        }
-        if let Some(number) = page.pull {
-            let found: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
-            if let Outcome::Ok(detail) = found {
-                facts.push(ask::Fact {
-                    kind: "pull request",
-                    number,
-                    state: state(serde_json::to_value(detail.pull.status)?),
-                    body: http::shorten(detail.pull.body.as_deref().unwrap_or_default(), ASK_FACT_CHARS),
-                    title: detail.pull.title,
-                });
-            }
-        }
-        Ok(facts)
-    }
-
-    /// One answer, streamed: see [`AskArgs`] and ask_loop.rs.
-    ///
-    /// Before the provider is asked, identity makes the answer's read-only
-    /// credential for the person asking, and g1t's MCP server lists the
-    /// tools it may use. Without them the answer still comes, from the page
-    /// alone, and says so.
-    async fn ask(&self, a: AskArgs) -> Result<Response> {
-        let started = now_ms();
-        let workspace = a.workspace.to_lowercase();
-        if !a.actor.is_member(&workspace) {
-            return ask_refusal("Only members can use Ask in this workspace.");
-        }
-        let messages = match ask::conversation(a.messages) {
-            Ok(messages) => messages,
-            Err(problem) => return ask_refusal(&problem),
-        };
-        let (setup, row) = self.ask_setup(&workspace).await?;
-        let (Some(row), None) = (row, setup.problem.clone()) else {
-            return ask_refusal(setup.problem.as_deref().unwrap_or("Ask is not set up in this workspace."));
-        };
-        // Auto picks for this question; otherwise the model chosen.
-        let model = if setup.auto {
-            auto::choose(&auto_models(&row), row.config().model.as_deref(), auto::need(&messages))
-        } else {
-            setup.model.clone()
-        };
-        let Some(model) = model else {
-            return ask_refusal("No model is chosen for Ask.");
-        };
-        let provider = row.provider();
-        let config = row.config();
-        let key = self.secrets(&row).secret;
-        let (named, facts, credential, profile) = futures_util::future::join4(
-            g1t_kit::call::<_, Option<Workspace>>(&self.identity, "get_workspace", &SlugArgs { slug: workspace.clone() }),
-            self.ask_facts(&a.actor, &a.page),
-            g1t_kit::call::<_, Outcome<AskToken>>(
-                &self.identity,
-                "create_ask_token",
-                &CreateAskTokenArgs { actor: a.actor.clone(), workspace: workspace.clone() },
-            ),
-            // Their time zone, for what "today" means to them.
-            g1t_kit::call::<_, Option<Profile>>(&self.identity, "profile", &UsernameArgs { username: a.actor.username.clone() }),
-        )
-        .await;
-        let name = named.ok().flatten().map(|found| found.name).unwrap_or_default();
-        // Without what the page is about, the answer can still come.
-        let facts = facts.unwrap_or_default();
-        let credential = match credential {
-            Ok(Outcome::Ok(credential)) => Some(credential),
-            Ok(Outcome::Fail(refused)) => {
-                worker::console_error!("ask: no credential for the tools: {}", refused.message);
-                None
-            }
-            Err(error) => {
-                worker::console_error!("ask: no credential for the tools: {error}");
-                None
-            }
-        };
-        let mcp = credential.as_ref().map(|credential| ask_tools::Mcp { url: self.mcp_url.clone(), token: credential.token.clone() });
-        let listed = match &mcp {
-            Some(mcp) => mcp.list().await.unwrap_or_else(|problem| {
-                worker::console_error!("ask: g1t's tools could not be listed: {problem}");
-                Vec::new()
-            }),
-            None => Vec::new(),
-        };
-        let toolbox = ask_tools::Toolbox::new(listed, ask_tools::native());
-        let now = rfc3339(started);
-        let today: String = now.chars().take(10).collect();
-        let now: String = format!("{}Z", now.chars().take(19).collect::<String>());
-        // Their profile's zone first, else the one their browser sent.
-        let zone = profile
-            .ok()
-            .flatten()
-            .and_then(|profile| profile.timezone)
-            .or_else(|| a.page.time_zone.clone())
-            .filter(|zone| !zone.trim().is_empty() && zone.len() <= 64);
-        let day = zone.as_deref().and_then(|zone| local_day::today(zone, started));
-        let day_started = day.as_ref().map(local_day::started_at);
-        let local = match (&zone, &day, &day_started) {
-            (Some(zone), Some(day), Some(started)) => Some((zone.as_str(), day.date.as_str(), started.as_str())),
-            _ => None,
-        };
-        let username = a.actor.display_username.clone().unwrap_or_else(|| a.actor.username.clone());
-        let system = ask::system_prompt(&ask::Context {
-            slug: &workspace,
-            name: &name,
-            username: &username,
-            site: &self.site_url,
-            today: &today,
-            now: &now,
-            page: &a.page,
-            facts: &facts,
-            tools: !toolbox.is_empty(),
-            local,
-        });
-        let mut answering = ask_loop::Answering::new(
-            provider,
-            config,
-            key,
-            model.clone(),
-            system,
-            messages,
-            ASK_MAX_OUTPUT_TOKENS,
-            toolbox,
-            mcp,
-            self.site_url.clone(),
-            self.identity.clone(),
-            credential.map(|credential| credential.id),
-            started,
-        );
-        // The first round is asked here, so a provider that refuses is a
-        // refusal with its reason, and the connection notes it.
-        let built = match answering.request() {
-            Ok(built) => built,
-            Err(problem) => return self.ask_refused(answering, &problem).await,
-        };
-        let headers: Vec<(&str, &str)> = built.headers.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
-        let mut response = match http::open(Method::Post, &built.url, &headers, Some(built.body)).await {
-            Ok(response) => response,
-            Err(error) => {
-                let problem = format!("{} could not be reached: {error}", provider.label());
-                self.note(&row.id, Some(&problem)).await?;
-                return self.ask_refused(answering, &problem).await;
-            }
-        };
-        let status = response.status_code();
-        if !(200..300).contains(&status) {
-            let problem = ask_loop::refused_by(provider, status, response.text().await.unwrap_or_default());
-            self.note(&row.id, Some(&problem)).await?;
-            return self.ask_refused(answering, &problem).await;
-        }
-        self.note(&row.id, None).await?;
-        let meta = ask::line(&AskEvent::Meta {
-            provider,
-            provider_label: provider.label().to_owned(),
-            model,
-            auto: setup.auto,
-        });
-        answering.streaming(response.stream()?, meta);
-        let lines = futures_util::stream::unfold(answering, |mut answering| async move {
-            let line = answering.next().await?;
-            Some((Ok::<Vec<u8>, worker::Error>(line.into_bytes()), answering))
-        });
-        let headers = Headers::new();
-        headers.set("content-type", ASK_CONTENT_TYPE)?;
-        headers.set("cache-control", "no-store")?;
-        Ok(Response::from_stream(lines)?.with_headers(headers))
-    }
-
-    /// An answer that never started: its credential ends now.
-    async fn ask_refused(&self, mut answering: ask_loop::Answering, problem: &str) -> Result<Response> {
-        if let Some(id) = answering.credential.take() {
-            let _: Result<bool> = g1t_kit::call(&self.identity, "revoke_ask_token", &RevokeAskTokenArgs { id }).await;
-        }
-        ask_refusal(problem)
     }
 
     // --- Acting in g1t --------------------------------------------------------
@@ -1398,49 +1034,6 @@ impl Integrations {
     }
 }
 
-/// The model route that holds the workspace's choice for Ask g1t.
-const ASK_TASK: &str = "ask";
-/// How much of an issue's or pull request's description Ask is given.
-const ASK_FACT_CHARS: usize = 6_000;
-const ASK_CONTENT_TYPE: &str = "application/x-ndjson; charset=utf-8";
-
-/// The model Ask uses on `connection`: the one chosen, else the
-/// connection's own (an Azure deployment). One the provider listed when it
-/// was last checked, where it lists them and it is not an Azure deployment.
-fn ask_model(connection: &Connection, chosen: Option<&str>) -> std::result::Result<Option<String>, String> {
-    let chosen = chosen.map(str::trim).filter(|model| !model.is_empty());
-    let Some(model) = chosen.map(str::to_owned).or_else(|| connection.config.model.clone()) else {
-        return Err("Choose a model for Ask.".to_owned());
-    };
-    if model.chars().count() > 200 {
-        return Err("That model's name is too long.".to_owned());
-    }
-    let checks_list = connection.provider != Provider::AzureOpenai && !connection.models.is_empty();
-    if chosen.is_some() && checks_list && !connection.models.iter().any(|offered| offered == &model) {
-        return Err(format!("{} does not offer {model}. Test it to list its models again.", connection.name));
-    }
-    Ok(Some(model))
-}
-
-/// Whether a choice of model for Ask is Auto: [`ASK_AUTO_MODEL`], in any case.
-fn chose_auto(chosen: Option<&str>) -> bool {
-    chosen.is_some_and(|model| model.trim().eq_ignore_ascii_case(ASK_AUTO_MODEL))
-}
-
-/// The models Auto chooses among on a connection: those it listed, except
-/// on Azure, whose requests name the owner's deployment, not a model.
-fn auto_models(row: &Row) -> Vec<String> {
-    if row.provider() == Provider::AzureOpenai { Vec::new() } else { row.models() }
-}
-
-/// An `ask` that cannot be answered: one `error` line.
-fn ask_refusal(message: &str) -> Result<Response> {
-    let headers = Headers::new();
-    headers.set("content-type", ASK_CONTENT_TYPE)?;
-    headers.set("cache-control", "no-store")?;
-    Ok(Response::ok(ask::line(&AskEvent::Error { message: message.to_owned() }))?.with_headers(headers))
-}
-
 fn clone_row(row: &Row) -> Row {
     Row {
         id: row.id.clone(),
@@ -1454,7 +1047,6 @@ fn clone_row(row: &Row) -> Row {
         created_at: row.created_at.clone(),
         last_used_at: row.last_used_at.clone(),
         last_error: row.last_error.clone(),
-        models: row.models.clone(),
     }
 }
 
@@ -1492,9 +1084,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "resolve" => reply(&service.resolve(args(body)?).await?),
         "import" => reply(&service.import(args(body)?).await?),
         "links" => reply(&service.links(args(body)?).await?),
-        "ask_settings" => reply(&service.ask_settings(args(body)?).await?),
-        "set_ask_settings" => reply(&service.set_ask_settings(args(body)?).await?),
-        "ask" => service.ask(args(body)?).await,
+        // The workspace's AI providers and Ask g1t (ai.rs).
+        method if ai::METHODS.contains(&method) => ai::route(&service, method, body).await,
         // Sessions started on the workspace's own Anthropic account (agent_sessions.rs).
         method if agent_sessions::METHODS.contains(&method) => agent_sessions::route(&service, method, body).await,
         _ => Response::error("Unknown method", 404),
@@ -1544,104 +1135,17 @@ mod config_tests {
     use super::*;
 
     #[test]
-    fn an_ai_provider_needs_its_key_and_its_address_when_it_has_no_known_one() {
-        let key = Secrets { secret: Some("sk-test".into()), signing_secret: None };
-        let none = Secrets { secret: None, signing_secret: None };
-        let mut config = ConnectionConfig::default();
-        assert!(check_config(Provider::Anthropic, "acme", &mut config, &key).is_ok());
-        assert_eq!(
-            check_config(Provider::Openai, "acme", &mut ConnectionConfig::default(), &none).unwrap_err(),
-            "Paste your OpenAI API key."
-        );
-        // Your own endpoint needs its address, over https, and a known header.
-        assert!(check_config(Provider::OpenaiEndpoint, "acme", &mut ConnectionConfig::default(), &none).is_err());
-        let mut endpoint = ConnectionConfig { base_url: Some(" https://llm.acme.dev/v1/ ".into()), ..ConnectionConfig::default() };
-        assert!(check_config(Provider::OpenaiEndpoint, "acme", &mut endpoint, &none).is_ok());
-        assert_eq!(endpoint.base_url.as_deref(), Some("https://llm.acme.dev/v1"));
-        let mut plain = ConnectionConfig { base_url: Some("http://llm.acme.dev".into()), ..ConnectionConfig::default() };
-        assert!(check_config(Provider::AnthropicEndpoint, "acme", &mut plain, &key).is_err());
-        let mut header = ConnectionConfig {
-            base_url: Some("https://llm.acme.dev".into()),
-            auth_header: Some("x-token".into()),
-            ..ConnectionConfig::default()
-        };
-        assert!(check_config(Provider::AnthropicEndpoint, "acme", &mut header, &key).is_err());
-        // Azure needs its resource and deployment as well as the key.
-        let mut azure = ConnectionConfig { base_url: Some("https://acme.openai.azure.com".into()), ..ConnectionConfig::default() };
-        assert!(check_config(Provider::AzureOpenai, "acme", &mut azure, &key).is_err());
-        azure.model = Some("gpt-5".into());
-        assert!(check_config(Provider::AzureOpenai, "acme", &mut azure, &key).is_ok());
+    fn an_integration_needs_what_its_provider_asks_for() {
+        let key = Secrets { secret: Some("lin_api_x".into()), signing_secret: None };
+        let none = Secrets::default();
+        assert_eq!(check_config(Provider::Linear, "acme", &mut ConnectionConfig::default(), &none).unwrap_err(), "Paste a Linear API key.");
+        assert!(check_config(Provider::Linear, "acme", &mut ConnectionConfig::default(), &key).is_ok());
         let mut alerts = ConnectionConfig { repo: Some("acme/web".into()), ..ConnectionConfig::default() };
         assert!(check_config(Provider::Webhook, "acme", &mut alerts, &key).is_ok());
-    }
-
-    fn connection(provider: Provider, model: Option<&str>, models: &[&str]) -> Connection {
-        Connection {
-            id: "con_1".into(),
-            workspace: "acme".into(),
-            provider,
-            kind: ProviderKind::Models,
-            name: "Team key".into(),
-            config: ConnectionConfig { model: model.map(str::to_owned), ..ConnectionConfig::default() },
-            secret_hint: None,
-            webhook_url: None,
-            created_by: "ana".into(),
-            created_at: "2026-10-12T00:00:00Z".into(),
-            last_used_at: None,
-            last_error: None,
-            models: models.iter().map(|model| (*model).to_owned()).collect(),
-        }
-    }
-
-    #[test]
-    fn asks_model_is_one_the_provider_offers_or_its_own() {
-        let listed = connection(Provider::Openai, None, &["gpt-5", "gpt-5-mini"]);
-        assert_eq!(ask_model(&listed, Some(" gpt-5 ")).unwrap().as_deref(), Some("gpt-5"));
-        assert!(ask_model(&listed, Some("gpt-4")).unwrap_err().contains("does not offer gpt-4"));
-        assert_eq!(ask_model(&listed, None).unwrap_err(), "Choose a model for Ask.");
-        // The connection's own model when none is chosen.
-        let own = connection(Provider::Anthropic, Some("claude-x"), &[]);
-        assert_eq!(ask_model(&own, Some("")).unwrap().as_deref(), Some("claude-x"));
-        // An endpoint that lists nothing takes what the owner writes.
-        let open = connection(Provider::OpenaiEndpoint, None, &[]);
-        assert_eq!(ask_model(&open, Some("qwen3-coder")).unwrap().as_deref(), Some("qwen3-coder"));
-        // Azure lists base models, not deployments: its deployment stands.
-        let azure = connection(Provider::AzureOpenai, Some("prod-gpt"), &["gpt-5"]);
-        assert_eq!(ask_model(&azure, Some("prod-gpt")).unwrap().as_deref(), Some("prod-gpt"));
-        assert!(ask_model(&own, Some(&"m".repeat(201))).is_err());
-    }
-
-    fn row(provider: Provider, model: Option<&str>, models: &[&str]) -> Row {
-        Row {
-            id: "con_1".into(),
-            workspace: "acme".into(),
-            provider: provider.name().into(),
-            name: "Team key".into(),
-            config: serde_json::to_string(&ConnectionConfig { model: model.map(str::to_owned), ..ConnectionConfig::default() }).unwrap(),
-            secrets: None,
-            secret_hint: None,
-            created_by: "ana".into(),
-            created_at: "2026-10-12T00:00:00Z".into(),
-            last_used_at: None,
-            last_error: None,
-            models: Some(serde_json::to_string(models).unwrap()),
-        }
-    }
-
-    #[test]
-    fn auto_is_chosen_by_name_and_picks_among_what_the_connection_lists() {
-        assert!(chose_auto(Some("auto")) && chose_auto(Some(" Auto ")));
-        assert!(!chose_auto(Some("claude-haiku-5-5")) && !chose_auto(None) && !chose_auto(Some("")));
-        let anthropic = row(Provider::Anthropic, None, &["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"]);
-        let models = auto_models(&anthropic);
-        let simple = [AskMessage { role: AskRole::User, content: "Who is assigned to #12?".into() }];
-        let shipped = [AskMessage { role: AskRole::User, content: "What shipped today?".into() }];
-        assert_eq!(auto::choose(&models, None, auto::need(&simple)).as_deref(), Some("claude-haiku-5-5"));
-        assert_eq!(auto::choose(&models, None, auto::need(&shipped)).as_deref(), Some("claude-sonnet-5-5"));
-        // Azure names a deployment, never a listed model: Auto uses it.
-        let azure = row(Provider::AzureOpenai, Some("prod-gpt"), &["gpt-5", "gpt-5-mini"]);
-        assert!(auto_models(&azure).is_empty());
-        assert_eq!(auto::choose(&auto_models(&azure), azure.config().model.as_deref(), auto::need(&simple)).as_deref(), Some("prod-gpt"));
+        let mut elsewhere = ConnectionConfig { repo: Some("other/web".into()), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::Webhook, "acme", &mut elsewhere, &key).is_err());
+        let mut plain = ConnectionConfig { site: Some("http://acme.atlassian.net".into()), ..ConnectionConfig::default() };
+        assert!(check_config(Provider::Jira, "acme", &mut plain, &key).is_err());
     }
 
     #[test]

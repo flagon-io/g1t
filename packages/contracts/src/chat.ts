@@ -8,7 +8,7 @@
  */
 import type { ServiceBinding } from "./clients";
 import type { User } from "./identity";
-import type { AskPage } from "./integrations";
+import type { AskPage } from "./ai";
 import type { Result } from "./result";
 
 /**

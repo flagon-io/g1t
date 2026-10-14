@@ -605,7 +605,7 @@
     },
     {
       "name": "Integrations",
-      "description": "A workspace's connections to outside systems: AI providers, alert sources and issue trackers.",
+      "description": "A workspace's connections to outside systems: the alert sources that open issues (Sentry, Datadog, webhooks) and the issue trackers whose tickets agents read (Jira, Linear).",
       "x-tools": [
         "list_integrations",
         "connect_integration",
@@ -614,6 +614,19 @@
         "test_integration",
         "get_context",
         "import_issue"
+      ]
+    },
+    {
+      "name": "AI",
+      "description": "A workspace's AI: the AI providers it keeps keys for, managed or self-hosted, and what Ask g1t answers with.",
+      "x-tools": [
+        "list_ai_providers",
+        "add_ai_provider",
+        "update_ai_provider",
+        "remove_ai_provider",
+        "test_ai_provider",
+        "get_ask_settings",
+        "set_ask_settings"
       ]
     },
     {
@@ -43731,7 +43744,7 @@
           "Sessions"
         ],
         "summary": "Start an agent session on an issue",
-        "description": "Start work on an issue in a session of its own, on the person's own Claude: g1t runs no model and bills nothing for it. Give `issue`, or `title` and `body` to open a new issue first; `instruction` adds to what the session is asked; `mode` (plan, implement or review) says what kind of work it is. With the workspace's Anthropic connection (an owner adds it under Integrations), g1t starts a Claude Managed Agents session with that key: g1t's MCP server attached with a credential for you and this repository only that lasts the session and is kept in a vault on the Anthropic account (never in the prompt), g1t's skills (work-on-issue, coordinate, fix-integration) next to the account's own, and the session, its subagents (threads), what they touched and what they reported recorded here as a g1t session (`harness` claude_managed_agents). Returns `session`, its `session_url` on g1t, `provider_session_url`, and `prompt`. With `handoff` true, or without an Anthropic connection when `handoff` is not false, nothing is started: `command` is a Claude Code command line, and `prompt` what to paste, for someone with g1t's Claude Code plugin, whose session then attaches to the issue as it starts.\n\nRuns on the workspace's own Anthropic key: g1t runs no model and bills nothing for it. Without an Anthropic connection (or with `handoff: true`) nothing is started and `command` is a Claude Code command line to run with g1t's plugin. See [Sessions](/guides/sessions/#start-a-session-on-your-anthropic-account).",
+        "description": "Start work on an issue in a session of its own, on the person's own Claude: g1t runs no model and bills nothing for it. Give `issue`, or `title` and `body` to open a new issue first; `instruction` adds to what the session is asked; `mode` (plan, implement or review) says what kind of work it is. With the workspace's Anthropic AI provider (an owner adds it in the workspace's AI settings), g1t starts a Claude Managed Agents session with that key: g1t's MCP server attached with a credential for you and this repository only that lasts the session and is kept in a vault on the Anthropic account (never in the prompt), g1t's skills (work-on-issue, coordinate, fix-integration) next to the account's own, and the session, its subagents (threads), what they touched and what they reported recorded here as a g1t session (`harness` claude_managed_agents). Returns `session`, its `session_url` on g1t, `provider_session_url`, and `prompt`. With `handoff` true, or without an Anthropic AI provider when `handoff` is not false, nothing is started: `command` is a Claude Code command line, and `prompt` what to paste, for someone with g1t's Claude Code plugin, whose session then attaches to the issue as it starts.\n\nRuns on the workspace's own Anthropic key: g1t runs no model and bills nothing for it. Without an Anthropic AI provider (or with `handoff: true`) nothing is started and `command` is a Claude Code command line to run with g1t's plugin. See [Sessions](/guides/sessions/#start-a-session-on-your-anthropic-account).",
         "x-operation": "start_agent_session",
         "x-mcp-tool": "session",
         "x-mcp-action": "dispatch",
@@ -43894,7 +43907,7 @@
                   },
                   "handoff": {
                     "type": "boolean",
-                    "description": "true for a Claude Code command and prompt to run yourself instead of a session on the workspace's Anthropic account; false to refuse when there is no Anthropic connection. Left out, a session when the workspace can, else the hand-off."
+                    "description": "true for a Claude Code command and prompt to run yourself instead of a session on the workspace's Anthropic account; false to refuse when the workspace has no Anthropic AI provider. Left out, a session when the workspace can, else the hand-off."
                   }
                 }
               },
@@ -44829,7 +44842,7 @@
           "Integrations"
         ],
         "summary": "List integrations",
-        "description": "A workspace's integrations: its AI providers, the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only.\n\n`kind` is `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts.",
+        "description": "A workspace's integrations: the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only.\n\n`kind` is `alerts` or `tracker`. `secret_hint` shows the end of the secret; the secret itself is never returned. `webhook_url` is where an alert source sends its alerts.",
         "x-operation": "list_integrations",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "list_integrations",
@@ -44878,8 +44891,7 @@
                     "created_by": "syntaqx",
                     "created_at": "2026-10-04T15:42:07.318Z",
                     "last_used_at": null,
-                    "last_error": null,
-                    "models": []
+                    "last_error": null
                   }
                 ]
               }
@@ -44936,7 +44948,7 @@
           "Integrations"
         ],
         "summary": "Connect an integration",
-        "description": "Connect a workspace to an outside system. provider is an AI provider (anthropic, openai, gemini, xai, mistral, deepseek, azure_openai, openrouter, groq, together, fireworks, cerebras, anthropic_endpoint or openai_endpoint), which stores your AI provider credentials for the workspace, or sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). An AI provider's key is checked as it is saved. For datadog and webhook, g1t makes the signing secret and returns it once. Owners only.\n\n`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. See [integrations](/guides/integrations/).",
+        "description": "Connect a workspace to an alert source or an issue tracker. provider is sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). For datadog and webhook, g1t makes the signing secret and returns it once. AI providers are not integrations: see add_ai_provider. Owners only.\n\n`signing_secret` is set only when g1t made it, for `datadog` and `webhook`, and is shown only this once. See [integrations](/guides/integrations/).",
         "x-operation": "connect_integration",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "connect_integration",
@@ -44982,8 +44994,7 @@
                     "created_by": "syntaqx",
                     "created_at": "2026-10-04T15:42:07.318Z",
                     "last_used_at": null,
-                    "last_error": null,
-                    "models": []
+                    "last_error": null
                   },
                   "signing_secret": "g1ts_9f2c4a7e1b0d3c6f8a2e5b7d9c1f4a6e8b0d2c4f6a8e1b3d"
                 }
@@ -45051,20 +45062,6 @@
                   "provider": {
                     "type": "string",
                     "enum": [
-                      "anthropic",
-                      "openai",
-                      "gemini",
-                      "xai",
-                      "mistral",
-                      "deepseek",
-                      "azure_openai",
-                      "openrouter",
-                      "groq",
-                      "together",
-                      "fireworks",
-                      "cerebras",
-                      "anthropic_endpoint",
-                      "openai_endpoint",
                       "sentry",
                       "datadog",
                       "webhook",
@@ -45078,7 +45075,7 @@
                   },
                   "config": {
                     "type": "object",
-                    "description": "Settings. repo (owner/name) is where alerts open issues; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. For an AI provider, base_url and auth_header (x-api-key or authorization) are for your own endpoint (and base_url for an Azure OpenAI resource), and model names the model or Azure deployment the team uses. write_back (default true) tells the outside system when the work lands."
+                    "description": "Settings. repo (owner/name) is where alerts open issues; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. write_back (default true) tells the outside system when the work lands."
                   },
                   "secret": {
                     "type": "string",
@@ -47478,7 +47475,7 @@
           "Integrations"
         ],
         "summary": "Update an integration",
-        "description": "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a key, such as an AI provider's. Fields left out are kept. Secrets are never returned. Owners only.\n\nThe secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. Use it to rotate a key.",
+        "description": "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a key. Fields left out are kept. Secrets are never returned. Owners only.\n\nThe secret is write-only: it is kept encrypted and only its last four characters come back, as `secret_hint`. Use it to rotate a key.",
         "x-operation": "update_integration",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "update_integration",
@@ -47536,8 +47533,7 @@
                   "created_by": "syntaqx",
                   "created_at": "2026-10-04T15:42:07.318Z",
                   "last_used_at": "2026-10-07T14:00:02.000Z",
-                  "last_error": null,
-                  "models": []
+                  "last_error": null
                 }
               }
             }
@@ -47848,6 +47844,922 @@
         "x-example-params": {
           "workspace": "flagon-io",
           "id": "con_01kpx4n8r3g9s0v5w7x1z2a3bc"
+        }
+      }
+    },
+    "/workspaces/{workspace}/ai/providers": {
+      "get": {
+        "operationId": "list_ai_providers",
+        "tags": [
+          "AI"
+        ],
+        "summary": "List AI providers",
+        "description": "A workspace's AI providers: the keys it keeps for frontier labs (anthropic, openai, gemini, xai, mistral, deepseek), model platforms (azure_openai, openrouter, groq, together, fireworks, cerebras) and self-hosted endpoints (anthropic_endpoint, openai_endpoint), each with its group, its config, the models it offered when last checked and its last error. Keys are sealed and never returned; secret_hint shows a key's last four characters. g1t hosts no model and bills nothing for them: they run on the workspace's own account. Members only.\n\n`group` is `labs`, `platforms` or `self_hosted`. `secret_hint` shows the end of the key; the key itself is never returned. `models` are those the provider offered when last checked. See [AI](/guides/ai/).",
+        "x-operation": "list_ai_providers",
+        "x-mcp-tool": "ai",
+        "x-mcp-action": "list_providers",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+                    "workspace": "flagon-io",
+                    "provider": "anthropic",
+                    "group": "labs",
+                    "name": "Anthropic",
+                    "config": {},
+                    "secret_hint": "…Q2fA",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-04T15:42:07.318Z",
+                    "last_used_at": "2026-10-14T09:12:44.051Z",
+                    "last_error": null,
+                    "models": [
+                      "claude-haiku-4-5",
+                      "claude-sonnet-4-5",
+                      "claude-opus-4-1"
+                    ]
+                  },
+                  {
+                    "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3bf",
+                    "workspace": "flagon-io",
+                    "provider": "openai_endpoint",
+                    "group": "self_hosted",
+                    "name": "vLLM",
+                    "config": {
+                      "base_url": "https://llm.example.com/v1",
+                      "auth_header": "authorization",
+                      "model": "qwen3-coder"
+                    },
+                    "secret_hint": "…k9Lm",
+                    "created_by": "syntaqx",
+                    "created_at": "2026-10-14T10:03:51.902Z",
+                    "last_used_at": null,
+                    "last_error": null,
+                    "models": [
+                      "qwen3-coder"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "post": {
+        "operationId": "add_ai_provider",
+        "tags": [
+          "AI"
+        ],
+        "summary": "Add an AI provider",
+        "description": "Add an AI provider to a workspace, with its API key. provider is a frontier lab (anthropic, openai, gemini, xai, mistral, deepseek), a model platform (azure_openai, openrouter, groq, together, fireworks, cerebras) or a self-hosted endpoint (anthropic_endpoint for one that speaks Anthropic's Messages API, openai_endpoint for one that speaks OpenAI's Chat Completions API). config: base_url is the address of an endpoint or an Azure OpenAI resource, over https; auth_header (x-api-key or authorization) is how an endpoint takes the key; model names the model the team uses, or the Azure deployment. secret is the key, checked as it is saved, sealed and never returned. g1t hosts no model and bills nothing for it. Owners only.\n\nThe key is checked as it is saved: one the provider refuses is refused with `422`, saying why. It is sealed and never returned; only its last four characters come back, as `secret_hint`.",
+        "x-operation": "add_ai_provider",
+        "x-mcp-tool": "ai",
+        "x-mcp-action": "add_provider",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3bf",
+                  "workspace": "flagon-io",
+                  "provider": "openai_endpoint",
+                  "group": "self_hosted",
+                  "name": "vLLM",
+                  "config": {
+                    "base_url": "https://llm.example.com/v1",
+                    "auth_header": "authorization",
+                    "model": "qwen3-coder"
+                  },
+                  "secret_hint": "…k9Lm",
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-14T10:03:51.902Z",
+                  "last_used_at": null,
+                  "last_error": null,
+                  "models": [
+                    "qwen3-coder"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "anthropic",
+                      "openai",
+                      "gemini",
+                      "xai",
+                      "mistral",
+                      "deepseek",
+                      "azure_openai",
+                      "openrouter",
+                      "groq",
+                      "together",
+                      "fireworks",
+                      "cerebras",
+                      "anthropic_endpoint",
+                      "openai_endpoint"
+                    ],
+                    "description": "Frontier labs: anthropic, openai, gemini, xai, mistral, deepseek. Model platforms: azure_openai, openrouter, groq, together, fireworks, cerebras. Self-hosted endpoints: anthropic_endpoint, openai_endpoint."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "What to call it. The provider's name if left out."
+                  },
+                  "config": {
+                    "type": "object",
+                    "description": "Settings, where the provider needs them.",
+                    "properties": {
+                      "base_url": {
+                        "type": "string",
+                        "description": "The address of a self-hosted endpoint or an Azure OpenAI resource, over https. An Anthropic-compatible one without /v1; an OpenAI-compatible one up to and including the version."
+                      },
+                      "auth_header": {
+                        "type": "string",
+                        "enum": [
+                          "x-api-key",
+                          "authorization"
+                        ],
+                        "description": "For an endpoint: send the key as x-api-key, or as authorization: Bearer."
+                      },
+                      "model": {
+                        "type": "string",
+                        "description": "The model the team uses on it; for Azure OpenAI, the deployment."
+                      }
+                    }
+                  },
+                  "secret": {
+                    "type": "string",
+                    "description": "Its API key. Checked as it is saved; write-only: sealed, never returned. Optional for an endpoint that needs none."
+                  }
+                },
+                "required": [
+                  "provider"
+                ]
+              },
+              "example": {
+                "provider": "openai_endpoint",
+                "name": "vLLM",
+                "config": {
+                  "base_url": "https://llm.example.com/v1",
+                  "auth_header": "authorization",
+                  "model": "qwen3-coder"
+                },
+                "secret": "sk-…"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/ai/providers/{id}": {
+      "patch": {
+        "operationId": "update_ai_provider",
+        "tags": [
+          "AI"
+        ],
+        "summary": "Update an AI provider",
+        "description": "Change one of a workspace's AI providers: its name, its config (replaced whole when given) or its key (a new one replaces the old, write-only). Use it to rotate a key. Fields left out are kept. Keys are never returned. Owners only.\n\nThe key is write-only. Use it to rotate a key: the new one replaces the old at once.",
+        "x-operation": "update_ai_provider",
+        "x-mcp-tool": "ai",
+        "x-mcp-action": "update_provider",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The AI provider's id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+                  "workspace": "flagon-io",
+                  "provider": "anthropic",
+                  "group": "labs",
+                  "name": "Anthropic (team)",
+                  "config": {},
+                  "secret_hint": "…w8Rt",
+                  "created_by": "syntaqx",
+                  "created_at": "2026-10-04T15:42:07.318Z",
+                  "last_used_at": "2026-10-14T09:12:44.051Z",
+                  "last_error": null,
+                  "models": [
+                    "claude-haiku-4-5",
+                    "claude-sonnet-4-5",
+                    "claude-opus-4-1"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "A new name."
+                  },
+                  "config": {
+                    "type": "object",
+                    "description": "Its settings, replaced whole.",
+                    "properties": {
+                      "base_url": {
+                        "type": "string",
+                        "description": "The address of a self-hosted endpoint or an Azure OpenAI resource, over https. An Anthropic-compatible one without /v1; an OpenAI-compatible one up to and including the version."
+                      },
+                      "auth_header": {
+                        "type": "string",
+                        "enum": [
+                          "x-api-key",
+                          "authorization"
+                        ],
+                        "description": "For an endpoint: send the key as x-api-key, or as authorization: Bearer."
+                      },
+                      "model": {
+                        "type": "string",
+                        "description": "The model the team uses on it; for Azure OpenAI, the deployment."
+                      }
+                    }
+                  },
+                  "secret": {
+                    "type": "string",
+                    "description": "A new API key, replacing the old one. Write-only: sealed, never returned."
+                  }
+                }
+              },
+              "example": {
+                "name": "Anthropic (team)",
+                "secret": "sk-ant-…"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be"
+        }
+      },
+      "delete": {
+        "operationId": "remove_ai_provider",
+        "tags": [
+          "AI"
+        ],
+        "summary": "Remove an AI provider",
+        "description": "Remove one of a workspace's AI providers and its key. Ask g1t stops answering if it used it, until an owner chooses another. Owners only.",
+        "x-operation": "remove_ai_provider",
+        "x-mcp-tool": "ai",
+        "x-mcp-action": "remove_provider",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The AI provider's id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": true
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3bf"
+        }
+      }
+    },
+    "/workspaces/{workspace}/ai/providers/{id}/test": {
+      "post": {
+        "operationId": "test_ai_provider",
+        "tags": [
+          "AI"
+        ],
+        "summary": "Test an AI provider",
+        "description": "Check that an AI provider's key works, by calling the provider with it. Credentials that do not work still answer, with ok false and message saying what went wrong. Owners only.\n\nA key that does not work still answers `200`, with `ok` false and `message` saying what went wrong.",
+        "x-operation": "test_ai_provider",
+        "x-mcp-tool": "ai",
+        "x-mcp-action": "test_provider",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The AI provider's id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "ok": true,
+                  "message": "Anthropic answered with 3 models."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be"
+        }
+      }
+    },
+    "/workspaces/{workspace}/ai/ask": {
+      "get": {
+        "operationId": "get_ask_settings",
+        "tags": [
+          "AI"
+        ],
+        "summary": "Get Ask settings",
+        "description": "What Ask g1t answers with in a workspace: provider_id, provider_name and provider (one of its AI providers), the model chosen, auto (each question goes to the provider's model that suits it), and problem, why Ask cannot answer, when it cannot. Ask runs on the workspace's own key: g1t hosts no model and bills nothing for it. Members only.\n\n`auto` is true when Ask picks one of the provider's models for each question. `problem` says why Ask cannot answer, such as no provider chosen, and is null when it can. See [Ask g1t](/guides/ask/).",
+        "x-operation": "get_ask_settings",
+        "x-mcp-tool": "ai",
+        "x-mcp-action": "get_ask",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "provider_id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+                  "provider_name": "Anthropic",
+                  "provider": "anthropic",
+                  "model": null,
+                  "auto": true,
+                  "problem": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "put": {
+        "operationId": "set_ask_settings",
+        "tags": [
+          "AI"
+        ],
+        "summary": "Set Ask settings",
+        "description": "Choose what Ask g1t answers with: provider_id, one of the workspace's AI providers, and model, one of the models it offers or auto for Auto (the default), which picks a model for each question. Without provider_id, Ask is off. Returns what Ask answers with now. Owners only.\n\n`model` is one of the models the provider offers, or `auto`. Send `provider_id` null to turn Ask off.",
+        "x-operation": "set_ask_settings",
+        "x-mcp-tool": "ai",
+        "x-mcp-action": "set_ask",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "provider_id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+                  "provider_name": "Anthropic",
+                  "provider": "anthropic",
+                  "model": "claude-sonnet-4-5",
+                  "auto": false,
+                  "problem": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The AI provider Ask answers with: one of the workspace's, by id. Null or left out turns Ask off."
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "One of the models the provider offers, or auto for Auto: a model of the provider for each question. The provider's own model (an endpoint's, an Azure deployment) when left out."
+                  }
+                }
+              },
+              "example": {
+                "provider_id": "ai_01kpx4n8r3g9s0v5w7x1z2a3be",
+                "model": "claude-sonnet-4-5"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },

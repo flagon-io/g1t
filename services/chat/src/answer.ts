@@ -50,7 +50,7 @@ export async function runAnswer(deps: AnswerDeps, signal: AbortSignal): Promise<
     return;
   }
   if (setup?.problem) {
-    if (!setup.connection_id) {
+    if (!setup.provider_id) {
       await deps.finish(notSetUpText(deps.slug), { state: "done", setup: "missing" });
     } else {
       await deps.finish(cannotAnswerText(setup.problem), { state: "error", error: setup.problem });
