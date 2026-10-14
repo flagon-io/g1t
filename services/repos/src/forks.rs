@@ -130,6 +130,11 @@ impl<R: GitRepo> GitRepo for Viewed<R> {
         self.inner.read_blob(blob_hash).await
     }
 
+    /// The store's own, which keeps sizes by hash without reading bytes.
+    async fn blob_size(&self, blob_hash: &str) -> Result<Option<u64>> {
+        self.inner.blob_size(blob_hash).await
+    }
+
     async fn read_file(&self, git_ref: &str, path: &str) -> Result<Option<Vec<u8>>> {
         self.inner.read_file(self.resolve(git_ref), path).await
     }

@@ -11,7 +11,10 @@ import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `${params["*"]} · ${params.owner}/${params.repo} · g1t` });
+  const tags = page(args, { title: `${params["*"]} · ${params.owner}/${params.repo} · g1t` });
+  // A file's blame is kept out of search indexes; the file itself is not (lib/robots.ts).
+  const blame = new URLSearchParams(args.location.search).has("blame");
+  return blame ? [...tags, { name: "robots", content: "noindex, nofollow" }] : tags;
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {

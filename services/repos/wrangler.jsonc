@@ -136,8 +136,12 @@
 		{ "name": "PACK_FILL_LIMIT", "namespace_id": "4301", "simple": { "limit": 30, "period": 60 } },
 		{ "name": "ANONYMOUS_FETCH_LIMIT", "namespace_id": "4302", "simple": { "limit": 120, "period": 60 } }
 	],
-	// Logs of every request for now, to trace the rare ~60 s stalls a tenth
-	// of requests kept missing. Put it back to 0.1 once they are found:
-	// every git request and page is one.
-	"observability": { "enabled": true, "head_sampling_rate": 1 }
+	// Logs of a quarter of requests: every git request and page is one, so
+	// keeping every one costs more than it tells, and a quarter still
+	// catches a rare error within hours. Slow answers still show: an RPC
+	// answer that took a second or more logs `{"rpc", "answered_ms"}`
+	// (src/lib.rs, SLOW_RPC_MS) and a slow or partial About run
+	// `{"about_run", "took_ms"}` (src/about.rs), so in the quarter kept they
+	// can be counted by method without reading request lines.
+	"observability": { "enabled": true, "head_sampling_rate": 0.25 }
 }

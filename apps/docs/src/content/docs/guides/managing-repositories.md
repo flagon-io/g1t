@@ -33,8 +33,11 @@ they come after the files.
 
 The license, security policy, languages and contributors are read from the
 default branch in the background each time it moves, and kept by commit, so
-the page never waits for them. A repository pushed to for the first time
-shows **Reading the default branch…** for a few seconds.
+the page never waits for them. A push to the default branch starts the
+reading as soon as git has its answer; a branch that moved otherwise, such
+as by merging a pull request, is read again when its page is next opened.
+A repository pushed to for the first time shows **Reading the default
+branch…** for a few seconds.
 
 ### Languages
 

@@ -29,12 +29,18 @@ use crate::store::GitRepo;
 
 /// A run older than this is taken to have died.
 pub const LEASE_MS: u64 = 120_000;
-/// How long a run reads before keeping what it has.
-const BUDGET_MS: u64 = 22_000;
+/// How long a run reads before keeping what it has, at most.
+pub const BUDGET_MS: u64 = 22_000;
 /// The most commits of history read for contributors.
 pub const MAX_HISTORY: usize = 3_000;
-/// Commits read at a time.
-const LOG_PAGE: u32 = 200;
+/// Commits read at a time. A history is kept by the commit it starts from
+/// (store.rs), and a page from a new head is the few commits since the last
+/// one, spliced onto the page kept from it; but each later page starts
+/// wherever the one before it ended, which moves with every push, and so is
+/// read from the store again. Pages as long as the store reads in one go
+/// (as `MAX_ANCESTRY` in lib.rs does) leave most repositories one page: 200
+/// made g1t's own history four, three of them read again after each push.
+const LOG_PAGE: u32 = 1_000;
 /// The most blobs sized for languages.
 const MAX_SIZED: usize = 6_000;
 /// Blobs sized at once: each is a round trip to the store.
@@ -258,10 +264,12 @@ pub fn security_policy(files: &[FileEntry]) -> Option<String> {
 }
 
 /// Works out the About of `repo` at `head` (a commit). `identity` matches
-/// authors' addresses to accounts.
-pub async fn work_out<R: GitRepo>(git: &R, head: &str, tree: &str, identity: Option<&Fetcher>) -> Result<Worked> {
+/// authors' addresses to accounts. Reads stop past `budget_ms` (at most
+/// [`BUDGET_MS`]), leaving the answer partial.
+pub async fn work_out<R: GitRepo>(git: &R, head: &str, tree: &str, identity: Option<&Fetcher>, budget_ms: u64) -> Result<Worked> {
     let started = now_ms();
-    let out_of_time = move || now_ms().saturating_sub(started) > BUDGET_MS;
+    let budget_ms = budget_ms.min(BUDGET_MS);
+    let out_of_time = move || now_ms().saturating_sub(started) > budget_ms;
     let never: Vec<String> = NEVER_READ.iter().map(|dir| (*dir).to_owned()).collect();
     let files = async {
         let (files, truncated) = crate::listing::changed(git, None, tree, &never, MAX_LISTED_FILES).await?;
