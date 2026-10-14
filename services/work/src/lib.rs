@@ -3028,6 +3028,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "end_session" => reply(&work.end_session(args(body)?).await?),
         "get_work_session" => reply(&work.get_work_session(args(body)?).await?),
         "list_work_sessions" => reply(&work.list_work_sessions(args(body)?).await?),
+        "pull_sessions" => reply(&work.pull_sessions(args(body)?).await?),
         "record_session_entries" => reply(&work.record_session_entries(args(body)?).await?),
         "claim_issue" => reply(&work.claim_issue(args(body)?).await?),
         "release_claim" => reply(&work.release_claim(args(body)?).await?),

@@ -8,19 +8,37 @@ import { env } from "cloudflare:workers";
 import {
   type ActivityDigest,
   type ChatActivity,
+  type Commit,
   type Deployment,
+  type G1tEvent,
+  type InboxItem,
   MAX_DIGEST_REPOS,
   type ProjectDeploys,
+  type PullSessions,
   type Repo,
   type RepoPath,
+  type ShippedRepo,
   type User,
   type WorkflowRun,
   notifyClient,
 } from "@g1t/contracts";
 
-import { type CodePull, type CodeWork, G1T_ACTOR, type RepoRef, type Span, type Spend, deployActorKey, spanMonths, spendIn } from "./home";
+import {
+  type CodePull,
+  type CodeWork,
+  type DirectPush,
+  G1T_ACTOR,
+  type LandedChange,
+  type RepoRef,
+  type Span,
+  type Spend,
+  deployActorKey,
+  shippedAsks,
+  spanMonths,
+  spendIn,
+} from "./home";
 import { monthSpan } from "./usage";
-import { actions, billing, chat, deployments, events, identity, repos, work } from "./services.server";
+import { actions, billing, chat, deployments, events, identity, inbox, repos, work } from "./services.server";
 
 /** Pull requests read per project and list: `LIST_PAGE` in services/work. */
 const PULL_PAGE = 100;
@@ -97,6 +115,8 @@ export async function loadCodeWork(viewer: User, slug: string, reach: number, ow
     for (const pull of [...entry.open, ...entry.closed]) {
       pulls.push({
         repo: path,
+        repoId: repo.id,
+        mergeCommit: pull.mergeCommit ?? null,
         number: pull.number,
         title: pull.title,
         status: pull.status,
@@ -261,6 +281,107 @@ export async function loadSpend(viewer: User, slug: string, span: Pick<Span, "fr
     span,
     month,
   );
+}
+
+/** The most projects whose pushes to the default branch are listed one by one, pushes read per project, and commits read back. */
+const MAX_PUSH_PROJECTS = 10;
+const PUSHES_READ = 100;
+const PUSH_HISTORY = 200;
+
+/**
+ * Each person's push to a default branch in the span, for the projects
+ * the digest says were pushed to (those pushed to most, at most
+ * MAX_PUSH_PROJECTS), with each project's default branch read back from
+ * its newest push to place each push's commits. `by` is the pusher's
+ * member key, named by the caller. Null when events did not answer.
+ */
+export async function loadDirectPushes(
+  viewer: User,
+  activity: ActivityDigest | null,
+  owned: Repo[] | null,
+  span: Pick<Span, "from" | "now">,
+): Promise<{ pushes: (Omit<DirectPush, "by"> & { actorKey: string })[]; history: Record<string, Commit[]>; complete: boolean } | null> {
+  if (!activity || !owned) return null;
+  const byId = new Map(owned.map((repo) => [repo.id, repo]));
+  const pushedTo = activity.repos
+    .filter((digest) => digest.pushes.default_branch.count > 0 && byId.has(digest.repo_id))
+    .sort((a, b) => b.pushes.default_branch.count - a.pushes.default_branch.count || a.repo_id.localeCompare(b.repo_id));
+  const read = pushedTo.slice(0, MAX_PUSH_PROJECTS);
+  const lists = await Promise.all(
+    read.map(async (digest) => {
+      const repo = byId.get(digest.repo_id)!;
+      const log = await events.list({ repoId: repo.id, types: ["git.push"], limit: PUSHES_READ }).catch(warn(`pushes of ${repo.name}`));
+      if (!log) return null;
+      const pushes = log.filter(
+        (event): event is G1tEvent<"git.push"> =>
+          event.type === "git.push" && (event as G1tEvent<"git.push">).data.defaultBranch && Date.parse(event.time) >= span.from && Date.parse(event.time) <= span.now,
+      );
+      if (pushes.length === 0) return { repo, pushes, history: [] as Commit[] };
+      const path = { namespace: repo.namespace, name: repo.name };
+      const history = await repos.log(path, viewer, pushes[0]!.data.after, PUSH_HISTORY).catch(warn(`history of ${repo.name}`));
+      return { repo, pushes, history: history?.ok ? history.value : [] };
+    }),
+  );
+  const pushes: (Omit<DirectPush, "by"> & { actorKey: string })[] = [];
+  const history: Record<string, Commit[]> = {};
+  for (const entry of lists) {
+    if (!entry) continue;
+    history[entry.repo.id] = entry.history;
+    const ref: RepoRef = { namespace: entry.repo.namespace, name: entry.repo.name, defaultBranch: entry.repo.defaultBranch };
+    for (const event of entry.pushes) {
+      pushes.push({
+        repoId: entry.repo.id,
+        repo: ref,
+        push: { id: event.id, time: event.time, actor: event.actor ?? null, data: event.data },
+        actorKey: event.actor ? deployActorKey(event.actor) ?? "" : "",
+      });
+    }
+  }
+  return { pushes, history, complete: lists.every((entry) => entry != null) && pushedTo.length <= MAX_PUSH_PROJECTS };
+}
+
+/**
+ * Whether each merge and push that landed went live, from deployments'
+ * record of what each production deployment shipped. Null when
+ * deployments did not answer.
+ */
+export async function loadShipped(viewer: User, slug: string, rows: LandedChange[]): Promise<ShippedRepo[] | null> {
+  const asks = shippedAsks(rows).slice(0, 20);
+  if (asks.length === 0) return [];
+  const answer = await deployments.shipped(slug, viewer, asks).catch(warn("shipped"));
+  return answer?.ok ? answer.value : null;
+}
+
+/** The harness sessions tied to each merged pull request, per project; null when work did not answer for any. */
+export async function loadPullSessions(viewer: User, pulls: CodePull[]): Promise<{ repo: RepoPath; pulls: PullSessions[] }[] | null> {
+  const byRepo = new Map<string, { repo: RepoPath; numbers: number[] }>();
+  for (const pull of pulls) {
+    if (pull.status !== "merged") continue;
+    const key = `${pull.repo.namespace}/${pull.repo.name}`.toLowerCase();
+    const entry = byRepo.get(key) ?? { repo: pull.repo, numbers: [] };
+    entry.numbers.push(pull.number);
+    byRepo.set(key, entry);
+  }
+  if (byRepo.size === 0) return [];
+  const lists = await Promise.all(
+    [...byRepo.values()].slice(0, MAX_PUSH_PROJECTS).map(({ repo, numbers }) =>
+      work
+        .pullSessions(repo, viewer, numbers.slice(0, 100))
+        .then((result) => (result.ok ? { repo, pulls: result.value } : null))
+        .catch(warn(`sessions of ${repo.name}`)),
+    ),
+  );
+  const found = lists.filter((entry) => entry != null);
+  return found.length === 0 && lists.length > 0 ? null : found;
+}
+
+/** Notifications read for what settled by itself in the span. */
+const SETTLED_READ = 100;
+
+/** The viewer's notifications done since the span began, newest activity first; null when the inbox did not answer. */
+export async function loadSettled(viewer: User, span: Pick<Span, "from">): Promise<InboxItem[] | null> {
+  const page = await inbox.list(viewer, { view: "done", limit: SETTLED_READ }).catch(warn("settled notifications"));
+  return page ? page.items.filter((item) => item.doneAt != null && Date.parse(item.doneAt) >= span.from) : null;
 }
 
 /** How far back Code is read: 7 days before the span, for the comparison. */

@@ -3375,7 +3375,7 @@ impl Op {
                     "view": {
                         "type": "string",
                         "enum": ["inbox", "saved", "done"],
-                        "description": "inbox (the default): not done and not snoozed. saved: what you saved. done: what you marked done.",
+                        "description": "inbox (the default): not done and not snoozed. saved: what you saved. done: what is done, marked by you or settled by itself; an item that settled itself carries `settled_reason` (such as `CI passed in run 330` or `Merged`) and `settled_by` (a username, or g1t, when someone did).",
                     },
                     "reason": {
                         "type": "string",

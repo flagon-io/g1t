@@ -109,6 +109,7 @@ import { moveTargets, ownerOf, rebuildOutcome, type DroppedBuild, type MoveTarge
 import { commitMissing, MAX_IDENTICAL_FAILURES, missingCommitMessage, retryDecision, type PastBuild } from "./retries";
 import { appHost, appUrl, label, uniqueLabel } from "./names";
 import { RepoDeployments, sourceOf } from "./repo-deployments";
+import { Shipped, shipmentOf } from "./shipped";
 import { telemetryTags, withOtel, type AppTelemetry } from "./telemetry";
 import { NEEDS_WRITE, commitOf, jobEndedMessage, jobOf, projectNamed, readOnlyAllowed, runTrusted, targetOf, type WorkflowBuild } from "./workflow-builds";
 
@@ -401,6 +402,11 @@ class Deployments {
   /** A repository's deployments wherever they run: reported, from g1t Actions, and these builds. */
   get repoDeployments(): RepoDeployments {
     return new RepoDeployments(this.env);
+  }
+
+  /** What each production deployment shipped, and whether a change is live (shipped.ts). */
+  get shipped(): Shipped {
+    return new Shipped(this.env, (slug) => this.workspaceActor(slug), (repo, actor, ref, limit) => reposClient(this.env.REPOS).log(repo, actor, ref, limit));
   }
 
   /**
@@ -1893,6 +1899,7 @@ class Deployments {
       case "repo.purged":
         await this.repoPurged(event.data.repoId);
         await this.repoDeployments.purge(event.data.repoId);
+        await this.shipped.purge(event.data.repoId);
         break;
       case "repo.default_branch_changed":
         await this.defaultBranchChanged(event.data.repoId, event.data.to, event.actor ?? "g1t");
@@ -1935,6 +1942,13 @@ class Deployments {
           await this.deployProduction(project, event.data.after, event.actor ?? "g1t");
         }
         break;
+      // A production deployment went live, wherever it ran: what it shipped is written down.
+      case "deployment_status.created": {
+        const repo = await reposClient(this.env.REPOS).pathById(event.data.repoId);
+        const shipment = repo ? shipmentOf(event.data, repo, this.env.SITE) : null;
+        if (shipment) await this.shipped.record(shipment);
+        break;
+      }
     }
   }
 
@@ -2922,6 +2936,9 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
     // For the actions service: a run's deployment to one environment.
     case "actions_deployment":
       return service.repoDeployments.fromActions(args);
+    // For Home: whether changes that landed went live (shipped.ts).
+    case "shipped":
+      return service.shipped.answer(args);
     default:
       return undefined;
   }

@@ -117,6 +117,16 @@ any thread.
 | A repository's security alerts | A scan finds none of that kind open |
 | g1t stopping on a change it made for you | It picks back up, its head moves, a merge is asked for, or it is merged or closed |
 
+A thread that settled by itself says why under its title in **Done**, in
+a few words, and who did it when someone did: **CI passed in run 330**,
+**Merged by @ana**, **Production of site deployed at 8e30fb4**,
+**Review no longer asked of you**. A thread you marked done yourself says
+nothing there. [Home](/guides/home/#while-you-were-away) lists what
+settled for you since your last visit.
+
+A notification that settled is no longer shown again: tabs you open later
+do not replay it, and tabs already open drop it from their recent list.
+
 What g1t does itself and leaves nothing for you to do is never a
 notification: what landed and what deployed is on [Home](/guides/home/).
 

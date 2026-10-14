@@ -16,7 +16,7 @@ import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { cn } from "../lib/cn";
 import { isPending } from "../lib/pending";
-import { INBOX_TABS, type InboxTab, REASON_LABEL, SEVERITY_LABEL, SNOOZES, bellCount, emptyFor, isUnread, tabCount, updatesLabel, whenShort } from "../lib/inbox";
+import { INBOX_TABS, type InboxTab, REASON_LABEL, SEVERITY_LABEL, SNOOZES, bellCount, emptyFor, isUnread, settledLine, tabCount, updatesLabel, whenShort } from "../lib/inbox";
 import { useOwnPresence } from "../lib/notify-client";
 import { dndOn } from "../lib/presence";
 import type { InboxPanelData } from "../routes/inbox-json";
@@ -101,6 +101,13 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
           {item.title}
         </Link>
         {item.body && <p className="mt-0.5 truncate text-xs text-muted">{item.body}</p>}
+        {/* Done by itself: what ended it, and who. */}
+        {settledLine(item) && (
+          <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-fg-soft">
+            <CheckCheck size={12} aria-hidden="true" className="shrink-0 text-success" />
+            <span className="truncate">{settledLine(item)}</span>
+          </p>
+        )}
         <div className="mt-2 flex min-w-0 items-center gap-2 text-xs text-faint [@media(hover:none)]:pr-24">
           <time dateTime={item.updatedAt} suppressHydrationWarning className="shrink-0 whitespace-nowrap">
             {whenShort(item.updatedAt, now)}
