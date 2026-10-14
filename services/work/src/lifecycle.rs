@@ -69,7 +69,7 @@ pub(crate) enum Landing {
 
 /// Whether a merge that was brought up to date lands now, by its new
 /// commit's checks. The same checks hold it as hold any merge
-/// (`merge_gate`): landing it before they report would only be refused.
+/// (`merge_gate_by`): landing it before they report would only be refused.
 pub(crate) fn landing_step(facts: &WorkflowFacts) -> Landing {
     let failed = facts.required_failed();
     if !failed.is_empty() {

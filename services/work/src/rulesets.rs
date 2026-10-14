@@ -788,27 +788,15 @@ impl Work {
     }
 
     /// Everything a merge of `pull` is judged on, and the judgement, for
-    /// `actor`, or for nobody in particular. A bypass counts only with
-    /// `honor_bypass`: a person merging asks for it (`bypass_rules`).
-    pub(crate) async fn merge_gate(
-        &self,
-        repo: &Repo,
-        pull: &Pull,
-        actor: Option<&User>,
-        ignore_checks: bool,
-        honor_bypass: bool,
-    ) -> Result<Gate> {
-        self.merge_gate_at(repo, pull, actor, ignore_checks, honor_bypass, None, None, None).await
-    }
-
-    /// `merge_gate` with whether it is behind already worked out (from
-    /// what was stored with its mergeability, or asked once for this
-    /// request), so that showing a pull request does not ask repos again.
+    /// `actor`, or for nobody in particular, as a pull request is shown:
+    /// bypasses count, and whether it is behind is what was already worked
+    /// out (stored with its mergeability, or asked once for this request),
+    /// so showing it does not ask repos again.
     pub(crate) async fn merge_gate_seen(&self, repo: &Repo, pull: &Pull, actor: Option<&User>, behind: bool) -> Result<Gate> {
         self.merge_gate_at(repo, pull, actor, false, true, None, None, Some(behind)).await
     }
 
-    /// `merge_gate` for a merge by `method`: rules that allow only some
+    /// The gate for a merge by `method`, asking repos whether it is behind: rules that allow only some
     /// methods, and linear history, judge it too. Without a method they do
     /// not, as for showing what a pull request still needs.
     pub(crate) async fn merge_gate_by(
