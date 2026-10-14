@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronDown, Code2, CornerLeftUp, File, FileArchive, Folder, FolderGit2, GitBranch, History, Search, SquareTerminal, Tag as TagIcon } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Code2, CornerLeftUp, File, FileArchive, Folder, FolderGit2, GitBranch, History, LoaderCircle, Search, SquareTerminal, Tag as TagIcon } from "lucide-react";
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
 
@@ -449,8 +449,10 @@ export function BlobView({
   blob: Blob;
   /** Syntax-highlighted HTML per line, when the language is known. */
   html: string[] | null;
-  /** Shown instead of the plain file when asked for, with HTML per line. */
-  blame?: { blame: ShownBlame; lines: string[] | null } | null;
+  /** Shown instead of the plain file when asked for, with HTML per line;
+   * "waiting" while it streams in, "failed" when it could not be had (the
+   * plain file shows meanwhile). */
+  blame?: { blame: ShownBlame; lines: string[] | null } | "waiting" | "failed" | null;
 }) {
   const { repo, ref, path, size, text } = blob;
   const lines = text?.replace(/\n$/, "").split("\n");
@@ -460,6 +462,8 @@ export function BlobView({
   const toggle = (label: string, on: boolean, search: string) => (
     <Link
       to={{ search }}
+      // Blame is costly to work out and adds nothing to a search index.
+      rel={search ? "nofollow" : undefined}
       preventScrollReset
       className={`rounded px-2.5 py-1.5 transition-colors sm:px-2 sm:py-0.5 ${on ? "bg-raised text-fg" : "hover:text-fg"}`}
     >
@@ -482,6 +486,13 @@ export function BlobView({
       <Card tone="plain" className="overflow-hidden">
         <div className="flex items-center gap-3 border-b border-line bg-surface px-3 py-2 text-xs text-muted sm:px-4 sm:py-2.5">
           {lines && <span>{lines.length.toLocaleString("en-US")} lines</span>}
+          {blame === "waiting" && (
+            <span className="flex items-center gap-1.5" role="status">
+              <LoaderCircle size={12} className="animate-spin" aria-hidden />
+              Working out who changed each line
+            </span>
+          )}
+          {blame === "failed" && <span role="status">Blame could not be worked out; try again in a moment</span>}
           <span className="hidden min-[400px]:inline">{size.toLocaleString("en-US")} bytes</span>
           <span className="ml-auto flex items-center gap-2">
             {lines && (
@@ -495,7 +506,7 @@ export function BlobView({
             </a>
           </span>
         </div>
-        {blame && lines ? (
+        {typeof blame === "object" && blame && lines ? (
           <BlameView base={base} path={path} lines={lines} html={blame.lines} blame={blame.blame} />
         ) : lines ? (
           <CodeLines lines={lines} html={html} marked={marked} />

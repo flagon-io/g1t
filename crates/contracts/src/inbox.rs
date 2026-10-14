@@ -252,6 +252,15 @@ pub struct InboxItem {
     pub saved: bool,
     /// While this is in the future the item is out of the list.
     pub snoozed_until: Option<String>,
+    /// Why it settled by itself, in a few words, such as `CI passed in
+    /// run 330` or `Merged`: set when the event that left nothing to do
+    /// marked it done. Absent while it is not done, and when it was marked
+    /// done by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settled_reason: Option<String>,
+    /// Who settled it, when a person or g1t did: a username, or `g1t`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settled_by: Option<String>,
 }
 
 /// One thing that happened on a thread, as the person was told of it.
@@ -816,6 +825,8 @@ mod tests {
                 done_at: None,
                 saved: false,
                 snoozed_until: None,
+                settled_reason: None,
+                settled_by: None,
             },
             activity: Vec::new(),
             subscription: None,

@@ -3,7 +3,10 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::links::{BRANCH_SESSIONS, FAMILY, FIRST_PROMPTS, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, TOUCHED_BY_OTHERS, end_tree_sql, tree_sql};
+use super::links::{
+    BRANCH_SESSIONS, FAMILY, FIRST_PROMPTS, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, PULL_SESSIONS, PullSessionRow, TOUCHED_BY_OTHERS, end_tree_sql,
+    pull_sessions_of, tree_sql,
+};
 use super::sessions::{INSERT_ENTRY, MOVE_ENTRIES, RENEW_CLAIM, harness_session_sql, insert_session_sql, refresh_sql, renewal, resume_sql};
 use super::{after_minutes, expire_claims_sql, time_out_sessions_sql};
 use super::updates::deliver_sql;
@@ -257,6 +260,44 @@ fn links_and_touches_are_kept_once_each() {
     db.execute("UPDATE pulls SET source_branch = '4-greet' WHERE id = 'pr_9'", []).unwrap();
     assert_eq!(column(&db, BRANCH_SESSIONS, params!["rep_1", "[9]"]), ["ses_1"]);
     assert!(column(&db, BRANCH_SESSIONS, params!["rep_1", "[10]"]).is_empty());
+}
+
+/// Home marks what landed with the sessions that made it: tied by a link,
+/// by the pull request a session named, or by pushing its branch, and a
+/// subagent's as the session that started it.
+#[test]
+fn a_pull_requests_sessions_are_found_every_way_they_are_tied() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    start(&db, "ses_2", Some("b"));
+    start_child(&db, "ses_2c", "ses_2", "b/agent/1", "general-purpose");
+    db.execute("UPDATE pulls SET source_branch = '9-fix' WHERE id = 'pr_9'", []).unwrap();
+    // ses_1 pushed the branch; ses_2's subagent named the pull request in a trailer.
+    touch(&db, "ses_1", "branch", "9-fix");
+    db.execute(INSERT_LINK, params!["ses_2c", "rep_1", "pull", 9, "trailer", rfc3339(NOW)]).unwrap();
+    let rows = |numbers: &str| -> Vec<PullSessionRow> {
+        let mut statement = db.prepare(PULL_SESSIONS).unwrap();
+        statement
+            .query_map(params!["rep_1", numbers], |row| {
+                Ok(PullSessionRow {
+                    number: row.get(0)?,
+                    id: row.get(1)?,
+                    harness: row.get(2)?,
+                    parent_id: row.get(3)?,
+                    parent_harness: row.get(5)?,
+                })
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    let found = pull_sessions_of(rows("[9, 10]"));
+    assert_eq!(found.len(), 1, "only pull requests with sessions");
+    assert_eq!(found[0].number, 9);
+    let mut ids: Vec<&str> = found[0].sessions.iter().map(|session| session.id.as_str()).collect();
+    ids.sort_unstable();
+    assert_eq!(ids, ["ses_1", "ses_2"], "the subagent counts as its parent, once");
+    assert!(pull_sessions_of(rows("[10]")).is_empty());
 }
 
 /// Twelve subagents of one session work on one issue, some on the same

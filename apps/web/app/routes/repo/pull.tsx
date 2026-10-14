@@ -22,7 +22,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { Await, Form, Link, redirect } from "react-router";
 
 import {
@@ -48,6 +48,7 @@ import { firstScreens } from "../../lib/diff";
 import { highlightFirstFiles } from "../../lib/highlight.server";
 import { excerpt, page } from "../../lib/meta";
 import { openedBy } from "../../lib/opened-by";
+import { useArrived } from "../../lib/use-arrived";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { DiffView } from "../../components/diff-view";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
@@ -685,21 +686,6 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
 }
 
 /** The box at the foot of the conversation saying what stands before a merge. */
-/** `initial` until `promise` settles, then what it resolved to. */
-function useArrived<T>(promise: Promise<T>, initial: T): T {
-  const [arrived, setArrived] = useState<{ from: Promise<T>; value: T } | null>(null);
-  useEffect(() => {
-    let current = true;
-    promise.then(
-      (value) => current && setArrived({ from: promise, value }),
-      () => {},
-    );
-    return () => {
-      current = false;
-    };
-  }, [promise]);
-  return arrived?.from === promise ? arrived.value : initial;
-}
 
 function StatusBox({ children }: { children: React.ReactNode }) {
   return (
