@@ -49,6 +49,18 @@ export async function principalsFrom(slug: string, viewer: User, fields: string[
   return people.filter((user): user is User => user != null).map((user) => ({ kind: "user" as const, id: user.id }));
 }
 
+/**
+ * A person anywhere on g1t, by `user:<username>` (or a bare username), as
+ * the chat service names them: by their account id. Null for no one, and
+ * for anything that is not a person's account.
+ */
+export async function personFrom(field: string): Promise<Principal | null> {
+  const name = field.replace(/^user:/, "").replace(/^@/, "").trim().toLowerCase();
+  if (!name || name.startsWith("usr_")) return null;
+  const user = await identity.userByUsername(name).catch(() => null);
+  return user && (user.kind ?? "user") === "user" ? { kind: "user", id: user.id } : null;
+}
+
 /** The cookie that remembers the last conversation open, so Chat opens there again. */
 export const LAST_CHAT_COOKIE = "g1t_chat";
 

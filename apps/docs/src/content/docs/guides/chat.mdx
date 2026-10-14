@@ -17,8 +17,9 @@ can ask a teammate a question in a channel or a direct message, and the
 answer arrives in the place you asked.
 
 Chat is open to every member of a workspace, on every plan, the free one
-too. Chat is never charged: no seats, no per-message price and no history
-cutoff.
+too. People outside it can talk in its [public channels](#public-channels)
+and in the channels they are [asked into as guests](#guests). Chat is never
+charged: no seats, no per-message price and no history cutoff.
 
 Open **Chat** in the rail on the left, or go to
 `g1t.sh/<workspace>/-/chat`.
@@ -65,15 +66,21 @@ agent.
 A channel is a named conversation, such as `#web`, `#releases` or
 `#support`. Every workspace starts with `#general`, and everyone new is put
 in it the first time they open Chat (owners can choose other
-[default channels](#workspace-chat-settings)). A private channel shows a
-lock in place of `#`, in the sidebar, in Browse channels and at the top of
-the channel.
+[default channels](#workspace-chat-settings)).
 
-| | Public channel | Private channel |
-| --- | --- | --- |
-| Who can find it | Every member, under **Browse channels** | Only its members |
-| Who can join | Any member, by opening it and choosing **Join** | Only people a member adds |
-| Who can read it | Every member | Only its members |
+Each channel is one of three kinds, and its mark says which, in the
+sidebar, in Browse channels and at the top of the channel:
+
+| | Workspace `#` | Private 🔒 | Public 🌐 |
+| --- | --- | --- | --- |
+| Who can find it | Every member, under **Browse channels** | Only the people in it | Every member, and anyone on g1t with its link |
+| Who can join | Any member | Only people someone in it adds, or lets in on a [request](#ask-to-join) | Anyone signed in to g1t |
+| Who can read it | Every member | Only the people in it | Anyone signed in to g1t |
+| Who can make one | Members, unless owners keep it to themselves | Members, unless owners keep it to themselves | Workspace owners |
+
+Anyone in a channel who is not a member of the workspace shows as a
+**Guest**, beside their name on every message, in the channel's people and
+in its details, so who is in the workspace is never in doubt.
 
 ### Create a channel
 
@@ -84,27 +91,91 @@ the channel.
    lowercase letters, digits, dashes and underscores. `Web Team` becomes
    `web-team`.
 3. Optionally, say what the channel is for. That line shows under its name.
-4. Turn on **Private** if only the people you invite should find and read
-   it.
+4. Under **Who can open it**, choose **Workspace**, **Private**, or (for
+   workspace owners) **Public**.
 5. Choose **Create channel**. You are its owner and first member. Invite
    people once it is made.
 
 </Steps>
 
-A workspace's owners can keep creating public channels, private channels or
-both to themselves ([chat settings](#workspace-chat-settings)). When they
+A workspace's owners can keep creating workspace channels, private channels
+or both to themselves ([chat settings](#workspace-chat-settings)). When they
 have, **Create a channel** is turned off for everyone else and says why, and
-someone who may create only one kind gets that kind.
+a kind someone may not create is shown turned off, with why. Only owners
+make a channel public.
+
+### Public channels
+
+A public channel is open to anyone signed in to g1t with a confirmed email
+address: a community, a support desk, an open project's chat. Share its
+link, `g1t.sh/<workspace>/-/chat/<channel>`; anyone who opens it reads it,
+and **Join** (or simply writing in it) puts it in their sidebar.
+
+- People outside the workspace talk there as **guests**. They see that
+  channel and the workspace's other public ones, and nothing else of the
+  workspace: no other channels, no direct messages, no people directory.
+- **@g1t works for the workspace's members only.** Guests never start a
+  conversation with g1t, in a public channel or anywhere else, so nobody
+  outside the workspace spends its AI.
+- Only a workspace owner makes a channel public, when creating it or later
+  from its details (**Open to anyone on g1t**). A private channel stays
+  private. Turning it off keeps the channel to the workspace again: guests
+  who joined on their own leave it, and guests someone asked in stay.
+- A channel's owners and the workspace's owners can take anyone out of it
+  from its details. Someone outside the workspace taken out of a public
+  channel cannot join it again on their own; asking them in again lifts
+  that.
+
+### Guests
+
+A guest is someone outside the workspace in one of its channels. Besides
+joining a public channel, someone can be asked into any channel, private
+ones too, without joining the workspace: a contractor, a customer, a
+friend from another team.
+
+<Steps>
+
+1. Open the channel's details and choose **Add**.
+2. Type their g1t username and choose **Invite @username as a guest**.
+3. They see the invitation in their own Chat sidebar, under
+   **Invitations**, and choose **Join** or **Decline**.
+
+</Steps>
+
+A guest's channels show in their own sidebar under **Other workspaces**,
+with their unread counts. Opening one shows that workspace's chat as a
+guest sees it, with a **Guest** mark at the top and a way back to their
+own.
+
+Owners can always ask guests in. Members can too, unless owners turned off
+**Members can invite outside collaborators** in the workspace's
+[permissions](/guides/workspaces/#member-privileges), the same setting as
+for repositories. Guests themselves add no one. Pending invitations show in
+the channel's details, where whoever may take people out can take one
+back.
+
+### Ask to join
+
+Opening the link of a channel you cannot open (a private one, or a
+workspace one when you are not in the workspace) shows **You can't open
+#channel** and a way to **Ask to join**, with an optional note. The page is
+the same whether or not the channel exists, so asking never tells anyone
+about a channel they may not see.
+
+The people who could add you see your request in the channel's details,
+with a count on its members button, and choose **Let in** or **Decline**.
+Anyone in the channel can let in a member of the workspace; someone outside
+it is let in, as a guest, by those who may invite guests.
 
 ### Join, leave and browse
 
-- **Browse channels** lists every public channel, and the private ones
-  you're in, at `g1t.sh/<workspace>/-/chat/browse`, and at the end of the
-  sidebar's **Channels**. Choose a channel anywhere on its row to read it,
+- **Browse channels** lists every workspace and public channel, and the
+  private ones you're in, at `g1t.sh/<workspace>/-/chat/browse`, and at the
+  end of the sidebar's **Channels**. A guest sees the public ones there. Choose a channel anywhere on its row to read it,
   and choose **Join** to post in it and see it in your sidebar. A private channel
   you're not in never appears.
 - **Archived**, on the same page, lists archived channels.
-- You can leave a channel, and join a public one again at any time.
+- You can leave a channel, and join a workspace or public one again at any time.
 - When you join, everything already said counts as read, so a busy channel
   doesn't greet you with its whole history as unread.
 
@@ -394,10 +465,10 @@ comes from.
 
 | Setting | Choices |
 | --- | --- |
-| **Creating channels** | Who can create public and private channels (**Any member**, the default, or **Owners only**) is set with the workspace's other permissions, under [Permissions → Chat](/guides/permissions/#chat); this page says what is allowed today and leads there. |
+| **Creating channels** | Who can create workspace and private channels (**Any member**, the default, or **Owners only**) is set with the workspace's other permissions, under [Permissions → Chat](/guides/permissions/#chat); this page says what is allowed today and leads there. |
 | **Renaming and archiving** | **Channel owners and workspace owners** (the default) or **Workspace owners only**. Any member of a channel can still change its topic. |
 | **Custom emoji** | Who can add them: **Any member** (the default) or **Owners only**. |
-| **Default channels** | The public channels someone new is put in the first time they open Chat. `#general` unless owners choose others. People already in the workspace are not moved, and anyone can leave a default channel. |
+| **Default channels** | The workspace and public channels someone new is put in the first time they open Chat. `#general` unless owners choose others. People already in the workspace are not moved, and anyone can leave a default channel. |
 
 Changing a setting doesn't change what already exists: channels already
 made stay, whoever made them.

@@ -14,8 +14,8 @@ import { requireUser, roleIn } from "../../../lib/session.server";
  */
 export type ChatLayoutData = {
   slug: string;
-  /** The viewer's role in the workspace. */
-  role: string;
+  /** The viewer's role in the workspace; null for a guest, who is not in it. */
+  role: string | null;
   /** The viewer, named as chat names them (`memberName`). */
   me: { id: string; username: string; display_username: string | null; display_name: string; avatar: string | null };
   sidebar: ChatSidebar | null;
@@ -25,9 +25,12 @@ export type ChatLayoutData = {
 export async function loader({ params, context, request }: Route.LoaderArgs): Promise<ChatLayoutData> {
   const viewer = requireUser(context, request);
   const role = roleIn(viewer, params.owner);
-  if (!role) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [sidebar, people] = await Promise.all([sidebarOrNull(slug, viewer), workspacePeople(slug, viewer)]);
+  // Someone outside the workspace comes in as a guest: the chat service
+  // answers with only what they may see (its public channels, and those
+  // they were asked into), and who may be mentioned is for members alone.
+  const [sidebar, people] = await Promise.all([sidebarOrNull(slug, viewer), role ? workspacePeople(slug, viewer) : Promise.resolve([])]);
+  if (!role && !sidebar) throw data(null, { status: 404 });
   const self = people.find((person) => person.name === viewer.username.toLowerCase());
   const display_username = viewer.display_username ?? self?.display_username ?? null;
   return {

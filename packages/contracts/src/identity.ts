@@ -8,7 +8,7 @@ import type { Result } from "./result";
 import type { TeamCreation, TeamsClient } from "./teams";
 import type { PeopleClient } from "./people";
 import type { DeployKeysClient } from "./deploy-keys";
-import type { EmailConfirmed } from "./accounts";
+import type { EmailConfirmed, EmailOwner } from "./accounts";
 
 export type User = {
   id: string;
@@ -925,6 +925,8 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   userByUsername(username: string): Promise<Viewer>;
   /** The names behind account and workspace ids; unknown ids are left out. */
   usernames(ids: string[]): Promise<Record<string, string>>;
+  /** The accounts behind these ids (at most 200), by id, with their usernames and avatars; unknown ids are left out. */
+  accounts(ids: string[]): Promise<Record<string, EmailOwner>>;
   /**
    * Internal: the people behind these ids (at most 50) with their
    * workspaces, roles and repository grants, as a signed-in viewer has

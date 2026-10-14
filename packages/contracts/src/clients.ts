@@ -183,6 +183,7 @@ export function identityClient(service: ServiceBinding): IdentityApi {
     userForSshKey: (fingerprint) => call("user_for_ssh_key", { fingerprint }),
     userByUsername: (username) => call("user_by_username", { username }),
     usernames: (ids) => call("usernames", { ids }),
+    accounts: (ids) => call("accounts", { ids }),
     usersForAudience: (ids) => call("users_for_audience", { ids }),
     profile: (username) => call("profile", { username }),
     updateProfile: (actor, fields) => call("update_profile", { actor, ...fields }),
