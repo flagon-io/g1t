@@ -61,8 +61,8 @@ export default function Policies() {
       <section className="mt-14 max-w-3xl">
         <h2 className="text-xl font-semibold tracking-tight">Changes</h2>
         <p className="mt-2 text-sm text-muted">
-          We'll tell you before material changes take effect: by email to account holders and here, at least 30 days
-          ahead, unless the law or a security problem needs a change sooner. Every change is listed below.
+          g1t is young and these policies change as it does. Changes take effect when they're posted here, so check back
+          from time to time. Every change is listed below.
         </p>
         <Card asChild tone="plain" divided className="mt-5">
           <ol>
