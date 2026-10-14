@@ -1,10 +1,10 @@
-These are the companies that process information for g1t on our behalf, what each does, and what it receives. Each is bound by a contract that limits it to doing that. **We'll update this page before we add a new subprocessor**, and list the change in the [policies' history](/policies).
+These are the companies that process information for g1t on our behalf, what each does, and what it receives. **We'll update this page before we add a new subprocessor**, and list the change in the [policies' history](/policies).
 
 ## Subprocessors
 
 | Company | What they do for g1t | What they receive | Where |
 | --- | --- | --- | --- |
-| **Cloudflare, Inc.** | Hosting and the network g1t runs on (Workers), databases (D1), storage for repositories, avatars and screenshots (Artifacts, KV and R2), queues, the sandboxes checks, workflows and builds run in (Containers), sending email (Email Service), search embeddings (Workers AI and Vectorize), and screenshots of deployed apps (Browser Rendering) | Everything stored on g1t, and every request to it | Global |
+| **Cloudflare, Inc.** | Hosting and the network g1t runs on (Workers), sign-up bot protection (Turnstile), databases (D1), storage for repositories, avatars and screenshots (Artifacts, KV and R2), queues, the sandboxes checks, workflows and builds run in (Containers), sending email (Email Service), search embeddings (Workers AI and Vectorize), and screenshots of deployed apps (Browser Rendering) | Everything stored on g1t, and every request to it | Global |
 | **Stripe, Inc.** | Payments, cards, invoices and receipts, and working out sales tax and VAT (Stripe Tax) | Workspace owners' billing details, billing address and tax ID, card details (entered on Stripe's page, never on g1t), and what each invoice charges | United States |
 | **650 Industries, Inc. (Expo)** | Delivering notifications to the g1t phone app, through Apple's and Google's push services | The phone's push token, and each notification's title, text and where it opens in the app | United States |
 | **Google LLC** | Google Workspace: the mailboxes that receive email sent to us | What you write to us, and your email address | United States |
@@ -26,4 +26,4 @@ When you connect these, your information goes to them because you asked, under y
 - **Hosts your sandboxes reach**, such as package registries and anything your jobs and builds fetch from or send to.
 - **Custom domains** you point at your deployments.
 
-Questions about subprocessors: [hey@flagon.io](mailto:hey@flagon.io).
+Questions about subprocessors: [support@g1t.sh](mailto:support@g1t.sh).

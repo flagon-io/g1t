@@ -117,7 +117,7 @@ A sandbox stopped this way ends with "Stopped: unusual CPU use; contact
 support if this was a real job." A check or merge queue run fails with
 it, a workflow job fails with it, and a deployment's status says it. g1t's
 staff are told, with the measurements, and look at what ran. If it was a
-real job, write to hey@flagon.io and say which run.
+real job, write to support@g1t.sh and say which run.
 
 Beyond that, what a sandbox may do is bounded by its time cap, your
 plan's limits on how much may run and how long, the short-lived

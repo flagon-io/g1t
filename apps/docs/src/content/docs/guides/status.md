@@ -133,7 +133,7 @@ browser loads it. The checks identify themselves as `g1t-status/1.0` at
 the end of a browser's user agent.
 
 If something is broken and the page does not show it, write to
-[hey@flagon.io](mailto:hey@flagon.io) or see
+[support@g1t.sh](mailto:support@g1t.sh) or see
 [support](https://g1t.sh/support).
 
 ## Planned maintenance

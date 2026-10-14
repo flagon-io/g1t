@@ -25,7 +25,7 @@ use worker::Result;
 use crate::Identity;
 
 /// What a suspended account is told when it signs in.
-pub const SUSPENDED: &str = "This account is suspended. If you think this is a mistake, write to hey@flagon.io from its address.";
+pub const SUSPENDED: &str = "This account is suspended. If you think this is a mistake, write to support@g1t.sh from its address.";
 /// What signing up with a blocked domain is told.
 pub const BLOCKED: &str = "Accounts cannot be made with addresses at this domain. Use another address.";
 

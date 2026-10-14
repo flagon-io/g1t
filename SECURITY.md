@@ -1,7 +1,7 @@
 # Security
 
 If you've found a security problem in g1t, please tell us privately at
-**[hey@flagon.io](mailto:hey@flagon.io)** rather than in an issue, a pull
+**[support@g1t.sh](mailto:support@g1t.sh)** rather than in an issue, a pull
 request or a chat channel. Our
 [security.txt](https://g1t.sh/.well-known/security.txt) says the same.
 

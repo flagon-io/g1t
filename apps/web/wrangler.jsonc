@@ -70,7 +70,7 @@
 	// Cloudflare Turnstile on email sign-up (app/lib/turnstile.ts): the
 	// widget's public site key here, and its secret as the TURNSTILE_SECRET
 	// secret. Either one empty turns it off.
-	"vars": { "TURNSTILE_SITE_KEY": "" },
+	"vars": { "TURNSTILE_SITE_KEY": "0x4AAAAAAFWhRDwKfGS3CEvZ" },
 	"observability": { "enabled": true, "head_sampling_rate": 0.1 },
 	"upload_source_maps": true
 }

@@ -1,8 +1,10 @@
-These terms are the agreement between you and Flagon, Inc. ("Flagon", "we", "us") when you use g1t: the website at g1t.sh, its API at api.g1t.sh, its MCP server at mcp.g1t.sh, git over g1t.sh, the documentation, apps deployed to g1t.page, and the runners and sandboxes g1t runs for you (together, "g1t" or "the service").
+These terms are the agreement between you and Flagon, Inc., a Delaware corporation ("Flagon", "we", "us") when you use g1t: the website at g1t.sh, its API at api.g1t.sh, its MCP server at mcp.g1t.sh, git over g1t.sh, the documentation, apps deployed to g1t.page, and the runners and sandboxes g1t runs for you (together, "g1t" or "the service").
 
-We've tried to write them the way we'd want to read them: plainly. If anything here is unclear, write to [hey@flagon.io](mailto:hey@flagon.io) and we'll explain it.
+We've tried to write them the way we'd want to read them: plainly. If anything here is unclear, write to [support@g1t.sh](mailto:support@g1t.sh) and we'll explain it.
 
 By creating an account or using g1t, you agree to these terms, the [Acceptable Use Policy](/policies/acceptable-use), and the [Refunds and Cancellation](/policies/refunds) policy. The [Privacy Policy](/policies/privacy) explains what we do with your information. If you use g1t for a company or another organization, you're agreeing for it, and you're telling us you're allowed to.
+
+**Your statutory rights remain intact.** Nothing in these terms or the policies they incorporate takes away consumer rights that cannot be waived, including rights to cancellation, refunds and remedies for a faulty service. These rights take precedence over any conflicting wording below.
 
 The g1t software is open source under the MIT license. These terms cover the service we run at g1t.sh, not your use of the source code; the license covers that.
 
@@ -11,7 +13,7 @@ The g1t software is open source under the MIT license. These terms cover the ser
 - **You need an account to do most things.** Give us a real email address and keep it current: it's how we reach you about your account, security and billing, and how you get back in if you lose your password.
 - **You must be at least 13 years old**, and old enough where you live to agree to these terms yourself. If you're under 18, a parent or guardian must agree to them for you.
 - **An account is for one person.** Automation is welcome: use access tokens, workspace tokens and coding agents for it. Don't share a password, and don't create accounts to get around a limit, a trial, or a suspension.
-- **Keep your credentials safe.** You're responsible for what happens under your account, your tokens and your SSH keys. If you think someone else has them, revoke them in your settings and tell us at [hey@flagon.io](mailto:hey@flagon.io).
+- **Keep your credentials safe.** You're responsible for what happens under your account, your tokens and your SSH keys. If you think someone else has them, revoke them in your settings and tell us at [support@g1t.sh](mailto:support@g1t.sh).
 
 ## 2. Workspaces
 
@@ -67,9 +69,9 @@ You can connect g1t to other services: your own model providers, issue trackers,
 
 - **The forge is free.** Repositories, git, issues, pull requests and review cost nothing, within the free limits described on [pricing](/pricing).
 - **Compute is paid.** Hosted runner minutes (for checks, workflows and the merge queue), deploy builds, deployed apps (requests, CPU time, custom domains and containers), storage and git operations past the free amounts, package and actions cache storage, search indexing, observability data past the free amount, and the other metered items on [pricing](/pricing) are charged to the workspace that owns the repository or project. Most are priced at what they cost us plus 20%; runner minutes are a fixed rate for each machine, set from what a minute of it costs us. Jobs on your own runners aren't charged. There is no price per person.
-- **The g1t plan** is $21 a month per workspace, with $10 of usage included each month. Included usage doesn't roll over. There is no separate card or processing fee, on the plan or on anything else.
+- **The g1t plan** is $21 a month per workspace, with $10 of usage included each month. Included usage doesn't roll over. **The plan renews automatically each month until you cancel.** An owner or billing manager can cancel before the next renewal through **Settings -> Billing and plans -> Manage billing**. Cancellation takes effect at the end of the paid period; usage already incurred remains payable. There is no separate card or processing fee, on the plan or on anything else.
 - **When you're billed.** The plan is billed monthly in advance, at the start of each billing period. Usage is billed in arrears: what a workspace used is invoiced when each month (UTC) closes, or sooner when the workspace nears our limit on unpaid usage (below). What a workspace owes when it is deleted is charged then.
-- **Price changes.** Usage prices follow our costs. A price that goes down changes at once. When a usage price goes up, it's listed on [pricing](/pricing) with its reason and the day it takes effect, and owners of workspaces on the plan are emailed, **at least 14 days before** it applies. We'll give owners **at least 30 days' notice** by email before we raise the plan's own monthly price. Nothing already charged is repriced.
+- **Price changes.** Usage prices follow our costs. A price that goes down changes at once. When a usage price goes up, it's listed on [pricing](/pricing) with its reason and the day it takes effect, and owners of workspaces on the plan are emailed, **at least 14 days before** it applies. We'll give owners **at least 30 days' notice** by email before we raise the plan's own monthly price. Nothing already charged is repriced. You can cancel before a higher plan price applies, or stop using the affected metered services before their prices increase. Where the law requires your express agreement or longer notice, we will obtain that agreement or give that notice first.
 - **Payment.** Payments are processed by Stripe. You authorize us to charge the workspace's card, or another payment method on file, for the plan each period, for usage as it is billed, and when the workspace nears our limit on unpaid usage. Invoices and receipts are on the Billing page. Card numbers never reach g1t.
 - **Taxes.** Prices don't include taxes. Where the law requires it, sales tax, VAT or GST is added, worked out by Stripe from the workspace's billing address, and shown as its own line before you pay and on every invoice. Without a billing address we can't work tax out, so we don't charge the card until one is added. You're responsible for the taxes that apply to your purchases, other than taxes on our income.
 - **Failed payments.** If a card is declined, new paid work stops until the workspace pays; if a renewal fails, the plan's features stop too. What the workspace owes stays owed, and if it stays unpaid we may suspend the workspace (section 11).
@@ -104,7 +106,7 @@ We may suspend or close an account or workspace, or remove content, if:
 - it hasn't paid what it owes; or
 - the law requires us to.
 
-Some of this is automatic: a sandbox that looks like it's mining cryptocurrency is stopped at once, and a workspace whose spending spikes is paused until an owner answers. When we act, we'll tell you why, unless the law stops us or telling you would help someone abuse g1t. If you think we got it wrong, reply or write to [hey@flagon.io](mailto:hey@flagon.io) and a person will look at it.
+Some of this is automatic: a sandbox that looks like it's mining cryptocurrency is stopped at once, and a workspace whose spending spikes is paused until an owner answers. When we act, we'll tell you why, unless the law stops us or telling you would help someone abuse g1t. If you think we got it wrong, reply or write to [support@g1t.sh](mailto:support@g1t.sh) and a person will look at it.
 
 When we close an account or workspace, we'll keep its content for 30 days so it can be exported, unless it was closed for illegal content or serious abuse, then delete it. What it owed for the plan and usage before it closed is still owed.
 
@@ -127,19 +129,19 @@ If someone makes a claim against Flagon because of your content or your use of g
 
 ## 15. Copyright complaints
 
-If you believe something on g1t infringes your copyright, send a notice to [hey@flagon.io](mailto:hey@flagon.io) with what is infringed, where it is on g1t, your contact details, and a statement that you believe in good faith the use isn't authorized and that your notice is accurate. If your content was removed and you believe that was a mistake, you can send a counter-notice to the same address. We close the accounts of repeat infringers.
+If you believe something on g1t infringes your copyright, send a notice to [support@g1t.sh](mailto:support@g1t.sh) with what is infringed, where it is on g1t, your contact details, and a statement that you believe in good faith the use isn't authorized and that your notice is accurate. If your content was removed and you believe that was a mistake, you can send a counter-notice to the same address. We close the accounts of repeat infringers.
 
-Copyright notices and counter-notices go to Flagon, Inc. at [hey@flagon.io](mailto:hey@flagon.io).
+Copyright notices and counter-notices go to Flagon, Inc. at [support@g1t.sh](mailto:support@g1t.sh).
 
 ## 16. Governing law and disputes
 
-These terms are governed by the laws of the United States and of the state in which Flagon, Inc. is incorporated, without regard to conflict-of-law rules. Any dispute will be resolved in the state or federal courts there, and you and Flagon agree to their jurisdiction. If you're a consumer, you keep the protections of the law where you live that can't be waived by contract.
+These terms are governed by the laws of the United States and of the State of Delaware, without regard to conflict-of-law rules. Any dispute will be resolved in the state or federal courts in Delaware, and you and Flagon agree to their jurisdiction. If you're a consumer, you keep the protections of the law where you live that can't be waived by contract, including any right to bring a claim in your local courts.
 
-Before going to court, please write to [hey@flagon.io](mailto:hey@flagon.io). Most problems are solved faster by talking.
+Before going to court, please write to [support@g1t.sh](mailto:support@g1t.sh). Most problems are solved faster by talking.
 
 ## 17. Changes to these terms
 
-We'll update these terms as g1t changes. **We'll tell you before material changes take effect**: by email to workspace owners and on the [policies](/policies) page, at least 30 days ahead, unless a change is needed sooner for legal or security reasons. Every change is listed in the policies' change history. If you keep using g1t after a change takes effect, you're agreeing to the new terms. If you don't agree, you can stop using g1t and take your data with you.
+We'll update these terms as g1t changes. **We'll tell you before material changes take effect**: by email to workspace owners and on the [policies](/policies) page, at least 30 days ahead, unless a change is needed sooner for legal or security reasons. Every change is listed in the policies' change history. To the extent permitted by law, continuing to use g1t after a change takes effect means you accept the updated terms. Where express consent is required, we will ask for it; continued use alone does not replace that consent. If you don't agree, you can stop using g1t and take your data with you.
 
 ## 18. The rest
 
@@ -152,4 +154,4 @@ We'll update these terms as g1t changes. **We'll tell you before material change
 ## 19. Contact
 
 Flagon, Inc.\
-[hey@flagon.io](mailto:hey@flagon.io)
+[support@g1t.sh](mailto:support@g1t.sh)

@@ -40,8 +40,8 @@ Depending on how serious it is and whether it was deliberate, we may:
 - suspend or close accounts and workspaces;
 - report it to the authorities, when the law requires or the harm is serious.
 
-We'll tell you what we did and why, unless the law stops us or telling you would help someone abuse g1t. Honest mistakes happen: a build that looked like a miner, a script that ran too hard. If you think we got it wrong, write to [hey@flagon.io](mailto:hey@flagon.io) and a person will look at it.
+We'll tell you what we did and why, unless the law stops us or telling you would help someone abuse g1t. Honest mistakes happen: a build that looked like a miner, a script that ran too hard. If you think we got it wrong, write to [support@g1t.sh](mailto:support@g1t.sh) and a person will look at it.
 
 ## Reporting abuse
 
-To report something on g1t that breaks this policy, write to [hey@flagon.io](mailto:hey@flagon.io) with links to what you found and why it's a problem. For security vulnerabilities in g1t itself, use [hey@flagon.io](mailto:hey@flagon.io) instead.
+To report something on g1t that breaks this policy, write to [support@g1t.sh](mailto:support@g1t.sh) with links to what you found and why it's a problem. For security vulnerabilities in g1t itself, use [support@g1t.sh](mailto:support@g1t.sh) instead.

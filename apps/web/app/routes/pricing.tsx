@@ -158,7 +158,7 @@ const FAQ: { q: string; a: string }[] = [
 ];
 
 /** The ways to reach g1t about an enterprise account. */
-const ENTERPRISE_MAIL = "mailto:hey@flagon.io?subject=Enterprise%20billing%20for%20g1t";
+const ENTERPRISE_MAIL = "mailto:support@g1t.sh?subject=Enterprise%20billing%20for%20g1t";
 
 const HOW = [
   {

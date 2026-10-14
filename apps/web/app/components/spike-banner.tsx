@@ -57,7 +57,7 @@ export function SpikeBanner({
         <p className={compact ? "text-xs text-muted" : "mt-3 text-sm text-muted"}>An owner chooses Keep going or Stop on Billing.</p>
       ) : (
         <p className={compact ? "text-xs text-muted" : "mt-3 text-sm text-muted"}>
-          Write to <a href="mailto:hey@flagon.io" className="underline underline-offset-2">hey@flagon.io</a> to have it looked at.
+          Write to <a href="mailto:support@g1t.sh" className="underline underline-offset-2">support@g1t.sh</a> to have it looked at.
         </p>
       )}
       {!compact && spike && (

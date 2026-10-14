@@ -28,7 +28,7 @@ The short version: we collect what we need to run a git platform for you and you
 
 ### What agents do
 
-When a coding agent you connect records its work on g1t, we keep a **session**: what it was asked, the steps and tools it reports, what it wrote, which model it says it used, and how it ended. Credentials are removed from what is recorded. When you ask g1t a question, the conversation is kept with your direct message with @g1t. A session is as visible as its project: **on a public project, anyone can read it**. Workflow and check logs are kept the same way.
+When a coding agent you connect records its work on g1t, we keep a **session**: what it was asked, the steps and tools it reports, what it wrote, which model it says it used, and how it ended. We attempt to redact recognizable credentials from recorded tool details, but redaction cannot catch every secret or sensitive value. Review what your agent sends, especially for public projects, and revoke any credential exposed in a session. When you ask g1t a question, the conversation is kept with your direct message with @g1t. A session is as visible as its project: **on a public project, anyone can read it**. Workflow and check logs are kept the same way.
 
 To catch cryptocurrency mining, every sandbox samples its own CPU use, disk and network activity, and the command lines of the processes it runs. These measurements are used only for abuse detection.
 
@@ -62,6 +62,8 @@ If you email support, security, privacy or billing, we keep the conversation, so
 
 Our hosting provider, Cloudflare, sees every request to g1t, including your IP address, browser and the address you visited, to deliver it and to protect g1t from attacks. Our servers keep request logs for debugging and security in Cloudflare Workers Logs, which deletes them after 7 days.
 
+The email sign-up form uses **Cloudflare Turnstile** to distinguish people from automated traffic. The widget sends browser and device signals to Cloudflare; our server sends the resulting verification token and, when available, your IP address to Cloudflare to validate the check. See [Cloudflare's Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/).
+
 ## Cookies and browser storage
 
 g1t uses the cookies it needs to work, and one analytics cookie. There are **no advertising or cross-site tracking cookies**.
@@ -94,7 +96,7 @@ We use your information to:
 - answer you when you write to us;
 - improve g1t, using our own records of how it is used and the site analytics [above](#how-the-site-is-used). We don't use your private content to train AI models.
 
-If you're in the European Economic Area or the United Kingdom, our legal bases are: **performing our contract with you** (running the service you signed up for), **our legitimate interests** (keeping g1t secure, preventing abuse, and improving it, balanced against your rights), and **legal obligations** (such as keeping tax records).
+If you're in the European Economic Area or the United Kingdom, our legal bases are: **performing our contract with you** (running the service you signed up for), **our legitimate interests** (keeping g1t secure, preventing abuse, and improving it, balanced against your rights), and **legal obligations** (such as keeping tax records). For optional analytics where we ask permission, we rely on **your consent**. You can withdraw it at any time through **Cookie choices** in the footer, without affecting processing that was lawful before you withdrew it.
 
 **We don't sell your personal information, and we don't share it for advertising.**
 
@@ -102,7 +104,7 @@ If you're in the European Economic Area or the United Kingdom, our legal bases a
 
 We share information only to run g1t, at your direction, or when the law requires it.
 
-- **Service providers ("subprocessors")** that run parts of g1t for us, under contracts that limit them to doing so: Cloudflare (hosting, storage, databases, sandboxes, sending email and search), Stripe (payments and tax), HeyCatch (site analytics), Expo (notifications to the phone app) and Google (our mailboxes). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
+- **Service providers ("subprocessors")** that run parts of g1t for us: Cloudflare (hosting, storage, databases, sandboxes, sending email and search), Stripe (payments and tax), HeyCatch (site analytics), Expo (notifications to the phone app) and Google (our mailboxes). The [subprocessors](/policies/subprocessors) page lists them and what each receives.
 - **Services you connect.** When you connect an AI provider, an issue tracker, error tracking or a webhook, or let your sandboxes reach a host, we send them what that connection needs, because you asked us to.
 - **Other people on g1t**, as your settings allow: your workspace's members, and everyone for public projects and your public profile.
 - **Vulnerability databases.** To find vulnerable dependencies, we send the names and versions of packages in your lockfiles to OSV.dev, an open database run by Google. Nothing else about you or your repository is sent.
@@ -135,11 +137,11 @@ Wherever you live, you can:
 
 If you're in the EEA, the UK or another place with similar laws (such as under the GDPR), you also have the right to object to processing based on legitimate interests, and to complain to your data protection authority. If you're a California resident, you have the right to know what we collect, to delete it, to correct it, and not to be treated differently for using these rights. We don't sell or share personal information as California law defines those words.
 
-To use any of these rights, write to [hey@flagon.io](mailto:hey@flagon.io) from the email address on your account. We'll answer within 30 days. We may need to confirm it's you before we act.
+To use any of these rights, write to [support@g1t.sh](mailto:support@g1t.sh) from the email address on your account. We'll respond without undue delay and within one month, or sooner if applicable law requires. If a lawful extension is needed, we'll explain why and when to expect a response within that initial period. We may need to confirm it's you before we act.
 
 ## Where your information is
 
-g1t runs on Cloudflare's global network, so your information may be processed in the United States and other countries where Cloudflare operates, which may have different data protection laws from yours. Flagon is based in the United States. Where the law requires it, we rely on the European Commission's Standard Contractual Clauses (and their UK equivalent) with our providers for these transfers.
+g1t runs on Cloudflare's global network, so your information may be processed in the United States and other countries where Cloudflare operates, which may have different data protection laws from yours. Flagon is based in the United States. International transfers must meet the safeguards required by applicable law. Contact [support@g1t.sh](mailto:support@g1t.sh) for information about the safeguards applicable to your data and how to obtain a copy.
 
 ## Security
 
@@ -147,7 +149,7 @@ We protect your information with encryption in transit, encryption of secrets at
 
 ## Children
 
-g1t isn't meant for children under 13, and we don't knowingly collect information from them. If you believe a child under 13 has an account, write to [hey@flagon.io](mailto:hey@flagon.io) and we'll delete it.
+g1t isn't meant for children under 13, and we don't knowingly collect information from them. If you believe a child under 13 has an account, write to [support@g1t.sh](mailto:support@g1t.sh) and we'll delete it.
 
 ## Changes to this policy
 
@@ -155,6 +157,6 @@ When we change this policy, we'll update the date on the [policies](/policies) p
 
 ## Contact
 
-Questions about privacy, or a request about your information: [hey@flagon.io](mailto:hey@flagon.io).
+Questions about privacy, or a request about your information: [support@g1t.sh](mailto:support@g1t.sh).
 
 Flagon, Inc.

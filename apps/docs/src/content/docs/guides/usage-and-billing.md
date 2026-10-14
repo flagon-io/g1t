@@ -839,7 +839,7 @@ have a 100% discount. Their usage is shown at price and kept apart from
 what customers pay.
 
 Each change is made by g1t staff and recorded with who made it and why. To
-ask for one, write to [hey@flagon.io](mailto:hey@flagon.io).
+ask for one, write to [support@g1t.sh](mailto:support@g1t.sh).
 
 ## Earlier plans
 

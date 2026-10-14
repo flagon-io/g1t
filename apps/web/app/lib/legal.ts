@@ -42,16 +42,15 @@ export function copyright(now: Date = new Date()): string {
 
 /**
  * Where people reach g1t. Each must be a real, watched mailbox. For now
- * every topic goes to Flagon's one address; give a topic its own address
- * here once the g1t.sh aliases exist.
+ * every topic goes to support@g1t.sh, an alias for support@flagon.io.
  */
 export const CONTACT = {
-  support: "hey@flagon.io",
-  security: "hey@flagon.io",
-  privacy: "hey@flagon.io",
-  billing: "hey@flagon.io",
-  abuse: "hey@flagon.io",
-  legal: "hey@flagon.io",
+  support: "support@g1t.sh",
+  security: "support@g1t.sh",
+  privacy: "support@g1t.sh",
+  billing: "support@g1t.sh",
+  abuse: "support@g1t.sh",
+  legal: "support@g1t.sh",
 };
 
 export type Policy = {
@@ -90,17 +89,21 @@ export const POLICIES: Policy[] = [
 ];
 
 /**
- * The policies are drafts until g1t's general launch: while this is true,
- * the policies index and every policy page say so at the top
- * (components/policies-draft.tsx). Set it to false to take the note down.
+ * Publication approved on 2026-10-14. Set true only when intentionally
+ * presenting the policies as drafts (components/policies-draft.tsx).
  */
-export const POLICIES_DRAFT = true;
+export const POLICIES_DRAFT = false;
 
 /** When any policy last changed, `YYYY-MM-DD`. */
-export const POLICIES_UPDATED = "2026-10-13";
+export const POLICIES_UPDATED = "2026-10-14";
 
 /** Every change to the policies, newest first. */
 export const POLICY_HISTORY: { date: string; change: string }[] = [
+  {
+    date: "2026-10-14",
+    change:
+      "Removed the draft banner. Standardized contact addresses on support@g1t.sh and named Delaware in the governing-law clause. Clarified automatic renewal, consumer cancellation and refund rights, and consent for changes where required. Privacy Policy: clarified analytics consent and the limits of credential redaction; removed unverified assurances about provider contracts and transfer arrangements. Privacy Policy and Subprocessors: Cloudflare Turnstile protects email sign-up.",
+  },
   {
     date: "2026-10-13",
     change:

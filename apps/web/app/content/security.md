@@ -58,7 +58,7 @@ We'd rather tell you than have you assume. **Single sign-on is not available yet
 
 ## Responsible disclosure
 
-If you've found a security problem in g1t, please tell us at **[hey@flagon.io](mailto:hey@flagon.io)**. Our [security.txt](/.well-known/security.txt) says the same.
+If you've found a security problem in g1t, please tell us at **[support@g1t.sh](mailto:support@g1t.sh)**. Our [security.txt](/.well-known/security.txt) says the same.
 
 ### What to send
 
@@ -74,7 +74,7 @@ What you found, where, how to reproduce it, and what an attacker could do with i
 
 ### Out of scope
 
-- Apps customers deploy to g1t.page, and the content of customers' repositories: report those to their owners, or to [hey@flagon.io](mailto:hey@flagon.io) if they're harmful.
+- Apps customers deploy to g1t.page, and the content of customers' repositories: report those to their owners, or to [support@g1t.sh](mailto:support@g1t.sh) if they're harmful.
 - Denial of service, load testing, and spam.
 - Social engineering of Flagon staff or customers, and physical attacks.
 - Reports from automated scanners without a demonstrated impact, missing headers or best practices without a way to exploit them, and self-XSS.
@@ -105,4 +105,4 @@ For a vulnerability that isn't fixed yet, **write to us first**: a public pull r
 
 ### Safe harbour
 
-If you act in good faith and follow this policy, we consider your research authorized. We won't pursue legal action against you or report you to law enforcement for it, and if someone else brings a claim against you for research that followed this policy, we'll make it known that it was authorized. If you're unsure whether something is in scope or allowed, ask us first at [hey@flagon.io](mailto:hey@flagon.io).
+If you act in good faith and follow this policy, we consider your research authorized. We won't pursue legal action against you or report you to law enforcement for it, and if someone else brings a claim against you for research that followed this policy, we'll make it known that it was authorized. If you're unsure whether something is in scope or allowed, ask us first at [support@g1t.sh](mailto:support@g1t.sh).
