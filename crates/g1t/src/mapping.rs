@@ -314,6 +314,11 @@ pub static COMMANDS: &[Mapping] = &[
         command: "push",
         ops: &[],
     },
+    // The site's downloads, not the REST API.
+    Mapping {
+        command: "upgrade",
+        ops: &[],
+    },
 ];
 
 /// The first command that calls each operation, for `g1t api --list`.

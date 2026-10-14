@@ -1134,6 +1134,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("add_comment", Scope::IssuesWrite),
     ("edit_comment", Scope::IssuesWrite),
     ("delete_comment", Scope::IssuesWrite),
+    ("react", Scope::IssuesWrite),
     ("create_commit_comment", Scope::IssuesWrite),
     ("update_commit_comment", Scope::IssuesWrite),
     ("delete_commit_comment", Scope::IssuesWrite),

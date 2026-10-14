@@ -1320,12 +1320,13 @@ dependencies = [
 
 [[package]]
 name = "g1t"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anstyle-query",
  "base64 0.22.1",
  "clap",
  "clap_complete",
+ "ed25519-dalek",
  "flate2",
  "hex",
  "jaq-core",

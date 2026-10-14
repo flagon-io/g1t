@@ -1,7 +1,7 @@
 import { Bot, ExternalLink, GitCommitHorizontal, GitMerge } from "lucide-react";
 import { Form, Link, redirect } from "react-router";
 
-import { AGENT_MODES, type Pull, PROVIDERS, workOwner } from "@g1t/contracts";
+import { AGENT_MODES, type Pull, PROVIDERS, REACTIONS, workOwner } from "@g1t/contracts";
 
 import type { Route } from "./+types/issue";
 import { excerpt, page } from "../../lib/meta";
@@ -39,7 +39,8 @@ import { useRefreshWhile } from "../../lib/refresh";
 import { DetailsDisclosure, detailsSummary } from "../../components/details-disclosure";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
-import { DecisionList, IntegrationFailure, IssueWorkPanel, StartSessionDialog } from "../../components/coordination";
+import { DecisionList, IntegrationFailure, IssueWorkPanel, StartSessionDialog, TimelineSession } from "../../components/coordination";
+import { Reactions } from "../../components/reactions";
 import { parseBlockedBy, resolutionOf } from "../../lib/coordination";
 
 
@@ -172,6 +173,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         body: String(form.get("body") ?? ""),
       });
       return result.ok ? null : { error: result.error.message };
+    }
+    // A reaction to the issue or one of its comments, or taking one back.
+    case "react": {
+      const content = REACTIONS.find((one) => one.content === form.get("content"))?.content;
+      if (!content) return { error: "Pick a reaction.", action: "react" };
+      const result = await work.react(user, path, number, {
+        commentId: String(form.get("comment") ?? "") || undefined,
+        content,
+        remove: form.get("remove") === "1",
+      });
+      return result.ok ? null : { error: result.error.message, action: "react" };
     }
     case "assign": {
       const result = await work.updateIssue(user, path, number, {
@@ -383,10 +395,15 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </Link>
         )}
 
-        {issue.body && (
+        {issue.body ? (
           <div className={`${issue.resolvedBy != null ? "mt-5" : "lg:mt-5"} rounded-xl border border-line bg-surface p-4 sm:p-5`}>
             <Markdown source={issue.body} repo={{ namespace: params.owner, name: params.repo }} />
+            <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-4" />
           </div>
+        ) : (
+          (loaderData.reactions?.length ?? 0) > 0 && (
+            <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-3 lg:mt-5" />
+          )
         )}
 
         <div className="mt-10 flex items-baseline justify-between">
@@ -437,6 +454,10 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
               comments={comments}
               base={base}
               viewerId={viewer?.id ?? null}
+              viewerName={viewer?.username ?? null}
+              extra={(loaderData.sessionTrees ?? [])
+                .filter((session) => !session.parentId)
+                .map((session) => ({ id: session.id, at: session.startedAt, node: <TimelineSession session={session} base={base} /> }))}
               canModerate={loaderData.canModerate}
               failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
             />
@@ -463,7 +484,7 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         </div>
         <div className="mt-2">
           {/* A refused comment edit says so under the comment. */}
-          {!(actionData && ("comment" in actionData || ("action" in actionData && (actionData.action === "blocked-by" || actionData.action === "start-session")))) && (
+          {!(actionData && ("comment" in actionData || ("action" in actionData && (actionData.action === "blocked-by" || actionData.action === "start-session" || actionData.action === "react")))) && (
             <ErrorText>{actionData?.error}</ErrorText>
           )}
         </div>
@@ -530,9 +551,9 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           <ul className="mt-2 space-y-1.5 text-sm">
             {issue.assignees.map((name) => (
               <li key={name} className="flex items-center gap-2 px-1">
-                <Avatar name={name} size={20} />
+                <Avatar name={name} size={20} agent={name === "g1t"} />
                 <span className="grow truncate font-mono text-xs">
-                  <PersonLink name={name} className="hover:underline" />
+                  {name === "g1t" ? "g1t" : <PersonLink name={name} className="hover:underline" />}
                 </span>
               </li>
             ))}
@@ -557,6 +578,22 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
 
           {viewer && can.triage && open && (
             <div className="mt-3 space-y-2">
+              {/* g1t takes it on in a session on the workspace's Claude, as whoever assigned it. */}
+              {loaderData.agentSetup && !issue.assignees.includes("g1t") && (
+                <Form method="post">
+                  <input type="hidden" name="action" value="assign" />
+                  {issue.assignees.map((name) => (
+                    <input key={name} type="hidden" name="assignee" value={name} />
+                  ))}
+                  <input type="hidden" name="assignee" value="g1t" />
+                  <div className="*:w-full">
+                    <SubmitButton variant="outline" name="who" value="g1t" pending="Assigning…">
+                      <Bot size={14} />
+                      Assign to g1t
+                    </SubmitButton>
+                  </div>
+                </Form>
+              )}
               {!issue.assignees.includes(viewer.username) && (
                 <Form method="post">
                   <input type="hidden" name="action" value="assign" />

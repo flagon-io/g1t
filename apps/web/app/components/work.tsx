@@ -1,5 +1,5 @@
 import { Bot, CircleCheck, CircleSlash, Pencil, Trash2 } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import { type CSSProperties, Fragment, type ReactNode } from "react";
 import { Form, Link } from "react-router";
 
 import type { AgentRef, Comment, Issue, Pull, State } from "@g1t/contracts";
@@ -8,6 +8,7 @@ import { mayChangeComment } from "../lib/comments";
 import { chipStyle } from "../lib/labels";
 import { repoAt } from "../lib/markdown-plugins";
 import { Markdown } from "./markdown";
+import { Reactions } from "./reactions";
 import { IssueIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
 import { ErrorText, SubmitButton, TimeAgo } from "./ui";
@@ -254,7 +255,9 @@ export function PersonLink({
  * wrote. The author's avatar sits beside it, as on any forge.
  */
 export function TimelineItem({
+  id,
   author,
+  bot = false,
   agent,
   action,
   at,
@@ -262,7 +265,11 @@ export function TimelineItem({
   aside,
   children,
 }: {
+  /** Its anchor, so a link can point at it (`#cmt_…`). */
+  id?: string;
   author: string;
+  /** g1t, or an agent in someone's harness: drawn as an agent, with no profile to link to. */
+  bot?: boolean;
   /**
    * Set when one of the workspace's former agents wrote it, as itself:
    * shown by its name with an Agent badge, and whom it acted for, in place
@@ -282,12 +289,12 @@ export function TimelineItem({
     agent ? (
       <Avatar name={agent.ref.displayName} agent size={size} />
     ) : (
-      <Avatar name={author} size={size} />
+      <Avatar name={author} size={size} agent={bot} />
     );
   return (
-    <div className="flex gap-3">
+    <div id={id} className="flex scroll-mt-20 gap-3">
       <span className="mt-1 hidden shrink-0 sm:block">
-        {agent ? (
+        {agent || bot ? (
           face(32)
         ) : (
           <PersonLink name={author} label={`${author}'s profile`}>
@@ -301,6 +308,8 @@ export function TimelineItem({
             <span className="sm:hidden">{face(18)}</span>
             {agent ? (
               <AgentName agent={agent.ref} />
+            ) : bot ? (
+              <span className="font-medium text-fg">{author}</span>
             ) : (
               <PersonLink name={author} className="font-medium text-fg hover:underline" />
             )}
@@ -555,17 +564,23 @@ function CommentActions({
   );
 }
 
+/** Something else in a conversation, put among its comments by when it happened: a session, say. */
+export type TimelineExtra = { id: string; at: string; node: ReactNode };
+
 /**
  * The conversation of an issue or a pull request, oldest first: what
- * people and agents wrote, and between those, what happened.
+ * people and agents wrote, and between those, what happened, with
+ * `extra` (its sessions) where each happened.
  */
 export function CommentList({
   comments,
   review,
   base,
   viewerId,
+  viewerName = null,
   canModerate = false,
   failed,
+  extra = [],
 }: {
   comments: Comment[];
   review?: Review;
@@ -577,10 +592,32 @@ export function CommentList({
   canModerate?: boolean;
   /** Why editing or deleting a comment was refused, under that comment. */
   failed?: { comment: string; error?: string | null } | null;
+  /** The signed-in viewer's username, who may react; none to only show reactions. */
+  viewerName?: string | null;
+  extra?: TimelineExtra[];
 }) {
+  // Each extra goes before the first comment written after it.
+  const later = [...extra].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const before = (at: string) => {
+    const due: TimelineExtra[] = [];
+    while (later.length > 0 && Date.parse(later[0].at) <= Date.parse(at)) due.push(later.shift()!);
+    return due.map((one) => <Fragment key={one.id}>{one.node}</Fragment>);
+  };
   return (
     <>
-      {comments.map((comment) => {
+      {comments.map((comment) => (
+        <Fragment key={comment.id}>
+          {before(comment.createdAt)}
+          {entry(comment)}
+        </Fragment>
+      ))}
+      {later.map((one) => (
+        <Fragment key={one.id}>{one.node}</Fragment>
+      ))}
+    </>
+  );
+
+  function entry(comment: Comment) {
         if (comment.kind === "event") {
           return <TimelineEvent key={comment.id} comment={comment} base={base} filesUrl={review?.changesUrl} />;
         }
@@ -593,6 +630,7 @@ export function CommentList({
         return (
           <TimelineItem
             key={comment.id}
+            id={comment.id}
             author={comment.author.username}
             agent={
               comment.agent && {
@@ -626,14 +664,13 @@ export function CommentList({
             }
           >
             {comment.body && <Markdown source={comment.body} repo={repoAt(base)} />}
+            <Reactions reactions={comment.reactions} commentId={comment.id} viewer={viewerName} className="mt-3" />
             {(can.edit || can.delete) && (
               <CommentActions comment={comment} can={can} error={failed?.comment === comment.id ? failed.error : null} />
             )}
           </TimelineItem>
         );
-      })}
-    </>
-  );
+  }
 }
 
 /** Where a signed-in person writes a comment, or a review. */

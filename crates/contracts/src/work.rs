@@ -758,6 +758,105 @@ impl Verdict {
     }
 }
 
+/// An emoji reaction to an issue, a pull request or a comment: the same
+/// eight as everywhere else people react to code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ReactionContent {
+    #[serde(rename = "+1")]
+    PlusOne,
+    #[serde(rename = "-1")]
+    MinusOne,
+    #[serde(rename = "laugh")]
+    Laugh,
+    #[serde(rename = "hooray")]
+    Hooray,
+    #[serde(rename = "confused")]
+    Confused,
+    #[serde(rename = "heart")]
+    Heart,
+    #[serde(rename = "rocket")]
+    Rocket,
+    /// g1t's: it has seen what it was asked and is on it.
+    #[serde(rename = "eyes")]
+    Eyes,
+}
+
+impl ReactionContent {
+    pub const ALL: [ReactionContent; 8] = [
+        ReactionContent::PlusOne,
+        ReactionContent::MinusOne,
+        ReactionContent::Laugh,
+        ReactionContent::Hooray,
+        ReactionContent::Confused,
+        ReactionContent::Heart,
+        ReactionContent::Rocket,
+        ReactionContent::Eyes,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReactionContent::PlusOne => "+1",
+            ReactionContent::MinusOne => "-1",
+            ReactionContent::Laugh => "laugh",
+            ReactionContent::Hooray => "hooray",
+            ReactionContent::Confused => "confused",
+            ReactionContent::Heart => "heart",
+            ReactionContent::Rocket => "rocket",
+            ReactionContent::Eyes => "eyes",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<ReactionContent> {
+        ReactionContent::ALL.into_iter().find(|content| content.as_str() == name.trim())
+    }
+}
+
+/// Everyone who reacted one way to the same thing.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReactionGroup {
+    pub content: ReactionContent,
+    pub count: u32,
+    /// Their usernames, first to react first: `g1t` for g1t.
+    pub users: Vec<String>,
+}
+
+/// Groups `(content, username)` pairs, oldest first, the way they are
+/// shown: in [`ReactionContent::ALL`]'s order, each with its people.
+pub fn group_reactions<'a>(pairs: impl IntoIterator<Item = (ReactionContent, &'a str)>) -> Vec<ReactionGroup> {
+    let mut groups: Vec<ReactionGroup> = Vec::new();
+    for (content, user) in pairs {
+        match groups.iter_mut().find(|group| group.content == content) {
+            Some(group) => {
+                if !group.users.iter().any(|known| known == user) {
+                    group.count += 1;
+                    group.users.push(user.to_owned());
+                }
+            }
+            None => groups.push(ReactionGroup { content, count: 1, users: vec![user.to_owned()] }),
+        }
+    }
+    groups.sort_by_key(|group| group.content);
+    groups
+}
+
+/// `react`: `actor` reacts with `content` to comment `comment_id` on issue
+/// or pull request `number`, or to its description when `comment_id` is
+/// unset; with `remove`, takes that reaction back. Anyone who can read the
+/// repository may. Returns `Outcome<Vec<ReactionGroup>>`: what it has now.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReactArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub number: u32,
+    #[serde(default)]
+    pub comment_id: Option<String>,
+    pub content: ReactionContent,
+    #[serde(default)]
+    pub remove: bool,
+}
+
 /// What an entry in a conversation is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -806,6 +905,9 @@ pub struct Comment {
     /// approvals or code owners, and never blocks a merge.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub advisory: bool,
+    /// How people (and g1t) reacted to it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reactions: Vec<ReactionGroup>,
 }
 
 impl Comment {
@@ -910,6 +1012,9 @@ pub struct IssueDetail {
     /// Every pull request made against it, oldest first.
     pub pulls: Vec<Pull>,
     pub comments: Vec<Comment>,
+    /// How people (and g1t) reacted to its description.
+    #[serde(default)]
+    pub reactions: Vec<ReactionGroup>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -918,6 +1023,9 @@ pub struct PullDetail {
     /// The issue it is for, if any.
     pub issue: Option<Issue>,
     pub comments: Vec<Comment>,
+    /// How people (and g1t) reacted to its description.
+    #[serde(default)]
+    pub reactions: Vec<ReactionGroup>,
     /// The latest record against its head: the merge queue taking it out,
     /// or (from before checks were workflows) a run of its issue's commands.
     pub checks: Option<CheckRun>,
