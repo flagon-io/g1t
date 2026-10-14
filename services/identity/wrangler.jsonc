@@ -29,6 +29,9 @@
 	// moves what it keeps under the old slug.
 	"services": [
 		{ "binding": "EVENTS", "service": "g1t-events" },
+		{ "binding": "CHAT", "service": "g1t-chat" },
+		{ "binding": "NOTIFY", "service": "g1t-notify" },
+		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
 		// Deleting a workspace counts what goes with it, and has billing
 		// settle it first; staff restores and purges are recorded in sudo's
 		// audit log, which billing keeps (src/deletion.rs).

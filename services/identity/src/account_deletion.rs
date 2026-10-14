@@ -61,7 +61,7 @@ use g1t_contracts::FailureCode;
 use g1t_contracts::Outcome;
 use g1t_contracts::User;
 use g1t_contracts::account_deletion::*;
-use g1t_contracts::events::{UserDeleted, UserDeleting, UserRestored};
+use g1t_contracts::events::{UserDeleting, UserRestored};
 use g1t_contracts::identity::{UserArgs, protected_names};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
@@ -884,18 +884,25 @@ impl Identity {
     /// Removes a deleted account for good: see the module docs.
     async fn purge_account(&self, row: &DeletedRow) -> Result<()> {
         let now = rfc3339(now_ms());
-        let values = [row.id.as_str(), row.username.as_str(), row.deleted_at.as_str(), now.as_str()];
-        let mut batch = Vec::new();
+        let values = [
+            row.id.as_str(),
+            row.username.as_str(),
+            row.deleted_at.as_str(),
+            now.as_str(),
+        ];
+        let mut batch = self.purge_job_statements(
+            "user",
+            &row.id,
+            serde_json::json!({"username": row.username, "avatar": row.avatar}),
+        )?;
         for (sql, binds) in purge_statements() {
-            let binds: Vec<JsValue> = values[..binds].iter().map(|value| JsValue::from(*value)).collect();
+            let binds: Vec<JsValue> = values[..binds]
+                .iter()
+                .map(|value| JsValue::from(*value))
+                .collect();
             batch.push(self.db.prepare(sql).bind(&binds)?);
         }
         self.db.batch(batch).await?;
-        if let Err(error) = self.forget_avatar(row.avatar.clone()).await {
-            worker::console_error!("avatar of {} not removed: {error}", row.username);
-        }
-        self.announce("user.deleted", None, UserDeleted { user_id: row.id.clone(), username: row.username.clone() })
-            .await;
         Ok(())
     }
 }

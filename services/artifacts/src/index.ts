@@ -1,3 +1,4 @@
+import { purgePersonalData } from "./erasure.ts";
 /**
  * The artifacts service: a workspace's spaces and pages, their live documents,
  * history, comments, suggestions, templates and search
@@ -1390,6 +1391,9 @@ class Docs {
     const ids = descendants(all, page.id);
     await this.db.batch(ids.flatMap((id) => [this.db.prepare("DELETE FROM pages_fts WHERE page_id = ?").bind(id), this.db.prepare("DELETE FROM pages WHERE id = ?").bind(id)]));
     this.defer(forgetDocs(this.env, { page_ids: ids }));
+    // Deleted for good: its live document (text and comment threads) goes too, not only the rows.
+    // Its uploads stay: a copy of the page may still show them by URL.
+    for (const id of ids) this.defer(this.room(id).destroy().catch((error) => console.error("docs could not destroy a deleted page's room", id, String(error))));
     return ok(true);
   }
 
@@ -2122,10 +2126,19 @@ class Docs {
     const key = [...random].map((b) => b.toString(16).padStart(2, "0")).join("");
     const id = newId("fil");
     await fileStore(this.env).put(`docs/${key}`, request.body ?? new Uint8Array(), contentType);
-    await this.db
+    try {
+      const inserted = await this.db
       .prepare("INSERT INTO files (id, workspace_id, page_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, found.value.workspace.id, found.value.page.id, key, name, contentType, bytes, this.userKey(viewer!), now())
       .run();
+      if (Number(inserted.meta.changes) === 0) {
+        await fileStore(this.env).delete(`docs/${key}`);
+        return new Response("Upload destination erased", { status: 410 });
+      }
+    } catch (error) {
+      await fileStore(this.env).delete(`docs/${key}`);
+      throw error;
+    }
     const file: DocFile = { id, url: `/docs-files/${key}`, name, content_type: contentType, bytes };
     return Response.json(ok(file));
   }
@@ -2249,6 +2262,7 @@ export default {
     const opened = openD1(env.DB, request);
     const scoped = Object.create(env, { DB: { value: opened.db } }) as Env;
     const args = (await request.json().catch(() => ({}))) as any;
+    if (match[1] === "purge_personal_data") return Response.json(await purgePersonalData(env, args));
     try {
       // Folios first (src/folios/rpc.ts), then Docs' pages.
       const folio = folioHandler(match[1]!);

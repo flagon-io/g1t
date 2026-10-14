@@ -8,6 +8,7 @@ export default [
   route("workspaces/deleted", "routes/deleted-workspaces.tsx"),
   route("workspaces/:slug", "routes/workspace.tsx"),
   route("workspaces/:slug/abuse", "routes/workspace-abuse.tsx"),
+  route("privacy", "routes/privacy.tsx"),
   route("users/deleted", "routes/deleted-accounts.tsx"),
   route("users/:username", "routes/user.tsx"),
   route("enterprises", "routes/enterprises.tsx"),

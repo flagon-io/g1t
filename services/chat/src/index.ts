@@ -1,3 +1,4 @@
+import { purgePersonalData } from "./erasure.ts";
 /**
  * The chat service: a workspace's channels, direct messages, threads and
  * messages. Conversations are between people (docs.g1t.sh/guides/chat/);
@@ -1813,6 +1814,7 @@ export default {
     }
     const match = url.pathname.match(/^\/rpc\/([a-z0-9_]+)$/);
     if (request.method !== "POST" || !match) return new Response("Not found\n", { status: 404 });
+    if (match[1] === "purge_personal_data") return Response.json(await purgePersonalData(env, await request.json()));
     // A replica near the caller when it asks for one (@g1t/contracts d1.ts).
     const opened = openD1(env.DB, request);
     const service = new Chat(Object.create(env, { DB: { value: opened.db } }) as Env, (work) => ctx.waitUntil(work));

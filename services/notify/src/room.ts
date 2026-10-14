@@ -30,7 +30,30 @@ export class Room extends DurableObject<RoomEnv> {
   constructor(ctx: DurableObjectState, env: RoomEnv) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    this.sql.exec("CREATE TABLE IF NOT EXISTS erased (user_id TEXT PRIMARY KEY)");
+    this.sql.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
     this.sql.exec(`CREATE TABLE IF NOT EXISTS people (user_id TEXT PRIMARY KEY, at INTEGER NOT NULL, presence TEXT NOT NULL, json TEXT NOT NULL)`);
+  }
+
+  /**
+   * The workspace was purged: the people it knows, for their feeds to be
+   * cleared. Its slug can be made again, so the mark is a time: a word
+   * said before it, arriving late, is refused; a new workspace's is not.
+   */
+  async eraseMembers(): Promise<string[]> {
+    this.sql.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('purged_at', ?)", String(Date.now()));
+    return this.sql.exec<{ user_id: string }>("SELECT user_id FROM people").toArray().map(r => r.user_id);
+  }
+
+  /** Takes one person off the purged workspace's list, once their feed is cleared. Not a ban: they may join a new one. */
+  async dropPerson(userId: string): Promise<void> {
+    this.sql.exec("DELETE FROM people WHERE user_id = ?", userId);
+  }
+
+  /** The person was erased, for good: nothing they say is kept again. */
+  async forget(userId: string): Promise<void> {
+    this.sql.exec("INSERT OR IGNORE INTO erased (user_id) VALUES (?)", userId);
+    this.sql.exec("DELETE FROM people WHERE user_id = ?", userId);
   }
 
   private all(): PresenceEntry[] {
@@ -52,6 +75,8 @@ export class Room extends DurableObject<RoomEnv> {
    * a tab that just connected.
    */
   async report(workspace: string, entry: PresenceEntry, snapshot = false): Promise<PresenceEntry[] | null> {
+    const purgedAt = Number(this.sql.exec<{ value: string }>("SELECT value FROM meta WHERE key = 'purged_at'").toArray()[0]?.value ?? 0);
+    if (entry.at <= purgedAt || this.sql.exec("SELECT 1 FROM erased WHERE user_id = ?", entry.user_id).toArray().length) return snapshot ? this.all() : null;
     const before = this.find(entry.user_id);
     // An older word, arriving late, changes nothing.
     if (!before || before.at <= entry.at) {

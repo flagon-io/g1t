@@ -1,3 +1,4 @@
+import { privacy } from "./lib/services.server";
 import { isRouteErrorResponse, Links, Meta, Outlet, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -27,13 +28,14 @@ export const meta: Route.MetaFunction = () => [
 export async function loader({ context }: Route.LoaderArgs) {
   const { email } = requireStaff(context);
   // The sidebar's counts: a service that does not answer shows none.
-  const [incidents, alerts, caps, guard] = await Promise.all([
+  const [incidents, alerts, caps, guard, erasures] = await Promise.all([
     settle(statusAdmin.openCount()),
     settle(admin.costAlerts()),
     settle(admin.spendCaps()),
     settle(admin.platformGuard()),
+    settle(privacy.requests()),
   ]);
-  const counts: NavCounts = { incidents: incidents.ok ? incidents.value : 0 };
+  const counts: NavCounts = { incidents: incidents.ok ? incidents.value : 0, privacy: erasures.ok ? erasures.value.filter(r => !r.closed_at).length : 0 };
   // Every page says times in this zone (components/ui.tsx `When`).
   const { zone, chosen } = context.get(zoneContext);
   // Margin alerts (billing's margin guard): a red bar on every page until they clear.

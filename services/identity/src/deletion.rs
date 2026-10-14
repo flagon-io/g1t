@@ -46,7 +46,7 @@ use g1t_contracts::audit::{
     AuditActor, AuditOutcome, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface,
 };
 use g1t_contracts::billing::CloseWorkspaceArgs;
-use g1t_contracts::events::{WorkspaceDeleted, WorkspaceDeleting, WorkspaceRestored};
+use g1t_contracts::events::{WorkspaceDeleting, WorkspaceRestored};
 use g1t_contracts::identity::*;
 use g1t_contracts::repos::NamespaceCountArgs;
 use g1t_contracts::time::rfc3339;
@@ -685,12 +685,55 @@ impl Identity {
     async fn purge(&self, row: &DeletedRow) -> Result<()> {
         let id = row.id.as_str();
         let by = row.deleted_by.as_deref().unwrap_or_default();
-        self.db
-            .batch(vec![
+        #[derive(Deserialize)]
+        struct Avatar {
+            avatar: Option<String>,
+        }
+        let avatar = self
+            .db
+            .prepare("SELECT avatar FROM workspaces WHERE id = ?")
+            .bind(&[id.into()])?
+            .first::<Avatar>(None)
+            .await?
+            .and_then(|r| r.avatar);
+        // Who notify must clear the workspace from, and every slug its
+        // notifications may name: members as they are now (the batch below
+        // removes them) and the names it had, unless another workspace holds
+        // one now.
+        #[derive(Deserialize)]
+        struct Value {
+            value: String,
+        }
+        let members = self
+            .db
+            .prepare("SELECT user_id AS value FROM workspace_members WHERE workspace_id = ?")
+            .bind(&[id.into()])?
+            .all()
+            .await?
+            .results::<Value>()?
+            .into_iter()
+            .map(|r| r.value)
+            .collect::<Vec<_>>();
+        let old_slugs = self
+            .db
+            .prepare("SELECT old_slug AS value FROM workspace_redirects WHERE workspace_id = ?1 AND old_slug NOT IN (SELECT slug FROM workspaces WHERE id != ?1)")
+            .bind(&[id.into()])?
+            .all()
+            .await?
+            .results::<Value>()?
+            .into_iter()
+            .map(|r| r.value)
+            .collect::<Vec<_>>();
+        let mut batch = self.purge_job_statements(
+            "workspace",
+            id,
+            serde_json::json!({"slug": row.slug, "avatar": avatar, "members": members, "old_slugs": old_slugs}),
+        )?;
+        batch.extend(vec![
                 self.db
                     .prepare(
                         "INSERT OR REPLACE INTO deleted_workspaces (slug, workspace_id, name, deleted_by, deleted_at)
-                         VALUES (?, ?, ?, ?, ?)",
+                         SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM workspaces WHERE id = ?2 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)",
                     )
                     .bind(&[
                         row.slug.as_str().into(),
@@ -704,7 +747,7 @@ impl Identity {
                 self.db
                     .prepare(
                         "INSERT OR IGNORE INTO deleted_workspaces (slug, workspace_id, name, deleted_by, deleted_at)
-                         SELECT old_slug, workspace_id, ?, ?, ? FROM workspace_redirects WHERE workspace_id = ?",
+                         SELECT old_slug, workspace_id, ?, ?, ? FROM workspace_redirects WHERE workspace_id = ?4 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?4 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)",
                     )
                     .bind(&[
                         row.name.as_str().into(),
@@ -713,47 +756,38 @@ impl Identity {
                         id.into(),
                     ])?,
                 self.db
-                    .prepare("DELETE FROM access_tokens WHERE workspace_id = ?")
+                    .prepare("DELETE FROM access_tokens WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 self.db
-                    .prepare("DELETE FROM workspace_members WHERE workspace_id = ?")
+                    .prepare("DELETE FROM workspace_members WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 // Each member's dock pins in it (dock.rs).
                 self.db
-                    .prepare("DELETE FROM dock_pins WHERE workspace_id = ?")
+                    .prepare("DELETE FROM dock_pins WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 // Its teams, their people and the roles they gave (teams.rs).
                 self.db
-                    .prepare("DELETE FROM team_members WHERE team_id IN (SELECT id FROM teams WHERE workspace_id = ?)")
+                    .prepare("DELETE FROM team_members WHERE team_id IN (SELECT id FROM teams WHERE workspace_id = ?1) AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 self.db
-                    .prepare("DELETE FROM repo_grants WHERE principal_kind = 'team' AND principal_id IN (SELECT id FROM teams WHERE workspace_id = ?)")
+                    .prepare("DELETE FROM repo_grants WHERE principal_kind = 'team' AND principal_id IN (SELECT id FROM teams WHERE workspace_id = ?1) AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 self.db
-                    .prepare("DELETE FROM teams WHERE workspace_id = ?")
+                    .prepare("DELETE FROM teams WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 self.db
-                    .prepare("DELETE FROM workspace_redirects WHERE workspace_id = ?")
+                    .prepare("DELETE FROM workspace_redirects WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 // Aliases staff pointed at it lead nowhere now (aliases.rs).
                 self.db
-                    .prepare("DELETE FROM workspace_aliases WHERE workspace_id = ?")
+                    .prepare("DELETE FROM workspace_aliases WHERE workspace_id = ?1 AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND deleted_at IS NOT NULL AND purge_after IS NOT NULL)")
                     .bind(&[id.into()])?,
                 // Only while it is still deleted: a restore a moment ago wins.
                 self.db
-                    .prepare("DELETE FROM workspaces WHERE id = ? AND deleted_at IS NOT NULL")
+                    .prepare("DELETE FROM workspaces WHERE id = ? AND deleted_at IS NOT NULL AND purge_after IS NOT NULL")
                     .bind(&[id.into()])?,
-            ])
-            .await?;
-        self.announce(
-            "workspace.deleted",
-            None,
-            WorkspaceDeleted {
-                workspace_id: row.id.clone(),
-                slug: row.slug.clone(),
-            },
-        )
-        .await;
+            ]);
+        self.db.batch(batch).await?;
         Ok(())
     }
 

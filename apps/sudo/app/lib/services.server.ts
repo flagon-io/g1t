@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 
 import {
   type StatusAdminApi,
+  privacyClient,
   accountsAdminClient,
   billingAdminClient,
   billingClient,
@@ -48,3 +49,5 @@ export const telemetry = telemetryClient(env.TELEMETRY);
 
 /** STAFF_EMAILS, for suggesting staff in the incident roles. */
 export const staffEmails = (): string => env.STAFF_EMAILS ?? "";
+
+export const privacy = privacyClient(env.IDENTITY);

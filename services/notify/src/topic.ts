@@ -28,13 +28,20 @@ export class Topic extends DurableObject<TopicEnv> {
   constructor(ctx: DurableObjectState, env: TopicEnv) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    this.sql.exec("CREATE TABLE IF NOT EXISTS erased (user_id TEXT PRIMARY KEY)");
     this.sql.exec(`CREATE TABLE IF NOT EXISTS watchers (user_id TEXT PRIMARY KEY, repo TEXT NOT NULL, until INTEGER NOT NULL)`);
   }
 
   /** `userId` watches the repository, as `repo` (`owner/name`), until `until` (ms). */
   async watch(userId: string, repo: string, until: number): Promise<void> {
+    if (this.sql.exec("SELECT 1 FROM erased WHERE user_id = ?", userId).toArray().length) return;
     this.sql.exec("INSERT OR REPLACE INTO watchers (user_id, repo, until) VALUES (?, ?, ?)", userId, repo, until);
     this.sql.exec("DELETE FROM watchers WHERE user_id NOT IN (SELECT user_id FROM watchers ORDER BY until DESC LIMIT ?)", MAX_WATCHERS);
+  }
+
+  async forget(userId: string): Promise<void> {
+    this.sql.exec("INSERT OR IGNORE INTO erased (user_id) VALUES (?)", userId);
+    await this.unwatch(userId);
   }
 
   /** `userId` stopped watching it. */

@@ -2142,10 +2142,19 @@ export class Folios {
     const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
     const id = newId("fil");
     await fileStore(this.env).put(`docs/${key}`, request.body ?? new Uint8Array(), contentType);
-    await this.db
+    try {
+      const inserted = await this.db
       .prepare("INSERT INTO folio_files (id, workspace_id, folio_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, ctx.workspace.id, opened.value.row.id, key, name, contentType, bytes, ctx.key, now())
       .run();
+      if (Number(inserted.meta.changes) === 0) {
+        await fileStore(this.env).delete(`docs/${key}`);
+        return new Response("Upload destination erased", { status: 410 });
+      }
+    } catch (error) {
+      await fileStore(this.env).delete(`docs/${key}`);
+      throw error;
+    }
     return Response.json(ok({ id, url: `/docs-files/${key}`, name, content_type: contentType, bytes }));
   }
 

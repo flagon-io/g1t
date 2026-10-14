@@ -21,7 +21,7 @@ and fails if this table and the bindings disagree.
 | `apps/status` | TypeScript | edge | `status.g1t.sh`: probes every minute and keeps incidents | D1 `g1t-status` | `billing`, `repos` |
 | `apps/sudo` | TypeScript | front | g1t.sh's staff console, behind Cloudflare Access | Nothing | `actions`, `billing`, `events`, `identity`, `projects`, `status`, `telemetry` |
 | `apps/docs` | Astro | front | `docs.g1t.sh`, these pages | Nothing | none |
-| `services/identity` | Rust | core | Accounts, sessions, workspaces, members, teams, repository roles, tokens, OAuth, device sign-in, 2FA | D1 `g1t`, the avatars KV | `billing`, `events`, `projects`, `repos` |
+| `services/identity` | Rust | core | Accounts, sessions, workspaces, members, teams, repository roles, tokens, OAuth, device sign-in, 2FA | D1 `g1t`, the avatars KV | `artifacts`, `billing`, `chat`, `events`, `notify`, `projects`, `repos` |
 | `services/repos` | Rust | core | Repositories and git: smart HTTP, pre-receive checks, caches, forks, landing merges, releases, backups | D1 `g1t-repos`, the git store, the git cache KV, the packs and backups buckets | `billing`, `events`, `identity`, `security`, `work` |
 | `services/work` | Rust | core | Issues, pull requests, comments, reviews, labels, milestones, rulesets, checks, statuses, CODEOWNERS, the merge queue | D1 `g1t-work` | `actions`, `events`, `identity`, `repos` |
 | `services/events` | Rust | core | The event bus and log, the audit log, the inbox | D1 `g1t-events`, the `g1t-events` queue and its subscriber queues | `billing`, `identity`, `notify`, `repos`, `work` |

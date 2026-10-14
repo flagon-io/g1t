@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 
 import {
+  privacyClient,
   accountsClient,
   actionsClient,
   advisoriesClient,
@@ -91,3 +92,5 @@ export const folios = foliosClient(ARTIFACTS);
  * metrics and errors. Null where it is not deployed; the pages say so.
  */
 export const telemetry = TELEMETRY ? telemetryClient(TELEMETRY) : null;
+
+export const privacy = privacyClient(env.IDENTITY);

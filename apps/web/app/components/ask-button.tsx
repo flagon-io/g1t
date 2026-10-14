@@ -6,7 +6,8 @@
  * carries it until then. Kept mounted once loaded, so the conversation
  * stays while the panel is closed.
  */
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
+import { useLocation } from "react-router";
 
 import { MarkGlyph } from "./logo";
 import { Button } from "./ui/button";
@@ -20,6 +21,10 @@ const AskSheet = lazy(() => load().then((module) => ({ default: module.AskSheet 
 export function AskButton({ slug }: { slug: string }) {
   const [open, setOpen] = useState(false);
   const [wanted, setWanted] = useState(false);
+  const location = useLocation();
+  // Any completed navigation, including answer citations and the current DM,
+  // reveals its destination. Revalidation and links opened in another tab do not.
+  useEffect(() => setOpen(false), [location.key]);
   const change = (next: boolean) => {
     if (next) setWanted(true);
     setOpen(next);

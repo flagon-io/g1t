@@ -104,6 +104,8 @@ type Tab = { focused: boolean; path: string; at: number; idle?: boolean; workspa
 
 /** Notifications kept for a tab that opens later. */
 const KEPT = 100;
+/** How long after a workspace is purged its counts, seeds and visits, which carry no time, are refused. */
+const ERASED_WORKSPACE_MS = 24 * 60 * 60 * 1000;
 /** Sent with `hello`: the latest few. */
 const HELLO = 20;
 /** The most browsers one person gets pushes on. */
@@ -135,7 +137,78 @@ export class Feed extends DurableObject<FeedEnv> {
     // When the person was last on each workspace's Home page (src/visits.ts).
     this.sql.exec(`CREATE TABLE IF NOT EXISTS visits (workspace TEXT PRIMARY KEY, seen_at INTEGER NOT NULL, previous_at INTEGER)`);
     // The repositories whose pages the person's tabs are watching, until when (src/watch.ts).
+    this.sql.exec("CREATE TABLE IF NOT EXISTS presence_rooms (workspace TEXT PRIMARY KEY)");
     this.sql.exec(`CREATE TABLE IF NOT EXISTS watching (repo_id TEXT PRIMARY KEY, until INTEGER NOT NULL)`);
+  }
+
+  private erased(): boolean { return this.meta("erased") === "1"; }
+
+  /** When `workspace` was purged (RFC 3339), if it was. */
+  private workspaceErasedAt(workspace: string | null | undefined): string | null {
+    return workspace ? this.meta(`erased_workspace:${workspace.toLowerCase()}`) : null;
+  }
+
+  /** Purged within the last day: a count, seed or visit, which carry no time, is a late one from before it. */
+  private workspaceGone(workspace: string | null | undefined): boolean {
+    const at = Date.parse(this.workspaceErasedAt(workspace) ?? "");
+    return Number.isFinite(at) && Date.now() - at < ERASED_WORKSPACE_MS;
+  }
+
+  /** A notification of a purged workspace from before the purge. */
+  private fromErasedWorkspace(notification: Pick<FeedNotification, "workspace" | "created_at">): boolean {
+    return beforeForgetting(notification, this.workspaceErasedAt(notification.workspace));
+  }
+
+  /** A permanent tombstone prevents delayed deliveries or stale sockets recreating a feed. */
+  async erase(userId: string): Promise<{ ok: boolean }> {
+    // Keep cleanup references until remote removals succeed, so any failure is retryable.
+    if (!this.erased()) {
+      this.setMeta("erase_rooms", JSON.stringify([...new Set([...this.memberOf(), ...this.workspaces(), ...this.sql.exec<{ workspace: string }>("SELECT workspace FROM visits UNION SELECT workspace FROM presence_rooms").toArray().map(r => r.workspace)])]));
+      this.setMeta("erased", "1");
+    }
+    for (const socket of this.ctx.getWebSockets()) { try { socket.close(4403, "Account erased"); } catch {} }
+    await this.ctx.storage.deleteAlarm();
+    const rooms = JSON.parse(this.meta("erase_rooms") ?? "[]") as string[];
+    for (const workspace of rooms) {
+      // Without the namespace there is no room to clean.
+      if (!this.env.ROOMS) break;
+      await this.env.ROOMS.get(this.env.ROOMS.idFromName(workspace)).forget(userId);
+    }
+    for (const row of this.sql.exec<{ repo_id: string }>("SELECT repo_id FROM watching").toArray()) {
+      if (!this.env.TOPICS) break;
+      await this.env.TOPICS.get(this.env.TOPICS.idFromName(row.repo_id)).forget(userId);
+    }
+    this.ctx.storage.transactionSync(() => {
+      for (const table of ["notifications", "counts", "subscriptions", "devices", "visits", "watching", "presence_rooms"]) this.sql.exec(`DELETE FROM ${table}`);
+      this.sql.exec("DELETE FROM meta WHERE key != 'erased'");
+    });
+    return { ok: true };
+  }
+
+  /**
+   * A workspace was purged. Its slug can be made again (by the person whose
+   * username it is), so the mark is a time, not a ban: what was said before
+   * it is dropped, and only for a day are counts and seeds without a time
+   * of their own refused (`workspaceGone`).
+   */
+  async eraseWorkspace(workspace: string): Promise<{ ok: boolean }> {
+    if (this.erased()) return { ok: true };
+    workspace = workspace.toLowerCase();
+    this.setMeta(`erased_workspace:${workspace}`, new Date().toISOString());
+    this.sql.exec("DELETE FROM notifications WHERE json_extract(json, '$.workspace') = ?", workspace);
+    this.sql.exec("DELETE FROM meta WHERE key = ?1 OR substr(key, 1, length(?2)) = ?2", `complete:${workspace}`, `forgot:${workspace}:`);
+    const preferences = this.preferences();
+    if (workspace in preferences.workspaces) {
+      const { [workspace]: _gone, ...rest } = preferences.workspaces;
+      this.setMeta("preferences", JSON.stringify({ ...preferences, workspaces: rest }));
+    }
+    this.sql.exec("DELETE FROM counts WHERE workspace = ?", workspace);
+    this.sql.exec("DELETE FROM visits WHERE workspace = ?", workspace);
+    this.sql.exec("DELETE FROM presence_rooms WHERE workspace = ?", workspace);
+    this.setMeta("workspaces", JSON.stringify(this.memberOf().filter(w => w !== workspace)));
+    // Force clients to reload counts instead of retaining the deleted workspace's snapshot.
+    for (const socket of this.ctx.getWebSockets()) { try { socket.close(1012, "Workspace erased"); } catch {} }
+    return { ok: true };
   }
 
   // ── Kept state ──────────────────────────────────────────────────────────
@@ -146,6 +219,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   private setMeta(key: string, value: string): void {
+    if (key !== "erased" && this.erased()) return;
     this.sql.exec("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", key, value);
   }
 
@@ -225,7 +299,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   private memberOf(): string[] {
     try {
-      return cleanWorkspaces(JSON.parse(this.meta("workspaces") ?? "[]"));
+      return cleanWorkspaces(JSON.parse(this.meta("workspaces") ?? "[]")).filter(workspace => !this.workspaceGone(workspace));
     } catch {
       return [];
     }
@@ -237,6 +311,7 @@ export class Feed extends DurableObject<FeedEnv> {
    * anyway (a tab just connected, so a room may have missed the last word).
    */
   private async refresh(options: { closing?: WebSocket; force?: boolean } = {}): Promise<PresenceEntry> {
+    if (this.erased()) return this.entry();
     const now = Date.now();
     // What ran out goes, so nobody is told of it again.
     const kept = this.kept();
@@ -251,6 +326,7 @@ export class Feed extends DurableObject<FeedEnv> {
     }
     const changed = !sameEntry(before, entry);
     if (changed || options.force) {
+      for (const workspace of this.memberOf()) this.sql.exec("INSERT OR IGNORE INTO presence_rooms (workspace) VALUES (?)", workspace);
       this.setMeta("reported", JSON.stringify(entry));
       this.send({ type: "me", me: ownOf(entry, live) }, options.closing);
       // Without an id there is nobody to name: the site always sends one with a socket.
@@ -262,6 +338,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** The next alarm: when a status or Do Not Disturb runs out, or when a person whose last tab closed shows offline. */
   private async schedule(): Promise<void> {
+    if (this.erased()) return;
     const now = Date.now();
     const times = [nextExpiry(this.kept(), now), Number(this.meta("offline_at") ?? 0) || null].filter((at): at is number => at != null && at > now);
     if (times.length) await this.ctx.storage.setAlarm(Math.min(...times));
@@ -269,6 +346,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   override async alarm(): Promise<void> {
+    if (this.erased()) return;
     const offlineAt = Number(this.meta("offline_at") ?? 0);
     if (offlineAt && offlineAt <= Date.now()) this.setMeta("offline_at", "0");
     await this.refresh();
@@ -276,6 +354,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** A tab just connected: everyone hears it is here, and it hears how everyone in its workspace shows. */
   private async connected(socket: WebSocket, workspace: string | null): Promise<void> {
+    if (this.erased()) return;
     this.setMeta("offline_at", "0");
     const entry = await this.refresh({ force: true });
     if (!workspace || !entry.user_id) return;
@@ -316,6 +395,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   override async fetch(request: Request): Promise<Response> {
+    if (this.erased()) return new Response("Account erased", { status: 410 });
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("Expected a WebSocket upgrade\n", { status: 426 });
     }
@@ -354,7 +434,7 @@ export class Feed extends DurableObject<FeedEnv> {
   private applySeed(seed: FeedSeed): void {
     if (typeof seed.inbox_unread === "number") this.setMeta("inbox_unread", String(Math.max(0, Math.floor(seed.inbox_unread))));
     const workspace = seed.workspace?.toLowerCase();
-    if (!workspace || !Array.isArray(seed.per_channel)) return;
+    if (!workspace || this.workspaceGone(workspace) || !Array.isArray(seed.per_channel)) return;
     this.ctx.storage.transactionSync(() => {
       this.sql.exec("DELETE FROM counts WHERE workspace = ?", workspace);
       for (const row of seed.per_channel!.slice(0, 2000)) {
@@ -374,6 +454,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    if (this.erased()) return;
     if (typeof message !== "string" || message.length > 4096) return;
     let frame: Record<string, unknown>;
     try {
@@ -418,6 +499,7 @@ export class Feed extends DurableObject<FeedEnv> {
    * then says offline if no tab came back.
    */
   private async left(socket: WebSocket): Promise<void> {
+    if (this.erased()) return;
     if (this.presenceTabs(socket).length === 0) {
       this.setMeta("offline_at", String(Date.now() + OFFLINE_GRACE_MS));
       await this.schedule();
@@ -446,6 +528,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** Tells the person: open tabs at once, then browsers and phones when none is in front of them. */
   private async tell(notification: FeedNotification, test = false): Promise<number> {
+    if (this.erased() || this.fromErasedWorkspace(notification)) return 0;
     if (!test && !this.keep(notification)) return 0;
     // Somewhere to push: a browser or a phone.
     const subscriptions = this.subscriptionCount() + this.deviceCount();
@@ -503,19 +586,25 @@ export class Feed extends DurableObject<FeedEnv> {
 
   // ── RPC (called by the Worker, src/index.ts) ────────────────────────────
 
+  // Deliveries to an erased person are dropped quietly: the sender did nothing
+  // wrong, and a refusal would only be logged as a failure and retried.
   async notify(value: unknown): Promise<{ ok: boolean }> {
+    if (this.erased()) return { ok: true };
     const notification = cleanNotification(value);
     if (!notification) return { ok: false };
+    if (this.fromErasedWorkspace(notification)) return { ok: true };
     await this.tell(notification);
     return { ok: true };
   }
 
   /** A batch for this person from chat: counts moved, notifications told. */
   async deliver(items: FeedDelivery[]): Promise<{ ok: boolean }> {
+    if (this.erased()) return { ok: true };
     const changed = new Set<string>();
     const told: FeedNotification[] = [];
     for (const item of items) {
       const workspace = String(item.workspace ?? "").toLowerCase();
+      if (item.notification ? this.fromErasedWorkspace({ ...item.notification, workspace }) : this.workspaceGone(workspace)) continue;
       // Of a message from a conversation cleared since: it is gone, so neither counted nor told.
       const channel = item.counts?.channel_id ?? item.notification?.channel_id ?? null;
       if (channel && workspace && item.notification && beforeForgetting(item.notification, this.meta(forgotKey(workspace, channel)))) continue;
@@ -557,6 +646,7 @@ export class Feed extends DurableObject<FeedEnv> {
    * taken back.
    */
   async forgetConversation(workspace: string, channelId: string): Promise<{ ok: boolean; forgotten: number }> {
+    if (this.erased()) return { ok: true, forgotten: 0 };
     const slug = workspace.toLowerCase();
     let forgotten = 0;
     this.ctx.storage.transactionSync(() => {
@@ -571,6 +661,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** The inbox count as it now is (events, after items arrive or are marked): every tab shows it at once. */
   async setInbox(value: number): Promise<{ ok: boolean }> {
+    if (this.erased()) return { ok: true };
     const unread = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
     if (unread === this.inboxUnread()) return { ok: true };
     this.setMeta("inbox_unread", String(unread));
@@ -579,6 +670,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   async subscribe(subscription: PushSubscriptionJson, userAgent: string | null): Promise<{ ok: boolean }> {
+    if (this.erased()) throw new Error("Account erased");
     const endpoint = String(subscription?.endpoint ?? "");
     const { p256dh, auth } = subscription?.keys ?? ({} as PushSubscriptionJson["keys"]);
     if (!/^https:\/\//.test(endpoint) || endpoint.length > MAX_ENDPOINT || typeof p256dh !== "string" || typeof auth !== "string") return { ok: false };
@@ -596,12 +688,14 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   async unsubscribe(endpoint: string): Promise<{ ok: boolean }> {
+    if (this.erased()) return { ok: true };
     this.sql.exec("DELETE FROM subscriptions WHERE endpoint = ?", String(endpoint ?? ""));
     return { ok: true };
   }
 
   /** A phone the app runs on, by its Expo push token; registering it again moves it to the newest. */
   async registerDevice(device: PushDevice): Promise<{ ok: boolean; off?: boolean }> {
+    if (this.erased()) throw new Error("Account erased");
     if (!this.phonePush()) return { ok: false, off: true };
     const clean = cleanDevice(device);
     if (!clean) return { ok: false };
@@ -618,6 +712,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   async unregisterDevice(token: string): Promise<{ ok: boolean }> {
+    if (this.erased()) return { ok: true };
     this.sql.exec("DELETE FROM devices WHERE token = ?", String(token ?? ""));
     return { ok: true };
   }
@@ -634,6 +729,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   async setPreferences(change: unknown): Promise<NotifyPreferences> {
+    if (this.erased()) throw new Error("Account erased");
     const preferences = mergePreferences(this.preferences(), change);
     this.setMeta("preferences", JSON.stringify(preferences));
     this.send({ type: "preferences", preferences });
@@ -642,6 +738,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** Tabs open in `workspace` hear how these people now show (from its room). */
   async presence(workspace: string, people: PresenceEntry[]): Promise<void> {
+    if (this.erased()) return;
     const text = JSON.stringify({ type: "presence", workspace, people, full: false } satisfies FeedEvent);
     for (const socket of this.ctx.getWebSockets()) {
       const tab = socket.deserializeAttachment() as Tab | null;
@@ -656,6 +753,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** The person's own: presence, status, Do Not Disturb. */
   async own(person: { user_id: string; username: string }): Promise<OwnPresence> {
+    if (this.erased()) throw new Error("Account erased");
     this.remember(person);
     const kept = current(this.kept(), Date.now());
     return ownOf(this.entry(), kept);
@@ -663,6 +761,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** A change to the person's own, told to their tabs and to every workspace they are in. */
   async setPresence(person: { user_id: string; username: string }, change: PresenceChange): Promise<OwnPresence> {
+    if (this.erased()) throw new Error("Account erased");
     this.remember(person);
     const kept = applyChange(this.kept(), change, Date.now());
     this.setMeta("presence", JSON.stringify(kept));
@@ -686,6 +785,7 @@ export class Feed extends DurableObject<FeedEnv> {
    * its `owner/name`) for REPO_WATCH_MS. The site checked they may read it.
    */
   async watchRepo(userId: string, repoId: string, repo: string): Promise<{ ok: boolean; until: string | null }> {
+    if (this.erased()) throw new Error("Account erased");
     const topics = this.env.TOPICS;
     if (!topics) return { ok: false, until: null };
     const now = Date.now();
@@ -730,6 +830,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   /** Marks the person's visit to `workspace`'s Home page at `at`; it only moves forward. */
   async markVisit(workspace: string, at: unknown): Promise<{ seen_at: string | null }> {
+    if (this.erased() || this.workspaceGone(workspace)) return { seen_at: null };
     const now = Date.now();
     const next = markVisit(this.visit(workspace), at, now);
     if (next) {
@@ -744,6 +845,7 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   async test(username: string): Promise<{ ok: boolean; pushed: number }> {
+    if (this.erased()) throw new Error("Account erased");
     const pushed = await this.tell(
       {
         id: `test:${crypto.randomUUID()}`,
