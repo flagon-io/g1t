@@ -52,9 +52,9 @@ table is shown.
 | `assign` | assigned | You were assigned, or you are an assignee. |
 | `mention` | mentioned | Someone mentioned you with `@username`, or you were mentioned on it before. |
 | `team_mention` | team mentioned | Someone mentioned a [team](/guides/teams/#mentions) you are in with `@workspace/team`, or a team you are in was mentioned on it before. |
-| `ci_activity` | CI activity | A check, workflow or deployment on your work finished badly, or recovered. |
+| `ci_activity` | CI activity | A check, workflow or deployment on your work finished badly. |
 | `security_alert` | security alert | A scan found new secrets, code scanning alerts or vulnerable dependencies on a repository you look after (one thread per repository and kind; see [Security](#security)), a push of yours that push protection refused, a [vulnerability report](/guides/security/advisories/#private-vulnerability-reporting) sent to a repository you look after, a [bypass request](/guides/security/secret-protection/#delegated-bypass) to review or its answer, or your security digest. The workspace's owners and security managers hear of these; watchers who chose **Security alerts** do too, if they can see findings. |
-| `state_change` | state changed | It was closed, reopened or merged. |
+| `state_change` | state changed | It was closed, reopened or merged, or auto-merge you turned on was turned off. |
 | `author` | your work | You opened it. Also an owner's answer to your [token made for a workspace](/guides/authentication/#create-a-token) waiting for approval, or its revocation. |
 | `comment` | commented | You commented on it. |
 | `manual` | subscribed | You subscribed to it yourself. |
@@ -77,9 +77,10 @@ what it was:
 | A workflow failed on a branch | Whoever pushed the commit it ran on | `ci_activity` | Error |
 | A preview of a pull request failed to deploy | The person the pull request belongs to, and people watching deployments | `ci_activity`, or `subscribed` for watchers | Error |
 | Production failed to deploy | Whoever pushed or started it, and people watching deployments | `ci_activity`, or `subscribed` for watchers | Error |
-| A deployment went live | People watching deployments; after a failure, also whoever was told of the failure | `ci_activity`, or `subscribed` for watchers | Success |
-| A pull request was merged | Everyone subscribed to it, and people watching pull requests | `state_change`, or `subscribed` for watchers | Success |
-| An issue or pull request was closed, or an issue was reopened | Everyone subscribed to it, and people watching its kind | `state_change`, or `subscribed` for watchers | Info |
+| A deployment went live | People watching deployments. It also [settles](#threads-that-settle-themselves) the failure before it | `subscribed` | Success |
+| [Auto-merge](/guides/pull-requests/#auto-merge) was turned off by someone else, or by g1t because the pull request can no longer merge on its own | Whoever turned it on. Not when g1t handed the pull request to the merge queue, which lands it | `state_change` | Needs you |
+| A pull request was merged, or an issue or pull request was closed | Its thread's history, for everyone subscribed to it and people watching its kind; the thread [settles](#threads-that-settle-themselves) at once, so it is neither unread nor pushed to you | `state_change`, or `subscribed` for watchers | Success for a merge, else Info |
+| An issue was reopened | Everyone subscribed to it, and people watching issues | `state_change`, or `subscribed` for watchers | Info |
 | Someone mentioned you with `@username` in a comment | You | `mention` | Info |
 | Someone mentioned a team with `@workspace/team` in a comment, or in an issue or pull request they opened | Everyone in the team and its child teams, when the team's notifications are on and the writer can see the team | `team_mention` | Info |
 | Someone commented on an issue or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
@@ -89,11 +90,35 @@ what it was:
 request for changes always reaches that person. A mention in code or in a
 quoted line does not count.
 
-When a review request to you is removed, that thread moves to Done, since
-it no longer needs you. New activity brings it back, as with any thread.
-
 You only see items about repositories you can read. If you lose access to a
 repository, its items leave your notifications the next time you open them.
+
+## Threads that settle themselves
+
+A thread that leaves you nothing to do moves to Done by itself, read, the
+moment what it told you of is over: a later run passes, the pull request
+merges, the review is no longer asked of you. It leaves your unread count,
+the bell, [Home](/guides/home/)'s **Needs you** and `g1t status`, and
+stays under **Done** with its history. New activity brings it back, as with
+any thread.
+
+| A thread about | Settles when |
+| --- | --- |
+| Anything on an issue or pull request | The pull request is merged or closed, or the issue is closed. A pull request's previews settle with it |
+| Your own thread on an issue or pull request | You comment on it or review it |
+| A review asked of you | The request to you, or to your team, is removed |
+| Checks that failed on your pull request | Its checks pass on its latest commit |
+| A workflow that failed on a branch | That workflow passes on that branch |
+| A deployment that failed | That project's production, or that preview, deploys |
+| A deployment waiting for your review | Its workflow run ends, however it ended |
+| A push protection bypass to review | Someone decides it |
+| A member's token waiting for your approval | An owner approves, denies or revokes it |
+| A workspace invitation | It is accepted, declined or revoked |
+| A repository's security alerts | A scan finds none of that kind open |
+| g1t stopping on a change it made for you | It picks back up, its head moves, a merge is asked for, or it is merged or closed |
+
+What g1t does itself and leaves nothing for you to do is never a
+notification: what landed and what deployed is on [Home](/guides/home/).
 
 ## Subscriptions
 

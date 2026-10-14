@@ -529,6 +529,10 @@ impl Work {
             updated_at: now,
         };
         self.store_ruleset(&ruleset).await?;
+        // What its pull requests need may have changed with it.
+        if let Some(repo_id) = &ruleset.repo_id {
+            self.forget_stages(repo_id).await?;
+        }
         let kind = if before.is_some() { "ruleset.updated" } else { "ruleset.created" };
         self.announce(kind, &ruleset, &a.actor).await;
         if !a.from_api {
@@ -573,6 +577,9 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::NotFound, "Ruleset not found."));
         };
         self.db.prepare("DELETE FROM rulesets WHERE id = ?").bind(&[ruleset.id.as_str().into()])?.run().await?;
+        if let Some(repo_id) = &ruleset.repo_id {
+            self.forget_stages(repo_id).await?;
+        }
         self.announce("ruleset.deleted", &ruleset, &a.actor).await;
         if !a.from_api {
             self.audit_ruleset(&a.actor, &ruleset, "delete_ruleset").await;

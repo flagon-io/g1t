@@ -15,7 +15,8 @@
 //! | `checks.completed`, failed or errored | the pull request's owner | ci_activity | error |
 //! | `workflow.completed`, failed | the pull request's owner, or whoever pushed | ci_activity | error |
 //! | `deployment.failed` | the pull request's owner, or whoever pushed; watchers | ci_activity | error |
-//! | `deployment.succeeded` after a failure | the same | ci_activity | success |
+//! | `deployment.succeeded` | watchers; it settles the failure before it | subscribed | success |
+//! | `pull.auto_merge_disabled` | whoever turned it on, unless g1t handed it to the merge queue | state_change | warning |
 //! | `pull.merged`, `pull.closed`, `issue.closed`, `issue.reopened` | everyone subscribed | state_change | success for a merge, else info |
 //! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
 //! | `comment.created` by a workspace's agent | the same, shown as "Margo (agent)"; a review also tells the owner, "(advisory)" | the same, or author | the same |
@@ -24,6 +25,11 @@
 //! | `secret_scanning_alert.summary`, `code_scanning_alert.summary`, `vulnerability_alert.summary` | the workspace's owners and security managers, whoever pushed a refused push, and watchers who chose security and may see findings; one thread per repository and alert type | security_alert | error for critical or high (told at once), info for the rest (a digest, unless the person chose at once) |
 //! | `security_advisory.reported` | the workspace's owners and security managers | security_alert | warning |
 //! | `secret_scanning.bypass_requested`, `.bypass_reviewed` | the reviewers named; the requester | security_alert | warning; info |
+//!
+//! What leaves nothing for a person to do settles their item about it
+//! (marks it done): see "Settling" below for which event settles what.
+//! A merge or a close reaches each thread's history but settles it at
+//! once, so it is neither left unread nor pushed.
 //!
 //! Watchers of a repository at `all` (or `custom`, for the kinds they
 //! chose) hear of every issue and pull request opened, commented on,
@@ -187,6 +193,22 @@ pub fn numbered_thread(repo_id: &str, number: u32) -> String {
     format!("{repo_id}#{number}")
 }
 
+/// The thread of a workflow on a branch: `<repo_id>/run/<workflow>@<branch>`.
+pub fn run_thread(repo_id: &str, data: &serde_json::Value) -> String {
+    let text = |key: &str| data[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned);
+    let branch = text("ref").unwrap_or_default();
+    let branch = branch.strip_prefix("refs/heads/").unwrap_or(&branch).to_owned();
+    let workflow = text("path").or_else(|| text("workflow")).unwrap_or_default();
+    format!("{repo_id}/run/{workflow}@{branch}")
+}
+
+/// The thread of a project's production, or of one pull request's preview:
+/// `<repo_id>/deploy/<project_id>/<production|number>`.
+pub fn deploy_thread(repo_id: &str, data: &serde_json::Value, number: Option<u32>) -> String {
+    let which = number.map_or_else(|| "production".to_owned(), |number| number.to_string());
+    format!("{repo_id}/deploy/{}/{which}", data["projectId"].as_str().unwrap_or_default())
+}
+
 /// The thread an event's items go to.
 pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>) -> Thread {
     let data = &event.data;
@@ -194,9 +216,8 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
     match event.kind.as_str() {
         // A project's production, or one pull request's preview.
         "deployment.failed" | "deployment.succeeded" => {
-            let which = wanted.number.map_or_else(|| "production".to_owned(), |number| number.to_string());
             Thread {
-                key: format!("{}/deploy/{}/{which}", wanted.repo_id, text("projectId").unwrap_or_default()),
+                key: deploy_thread(&wanted.repo_id, data, wanted.number),
                 kind: Some(SubjectKind::Deploy),
                 number: wanted.number,
                 run_id: text("deploymentId"),
@@ -218,11 +239,8 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
         },
         // A workflow on a branch: its next failure bumps the same thread.
         "workflow.completed" if subject.is_none() => {
-            let branch = text("ref").unwrap_or_default();
-            let branch = branch.strip_prefix("refs/heads/").unwrap_or(&branch).to_owned();
-            let workflow = text("path").or_else(|| text("workflow")).unwrap_or_default();
             Thread {
-                key: format!("{}/run/{workflow}@{branch}", wanted.repo_id),
+                key: run_thread(&wanted.repo_id, data),
                 kind: Some(SubjectKind::Run),
                 number: None,
                 run_id: text("runId"),
@@ -273,15 +291,233 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
     }
 }
 
-/// The issue or pull request whose agent threads an event closes: what an
-/// agent was waiting on a person for is over.
-pub fn resolves(event: &Event) -> Option<String> {
-    if !RESUMES.contains(&event.kind.as_str()) {
-        return None;
+// --- Settling ----------------------------------------------------------------
+//
+// An item is settled (marked done, and read) by the event that leaves
+// nothing for its person to do about it, so the inbox, its count, Home's
+// Needs you and `g1t status` show only what still waits on someone. A
+// settled item stays in Done, with its history, until it is purged; new
+// activity on its thread brings it back.
+//
+// | Item | Settled by |
+// | --- | --- |
+// | g1t stopped and needs you (`agent`) | `pull.resumed`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` |
+// | Anything on an issue or pull request | `issue.closed`, `pull.merged`, `pull.closed`, after it is told (`closes`) |
+// | Your own item on a thread | your comment or review on it (`handled_by`) |
+// | A review asked of you | `pull.review_request_removed` naming you or your team |
+// | Checks failed on a pull request (`ci_activity`) | `checks.completed` passed on its head |
+// | A workflow failed on a branch | the next `workflow.completed` success of that workflow on that branch |
+// | A deployment failed | `deployment.succeeded` of that project's production, or that preview |
+// | A deployment waits for your review | `workflow.completed` of its run, however it ended |
+// | A push protection bypass to review | `secret_scanning.bypass_reviewed` |
+// | A token waits for your approval | `token.approval_reviewed` |
+// | A workspace invitation | `workspace_invitation.accepted`, `.declined`, `.revoked` |
+// | A scan's alerts | the next scan's summary with none open (`refresh_security_thread`) |
+
+/// Which threads a settle reaches.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Scope {
+    /// One thread.
+    Thread(String),
+    /// Every thread matching a GLOB pattern, such as one pull request's
+    /// previews in every project: `rep_1/deploy/*/7`.
+    Matching(String),
+}
+
+/// Items an event settles.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Settle {
+    pub scope: Scope,
+    /// One person's item, or everyone's.
+    pub username: Option<String>,
+    /// Only items whose latest activity was for one of these reasons; any when empty.
+    pub reasons: Vec<Reason>,
+    /// Only items whose latest activity was one of these events; any when empty.
+    pub events: Vec<&'static str>,
+}
+
+impl Settle {
+    fn thread(thread: impl Into<String>) -> Self {
+        Settle {
+            scope: Scope::Thread(thread.into()),
+            username: None,
+            reasons: Vec::new(),
+            events: Vec::new(),
+        }
     }
+
+    fn matching(pattern: impl Into<String>) -> Self {
+        Settle {
+            scope: Scope::Matching(pattern.into()),
+            ..Settle::thread("")
+        }
+    }
+
+    fn because(mut self, reasons: &[Reason]) -> Self {
+        self.reasons = reasons.to_vec();
+        self
+    }
+
+    fn after(mut self, events: &[&'static str]) -> Self {
+        self.events = events.to_vec();
+        self
+    }
+
+    fn of(mut self, username: &str) -> Self {
+        self.username = Some(username.trim().trim_start_matches('@').to_lowercase());
+        self
+    }
+
+    /// The statement that settles the items, as of `now`, naming whose it settled.
+    fn statement(&self, db: &D1Database, now: &str) -> Result<D1PreparedStatement> {
+        let mut values: Vec<JsValue> = vec![now.into()];
+        let mut conditions = vec!["done_at IS NULL".to_owned()];
+        let bind = |values: &mut Vec<JsValue>, value: &str| {
+            values.push(value.into());
+            format!("?{}", values.len())
+        };
+        match &self.scope {
+            Scope::Thread(thread) => conditions.push(format!("thread = {}", bind(&mut values, thread))),
+            Scope::Matching(pattern) => conditions.push(format!("thread GLOB {}", bind(&mut values, pattern))),
+        }
+        if let Some(username) = &self.username {
+            conditions.push(format!("username = {}", bind(&mut values, username)));
+        }
+        if !self.reasons.is_empty() {
+            let marks: Vec<String> = self.reasons.iter().map(|reason| bind(&mut values, reason.as_str())).collect();
+            conditions.push(format!("reason IN ({})", marks.join(", ")));
+        }
+        if !self.events.is_empty() {
+            let marks: Vec<String> = self.events.iter().map(|kind| bind(&mut values, kind)).collect();
+            conditions.push(format!("event IN ({})", marks.join(", ")));
+        }
+        db.prepare(format!(
+            "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1) WHERE {} RETURNING username",
+            conditions.join(" AND ")
+        ))
+        .bind(&values)
+    }
+}
+
+/// The issue or pull request an event names, as its thread.
+fn numbered(event: &Event) -> Option<String> {
     let repo_id = event.data["repoId"].as_str().map(str::to_owned).or_else(|| event.repo_id.clone())?;
     let number = event.data["number"].as_u64().and_then(|n| u32::try_from(n).ok())?;
     Some(numbered_thread(&repo_id, number))
+}
+
+/// What an event settles before its own notices are written: what it
+/// supersedes. A success after a failure, a review given or no longer
+/// asked for, a request answered.
+pub fn settles(event: &Event) -> Vec<Settle> {
+    let data = &event.data;
+    let text = |key: &str| data[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned);
+    let repo_id = text("repoId").or_else(|| event.repo_id.clone());
+    let mut settled = Vec::new();
+    let kind = event.kind.as_str();
+    // What an agent was waiting on a person for is over.
+    if RESUMES.contains(&kind)
+        && let Some(thread) = numbered(event)
+    {
+        settled.push(Settle::thread(thread).because(&[Reason::Agent]));
+    }
+    match kind {
+        // Reviews no longer asked for, of the people or the teams named.
+        "pull.review_request_removed" => {
+            if let Some(thread) = numbered(event) {
+                let people = names(data, "reviewers").into_iter().chain(teams_asked(data).into_iter().flat_map(|(_, people)| people));
+                for name in people.collect::<HashSet<_>>() {
+                    settled.push(Settle::thread(thread.clone()).because(&[Reason::ReviewRequested]).of(&name));
+                }
+            }
+        }
+        // A workspace invitation answered or revoked no longer waits on its person.
+        _ if INVITATION_ANSWERED.contains(&kind) => {
+            if let Some(thread) = text("thread").filter(|thread| thread.starts_with("invitation:")) {
+                settled.push(Settle::thread(thread).because(&[Reason::ReviewRequested]));
+            }
+        }
+        // A token approved, denied or revoked no longer waits on the owners.
+        "token.approval_reviewed" => {
+            let (thread, _) = workspace_notices(event, None);
+            settled.push(Settle::thread(thread).because(&[Reason::ReviewRequested]));
+        }
+        // Every check on its head passes now (or none fails): the failure
+        // its owner was told of is behind them.
+        "checks.completed" if data["status"].as_str() == Some("passed") => {
+            if let Some(thread) = numbered(event) {
+                settled.push(Settle::thread(thread).because(&[Reason::CiActivity]));
+            }
+        }
+        "workflow.completed" => {
+            if let Some(repo_id) = &repo_id {
+                // The workflow passes on the branch again: its failures there are over.
+                if data["conclusion"].as_str() == Some("success") && data["pull"].as_u64().is_none() {
+                    settled.push(Settle::thread(run_thread(repo_id, data)));
+                }
+                // Its run is over, however it ended: no deployment of it waits for review.
+                if let Some(run) = text("runId") {
+                    settled.push(Settle::matching(format!("{repo_id}/review/{run}/*")).because(&[Reason::ReviewRequested]));
+                }
+            }
+        }
+        // It deployed: the failure before it is over.
+        "deployment.succeeded" => {
+            if let Some(repo_id) = &repo_id {
+                let number = data["number"].as_u64().and_then(|n| u32::try_from(n).ok());
+                settled.push(Settle::thread(deploy_thread(repo_id, data, number)).after(&["deployment.failed"]));
+            }
+        }
+        // A bypass decided no longer waits on its reviewers.
+        "secret_scanning.bypass_reviewed" => {
+            if let (Some(repo_id), Some(which)) = (&repo_id, text("requestId").or_else(|| text("alertId"))) {
+                settled.push(Settle::thread(format!("{repo_id}/security/{which}")).because(&[Reason::SecurityAlert]));
+            }
+        }
+        _ => {}
+    }
+    settled
+}
+
+/// The events after which nothing is left to do about an issue or pull
+/// request: every item about it is settled once its own notices are
+/// written, so they reach each thread's history but nobody's inbox, and
+/// are not pushed. What landed shows on Home instead.
+pub const CLOSES: [&str; 3] = ["pull.merged", "pull.closed", "issue.closed"];
+
+/// What an event settles once its own notices are written: everything
+/// about an issue or pull request that is over, a pull request's previews
+/// with it.
+pub fn closes(event: &Event) -> Vec<Settle> {
+    if !CLOSES.contains(&event.kind.as_str()) {
+        return Vec::new();
+    }
+    let Some(thread) = numbered(event) else {
+        return Vec::new();
+    };
+    let mut settled = vec![Settle::thread(thread)];
+    if event.kind.starts_with("pull.")
+        && let (Some(repo_id), Some(number)) = (
+            event.data["repoId"].as_str().map(str::to_owned).or_else(|| event.repo_id.clone()),
+            event.data["number"].as_u64(),
+        )
+    {
+        settled.push(Settle::matching(format!("{repo_id}/deploy/*/{number}")));
+    }
+    settled
+}
+
+/// The item a person's own comment or review settles: theirs on that
+/// thread, which they have answered. Never an agent's, nor g1t's.
+pub fn handled_by(event: &Event, subject: Option<&InboxSubject>) -> Option<Settle> {
+    if event.kind != "comment.created" {
+        return None;
+    }
+    let comment = subject?.comment.as_ref().filter(|comment| !comment.event && comment.agent.is_none())?;
+    if is_g1t_id(&comment.author.id) || is_g1t(&comment.author.username) {
+        return None;
+    }
+    Some(Settle::thread(numbered(event)?).of(&comment.author.username))
 }
 
 /// Collects who is told, each once with the most specific reason, never
@@ -437,7 +673,12 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
         }
         // Whoever turned auto-merge on hears that it is off, unless they
         // turned it off themselves: it will not merge without them now.
+        // Not when g1t handed it to the merge queue, which lands it: there
+        // is nothing for them to do.
         ("pull.auto_merge_disabled", Some(pull)) => {
+            if data["queued"].as_bool() == Some(true) {
+                return told.notices;
+            }
             if let Some(by) = data["autoMergeBy"].as_str() {
                 let detail = data["detail"].as_str().map(str::trim).filter(|detail| !detail.is_empty());
                 let title = format!("Auto-merge was turned off on {at}");
@@ -539,9 +780,10 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                     None => format!("Commit {}", short(data["commit"].as_str().unwrap_or_default())),
                 },
             };
-            // A success is news to whoever answers for it only after a failure.
-            if failed || data["recovered"].as_bool() == Some(true) {
-                let title = if failed { title.clone() } else { format!("{what} is live again") };
+            // A failure is whoever answers for it's to fix. A success after
+            // one tells them nothing: it settles the failure's item instead
+            // (`settles`), so there is nothing left in their inbox about it.
+            if failed {
                 match subject {
                     Some(pull) => told.tell_person(pull.owner(), Reason::CiActivity, severity, &title, &body, true),
                     None => {
@@ -961,14 +1203,34 @@ struct Written {
     repo_id: String,
     url: String,
     event_id: String,
+    /// Its event leaves nothing to do (`CLOSES`): settled once written.
+    closing: bool,
 }
 
 /// Writes the items a batch from the bus calls for. Never fails the batch:
 /// what cannot be worked out is logged and left.
 pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
-    if let Err(error) = resolve(db, events).await {
-        worker::console_error!("inbox: agent threads not closed: {error}");
+    // Whose items were settled, to tell their counts once at the end.
+    let mut settled: HashSet<String> = HashSet::new();
+    // What the batch supersedes goes first, so its own notices start afresh.
+    match settle(db, &events.iter().flat_map(settles).collect::<Vec<_>>()).await {
+        Ok(people) => settled.extend(people),
+        Err(error) => worker::console_error!("inbox: items not settled: {error}"),
     }
+    deliver_events(db, sources, events, &mut settled).await;
+    // What is over goes last, after its own notices reached each thread's history.
+    match settle(db, &events.iter().flat_map(closes).collect::<Vec<_>>()).await {
+        Ok(people) => settled.extend(people),
+        Err(error) => worker::console_error!("inbox: closed threads not settled: {error}"),
+    }
+    if let Some(notify) = sources.notify {
+        for username in &settled {
+            tell_inbox_count(db, notify, username).await;
+        }
+    }
+}
+
+async fn deliver_events(db: &D1Database, sources: &Sources<'_>, events: &[Event], settled: &mut HashSet<String>) {
     // A workspace's own notices, about no repository (workspace_notices).
     for event in events.iter().filter(|event| WORKSPACE_EVENTS.contains(&event.kind.as_str())) {
         if let Err(error) = deliver_workspace(db, event).await {
@@ -1021,21 +1283,26 @@ pub async fn deliver(db: &D1Database, sources: &Sources<'_>, events: &[Event]) {
     let mut watchers: HashMap<String, Vec<subscriptions::Watcher>> = HashMap::new();
     let mut written: Vec<Written> = Vec::new();
     for (event, wanted) in wanted {
-        match deliver_one(db, sources, &names, &mut paths, &mut watchers, event, wanted).await {
+        match deliver_one(db, sources, &names, &mut paths, &mut watchers, event, wanted, settled).await {
             Ok(mut news) => written.append(&mut news),
             Err(error) => worker::console_error!("inbox: {} {} not delivered: {error}", event.kind, event.id),
         }
     }
-    // Notify: every item that was news, live in the person's tabs (services/notify).
+    // Notify: every item that was news, live in the person's tabs
+    // (services/notify), but for what is over, which is settled at once:
+    // nobody is pushed a notification that is already done.
     if let Some(notify) = sources.notify {
         let live = written
             .iter()
+            .filter(|item| !item.closing)
             .map(|item| (item.notice.username.clone(), live_notification(&item.event_id, &item.notice, &item.url, &rfc3339(now_ms()))))
             .collect::<Vec<_>>();
         tell_live(notify, live).await;
-        let people: HashSet<&str> = written.iter().map(|item| item.notice.username.as_str()).collect();
+        let people: HashSet<&str> = written.iter().filter(|item| !item.closing).map(|item| item.notice.username.as_str()).collect();
         for username in people {
-            tell_inbox_count(db, notify, username).await;
+            if !settled.contains(username) {
+                tell_inbox_count(db, notify, username).await;
+            }
         }
     }
     if let Err(error) = email(db, sources.identity, written).await {
@@ -1151,60 +1418,26 @@ async fn deliver_workspace(db: &D1Database, event: &Event) -> Result<()> {
     Ok(())
 }
 
-/// Closes what an agent was waiting on a person for once it is over.
-async fn resolve(db: &D1Database, events: &[Event]) -> Result<()> {
+/// Settles items (see [`settles`]), in one batch. Returns whose it
+/// settled, so their counts can be told again.
+async fn settle(db: &D1Database, settled: &[Settle]) -> Result<HashSet<String>> {
+    if settled.is_empty() {
+        return Ok(HashSet::new());
+    }
     let now = rfc3339(now_ms());
-    let mut statements = Vec::new();
-    for thread in events.iter().filter_map(resolves) {
-        statements.push(
-            db.prepare(
-                "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1)
-                 WHERE thread = ?2 AND reason = 'agent' AND done_at IS NULL",
-            )
-            .bind(&[now.as_str().into(), thread.into()])?,
-        );
+    let statements = settled.iter().map(|settle| settle.statement(db, &now)).collect::<Result<Vec<_>>>()?;
+    #[derive(Deserialize)]
+    struct Whose {
+        username: String,
     }
-    // A workspace invitation answered or revoked no longer waits on its person.
-    for event in events.iter().filter(|event| INVITATION_ANSWERED.contains(&event.kind.as_str())) {
-        let Some(thread) = event.data["thread"].as_str().filter(|thread| thread.starts_with("invitation:")) else {
-            continue;
-        };
-        statements.push(
-            db.prepare(
-                "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1)
-                 WHERE thread = ?2 AND reason = 'review_requested' AND done_at IS NULL",
-            )
-            .bind(&[now.as_str().into(), thread.into()])?,
-        );
+    let mut people = HashSet::new();
+    for result in db.batch(statements).await? {
+        people.extend(result.results::<Whose>()?.into_iter().map(|row| row.username));
     }
-    // Reviews no longer asked for are no longer waiting.
-    for event in events.iter().filter(|event| event.kind == "pull.review_request_removed") {
-        let (Some(repo_id), Some(number)) = (
-            event.data["repoId"].as_str().map(str::to_owned).or_else(|| event.repo_id.clone()),
-            event.data["number"].as_u64(),
-        ) else {
-            continue;
-        };
-        for name in names(&event.data, "reviewers") {
-            statements.push(
-                db.prepare(
-                    "UPDATE inbox_items SET done_at = ?1, read_at = COALESCE(read_at, ?1)
-                     WHERE thread = ?2 AND username = ?3 AND reason = 'review_requested' AND done_at IS NULL",
-                )
-                .bind(&[
-                    now.as_str().into(),
-                    format!("{repo_id}#{number}").into(),
-                    name.to_lowercase().into(),
-                ])?,
-            );
-        }
-    }
-    if !statements.is_empty() {
-        db.batch(statements).await?;
-    }
-    Ok(())
+    Ok(people)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn deliver_one(
     db: &D1Database,
     sources: &Sources<'_>,
@@ -1213,6 +1446,7 @@ async fn deliver_one(
     watchers: &mut HashMap<String, Vec<subscriptions::Watcher>>,
     event: &Event,
     wanted: Wanted,
+    settled: &mut HashSet<String>,
 ) -> Result<Vec<Written>> {
     if !paths.contains_key(&wanted.repo_id) {
         let path: Option<RepoPath> = g1t_kit::call(
@@ -1257,6 +1491,10 @@ async fn deliver_one(
         },
     };
     let thread = thread_of(event, &wanted, subject.as_ref());
+    // Whoever commented has answered what was on the thread for them.
+    if let Some(handled) = handled_by(event, subject.as_ref()) {
+        settled.extend(settle(db, &[handled]).await?);
+    }
     if !watchers.contains_key(&wanted.repo_id) {
         watchers.insert(wanted.repo_id.clone(), subscriptions::watchers(db, &wanted.repo_id).await?);
     }
@@ -1383,6 +1621,7 @@ async fn deliver_one(
             repo_id: wanted.repo_id.clone(),
             url: item_url.clone(),
             event_id: event.id.clone(),
+            closing: CLOSES.contains(&event.kind.as_str()),
         })
         .collect())
 }
@@ -2209,11 +2448,113 @@ mod tests {
     }
 
     #[test]
+    fn g1t_handing_a_pull_request_to_the_merge_queue_tells_no_one() {
+        let off = event(
+            "pull.auto_merge_disabled",
+            None,
+            json!({ "number": 7, "autoMergeBy": "bo", "detail": "It joined the merge queue.", "queued": true }),
+        );
+        assert!(notices(&off, "acme/rocket", &Actor::default(), Some(&pull()), &nobody()).is_empty());
+    }
+
+    #[test]
     fn whatever_an_agent_waits_on_closes_when_it_goes_on() {
+        let agent = Settle::thread("rep_1#7").because(&[Reason::Agent]);
         for kind in RESUMES {
-            assert_eq!(resolves(&event(kind, None, json!({ "repoId": "rep_1", "number": 7 }))), Some("rep_1#7".into()));
+            assert!(settles(&event(kind, None, json!({ "repoId": "rep_1", "number": 7 }))).contains(&agent), "{kind}");
         }
-        assert_eq!(resolves(&event("comment.created", None, json!({ "repoId": "rep_1", "number": 7 }))), None);
+        assert!(settles(&event("comment.created", None, json!({ "repoId": "rep_1", "number": 7 }))).is_empty());
+    }
+
+    #[test]
+    fn a_merge_or_a_close_settles_everything_about_it() {
+        let merged = event("pull.merged", Some("usr_ana"), json!({ "repoId": "rep_1", "number": 7 }));
+        assert_eq!(closes(&merged), vec![Settle::thread("rep_1#7"), Settle::matching("rep_1/deploy/*/7")]);
+        let closed = event("pull.closed", None, json!({ "repoId": "rep_1", "number": 7 }));
+        assert_eq!(closes(&closed).len(), 2);
+        // An issue has no previews.
+        let issue = event("issue.closed", None, json!({ "repoId": "rep_1", "number": 3 }));
+        assert_eq!(closes(&issue), vec![Settle::thread("rep_1#3")]);
+        // Reopening is something to hear of, and settles nothing.
+        assert!(closes(&event("issue.reopened", None, json!({ "repoId": "rep_1", "number": 3 }))).is_empty());
+        assert!(settles(&event("issue.reopened", None, json!({ "repoId": "rep_1", "number": 3 }))).is_empty());
+    }
+
+    #[test]
+    fn a_workflow_passing_on_a_branch_settles_its_failures_there() {
+        let data = |conclusion: &str| {
+            json!({ "repoId": "rep_1", "runId": "run_9", "workflow": "Deploy", "path": ".g1t/workflows/deploy.yml", "ref": "refs/heads/main", "conclusion": conclusion, "number": 328 })
+        };
+        let failed = event("workflow.completed", Some("usr_bo"), data("failure"));
+        let thread = thread_of(&failed, &wants(&failed).unwrap(), None).key;
+        assert_eq!(thread, "rep_1/run/.g1t/workflows/deploy.yml@main");
+        let passed = event("workflow.completed", Some("usr_bo"), data("success"));
+        assert!(wants(&passed).is_none(), "a success tells no one");
+        assert_eq!(
+            settles(&passed),
+            vec![
+                Settle::thread(thread.clone()),
+                Settle::matching("rep_1/review/run_9/*").because(&[Reason::ReviewRequested]),
+            ]
+        );
+        // A failure or a cancelled run settles no failure, but ends what its deployments waited for.
+        for conclusion in ["failure", "cancelled"] {
+            assert_eq!(
+                settles(&event("workflow.completed", None, data(conclusion))),
+                vec![Settle::matching("rep_1/review/run_9/*").because(&[Reason::ReviewRequested])]
+            );
+        }
+        // On a pull request, its checks passing settles the failure instead.
+        let on_pull = event("workflow.completed", None, json!({ "repoId": "rep_1", "runId": "run_9", "conclusion": "success", "pull": 7 }));
+        assert!(!settles(&on_pull).iter().any(|settle| settle.scope == Scope::Thread(thread.clone())));
+    }
+
+    #[test]
+    fn checks_passing_settle_the_failure_its_owner_was_told_of() {
+        let passed = event("checks.completed", None, json!({ "repoId": "rep_1", "number": 7, "status": "passed" }));
+        assert_eq!(settles(&passed), vec![Settle::thread("rep_1#7").because(&[Reason::CiActivity])]);
+        let failed = event("checks.completed", None, json!({ "repoId": "rep_1", "number": 7, "status": "failed" }));
+        assert!(settles(&failed).is_empty());
+    }
+
+    #[test]
+    fn a_deployment_settles_the_failure_before_it() {
+        let live = event("deployment.succeeded", Some("usr_bo"), json!({ "repoId": "rep_1", "projectId": "prj_1" }));
+        assert_eq!(settles(&live), vec![Settle::thread("rep_1/deploy/prj_1/production").after(&["deployment.failed"])]);
+        let preview = event("deployment.succeeded", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7 }));
+        assert_eq!(settles(&preview), vec![Settle::thread("rep_1/deploy/prj_1/7").after(&["deployment.failed"])]);
+    }
+
+    #[test]
+    fn requests_answered_settle_what_they_asked() {
+        let removed = event(
+            "pull.review_request_removed",
+            None,
+            json!({ "repoId": "rep_1", "number": 7, "reviewers": ["Bo"], "teams": [{ "team": "acme/web", "notified": ["cy"] }] }),
+        );
+        let mut people: Vec<Option<String>> = settles(&removed).into_iter().map(|settle| settle.username).collect();
+        people.sort();
+        assert_eq!(people, vec![Some("bo".to_owned()), Some("cy".to_owned())]);
+        let token = event("token.approval_reviewed", None, json!({ "workspace": "acme", "tokenId": "tok_1" }));
+        assert_eq!(settles(&token), vec![Settle::thread("workspace:acme/token/tok_1").because(&[Reason::ReviewRequested])]);
+        let bypass = event("secret_scanning.bypass_reviewed", None, json!({ "repoId": "rep_1", "requestId": "byp_1" }));
+        assert_eq!(settles(&bypass), vec![Settle::thread("rep_1/security/byp_1").because(&[Reason::SecurityAlert])]);
+        let invitation = event("workspace_invitation.declined", None, json!({ "thread": "invitation:inv_1" }));
+        assert_eq!(settles(&invitation), vec![Settle::thread("invitation:inv_1").because(&[Reason::ReviewRequested])]);
+    }
+
+    #[test]
+    fn your_own_comment_settles_your_item_on_the_thread() {
+        let commented = event("comment.created", Some("usr_bo"), json!({ "repoId": "rep_1", "number": 7, "commentId": "cmt_1" }));
+        let by_bo = comment(person("usr_bo", "Bo"), "Looks good", &[]);
+        assert_eq!(handled_by(&commented, Some(&by_bo)), Some(Settle::thread("rep_1#7").of("bo")));
+        // Not g1t's, nor an agent's, nor a note the service wrote.
+        let by_g1t = comment(person(AGENT_ID, "g1t"), "Done", &[]);
+        assert_eq!(handled_by(&commented, Some(&by_g1t)), None);
+        let mut note = comment(person("usr_bo", "bo"), "", &[]);
+        note.comment.as_mut().unwrap().event = true;
+        assert_eq!(handled_by(&commented, Some(&note)), None);
+        assert_eq!(handled_by(&event("pull.merged", None, json!({ "repoId": "rep_1", "number": 7 })), Some(&by_bo)), None);
     }
 
     #[test]
@@ -2390,13 +2731,15 @@ mod tests {
         let thread = thread_of(&failed, &wants(&failed).unwrap(), None);
         assert_eq!(thread.key, "rep_1/deploy/prj_1/production");
         assert_eq!(url(Some("acme/rocket"), thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/deployments/dpl_1");
-        // A success is news to the owner only after a failure.
+        // A success tells the owner nothing, even after a failure: it
+        // settles the failure (settles). Watchers who chose deployments hear of it.
         let live = event("deployment.succeeded", Some("usr_bo"), json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "commit": "abcdef0123" }));
         assert!(notices(&live, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody()).is_empty());
         let recovered = event("deployment.succeeded", Some("usr_bo"), json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "recovered": true }));
-        let notices_ = notices(&recovered, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody());
-        assert_eq!(told(&notices_), vec![("bo", Reason::CiActivity, Severity::Success)]);
-        assert_eq!(notices_[0].title, "Production of rocket is live again");
+        assert!(notices(&recovered, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody()).is_empty());
+        let notices_ = notices(&recovered, "acme/rocket", &actor("usr_bo", "bo"), None, &audience);
+        assert_eq!(told(&notices_), vec![("cy", Reason::Subscribed, Severity::Success), ("eve", Reason::Subscribed, Severity::Success)]);
+        assert_eq!(notices_[0].title, "Production of rocket is live");
         // A preview's is the pull request's owner's.
         let preview = event("deployment.failed", None, json!({ "repoId": "rep_1", "projectId": "prj_1", "number": 7, "triggeredBy": "g1t" }));
         assert_eq!(told(&notices(&preview, "acme/rocket", &Actor::default(), Some(&pull()), &nobody())), vec![("ana", Reason::CiActivity, Severity::Error)]);

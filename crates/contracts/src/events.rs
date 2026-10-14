@@ -256,6 +256,11 @@ pub struct PullEvent {
     /// auto-merge on, who is told it is off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_merge_by: Option<String>,
+    /// On `pull.auto_merge_disabled`: g1t turned it off because the pull
+    /// request joined the merge queue, which lands it. Nothing is left for
+    /// anyone to do, so nobody's inbox is told.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub queued: bool,
     /// On `pull.labeled` and `pull.unlabeled`: the label put on or taken off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<EventLabel>,

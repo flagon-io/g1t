@@ -337,6 +337,18 @@ impl Work {
             }))
     }
 
+    /// Forgets where a repository's open pull requests stand, after its
+    /// settings or rulesets changed what they need: each is worked out
+    /// again the next time a list or its page shows it, or something moves it.
+    pub(crate) async fn forget_stages(&self, repo_id: &str) -> Result<()> {
+        self.db
+            .prepare("UPDATE pulls SET stage = NULL, stage_detail = NULL WHERE repo_id = ? AND status IN ('draft', 'open') AND stage IS NOT NULL")
+            .bind(&[repo_id.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
     /// Saves where a pull request stands.
     pub(crate) async fn remember(&self, pull_id: &str, lifecycle: &Lifecycle) -> Result<()> {
         let stage = serde_json::to_value(lifecycle.stage)?;
@@ -499,9 +511,16 @@ impl Work {
         if pull.status != PullStatus::Open {
             return Ok(Advance::None);
         }
-        // A person asked for it to merge on its own (automerge.rs).
+        // A person asked for it to merge on its own (automerge.rs). Where
+        // it stands is remembered for lists all the same, if it is still open.
         if pull.auto_merge.is_some() {
             self.try_auto_merge(&pull).await?;
+            if let Some(pull) = self.pull_by_id(&a.pull_id).await?
+                && pull.status == PullStatus::Open
+            {
+                let behind = self.behind_now(&pull).await?;
+                self.assess(&pull, &None, behind).await?;
+            }
             return Ok(Advance::None);
         }
         // As a member: a private repository would look missing otherwise,
@@ -519,7 +538,10 @@ impl Work {
         let Outcome::Ok(repo) = crate::retired::unless_archived(repo) else {
             return Ok(Advance::None);
         };
-        let behind = self.is_behind(&pull).await?;
+        // Asked of repos where g1t may merge it by itself; for anyone
+        // else's, as stored with its mergeability for its head, which is
+        // only shown (a merge asks repos again).
+        let behind = if made_by_g1t(&pull) { self.is_behind(&pull).await? } else { self.behind_now(&pull).await? };
         if let Some((_, Next::Merge)) = self.assess(&pull, &None, behind).await? {
             self.merge_by_policy(&repo, &pull).await?;
         }
@@ -880,12 +902,17 @@ impl Work {
         Ok(())
     }
 
+    /// The open pull requests to move along: those g1t merges by itself or
+    /// a person set to auto-merge, and, in one repository (after a merge
+    /// there moved the branch they land on), every one whose lifecycle is
+    /// remembered, so that lists show where each stands now.
     pub(crate) async fn managed_pulls(&self, a: ManagedPullsArgs) -> Result<Vec<String>> {
         let rows = self
             .db
             .prepare(
                 "SELECT id AS value FROM pulls
-                 WHERE status = 'open' AND ((managed = 1 AND stalled IS NULL) OR auto_merge IS NOT NULL)
+                 WHERE status = 'open'
+                   AND ((managed = 1 AND stalled IS NULL) OR auto_merge IS NOT NULL OR (?1 IS NOT NULL AND stage IS NOT NULL))
                    AND (?1 IS NULL OR repo_id = ?1)
                  ORDER BY updated_at DESC LIMIT ?2",
             )

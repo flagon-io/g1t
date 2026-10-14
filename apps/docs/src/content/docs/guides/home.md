@@ -26,8 +26,8 @@ stake, how long it has waited, and has its action beside it.
 
 | Source | Rows |
 | --- | --- |
-| Code | A failed production build; a pull request ready for you to merge; a review asked of you by name; an invitation to a repository; a job waiting for a self-hosted runner |
-| Notifications | An unread notification in this workspace that is a warning (someone or something is waiting) or a failure |
+| Code | A failed production build; your open pull request that can't land until you act (it conflicts, a required check fails, someone asked for changes, approvals are missing); your pull request that meets everything its branch asks for, ready for you to merge; a review asked of you by name; an invitation to a repository; a job waiting for a self-hosted runner |
+| Notifications | An unread notification in this workspace that is a warning (someone or something is waiting) or a failure. One whose cause is over, such as a workflow that has passed since or a pull request that merged, has [settled](/guides/notifications/#threads-that-settle-themselves) and is not here |
 | Chat | A conversation that mentions you, or a direct message you haven't read. Muted conversations are left out |
 
 A notification about something already on the list, such as a pull
@@ -37,11 +37,12 @@ Rows are ordered most pressing first, by tier, then by how long each has
 waited, longest first:
 
 1. A failed production build.
-2. Finished work that only waits for you: a pull request to merge, a
+2. Your pull request that can't land until you act on it.
+3. Finished work that only waits for you: your pull request to merge, a
    review, an invitation.
-3. Something that may be stuck: a job without a runner.
-4. Unread warnings and failures in your notifications.
-5. Mentions and direct messages.
+4. Something that may be stuck: a job without a runner.
+5. Unread warnings and failures in your notifications.
+6. Mentions and direct messages.
 
 The list shows the first eight rows; **Show more** opens the rest. The
 sentence under the page's heading starts with how many things need you.

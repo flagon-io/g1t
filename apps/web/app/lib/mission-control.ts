@@ -18,7 +18,7 @@ export function isAgent(name: string | null | undefined): boolean {
 // --- Reasons ----------------------------------------------------------------
 
 /** Why something is waiting on a person, as the chip beside it says. */
-export type Reason = "blocking" | "invited" | "needs_review" | "checks_failing" | "stalled";
+export type Reason = "blocking" | "invited" | "needs_review" | "checks_failing" | "stalled" | "ready";
 
 export const REASON_LABEL: Record<Reason, string> = {
   blocking: "Blocking",
@@ -26,6 +26,7 @@ export const REASON_LABEL: Record<Reason, string> = {
   needs_review: "Review requested",
   checks_failing: "Checks failing",
   stalled: "Stalled",
+  ready: "Ready to merge",
 };
 
 /** The reason a need is shown, from its kind. */
@@ -37,8 +38,9 @@ export function reasonFor(need: Pick<Need, "kind">): Reason {
     case "invitation":
       return "invited";
     case "review":
-    case "ready":
       return "needs_review";
+    case "ready":
+      return "ready";
     case "checks":
       return "checks_failing";
     case "stalled":
@@ -67,6 +69,8 @@ export function whyFor(reason: Reason, need: Pick<Need, "kind">): string {
       return "It is addressed to you.";
     case "stalled":
       return "It has stopped moving and needs a look.";
+    case "ready":
+      return "Everything its branch asks for is met: its checks pass and it has the approvals it needs. It lands when you merge it.";
   }
 }
 
