@@ -77,6 +77,8 @@ const COMPACT_AT = 300;
 
 export class FolioRoom extends DurableObject<FolioRoomEnv> {
   private doc: Y.Doc | null = null;
+  /** Saves and index runs in flight: destroy() waits for them, so none writes after it. */
+  private saves = new Set<Promise<unknown>>();
   /** The last awareness update each client sent. Lost on hibernation; clients resend every 15 s. */
   private awareness = new Map<number, Uint8Array>();
   private clocks = new Map<number, number>();
@@ -104,6 +106,7 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
   }
 
   private setMeta(key: string, value: unknown): void {
+    if (key !== "erased" && this.meta("erased", false)) return;
     this.ctx.storage.sql.exec("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", key, JSON.stringify(value));
   }
 
@@ -114,7 +117,35 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
     return model;
   }
 
+  async forgetPerson(key: string, username: string): Promise<void> {
+    if (this.meta("erased", false)) return;
+    this.setMeta(`erased:${key}`, true);
+    await this.setRole(key, null);
+    await Promise.allSettled([...this.saves]);
+    for (const field of ["editors", "pending_authors"]) this.setMeta(field, this.meta<string[]>(field, []).filter(value => value !== key));
+    this.setMeta("editor_names", this.meta<string[]>("editor_names", []).filter(value => value.toLowerCase() !== username.toLowerCase()));
+  }
+
+  async destroy(): Promise<void> {
+    // Synchronous tombstone comes first; no reentrant save can recreate state.
+    this.setMeta("erased", true);
+    // Open tabs hear the folio is gone, as before tombstones (4410, folio.trashed).
+    await this.closeAll("Deleted");
+    await Promise.allSettled([...this.saves]);
+    this.doc?.destroy();
+    this.doc = null;
+    this.awareness.clear();
+    this.clocks.clear();
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM updates");
+      this.ctx.storage.sql.exec("DELETE FROM snapshot");
+      this.ctx.storage.sql.exec("DELETE FROM meta WHERE key != 'erased'");
+    });
+    await this.ctx.storage.deleteAlarm();
+  }
+
   private load(): Y.Doc {
+    if (this.meta("erased", false)) throw new Error("Document erased");
     if (this.doc) return this.doc;
     const doc = new Y.Doc({ gc: true });
     const snapshot = this.ctx.storage.sql.exec<{ data: ArrayBuffer }>("SELECT data FROM snapshot WHERE id = 1").toArray()[0];
@@ -128,6 +159,7 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
   }
 
   private onUpdate(update: Uint8Array, origin: unknown): void {
+    if (this.meta("erased", false)) return;
     this.ctx.storage.sql.exec("INSERT INTO updates (data) VALUES (?)", update);
     const count = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM updates").one().n;
     if (count >= COMPACT_AT) this.compact();
@@ -162,6 +194,7 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
 
   private alarmBy(when: number): void {
     void this.ctx.storage.getAlarm().then((at) => {
+      if (this.meta("erased", false)) return;
       if (at == null || at > when) return this.ctx.storage.setAlarm(when);
     });
   }
@@ -179,6 +212,13 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
 
   /** Saves to D1 now: the rendition, search, links, citations, and a version if one is due or asked for. */
   private async persist(version: FolioOrigin | null = null): Promise<string | null> {
+    if (this.meta("erased", false)) return null;
+    const saving = this.save(version);
+    this.saves.add(saving);
+    try { return await saving; } finally { this.saves.delete(saving); }
+  }
+
+  private async save(version: FolioOrigin | null = null): Promise<string | null> {
     const folioId = this.meta<string | null>("folio_id", null);
     if (!folioId || !kindModel(this.meta<string | null>("kind", null))) return null;
     const doc = this.load();
@@ -216,13 +256,18 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
   }
 
   override async alarm(): Promise<void> {
+    if (this.meta("erased", false)) return;
     await this.persist();
     const due = this.meta<number | null>("index_at", null);
     if (due == null) return;
     if (Date.now() < due) return this.alarmBy(due);
     this.setMeta("index_at", null);
     const folioId = this.meta<string | null>("folio_id", null);
-    if (folioId) await indexFolio(this.env, folioId);
+    if (folioId) {
+      const indexing = indexFolio(this.env, folioId);
+      this.saves.add(indexing);
+      try { await indexing; } finally { this.saves.delete(indexing); }
+    }
   }
 
   // ── Calls from the Worker ──────────────────────────────────────────────
@@ -376,16 +421,12 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
   }
 
   /** Forgets everything: the folio was deleted for good. */
-  async destroy(): Promise<void> {
-    await this.closeAll("Deleted");
-    this.doc = null;
-    await this.ctx.storage.deleteAlarm();
-    await this.ctx.storage.deleteAll();
-  }
+
 
   // ── Sockets ────────────────────────────────────────────────────────────
 
   override async fetch(request: Request): Promise<Response> {
+    if (this.meta("erased", false)) return new Response("Document erased", { status: 410 });
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("Expected a WebSocket upgrade\n", { status: 426 });
     let who: FolioRoomMember;
     try {
@@ -394,6 +435,7 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
       return new Response("Missing member\n", { status: 400 });
     }
     if (!kindModel(this.meta<string | null>("kind", null))) return new Response("Not ready\n", { status: 409 });
+    if (this.meta(`erased:${who.key}`, false)) return new Response("Account erased", { status: 410 });
     if (who.workspace_slug) this.setMeta("workspace_slug", who.workspace_slug);
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
@@ -416,7 +458,7 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message === "string") return;
     const who = socket.deserializeAttachment() as Attachment | null;
-    if (!who) return;
+    if (!who || this.meta("erased", false) || this.meta(`erased:${who.key}`, false)) return;
     const data = new Uint8Array(message);
     const decoder = decoding.createDecoder(data);
     const type = decoding.readVarUint(decoder);

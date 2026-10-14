@@ -2027,8 +2027,12 @@ impl<S: GitStore> Repos<S> {
         let repo = match self.authorize_git(&git.path, &viewer, git.service, found).await? {
             Outcome::Ok(repo) => repo,
             refused => {
+                let why = match &refused {
+                    Outcome::Fail(failure) => Some(failure.message.trim_end().to_owned()),
+                    Outcome::Ok(_) => None,
+                };
                 let response = git_http::refuse(refused)?;
-                after.ended(response.status_code(), None);
+                after.ended(response.status_code(), why);
                 after.spawn(env, ctx);
                 return Ok(response);
             }
@@ -2591,7 +2595,7 @@ struct PushDone {
 /// What a git request leaves for after its answer: its audit entry, with
 /// how the request ended, and what a push changed.
 struct AfterGit {
-    audit: Option<Box<g1t_contracts::audit::NewAuditEntry>>,
+    audit: Option<Box<run_access::GitEntry>>,
     status: u16,
     message: Option<String>,
     push: Option<PushDone>,
@@ -3192,6 +3196,20 @@ pub(crate) fn git_token_refusal(
     if access.deploy_key.is_some() && !exists {
         return Some(format!("This deploy key is for {repo}, which is not there any more."));
     }
+    // A token narrowed to chosen repositories, or to another workspace, never
+    // makes one outside them by pushing to an empty address.
+    if write
+        && !exists
+        && let Some(reach) = &access.reach
+    {
+        let namespace = repo.split('/').next().unwrap_or_default();
+        let all = reach.repositories == g1t_contracts::scopes::RepositorySelection::All;
+        if !all || !reach.workspace.as_deref().is_some_and(|w| w.eq_ignore_ascii_case(namespace)) {
+            return Some(format!(
+                "This access token cannot create {repo}: it reaches only the repositories chosen for it. Create the repository on g1t.sh, then add it to the token."
+            ));
+        }
+    }
     None
 }
 
@@ -3274,6 +3292,39 @@ mod push_to_create_tests {
         let args = push_to_create(&owner, &RepoPath { namespace: "acme".into(), name: "site".into() });
         assert!(args.is_private);
         assert_eq!((args.namespace.as_str(), args.name.as_str()), ("acme", "site"));
+    }
+
+    fn token(repositories: &str, workspace: Option<&str>) -> g1t_contracts::scopes::TokenAccess {
+        serde_json::from_value(serde_json::json!({
+            "token_id": "tok_1",
+            "scopes": ["code:read", "code:write"],
+            "fine_grained": { "workspace": workspace, "repositories": repositories, "repo_ids": ["rep_plugins"] },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_token_for_chosen_repositories_never_creates_one_by_pushing() {
+        let why = git_token_refusal(&token("selected", Some("acme")), "acme/new", None, true, false, false).unwrap();
+        assert!(why.contains("cannot create acme/new"), "{why}");
+        // It still pushes to a repository that is there; its selection is
+        // the role check's.
+        assert_eq!(git_token_refusal(&token("selected", Some("acme")), "acme/plugins", None, true, false, true), None);
+    }
+
+    #[test]
+    fn a_token_for_all_of_a_workspace_creates_there_and_nowhere_else() {
+        assert_eq!(git_token_refusal(&token("all", Some("acme")), "Acme/new", None, true, false, false), None);
+        assert!(git_token_refusal(&token("all", Some("acme")), "other/new", None, true, false, false).is_some());
+        assert!(git_token_refusal(&token("public", Some("acme")), "acme/new", None, true, false, false).is_some());
+        assert!(git_token_refusal(&token("all", None), "acme/new", None, true, false, false).is_some());
+    }
+
+    #[test]
+    fn a_token_without_a_reach_creates_as_its_owner_would() {
+        let wide: g1t_contracts::scopes::TokenAccess =
+            serde_json::from_value(serde_json::json!({ "token_id": "tok_1", "scopes": ["code:write"] })).unwrap();
+        assert_eq!(git_token_refusal(&wide, "acme/new", None, true, false, false), None);
     }
 }
 

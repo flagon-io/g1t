@@ -1811,8 +1811,9 @@ change or delete a file under `.g1t/workflows/` or `.github/workflows/`,
 even with `contents: write`. A push that does is declined, naming the file,
 so a workflow cannot rewrite the workflows that run with its repository's
 secrets. To change workflows from a job, push with a
-[personal access token](/guides/authentication/#workflow-files) that has
-Workflow files: write, kept as a secret.
+[workspace access token](/guides/workspaces/#workspace-access-tokens) that
+has [Workflow files: write](/guides/authentication/#workflow-files), kept
+as a secret.
 
 The job's token is the repository's workspace acting with the Write role
 at most, never Admin: it cannot manage webhooks, secrets, deploy keys or who
@@ -2025,7 +2026,7 @@ usually work once they point at `https://api.g1t.sh`.
 | --- | --- |
 | `list` | `GET /repos/{owner}/{repo}/actions/workflows` |
 | `get` | `GET /repos/{owner}/{repo}/actions/workflows/{workflow}`, with `ref`: the workflow, with `source`, its file on that branch or tag |
-| `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha` |
+| `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha`, `status`, and `since` and `until` (RFC 3339) for when they were created |
 | `get_run` | `GET /repos/{owner}/{repo}/actions/runs/{id}` |
 | `job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=`, or `?format=text` for the whole log as plain text |
 | `get_run` with `attempt` | `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}` |

@@ -68,7 +68,7 @@ pub struct ManagedBy {
     pub source: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowRun {
     pub id: String,
@@ -706,6 +706,11 @@ pub struct RunsArgs {
     /// `cancelled`, `skipped`, `timed_out`, `neutral`, `action_required`).
     #[serde(default)]
     pub status: Option<String>,
+    /// RFC 3339: only runs created at or after it, and before `until`.
+    #[serde(default)]
+    pub since: Option<String>,
+    #[serde(default)]
+    pub until: Option<String>,
     #[serde(default)]
     pub limit: Option<u32>,
 }

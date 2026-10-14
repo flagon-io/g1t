@@ -12,14 +12,16 @@ import { Hint } from "./hint";
 export function Field({
   label,
   hint,
+  htmlFor,
   children,
 }: {
   label: string;
   hint?: string;
+  htmlFor?: string;
   children: ReactNode;
 }) {
   return (
-    <label className="block">
+    <label className="block" htmlFor={htmlFor}>
       <span className="mb-1.5 block text-sm font-medium text-muted">
         {label}
       </span>

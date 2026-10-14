@@ -11,6 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { githubSignIn } from "../../lib/github.server";
 import { page } from "../../lib/meta";
+import { otpInputProps } from "../../lib/otp";
 import { accounts } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 import { TWO_FACTOR_INTENTS, twoFactorAction } from "../../lib/two-factor.server";
@@ -49,16 +50,8 @@ function grouped(secret: string): string {
 /** The six digits an app shows, typed. */
 function CodeInput({ label = "Code from your app", recovery = false }: { label?: string; recovery?: boolean }) {
   return (
-    <Field label={label} hint={recovery ? "Or a recovery code, such as k7m2q-9xw4d." : undefined}>
-      <Input
-        name="code"
-        required
-        autoComplete="one-time-code"
-        inputMode={recovery ? "text" : "numeric"}
-        pattern={recovery ? undefined : "[0-9 ]{6,7}"}
-        maxLength={recovery ? 20 : 7}
-        placeholder={recovery ? "123456" : "123 456"}
-      />
+    <Field label={label} htmlFor="totp-code" hint={recovery ? "Or a recovery code, such as k7m2q-9xw4d." : undefined}>
+      <Input {...otpInputProps({ id: "totp-code", recovery })} required />
     </Field>
   );
 }

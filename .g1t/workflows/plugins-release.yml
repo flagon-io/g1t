@@ -1,0 +1,72 @@
+# Publishes g1t's Claude Code plugin marketplace to flagon-io/g1t-plugins
+# on g1t.sh, so people add it without cloning this repository:
+#
+#   claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
+#   claude plugin install g1t@g1t
+#
+# This repository is the plugin's source: .claude-plugin/marketplace.json
+# and plugins/claude-code/. scripts/plugins-release.mjs builds the published
+# tree from them (the manifest, the plugin without its tests, a README and
+# the license, the plugin's source rewritten to ./plugins/g1t), checks it
+# holds nothing else and nothing secret, and commits it to g1t-plugins'
+# main only when it changed; each new version is tagged g1t--v<version>,
+# as `claude plugin tag` would. A change to the plugin's files without a
+# new version stops the run, as Claude Code updates installed plugins only
+# when the version changes.
+#
+# Runs on a push to main that changes the plugin, its manifest or the
+# script, and by hand.
+#
+# Needs the repository secret PLUGINS_PUBLISH_TOKEN: a workspace token of
+# flagon-io (g1t.sh/flagon-io/-/tokens, made by an owner; it acts as the
+# workspace, not a person), select repositories: g1t-plugins only, with
+# Code: read and write (code:write) and nothing else. g1t-plugins must
+# exist, public; this never creates it. The published tree has no workflow
+# files, so the token needs no workflow_files:write. The job's own token
+# reaches this repository only, and only to read it.
+name: Plugins release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .claude-plugin/**
+      - plugins/claude-code/**
+      - scripts/plugins-release.mjs
+      - LICENSE
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugins-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish flagon-io/g1t-plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Without the job's own token in git's config: it would go with
+          # the push to g1t-plugins beside the publish token, and be refused.
+          persist-credentials: false
+      - name: The plugin's tests
+        run: |
+          node --test plugins/claude-code/test/hooks.test.mjs
+          node --test scripts/plugins-release.test.mjs
+      - name: Publish
+        env:
+          PLUGINS_PUBLISH_TOKEN: ${{ secrets.PLUGINS_PUBLISH_TOKEN }}
+          G1T_PLUGINS_REMOTE: ${{ github.server_url }}/flagon-io/g1t-plugins.git
+          G1T_SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          if [ -z "${PLUGINS_PUBLISH_TOKEN}" ]; then
+            echo "::error::Set the repository secret PLUGINS_PUBLISH_TOKEN (this workflow's header says what it needs)."
+            exit 1
+          fi
+          echo "::add-mask::${PLUGINS_PUBLISH_TOKEN}"
+          node scripts/plugins-release.mjs publish

@@ -143,7 +143,8 @@ export async function indexDoc(
           at,
         ),
       db.prepare("DELETE FROM doc_chunks_fts WHERE chunk_id = ?").bind(c.id),
-      db.prepare("INSERT INTO doc_chunks_fts (chunk_id, space_id, doc_id, heading, text) VALUES (?, ?, ?, ?, ?)").bind(c.id, doc.space_id, doc.doc_id, c.heading ?? "", c.text),
+      // Only beside a chunk row the database kept: an erased document's insert was ignored (migration 0010).
+      db.prepare("INSERT INTO doc_chunks_fts (chunk_id, space_id, doc_id, heading, text) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM doc_chunks WHERE id = ?1)").bind(c.id, doc.space_id, doc.doc_id, c.heading ?? "", c.text),
     );
   }
   const keep = new Set(chunks.map((c) => c.id));
@@ -154,7 +155,9 @@ export async function indexDoc(
   for (let i = 0; i < statements.length; i += 60) await db.batch(statements.slice(i, i + 60));
 
   if (!store || !embedder) return { chunks: chunks.length, embedded: 0, capped: false };
+  if (await erasedSource(db, doc.kind === "page" ? "page" : null, doc.doc_id, doc.workspace_id)) return { chunks: 0, embedded: 0, capped: false };
   const result = await embedChanged(db, embedder, store, doc, chunks, old, byId, now);
+  await dropIfErased(db, store, doc.kind === "page" ? "page" : null, doc.doc_id, doc.workspace_id, chunks.map((c) => c.id));
   // Last, so a passage that moved from a place now gone could take its vector first.
   try {
     if (gone.some((r) => r.vector_hash)) await store.delete(gone.filter((r) => r.vector_hash).map((r) => r.id));
@@ -488,7 +491,7 @@ export async function indexFolio(env: IndexEnv, folioId: string, now = new Date(
           )
           .bind(c.id, row.workspace_id, row.id, row.kind, scope, c.seq, c.heading, c.text, c.hash, at),
         db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(c.id),
-        db.prepare("INSERT INTO folio_chunks_fts (chunk_id, scope, folio_id, heading, text) VALUES (?, ?, ?, ?, ?)").bind(c.id, scope, row.id, c.heading ?? "", c.text),
+        db.prepare("INSERT INTO folio_chunks_fts (chunk_id, scope, folio_id, heading, text) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM folio_chunks WHERE id = ?1)").bind(c.id, scope, row.id, c.heading ?? "", c.text),
       );
     }
     const keep = new Set(chunks.map((c) => c.id));
@@ -498,6 +501,7 @@ export async function indexFolio(env: IndexEnv, folioId: string, now = new Date(
 
     const { embedder, store } = folioAdapters(env);
     if (!embedder || !store) return { capped: false };
+    if (await erasedSource(db, "folio", row.id, row.workspace_id)) return { capped: false };
     // What needs a vector written: text the index doesn't hold under this id, or a new scope.
     const stale = chunks.filter((c) => {
       const was = byId.get(c.id);
@@ -536,6 +540,7 @@ export async function indexFolio(env: IndexEnv, folioId: string, now = new Date(
           );
         }
         if (vectors.length) await store.upsert(vectors);
+        if (vectors.length) await dropIfErased(db, store, "folio", row.id, row.workspace_id, vectors.map((v) => v.id));
         const hashOf = new Map(chunks.map((c) => [c.id, c.hash]));
         for (const v of vectors) done.push({ id: v.id, hash: hashOf.get(v.id)! });
       } catch (error) {
@@ -586,4 +591,26 @@ export async function forgetFolios(env: IndexEnv, ids: readonly string[]): Promi
   } catch (error) {
     console.error("folios could not forget passages", String(error));
   }
+}
+
+/** Whether a document, or its workspace, was erased (src/erasure.ts): nothing of it is indexed again. */
+export async function erasedSource(db: D1Database, kind: "page" | "folio" | null, id: string, workspaceId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 FROM erased_subjects WHERE id = ?1 AND kind = 'workspace' UNION ALL SELECT 1 FROM erased_documents WHERE id = ?2 AND kind = ?3 LIMIT 1")
+    .bind(workspaceId, id, kind ?? "")
+    .first();
+  return row != null;
+}
+
+/**
+ * Checked again after vectors were written: an erasure that ran while they
+ * were being embedded found no chunk rows for them, so they are taken back
+ * here. Throws when they cannot be, so the caller does not record them.
+ */
+export async function dropIfErased(db: D1Database, store: VectorStore, kind: "page" | "folio" | null, id: string, workspaceId: string, ids: string[]): Promise<void> {
+  if (!ids.length || !(await erasedSource(db, kind, id, workspaceId))) return;
+  await store.delete(ids);
+  await db.batch([
+    db.prepare(`DELETE FROM ${kind === "folio" ? "folio_chunks_fts WHERE folio_id" : "doc_chunks_fts WHERE doc_id"} = ?`).bind(id),
+  ]);
 }

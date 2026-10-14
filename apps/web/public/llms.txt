@@ -138,7 +138,7 @@ are created and approved only in their browser.
    person installs it:
 
    ```sh
-   claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git
+   claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
    claude plugin install g1t@g1t
    ```
 
@@ -375,7 +375,11 @@ scope but `runners:read` and `chat:read`, plus `code:write`,
 `issues:write`, `pull_requests:write`, `notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
 `code:write`, `packages:read`, `packages:write`, `workflows:read`,
 `workflows:write`, `checks:read`, `checks:write`, `deployments:read`,
-`deployments:write`).
+`deployments:write`). Automation that works for a team rather than a
+person (CI, publishing, integrations) takes a workspace token, made by an
+owner at g1t.sh/<workspace>/-/tokens: it acts as the workspace, reaches
+only that workspace's chosen repositories, and keeps working when its
+creator leaves; never ask your person for a personal token for that.
 `chat:read` and `chat:write` are in no preset either: with them a person's
 token, OAuth or personal, uses Chat's JSON routes (`/{workspace}/-/chat/api`)
 and live sockets on the website without "Use the website as you", and

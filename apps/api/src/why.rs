@@ -7,7 +7,7 @@
 //! request's issue, its decision records, and the session entries recorded
 //! around the commit.
 
-use g1t_contracts::decisions::{Decision, ListDecisionsArgs, Why, WhyIssue, WhyPull};
+use g1t_contracts::decisions::{Decision, ListDecisionsArgs, Why, WhyCommit, WhyIssue, WhyPull};
 use g1t_contracts::repos::{Blame, BlameArgs, Commit, LogArgs, RepoPath};
 use g1t_contracts::work::{IssueDetail, ListPullsArgs, Pull, PullStatus, SessionEntry, SessionEntryKind, State, ViewArgs};
 use g1t_contracts::{FailureCode, Outcome, Viewer};
@@ -143,7 +143,7 @@ pub(crate) async fn why(
         Outcome::Ok(blame) => blame,
         Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
     };
-    let Some(commit) = commit_of_line(&blame, line).cloned() else {
+    let Some(found) = commit_of_line(&blame, line).cloned() else {
         let lines = blame.ranges.last().map_or(0, |range| range.end);
         return Ok(Outcome::fail(
             FailureCode::Invalid,
@@ -168,6 +168,10 @@ pub(crate) async fn why(
         Outcome::Ok(pulls) => pulls,
         Outcome::Fail(_) => Vec::new(),
     };
+    // Who wrote it, by account: the address itself is never returned.
+    let authors = crate::commits::read_authors(services, &[&found]).await;
+    let username = crate::commits::username(&found, &authors).map(str::to_owned);
+    let commit = WhyCommit::of(found, username);
     let mut pull = pull_for_commit(&merged, &[], &commit.hash).cloned();
     if pull.is_none() && !merged.is_empty() {
         let log: Outcome<Vec<Commit>> = g1t_kit::call(

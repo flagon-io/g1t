@@ -81,6 +81,28 @@ async function userIdOf(env: Env, given: { user_id?: unknown; username?: unknown
 const MAX_DELIVERIES = 1000;
 
 async function answer(env: Env, method: string, args: any): Promise<Response> {
+  if (method === "purge_personal_data") {
+    if (typeof args?.id !== "string" || !args.id) return Response.json({ ok: false }, { status: 400 });
+    if (args.kind === "user") return Response.json(await feed(env, args.id).erase(args.id));
+    if (args.kind !== "workspace" || typeof args.slug !== "string" || !args.slug) return Response.json({ ok: false }, { status: 400 });
+    // Every slug it went by, and everyone identity knew as a member when it
+    // was purged, besides those its presence rooms know: their feeds keep
+    // notifications, counts and visits under the slug.
+    const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : []);
+    const slugs = [...new Set([args.slug, ...strings(args.old_slugs)].map((slug) => slug.toLowerCase()))];
+    const members = strings(args.members);
+    for (const slug of slugs) {
+      const room = env.ROOMS?.get(env.ROOMS.idFromName(slug));
+      const people = room ? await room.eraseMembers() : [];
+      const everyone = [...new Set([...people, ...members])];
+      for (let i = 0; i < everyone.length; i += 20) {
+        await Promise.all(everyone.slice(i, i + 20).map((userId) => feed(env, userId).eraseWorkspace(slug)));
+      }
+      // Only once their feeds are cleared, so a failure leaves them listed for the retry.
+      if (room) for (const userId of people) await room.dropPerson(userId);
+    }
+    return Response.json({ ok: true });
+  }
   if (method === "workspace_presence") {
     // For services: how a workspace's people show now, as its room keeps them.
     const slug = typeof args?.workspace === "string" ? args.workspace.trim().toLowerCase() : "";

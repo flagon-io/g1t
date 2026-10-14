@@ -115,7 +115,7 @@ We share information only to run g1t, at your direction, or when the law require
 
 | What | How long |
 | --- | --- |
-| Your account, profile and content | While your account or workspace exists. After you delete it, kept 30 days so it can be restored, then purged. |
+| Your account and private content | Ordinary account closure has a 30-day recovery period before permanent cleanup begins. Shared content and records retained for legal reasons are assessed separately, as described below. An approved erasure request can be handled sooner. |
 | Agent sessions and logs | As long as their project, unless you delete them. |
 | Observability data | The project's retention, 1 to 30 days. |
 | The audit log | 7 days on a free workspace, 90 on the g1t plan, longer where agreed. |
@@ -124,7 +124,7 @@ We share information only to run g1t, at your direction, or when the law require
 | Request logs | 7 days. |
 | Database history | g1t's databases keep 30 days of point-in-time history (Cloudflare D1 Time Travel), so purged data leaves it within 30 days of being purged. |
 
-Some content can stay after you leave because it is part of someone else's work: forks others made of your public repositories, and comments and reviews you left in other people's projects. Ask us, and we'll remove your name from what stays where we can.
+Some content can stay after you leave because it is part of someone else's work, including shared conversations and documents, forks, comments and reviews. Where appropriate, we replace account attribution with `ghost`. This does not necessarily remove personal information within the content itself. If you request erasure, we assess that content and any lawful grounds for retaining it, and explain the outcome. We keep a limited record of privacy requests and deletion identifiers where needed to demonstrate our response, prevent restoration of erased data, and prevent reassignment of deleted usernames.
 
 ## Your choices and rights
 
@@ -132,7 +132,7 @@ Wherever you live, you can:
 
 - **See and correct** your information: most of it is in your settings, your workspaces and your projects.
 - **Take it with you**: clone your repositories with git, use the API for everything else, and export the audit log and statements as CSV or JSON. Ask us and we'll send you a copy of your account's personal information.
-- **Delete it**: delete content in the app, or write to us to delete your account or workspace.
+- **Delete it**: delete content in the app, request personal-data erasure from **Settings > Account**, or contact us. You can request erasure even when workspace ownership or billing prevents ordinary account closure.
 - **Object or restrict**: ask us to stop a particular use of your information.
 
 If you're in the EEA, the UK or another place with similar laws (such as under the GDPR), you also have the right to object to processing based on legitimate interests, and to complain to your data protection authority. If you're a California resident, you have the right to know what we collect, to delete it, to correct it, and not to be treated differently for using these rights. We don't sell or share personal information as California law defines those words.

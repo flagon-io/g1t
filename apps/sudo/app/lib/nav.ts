@@ -66,7 +66,7 @@ export type NavItem = {
 };
 
 /** The numbers the sidebar can show, read by root.tsx on every page. */
-export type NavCount = "incidents";
+export type NavCount = "incidents" | "privacy";
 
 export type NavCounts = Partial<Record<NavCount, number>>;
 
@@ -94,6 +94,7 @@ export const NAV: NavGroup[] = [
     icon: "customers",
     items: [
       { label: "Workspaces", to: "/workspaces", icon: "workspaces", about: "Every workspace, who owns it, and how it pays." },
+      { label: "Privacy", to: "/privacy", icon: "people", count: "privacy", about: "Erasure requests, response deadlines, and cleanup retries." },
       { label: "Enterprises", to: "/enterprises", icon: "enterprises", about: "Customers paying for several workspaces with one bill." },
       {
         label: "Invites",

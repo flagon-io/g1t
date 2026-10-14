@@ -95,8 +95,14 @@ code works for 30 seconds, and the one before and after it are accepted
 too, for a phone clock a little off. Each code works once. After five wrong
 codes, or ten minutes, start the sign-in again.
 
-Lost your phone? Enter a recovery code instead of the app's code. Each
-works once, and your security log records its use.
+Lost your phone? Choose **Use a recovery code**, which gives the field a
+keyboard with letters, and enter one of your recovery codes; the field
+takes either kind of code whichever you choose, so a pasted recovery code
+works too. Each works once, and your security log records its use.
+
+The code field is marked as a one-time code, so a password manager that
+keeps your authenticator (1Password, iCloud Keychain, Bitwarden) can
+offer to fill it.
 
 Git over HTTPS never takes your password while two-factor authentication
 is on: use a [personal access token](#access-tokens) as the password, or
@@ -1291,6 +1297,29 @@ After 30 days it is removed for good:
 | Workspaces you made | Name `ghost` as their creator. |
 | Statements, invoices and audit logs | Kept with your username, for the workspaces they belong to. |
 | Your username | Never given to another account or workspace, so links, mentions and remotes that use it keep meaning what they meant. `ghost` is reserved for this, and nobody can register it. |
+
+## Asking for your personal data to be erased
+
+Deleting your account and asking for your personal data to be erased are
+separate. You can ask for erasure even when something stands in the way
+of deleting your account, such as a workspace you own alone or a bill.
+
+1. Open [Settings → Account](https://g1t.sh/settings/account) and go to
+   **Erase my personal data**.
+2. Choose **Request erasure**. g1t records the request and shows its
+   number and the date we respond by: one calendar month from when we
+   received it. Asking again while it is open keeps the first date.
+
+Recording the request deletes nothing by itself. g1t's staff review it:
+what can be erased, shared content such as messages and documents you
+wrote in other people's workspaces, and anything we must keep (for
+example invoices). Then we erase what can be erased, without the usual
+30-day wait, and write to you with the outcome: what was erased, what
+remains and why. The page shows the request's status until then.
+
+For specific content, a request without signing in, or a question about
+a request, write to support@g1t.sh. The
+[Privacy Policy](https://g1t.sh/privacy) says what we keep and for how long.
 
 ## What g1t stores
 

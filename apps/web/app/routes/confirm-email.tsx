@@ -128,9 +128,14 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
       {address && (
         <Form method="post" className="mt-6 space-y-4">
           <input type="hidden" name="intent" value="confirm" />
-          <Field label="Confirmation code" hint={`The code and the link work for ${MINUTES} minutes.`}>
+          <Field label="Confirmation code" htmlFor="email-verification-code" hint={`The code and the link work for ${MINUTES} minutes.`}>
             <Input
+              id="email-verification-code"
               name="code"
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               autoComplete="one-time-code"
               inputMode="numeric"
               pattern="[0-9 -]*"

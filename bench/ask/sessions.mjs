@@ -75,7 +75,7 @@ async function preflight() {
   const pluginDir = join(ROOT, "plugins", "claude-code");
   if (flags.installed) {
     const list = spawnSync("claude", ["plugin", "list"], { encoding: "utf8" });
-    add("g1t plugin installed", /\bg1t\b/.test(list.stdout ?? ""), "claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git && claude plugin install g1t@g1t");
+    add("g1t plugin installed", /\bg1t\b/.test(list.stdout ?? ""), "claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git && claude plugin install g1t@g1t");
   } else add("g1t plugin (--plugin-dir)", existsSync(join(pluginDir, ".claude-plugin", "plugin.json")), pluginDir);
 
   const hooks = existsSync(join(pluginDir, "hooks", "hooks.json")) ? JSON.parse(readFileSync(join(pluginDir, "hooks", "hooks.json"), "utf8")) : {};

@@ -23,7 +23,9 @@ mod members;
 mod oauth;
 mod paid;
 mod people;
+mod privacy;
 mod profiles;
+mod purge_jobs;
 mod rename;
 mod job_tokens;
 mod run_credentials;
@@ -864,6 +866,9 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = identity.purge_due_accounts().await {
         worker::console_error!("account purge: {error}");
     }
+    if let Err(error) = identity.run_purge_jobs().await {
+        worker::console_error!("purge jobs: {error}");
+    }
     // Once: creators of repositories made before they got Admin (members.rs).
     if let Err(error) = identity.backfill_creator_grants().await {
         worker::console_error!("creator grants: {error}");
@@ -1133,6 +1138,12 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "check_account_deletion" => reply(&identity.check_account_deletion(args(body)?).await?),
         "delete_account" => reply(&identity.delete_account(args(body)?).await?),
         "admin_delete_account" => reply(&identity.admin_delete_account(args(body)?).await?),
+        "request_erasure" => reply(&identity.request_erasure(args(body)?).await?),
+        "my_erasure" => reply(&identity.my_erasure(args(body)?).await?),
+        "admin_intake_erasure" => reply(&identity.intake_erasure(args(body)?).await?),
+        "admin_erasure_requests" => reply(&identity.erasure_requests().await?),
+        "admin_review_erasure" => reply(&identity.review_erasure(args(body)?).await?),
+        "admin_pending_purges" => reply(&identity.pending_purge_jobs().await?),
         "admin_deleted_accounts" => reply(&identity.admin_deleted_accounts().await?),
         "admin_restore_account" => reply(&identity.admin_restore_account(args(body)?).await?),
         "admin_purge_account" => reply(&identity.admin_purge_account(args(body)?).await?),

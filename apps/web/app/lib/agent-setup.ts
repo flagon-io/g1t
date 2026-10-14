@@ -15,7 +15,7 @@
 export const MCP_URL = "https://mcp.g1t.sh";
 
 /** Installs g1t's Claude Code plugin, which adds g1t.sh's MCP server and records sessions. */
-export const PLUGIN_INSTALL = "claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git\nclaude plugin install g1t@g1t";
+export const PLUGIN_INSTALL = "claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git\nclaude plugin install g1t@g1t";
 
 export const AGENT_IDS = ["claude-code", "codex", "opencode", "cursor"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];

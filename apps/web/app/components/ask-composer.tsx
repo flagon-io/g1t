@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router";
 import { type AskSetup, type ChatLiveEvent, type ChatMessage, type Result } from "@g1t/contracts";
 
 import { askPage, askWhere } from "../lib/ask";
+import { modelLabel } from "../lib/ask-model";
 import { browserTimeZone } from "../lib/time-zone";
 import { anyAnswering, applyLive, fromG1t, isClearCommand, suggestions } from "../lib/g1t-chat";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "./ai-elements/conversation";
@@ -353,7 +354,7 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
             <Skeleton className="h-4 w-40" />
           ) : ready ? (
             <span className="min-w-0 truncate">
-              Answers with {setup.connection_name} · <span className="font-mono">{setup.model}</span>
+              Answers with {setup.connection_name} · <span className="font-mono">{modelLabel(setup)}</span>
             </span>
           ) : (
             <span>Not set up yet</span>

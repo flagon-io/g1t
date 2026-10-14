@@ -1647,7 +1647,7 @@ impl Op {
                 "The decision records on an issue (with those on its pull requests) or on a pull request, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed: someone said so; tested: a check or a combination of pull requests proved it; approved: a person approved it), who recorded it (absent for g1t), its summary and its evidence. Issues and pull requests share numbers, so number names either."
             }
             Op::Why => {
-                "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch), the merged pull request it arrived in, that pull request's issue, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, issue, decisions and sessions are empty when the commit did not arrive through a pull request."
+                "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch; its author named as git wrote them, with `username`, the g1t account their address belongs to, when one does, and never the address), the merged pull request it arrived in, that pull request's issue, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, issue, decisions and sessions are empty when the commit did not arrive through a pull request."
             }
             Op::MarkPullRequestReady => {
                 "Mark a draft pull request ready for review. Push your commits first. The summary becomes its description and should say what changed and why."
@@ -1737,7 +1737,7 @@ impl Op {
                 "One workflow, named by its id, its file name (ci.yml), its path or its name (CI): what list_workflows says of it, with `source`, its file as written on `ref` (the default branch unless you give a branch or tag), and `ref`, the branch or tag read."
             }
             Op::ListWorkflowRuns => {
-                "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, or a status or conclusion (`status`: failure for the failed ones, in_progress for those still going). A run whose `status` is not completed has no result yet."
+                "A repository's workflow runs, newest first: of one workflow (its id or file name), a branch, an event, a pull request's number, a commit, a status or conclusion (`status`: failure for the failed ones, in_progress for those still going), or created between `since` and `until` (RFC 3339; today's deploys are `workflow` deploy.yml, the default branch and `since` the start of the day). A run whose `status` is not completed has no result yet."
             }
             Op::GetWorkflowRun => {
                 "One workflow run with its jobs: each job's steps and how they went, its annotations (::error:: and the like), and why it stopped. Read a job's log with get_job_logs. `attempts` lists every attempt (each re-run is one) with who started it and how it ended; give `attempt` to read an earlier one, whose jobs keep their own ids and logs."
@@ -2977,6 +2977,8 @@ impl Op {
                     "pull": { "type": "integer", "description": "A pull request's number." },
                     "sha": { "type": "string", "description": "A commit." },
                     "status": { "type": "string", "description": "Only runs with this status (queued, in_progress, waiting, completed) or conclusion (success, failure, cancelled, skipped, timed_out): failure finds the failed ones." },
+                    "since": { "type": "string", "description": "RFC 3339: only runs created at or after it." },
+                    "until": { "type": "string", "description": "RFC 3339: only runs created before it." },
                     "limit": { "type": "integer", "description": "At most 100; 50 if not given." },
                 }),
                 &["repo"],
@@ -5321,6 +5323,8 @@ impl Op {
                         "pull": integer(input, "pull"),
                         "sha": optional_text(input, "sha"),
                         "status": optional_text(input, "status"),
+                        "since": optional_text(input, "since"),
+                        "until": optional_text(input, "until"),
                         "limit": integer(input, "limit"),
                     }),
                 )

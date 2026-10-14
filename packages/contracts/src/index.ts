@@ -57,3 +57,5 @@ export * from "./teams";
 export * from "./people";
 export * from "./webhooks";
 export * from "./work";
+
+export * from "./privacy";

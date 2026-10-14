@@ -63,6 +63,7 @@ import {
   sessionTitle,
   sessionTree,
 } from "../lib/coordination";
+import { PLUGIN_INSTALL } from "../lib/agent-setup";
 import { CopyLine, EmptyState, Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Avatar } from "./ui/avatar";
@@ -895,8 +896,9 @@ export function StartHere({ title }: { title: string }) {
     <EmptyState title={title}>
       <div className="mx-auto mt-3 max-w-lg space-y-3 text-left">
         <p>Install the g1t plugin in Claude Code, and each session shows here as it works:</p>
-        <CopyLine text="claude plugin marketplace add https://g1t.sh/flagon-io/g1t.git" prompt />
-        <CopyLine text="claude plugin install g1t@g1t" prompt />
+        {PLUGIN_INSTALL.split("\n").map((line) => (
+          <CopyLine key={line} text={line} prompt />
+        ))}
         <p>From any other harness, or by hand, claim an issue with the g1t CLI:</p>
         <CopyLine text="g1t work claim 12" prompt />
         <p>

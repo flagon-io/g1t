@@ -13,6 +13,7 @@ mod alerts;
 mod ask;
 mod ask_loop;
 mod ask_tools;
+mod auto;
 mod github;
 mod github_jwt;
 mod http;
@@ -67,6 +68,11 @@ impl Row {
 
     fn config(&self) -> ConnectionConfig {
         serde_json::from_str(&self.config).unwrap_or_default()
+    }
+
+    /// The models it offered when last checked.
+    fn models(&self) -> Vec<String> {
+        self.models.as_deref().and_then(|models| serde_json::from_str(models).ok()).unwrap_or_default()
     }
 }
 
@@ -237,11 +243,7 @@ impl Integrations {
             created_at: row.created_at.clone(),
             last_used_at: row.last_used_at.clone(),
             last_error: row.last_error.clone(),
-            models: row
-                .models
-                .as_deref()
-                .and_then(|models| serde_json::from_str(models).ok())
-                .unwrap_or_default(),
+            models: row.models(),
         }
     }
 
@@ -554,10 +556,12 @@ impl Integrations {
         struct Route {
             connection_id: Option<String>,
             model: Option<String>,
+            #[serde(default)]
+            auto: u32,
         }
         let route = self
             .db
-            .prepare("SELECT connection_id, model FROM model_routes WHERE workspace = ? AND task = ?")
+            .prepare("SELECT connection_id, model, auto FROM model_routes WHERE workspace = ? AND task = ?")
             .bind(&[workspace.into(), ASK_TASK.into()])?
             .first::<Route>(None)
             .await?;
@@ -579,11 +583,18 @@ impl Integrations {
                 None,
             ));
         };
-        let model = route
-            .and_then(|route| route.model)
-            .or_else(|| row.config().model)
-            .filter(|model| !model.trim().is_empty());
-        let problem = if model.is_none() {
+        let auto = route.as_ref().is_some_and(|route| route.auto == 1);
+        // With Auto, a model is named only when the connection offers just
+        // its own: an endpoint that lists none, or an Azure deployment.
+        let model = if auto {
+            auto_models(&row).is_empty().then(|| row.config().model).flatten()
+        } else {
+            route.and_then(|route| route.model).or_else(|| row.config().model)
+        }
+        .filter(|model| !model.trim().is_empty());
+        let problem = if auto && model.is_none() && auto_models(&row).is_empty() {
+            Some(format!("{} has listed no models for Auto to choose from. Test it to list them, or choose a model for Ask.", row.name))
+        } else if !auto && model.is_none() {
             Some("No model is chosen for Ask.".to_owned())
         } else if self.sealer.is_none() {
             Some("Integrations are not set up on this g1t: it has no key to keep secrets with.".to_owned())
@@ -598,6 +609,7 @@ impl Integrations {
                 connection_name: Some(row.name.clone()),
                 provider: Some(row.provider()),
                 model,
+                auto,
                 problem,
             },
             Some(row),
@@ -632,16 +644,21 @@ impl Integrations {
             return Ok(fail(FailureCode::Invalid, "Ask can only answer with an AI provider."));
         }
         let connection = self.to_connection(&row);
-        let model = match ask_model(&connection, a.model.as_deref()) {
-            Ok(model) => model,
-            Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+        let auto = chose_auto(a.model.as_deref());
+        let model = if auto {
+            None
+        } else {
+            match ask_model(&connection, a.model.as_deref()) {
+                Ok(model) => model,
+                Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+            }
         };
         self.db
             .prepare(
-                "INSERT INTO model_routes (workspace, task, connection_id, model) VALUES (?, ?, ?, ?)
-                 ON CONFLICT (workspace, task) DO UPDATE SET connection_id = excluded.connection_id, model = excluded.model",
+                "INSERT INTO model_routes (workspace, task, connection_id, model, auto) VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT (workspace, task) DO UPDATE SET connection_id = excluded.connection_id, model = excluded.model, auto = excluded.auto",
             )
-            .bind(&[workspace.as_str().into(), ASK_TASK.into(), row.id.as_str().into(), optional(model.as_deref())])?
+            .bind(&[workspace.as_str().into(), ASK_TASK.into(), row.id.as_str().into(), optional(model.as_deref()), u32::from(auto).into()])?
             .run()
             .await?;
         Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0))
@@ -705,8 +722,17 @@ impl Integrations {
             Err(problem) => return ask_refusal(&problem),
         };
         let (setup, row) = self.ask_setup(&workspace).await?;
-        let (Some(row), Some(model), None) = (row, setup.model.clone(), setup.problem.clone()) else {
+        let (Some(row), None) = (row, setup.problem.clone()) else {
             return ask_refusal(setup.problem.as_deref().unwrap_or("Ask is not set up in this workspace."));
+        };
+        // Auto picks for this question; otherwise the model chosen.
+        let model = if setup.auto {
+            auto::choose(&auto_models(&row), row.config().model.as_deref(), auto::need(&messages))
+        } else {
+            setup.model.clone()
+        };
+        let Some(model) = model else {
+            return ask_refusal("No model is chosen for Ask.");
         };
         let provider = row.provider();
         let config = row.config();
@@ -816,6 +842,7 @@ impl Integrations {
             provider,
             provider_label: provider.label().to_owned(),
             model,
+            auto: setup.auto,
         });
         answering.streaming(response.stream()?, meta);
         let lines = futures_util::stream::unfold(answering, |mut answering| async move {
@@ -1395,6 +1422,17 @@ fn ask_model(connection: &Connection, chosen: Option<&str>) -> std::result::Resu
     Ok(Some(model))
 }
 
+/// Whether a choice of model for Ask is Auto: [`ASK_AUTO_MODEL`], in any case.
+fn chose_auto(chosen: Option<&str>) -> bool {
+    chosen.is_some_and(|model| model.trim().eq_ignore_ascii_case(ASK_AUTO_MODEL))
+}
+
+/// The models Auto chooses among on a connection: those it listed, except
+/// on Azure, whose requests name the owner's deployment, not a model.
+fn auto_models(row: &Row) -> Vec<String> {
+    if row.provider() == Provider::AzureOpenai { Vec::new() } else { row.models() }
+}
+
 /// An `ask` that cannot be answered: one `error` line.
 fn ask_refusal(message: &str) -> Result<Response> {
     let headers = Headers::new();
@@ -1571,6 +1609,39 @@ mod config_tests {
         let azure = connection(Provider::AzureOpenai, Some("prod-gpt"), &["gpt-5"]);
         assert_eq!(ask_model(&azure, Some("prod-gpt")).unwrap().as_deref(), Some("prod-gpt"));
         assert!(ask_model(&own, Some(&"m".repeat(201))).is_err());
+    }
+
+    fn row(provider: Provider, model: Option<&str>, models: &[&str]) -> Row {
+        Row {
+            id: "con_1".into(),
+            workspace: "acme".into(),
+            provider: provider.name().into(),
+            name: "Team key".into(),
+            config: serde_json::to_string(&ConnectionConfig { model: model.map(str::to_owned), ..ConnectionConfig::default() }).unwrap(),
+            secrets: None,
+            secret_hint: None,
+            created_by: "ana".into(),
+            created_at: "2026-10-12T00:00:00Z".into(),
+            last_used_at: None,
+            last_error: None,
+            models: Some(serde_json::to_string(models).unwrap()),
+        }
+    }
+
+    #[test]
+    fn auto_is_chosen_by_name_and_picks_among_what_the_connection_lists() {
+        assert!(chose_auto(Some("auto")) && chose_auto(Some(" Auto ")));
+        assert!(!chose_auto(Some("claude-haiku-5-5")) && !chose_auto(None) && !chose_auto(Some("")));
+        let anthropic = row(Provider::Anthropic, None, &["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"]);
+        let models = auto_models(&anthropic);
+        let simple = [AskMessage { role: AskRole::User, content: "Who is assigned to #12?".into() }];
+        let shipped = [AskMessage { role: AskRole::User, content: "What shipped today?".into() }];
+        assert_eq!(auto::choose(&models, None, auto::need(&simple)).as_deref(), Some("claude-haiku-5-5"));
+        assert_eq!(auto::choose(&models, None, auto::need(&shipped)).as_deref(), Some("claude-sonnet-5-5"));
+        // Azure names a deployment, never a listed model: Auto uses it.
+        let azure = row(Provider::AzureOpenai, Some("prod-gpt"), &["gpt-5", "gpt-5-mini"]);
+        assert!(auto_models(&azure).is_empty());
+        assert_eq!(auto::choose(&auto_models(&azure), azure.config().model.as_deref(), auto::need(&simple)).as_deref(), Some("prod-gpt"));
     }
 
     #[test]

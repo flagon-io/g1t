@@ -84,6 +84,7 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
   }
 
   override async fetch(request: Request): Promise<Response> {
+    if (await this.ctx.storage.get("erased")) return new Response("Conversation erased", { status: 410 });
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("Expected a WebSocket upgrade\n", { status: 426 });
     }
@@ -93,6 +94,7 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
     } catch {
       return new Response("Missing member\n", { status: 400 });
     }
+    if (await this.ctx.storage.get(`erased:${principalKey(who.member)}`)) return new Response("Account erased", { status: 410 });
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     // Tagged with the member's key, so their sockets can be found to drop.
@@ -230,8 +232,27 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
     this.broadcast({ type: "channel.cleared", channel_id: channelId });
   }
 
+  /**
+   * An erasure (src/erasure.ts). With a member, only that person is shut
+   * out: everyone else's view and answers carry on, and nothing is cleared
+   * for them. Without one, the whole conversation is going: its answer
+   * job stops and every socket closes.
+   */
+  async erase(channelId: string, principal: string | null): Promise<void> {
+    if (principal) {
+      await this.ctx.storage.put(`erased:${principal}`, true);
+      this.drop(principal);
+      return;
+    }
+    await this.ctx.storage.put("erased", true);
+    await this.clear(channelId);
+    await this.ctx.storage.deleteAlarm();
+    for (const socket of this.ctx.getWebSockets()) { try { socket.close(4403, "Conversation erased"); } catch {} }
+  }
+
   /** Whether the question a job answers has been deleted by a clear. */
   private async questionGone(job: AnswerJob): Promise<boolean> {
+    if (await this.ctx.storage.get("erased") || await this.ctx.storage.get(`erased:user:${job.actor.id}`)) return true;
     if (!job.question_id) return false;
     const row = await this.env.DB.prepare("SELECT id FROM messages WHERE id = ?").bind(job.question_id).first<{ id: string }>();
     return !row;
@@ -289,7 +310,7 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
 
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const who = socket.deserializeAttachment() as RoomMember | null;
-    if (!who) return;
+    if (!who || await this.ctx.storage.get("erased") || await this.ctx.storage.get(`erased:${principalKey(who.member)}`)) return;
     // The only thing a client says over the socket: it is typing
     // (`{"type":"typing","channel_id":"<id>"}`, at most every 3 s).
     // Everything else (posting, reading) goes through the site, which

@@ -128,6 +128,12 @@ jobs:
         run: node scripts/deploy.mjs manifest --check
       - name: The Claude Code plugin's tests
         run: node --test plugins/claude-code/test/hooks.test.mjs
+      # What plugins-release.yml publishes to flagon-io/g1t-plugins: the
+      # manifests agree, and the tree is only the plugin.
+      - name: The plugin's published marketplace
+        run: |
+          node scripts/plugins-release.mjs check
+          node --test scripts/plugins-release.test.mjs
 
   build:
     name: Build
