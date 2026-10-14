@@ -206,9 +206,8 @@ export function actorKind(key: string, agents?: ReadonlySet<string>): ActorKind 
 
 /**
  * A member key that names a robot under `user:`: an agent of older rows by
- * its own id, or g1t's upkeep as the workspace or as `g1t`. Events
- * normalise these (services/events digest), so this is the safety net for
- * older ones.
+ * its own id, a workspace (its own token, or g1t's upkeep as it), or `g1t`.
+ * Events name a workspace this way (services/events digest).
  */
 export function isRobotKey(key: string): boolean {
   return key.startsWith("user:agt_") || key.startsWith("user:wsp_") || key === "user:g1t";

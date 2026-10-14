@@ -1906,8 +1906,12 @@ impl<S: GitStore> Repos<S> {
         let repo = match self.authorize_git(&git.path, &viewer, git.service, found).await? {
             Outcome::Ok(repo) => repo,
             refused => {
+                let why = match &refused {
+                    Outcome::Fail(failure) => Some(failure.message.trim_end().to_owned()),
+                    Outcome::Ok(_) => None,
+                };
                 let response = git_http::refuse(refused)?;
-                after.ended(response.status_code(), None);
+                after.ended(response.status_code(), why);
                 after.spawn(env, ctx);
                 return Ok(response);
             }
@@ -2470,7 +2474,7 @@ struct PushDone {
 /// What a git request leaves for after its answer: its audit entry, with
 /// how the request ended, and what a push changed.
 struct AfterGit {
-    audit: Option<Box<g1t_contracts::audit::NewAuditEntry>>,
+    audit: Option<Box<run_access::GitEntry>>,
     status: u16,
     message: Option<String>,
     push: Option<PushDone>,
