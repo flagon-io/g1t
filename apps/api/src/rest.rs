@@ -14,6 +14,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
 use crate::rules::RulesOp;
@@ -62,6 +63,9 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/user/invitations/:id/accept", Op::AcceptInvitation, &[]),
     route("POST", "/user/invitations/:id/decline", Op::DeclineInvitation, &[]),
     route("GET", "/workspaces/:workspace/invitations", Op::ListWorkspaceInvites, &[]),
+    // A person's own Getting started in a workspace.
+    route("GET", "/workspaces/:workspace/onboarding", Op::Onboarding(OnboardingOp::GetOnboarding), &[]),
+    route("PATCH", "/workspaces/:workspace/onboarding", Op::Onboarding(OnboardingOp::UpdateOnboarding), &[]),
     // A workspace's rules for personal access tokens, and its members' tokens.
     route("GET", "/workspaces/:workspace/personal-access-token-policy", Op::Tokens(TokenOp::GetTokenPolicy), &[]),
     route("PATCH", "/workspaces/:workspace/personal-access-token-policy", Op::Tokens(TokenOp::SetTokenPolicy), &[]),

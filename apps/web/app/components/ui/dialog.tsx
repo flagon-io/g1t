@@ -34,16 +34,29 @@ export const DIALOG_PANEL =
   "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl border border-line-strong bg-surface p-6 text-fg shadow-2xl shadow-black/60 outline-none data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out motion-reduce:animate-none " +
   "max-sm:top-auto max-sm:bottom-(--keyboard-inset,0px) max-sm:left-0 max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:max-h-[calc(var(--vv-height,100dvh)-env(safe-area-inset-top)-0.5rem)] max-sm:rounded-b-none max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[calc(1.5rem+env(safe-area-inset-bottom))] max-sm:data-[state=open]:animate-[sheet-in-bottom_0.24s_cubic-bezier(0.16,1,0.3,1)] max-sm:data-[state=closed]:animate-fade-out";
 
+/**
+ * `split`: a wide panel with no padding of its own, for a dialog in two
+ * columns (a rail and a pane, as Getting started is) whose parts scroll on
+ * their own. Its height is fixed on a computer so moving between steps
+ * does not make it jump; on a phone it is the sheet, as tall as it needs.
+ */
+const SIZES = {
+  default: "",
+  split:
+    "max-w-4xl gap-0 p-0 sm:h-[min(42rem,calc(100dvh-4rem))] sm:grid-cols-[16rem_minmax(0,1fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden max-sm:grid-cols-[minmax(0,1fr)] max-sm:pb-[env(safe-area-inset-bottom)]",
+} as const;
+
 export function DialogContent({
   className,
   children,
   showClose = true,
+  size = "default",
   ...props
-}: ComponentProps<typeof Primitive.Content> & { showClose?: boolean }) {
+}: ComponentProps<typeof Primitive.Content> & { showClose?: boolean; size?: keyof typeof SIZES }) {
   return (
     <Primitive.Portal>
       <DialogOverlay />
-      <Primitive.Content className={cn(DIALOG_PANEL, className)} {...props}>
+      <Primitive.Content className={cn(DIALOG_PANEL, SIZES[size], className)} {...props}>
         {children}
         {showClose && (
           <Primitive.Close asChild>
