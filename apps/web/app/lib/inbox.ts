@@ -209,6 +209,18 @@ export function updatesLabel(count: number | null | undefined): string {
   return count && count > 1 ? `${count} updates` : "";
 }
 
+/**
+ * Why a done item settled by itself, as its card says it: the reason, and
+ * who did it when someone did ("Merged by @ana", "CI passed in run 330").
+ * Empty for an item not done, or marked done by hand.
+ */
+export function settledLine(item: Pick<InboxItem, "doneAt" | "settledReason" | "settledBy">): string {
+  const reason = item.settledReason?.trim();
+  if (!item.doneAt || !reason) return "";
+  const by = item.settledBy?.trim().replace(/^@/, "");
+  return by ? `${reason} by @${by}` : reason;
+}
+
 /** The ways to watch a repository, in the order the menu shows them. */
 export const WATCH_CHOICES: { level: WatchLevel; label: string; detail: string }[] = [
   { level: "participating", label: "Participating and @mentions", detail: "Only what you take part in, or are mentioned in." },

@@ -241,10 +241,13 @@ impl<S: GitStore> Repos<S> {
         Ok((Outcome::Ok(answer), refresh))
     }
 
-    /// Works out `repo`'s About again, if no one else is. In the
-    /// background: a failure is logged and the lease let go early.
-    pub(crate) async fn refresh(&self, repo: &Repo) {
+    /// Works out `repo`'s About again, if no one else is, reading for
+    /// `budget_ms` at most. In the background: a failure is logged and the
+    /// lease let go early. A run that was slow or partial is logged with how
+    /// long it took (`about_run`), as a slow RPC answer is.
+    pub(crate) async fn refresh(&self, repo: &Repo, budget_ms: u64) {
         let db = self.db();
+        let started = now_ms();
         match stats::claim(db, &repo.id, now_ms()).await {
             Ok(true) => {}
             Ok(false) => return,
@@ -258,10 +261,17 @@ impl<S: GitStore> Repos<S> {
             let Some(head) = git.log(&repo.default_branch, 1).await?.into_iter().next() else {
                 return Ok(None);
             };
-            stats::work_out(&git, &head.hash, &head.tree_hash, self.identity.as_ref()).await.map(Some)
+            stats::work_out(&git, &head.hash, &head.tree_hash, self.identity.as_ref(), budget_ms).await.map(Some)
         };
         match worked.await {
             Ok(Some(worked)) => {
+                let took = now_ms().saturating_sub(started);
+                if worked.partial || took >= SLOW_RUN_MS {
+                    worker::console_log!(
+                        "{}",
+                        serde_json::json!({ "about_run": repo.id, "took_ms": took, "partial": worked.partial, "commits": worked.commits })
+                    );
+                }
                 if let Err(error) = stats::keep(db, &repo.id, &worked).await {
                     worker::console_error!("the About of {} was worked out but not kept: {error}", repo.id);
                     stats::release(db, &repo.id).await;
@@ -657,14 +667,23 @@ impl Retype for Outcome<()> {
     }
 }
 
+/// Runs this long or longer are logged (`refresh`).
+const SLOW_RUN_MS: u64 = 5_000;
+
 /// Works out `repo`'s About after the answer has gone, when an answer
-/// found it behind.
+/// found it behind. What the run read is kept for the next one (trees,
+/// blob sizes and history by hash, store.rs) by writes it starts as it
+/// goes; the `waitUntil` lasts until they are done, or the next run would
+/// read the same again.
 pub(crate) fn refresh_later(env: &Env, ctx: &worker::Context, refresh: Refresh) {
     let Some(repo) = refresh else { return };
     let env = env.clone();
     ctx.wait_until(async move {
         match crate::service(&env) {
-            Ok(repos) => repos.refresh(&repo).await,
+            Ok(repos) => {
+                repos.refresh(&repo, stats::BUDGET_MS).await;
+                repos.deferred.settle().await;
+            }
             Err(error) => worker::console_error!("the About of {} was not worked out: {error}", repo.id),
         }
     });

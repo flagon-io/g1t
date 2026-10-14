@@ -210,10 +210,18 @@ function isUsername(name: string): boolean {
  * that the squircle tile alone says it). The same mark everywhere, so
  * nobody has to read a name to know they are looking at an agent.
  */
-export function AgentMarker({ size, ring = "var(--color-bg)", className }: { size: number; ring?: string; className?: string }) {
+export function AgentMarker({ size, ring = "var(--color-bg)", className, inline }: { size: number; ring?: string; className?: string; inline?: boolean }) {
   const disc = Math.max(9, Math.min(22, Math.round(size * 0.4)));
   const icon = Math.max(6, Math.round(disc * 0.66));
   const inset = Math.round(disc * 0.28);
+  // `inline`: the marker on its own in a line of text, beside what an agent made, rather than on an avatar's corner.
+  if (inline) {
+    return (
+      <span aria-hidden="true" className={`inline-flex shrink-0 items-center justify-center rounded-full bg-accent text-bg ${className ?? ""}`} style={{ width: size, height: size }}>
+        <Bot size={Math.max(8, Math.round(size * 0.66))} strokeWidth={2.6} absoluteStrokeWidth={false} />
+      </span>
+    );
+  }
   return (
     <span
       aria-hidden="true"

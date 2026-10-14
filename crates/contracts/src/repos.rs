@@ -793,8 +793,9 @@ pub struct Blame {
     pub ranges: Vec<BlameRange>,
     /// The commits the ranges name, each once.
     pub commits: Vec<Commit>,
-    /// True when the history was too long to read in full, so the oldest
-    /// lines are given to the oldest commit read.
+    /// True when the history was too long to read in full (too many
+    /// commits, or too long to read), so the oldest lines are given to the
+    /// oldest commit read that has them.
     pub partial: bool,
 }
 

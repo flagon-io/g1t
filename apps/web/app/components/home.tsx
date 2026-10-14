@@ -9,6 +9,7 @@ import {
   ArrowRight,
   AtSign,
   Bell,
+  CheckCheck,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -29,25 +30,31 @@ import {
   type Attention,
   type AttentionKind,
   type AttentionRow,
+  type Away,
   type DeployRow,
   type Digest,
   type DigestActor,
   type DigestColumn,
   type LandedChange,
   type RunningRow,
+  type ShipInfo,
   type Span,
   type Spend,
   type Stake,
   WINDOWS,
+  agentLabel,
+  landedByDay,
   listOf,
+  shippedLabel,
+  timeOfDay,
   waited,
   whenShort,
 } from "../lib/home";
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
 import { ButtonLink } from "./ui";
-import { Avatar } from "./ui/avatar";
-import { Badge } from "./ui/badge";
+import { AgentMarker, Avatar } from "./ui/avatar";
+import { Badge, type BadgeTone } from "./ui/badge";
 import { Skeleton } from "./ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -433,10 +440,10 @@ export function SpanSkeleton() {
 /** Rows each list shows before the rest fold away. */
 const LIST_ROWS = 5;
 
-function When({ at, now, tz }: { at: number; now: number; tz: string | null }) {
+function When({ at, now, tz, timeOnly }: { at: number; now: number; tz: string | null; timeOnly?: boolean }) {
   return (
     <span className="shrink-0 text-xs text-faint tabular-nums" suppressHydrationWarning>
-      {whenShort(at, now, tz)}
+      {timeOnly ? timeOfDay(at, tz) : whenShort(at, now, tz)}
     </span>
   );
 }
@@ -483,37 +490,194 @@ function landedHint(landed: LandedChange[]): string {
   return parts.join(" · ");
 }
 
+const SHIP_TONE: Record<ShipInfo["state"], BadgeTone> = {
+  live: "success",
+  deploying: "info",
+  waiting: "neutral",
+  failed: "danger",
+};
+
+/** Whether a merge or a push is live yet, linked to the deployment that shipped it (or the one under way, or the one that failed). */
+function Shipped({ change }: { change: LandedChange }) {
+  const ship = change.shipped;
+  if (!ship) return null;
+  const label = shippedLabel(ship, change);
+  const badge = (
+    <Badge tone={SHIP_TONE[ship.state]} className="relative z-10">
+      {ship.state === "live" && <Rocket size={10} aria-hidden="true" />}
+      {ship.state === "deploying" && <Loader size={10} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />}
+      {label}
+    </Badge>
+  );
+  return ship.to ? (
+    <Link to={ship.to} className="relative z-10 rounded-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none">
+      {badge}
+    </Link>
+  ) : (
+    badge
+  );
+}
+
+/** The agent marker on a change made in a harness session, linked to the session. */
+function Agent({ change }: { change: LandedChange }) {
+  const mark = change.agent;
+  if (!mark) return null;
+  const label = agentLabel(mark);
+  const marker = <AgentMarker size={16} inline />;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {mark.to ? (
+          <Link to={mark.to} aria-label={label} className="relative z-10 inline-flex shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none">
+            {marker}
+          </Link>
+        ) : (
+          <span role="img" aria-label={label} className="inline-flex shrink-0">
+            {marker}
+          </span>
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function LandedItem({ change, now, tz, timeOnly }: { change: LandedChange; now: number; tz: string | null; timeOnly?: boolean }) {
+  return (
+    <li className={cn(rowClass, "items-start")}>
+      <span className="mt-0.5 shrink-0">{LANDED_ICON[change.kind]}</span>
+      <div className="min-w-0 grow">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Link to={change.to} className="line-clamp-2 text-sm text-fg hover:underline sm:truncate">
+            {change.title}
+          </Link>
+          <Agent change={change} />
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="min-w-0 truncate text-xs text-muted">{change.detail}</p>
+          <Shipped change={change} />
+        </div>
+      </div>
+      <When at={change.at} now={now} tz={tz} timeOnly={timeOnly} />
+    </li>
+  );
+}
+
 /**
  * Everything that landed in the span, newest first: pull requests merged,
  * commits pushed straight to a default branch, production builds that went
- * live, releases and package versions published.
+ * live, releases and package versions published. Each merge and push says
+ * whether it is live yet, and one made in a harness session carries the
+ * agent marker. Over the last 7 days, day by day.
  */
-export function LandedCard({ landed, missing, code, now, tz }: { landed: LandedChange[] | null; missing: string[]; code: boolean; now: number; tz: string | null }) {
+export function LandedCard({
+  landed,
+  missing,
+  code,
+  now,
+  tz,
+  byDay = false,
+}: {
+  landed: LandedChange[] | null;
+  missing: string[];
+  code: boolean;
+  now: number;
+  tz: string | null;
+  byDay?: boolean;
+}) {
   if (!code) return null;
+  const render = (change: LandedChange) => <LandedItem key={change.key} change={change} now={now} tz={tz} timeOnly={byDay} />;
   return (
     <Card title="Landed" hint={landed && landed.length > 0 ? landedHint(landed) : undefined}>
       {!landed ? (
         <Quiet>Code didn&apos;t answer, so what landed can&apos;t be listed right now.</Quiet>
       ) : landed.length === 0 ? (
         <Quiet>{missing.length > 0 ? "Nothing landed in what could be read." : "Nothing merged, pushed to a default branch, deployed to production or published in this span."}</Quiet>
+      ) : byDay ? (
+        landedByDay(landed, now, tz).map((day) => (
+          <section key={day.key} aria-label={day.label} className="border-t border-line first-of-type:border-t-0">
+            <h3 className="flex items-baseline gap-2 bg-raised/40 px-5 py-1.5 text-xs font-medium text-fg-soft">
+              {day.label}
+              <span className="font-normal text-faint tabular-nums">{day.rows.length.toLocaleString("en-US")}</span>
+            </h3>
+            <Folded items={day.rows} render={render} />
+          </section>
+        ))
       ) : (
-        <Folded
-          items={landed}
-          render={(change) => (
-            <li key={change.key} className={rowClass}>
-              {LANDED_ICON[change.kind]}
-              <div className="min-w-0 grow">
-                <Link to={change.to} className="block truncate text-sm text-fg hover:underline">
-                  {change.title}
-                </Link>
-                <p className="truncate text-xs text-muted">{change.detail}</p>
-              </div>
-              <When at={change.at} now={now} tz={tz} />
-            </li>
-          )}
-        />
+        <Folded items={landed} render={render} />
       )}
       {landed && <Missing names={missing} what="everything that landed" />}
+    </Card>
+  );
+}
+
+// --- While you were away -----------------------------------------------------------
+
+/**
+ * What g1t settled for you since you were last here (a later run passed,
+ * it merged, it deployed), what shipped, and what still needs you: the
+ * counts on one line, then each thing that settled and why.
+ */
+export function AwayCard({ away, span, now }: { away: Away | null; span: Pick<Span, "key" | "note" | "words">; now: number }) {
+  const title = span.key === "last" && span.note == null ? "While you were away" : "Settled for you";
+  if (!away) {
+    return (
+      <Card title={title}>
+        <Quiet>Your notifications couldn&apos;t be read, so what settled can&apos;t be listed right now.</Quiet>
+      </Card>
+    );
+  }
+  const facts: { key: string; text: string; tone: BadgeTone; to: string | null }[] = [];
+  const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+  facts.push({ key: "settled", text: `${plural(away.settled.length, "notification")} settled`, tone: away.settled.length > 0 ? "success" : "neutral", to: "/notifications?view=done" });
+  if (away.shipped > 0) facts.push({ key: "shipped", text: `${plural(away.shipped, "change")} live`, tone: "success", to: null });
+  if (away.deploying > 0) facts.push({ key: "deploying", text: `${away.deploying.toLocaleString("en-US")} deploying`, tone: "info", to: null });
+  if (away.waiting > 0) facts.push({ key: "waiting", text: `${away.waiting.toLocaleString("en-US")} waiting to deploy`, tone: "neutral", to: null });
+  if (away.failed > 0) facts.push({ key: "failed", text: `${away.failed.toLocaleString("en-US")} deploy failed`, tone: "danger", to: null });
+  facts.push({ key: "needs", text: away.needs > 0 ? `${plural(away.needs, "thing")} still ${away.needs === 1 ? "needs" : "need"} you` : "Nothing needs you", tone: away.needs > 0 ? "warn" : "neutral", to: "#needed" });
+  return (
+    <Card title={title} hint="What finished by itself, and what is live" link={{ label: "Done", to: "/notifications?view=done" }}>
+      <ul className="flex flex-wrap gap-1.5 px-5 pb-3" aria-label="In short">
+        {facts.map((fact) => (
+          <li key={fact.key}>
+            {fact.to ? (
+              <Link to={fact.to} className="rounded-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none">
+                <Badge tone={fact.tone} size="md">
+                  {fact.text}
+                </Badge>
+              </Link>
+            ) : (
+              <Badge tone={fact.tone} size="md">
+                {fact.text}
+              </Badge>
+            )}
+          </li>
+        ))}
+      </ul>
+      {away.settled.length > 0 && (
+        <div className="border-t border-line">
+          <Folded
+            items={away.settled}
+            render={(row) => (
+              <li key={row.key} className={rowClass}>
+                <CheckCheck size={15} className="shrink-0 text-success" aria-hidden="true" />
+                <div className="min-w-0 grow">
+                  <Link to={row.to} className="block truncate text-sm text-fg hover:underline">
+                    {row.title}
+                  </Link>
+                  <p className="truncate text-xs text-muted">
+                    <span className="text-fg-soft">{row.why}</span>
+                    {row.where && ` · ${row.where}`}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs text-faint tabular-nums" suppressHydrationWarning>
+                  {waited(row.at, now)} ago
+                </span>
+              </li>
+            )}
+          />
+        </div>
+      )}
     </Card>
   );
 }

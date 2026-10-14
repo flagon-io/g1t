@@ -22,6 +22,7 @@ import {
   subscriptionFromForm,
   subscriptionLine,
   tabCount,
+  settledLine,
   updatesLabel,
   watchFromForm,
   watchLabel,
@@ -155,6 +156,15 @@ test("a thread says how much happened on it once more than one thing has", () =>
   assert.equal(updatesLabel(1), "");
   assert.equal(updatesLabel(null), "");
   assert.equal(updatesLabel(4), "4 updates");
+});
+
+test("a done item that settled by itself says why, and who did it", () => {
+  const done = "2026-10-14T12:00:00.000Z";
+  assert.equal(settledLine({ doneAt: done, settledReason: "CI passed in run 330", settledBy: null }), "CI passed in run 330");
+  assert.equal(settledLine({ doneAt: done, settledReason: "Merged", settledBy: "@syntaqx" }), "Merged by @syntaqx");
+  // Marked done by hand, or not done: nothing.
+  assert.equal(settledLine({ doneAt: done, settledReason: null, settledBy: null }), "");
+  assert.equal(settledLine({ doneAt: null, settledReason: "Merged", settledBy: "ana" }), "");
 });
 
 test("watching is read from the menu, and a custom watch of nothing is the default", () => {

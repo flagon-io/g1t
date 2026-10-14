@@ -495,9 +495,12 @@ function onEvent(event: FeedEvent): void {
     case "preferences":
       set({ preferences: event.preferences });
       break;
-    case "inbox":
-      set({ inbox: event.unread });
+    case "inbox": {
+      // Items that settled by themselves: their notifications go from every tab's recent list.
+      const settled = new Set(Array.isArray(event.settled) ? event.settled : []);
+      set(settled.size > 0 ? { inbox: event.unread, recent: state.recent.filter((n) => !n.inbox_thread || !settled.has(n.inbox_thread)) } : { inbox: event.unread });
       break;
+    }
     case "presence": {
       const people = mergePeople(state.people, event.people, event.full);
       if (people !== state.people) set({ people });
