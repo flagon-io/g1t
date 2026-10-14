@@ -279,8 +279,8 @@ with a command on the comment's first line:
 | --- | --- |
 | `@g1t rebase` | Brings the branch up to date with the default branch. Refused if someone else has pushed to it; use `@g1t recreate`. |
 | `@g1t recreate` | Makes the pull request again from scratch, dropping anything pushed to it. |
-| `@g1t merge` | Merges it once its required checks pass. |
-| `@g1t squash and merge` | The same as `@g1t merge`: g1t merges pull requests one way. |
+| `@g1t merge` | Merges it once its required checks pass, by the repository's default [merge method](/guides/pull-requests/#merge-methods). |
+| `@g1t squash and merge` | Squashes it into one commit and merges it, once its required checks have passed. Refused where the repository or its rules do not allow squash merging. |
 | `@g1t cancel merge` | Cancels an earlier `@g1t merge`. |
 | `@g1t close` | Closes it. g1t does not open one for these versions again, but does for a newer version. |
 | `@g1t reopen` | Makes it again, as a new pull request on the same branch. |

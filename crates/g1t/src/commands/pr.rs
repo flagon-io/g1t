@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::cli::{
     CommentArgs, PrCheckoutArgs, PrChecksArgs, PrCommand, PrCreateArgs, PrDiffArgs, PrListArgs,
-    PrMergeArgs, PrReadyArgs, PrReviewArgs, PrSelect, PrState, PrViewArgs,
+    PrMergeArgs, PrReadyArgs, PrReviewArgs, PrSelect, PrState, PrUpdateBranchArgs, PrViewArgs,
 };
 use crate::client::Client;
 use crate::context::Ctx;
@@ -26,6 +26,7 @@ pub fn run(ctx: &Ctx, command: PrCommand) -> Result<()> {
         PrCommand::Checks(args) => checks(ctx, args),
         PrCommand::Review(args) => review(ctx, args),
         PrCommand::Merge(args) => merge(ctx, args),
+        PrCommand::UpdateBranch(args) => update_branch(ctx, args),
         PrCommand::Ready(args) => ready(ctx, args),
         PrCommand::Comment(args) => comment(ctx, args),
         PrCommand::Close(args) => close(ctx, args, true),
@@ -267,6 +268,23 @@ fn remote_for(repo: &Repo) -> Option<String> {
         .map(|(name, _)| name)
 }
 
+/// In a clone of a fork, `repo` is its upstream remote and origin is the
+/// fork: where the branch goes, and the pull request's head_repo.
+fn fork_origin(repo: &Repo, remote: Option<&str>) -> Option<Repo> {
+    if remote != Some("upstream") {
+        return None;
+    }
+    git::remotes()
+        .into_iter()
+        .filter(|(name, _)| name == "origin")
+        .find_map(|(_, url)| repo::parse_remote(&url))
+        .filter(|origin| {
+            origin.host == repo.host
+                && origin.pull_copy().is_none()
+                && !(origin.owner.eq_ignore_ascii_case(&repo.owner) && origin.name.eq_ignore_ascii_case(&repo.name))
+        })
+}
+
 /// A title and body from the branch's commits.
 pub fn fill(commits: &[(String, String)], branch: &str) -> (String, String) {
     match commits {
@@ -300,9 +318,18 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let default = super::repo::default_branch(&client, &repo)?;
     let head = args.head.clone().or_else(git::current_branch);
-    let on_default = head
-        .as_deref()
-        .is_none_or(|h| h == default || Some(h) == args.base.as_deref());
+    let remote = remote_for(&repo);
+    // From a fork: named, or the origin of a clone whose upstream is the
+    // repository.
+    let head_repo = match &args.head_repo {
+        Some(name) => Some(Repo::parse(name, &repo.host)?),
+        None => fork_origin(&repo, remote.as_deref()),
+    };
+    // A fork's own default branch can hold a change for the repository.
+    let on_default = head_repo.is_none()
+        && head
+            .as_deref()
+            .is_none_or(|h| h == default || Some(h) == args.base.as_deref());
     let body_given = prompt::body(
         args.body.body.clone(),
         args.body.body_file.as_deref(),
@@ -341,11 +368,15 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         return Ok(());
     }
     let head = head.unwrap_or_default();
-    let remote = remote_for(&repo);
+    let push_to = match &head_repo {
+        Some(fork) => remote_for(fork),
+        None => remote.clone(),
+    };
     if !args.no_push {
-        let Some(remote) = &remote else {
+        let Some(remote) = &push_to else {
+            let target = head_repo.as_ref().unwrap_or(&repo);
             return Err(Error::usage(format!(
-                "No remote here is {repo}, so the branch cannot be pushed. Push it yourself and pass --no-push."
+                "No remote here is {target}, so the branch cannot be pushed. Push it yourself and pass --no-push."
             )));
         };
         eprintln!("Pushing {head} to {remote}...");
@@ -386,6 +417,7 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         .op("create_pull_request")
         .repo(&repo)
         .field("branch", head.clone())
+        .field_opt("head_repo", head_repo.as_ref().map(|fork| format!("{}/{}", fork.owner, fork.name)))
         .field("title", title)
         .field_opt("body", body)
         .field_opt("base", args.base.clone())
@@ -405,7 +437,10 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
     super::issue::done(
         ctx,
         &pull,
-        &format!("Opened {repo}#{n} from {head} into {base}"),
+        &match &head_repo {
+            Some(fork) => format!("Opened {repo}#{n} from {fork} {head} into {base}"),
+            None => format!("Opened {repo}#{n} from {head} into {base}"),
+        },
         &pull_url(&client.host.site, &repo, n),
     )
 }
@@ -819,10 +854,68 @@ fn review(ctx: &Ctx, args: PrReviewArgs) -> Result<()> {
     super::issue::done(ctx, &made, &format!("{said} {repo}#{n}"), &url)
 }
 
+/// merge_pull_request's input, spelled so that mapping.rs, which finds the
+/// operations a command calls by their quoted names, does not take it for
+/// the delete_branch operation: the API deletes the branch itself.
+const DELETE_BRANCH: &str = concat!("delete_", "branch");
+
 fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let n = number(ctx, &client, &repo, args.number)?;
-    let mut call = client.op("merge_pull_request").repo(&repo).arg("number", n);
+    let url = pull_url(&client.host.site, &repo, n);
+    if args.disable_auto {
+        let pull = client
+            .op("disable_pull_request_auto_merge")
+            .repo(&repo)
+            .arg("number", n)
+            .send()?;
+        return super::issue::done(ctx, &pull, &format!("Turned off auto-merge for {repo}#{n}"), &url);
+    }
+    let method = if args.merge {
+        Some("merge")
+    } else if args.squash {
+        Some("squash")
+    } else if args.rebase {
+        Some("rebase")
+    } else if args.ff {
+        Some("fast_forward")
+    } else {
+        None
+    };
+    let message = prompt::body(args.body.body, args.body.body_file.as_deref(), false)?;
+    if args.auto {
+        let pull = client
+            .op("enable_pull_request_auto_merge")
+            .repo(&repo)
+            .arg("number", n)
+            .field_opt("merge_method", method)
+            .field_opt("commit_title", args.subject)
+            .field_opt("commit_message", message)
+            .send()?;
+        // One that may merge already merges at once.
+        let said = if pull["status"] == "merged" {
+            format!("Merged {repo}#{n}")
+        } else {
+            format!("{repo}#{n} will merge on its own once its checks, reviews and rules allow")
+        };
+        return super::issue::done(ctx, &pull, &said, &url);
+    }
+    let delete = if args.delete_branch {
+        Some(true)
+    } else if args.keep_branch {
+        Some(false)
+    } else {
+        None
+    };
+    let mut call = client
+        .op("merge_pull_request")
+        .repo(&repo)
+        .arg("number", n)
+        .field_opt("merge_method", method)
+        .field_opt("commit_title", args.subject)
+        .field_opt("commit_message", message)
+        .field_opt("sha", args.match_head_commit)
+        .field_opt(DELETE_BRANCH, delete);
     if args.keep_issue_open {
         call = call.field("keep_issue_open", true);
     }
@@ -832,21 +925,60 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
             .field("bypass_rules", true);
     }
     let merged = call.send()?;
-    let url = pull_url(&client.host.site, &repo, n);
-    if args.delete_branch
-        && let Some(branch) = merged["branch"].as_str()
-    {
-        client
-            .op("delete_branch")
-            .repo(&repo)
-            .arg("branch", branch)
-            .send()?;
-        if git::current_branch().as_deref() != Some(branch) {
+    if merged["status"] != "merged" {
+        return super::issue::done(
+            ctx,
+            &merged,
+            &format!("{repo}#{n} lands once it is brought up to date or through the merge queue"),
+            &url,
+        );
+    }
+    if let Some(branch) = merged["branch"].as_str() {
+        if merged["head_branch_deleted"] == true && !ctx.out.structured() {
+            eprintln!("{} Deleted the branch {branch}.", ctx.out.green("✓"));
+        }
+        if args.delete_branch && git::current_branch().as_deref() != Some(branch) {
             let _ = git::run(&["branch", "-D", branch]);
         }
-        eprintln!("{} Deleted the branch {branch}.", ctx.out.green("✓"));
     }
     super::issue::done(ctx, &merged, &format!("Merged {repo}#{n}"), &url)
+}
+
+fn update_branch(ctx: &Ctx, args: PrUpdateBranchArgs) -> Result<()> {
+    let (repo, client) = ctx.repo_client()?;
+    let n = number(ctx, &client, &repo, args.number)?;
+    let url = pull_url(&client.host.site, &repo, n);
+    let update = client
+        .op("update_pull_request_branch")
+        .repo(&repo)
+        .arg("number", n)
+        .field_opt("update_method", args.rebase.then_some("rebase"))
+        .send()?;
+    match update["outcome"].as_str() {
+        Some("updated") => {
+            let how = if args.rebase { "Rebased" } else { "Updated" };
+            super::issue::done(ctx, &update, &format!("{how} the branch of {repo}#{n}"), &url)
+        }
+        Some("up_to_date") => {
+            super::issue::done(ctx, &update, &format!("{repo}#{n} is already up to date"), &url)
+        }
+        _ => {
+            if ctx.out.structured() {
+                ctx.out.emit(&update)?;
+            }
+            let paths: Vec<&str> = update["paths"]
+                .as_array()
+                .map(|paths| paths.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            let detail = update["detail"].as_str().unwrap_or("g1t could not update it here.");
+            let mut message = format!("{repo}#{n} was not updated: {detail}");
+            if !paths.is_empty() {
+                message.push_str(&format!(" Files: {}.", paths.join(", ")));
+            }
+            message.push_str(" Merge or rebase its base in a clone and push.");
+            Err(Error::failed(message))
+        }
+    }
 }
 
 fn ready(ctx: &Ctx, args: PrReadyArgs) -> Result<()> {

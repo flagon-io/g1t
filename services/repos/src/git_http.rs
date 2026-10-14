@@ -380,6 +380,23 @@ pub(crate) fn ref_updates(body: &[u8]) -> Vec<(String, Option<String>, Option<St
         .collect()
 }
 
+/// Why a push is refused for changing more branches and tags than its
+/// repository (`repo`, `owner/name`) lets one push change: the `ng` reason
+/// and the lines git prints as `remote:`. `None` within the limit, or
+/// with none.
+pub(crate) fn too_many_ref_updates(body: &[u8], limit: Option<u32>, repo: &str) -> Option<(String, Vec<String>)> {
+    let limit = limit.filter(|limit| *limit > 0)?;
+    let count = ref_updates(body).len();
+    (count > limit as usize).then(|| {
+        (
+            "too many branches and tags in one push".to_owned(),
+            vec![format!(
+                "This push changes {count} branches and tags; {repo} takes at most {limit} at a time. Push fewer at once."
+            )],
+        )
+    })
+}
+
 /// A report-status answer, as git expects it.
 pub(crate) fn report_response(report: Vec<u8>) -> Result<Response> {
     let headers = Headers::new();
@@ -1259,7 +1276,7 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
-    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, credentials, deleted_refs, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, transferred, with_head, with_namespace, with_no_thin};
+    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, credentials, deleted_refs, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, too_many_ref_updates, transferred, with_head, with_namespace, with_no_thin};
 
     #[test]
     fn a_token_comes_as_basic_or_bearer() {
@@ -1620,6 +1637,31 @@ mod tests {
         assert!(report.contains("ng refs/heads/main main is protected"));
         assert!(report.contains("ng refs/heads/feature not pushed"));
         assert!(report.ends_with("0000"));
+    }
+
+    #[test]
+    fn a_push_changing_more_refs_than_the_limit_is_refused_whole() {
+        let new = "4807077b296e6edbf410d55e72749d3e1170c291";
+        let body = [
+            pkt(&format!("{ZERO_ID} {new} refs/heads/a  report-status
+")),
+            pkt(&format!("{ZERO_ID} {new} refs/heads/b
+")),
+            pkt(&format!("{ZERO_ID} {new} refs/tags/v1
+")),
+            // Not a branch or tag: not counted.
+            pkt(&format!("{ZERO_ID} {new} refs/notes/commits
+")),
+            b"0000".to_vec(),
+        ]
+        .concat();
+        let (reason, lines) = too_many_ref_updates(&body, Some(2), "acme/web").unwrap();
+        assert_eq!(reason, "too many branches and tags in one push");
+        assert_eq!(lines, ["This push changes 3 branches and tags; acme/web takes at most 2 at a time. Push fewer at once."]);
+        // At the limit, without one, or with 0 (no limit): let through.
+        assert!(too_many_ref_updates(&body, Some(3), "acme/web").is_none());
+        assert!(too_many_ref_updates(&body, None, "acme/web").is_none());
+        assert!(too_many_ref_updates(&body, Some(0), "acme/web").is_none());
     }
 
     #[test]

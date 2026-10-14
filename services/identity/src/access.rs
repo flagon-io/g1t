@@ -541,6 +541,20 @@ impl Identity {
         }))
     }
 
+    /// `can_read_repo`: see `CanReadRepoArgs`.
+    pub(crate) async fn can_read_repo(&self, a: g1t_contracts::access::CanReadRepoArgs) -> Result<bool> {
+        if !a.repo.is_private {
+            return Ok(true);
+        }
+        let Some(workspace_id) = self.workspace_id_of(&a.repo.namespace).await? else {
+            return Ok(false);
+        };
+        if self.policy_refusal(&a.user_id, &a.repo.namespace).await?.is_some() {
+            return Ok(false);
+        }
+        Ok(self.collaborator_on(&a.repo, &workspace_id, &a.user_id).await?.is_some())
+    }
+
     /// One person's place on the repository, as the access list shows it.
     pub(crate) async fn collaborator_on(&self, repo: &Repo, workspace_id: &str, user_id: &str) -> Result<Option<Collaborator>> {
         let base = self.base_of(workspace_id).await?;

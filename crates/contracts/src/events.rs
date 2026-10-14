@@ -62,6 +62,9 @@ pub struct RepoCreated {
     pub namespace: String,
     pub name: String,
     pub is_private: bool,
+    /// The repository it was forked from, when it is a fork.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
 }
 
 /// The payload of `repo.collaborator_added`, `repo.collaborator_removed`
@@ -84,7 +87,19 @@ pub struct RepoCollaborator {
 pub struct RepoForked {
     pub repo_id: String,
     pub source_repo_id: String,
-    pub pull_id: String,
+    /// The pull request a working copy was made for; absent for a fork
+    /// someone made into a workspace.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pull_id: Option<String>,
+}
+
+/// The payload of `repo.detached`: a fork left its fork network, because
+/// it was detached or its parent changed who can see it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoDetached {
+    pub repo_id: String,
+    pub parent_id: String,
 }
 
 /// One branch or tag moved by a push. `after` is the commit it points to now.
@@ -237,6 +252,10 @@ pub struct PullEvent {
     /// On `pull.stalled`: why g1t stopped, and what would start it again.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// On `pull.auto_merge_disabled`: the username of who had turned
+    /// auto-merge on, who is told it is off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_merge_by: Option<String>,
     /// On `pull.labeled` and `pull.unlabeled`: the label put on or taken off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<EventLabel>,
@@ -446,6 +465,35 @@ pub struct DeletedComment {
     pub path: Option<String>,
     /// And the line, as numbered after the change.
     pub line: Option<u32>,
+}
+
+/// The payload of `commit_comment.created`, `commit_comment.edited` and
+/// `commit_comment.deleted`. `comment` is the comment as it is now, or as
+/// it was when deleted; `changes.body.from` is what an edit replaced.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitCommentEvent {
+    pub comment_id: String,
+    pub repo_id: String,
+    /// The commit's full hash.
+    pub commit: String,
+    pub comment: crate::work::CommitComment,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<CommentChanges>,
+    /// Where it is on g1t.sh: `/owner/name/commit/<hash>`.
+    pub link: String,
+    /// For the inbox, on `commit_comment.created`: the first line it says
+    /// something on, the people it mentions by name (never `g1t`), the
+    /// teams it mentions with the people each tells, and the commit's
+    /// author when their address is a g1t account's (a username).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub mentions: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub team_mentions: Vec<crate::inbox::TeamMentioned>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_author: Option<String>,
 }
 
 /// The payload of every `release.*` event: `release.created`,

@@ -20,6 +20,17 @@ pub(crate) struct RepoRow {
     owner_id: String,
     default_branch: String,
     fork_of: Option<String>,
+    /// The repository a fork made into a workspace came from (0019).
+    #[serde(default)]
+    parent_id: Option<String>,
+    /// What it was made a fork of, never cleared (0019).
+    #[serde(default)]
+    forked_from: Option<String>,
+    #[serde(default)]
+    allow_forking: u8,
+    /// The most branches and tags one push may change (0020).
+    #[serde(default)]
+    max_ref_updates: Option<u32>,
     protected: u8,
     created_at: String,
     /// Null only on rows written before the column existed and not yet
@@ -237,6 +248,11 @@ impl From<RepoRow> for Repo {
             owner_id: row.owner_id,
             default_branch: row.default_branch,
             fork_of: row.fork_of,
+            parent_id: row.parent_id,
+            forked_from: row.forked_from,
+            parent: None,
+            allow_forking: row.allow_forking != 0,
+            max_ref_updates: row.max_ref_updates.filter(|limit| *limit > 0),
             protected: row.protected != 0,
             created_at: row.created_at,
             topics: row
@@ -351,14 +367,21 @@ impl Registry {
         protected: bool,
         topics: &[String],
         website: Option<&str>,
+        allow_forking: bool,
+        max_ref_updates: Option<u32>,
     ) -> Result<()> {
         self.db
-            .prepare("UPDATE repos SET description = ?, protected = ?, topics = ?, website = ? WHERE id = ?")
+            .prepare(
+                "UPDATE repos SET description = ?, protected = ?, topics = ?, website = ?, allow_forking = ?, max_ref_updates = ?
+                 WHERE id = ?",
+            )
             .bind(&[
                 description.map_or(JsValue::NULL, JsValue::from),
                 u32::from(protected).into(),
                 serde_json::to_string(topics)?.into(),
                 website.map_or(JsValue::NULL, JsValue::from),
+                u32::from(allow_forking).into(),
+                max_ref_updates.map_or(JsValue::NULL, JsValue::from),
                 id.into(),
             ])?
             .run()
@@ -666,6 +689,46 @@ impl Registry {
             .unwrap_or(0.0) as i64)
     }
 
+    /// Sets what a repository is counted as holding: a fork, made holding
+    /// as much as its source.
+    pub async fn set_stored_bytes(&self, id: &str, bytes: i64) -> Result<()> {
+        self.db
+            .prepare("UPDATE repos SET stored_bytes = ? WHERE id = ?")
+            .bind(&[(bytes as f64).into(), id.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Makes a fork an ordinary repository with no parent.
+    pub async fn detach(&self, id: &str) -> Result<()> {
+        self.db
+            .prepare("UPDATE repos SET parent_id = NULL WHERE id = ?")
+            .bind(&[id.into()])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    /// Detaches every fork of `id`: when it changes who can see it, its
+    /// forks keep what they were and leave its network. Returns their ids.
+    pub async fn detach_forks_of(&self, id: &str) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Row {
+            id: String,
+        }
+        Ok(self
+            .db
+            .prepare("UPDATE repos SET parent_id = NULL WHERE parent_id = ? RETURNING id")
+            .bind(&[id.into()])?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| row.id)
+            .collect())
+    }
+
     /// Forgets a repository that could not be filled.
     pub async fn remove(&self, id: &str) -> Result<()> {
         self.db
@@ -810,8 +873,8 @@ impl Registry {
             .prepare(
                 "INSERT INTO repos
                    (id, namespace, name, description, is_private, owner_id,
-                    default_branch, fork_of, created_at, store)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    default_branch, fork_of, parent_id, forked_from, created_at, store)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 repo.id.as_str().into(),
@@ -822,6 +885,8 @@ impl Registry {
                 repo.owner_id.as_str().into(),
                 repo.default_branch.as_str().into(),
                 optional(&repo.fork_of),
+                optional(&repo.parent_id),
+                optional(&repo.forked_from),
                 repo.created_at.as_str().into(),
                 store_key(repo).into(),
             ])?
@@ -862,6 +927,10 @@ mod tests {
             owner_id: "usr_owner".into(),
             default_branch: "main".into(),
             fork_of: None,
+            parent_id: None,
+            forked_from: None,
+            allow_forking: 0,
+            max_ref_updates: None,
             protected: 0,
             created_at: String::new(),
             store: None,
@@ -880,6 +949,23 @@ mod tests {
         assert_eq!(refs_state(&old.id), None);
         let new = Repo::from(row(Some(7.0)));
         assert_eq!(refs_state(&new.id), Some(RefsState { version: 7, open_until: 0 }));
+    }
+
+    #[test]
+    fn a_push_limit_is_a_column_and_0_or_null_is_none() {
+        let migration = include_str!("../migrations/0020_push_limits.sql");
+        assert!(migration.contains("ALTER TABLE repos ADD COLUMN max_ref_updates INTEGER;"));
+        let row = |limit: serde_json::Value| -> RepoRow {
+            serde_json::from_value(serde_json::json!({
+                "id": "rep_1", "namespace": "acme", "name": "web", "description": null, "is_private": 0,
+                "owner_id": "usr_1", "default_branch": "main", "fork_of": null, "protected": 0, "created_at": "",
+                "max_ref_updates": limit,
+            }))
+            .unwrap()
+        };
+        assert_eq!(Repo::from(row(serde_json::json!(25))).max_ref_updates, Some(25));
+        assert_eq!(Repo::from(row(serde_json::json!(0))).max_ref_updates, None);
+        assert_eq!(Repo::from(row(serde_json::Value::Null)).max_ref_updates, None);
     }
 
     #[test]
@@ -925,6 +1011,11 @@ mod tests {
             owner_id: "usr_owner".into(),
             default_branch: "main".into(),
             fork_of: None,
+            parent_id: None,
+            forked_from: None,
+            parent: None,
+            allow_forking: false,
+            max_ref_updates: None,
             protected: false,
             created_at: String::new(),
             topics: Vec::new(),
@@ -987,6 +1078,11 @@ mod tests {
         let fork = Repo {
             namespace: "pulls".into(),
             fork_of: Some("rep_1".into()),
+            parent_id: None,
+            forked_from: None,
+            parent: None,
+            allow_forking: false,
+            max_ref_updates: None,
             owner_id: "usr_a".into(),
             ..repo(true)
         };

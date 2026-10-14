@@ -492,7 +492,7 @@ mod tests {
         async fn read_file(&self, _git_ref: &str, _path: &str) -> Result<Option<Vec<u8>>> {
             Ok(None)
         }
-        async fn fork(&self, _target_key: &str) -> Result<()> {
+        async fn fork(&self, _target_key: &str, _default_branch_only: bool) -> Result<()> {
             Ok(())
         }
     }

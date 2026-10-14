@@ -104,6 +104,28 @@ impl Ctx {
         Ok((repo, client))
     }
 
+    /// The repository this working copy pushes to, and a client for its
+    /// host: --repo or G1T_REPO, else the remote named origin. In a clone
+    /// of a fork, origin is the fork and upstream the repository it came
+    /// from, which `repo` prefers. Falls back to `repo_client`.
+    pub fn pushed_repo_client(&self) -> Result<(Repo, Client)> {
+        if self.global.repo.as_deref().is_some_and(|r| !r.trim().is_empty()) {
+            return self.repo_client();
+        }
+        let hosts = self.known_hosts();
+        let origin = crate::git::remotes()
+            .into_iter()
+            .filter(|(name, _)| name == "origin")
+            .find_map(|(_, url)| repo::parse_remote(&url).filter(|r| hosts.contains(&r.host)));
+        match origin {
+            Some(found) if found.pull_copy().is_none() => {
+                let host = auth::resolve(&self.config, Some(&found.host))?;
+                Ok((found, self.client_for(host)))
+            }
+            _ => self.repo_client(),
+        }
+    }
+
     /// The signed-in account's username on the client's host.
     pub fn me(&self, client: &Client) -> Result<String> {
         if let Some(user) = self

@@ -98,7 +98,8 @@ pub(crate) const TOUCHED_BY_OTHERS: &str = "SELECT t.session_id AS session_id, t
 /// The sessions of repository `?1` that pushed the branch of one of the
 /// pull requests `?2` (JSON numbers).
 pub(crate) const BRANCH_SESSIONS: &str = "SELECT DISTINCT t.session_id AS id FROM session_touches t
-     JOIN pulls p ON p.repo_id = t.repo_id AND p.source_branch = t.value AND p.fork_repo_id IS NULL
+     JOIN pulls p ON p.repo_id = t.repo_id AND p.source_branch = t.value
+       AND p.fork_repo_id IS NULL AND p.head_repo_id IS NULL
      WHERE t.repo_id = ?1 AND t.kind = 'branch' AND p.number IN (SELECT value FROM json_each(?2)) LIMIT 200";
 
 /// Announces the pair `?2`, `?3` of repository `?1` as overlapping on
@@ -196,7 +197,10 @@ impl Work {
     pub(crate) async fn link_branch(&self, session_id: &str, repo_id: &str, branch: &str) -> Result<()> {
         let pulls = self
             .db
-            .prepare("SELECT number FROM pulls WHERE repo_id = ? AND source_branch = ? AND fork_repo_id IS NULL")
+            .prepare(
+                "SELECT number FROM pulls WHERE repo_id = ? AND source_branch = ?
+                   AND fork_repo_id IS NULL AND head_repo_id IS NULL",
+            )
             .bind(&[repo_id.into(), branch.into()])?
             .all()
             .await?

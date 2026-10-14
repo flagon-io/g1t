@@ -62,6 +62,9 @@ impl Subject {
     }
 }
 
+/// Where repos keeps every pull request's working copy (`pulls/<pull id>`).
+const WORKING_COPIES: &str = "pulls";
+
 /// The address a push's `pusher.email` gives: g1t's for its agent and
 /// itself, a person's noreply address (which needs no lookup) for them,
 /// and none for anyone else.
@@ -237,6 +240,7 @@ impl Actions {
                 head: Some(head),
                 base_branch: None,
                 paths: None,
+                target_id: None,
             },
         )
         .await?;
@@ -282,7 +286,7 @@ impl Actions {
             "pull_merge_ref",
             &PullMergeRefArgs {
                 repo_id: repo.id.clone(),
-                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                source_id: pull.source_id().to_owned(),
                 head: head.to_owned(),
                 number: pull.number,
                 target_branch: Some(base_ref.to_owned()),
@@ -459,7 +463,10 @@ impl Actions {
                     let review = detail.comments.iter().rev().find(|c| c.verdict.is_some() && !c.advisory);
                     payload["review"] = payload::review(repo, pull, review);
                 }
-                let trusted = self.insider(pull.owner(), repo, ws).await?;
+                // A branch of someone's fork takes pushes from whoever can
+                // push to the fork, not only from who opened the pull
+                // request: its runs are an outside contribution's.
+                let trusted = !pull.from_head_repo() && self.insider(pull.owner(), repo, ws).await?;
                 // A pull request from outside may wait for approval before
                 // its head's code runs. `pull_request_target` runs the
                 // base's code, and a merged one's run the commit it landed
@@ -518,7 +525,7 @@ impl Actions {
                 let (source, source_ref) = match (&landed, &merge) {
                     (Some(_), _) => (path.clone(), sha.clone()),
                     (None, Some(merge)) => (path.clone(), merge.clone()),
-                    (None, None) => (pull.fork.clone().unwrap_or_else(|| path.clone()), sha.clone()),
+                    (None, None) => (pull.source_path(&path), sha.clone()),
                 };
                 Some(Subject {
                     source,
@@ -566,7 +573,7 @@ impl Actions {
                     None => None,
                 };
                 let base_sha = match &pull {
-                    Some(pull) if pull.fork.is_none() => self.branch_head(repo, pull.base_branch(&repo.default_branch)).await?,
+                    Some(pull) if !pull.from_other_repo() => self.branch_head(repo, pull.base_branch(&repo.default_branch)).await?,
                     _ => None,
                 };
                 let followed = payload::FollowedRun {
@@ -770,6 +777,12 @@ impl Actions {
         if pushed_default {
             self.sync(&repo, &ws).await?;
         }
+        // Nothing starts while the repository's Actions are off (a fork's
+        // are, until someone turns them on). Its workflows are still synced
+        // above, so turning them on finds them listed.
+        if !self.actions_on(&repo).await? {
+            return Ok(());
+        }
         // What a workflow job's own token did starts no workflows, as on
         // GitHub, so a workflow cannot set itself off; only
         // `workflow_dispatch` and `repository_dispatch` do.
@@ -803,9 +816,14 @@ impl Actions {
                     continue;
                 }
             }
-            // A pull request from a fork reads the fork's files.
+            // A pull request from a working copy reads the copy's files.
             let read = if subject.source == Self::repo_path(&repo) {
                 self.read_for(&repo, &ws, subject.source_ref.as_deref()).await?
+            } else if !subject.source.namespace.eq_ignore_ascii_case(WORKING_COPIES) {
+                // A branch of someone's fork, built as its head (there was
+                // no merge commit): the workflows are this repository's, at
+                // the branch it merges into, never the fork's own.
+                self.read_for(&repo, &ws, subject.base_ref.as_deref()).await?
             } else {
                 // And this repository's managed workflows: they are its own,
                 // whatever the fork's files say (managed.rs).
@@ -1028,6 +1046,10 @@ impl Actions {
             else {
                 continue;
             };
+            // Nor while its Actions are off.
+            if !self.actions_on(&repo).await? {
+                continue;
+            }
             // A managed workflow's row may be out of date while its
             // repository waits to be synced again (managed.rs).
             if g1t_actions::managed::is_managed(&row.path) && !self.synced(&repo.id).await? {
@@ -1082,6 +1104,9 @@ impl Actions {
         let repo = check!(self.may(&a.actor, &a.repo, Capability::Run).await?);
         if repo.archived() {
             return Ok(fail(FailureCode::Forbidden, g1t_contracts::repos::archived_message(&repo.namespace, &repo.name)));
+        }
+        if !self.actions_on(&repo).await? {
+            return Ok(fail(FailureCode::Forbidden, g1t_contracts::actions::actions_disabled_message(&repo.namespace, &repo.name)));
         }
         let Some(ws) = self.workspace_actor(&repo.namespace).await? else {
             return Ok(fail(FailureCode::NotFound, "There is no such workspace."));
@@ -1202,6 +1227,9 @@ impl Actions {
         if repo.archived() {
             return Ok(fail(FailureCode::Forbidden, g1t_contracts::repos::archived_message(&repo.namespace, &repo.name)));
         }
+        if !self.actions_on(&repo).await? {
+            return Ok(fail(FailureCode::Forbidden, g1t_contracts::actions::actions_disabled_message(&repo.namespace, &repo.name)));
+        }
         let event_type = a.event_type.trim().to_owned();
         if event_type.is_empty() || event_type.chars().count() > 100 {
             return Ok(fail(FailureCode::Invalid, "event_type is 1 to 100 characters."));
@@ -1312,6 +1340,9 @@ impl Actions {
         let Some((repo, ws)) = self.repo_by_id(&a.repo_id).await? else {
             return Ok(Outcome::Ok(json!({ "runs": 0 })));
         };
+        if !self.actions_on(&repo).await? {
+            return Ok(Outcome::Ok(json!({ "runs": 0 })));
+        }
         let mut read = self.read_workflows(&Self::repo_path(&repo), &ws, Some(&a.sha)).await?;
         // A required workflow's check holds the queue too (managed.rs).
         read.files = self.with_managed(&repo, read.files).await?;

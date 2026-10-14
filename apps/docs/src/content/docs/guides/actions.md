@@ -1637,6 +1637,9 @@ payload GitHub would send for the event, with the same keys and types.
   (`cmt_…`, `rel_…`, `run_…`, `wfl_…`), so you can pass them straight
   back, as in `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}`
   or `run-id: ${{ github.event.workflow_run.id }}`.
+- **`repository.fork`** is true in a [fork](/concepts/forks/), and
+  `repository.parent` names the repository it was forked from (its
+  `full_name`, `name`, `owner` and `html_url`) when the reader may see it.
 - **`repository.owner.type`** is `User` for a repository in a person's
   own workspace and `Organization` for any other workspace's.
 - **On `push`,** `created` is true for a new branch or tag, and `forced`
@@ -1896,6 +1899,35 @@ curl -X PUT https://api.g1t.sh/repos/acme/web/environments/production \
 
 A job's own token cannot approve, reject or change any of it.
 
+## Turn workflows on or off
+
+**Settings → Actions → Run workflows** decides whether a repository's
+workflows run at all. It is on for a new repository and **off for a
+[fork](/concepts/forks/)**, so a fork never runs the workflows it copied
+until someone who manages its settings (the Admin role) turns them on.
+
+While it is off:
+
+- No push, pull request, schedule, `workflow_dispatch`,
+  `repository_dispatch`, merge queue or re-run starts a run. Running a
+  workflow by hand or re-running a run is refused with "Actions is turned
+  off for owner/name. Turn it on in Settings → Actions."
+- The workflows stay listed on the **Actions** page, and earlier runs and
+  their logs stay readable.
+- Runs already going finish.
+
+Turning it back on starts nothing by itself: the next event does. A
+detached fork keeps it off unless someone had turned it on.
+
+A pull request from a fork into its parent runs the **parent's** workflows,
+under the parent's settings, whatever the fork's setting says.
+
+From the API, `GET /repos/{owner}/{repo}/actions/permissions` answers with
+`enabled`, `enabled_chosen` (whether anyone has chosen, rather than the
+default for a repository or a fork) and `allowed_actions`, always `all`;
+`PUT` with `{"enabled": true}` or `false` changes it. A workflow job's own
+token cannot.
+
 ## Pull requests from outside
 
 A pull request from someone outside the workspace runs code anyone could
@@ -1912,6 +1944,10 @@ handed out.
 | **All external contributors** | Everyone outside the workspace, [outside collaborators](/guides/access-and-roles/#outside-collaborators) with Write included. |
 
 Members' pull requests never wait. Each new push to the pull request waits again.
+A pull request from a branch of someone's
+[fork](/concepts/forks/) runs without the repository's secrets and with a
+token that can only read, whoever opened it: anyone who can push to the fork
+can change the code its runs build.
 `pull_request_target` runs, which run the default branch's workflow and
 code, never wait.
 
@@ -2009,6 +2045,7 @@ usually work once they point at `https://api.g1t.sh`.
 | `get_workspace_permissions`, `set_workspace_permissions` | `GET` and `PUT /workspaces/{workspace}/actions/permissions/workflow`, with `default_workflow_permissions`, `max_workflow_permissions` and `can_approve_pull_request_reviews` |
 | `get_approval_policy`, `set_approval_policy` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` |
 | `get_access`, `set_access` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/access`, with `access_level` (`none` or `organization`) |
+| `get_enabled`, `set_enabled` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions`, with `enabled`; see [Turn workflows on or off](#turn-workflows-on-or-off) |
 | `repository_dispatch` | `POST /repos/{owner}/{repo}/dispatches` with `event_type` and `client_payload` |
 | `list_artifacts` | `GET /repos/{owner}/{repo}/actions/artifacts`, with `name`, `page`, `per_page` |
 | `run_artifacts` | `GET …/actions/runs/{id}/artifacts`, with `name` |

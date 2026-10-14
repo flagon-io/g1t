@@ -29,9 +29,11 @@ mod license;
 mod lifecycle;
 mod limits;
 mod listing;
+mod merge_methods;
 mod meters;
 mod moves;
 mod namespaces;
+mod network;
 mod pack_cache;
 mod pack_limits;
 mod push_checks;
@@ -79,6 +81,12 @@ pub(crate) const PULLS_NAMESPACE: &str = "pulls";
 const MAX_TEXT_BYTES: usize = 512 * 1024;
 /// How far back a pull request may have forked and still be landed.
 const MAX_ANCESTRY: u32 = 1000;
+/// The highest limit on how many branches and tags one push may change
+/// (`UpdateArgs::max_ref_updates`).
+const MAX_REF_UPDATES_LIMIT: u32 = 1000;
+/// How many forks up a pull request's source is looked for in the fork
+/// network of the repository it merges into.
+const MAX_FORK_DEPTH: usize = 10;
 /// The most files one `compare` asked for by path reads.
 const MAX_COMPARED_PATHS: usize = 50;
 /// The most tags a repository's Tags page reads and lists.
@@ -295,17 +303,17 @@ impl<S: GitStore> Repos<S> {
     }
 
     async fn get(&self, a: GetArgs) -> Result<Outcome<Repo>> {
-        Ok(self
-            .readable(&a.path, &a.viewer)
-            .await?
-            .map_or_else(not_found, Outcome::Ok))
+        Ok(match self.readable(&a.path, &a.viewer).await? {
+            Some(repo) => Outcome::Ok(self.with_parent(repo, &a.viewer).await?),
+            None => not_found(),
+        })
     }
 
     async fn get_by_id(&self, a: GetByIdArgs) -> Result<Outcome<Repo>> {
-        Ok(self
-            .visible(self.registry.by_id(&a.id).await?, &a.viewer)
-            .await?
-            .map_or_else(not_found, Outcome::Ok))
+        Ok(match self.visible(self.registry.by_id(&a.id).await?, &a.viewer).await? {
+            Some(repo) => Outcome::Ok(self.with_parent(repo, &a.viewer).await?),
+            None => not_found(),
+        })
     }
 
     async fn update(&self, a: UpdateArgs) -> Result<Outcome<Repo>> {
@@ -316,13 +324,32 @@ impl<S: GitStore> Repos<S> {
         // Its details take Maintain; its protection, Admin; who can see it,
         // Admin and the member privileges (below). See g1t_contracts::access.
         let protection_changes = a.protected.is_some_and(|protected| protected != repo.protected);
+        let forking_changes = a.allow_forking.is_some_and(|allow| allow != repo.allow_forking);
+        // 0 clears the limit.
+        let max_ref_updates = match a.max_ref_updates {
+            Some(0) => None,
+            Some(limit) if limit > MAX_REF_UPDATES_LIMIT => {
+                return Ok(Outcome::fail(
+                    FailureCode::Invalid,
+                    format!("A push can be limited to at most {MAX_REF_UPDATES_LIMIT} branches and tags; use 0 for no limit."),
+                ));
+            }
+            Some(limit) => Some(limit),
+            None => repo.max_ref_updates,
+        };
+        let limit_changes = max_ref_updates != repo.max_ref_updates;
         let details_change = a.description.is_some() || a.website.is_some() || a.topics.is_some();
         let mut needed = Vec::new();
-        if details_change || !protection_changes {
+        if details_change || !(protection_changes || forking_changes || limit_changes) {
             needed.push(Capability::ManageSettings);
         }
         if protection_changes {
             needed.push(Capability::ManageProtection);
+        }
+        // Who may copy a private repository elsewhere is an admin's to say.
+        // So is how much one push may change.
+        if forking_changes || limit_changes {
+            needed.push(Capability::Administer);
         }
         let full_name = format!("{}/{}", repo.namespace, repo.name);
         if repo.fork_of.is_some() {
@@ -381,8 +408,9 @@ impl<S: GitStore> Repos<S> {
             },
             None => repo.topics.clone(),
         };
+        let allow_forking = a.allow_forking.unwrap_or(repo.allow_forking);
         self.registry
-            .update(&repo.id, description.as_deref(), protected, &topics, website.as_deref())
+            .update(&repo.id, description.as_deref(), protected, &topics, website.as_deref(), allow_forking, max_ref_updates)
             .await?;
         let updated = Repo {
             description,
@@ -390,6 +418,8 @@ impl<S: GitStore> Repos<S> {
             protected,
             topics,
             website,
+            allow_forking,
+            max_ref_updates,
             ..repo
         };
         // Whether the default branch takes only pull requests is now its
@@ -643,6 +673,11 @@ impl<S: GitStore> Repos<S> {
                 .or_else(|| credentialed.as_ref().and_then(|(_, advertised)| advertised.default_branch()))
                 .unwrap_or_else(|| "main".to_owned()),
             fork_of: None,
+            parent_id: None,
+            forked_from: None,
+            parent: None,
+            allow_forking: false,
+            max_ref_updates: None,
             protected: false,
             created_at: rfc3339(now),
             topics: Vec::new(),
@@ -720,23 +755,8 @@ impl<S: GitStore> Repos<S> {
         }
         // Whoever creates a repository is an Admin of it, as a role given
         // to them on it, whatever the workspace's base permission.
-        if a.owner.kind == PrincipalKind::User
-            && let Some(identity) = &self.identity
-        {
-            let granted: Result<bool> = g1t_kit::call(
-                identity,
-                "grant_creator",
-                &g1t_contracts::members::GrantCreatorArgs {
-                    repo_id: repo.id.clone(),
-                    namespace: repo.namespace.clone(),
-                    name: repo.name.clone(),
-                    user_id: a.owner.id.clone(),
-                },
-            )
-            .await;
-            if let Err(error) = granted {
-                worker::console_error!("creator of {} not given Admin: {error}", repo.id);
-            }
+        if a.owner.kind == PrincipalKind::User {
+            self.grant_creator(&repo, &a.owner.id).await;
         }
         self.publish(NewEvent {
             kind: "repo.created",
@@ -748,6 +768,7 @@ impl<S: GitStore> Repos<S> {
                 namespace: repo.namespace.clone(),
                 name: repo.name.clone(),
                 is_private: repo.is_private,
+                parent_id: None,
             },
         })
         .await?;
@@ -755,6 +776,25 @@ impl<S: GitStore> Repos<S> {
             self.publish_push(&repo, git_ref, None, head, None, None).await?;
         }
         Ok(Outcome::Ok(repo))
+    }
+
+    /// Makes `user_id` an Admin of `repo`, the repository they created.
+    pub(crate) async fn grant_creator(&self, repo: &Repo, user_id: &str) {
+        let Some(identity) = &self.identity else { return };
+        let granted: Result<bool> = g1t_kit::call(
+            identity,
+            "grant_creator",
+            &g1t_contracts::members::GrantCreatorArgs {
+                repo_id: repo.id.clone(),
+                namespace: repo.namespace.clone(),
+                name: repo.name.clone(),
+                user_id: user_id.to_owned(),
+            },
+        )
+        .await;
+        if let Err(error) = granted {
+            worker::console_error!("creator of {} not given Admin: {error}", repo.id);
+        }
     }
 
     /// Where a workspace keeps its data, asked of identity only when an EU
@@ -1148,16 +1188,51 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(branches))
     }
 
+    /// Whether `source` is a fork of `ancestor_id`: its parent, or its
+    /// parent's, and so on, at most [`MAX_FORK_DEPTH`] repositories up. A
+    /// detached fork still counts as one of what it was made from
+    /// (`forked_from`), so pull requests opened from it still merge.
+    pub(crate) async fn forked_from(&self, source: &Repo, ancestor_id: &str) -> Result<bool> {
+        let up = |repo: &Repo| repo.parent_id.clone().or_else(|| repo.forked_from.clone());
+        let mut parent = up(source);
+        for _ in 0..MAX_FORK_DEPTH {
+            let Some(id) = parent else {
+                return Ok(false);
+            };
+            if id == ancestor_id {
+                return Ok(true);
+            }
+            parent = self.registry.by_id(&id).await?.and_then(|repo| up(&repo));
+        }
+        Ok(false)
+    }
+
+    /// The repository a pull request whose change is in `source` merges
+    /// into. `target_id`, when given and not `source` itself, must be the
+    /// repository a working copy was made from or one `source` is a fork of
+    /// ([`forked_from`](Self::forked_from)); otherwise none. Without it, a
+    /// working copy merges into the repository it was made from, and a
+    /// branch into its own.
+    pub(crate) async fn pull_target(&self, source: &Repo, target_id: Option<&str>) -> Result<Option<Repo>> {
+        match target_id.filter(|id| *id != source.id) {
+            Some(id) if source.fork_of.as_deref() == Some(id) || self.forked_from(source, id).await? => {
+                self.registry.by_id(id).await
+            }
+            Some(_) => Ok(None),
+            None => match &source.fork_of {
+                Some(id) => self.registry.by_id(id).await,
+                None => Ok(Some(source.clone())),
+            },
+        }
+    }
+
     /// Whether a pull request's source lacks commits that the branch it
     /// would merge into has.
     async fn behind(&self, a: BehindArgs) -> Result<bool> {
         let Some(source) = self.registry.by_id(&a.source_id).await? else {
             return Ok(false);
         };
-        let target = match &source.fork_of {
-            Some(id) => self.registry.by_id(id).await?,
-            None => Some(source.clone()),
-        };
+        let target = self.pull_target(&source, a.target_id.as_deref()).await?;
         let Some(target) = target else {
             return Ok(false);
         };
@@ -1189,10 +1264,7 @@ impl<S: GitStore> Repos<S> {
         let Some(source) = self.registry.by_id(&a.source_id).await? else {
             return Ok(None);
         };
-        let target = match &source.fork_of {
-            Some(id) => self.registry.by_id(id).await?,
-            None => Some(source.clone()),
-        };
+        let target = self.pull_target(&source, a.target_id.as_deref()).await?;
         let Some(target) = target else {
             return Ok(None);
         };
@@ -1364,6 +1436,11 @@ impl<S: GitStore> Repos<S> {
             owner_id: a.actor.id.clone(),
             default_branch: source.default_branch.clone(),
             fork_of: Some(source.id.clone()),
+            parent_id: None,
+            forked_from: None,
+            parent: None,
+            allow_forking: false,
+            max_ref_updates: None,
             protected: false,
             created_at: rfc3339(now),
             topics: Vec::new(),
@@ -1379,7 +1456,7 @@ impl<S: GitStore> Repos<S> {
         self.store
             .open(&store_key(&source))
             .await?
-            .fork(&store_key(&fork))
+            .fork(&store_key(&fork), true)
             .await?;
         self.registry.insert(&fork).await?;
         self.publish(NewEvent {
@@ -1390,7 +1467,7 @@ impl<S: GitStore> Repos<S> {
             data: RepoForked {
                 repo_id: fork.id.clone(),
                 source_repo_id: source.id,
-                pull_id: a.pull_id,
+                pull_id: Some(a.pull_id),
             },
         })
         .await?;
@@ -1545,11 +1622,9 @@ impl<S: GitStore> Repos<S> {
         let Some(source) = self.registry.by_id(&a.source_id).await? else {
             return Ok(not_found());
         };
-        // A fork lands on the repository it came from; a branch on its own.
-        let target = match &source.fork_of {
-            Some(id) => self.registry.by_id(id).await?,
-            None => Some(source.clone()),
-        };
+        // A working copy lands on the repository it came from, a fork's
+        // branch on the repository named, and a branch on its own.
+        let target = self.pull_target(&source, a.target_id.as_deref()).await?;
         let Some(target) = target.filter(|repo| can_read(repo, &actor)) else {
             return Ok(not_found());
         };
@@ -1574,7 +1649,7 @@ impl<S: GitStore> Repos<S> {
 
         let branch = &a.target_branch.clone().unwrap_or_else(|| target.default_branch.clone());
         let from_fork = source.id != target.id;
-        let source_branch = match a.branch {
+        let source_branch = match a.branch.clone() {
             Some(name) if !from_fork && name == *branch => {
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
@@ -1582,7 +1657,8 @@ impl<S: GitStore> Repos<S> {
                 ));
             }
             Some(name) => name,
-            None if from_fork => branch.clone(),
+            // A working copy holds the change on the branch it merges into.
+            None if source.fork_of.is_some() => branch.clone(),
             None => {
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
@@ -1604,6 +1680,11 @@ impl<S: GitStore> Repos<S> {
         let Some(new) = land::checked_commit(&new, a.expected_commit.as_deref()) else {
             return Ok(Outcome::fail(FailureCode::Conflict, "The source branch changed after it was checked. Test it again before landing."));
         };
+        // Every method but fast-forward makes commits (merge_methods.rs).
+        let method = a.method.unwrap_or(g1t_contracts::rules::MergeMethod::FastForward);
+        if method != g1t_contracts::rules::MergeMethod::FastForward {
+            return self.land_by(method, &a, &target, &source_git, &target_git, branch, &history, new, from_fork).await;
+        }
         let old = target_git
             .log(branch, 1)
             .await?
@@ -1615,6 +1696,8 @@ impl<S: GitStore> Repos<S> {
             return Ok(Outcome::Ok(Landed {
                 commit: new,
                 previous: None,
+                method,
+                rebased: Vec::new(),
             }));
         }
         if a.expected_commit.is_some() && old.is_some() {
@@ -1622,7 +1705,7 @@ impl<S: GitStore> Repos<S> {
             // before recording the merge; another change can already follow it.
             let target_history = target_git.log(branch, MAX_ANCESTRY).await?;
             if descends_from(&target_git, &target_history, &new).await? {
-                return Ok(Outcome::Ok(Landed { commit: new, previous: None }));
+                return Ok(Outcome::Ok(Landed { commit: new, previous: None, method, rebased: Vec::new() }));
             }
         }
         // Moving the branch to a commit that does not descend from its
@@ -1668,14 +1751,40 @@ impl<S: GitStore> Repos<S> {
         Ok(Outcome::Ok(Landed {
             commit: new,
             previous: old,
+            method,
+            rebased: Vec::new(),
         }))
     }
 
     async fn compare(&self, a: CompareArgs) -> Result<Outcome<Comparison>> {
-        let Some(repo) = self
-            .visible(self.registry.by_id(&a.repo_id).await?, &a.viewer)
-            .await?
-        else {
+        let found = self.registry.by_id(&a.repo_id).await?;
+        let repo = match self.visible(found.clone(), &a.viewer).await? {
+            Some(repo) => Some(repo),
+            // A pull request from a private fork is reviewed by those who
+            // read the repository it merges into, whether or not they can
+            // read the fork: its head, a commit that repository holds as
+            // well (`refs/pull/<n>/head`), compared with it, from a base it
+            // holds. Nothing else of the fork is read this way.
+            None => match (found, a.target_id.as_deref(), a.head.as_deref()) {
+                (Some(fork), Some(target_id), Some(head))
+                    if is_commit_hash(head) && a.base.as_deref().is_none_or(is_commit_hash) =>
+                {
+                    match self.visible(self.registry.by_id(target_id).await?, &a.viewer).await? {
+                        Some(target) if self.forked_from(&fork, target_id).await? => {
+                            let target_git = self.read_git(&target).await?;
+                            let mut held = !target_git.log(head, 1).await?.is_empty();
+                            if let Some(base) = a.base.as_deref() {
+                                held = held && !target_git.log(base, 1).await?.is_empty();
+                            }
+                            held.then_some(fork)
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
+        };
+        let Some(repo) = repo else {
             return Ok(not_found());
         };
         let git = self.read_git(&repo).await?;
@@ -1707,8 +1816,20 @@ impl<S: GitStore> Repos<S> {
                 .collect();
             nearest_ancestor_in(&git, &history, &shared).await
         };
+        // A fork's branch, compared from the repository it would merge into.
+        let target = match a.target_id.as_deref().filter(|id| a.base.is_none() && *id != repo.id) {
+            Some(id) if self.forked_from(&repo, id).await? => {
+                match self.visible(self.registry.by_id(id).await?, &a.viewer).await? {
+                    Some(target) => Some(target),
+                    None => return Ok(not_found()),
+                }
+            }
+            Some(_) => return Ok(not_found()),
+            None => None,
+        };
         let base = match (a.base, &repo.fork_of) {
             (Some(base), _) => Some(base),
+            (None, _) if let Some(target) = &target => shared_with(target).await?,
             // A fork is compared with the last commit it shares with the
             // repository it came from.
             (None, Some(target_id)) => match self.registry.by_id(target_id).await? {
@@ -2696,6 +2817,11 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "log" => reply(&repos.log(args(body)?).await?),
         "blame" => reply(&repos.blame(args(body)?).await?),
         "fork_for_pull" => reply(&repos.fork_for_pull(args(body)?).await?),
+        // Forks people make into their workspaces: see network.rs.
+        "fork" => reply(&repos.fork(args(body)?).await?),
+        "forks" => reply(&repos.forks(args(body)?).await?),
+        "sync_fork" => reply(&repos.sync_fork(args(body)?).await?),
+        "detach_fork" => reply(&repos.detach_fork(args(body)?).await?),
         "git_access" => reply(&repos.git_access(args(body)?).await?),
         "branches" => reply(&repos.branches(args(body)?).await?),
         "last_commits" => reply(&repos.last_commits(args(body)?).await?),
@@ -2907,6 +3033,13 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         Ok(0) => {}
         Ok(count) => worker::console_log!("repos: removed {count} pull request working copies"),
         Err(error) => worker::console_error!("repos: the working copy sweep failed: {error}"),
+    }
+    // Private forks whose makers can no longer read where they came from
+    // (network.rs).
+    match repos.check_private_forks().await {
+        Ok(0) => {}
+        Ok(count) => worker::console_log!("repos: deleted {count} private forks their makers can no longer read the source of"),
+        Err(error) => worker::console_error!("repos: the private fork sweep failed: {error}"),
     }
     // Repositories moving between namespaces, and old copies (moves.rs).
     match repos.run_moves().await {

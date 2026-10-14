@@ -233,6 +233,8 @@ export default [
   route(":owner/:repo/about.json", "routes/repo/about-json.ts"),
   // Starring it, from the header's Star button.
   route(":owner/:repo/star", "routes/repo/star.ts"),
+  // Bringing a fork's branch up to date with its parent's (components/fork-bar.tsx).
+  route(":owner/:repo/sync-fork", "routes/repo/sync-fork.ts"),
   // Subscribing to its issues and pull requests, and watching it.
   route(":owner/:repo/notifications", "routes/repo/notifications.ts"),
   // A starter CI workflow, opened as a pull request (components/add-ci.tsx).
@@ -261,6 +263,9 @@ export default [
     route("contributors", "routes/repo/contributors.tsx"),
     route("activity", "routes/repo/activity.tsx"),
     route("stargazers", "routes/repo/stargazers.tsx"),
+    // Forking it into a workspace, and the forks there are.
+    route("fork", "routes/repo/fork.tsx"),
+    route("forks", "routes/repo/forks.tsx"),
     route("compare/*", "routes/repo/compare.tsx", { id: "routes/repo/compare-range" }),
     route("compare", "routes/repo/compare.tsx"),
     route("commit/:hash", "routes/repo/commit.tsx"),

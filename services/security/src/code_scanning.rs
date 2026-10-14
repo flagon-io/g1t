@@ -401,14 +401,21 @@ impl Security {
     /// What a pull request changes, as the repository compares it: its
     /// branch (or fork) against where it left the branch it merges into.
     pub(crate) async fn pull_comparison(&self, repo: &RepoRow, pull: &Pull) -> Result<Option<Comparison>> {
-        let (repo_id, head) = match &pull.fork_repo_id {
-            Some(fork) => (fork.clone(), None),
-            None => (repo.repo_id.clone(), pull.branch.clone()),
-        };
+        // A working copy is compared as a whole; a branch, of the repository
+        // or of a fork of it, by name.
+        let head = if pull.fork_repo_id.is_some() { None } else { pull.branch.clone() };
         let compared: Outcome<Comparison> = g1t_kit::call(
             &self.repos,
             "compare",
-            &CompareArgs { repo_id, viewer: Some(User::system(&repo.namespace)), base: None, head, base_branch: pull.base.clone(), paths: None },
+            &CompareArgs {
+                repo_id: pull.source_id().to_owned(),
+                viewer: Some(User::system(&repo.namespace)),
+                base: None,
+                head,
+                base_branch: pull.base.clone(),
+                paths: None,
+                target_id: pull.target_id(),
+            },
         )
         .await?;
         Ok(compared.into_result().ok())

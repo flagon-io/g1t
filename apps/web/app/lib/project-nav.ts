@@ -115,8 +115,10 @@ function matches(rest: string, tab: Tab): boolean {
  * The tabs for the page at `rest` (the path under the project), if it
  * belongs to a page with more than one view.
  */
-export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>): Tab[] | null {
+export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>, features?: { issues?: boolean }): Tab[] | null {
   for (const section of [...SECTIONS, PULLS]) {
+    // Issues turned off (a fork's default): no Issues tabs, though what was opened stays readable.
+    if (section.key === "Issues" && features?.issues === false) continue;
     const visible = section.tabs.filter(
       (tab) => (member || !tab.members) && (!tab.needs || !can || Boolean(can[tab.needs])),
     );

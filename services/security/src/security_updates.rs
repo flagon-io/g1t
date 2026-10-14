@@ -248,6 +248,12 @@ impl Security {
                 keep_issue_open: false,
                 ignore_checks: false,
                 bypass_rules: false,
+                merge_method: None,
+                commit_title: None,
+                commit_message: None,
+                expected_head: None,
+                delete_branch: None,
+                update_method: None,
             },
         )
         .await?;
@@ -537,6 +543,7 @@ impl Security {
                 title: prefixed(&prefix, pull_title(&row.package, &row.target)),
                 body: pull_text(&row.ecosystem, &row.package, &row.target, &vulns),
                 branch: Some(branch.to_owned()),
+                head_repo: None,
                 agent: String::new(),
                 runtime: Runtime::External,
                 // Security updates are for the default branch.

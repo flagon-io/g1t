@@ -119,17 +119,15 @@ impl Work {
 
     /// Whether the branch a pull request would merge into has commits the
     /// pull request does not, so that it must catch up before it can merge.
-    pub(crate) async fn is_behind(&self, repo_id: &str, pull: &Pull) -> Result<bool> {
+    pub(crate) async fn is_behind(&self, pull: &Pull) -> Result<bool> {
         if !pull.status.is_active() || pull.head_commit.is_none() {
             return Ok(false);
         }
         let asked = BehindArgs {
-            source_id: pull
-                .fork_repo_id
-                .clone()
-                .unwrap_or_else(|| repo_id.to_owned()),
+            source_id: pull.source_id().to_owned(),
             branch: pull.branch.clone(),
             target_branch: pull.base.clone().filter(|base| !base.is_empty()),
+            target_id: pull.target_id(),
         };
         self.timing.rpc(g1t_kit::call(&self.repos, "behind", &asked)).await
     }

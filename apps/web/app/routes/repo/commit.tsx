@@ -1,8 +1,10 @@
-import { Check, Copy, GitCommitHorizontal, GitPullRequest, MessagesSquare, Sparkles } from "lucide-react";
+import { Check, Copy, GitCommitHorizontal, GitPullRequest, MessageSquareOff, MessagesSquare, Sparkles } from "lucide-react";
 import { Suspense, useState } from "react";
 import { Await, Link, data, redirect } from "react-router";
 
 import type { Comparison, Pull } from "@g1t/contracts";
+
+import { asComments } from "../../lib/commit-comments";
 
 import { parseCommitMessage } from "../../lib/commit-message";
 import { firstScreens } from "../../lib/diff";
@@ -11,7 +13,8 @@ import { page } from "../../lib/meta";
 import { CommitChecksBadge } from "../../components/commit-checks";
 import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
-import { TimeAgo } from "../../components/ui";
+import { ErrorText, TimeAgo } from "../../components/ui";
+import { CommentForm, CommentList } from "../../components/work";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -20,8 +23,9 @@ import { commitChecksFor } from "../../lib/commit-checks.server";
 import { immutable } from "../../lib/immutable.server";
 import { pullForCommit } from "../../lib/provenance.server";
 import { showOneCommit } from "../../lib/commit-people.server";
-import { repos } from "../../lib/services.server";
-import { getViewer, unwrap } from "../../lib/session.server";
+import { repos, work } from "../../lib/services.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
+import { accessTo } from "../../lib/access.server";
 
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
   return { "Server-Timing": loaderHeaders.get("Server-Timing") ?? "" };
@@ -50,6 +54,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     throw new Response("Commit not found.", { status: 404 });
   }
   const started = Date.now();
+  // Its comments and whether more may be added: never cached, read beside the commit.
+  const said = Promise.all([
+    work.commitComments(viewer, path, hash).catch(() => null),
+    work.getSettings(path, viewer).catch(() => null),
+    accessTo(context, params).catch(() => null),
+  ]);
   const found = unwrap(await repos.get(path, viewer));
   // The viewer may read the repository, and a commit never changes: after
   // the first visit it and its diff come from the cache.
@@ -73,6 +83,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Its people, as their accounts where there are any; not kept with the
   // commit, since an address can be confirmed or removed later.
   const commit = (await showOneCommit(loaded.commit))!;
+  const [comments, settings, access] = await said;
   return data(
     {
       ...loaded,
@@ -83,9 +94,43 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       pull: pullForCommit(path, viewer, loaded.commit.hash),
       // Never cached: checks report on a commit long after it was made.
       checks: commitChecksFor(path, viewer, [loaded.commit.hash]),
+      comments: comments?.ok ? comments.value : [],
+      // Off, the comments made stay readable and no more can be added.
+      commentsOn: settings?.ok ? settings.value.allowCommitComments : true,
+      viewer: viewer ? { username: viewer.username } : null,
+      // Maintain and up edit and delete anyone's comments; everyone, their own.
+      canModerate: access?.can.manage_settings ?? false,
     },
     { headers: { "Server-Timing": `load;dur=${Date.now() - started};desc="${cached ? "cached" : "read"}"` } },
   );
+}
+
+export async function action({ request, params, context }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  const user = requireUser(context, request);
+  const form = await request.formData();
+  const path = { namespace: params.owner, name: params.repo };
+  const action = String(form.get("action") ?? "");
+  const body = String(form.get("body") ?? "");
+  if (action === "edit-comment" || action === "delete-comment") {
+    const id = String(form.get("comment") ?? "");
+    const changed =
+      action === "edit-comment" ? await work.editCommitComment(user, path, id, body) : await work.deleteCommitComment(user, path, id);
+    return changed.ok ? null : { action, comment: id, error: changed.error.message };
+  }
+  if (action !== "comment") return { action, error: "Unknown action." };
+  if (!body.trim()) return { action, error: "Write something first." };
+  // On one line of a file it changed, from the diff, or on the whole commit.
+  const file = String(form.get("path") ?? "");
+  const line = Number(form.get("line"));
+  const added = await work.addCommitComment(
+    user,
+    path,
+    params.hash.toLowerCase(),
+    body,
+    file && line > 0 ? { path: file, line } : undefined,
+  );
+  return added.ok ? null : { action, error: added.error.message };
 }
 
 function CopyHash({ hash }: { hash: string }) {
@@ -134,8 +179,10 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
   );
 }
 
-export default function CommitPage({ loaderData, params }: Route.ComponentProps) {
-  const { commit, pull, comparison, checks } = loaderData;
+export default function CommitPage({ loaderData, actionData, params }: Route.ComponentProps) {
+  const { commit, pull, comparison, checks, comments, commentsOn, viewer, canModerate } = loaderData;
+  const said = asComments(comments);
+  const general = said.filter((comment) => !comment.path);
   const base = `/${params.owner}/${params.repo}`;
   const { subject, body, trailers } = parseCommitMessage(commit.message);
   return (
@@ -214,8 +261,42 @@ export default function CommitPage({ loaderData, params }: Route.ComponentProps)
         </section>
       </Card>
       <div className="mt-6">
-        <DiffView comparison={comparison} repo={base} empty="This commit changes no files." fileBase={`${base}/blob/${commit.hash}`} />
+        <DiffView
+          comparison={comparison}
+          repo={base}
+          empty="This commit changes no files."
+          fileBase={`${base}/blob/${commit.hash}`}
+          review={{ comments: said.filter((comment) => comment.path), canComment: viewer != null && commentsOn }}
+        />
       </div>
+      <section aria-labelledby="commit-comments" className="mt-10 space-y-4">
+        <h3 id="commit-comments" className="flex items-center gap-2 text-sm font-medium">
+          <MessagesSquare size={15} className="text-faint" />
+          {general.length === 0 ? "Comments" : `${general.length} ${general.length === 1 ? "comment" : "comments"}`}
+          {said.length > general.length && (
+            <span className="font-normal text-faint">
+              · {said.length - general.length} on lines above
+            </span>
+          )}
+        </h3>
+        <CommentList
+          comments={general}
+          base={base}
+          // Commit comments name their author by username.
+          viewerId={viewer?.username ?? null}
+          canModerate={canModerate}
+          failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
+        />
+        {commentsOn ? (
+          <CommentForm author={viewer?.username ?? null} resetKey={said.length} />
+        ) : (
+          <Card className="flex items-center gap-2.5 px-4 py-3 text-sm text-muted">
+            <MessageSquareOff size={15} className="shrink-0 text-faint" />
+            Comments on commits are turned off in this repository.
+          </Card>
+        )}
+        {actionData?.action === "comment" && <ErrorText>{actionData.error}</ErrorText>}
+      </section>
     </div>
   );
 }

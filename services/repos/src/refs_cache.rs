@@ -365,6 +365,10 @@ mod tests {
             ("run_access.rs", include_str!("run_access.rs")),
             ("git_http.rs", include_str!("git_http.rs")),
             ("forks.rs", include_str!("forks.rs")),
+            ("network.rs", include_str!("network.rs")),
+            ("merge_methods.rs", include_str!("merge_methods.rs")),
+            ("commit_file.rs", include_str!("commit_file.rs")),
+            ("test_merge.rs", include_str!("test_merge.rs")),
         ];
         let mut all = Vec::new();
         for (file, source) in sources {
@@ -374,7 +378,7 @@ mod tests {
             }
         }
         // The writers known today, so that the check is seen to find them.
-        for expected in ["create", "delete_branch", "land", "update_pull_branch", "rename_branch", "create_branch", "remove_branch", "forks_follow", "keep_head", "revive"] {
+        for expected in ["create", "delete_branch", "land", "land_by", "push_update", "rename_branch", "create_branch", "remove_branch", "forks_follow", "keep_head", "revive", "fork", "sync_fork", "commit_file", "pull_merge_ref"] {
             assert!(
                 all.iter().any(|function| function.contains(&format!("fn {expected}("))),
                 "{expected} not found among {all:?}"

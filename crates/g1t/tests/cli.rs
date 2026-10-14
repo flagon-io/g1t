@@ -758,6 +758,88 @@ fn pr_merge_and_review_send_what_was_asked() {
 }
 
 #[test]
+fn pr_merge_says_how_and_auto_merge_turns_on_and_off() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("POST", "/repos/acme/web/pulls/14/merge") => (
+            200,
+            json!({ "number": 14, "status": "merged", "branch": "greet", "head_branch_deleted": true }),
+        ),
+        ("PUT", "/repos/acme/web/pulls/14/auto-merge") => (
+            200,
+            json!({ "number": 14, "status": "open", "auto_merge": { "method": "rebase", "enabled_by": "ana" } }),
+        ),
+        ("DELETE", "/repos/acme/web/pulls/14/auto-merge") => {
+            (200, json!({ "number": 14, "status": "open", "auto_merge": null }))
+        }
+        _ => (404, json!({ "error": { "message": "No such endpoint." } })),
+    });
+    let out = run(
+        &mock,
+        &[
+            "pr", "merge", "14", "--squash", "-t", "Greet the caller (#14)", "-b", "Names them.",
+            "--match-head-commit", "9f2c4e1", "-d", "-R", "acme/web",
+        ],
+    );
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("Deleted the branch greet."), "{}", out.stderr);
+    let out = run(&mock, &["pr", "merge", "14", "--ff", "--keep-branch", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let out = run(&mock, &["pr", "merge", "14", "--auto", "--rebase", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("will merge on its own"), "{}", out.stderr);
+    let out = run(&mock, &["pr", "merge", "14", "--disable-auto", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("Turned off auto-merge"), "{}", out.stderr);
+    let seen = mock.requests();
+    assert_eq!(
+        seen[0].json(),
+        json!({
+            "merge_method": "squash",
+            "commit_title": "Greet the caller (#14)",
+            "commit_message": "Names them.",
+            "sha": "9f2c4e1",
+            "delete_branch": true,
+        })
+    );
+    assert_eq!(seen[1].json(), json!({ "merge_method": "fast_forward", "delete_branch": false }));
+    assert_eq!((seen[2].method.as_str(), seen[2].json()), ("PUT", json!({ "merge_method": "rebase" })));
+    assert_eq!(seen[3].method, "DELETE");
+    // One method at a time, and auto-merge takes no branch deletion.
+    for args in [
+        &["pr", "merge", "14", "--squash", "--rebase", "-R", "acme/web"][..],
+        &["pr", "merge", "14", "--auto", "-d", "-R", "acme/web"][..],
+        &["pr", "merge", "14", "--disable-auto", "--squash", "-R", "acme/web"][..],
+    ] {
+        assert_eq!(run(&mock, args).code, 2, "{args:?}");
+    }
+    assert_eq!(mock.requests().len(), 4);
+}
+
+#[test]
+fn pr_update_branch_merges_or_rebases_and_fails_when_it_cannot() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("PUT", "/repos/acme/web/pulls/14/update-branch") if r.json()["update_method"] == "rebase" => (
+            200,
+            json!({ "outcome": "needs_agent", "reason": "conflicting", "detail": "Both sides changed src/main.rs.", "paths": ["src/main.rs"] }),
+        ),
+        ("PUT", "/repos/acme/web/pulls/14/update-branch") => {
+            (200, json!({ "outcome": "updated", "commit": "5b8d0f2", "previous": "9f2c4e1" }))
+        }
+        _ => (404, json!({ "error": { "message": "No such endpoint." } })),
+    });
+    let out = run(&mock, &["pr", "update-branch", "14", "-R", "acme/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("Updated the branch of acme/web#14"), "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), "https://g1t.sh/acme/web/pull/14");
+    let out = run(&mock, &["pr", "update-branch", "14", "--rebase", "-R", "acme/web"]);
+    assert_eq!(out.code, 1, "{}", out.stderr);
+    assert!(out.stderr.contains("src/main.rs"), "{}", out.stderr);
+    let seen = mock.requests();
+    assert!(seen[0].json().as_object().is_none_or(|body| body.is_empty()), "{}", seen[0].body);
+    assert_eq!(seen[1].json(), json!({ "update_method": "rebase" }));
+}
+
+#[test]
 fn status_gathers_what_needs_you() {
     let mock = Mock::start(|r| match r.path() {
         "/user" => (200, json!({ "username": "ana" })),
@@ -1489,4 +1571,121 @@ fn any_harness_checking_its_updates_says_which_files_it_changed() {
     let out = g1t_with(&mock, &dir, &["session", "updates", "--json"], &[("G1T_SESSION", "ses_a"), ("G1T_TOUCH", "0")]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert_eq!(mock.requests().len(), before + 1);
+}
+
+fn repo_json(namespace: &str, name: &str, parent: Option<(&str, &str)>) -> Value {
+    json!({
+        "id": format!("rep_{name}"), "namespace": namespace, "name": name, "description": "A web app.",
+        "is_private": false, "default_branch": "main", "fork_of": null, "archived_at": null,
+        "parent_id": parent.map(|_| "rep_parent"),
+        "parent": parent.map(|(owner, name)| json!({ "namespace": owner, "name": name })),
+        "created_at": "2026-10-14T09:30:12.418Z",
+    })
+}
+
+/// A clone of ana/web, a fork of acme/web: origin is the fork, upstream
+/// the repository it came from.
+fn fork_clone(name: &str) -> PathBuf {
+    let dir = temp_dir(name);
+    for args in [
+        &["init", "--quiet"][..],
+        &["remote", "add", "origin", "https://g1t.sh/ana/web.git"][..],
+        &["remote", "add", "upstream", "https://g1t.sh/acme/web.git"][..],
+    ] {
+        assert!(Command::new("git").args(args).current_dir(&dir).status().unwrap().success());
+    }
+    dir
+}
+
+#[test]
+fn repo_fork_sends_where_and_what_to_copy() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("POST", "/repos/acme/web/forks") => (200, repo_json("flagon-io", "site", Some(("acme", "web")))),
+        _ => (404, json!({ "error": { "code": "not_found", "message": "No." } })),
+    });
+    let out = run(&mock, &["repo", "fork", "acme/web", "--workspace", "flagon-io", "--name", "site", "--all-branches"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("Forked acme/web to flagon-io/site"), "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), "https://g1t.sh/flagon-io/site");
+    assert_eq!(
+        mock.requests()[0].json(),
+        json!({ "workspace": "flagon-io", "name": "site", "default_branch_only": false })
+    );
+    // By default: the default branch only, into the API's choice of workspace.
+    let out = run(&mock, &["repo", "fork", "acme/web", "--json"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(mock.requests()[1].json(), json!({ "default_branch_only": true }));
+}
+
+#[test]
+fn repo_view_says_what_a_fork_came_from_and_forks_lists_them() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("GET", "/repos/ana/web") => (200, repo_json("ana", "web", Some(("acme", "web")))),
+        ("GET", "/repos/acme/web/forks") => (200, json!([repo_json("ana", "web", Some(("acme", "web")))])),
+        _ => (404, json!({ "error": { "code": "not_found", "message": "No." } })),
+    });
+    let out = run(&mock, &["repo", "view", "ana/web"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("Forked from acme/web"), "{}", out.stdout);
+    let out = run(&mock, &["repo", "forks", "acme/web", "-L", "5"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stdout.contains("ana/web"), "{}", out.stdout);
+    assert_eq!(mock.requests()[1].target, "/repos/acme/web/forks?limit=5");
+}
+
+#[test]
+fn repo_sync_syncs_the_fork_origin_names_and_fails_on_conflicts() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("POST", "/repos/ana/web/merge-upstream") if r.json()["branch"] == "docs" => (
+            200,
+            json!({ "status": "conflicted", "branch": "docs", "head": "abc1234def", "behind": 2, "ahead": 1, "conflicts": ["README.md"] }),
+        ),
+        ("POST", "/repos/ana/web/merge-upstream") => (
+            200,
+            json!({ "status": "fast_forwarded", "branch": "main", "head": "9c4e1f0b7a", "behind": 3, "ahead": 0, "conflicts": [] }),
+        ),
+        _ => (404, json!({ "error": { "code": "not_found", "message": "No." } })),
+    });
+    // In a clone of the fork, origin is the fork, though upstream is preferred elsewhere.
+    let dir = fork_clone("sync");
+    let out = g1t_with(&mock, &dir, &["repo", "sync"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(out.stderr.contains("took in 3 commits"), "{}", out.stderr);
+    assert_eq!(mock.requests()[0].json(), json!({}));
+    let out = g1t_with(&mock, &dir, &["repo", "sync", "--branch", "docs"], &[]);
+    assert_eq!(out.code, 1, "{}", out.stderr);
+    assert!(out.stderr.contains("README.md"), "{}", out.stderr);
+    assert!(out.stderr.contains("git pull upstream docs"), "{}", out.stderr);
+}
+
+#[test]
+fn repo_detach_asks_for_yes_without_a_terminal() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("POST", "/repos/ana/web/detach") => (200, repo_json("ana", "web", None)),
+        _ => (404, json!({ "error": { "code": "not_found", "message": "No." } })),
+    });
+    let out = run(&mock, &["repo", "detach", "ana/web"]);
+    assert_eq!(out.code, 2, "{}", out.stderr);
+    assert!(out.stderr.contains("--yes"), "{}", out.stderr);
+    assert!(mock.requests().is_empty());
+    let out = run(&mock, &["repo", "detach", "ana/web", "--yes"]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(mock.requests()[0].path(), "/repos/ana/web/detach");
+}
+
+#[test]
+fn pr_create_in_a_fork_clone_proposes_the_forks_branch() {
+    let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
+        ("GET", "/repos/acme/web") => (200, repo_json("acme", "web", None)),
+        ("POST", "/repos/acme/web/pulls") => (200, json!({ "pull": { "number": 7, "status": "open" } })),
+        _ => (404, json!({ "error": { "code": "not_found", "message": "No." } })),
+    });
+    let dir = fork_clone("fork-pr");
+    // The fork's own main branch can hold the change.
+    let out = g1t_with(&mock, &dir, &["pr", "create", "--head", "main", "--title", "Fix the link", "--body", "b", "--no-push"], &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let sent = mock.requests()[1].json();
+    assert_eq!(sent["head_repo"], "ana/web");
+    assert_eq!(sent["branch"], "main");
+    assert!(out.stderr.contains("from ana/web main"), "{}", out.stderr);
 }

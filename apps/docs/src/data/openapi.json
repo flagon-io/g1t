@@ -153,6 +153,10 @@
         "archive_repo",
         "unarchive_repo",
         "transfer_repo",
+        "fork_repo",
+        "list_forks",
+        "sync_fork",
+        "detach_fork",
         "delete_repo",
         "list_deleted_repos",
         "restore_repo",
@@ -162,6 +166,17 @@
         "list_check_names",
         "get_codeowners_errors",
         "list_events"
+      ]
+    },
+    {
+      "name": "Commit comments",
+      "description": "Comments on a commit, as a whole or on one line of a file it changed. Anyone who can read a repository reads them, and may comment unless the repository turned commit comments off.",
+      "x-tools": [
+        "list_repo_commit_comments",
+        "list_commit_comments",
+        "create_commit_comment",
+        "update_commit_comment",
+        "delete_commit_comment"
       ]
     },
     {
@@ -401,7 +416,7 @@
     },
     {
       "name": "Pull requests",
-      "description": "A proposed change in its own fork or on a branch. Several can be made for one issue; the one merged resolves it.",
+      "description": "A proposed change in its own fork or on a branch. Several can be made for one issue; the one merged resolves it. It merges by a merge commit, a squash, a rebase or a fast-forward, now or with auto-merge once everything it needs is met.",
       "x-tools": [
         "list_pull_requests",
         "create_pull_request",
@@ -413,7 +428,13 @@
         "request_reviewers",
         "remove_requested_reviewers",
         "review_pull_request",
+        "get_pull_request_merge_options",
         "merge_pull_request",
+        "update_pull_request_branch",
+        "enable_pull_request_auto_merge",
+        "disable_pull_request_auto_merge",
+        "delete_pull_request_head_branch",
+        "restore_pull_request_head_branch",
         "close_pull_request",
         "reopen_pull_request",
         "get_merge_queue"
@@ -554,6 +575,8 @@
         "set_fork_pr_approval",
         "get_actions_access",
         "set_actions_access",
+        "get_actions_permissions",
+        "set_actions_permissions",
         "create_repository_dispatch",
         "get_workspace_workflow_permissions",
         "set_workspace_workflow_permissions",
@@ -27016,7 +27039,7 @@
           "Repositories"
         ],
         "summary": "Update a repository",
-        "description": "Change a repository's description, website, topics and default branch, whether its default branch is protected, and whether it is private. Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it.\n\nOnly the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/).",
+        "description": "Change a repository's description, website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork).\n\nOnly the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private`, `allow_forking`, `max_ref_updates` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. A fork cannot change `private` (`422`): detach it first. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/).",
         "x-operation": "update_repo",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update",
@@ -27168,6 +27191,16 @@
                   "default_branch": {
                     "type": "string",
                     "description": "Make this existing branch the default: the one clones check out and pull requests merge into."
+                  },
+                  "allow_forking": {
+                    "type": "boolean",
+                    "description": "Let people who can read this private repository fork it; their forks stay private. Public repositories can always be forked."
+                  },
+                  "max_ref_updates": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "description": "The most branches and tags one push may change, 1 to 1,000; a push that would change more is declined whole. 0 for no limit."
                   }
                 }
               },
@@ -27962,6 +27995,541 @@
               },
               "example": {
                 "to": "flagon-io"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/forks": {
+      "post": {
+        "operationId": "fork_repo",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "Fork a repository",
+        "description": "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code and description come with it: the default branch, or every branch and tag with default_branch_only false. Its issues, pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; issues are off in the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from.\n\nThe new fork, with `parent` naming the repository it came from. Refused with `403` when the repository is private and its admins have not allowed forking, or when you cannot create repositories in the workspace; `409` when the workspace already has a repository of that name (give another `name`); `402` when a free workspace's private storage has no room for a private fork. Its code and description are copied; nothing else is. See [Forking a repository](/guides/forking-repositories/) and [Forks](/concepts/forks/).",
+        "x-operation": "fork_repo",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "fork",
+        "x-scope": "repo:write",
+        "security": [
+          {
+            "token": [
+              "repo:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
+                  "namespace": "ada",
+                  "name": "hello",
+                  "description": "A tiny service that says hello.",
+                  "is_private": false,
+                  "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
+                  "default_branch": "main",
+                  "fork_of": null,
+                  "parent_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "parent": {
+                    "namespace": "flagon-io",
+                    "name": "hello"
+                  },
+                  "allow_forking": false,
+                  "protected": false,
+                  "created_at": "2026-10-14T09:30:12.418Z",
+                  "website": null,
+                  "archived_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "A free workspace's private storage has no room for this private repository.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workspace": {
+                    "type": "string",
+                    "description": "The slug of the workspace to fork it into, e.g. \"flagon-io\". Your personal workspace when left out."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "The fork's name; the repository's own when left out."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The fork's description; the repository's own when left out, none when empty."
+                  },
+                  "default_branch_only": {
+                    "type": "boolean",
+                    "description": "Copy only the default branch (the default). false copies every branch and tag."
+                  }
+                }
+              },
+              "example": {
+                "workspace": "ada",
+                "default_branch_only": true
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "list_forks",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "List forks",
+        "description": "A repository's forks that you can see, newest first, each with parent naming the repository. limit is at most 100, 30 when left out. Forks of its forks are listed on them.\n\nOnly the forks you can read, newest first: a private repository's forks are listed for people who can read them. Forks of a fork are listed on that fork. See [Forks](/concepts/forks/).",
+        "x-operation": "list_forks",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "forks",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "At most this many; 30 when left out."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
+                    "namespace": "ada",
+                    "name": "hello",
+                    "description": "A tiny service that says hello.",
+                    "is_private": false,
+                    "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
+                    "default_branch": "main",
+                    "fork_of": null,
+                    "parent_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "parent": {
+                      "namespace": "flagon-io",
+                      "name": "hello"
+                    },
+                    "allow_forking": false,
+                    "protected": false,
+                    "created_at": "2026-10-14T09:30:12.418Z",
+                    "website": null,
+                    "archived_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "limit": "30"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/merge-upstream": {
+      "post": {
+        "operationId": "sync_fork",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "Sync a fork",
+        "description": "Bring a fork's branch up to date with its parent: branch (the fork's default branch when left out) takes in the parent's branch of the same name, or the parent's default branch for the fork's default branch. Needs the Write role on the fork and read access to its parent. A branch that is only behind moves forward (fast_forwarded); one with commits of its own gets a merge commit when the two sides' changes do not clash, edits to the same file merging line by line (merged); when both changed the same lines (or one deleted a file the other changed, or both changed a binary file) nothing is changed (conflicted, with the files in conflicts, at most 20): merge the parent's branch in a clone and push, or open a pull request. Returns status, branch, head (the branch's commit afterwards), behind and ahead (the commits each side had that the other lacked).\n\n`status` is `up_to_date`, `fast_forwarded`, `merged` (a merge commit joins the fork's own commits and the parent's) or `conflicted`: both sides changed the files in `conflicts`, and nothing was changed. Merge the parent's branch in a clone and push. Refused with `422` when the repository is not a fork, `403` without the Write role on it, and `404` when its parent is gone or you can no longer read it. See [Sync a fork](/guides/forking-repositories/#sync-a-fork).",
+        "x-operation": "sync_fork",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "sync_fork",
+        "x-scope": "repo:write",
+        "security": [
+          {
+            "token": [
+              "repo:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "status": "fast_forwarded",
+                  "branch": "main",
+                  "head": "9c4e1f0b7a2d3e5f6a8b9c0d1e2f3a4b5c6d7e8f",
+                  "behind": 3,
+                  "ahead": 0,
+                  "conflicts": []
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "branch": {
+                    "type": "string",
+                    "description": "The fork's branch to sync; its default branch when left out."
+                  }
+                }
+              },
+              "example": {
+                "branch": "main"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/detach": {
+      "post": {
+        "operationId": "detach_fork",
+        "tags": [
+          "Repositories"
+        ],
+        "summary": "Detach a fork",
+        "description": "Detach a fork from its parent: it becomes an ordinary repository with no parent, and can then be made public or private. Needs the Admin role on the fork. Its code, settings, and the pull requests it already opened into the parent stay as they are; it can no longer be synced or open new pull requests into the parent. It cannot be attached again.\n\nThe repository, now with no parent. Needs the Admin role (`403` otherwise); `422` when it is not a fork. It cannot be attached again. See [Detach a fork](/guides/forking-repositories/#detach-a-fork).",
+        "x-operation": "detach_fork",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "detach_fork",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
+                  "namespace": "ada",
+                  "name": "hello",
+                  "description": "A tiny service that says hello.",
+                  "is_private": false,
+                  "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
+                  "default_branch": "main",
+                  "fork_of": null,
+                  "parent_id": null,
+                  "parent": null,
+                  "allow_forking": false,
+                  "protected": false,
+                  "created_at": "2026-10-14T09:30:12.418Z",
+                  "website": null,
+                  "archived_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
               }
             }
           }
@@ -29273,7 +29841,7 @@
           "Repositories"
         ],
         "summary": "Get repository settings",
-        "description": "How a repository handles pull requests: whether they merge by themselves, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for every pull request, whoever opened it. list_repo_rulesets and get_branch_rules show every rule.",
+        "description": "How a repository handles pull requests, commits and issues: the merge methods it allows and the one offered first, what merge and squash commits say by default (merge_commit_message, squash_commit_message, and the templates for custom), whether pull requests may turn on auto-merge, whether their branches are deleted once merged, whether to suggest updating branches, whether web commits are signed off, whether commit comments are allowed, whether merged pull requests close the issues they name, and whether issues can be opened (issues_enabled); also whether they merge by themselves, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for every pull request, whoever opened it. list_repo_rulesets and get_branch_rules show every rule.",
         "x-operation": "get_repo_settings",
         "x-mcp-tool": "repository",
         "x-mcp-action": "get_settings",
@@ -29323,6 +29891,23 @@
                   "allow_ignoring_checks": true,
                   "merge_queue": false,
                   "require_code_owner_review": false,
+                  "has_issues": null,
+                  "issues_enabled": true,
+                  "allow_merge_commit": true,
+                  "allow_squash_merge": true,
+                  "allow_rebase_merge": true,
+                  "allow_fast_forward": false,
+                  "default_merge_method": "merge",
+                  "merge_commit_message": "default",
+                  "squash_commit_message": "default",
+                  "merge_commit_template": null,
+                  "squash_commit_template": null,
+                  "suggest_updating_branches": true,
+                  "allow_auto_merge": true,
+                  "delete_branch_on_merge": false,
+                  "require_web_commit_sign_off": false,
+                  "allow_commit_comments": true,
+                  "auto_close_issues": true,
                   "updated_by": null,
                   "updated_at": null
                 }
@@ -29377,7 +29962,7 @@
           "Repositories"
         ],
         "summary": "Update repository settings",
-        "description": "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/).",
+        "description": "Change how a repository handles pull requests, commits and issues. Only the fields given are changed; required_checks replaces the whole list. At least one merge method must stay allowed, and default_merge_method must be one of them. A custom commit message (merge_commit_message or squash_commit_message custom) uses its template, whose {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in; pull_title_and_commits is for squash commits only. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_issues` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings).",
         "x-operation": "update_repo_settings",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_settings",
@@ -29427,6 +30012,23 @@
                   "allow_ignoring_checks": true,
                   "merge_queue": true,
                   "require_code_owner_review": true,
+                  "has_issues": null,
+                  "issues_enabled": true,
+                  "allow_merge_commit": false,
+                  "allow_squash_merge": true,
+                  "allow_rebase_merge": true,
+                  "allow_fast_forward": false,
+                  "default_merge_method": "squash",
+                  "merge_commit_message": "default",
+                  "squash_commit_message": "pull_title_and_description",
+                  "merge_commit_template": null,
+                  "squash_commit_template": null,
+                  "suggest_updating_branches": true,
+                  "allow_auto_merge": true,
+                  "delete_branch_on_merge": true,
+                  "require_web_commit_sign_off": false,
+                  "allow_commit_comments": true,
+                  "auto_close_issues": true,
                   "updated_by": "syntaqx",
                   "updated_at": "2026-10-04T16:20:37.508Z"
                 }
@@ -29525,6 +30127,89 @@
                   "require_code_owner_review": {
                     "type": "boolean",
                     "description": "Refuse to merge until the code owners of every file a pull request changes, as the CODEOWNERS file of the branch it merges into names them, have approved it, as many as each section asks. Only people's approvals count, and g1t's only where the file names @g1t."
+                  },
+                  "allow_merge_commit": {
+                    "type": "boolean",
+                    "description": "Let pull requests merge with a merge commit (merge). At least one method stays allowed."
+                  },
+                  "allow_squash_merge": {
+                    "type": "boolean",
+                    "description": "Let pull requests merge as one squashed commit (squash)."
+                  },
+                  "allow_rebase_merge": {
+                    "type": "boolean",
+                    "description": "Let pull requests merge by making each of their commits again on the base (rebase)."
+                  },
+                  "allow_fast_forward": {
+                    "type": "boolean",
+                    "description": "Let pull requests merge by moving the base to their head, with no new commit (fast_forward). Off unless turned on."
+                  },
+                  "default_merge_method": {
+                    "type": "string",
+                    "enum": [
+                      "merge",
+                      "squash",
+                      "rebase",
+                      "fast_forward"
+                    ],
+                    "description": "The method offered first, and used when a merge names none. Must be allowed."
+                  },
+                  "merge_commit_message": {
+                    "type": "string",
+                    "enum": [
+                      "default",
+                      "pull_title",
+                      "pull_title_and_description",
+                      "custom"
+                    ],
+                    "description": "What a merge commit says unless its merger writes it: default (\"Merge pull request #12 from owner/branch\" and its title), pull_title (its title, with its number), pull_title_and_description (and its description below), or custom (merge_commit_template)."
+                  },
+                  "squash_commit_message": {
+                    "type": "string",
+                    "enum": [
+                      "default",
+                      "pull_title",
+                      "pull_title_and_description",
+                      "pull_title_and_commits",
+                      "custom"
+                    ],
+                    "description": "What a squash commit says unless its merger writes it: default (its title for one commit, else its title and the commits' messages), pull_title, pull_title_and_description, pull_title_and_commits (its title, and each commit's message below), or custom (squash_commit_template)."
+                  },
+                  "merge_commit_template": {
+                    "type": "string",
+                    "description": "With merge_commit_message custom: the message, its first line the title. {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in. An empty string clears it."
+                  },
+                  "squash_commit_template": {
+                    "type": "string",
+                    "description": "With squash_commit_message custom: the message, with the same placeholders as merge_commit_template. An empty string clears it."
+                  },
+                  "suggest_updating_branches": {
+                    "type": "boolean",
+                    "description": "Offer to update a pull request's branch whenever its base has new commits, not only when it must be up to date to merge."
+                  },
+                  "allow_auto_merge": {
+                    "type": "boolean",
+                    "description": "Let people turn on auto-merge for a pull request, so it merges on its own once everything it needs is met."
+                  },
+                  "delete_branch_on_merge": {
+                    "type": "boolean",
+                    "description": "Delete a pull request's branch once it merges. It can be restored from the pull request."
+                  },
+                  "require_web_commit_sign_off": {
+                    "type": "boolean",
+                    "description": "Commits made on g1t (web edits, merge and squash commits) carry a Signed-off-by: trailer for whoever made them."
+                  },
+                  "allow_commit_comments": {
+                    "type": "boolean",
+                    "description": "Let anyone who can read the repository comment on its commits. Existing comments stay readable either way."
+                  },
+                  "auto_close_issues": {
+                    "type": "boolean",
+                    "description": "Close the issues a pull request names (its issue, and Fixes #12 in its title or description) when it merges into the default branch."
+                  },
+                  "has_issues": {
+                    "type": "boolean",
+                    "description": "Whether issues can be opened in it. null goes back to the default: on for a repository, off for a fork. Existing issues stay readable either way."
                   }
                 }
               },
@@ -29536,7 +30221,11 @@
                 "required_approvals": 1,
                 "count_agent_approvals": false,
                 "merge_queue": true,
-                "require_code_owner_review": true
+                "require_code_owner_review": true,
+                "allow_merge_commit": false,
+                "default_merge_method": "squash",
+                "squash_commit_message": "pull_title_and_description",
+                "delete_branch_on_merge": true
               }
             }
           }
@@ -37610,6 +38299,237 @@
         }
       }
     },
+    "/repos/{owner}/{name}/actions/permissions": {
+      "get": {
+        "operationId": "get_actions_permissions",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Get whether a repository's workflows run",
+        "description": "Whether a repository's workflows run at all: enabled is on for a repository and off for a fork until someone chooses (enabled_chosen says whether anyone has), so a fork never runs the workflows it copied until they are turned on. While it is off, no push, pull request, schedule, dispatch, repository_dispatch, merge queue or re-run starts a run; its workflows stay listed. allowed_actions is always all. Needs the Read role.\n\nA fork's workflows are off until someone turns them on: here `ada/hello` is a fork nobody has chosen for yet. See [Forks](/concepts/forks/).",
+        "x-operation": "get_actions_permissions",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_enabled",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "enabled": false,
+                  "enabled_chosen": false,
+                  "allowed_actions": "all"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "ada",
+          "name": "hello"
+        }
+      },
+      "put": {
+        "operationId": "set_actions_permissions",
+        "tags": [
+          "Run protection"
+        ],
+        "summary": "Turn a repository's workflows on or off",
+        "description": "Turn a repository's workflows on or off (enabled). Off, nothing starts a run, and a dispatch or re-run is refused with \"Actions is turned off for owner/name\"; runs already going finish. Turning it on runs nothing by itself: the next event does. Needs the Admin role; a workflow job's own token cannot.\n\nNeeds the Admin role (`403` otherwise); a workflow job's own token is refused. Turning workflows on starts nothing by itself. See [Turn workflows off](/guides/actions/#turn-workflows-on-or-off).",
+        "x-operation": "set_actions_permissions",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "set_enabled",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "enabled": true,
+                  "enabled_chosen": true,
+                  "allowed_actions": "all"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Whether its workflows run."
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "example": {
+                "enabled": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "ada",
+          "name": "hello"
+        }
+      }
+    },
     "/repos/{owner}/{name}/dispatches": {
       "post": {
         "operationId": "create_repository_dispatch",
@@ -45353,6 +46273,7 @@
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
+                        "repo.detached",
                         "repo.updated",
                         "repo.visibility_changed",
                         "repo.renamed",
@@ -45391,6 +46312,9 @@
                         "comment.created",
                         "comment.edited",
                         "comment.deleted",
+                        "commit_comment.created",
+                        "commit_comment.edited",
+                        "commit_comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
@@ -45407,6 +46331,10 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.auto_merge_enabled",
+                        "pull.auto_merge_disabled",
+                        "pull.head_branch_deleted",
+                        "pull.head_branch_restored",
                         "pull.stalled",
                         "pull.resumed",
                         "release.created",
@@ -45641,6 +46569,7 @@
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
+                        "repo.detached",
                         "repo.updated",
                         "repo.visibility_changed",
                         "repo.renamed",
@@ -45679,6 +46608,9 @@
                         "comment.created",
                         "comment.edited",
                         "comment.deleted",
+                        "commit_comment.created",
+                        "commit_comment.edited",
+                        "commit_comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
@@ -45695,6 +46627,10 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.auto_merge_enabled",
+                        "pull.auto_merge_disabled",
+                        "pull.head_branch_deleted",
+                        "pull.head_branch_restored",
                         "pull.stalled",
                         "pull.resumed",
                         "release.created",
@@ -46575,6 +47511,7 @@
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
+                        "repo.detached",
                         "repo.updated",
                         "repo.visibility_changed",
                         "repo.renamed",
@@ -46613,6 +47550,9 @@
                         "comment.created",
                         "comment.edited",
                         "comment.deleted",
+                        "commit_comment.created",
+                        "commit_comment.edited",
+                        "commit_comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
@@ -46629,6 +47569,10 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.auto_merge_enabled",
+                        "pull.auto_merge_disabled",
+                        "pull.head_branch_deleted",
+                        "pull.head_branch_restored",
                         "pull.stalled",
                         "pull.resumed",
                         "release.created",
@@ -46849,6 +47793,7 @@
                         "branch.renamed",
                         "repo.created",
                         "repo.forked",
+                        "repo.detached",
                         "repo.updated",
                         "repo.visibility_changed",
                         "repo.renamed",
@@ -46887,6 +47832,9 @@
                         "comment.created",
                         "comment.edited",
                         "comment.deleted",
+                        "commit_comment.created",
+                        "commit_comment.edited",
+                        "commit_comment.deleted",
                         "pull.opened",
                         "pull.ready",
                         "pull.updated",
@@ -46903,6 +47851,10 @@
                         "pull.milestoned",
                         "pull.demilestoned",
                         "pull.base_changed",
+                        "pull.auto_merge_enabled",
+                        "pull.auto_merge_disabled",
+                        "pull.head_branch_deleted",
+                        "pull.head_branch_restored",
                         "pull.stalled",
                         "pull.resumed",
                         "release.created",
@@ -59985,7 +60937,11 @@
                   },
                   "branch": {
                     "type": "string",
-                    "description": "A branch already pushed to the repository that holds the change. Leave out to get a fork."
+                    "description": "A branch already pushed to the repository (or to head_repo) that holds the change. Leave out to get a fork."
+                  },
+                  "head_repo": {
+                    "type": "string",
+                    "description": "A fork of the repository, \"owner/name\", whose branch holds the change: to propose a change from your fork. Needs branch."
                   },
                   "body": {
                     "type": "string",
@@ -62850,7 +63806,7 @@
           "Pull requests"
         ],
         "summary": "Merge a pull request",
-        "description": "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed.\n\nA draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by` and sets `superseded_by` on the pull requests it closes.",
+        "description": "Land a pull request on its base, the branch it merges into (the default branch unless it names another). merge_method says how: merge (a merge commit joins its branch to the base, its commits included), squash (one new commit holds everything it changed), rebase (each of its commits is made again on top of the base, in order) or fast_forward (the base moves to its head, exactly the commit that was checked; only when its branch contains the base's head). Left out, the repository's default_merge_method. A method the repository does not allow (allow_merge_commit, allow_squash_merge, allow_rebase_merge, allow_fast_forward on update_repo_settings), or that a rule for the base does not (allowed_merge_methods, and required linear history, which refuses merge), is refused. commit_title and commit_message are a merge or squash commit's message: its first line and the rest; left out, the repository's merge_commit_message or squash_commit_message decides. With sha, the merge is refused (409) if the pull request's head is no longer that commit. delete_branch deletes its branch once it has merged (left out, the repository's delete_branch_on_merge); restore_pull_request_head_branch brings it back. Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch closes the issues in its closes: the issue it was made for and those its title and description name after a closing keyword (Fixes #12), where the repository closes issues (auto_close_issues); the other pull requests still in progress for its issue close as superseded. Merging into another branch closes nothing. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead: update_pull_request_branch, then merge again. Check status in the result to see whether it has landed, and merge_method and merge_commit for how.\n\nA draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by`, closes the issues in `closes` (into the default branch, where `auto_close_issues` is on) and sets `superseded_by` on the pull requests it closes. A `merge_method` the repository or a rule for the base does not allow answers `422`, and a head that moved since `sha`, `409`. `merge_commit` is the commit the base is at afterwards: the merge or squash commit, the last rebased one, or the head for a fast-forward. See [Merging a pull request](/guides/pull-requests/#merging-a-pull-request).",
         "x-operation": "merge_pull_request",
         "x-mcp-tool": "pull_request",
         "x-mcp-action": "merge",
@@ -62917,6 +63873,11 @@
                   "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
                   "merged_by": "syntaqx",
                   "merged_at": "2026-10-01T18:52:17.093Z",
+                  "merge_method": "squash",
+                  "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
+                  "closes": [
+                    12
+                  ],
                   "superseded_by": null,
                   "check_status": "passed",
                   "files": [
@@ -63017,14 +63978,1669 @@
                   "bypass_rules": {
                     "type": "boolean",
                     "description": "Merge although rules are not met, where a ruleset lists you as one who may bypass it. Recorded as a bypass in its evaluations."
+                  },
+                  "merge_method": {
+                    "type": "string",
+                    "enum": [
+                      "merge",
+                      "squash",
+                      "rebase",
+                      "fast_forward"
+                    ],
+                    "description": "How to merge: merge, squash, rebase or fast_forward. The repository's default_merge_method when left out."
+                  },
+                  "commit_title": {
+                    "type": "string",
+                    "description": "For merge and squash: the commit message's first line. The repository's default when left out."
+                  },
+                  "commit_message": {
+                    "type": "string",
+                    "description": "For merge and squash: the rest of the commit message. The repository's default when left out."
+                  },
+                  "sha": {
+                    "type": "string",
+                    "description": "The head commit you reviewed: refused (409) if the pull request's head has moved since."
+                  },
+                  "delete_branch": {
+                    "type": "boolean",
+                    "description": "Delete its branch once merged. The repository's delete_branch_on_merge when left out."
                   }
                 }
               },
               "example": {
-                "keep_issue_open": false
+                "merge_method": "squash",
+                "commit_title": "Greeting names the caller (#14)",
+                "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                "delete_branch": true
               }
             }
           }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/merge-options": {
+      "get": {
+        "operationId": "get_pull_request_merge_options",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Get a pull request's merge options",
+        "description": "How a pull request may merge now, as the merge box offers it to you: the methods it may merge by (the repository's, as the rules for its base allow them) and the one offered first (default_method); each method's default commit title and message, and why one cannot be used now (unavailable); whether it is behind its base, can fast-forward as it is, should be offered an update (suggest_update) or must be up to date (require_up_to_date); whether it goes through the merge queue; whether you may turn on auto-merge; whether deleting its branch starts ticked and is possible; and whether commits made merging it are signed off.\n\n`methods` are the repository's allowed methods, narrowed by the rules for the branch it merges into: required linear history leaves out `merge`. `fast_forward` lists `unavailable` until the branch contains its base's head. `merge` and `squash` carry the commit message a merge would use if you wrote none. See [Merging a pull request](/guides/pull-requests/#merging-a-pull-request).",
+        "x-operation": "get_pull_request_merge_options",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "merge_options",
+        "x-scope": "pull_requests:read",
+        "security": [
+          {
+            "token": [
+              "pull_requests:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "methods": [
+                    "merge",
+                    "squash",
+                    "rebase"
+                  ],
+                  "default_method": "squash",
+                  "options": [
+                    {
+                      "method": "merge",
+                      "commit_title": "Merge pull request #14 from flagon-io/greet-caller",
+                      "commit_message": "Greeting should name the caller",
+                      "unavailable": null
+                    },
+                    {
+                      "method": "squash",
+                      "commit_title": "Greeting should name the caller (#14)",
+                      "commit_message": "* Read the name from the first argument\n* Fall back to \"world\"",
+                      "unavailable": null
+                    },
+                    {
+                      "method": "rebase",
+                      "commit_title": null,
+                      "commit_message": null,
+                      "unavailable": null
+                    }
+                  ],
+                  "behind": false,
+                  "can_fast_forward": false,
+                  "suggest_update": false,
+                  "require_up_to_date": false,
+                  "merge_queue": false,
+                  "auto_merge_allowed": true,
+                  "delete_branch_default": true,
+                  "can_delete_branch": true,
+                  "sign_off": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/update-branch": {
+      "put": {
+        "operationId": "update_pull_request_branch",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Update a pull request's branch",
+        "description": "Bring a pull request's branch up to date with its base: update_method merge (the default) makes a merge commit on its branch that takes in the base's new commits; rebase makes each of its commits again on top of the base's head and moves its branch there, rewriting its history. Pushed as you, so you must be able to push to its branch: the Write role for a branch of the repository, its owner for a working copy, and push access to the fork for a branch of a fork. With expected_head_sha, refused (409) if its head is no longer that commit. Edits to the same file merge line by line; a rebase drops merge commits and commits the base already has, keeps authors, dates and messages, and moves its branch only if its head is still where it was. Returns outcome: updated (with commit, its head now, and previous), up_to_date, or needs_agent when both sides changed the same lines (with reason, detail and the paths): nothing was pushed, so merge or rebase in a clone and push.\n\n`outcome` is `updated` (its branch moved from `previous` to `commit`), `up_to_date` (it already holds its base's head; `commit` only) or `needs_agent` (nothing was pushed: `reason` is `overlap`, `conflicting` or `unsupported`, with `detail` and the `paths` concerned). `update_method` `rebase` rewrites its branch, so pull it again before pushing more. A head that moved since `expected_head_sha` answers `409`. See [Keeping a pull request up to date](/guides/pull-requests/#keeping-it-up-to-date).",
+        "x-operation": "update_pull_request_branch",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "update_branch",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "outcome": "updated",
+                  "commit": "5b8d0f2a4c6e8a0c2e4a6c8e0a2c4e6a8c0e2a4c",
+                  "previous": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expected_head_sha": {
+                    "type": "string",
+                    "description": "The head commit you saw: refused (409) if the pull request's head has moved since."
+                  },
+                  "update_method": {
+                    "type": "string",
+                    "enum": [
+                      "merge",
+                      "rebase"
+                    ],
+                    "description": "merge (the default): a merge commit on its branch takes in the base's new commits. rebase: its commits are made again on the base's head, rewriting its branch."
+                  }
+                }
+              },
+              "example": {
+                "expected_head_sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                "update_method": "merge"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/auto-merge": {
+      "put": {
+        "operationId": "enable_pull_request_auto_merge",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Enable auto-merge",
+        "description": "Turn on auto-merge for a pull request: it merges on its own, as you, once its required checks, reviews and rules allow, with merge_method (the repository's default when left out) and, for merge and squash, commit_title and commit_message. Needs the Write role, since it merges as you, and a repository that allows auto-merge (allow_auto_merge). A method the repository or a rule for its base does not allow is refused. A pull request that may merge already merges at once instead. Auto-merge is turned off when it merges or closes, when someone turns it off, and when someone other than whoever turned it on pushes to it. Publishes pull.auto_merge_enabled. Returns the pull request, with auto_merge saying how and who asked.\n\nA repository with `allow_auto_merge` off answers `422`, as does a method it or a rule for the base does not allow. A pull request that may already merge merges at once: check `status`. `auto_merge` is cleared when it merges or closes, when it is turned off, and when someone other than `enabled_by` pushes to it. See [Auto-merge](/guides/pull-requests/#auto-merge).",
+        "x-operation": "enable_pull_request_auto_merge",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "enable_auto_merge",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "number": 14,
+                  "issue": 12,
+                  "title": "Greeting should name the caller",
+                  "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+                  "agent": "claude-code",
+                  "runtime": "external",
+                  "status": "open",
+                  "fork": {
+                    "namespace": "pulls",
+                    "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+                  },
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "branch": null,
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+                  "merged_by": null,
+                  "merged_at": null,
+                  "superseded_by": null,
+                  "check_status": "running",
+                  "files": [
+                    {
+                      "path": "src/main.rs",
+                      "additions": 6,
+                      "deletions": 2
+                    }
+                  ],
+                  "assignees": [],
+                  "reviewers": [
+                    "ana"
+                  ],
+                  "labels": [],
+                  "milestone": null,
+                  "base": "main",
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "display_username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T18:44:09.310Z",
+                  "auto_merge": {
+                    "method": "squash",
+                    "commit_title": "Greeting names the caller (#14)",
+                    "commit_message": null,
+                    "enabled_by": "syntaqx",
+                    "enabled_at": "2026-10-01T18:44:09.310Z"
+                  },
+                  "closes": [
+                    12
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "merge_method": {
+                    "type": "string",
+                    "enum": [
+                      "merge",
+                      "squash",
+                      "rebase",
+                      "fast_forward"
+                    ],
+                    "description": "How it will merge: merge, squash, rebase or fast_forward. The repository's default_merge_method when left out."
+                  },
+                  "commit_title": {
+                    "type": "string",
+                    "description": "For merge and squash: the commit message's first line. The repository's default when left out."
+                  },
+                  "commit_message": {
+                    "type": "string",
+                    "description": "For merge and squash: the rest of the commit message. The repository's default when left out."
+                  }
+                }
+              },
+              "example": {
+                "merge_method": "squash",
+                "commit_title": "Greeting names the caller (#14)"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "disable_pull_request_auto_merge",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Disable auto-merge",
+        "description": "Turn off auto-merge for a pull request: it waits for someone to merge it. Needs the Write role, or to be its author. Publishes pull.auto_merge_disabled. Returns the pull request, with auto_merge null.",
+        "x-operation": "disable_pull_request_auto_merge",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "disable_auto_merge",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "number": 14,
+                  "issue": 12,
+                  "title": "Greeting should name the caller",
+                  "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+                  "agent": "claude-code",
+                  "runtime": "external",
+                  "status": "open",
+                  "fork": {
+                    "namespace": "pulls",
+                    "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+                  },
+                  "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+                  "branch": null,
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+                  "merged_by": null,
+                  "merged_at": null,
+                  "superseded_by": null,
+                  "check_status": "running",
+                  "files": [
+                    {
+                      "path": "src/main.rs",
+                      "additions": 6,
+                      "deletions": 2
+                    }
+                  ],
+                  "assignees": [],
+                  "reviewers": [
+                    "ana"
+                  ],
+                  "labels": [],
+                  "milestone": null,
+                  "base": "main",
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "display_username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T18:44:09.310Z",
+                  "auto_merge": null,
+                  "closes": [
+                    12
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/head-branch": {
+      "delete": {
+        "operationId": "delete_pull_request_head_branch",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Delete a pull request's branch",
+        "description": "Delete a merged or closed pull request's branch: a branch of the repository, or of a fork you can push to. Needs the Write role (push access to the fork, for a fork's branch). Refused while the pull request is open, for the default branch, for a branch an open pull request still uses, and where rules protect it. head_branch_deleted is then true, and restore_pull_request_head_branch makes it again at its head. Publishes pull.head_branch_deleted. Returns the pull request.\n\nAn open pull request answers `409`: close or merge it first. `head_branch_deleted` is then `true`; [restore it](/reference/api/pull-requests/restore-pull-request-head-branch/) at `head_commit`.",
+        "x-operation": "delete_pull_request_head_branch",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "delete_branch",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "number": 14,
+                  "issue": 12,
+                  "title": "Greeting should name the caller",
+                  "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+                  "agent": "claude-code",
+                  "runtime": "external",
+                  "status": "merged",
+                  "fork": null,
+                  "fork_repo_id": null,
+                  "branch": "greet-caller",
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+                  "merged_by": "syntaqx",
+                  "merged_at": "2026-10-01T18:52:17.093Z",
+                  "superseded_by": null,
+                  "check_status": "passed",
+                  "files": [
+                    {
+                      "path": "src/main.rs",
+                      "additions": 6,
+                      "deletions": 2
+                    }
+                  ],
+                  "assignees": [],
+                  "reviewers": [
+                    "ana"
+                  ],
+                  "labels": [],
+                  "milestone": null,
+                  "base": "main",
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "display_username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-01T18:53:02.415Z",
+                  "merge_method": "squash",
+                  "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
+                  "closes": [
+                    12
+                  ],
+                  "head_branch_deleted": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/pulls/{number}/head-branch/restore": {
+      "post": {
+        "operationId": "restore_pull_request_head_branch",
+        "tags": [
+          "Pull requests"
+        ],
+        "summary": "Restore a pull request's branch",
+        "description": "Make a pull request's deleted branch again, at the pull request's head commit (head_commit). Needs the Write role (push access to the fork, for a fork's branch). Refused when a branch of that name exists again. Publishes pull.head_branch_restored. Returns the pull request.\n\nThe branch is made again at `head_commit`. A branch of that name that exists again answers `409`.",
+        "x-operation": "restore_pull_request_head_branch",
+        "x-mcp-tool": "pull_request",
+        "x-mcp-action": "restore_branch",
+        "x-scope": "pull_requests:write",
+        "security": [
+          {
+            "token": [
+              "pull_requests:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The number shown after the #. Issues and pull requests share one sequence."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "number": 14,
+                  "issue": 12,
+                  "title": "Greeting should name the caller",
+                  "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+                  "agent": "claude-code",
+                  "runtime": "external",
+                  "status": "merged",
+                  "fork": null,
+                  "fork_repo_id": null,
+                  "branch": "greet-caller",
+                  "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+                  "merged_by": "syntaqx",
+                  "merged_at": "2026-10-01T18:52:17.093Z",
+                  "superseded_by": null,
+                  "check_status": "passed",
+                  "files": [
+                    {
+                      "path": "src/main.rs",
+                      "additions": 6,
+                      "deletions": 2
+                    }
+                  ],
+                  "assignees": [],
+                  "reviewers": [
+                    "ana"
+                  ],
+                  "labels": [],
+                  "milestone": null,
+                  "base": "main",
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "display_username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:20:02.117Z",
+                  "updated_at": "2026-10-02T09:10:44.902Z",
+                  "merge_method": "squash",
+                  "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
+                  "closes": [
+                    12
+                  ],
+                  "head_branch_deleted": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{name}/comments": {
+      "get": {
+        "operationId": "list_repo_commit_comments",
+        "tags": [
+          "Commit comments"
+        ],
+        "summary": "List a repository's commit comments",
+        "description": "A repository's commit comments, newest first, 30 a page (page from 1). Each names its commit; one on a line of a file has path and line. Anyone who can read the repository can read them.\n\nNewest first, 30 a page. A comment with `path` and `line` is on that line of the file as its `commit` left it; one without is on the whole commit.",
+        "x-operation": "list_repo_commit_comments",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "list_commit_comments",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "From 1; 30 comments a page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "ccm_01m4a2s1b5c7e9g3k6m0p4s8v2",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "path": null,
+                    "line": null,
+                    "author": "syntaqx",
+                    "body": "Released as v0.4.0.",
+                    "created_at": "2026-10-02T08:30:57.664Z",
+                    "updated_at": null
+                  },
+                  {
+                    "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "path": "src/main.rs",
+                    "line": 12,
+                    "author": "ana",
+                    "body": "Should an empty name fall back to \"world\"?",
+                    "created_at": "2026-10-01T19:02:11.208Z",
+                    "updated_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-query": {
+          "page": 1
+        }
+      }
+    },
+    "/repos/{owner}/{name}/comments/{comment_id}": {
+      "patch": {
+        "operationId": "update_commit_comment",
+        "tags": [
+          "Commit comments"
+        ],
+        "summary": "Edit a commit comment",
+        "description": "Change a commit comment's text, named by comment_id. Its author only. Publishes commit_comment.edited.\n\nIts author only.",
+        "x-operation": "update_commit_comment",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "edit_commit_comment",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit comment's id, as list_commit_comments and list_repo_commit_comments give it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "path": "src/main.rs",
+                  "line": 12,
+                  "author": "ana",
+                  "body": "Should an empty name fall back to \"world\"? The README says it does.",
+                  "created_at": "2026-10-01T19:02:11.208Z",
+                  "updated_at": "2026-10-01T19:05:40.117Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "description": "The new text, in Markdown."
+                  }
+                },
+                "required": [
+                  "body"
+                ]
+              },
+              "example": {
+                "body": "Should an empty name fall back to \"world\"? The README says it does."
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "comment_id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4"
+        }
+      },
+      "delete": {
+        "operationId": "delete_commit_comment",
+        "tags": [
+          "Commit comments"
+        ],
+        "summary": "Delete a commit comment",
+        "description": "Delete a commit comment, named by comment_id. Its author may, and so may anyone with the Maintain role or higher. This cannot be undone. Publishes commit_comment.deleted.\n\nAnswers `204` with no body. Its author, or someone with the Maintain role or higher.",
+        "x-operation": "delete_commit_comment",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "delete_commit_comment",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit comment's id, as list_commit_comments and list_repo_commit_comments give it."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success. There is no body."
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "comment_id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4"
+        }
+      }
+    },
+    "/repos/{owner}/{name}/commits/{sha}/comments": {
+      "get": {
+        "operationId": "list_commit_comments",
+        "tags": [
+          "Commit comments"
+        ],
+        "summary": "List a commit's comments",
+        "description": "A commit's comments, oldest first: on the whole commit, or on one line of a file it changed (path and line). sha is the commit's hash. Anyone who can read the repository can read them.\n\nOldest first.",
+        "x-operation": "list_commit_comments",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "commit_comments",
+        "x-scope": "repo:read",
+        "security": [
+          {
+            "token": [
+              "repo:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "sha",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit's hash, as list_commits gives it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+                    "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                    "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                    "path": "src/main.rs",
+                    "line": 12,
+                    "author": "ana",
+                    "body": "Should an empty name fall back to \"world\"?",
+                    "created_at": "2026-10-01T19:02:11.208Z",
+                    "updated_at": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+        }
+      },
+      "post": {
+        "operationId": "create_commit_comment",
+        "tags": [
+          "Commit comments"
+        ],
+        "summary": "Comment on a commit",
+        "description": "Comment on a commit, as a whole or, with path and line, on one line of a file the commit changed (a line of the file as the commit left it). Anyone who can read the repository may, unless it has turned commit comments off (allow_commit_comments on update_repo_settings). The commit's author and anyone mentioned are notified. Publishes commit_comment.created.\n\n`line` needs `path`, a file the commit changed, and counts lines of that file as the commit left it. A repository with `allow_commit_comments` off answers `403`; a commit it does not have, `404`. See [Commit comments](/guides/pull-requests/#commit-comments).",
+        "x-operation": "create_commit_comment",
+        "x-mcp-tool": "repository",
+        "x-mcp-action": "comment_on_commit",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          },
+          {
+            "name": "sha",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The commit's hash, as list_commits gives it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+                  "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                  "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                  "path": "src/main.rs",
+                  "line": 12,
+                  "author": "ana",
+                  "body": "Should an empty name fall back to \"world\"?",
+                  "created_at": "2026-10-01T19:02:11.208Z",
+                  "updated_at": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "description": "Markdown."
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "A file the commit changed, from the repository's root, to comment on one of its lines."
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "With path: the line, as the commit left the file, counted from 1."
+                  }
+                },
+                "required": [
+                  "body"
+                ]
+              },
+              "example": {
+                "body": "Should an empty name fall back to \"world\"?",
+                "path": "src/main.rs",
+                "line": 12
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "hello",
+          "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
         }
       }
     },

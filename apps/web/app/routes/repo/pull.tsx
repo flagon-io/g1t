@@ -32,8 +32,10 @@ import {
   type Deployment,
   type Job,
   type LiveApp,
+  type MergeOptions,
   type Pull,
   type RepoPath,
+  type RepoSettings,
   type SessionEntry,
   type Viewer,
   pullComparison,
@@ -82,6 +84,8 @@ import {
   verdicts,
 } from "../../components/work";
 import { ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
+import { AutoMergeBanner, BranchAfterwards, MergeButton, UpdateBranchButton } from "../../components/merge-actions";
+import { METHOD_INFO, type MergeChoicesView, choicesFromService, choicesFromSettings, isMergeMethod } from "../../lib/merge";
 import { ViolationList } from "../../components/rules";
 import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { notFound } from "../../lib/not-found.server";
@@ -138,6 +142,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const pullFound = work.getPull(path, number, viewer);
   // Its labels and milestone, with the repository's to choose from.
   const labelsFound = work.listLabels(path, viewer);
+  // How it may merge now, for the merge box: beside the rest.
+  const choicesFound = tab === "conversation" ? work.mergeChoices(viewer, path, number).catch(() => null) : Promise.resolve(null);
   const milestonesFound = work.listMilestones(path, viewer);
   labelsFound.catch(() => null);
   milestonesFound.catch(() => null);
@@ -200,7 +206,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // highlighted here, so its colours do not pop in.
     tab === "changes"
       ? repos
-          .compare(range.repoId, viewer, range.base, range.head, range.baseBranch)
+          .compare(range.repoId, viewer, range.base, range.head, range.baseBranch, null, range.targetId)
           .then(async (compared) =>
             compared.ok
               ? {
@@ -225,8 +231,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     tab === "conversation" && pull.issue != null && (found.value.issue?.pullCount ?? 0) > 1
       ? attemptsFor(path, viewer, pull, found.value.comments).catch(() => [] as Attempt[])
       : null;
-  const [labels, milestones] = await Promise.all([labelsFound, milestonesFound]);
+  const [labels, milestones, served] = await Promise.all([labelsFound, milestonesFound, choicesFound]);
   const repoDefault = repo.ok ? repo.value.defaultBranch : "main";
+  const viewerOwns = viewer != null && viewer.id === workOwner(pull).id;
   // The default branch's protection covers pull requests into it only.
   const protectedBase = (pull.base ?? repoDefault) === repoDefault;
   return {
@@ -257,10 +264,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     canManage: can.triage || (viewer != null && viewer.id === workOwner(pull).id),
     // Maintain and up edit and delete anyone's comments; everyone, their own.
     canModerate: can.manage_settings,
-    // A catch-up is pushed as the viewer: a fork takes pushes only from
-    // whoever it is for (who asked g1t for it, or its author), a branch
-    // from anyone who can push.
-    canUpdate: pull.fork ? viewer?.id === workOwner(pull).id : can.push,
+    // A catch-up is pushed as the viewer: a working copy takes pushes only
+    // from whoever it is for (who asked g1t for it, or its author), a
+    // branch of someone's fork from its author (who can push to it; repos
+    // decides), a branch from anyone who can push.
+    canUpdate: pull.fork || pull.headRepo ? viewer?.id === workOwner(pull).id : can.push,
     subscription,
     members: members?.ok ? members.value.map((person) => person.username) : [],
     // `workspace/slug` and name of each team the viewer can see.
@@ -281,6 +289,18 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Who may choose the required checks.
     canProtect: can.manage_protection,
     defaultBranch: repo.ok ? repo.value.defaultBranch : "main",
+    // What the merge box offers: methods, messages, the branch afterwards.
+    choices:
+      served?.ok && served.value.methods.length > 0
+        ? choicesFromService(served.value)
+        : mergeChoicesOf(settings.ok ? settings.value : null, found.value.behind),
+    // Auto-merge on: whoever may merge it, since it merges as them. Off:
+    // they, or whoever it is for.
+    canAutoMerge: can.merge,
+    canStopAutoMerge: can.merge || viewerOwns,
+    // Its branch, deleted or restored once it merged or closed: anyone who
+    // can push to it (its author, for a branch of their fork).
+    canChangeBranch: pull.headRepo ? viewerOwns : can.push,
     ...deploymentOf(deployed?.ok ? deployed.value : null, number),
   };
 }
@@ -323,6 +343,24 @@ async function attemptsFor(path: RepoPath, viewer: Viewer, pull: Pull, comments:
 }
 
 /**
+ * What the merge box offers on a pull request, from the repository's
+ * settings: every method when they could not be read.
+ */
+function mergeChoicesOf(settings: RepoSettings | null, behind: boolean): MergeChoicesView {
+  if (settings) return choicesFromSettings(settings, behind);
+  return {
+    methods: ["merge"],
+    defaultMethod: "merge",
+    messages: {},
+    behind,
+    canFastForward: !behind,
+    autoMergeAllowed: false,
+    deleteBranchDefault: false,
+    suggestUpdate: true,
+  };
+}
+
+/**
  * Where this pull request is live: its preview (or its latest build, while
  * one is going or after one failed).
  */
@@ -334,6 +372,25 @@ function deploymentOf(
   const build = list?.deployments.find((d) => d.kind === "preview" && d.number === number) ?? null;
   return { preview, build };
 }
+/** How to merge, as the merge box's confirm step posted it. */
+function mergeOptions(form: FormData): MergeOptions {
+  const method = form.get("mergeMethod");
+  const title = String(form.get("commitTitle") ?? "").trim();
+  const head = String(form.get("expectedHead") ?? "");
+  return {
+    keepIssueOpen: form.get("keepIssueOpen") === "on",
+    ignoreChecks: form.get("ignoreChecks") === "on",
+    bypassRules: form.get("bypassRules") === "on",
+    ...(isMergeMethod(method) ? { mergeMethod: method } : {}),
+    // Only what the merger wrote: the service fills in the rest.
+    ...(title ? { commitTitle: title } : {}),
+    ...(form.has("commitMessage") ? { commitMessage: String(form.get("commitMessage")) } : {}),
+    ...(head ? { expectedHead: head } : {}),
+    // Asked only where the box was shown; the repository's setting otherwise.
+    ...(form.has("deleteBranchAsked") ? { deleteBranch: form.get("deleteBranch") === "on" } : {}),
+  };
+}
+
 const PULL_NEEDS: Record<string, Capability> = {
   "rerun-workflow": "run",
   "rerun-failed": "run",
@@ -382,19 +439,48 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // different files. When they changed the same files, the merge is left
   // to whoever works on the branch.
   if (action === "update") {
-    const caught = await work.catchUpPull(user, path, number);
+    const caught = await work.catchUpPull(user, path, number, {
+      updateMethod: form.get("updateMethod") === "rebase" ? "rebase" : "merge",
+      expectedHead: String(form.get("expectedHead") ?? "") || undefined,
+    });
     if (!caught.ok) return { action, error: caught.error.message };
     const update = caught.value;
     if (update.outcome === "needs_agent") {
       return {
         action,
-        error: "It and its base changed some of the same files, so it can't be caught up here. Merge the base into the branch where you work on it, then push.",
+        error: update.detail || "It and its base changed some of the same files, so it can't be updated here. Merge or rebase the base into the branch where you work on it, then push.",
       };
     }
     return {
       action,
       updated: { commit: update.commit, already: update.outcome === "up_to_date", at: Date.now() },
     };
+  }
+  // Auto-merge on, with how to merge (whoever may merge it), or off (they or its author); work checks.
+  if (action === "auto-merge-on" || action === "auto-merge-off") {
+    const method = form.get("mergeMethod");
+    const title = String(form.get("commitTitle") ?? "").trim();
+    const message = form.has("commitMessage") ? String(form.get("commitMessage")) : null;
+    const set = await work.setAutoMerge(
+      user,
+      path,
+      number,
+      action === "auto-merge-on",
+      action === "auto-merge-on"
+        ? {
+            mergeMethod: isMergeMethod(method) ? method : undefined,
+            ...(title ? { commitTitle: title } : {}),
+            ...(message != null ? { commitMessage: message } : {}),
+          }
+        : {},
+    );
+    return set.ok ? null : { error: set.error.message, action };
+  }
+  // Its branch, once it merged or closed: deleted, or made again where it was.
+  if (action === "delete-branch" || action === "restore-branch") {
+    const changed =
+      action === "delete-branch" ? await work.deleteHeadBranch(user, path, number) : await work.restoreHeadBranch(user, path, number);
+    return changed.ok ? null : { error: changed.error.message, action };
   }
   // A workflow run's failed jobs, run again. Who may is the actions service's call.
   if (action === "rerun-workflow") {
@@ -430,11 +516,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
   const result =
     action === "merge"
-      ? await work.mergePull(user, path, number, {
-          keepIssueOpen: form.get("keepIssueOpen") === "on",
-          ignoreChecks: form.get("ignoreChecks") === "on",
-          bypassRules: form.get("bypassRules") === "on",
-        })
+      ? await work.mergePull(user, path, number, mergeOptions(form))
       : action === "unqueue"
         ? await work.removeFromQueue(user, path, number)
       : action === "close"
@@ -648,6 +730,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     canManage,
     canModerate,
     defaultBranch: repoDefault,
+    choices,
+    canAutoMerge,
+    canStopAutoMerge,
+    canChangeBranch,
   } = loaderData;
   // The branch it merges into: what every line below names.
   const defaultBranch = pull.base ?? repoDefault;
@@ -688,9 +774,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     />
   );
   const addresses = useAddresses();
+  // A fork's branch (headRepo) is fetched from and pushed to the fork.
+  const headRepo = pull.fork ? null : (pull.headRepo ?? null);
   const remote = pull.fork
     ? cloneUrl(addresses, `${pull.fork.namespace}/${pull.fork.name}`)
-    : cloneUrl(addresses, `${params.owner}/${params.repo}`);
+    : cloneUrl(addresses, headRepo ? `${headRepo.namespace}/${headRepo.name}` : `${params.owner}/${params.repo}`);
   const active = pull.status === "draft" || pull.status === "open";
 
   // Follow a draft being worked on, or checks in progress, without a manual reload.
@@ -791,13 +879,22 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               {pull.branch && (
                 <>
                   {" "}
-                  <span className="font-mono text-fg">{pull.branch}</span>
+                  {headRepo ? (
+                    <Link
+                      to={`/${headRepo.namespace}/${headRepo.name}/tree/${encodeURIComponent(pull.branch)}`}
+                      className="font-mono text-fg hover:underline"
+                    >
+                      {headRepo.namespace}/{headRepo.name}:{pull.branch}
+                    </Link>
+                  ) : (
+                    <span className="font-mono text-fg">{pull.branch}</span>
+                  )}
                 </>
               )}{" "}
               into{" "}
               <BaseBranch
                 base={defaultBranch}
-                head={pull.fork ? null : pull.branch}
+                head={pull.fork || headRepo ? null : pull.branch}
                 canChange={loaderData.canChangeBase && active}
                 branchesUrl={`${base}/branches.json`}
               />
@@ -895,13 +992,22 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <GitMerge size={16} className="shrink-0 text-merged" />
                   <span>
                     Merged into <span className="font-mono">{defaultBranch}</span> by{" "}
-                    <span className="font-medium">{pull.mergedBy}</span>{" "}
+                    <PersonLink name={pull.mergedBy ?? "g1t"} className="font-medium hover:underline" />{" "}
                     {/* Not an account: the repository's settings said to merge it. */}
                     {pull.mergedBy === "g1t" && "automatically, once it was ready, "}
-                    {pull.mergedAt && <TimeAgo at={pull.mergedAt} />}
-                    {pull.headCommit && (
-                      <span className="font-mono text-muted"> · {pull.headCommit.slice(0, 7)}</span>
+                    {pull.mergeMethod && <>via {METHOD_INFO[pull.mergeMethod].past} </>}
+                    {(pull.mergeCommit ?? pull.headCommit) && (
+                      <>
+                        in{" "}
+                        <Link
+                          to={`${base}/commit/${pull.mergeCommit ?? pull.headCommit}`}
+                          className="font-mono text-fg hover:text-accent hover:underline"
+                        >
+                          {(pull.mergeCommit ?? pull.headCommit)!.slice(0, 7)}
+                        </Link>{" "}
+                      </>
                     )}
+                    {pull.mergedAt && <TimeAgo at={pull.mergedAt} />}
                   </span>
                 </p>
               )}
@@ -1089,11 +1195,19 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </div>
                 )}
 
-                {(pull.status === "merged" || pull.status === "closed") && statuses.length > 0 && (
+                {(pull.status === "merged" || pull.status === "closed") && (statuses.length > 0 || (pull.branch && !pull.fork)) && (
                   <StatusBox>
-                    <Suspense fallback={settledChecks({}, true)}>
-                      <Await resolve={workflowJobs}>{(jobs) => settledChecks(jobs)}</Await>
-                    </Suspense>
+                    {statuses.length > 0 && (
+                      <Suspense fallback={settledChecks({}, true)}>
+                        <Await resolve={workflowJobs}>{(jobs) => settledChecks(jobs)}</Await>
+                      </Suspense>
+                    )}
+                    <BranchAfterwards
+                      pull={pull}
+                      merged={pull.status === "merged"}
+                      canChange={canChangeBranch}
+                      error={actionData?.action === "delete-branch" || actionData?.action === "restore-branch" ? actionData.error : null}
+                    />
                   </StatusBox>
                 )}
 
@@ -1175,19 +1289,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     ) : behind ? (
                       <StatusRow
                         icon={<GitPullRequestArrow size={16} className="text-info" />}
-                        title={`${defaultBranch} has moved since this was made`}
+                        title="This branch is out-of-date with the base branch"
                       >
-                        {mergeable === "clean" && "It has no conflicts with it. "}
+                        {mergeable === "clean" && `It has no conflicts with ${defaultBranch}. `}
                         {requireUpToDate
-                          ? "This repository requires pull requests to be up to date, so it has to catch up before it can merge."
+                          ? `The rules for ${defaultBranch} require pull requests to be up to date, so it has to be updated before it can merge.`
                           : "That does not stop it merging: it is brought up to date as part of the merge."}
-                        {canUpdate && (
-                          <Form method="post" className="mt-2">
-                            <input type="hidden" name="action" value="update" />
-                            <SubmitButton variant="outline" match={{ action: "update" }} pending={`Merging ${defaultBranch} in…`}>
-                              Catch up with {defaultBranch} now
-                            </SubmitButton>
-                          </Form>
+                        {canUpdate && (requireUpToDate || choices.suggestUpdate) && (
+                          <UpdateBranchButton head={pull.headCommit} base={defaultBranch} />
                         )}
                         {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
                       </StatusRow>
@@ -1270,55 +1379,46 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         </SubmitButton>
                       </Form>
                     )}
-                    {canMerge && !landing && lifecycle?.stage !== "queued" && (
-                      <Form method="post" className="space-y-3 px-4 py-3">
-                        {issue?.state === "open" && (
-                          <CheckboxOption
-                            name="keepIssueOpen"
-                            label={`Keep #${issue.number} open. This is only part of the work.`}
-                            labelClassName="text-xs text-muted"
-                          />
-                        )}
-                        {unchecked && canIgnoreChecks && (
-                          <CheckboxOption
-                            name="ignoreChecks"
-                            label={`Bypass the required checks: merge although ${requiredFailed ? "one failed" : "they have not all passed"}.`}
-                            labelClassName="text-xs text-muted"
-                          />
-                        )}
-                        {rulesBypassable.length > 0 && rulesUnmet.length === 0 && (
-                          <CheckboxOption
-                            name="bypassRules"
-                            checked={bypassing}
-                            onCheckedChange={(checked) => setBypassing(checked === true)}
-                            label={`Bypass the rules for ${defaultBranch}: merge although they are not met. It is recorded.`}
-                            labelClassName="text-xs text-muted"
-                          />
-                        )}
-                        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 *:w-full sm:*:w-auto [&_button]:min-h-11 [&_button]:w-full [&_button]:justify-center sm:[&_button]:min-h-0 sm:[&_button]:w-auto">
-                          <Hint label={mergeBlocked} disabled={mergeBlocked != null}>
-                            <SubmitButton
-                              variant="accent"
-                              name="action"
-                              value="merge"
-                              disabled={mergeBlocked != null}
-                              pending={mergeQueue ? "Adding to the queue…" : "Merging…"}
-                            >
-                              {mergeQueue ? <Layers size={15} /> : <GitMerge size={15} />}
-                              {mergeQueue ? "Add to the merge queue" : `Merge into ${defaultBranch}`}
-                            </SubmitButton>
-                          </Hint>
-                          <span className={`text-xs ${mergeBlocked ? "text-danger" : "text-muted"}`}>
-                            {mergeBlocked ?? (mergeQueue
-                              ? `Tested together with everything ahead of it, then lands on ${defaultBranch}.`
-                              : issue?.state === "open"
-                                ? `Closes issue #${issue.number}, and any other pull requests still open for it.`
-                                : `Lands its commits on ${defaultBranch}.`)}
-                          </span>
-                        </div>
-                        {actionData?.action === "merge" && (
-                          <ErrorText>{actionData.error}</ErrorText>
-                        )}
+                    {pull.autoMerge && <AutoMergeBanner auto={pull.autoMerge} canChange={canStopAutoMerge} />}
+                    {(canMerge || canStopAutoMerge) && !landing && lifecycle?.stage !== "queued" && !(pull.autoMerge && !canMerge) && (
+                      <Form method="post" className="px-4 py-3">
+                        <MergeButton
+                          repo={`${params.owner}/${params.repo}`}
+                          pull={pull}
+                          choices={choices}
+                          base={defaultBranch}
+                          blocked={canMerge ? mergeBlocked : `Merging needs the Write role.`}
+                          queue={mergeQueue && canMerge}
+                          canAutoMerge={canAutoMerge}
+                          issue={issue?.state === "open" ? { number: issue.number } : null}
+                          error={
+                            actionData?.action === "merge" || actionData?.action === "auto-merge-on" || actionData?.action === "auto-merge-off"
+                              ? actionData.error
+                              : null
+                          }
+                          options={
+                            (unchecked && canIgnoreChecks) || (rulesBypassable.length > 0 && rulesUnmet.length === 0) ? (
+                              <div className="space-y-2">
+                                {unchecked && canIgnoreChecks && (
+                                  <CheckboxOption
+                                    name="ignoreChecks"
+                                    label={`Bypass the required checks: merge although ${requiredFailed ? "one failed" : "they have not all passed"}.`}
+                                    labelClassName="text-xs text-muted"
+                                  />
+                                )}
+                                {rulesBypassable.length > 0 && rulesUnmet.length === 0 && (
+                                  <CheckboxOption
+                                    name="bypassRules"
+                                    checked={bypassing}
+                                    onCheckedChange={(checked) => setBypassing(checked === true)}
+                                    label={`Bypass the rules for ${defaultBranch}: merge although they are not met. It is recorded.`}
+                                    labelClassName="text-xs text-muted"
+                                  />
+                                )}
+                              </div>
+                            ) : null
+                          }
+                        />
                       </Form>
                     )}
                   </StatusBox>
@@ -1349,7 +1449,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </Form>
                 )}
                 {actionData &&
-                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "reviewers", "assign", "edit-comment", "delete-comment"].includes(
+                  !["merge", "comment", "rerun-failed", "rerun-workflow", "update", "reviewers", "assign", "edit-comment", "delete-comment", "auto-merge-on", "auto-merge-off", "delete-branch", "restore-branch"].includes(
                     String(actionData.action),
                   ) && <ErrorText>{actionData.error}</ErrorText>}
               </div>
@@ -1519,8 +1619,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               <>
                 <p className="mt-1 text-xs text-muted">
                   <GitBranch size={13} className="mr-1 inline align-[-2px]" />
-                  Branch <span className="font-mono text-fg">{pull.branch}</span> of this
-                  repository. Pushes to it show up here.
+                  Branch <span className="font-mono text-fg">{pull.branch}</span> of{" "}
+                  {headRepo ? (
+                    <>
+                      <Link to={`/${headRepo.namespace}/${headRepo.name}`} className="font-mono text-fg hover:underline">
+                        {headRepo.namespace}/{headRepo.name}
+                      </Link>
+                      , a fork of this repository
+                    </>
+                  ) : (
+                    "this repository"
+                  )}
+                  . Pushes to it show up here.
                 </p>
                 <div className="mt-2">
                   <CopyLine text={`git clone -b ${pull.branch} ${remote}`} />

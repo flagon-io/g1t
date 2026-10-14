@@ -120,9 +120,10 @@ impl Work {
             &self.repos,
             "divergence",
             &BehindArgs {
-                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| pull.repo_id.clone()),
+                source_id: pull.source_id().to_owned(),
                 branch: pull.branch.clone(),
                 target_branch: pull.base.clone().filter(|base| !base.is_empty()),
+                target_id: pull.target_id(),
             },
         )
         .await?;
@@ -268,7 +269,7 @@ impl Work {
             "pull_merge_ref",
             &g1t_contracts::repos::PullMergeRefArgs {
                 repo_id: pull.repo_id.clone(),
-                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| pull.repo_id.clone()),
+                source_id: pull.source_id().to_owned(),
                 head,
                 number: pull.number,
                 target_branch: pull.base.clone().filter(|base| !base.is_empty()),
@@ -475,7 +476,7 @@ impl Work {
         Ok(Outcome::Ok(MergecheckJob {
             pull_id: pull.id.clone(),
             token,
-            source: pull.fork.clone().unwrap_or_else(|| path.clone()),
+            source: pull.source_path(&path),
             branch: pull.branch.clone().unwrap_or_else(|| repo.default_branch.clone()),
             repo: path,
             number: pull.number,

@@ -110,7 +110,7 @@ g1t auth setup-git [OPTIONS]
 
 ## g1t repo
 
-Repositories: view, clone, create, list.
+Repositories: view, clone, create, list, fork, sync.
 
 ### g1t repo view
 
@@ -178,6 +178,70 @@ g1t repo list [OPTIONS] [WORKSPACE]
 | `-L, --limit <LIMIT>` | Default: `20`. |
 
 Calls [`list_repos`](/reference/api/repositories/list-repos/).
+
+### g1t repo fork
+
+Fork a repository into one of your workspaces.
+
+```text
+g1t repo fork [OPTIONS] [REPOSITORY]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[REPOSITORY]` | OWNER/NAME; the current repository when left out. |
+| `-w, --workspace <WORKSPACE>` | The workspace to fork it into; your personal workspace when left out. |
+| `--name <NAME>` | The fork's name; the repository's own when left out. |
+| `-d, --description <DESCRIPTION>` | The fork's description; the repository's own when left out. |
+| `--all-branches` | Copy every branch and tag, not only the default branch. |
+| `-c, --clone` | Clone the fork, with the repository it came from as the remote upstream. |
+
+Calls [`fork_repo`](/reference/api/repositories/fork-repo/).
+
+### g1t repo forks
+
+List a repository's forks.
+
+```text
+g1t repo forks [OPTIONS] [REPOSITORY]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[REPOSITORY]` | OWNER/NAME; the current repository when left out. |
+| `-L, --limit <LIMIT>` | Default: `30`. |
+
+Calls [`list_forks`](/reference/api/repositories/list-forks/).
+
+### g1t repo sync
+
+Bring a fork's branch up to date with the repository it was forked from.
+
+```text
+g1t repo sync [OPTIONS] [REPOSITORY]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[REPOSITORY]` | The fork, OWNER/NAME; the one this directory pushes to (origin) when left out. |
+| `-b, --branch <BRANCH>` | The fork's branch to sync; its default branch when left out. |
+
+Calls [`sync_fork`](/reference/api/repositories/sync-fork/).
+
+### g1t repo detach
+
+Make a fork an ordinary repository, no longer linked to its parent.
+
+```text
+g1t repo detach [OPTIONS] [REPOSITORY]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[REPOSITORY]` | The fork, OWNER/NAME; the one this directory pushes to (origin) when left out. |
+| `-y, --yes` | Do not ask first. |
+
+Calls [`detach_fork`](/reference/api/repositories/detach-fork/).
 
 ## g1t issue
 
@@ -366,6 +430,7 @@ g1t pr create [OPTIONS]
 | `-f, --fill` | Take the title and body from the branch's commits. |
 | `-d, --draft` | Open it as a draft. |
 | `--no-push` | Do not push the branch first. |
+| `--head-repo <OWNER/NAME>` | The fork, OWNER/NAME, that holds the branch. In a clone of your fork (origin) whose upstream is the repository, origin when left out. |
 
 Calls [`create_pull_request`](/reference/api/pull-requests/create-pull-request/), [`get_repo`](/reference/api/repositories/get-repo/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/).
 
@@ -439,7 +504,7 @@ Calls [`review_pull_request`](/reference/api/pull-requests/review-pull-request/)
 
 ### g1t pr merge
 
-Merge a pull request.
+Merge a pull request, now or with auto-merge.
 
 ```text
 g1t pr merge [OPTIONS] [NUMBER]
@@ -448,11 +513,37 @@ g1t pr merge [OPTIONS] [NUMBER]
 | Argument or flag | |
 | --- | --- |
 | `[NUMBER]` |  |
+| `-m, --merge` | Merge with a merge commit. The repository's default method when no method is given. |
+| `-s, --squash` | Squash its commits into one. |
+| `-r, --rebase` | Make each of its commits again on top of the base. |
+| `--ff` | Fast-forward: move the base to its head, with no new commit. |
+| `-t, --subject <SUBJECT>` | The merge or squash commit's title; the repository's default when left out. |
+| `-b, --body <BODY>` | The text. Markdown. |
+| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--auto` | Merge on its own once its checks, reviews and rules allow. |
+| `--disable-auto` | Turn its auto-merge off. |
 | `--keep-issue-open` | Leave the issue it is for open. |
 | `--admin` | Merge past failing required checks and rules (needs the Admin role). |
-| `-d, --delete-branch` | Delete the local and remote branch afterwards. |
+| `-d, --delete-branch` | Delete its branch once merged, and the local branch. The repository's setting when left out. |
+| `--keep-branch` | Keep its branch, whatever the repository's setting. |
+| `--match-head-commit <SHA>` | Refuse to merge unless its head is still this commit. |
 
-Calls [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/), [`delete_branch`](/reference/api/repositories/delete-branch/).
+Calls [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/), [`enable_pull_request_auto_merge`](/reference/api/pull-requests/enable-pull-request-auto-merge/), [`disable_pull_request_auto_merge`](/reference/api/pull-requests/disable-pull-request-auto-merge/).
+
+### g1t pr update-branch
+
+Bring a pull request's branch up to date with its base.
+
+```text
+g1t pr update-branch [OPTIONS] [NUMBER]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[NUMBER]` | The number; the current branch's when left out. |
+| `--rebase` | Rebase its commits onto the base instead of merging the base in. Rewrites its branch. |
+
+Calls [`update_pull_request_branch`](/reference/api/pull-requests/update-pull-request-branch/).
 
 ### g1t pr ready
 

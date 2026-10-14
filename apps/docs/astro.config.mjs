@@ -182,7 +182,7 @@ export default defineConfig({
 						{ label: 'The merge queue', slug: 'guides/merge-queue' },
 						{ label: 'Rules', slug: 'guides/rules' },
 						{ label: 'CODEOWNERS', slug: 'guides/codeowners' },
-						{ label: 'Forks and branches', slug: 'concepts/forks' },
+						{ label: 'Forks and working copies', slug: 'concepts/forks' },
 					],
 				},
 				{
@@ -197,6 +197,7 @@ export default defineConfig({
 						{ label: 'People and teams', slug: 'guides/people-and-teams' },
 						{ label: 'Managing a repository', slug: 'guides/managing-repositories' },
 						{ label: 'Releases', slug: 'guides/releases' },
+						{ label: 'Forking a repository', slug: 'guides/forking-repositories' },
 						{ label: 'Transferring a repository', slug: 'guides/transferring-repositories' },
 						{ label: 'Audit log', slug: 'guides/audit-log' },
 						{ label: 'Usage and billing', slug: 'guides/usage-and-billing' },

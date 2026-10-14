@@ -5,20 +5,26 @@
 //! consumes its queue of events from the bus.
 
 mod authored;
+mod automerge;
 mod checks;
+mod closing;
 mod ghost;
 mod codeowners;
 mod commit_checks;
+mod commit_comments;
 mod contributions;
 mod coordination;
 mod decisions;
 mod guardrails;
+mod head_repo;
 mod inbox;
 mod insights;
 mod integration;
 mod labels;
 mod lifecycle;
+mod merge_message;
 mod mergeability;
+mod merging;
 mod milestones;
 mod prefetch;
 mod queue;
@@ -38,7 +44,7 @@ use g1t_contracts::events::{
 use g1t_contracts::identity::UsernameArgs;
 use g1t_contracts::repos::{
     ForkArgs, GetArgs, HeadArgs, LandArgs, Landed, NeedsAgentReason, PullBranchUpdate, ReadableArgs, Repo, RepoPath,
-    UpdatePullBranchArgs,
+    UpdateMethod, UpdatePullBranchArgs,
 };
 use g1t_contracts::access::{self, Capability, Denied};
 use g1t_contracts::time::rfc3339;
@@ -470,13 +476,14 @@ impl Work {
     }
 
     /// The commit a pull request's change is at in git right now: its
-    /// fork's default branch, or its branch.
+    /// working copy's default branch, or its branch, of the repository or
+    /// of the fork it is in.
     async fn live_head(&self, pull: &Pull) -> Result<Option<String>> {
         g1t_kit::call(
             &self.repos,
             "head",
             &HeadArgs {
-                repo_id: pull.fork_repo_id.clone().unwrap_or_else(|| pull.repo_id.clone()),
+                repo_id: pull.source_id().to_owned(),
                 branch: pull.branch.clone().unwrap_or_default(),
             },
         )
@@ -513,6 +520,11 @@ impl Work {
         };
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         check!(writable(&repo));
+        // Turned off, or a fork that has not turned them on: those already
+        // there stay readable.
+        if !self.issues_enabled(&repo).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, settings::issues_off(&repo)));
+        }
         // Labels it does not have yet are made for someone who may triage;
         // anyone else picks from those there are.
         let colors = check!(self.ensure_labels(&a.actor, &repo, &labels).await?);
@@ -1243,11 +1255,26 @@ impl Work {
             .as_deref()
             .map(str::trim)
             .filter(|branch| !branch.is_empty());
+        // A branch of someone's fork of the repository, rather than of the
+        // repository itself (head_repo.rs).
+        let head_repo = match &a.head_repo {
+            Some(path) => {
+                if branch.is_none() {
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("Say which branch of {}/{} holds the change.", path.namespace, path.name),
+                    ));
+                }
+                check!(self.head_repo_for(path, &repo, &a.actor).await?)
+            }
+            None => None,
+        };
+        let head_path = head_repo.as_ref().map(|fork| RepoPath { namespace: fork.namespace.clone(), name: fork.name.clone() });
         // The branch it merges into: the default branch unless another is
         // asked for, which has to exist.
         let base = a.base.as_deref().and_then(|base| stored_base(base, &repo));
         if let Some(base) = &base {
-            if branch == Some(base.as_str()) {
+            if head_repo.is_none() && branch == Some(base.as_str()) {
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
                     format!("A pull request cannot merge {base} into itself. Choose another base."),
@@ -1264,11 +1291,16 @@ impl Work {
             }
         }
         let base_name = base.clone().unwrap_or_else(|| repo.default_branch.clone());
-        // The change is on a branch already pushed to the repository, or
-        // will be made in a fork created for this pull request.
+        // The change is on a branch already pushed to the repository or to
+        // a fork of it, or will be made in a fork created for this pull
+        // request.
+        let head_repo_id = head_repo.as_ref().map(|fork| fork.id.clone());
         let (fork, head) = match branch {
             Some(branch) => {
-                if branch == base_name {
+                let source = head_repo::source_label(head_path.as_ref(), branch);
+                // A fork's branch may share the base's name: it is another
+                // repository's.
+                if head_repo.is_none() && branch == base_name {
                     return Ok(Outcome::fail(
                         FailureCode::Invalid,
                         format!("Choose a branch other than {branch}."),
@@ -1278,7 +1310,7 @@ impl Work {
                     &self.repos,
                     "head",
                     &HeadArgs {
-                        repo_id: repo.id.clone(),
+                        repo_id: head_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
                         branch: branch.to_owned(),
                     },
                 )
@@ -1286,24 +1318,21 @@ impl Work {
                 let Some(head) = head else {
                     return Ok(Outcome::fail(
                         FailureCode::NotFound,
-                        format!("There is no branch named {branch}. Push it first."),
+                        format!("There is no branch named {source}. Push it first."),
                     ));
                 };
-                // One open pull request for each branch and base.
+                // One open pull request for each branch (of the repository
+                // or of one fork) and base.
                 let existing = self
                     .db
-                    .prepare(
-                        "SELECT number AS n FROM pulls
-                         WHERE repo_id = ? AND source_branch = ? AND status IN ('draft', 'open')
-                           AND base_branch IS ?",
-                    )
-                    .bind(&[repo.id.as_str().into(), branch.into(), optional(&base)])?
+                    .prepare(head_repo::OPEN_FROM_BRANCH)
+                    .bind(&[repo.id.as_str().into(), branch.into(), optional(&head_repo_id), optional(&base)])?
                     .first::<NumberRow>(None)
                     .await?;
                 if let Some(existing) = existing {
                     return Ok(Outcome::fail(
                         FailureCode::Conflict,
-                        format!("Pull request #{} is already open from {branch} into {base_name}.", existing.n),
+                        format!("Pull request #{} is already open from {source} into {base_name}.", existing.n),
                     ));
                 }
                 (None, Some(head))
@@ -1331,14 +1360,16 @@ impl Work {
         let number = self.next_number(&repo.id).await?;
         let timestamp = rfc3339(now);
         let (author, requested_by) = authorship(&a.actor);
+        // The issues it says it closes (closing.rs).
+        let closes = closing::closes(issue.as_ref().map(|issue| issue.number), &title, body.as_deref(), &a.repo);
         self.db
             .prepare(
                 "INSERT INTO pulls
                    (id, repo_id, number, issue_id, issue_number, title, body, agent, runtime,
                     status, fork_repo_id, fork_namespace, fork_name, source_branch, head_commit,
                     author_id, author_name, requested_by_id, requested_by_name, created_at, updated_at,
-                    base_branch)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    base_branch, head_repo_id, head_namespace, head_name, closes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -1363,6 +1394,10 @@ impl Work {
                 timestamp.as_str().into(),
                 timestamp.as_str().into(),
                 optional(&base),
+                optional(&head_repo_id),
+                optional(&head_path.as_ref().map(|path| path.namespace.clone())),
+                optional(&head_path.as_ref().map(|path| path.name.clone())),
+                serde_json::to_string(&closes)?.into(),
             ])?
             .run()
             .await?;
@@ -1559,7 +1594,7 @@ impl Work {
                 match known_behind {
                     Some(behind) => Ok(behind),
                     None => {
-                        let behind = self.is_behind(&repo.id, &pull).await?;
+                        let behind = self.is_behind(&pull).await?;
                         // Kept for the next view when the mergeability on
                         // record is for this head: a pull request from
                         // before `behind` was kept asks once.
@@ -1604,6 +1639,11 @@ impl Work {
         )
         .await?;
         let code_owners = self.pull_code_owners(&pull, &comments, &settings).await?;
+        // The issues it closes, as its title and description say now; none
+        // where the repository does not close issues that way.
+        if pull.status.is_active() {
+            pull.closes = merging::issues_to_close(&pull, &repo, &settings, false);
+        }
         let required = if settings.required_checks.is_empty() {
             Vec::new()
         } else {
@@ -1687,18 +1727,23 @@ impl Work {
                     "Only whoever opened this pull request, or asked g1t for it, can update it.",
                 ));
             }
-        } else {
+        } else if !pull.from_head_repo() {
             check!(allowed(Some(&a.actor), &repo, Capability::Push));
         }
+        // A fork's branch is updated by those who may push to the fork,
+        // which repos decides.
         let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
             &self.repos,
             "update_pull_branch",
             &UpdatePullBranchArgs {
-                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                source_id: pull.source_id().to_owned(),
                 branch: pull.branch.clone(),
                 number: pull.number,
                 actor: a.actor,
                 target_branch: pull.base.clone(),
+                target_id: pull.target_id(),
+                method: a.update_method.unwrap_or_default(),
+                expected_head: a.expected_head.clone().filter(|head| !head.trim().is_empty()),
             },
         )
         .await?;
@@ -1827,7 +1872,7 @@ impl Work {
         if base == before {
             return Ok(Outcome::Ok(()));
         }
-        if pull.fork_repo_id.is_none() && pull.branch.as_deref() == Some(base) {
+        if !pull.from_other_repo() && pull.branch.as_deref() == Some(base) {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
                 format!("A pull request cannot merge {base} into itself. Choose another base."),
@@ -1902,14 +1947,17 @@ impl Work {
         let mut pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
         let summary = Some(a.summary.trim().to_owned()).filter(|summary| !summary.is_empty());
         let now = rfc3339(now_ms());
+        // The issues it closes, as its description says now (closing.rs).
+        let closes = closing::closes(pull.issue, &pull.title, summary.as_deref().or(pull.body.as_deref()), &a.repo);
         self.db
             .prepare(
-                "UPDATE pulls SET status = 'open', body = COALESCE(?, body), updated_at = ?
+                "UPDATE pulls SET status = 'open', body = COALESCE(?, body), updated_at = ?, closes = ?
                  WHERE id = ?",
             )
             .bind(&[
                 optional(&summary),
                 now.as_str().into(),
+                serde_json::to_string(&closes)?.into(),
                 pull.id.as_str().into(),
             ])?
             .run()
@@ -1940,6 +1988,7 @@ impl Work {
         }
         pull.status = PullStatus::Open;
         pull.body = summary.or(pull.body);
+        pull.closes = closes;
         pull.updated_at = now;
         // A draft's code owners are asked once it is ready.
         self.refresh_code_owners(&pull).await;
@@ -1955,7 +2004,7 @@ impl Work {
         let now = rfc3339(now_ms());
         let closed = self.db
             // What it was closed as, so that reopening brings that back.
-            .prepare("UPDATE pulls SET status = 'closed', closed_from = ?, updated_at = ? WHERE id = ? AND status <> 'merged'
+            .prepare("UPDATE pulls SET status = 'closed', closed_from = ?, updated_at = ?, auto_merge = NULL WHERE id = ? AND status <> 'merged'
                 AND NOT EXISTS (SELECT 1 FROM queue_entries q WHERE q.pull_id = pulls.id AND q.state = 'passed' AND q.landing_commit IS NOT NULL)
                 RETURNING id AS value")
             .bind(&[pull.status.as_str().into(), now.as_str().into(), pull.id.as_str().into()])?
@@ -1994,6 +2043,7 @@ impl Work {
             .await?;
         }
         pull.status = PullStatus::Closed;
+        pull.auto_merge = None;
         pull.updated_at = now;
         Ok(Outcome::Ok(pull))
     }
@@ -2014,7 +2064,7 @@ impl Work {
                 FailureCode::Conflict,
                 format!(
                     "The branch {} no longer exists. Push it again to reopen this pull request.",
-                    pull.branch.as_deref().unwrap_or_default()
+                    head_repo::source_label(pull.head_repo.as_ref(), pull.branch.as_deref().unwrap_or_default())
                 ),
             ));
         }
@@ -2115,10 +2165,12 @@ impl Work {
         Ok(Outcome::Ok(pull))
     }
 
-    /// Lands the pull request on the repository's default branch. Unless
-    /// told to keep it open, that resolves the issue it was for: the issue
-    /// closes naming this pull request, and the others still in progress
-    /// for it close as superseded.
+    /// Lands the pull request on the branch it merges into, by the method
+    /// asked for or the repository's default (merging.rs). Unless told to
+    /// keep them open, a merge into the default branch resolves the issues
+    /// it closes: its issue and those it names (closing.rs) close naming
+    /// this pull request, and the others still in progress for its issue
+    /// close as superseded.
     async fn merge_pull(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
         let viewer = Some(a.actor.clone());
         let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &viewer).await?);
@@ -2138,12 +2190,28 @@ impl Work {
                 ));
             }
         }
+        // Whoever looked at one head merges that one.
+        if let Some(expected) = a.expected_head.as_deref().map(str::trim).filter(|head| !head.is_empty())
+            && pull.head_commit.as_deref() != Some(expected)
+        {
+            return Ok(Outcome::fail(
+                FailureCode::Conflict,
+                "This pull request has new commits since you looked. Review them, then merge again.",
+            ));
+        }
         let base = pull.base_branch(&repo.default_branch).to_owned();
+        // How it merges: as asked, or the repository's default, where the
+        // repository and the rules for its base allow it.
+        let (choosing, requirements) = self.settings_and_requirements(&repo, &pull).await?;
+        let method = match merging::choose_method(a.merge_method, &choosing, &requirements, &base) {
+            Ok(method) => method,
+            Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+        };
         // The rules of the branch it merges into, as they stack: the one
         // gate for the merge button, the API, MCP, auto-merge and the queue,
         // for a person's pull request and an agent's alike. A bypass counts
         // when the merger asks for it, or for g1t when a ruleset lists it.
-        let gate = self.merge_gate(&repo, &pull, Some(&a.actor), a.ignore_checks, true).await?;
+        let gate = self.merge_gate_by(&repo, &pull, Some(&a.actor), a.ignore_checks, true, method).await?;
         let bypassable = gate.bypassable();
         let gate = if a.bypass_rules || a.actor.is_system() { gate } else { gate.without_bypass() };
         let settings = rulesets::overlay(self.settings(&repo.id).await?, &gate.requirements, base == repo.default_branch);
@@ -2182,6 +2250,7 @@ impl Work {
 
         // A repository that merges through a queue: it joins the queue, and
         // lands once its state together with everything ahead has passed.
+        // The queue lands the state it tested, whatever the method.
         if settings.merge_queue {
             if !a.actor.verified {
                 return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
@@ -2193,81 +2262,112 @@ impl Work {
             return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open, a.bypass_rules).await;
         }
 
-        // The default branch has moved under it. Unless the repository
-        // insists on that being dealt with first, bring it up to date and
-        // land it when that is done.
-        if self.is_behind(&repo.id, &pull).await? {
-            if settings.require_up_to_date {
-                return Ok(Outcome::fail(
-                    FailureCode::Conflict,
-                    format!(
-                        "{base} has moved since this pull request was made, and this repository requires pull requests to be up to date before they merge. Catch up with {base} first."
-                    ),
-                ));
-            }
-            if !a.actor.verified {
-                return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
-            }
-            check!(allowed(Some(&a.actor), &repo, Capability::Merge));
-            self.record_merge_evaluations(&repo, &pull, &gate).await;
-            // Brought up to date here, without a sandbox: the merge is
-            // recorded first, and lands when the push that catches it up
-            // arrives (lifecycle.rs `land_if_requested`).
-            self.request_landing(&pull, &a.actor, a.keep_issue_open)
-                .await?;
-            let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
-                &self.repos,
-                "update_pull_branch",
-                &UpdatePullBranchArgs {
-                    source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
-                    branch: pull.branch.clone(),
-                    number: pull.number,
-                    actor: a.actor.clone(),
-                    target_branch: pull.base.clone(),
-                },
-            )
-            .await?;
-            match updated {
-                Outcome::Ok(PullBranchUpdate::Updated { .. }) => return Ok(Outcome::Ok(pull)),
-                // Moved again in between, or already caught up: land it now.
-                Outcome::Ok(PullBranchUpdate::UpToDate { .. }) => self.forget_landing(&pull.id).await?,
-                Outcome::Ok(PullBranchUpdate::NeedsAgent { paths, .. }) => {
-                    self.forget_landing(&pull.id).await?;
-                    let named = if paths.is_empty() { String::new() } else { format!(" ({})", paths.join(", ")) };
-                    return Ok(Outcome::fail(
-                        FailureCode::Conflict,
-                        format!(
-                            "{base} has moved since this pull request was made, and both changed the same files{named}. Merge {base} into it, resolve any conflicts, push, and merge again."
-                        ),
-                    ));
+        // The commit it makes, for a merge or a squash: what the merger
+        // wrote, over the repository's default.
+        let message = match self
+            .merge_message_for(&repo, &pull, &settings, method, a.commit_title.as_deref(), a.commit_message.as_deref())
+            .await?
+        {
+            Ok(message) => message,
+            Err(problem) => return Ok(Outcome::fail(FailureCode::Invalid, problem)),
+        };
+
+        // The branch it merges into has moved under it. A merge, squash or
+        // rebase makes new commits on its head anyway; a fast-forward needs
+        // it brought up to date first, and lands when that is done. Unless
+        // the repository insists on that being dealt with first.
+        let behind = self.is_behind(&pull).await?;
+        match merging::when_behind(method, behind, settings.require_up_to_date, &base) {
+            merging::WhenBehind::Land => {}
+            merging::WhenBehind::Refuse(refusal) => return Ok(Outcome::fail(FailureCode::Conflict, refusal)),
+            merging::WhenBehind::CatchUpFirst => {
+                if !a.actor.verified {
+                    return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
                 }
-                Outcome::Fail(failure) => {
-                    self.forget_landing(&pull.id).await?;
-                    return Ok(Outcome::Fail(failure));
+                check!(allowed(Some(&a.actor), &repo, Capability::Merge));
+                self.record_merge_evaluations(&repo, &pull, &gate).await;
+                // Brought up to date here, without a sandbox: the merge is
+                // recorded first, and lands when the push that catches it up
+                // arrives (lifecycle.rs `land_if_requested`).
+                self.request_landing(&pull, &a.actor, a.keep_issue_open, a.delete_branch)
+                    .await?;
+                let updated: Outcome<PullBranchUpdate> = g1t_kit::call(
+                    &self.repos,
+                    "update_pull_branch",
+                    &UpdatePullBranchArgs {
+                        source_id: pull.source_id().to_owned(),
+                        branch: pull.branch.clone(),
+                        number: pull.number,
+                        actor: a.actor.clone(),
+                        target_branch: pull.base.clone(),
+                        target_id: pull.target_id(),
+                        // Linear history takes no merge commit on the way.
+                        method: if requirements.linear_history { UpdateMethod::Rebase } else { UpdateMethod::Merge },
+                        expected_head: pull.head_commit.clone(),
+                    },
+                )
+                .await?;
+                match updated {
+                    Outcome::Ok(PullBranchUpdate::Updated { .. }) => return Ok(Outcome::Ok(pull)),
+                    // Moved again in between, or already caught up: land it now.
+                    Outcome::Ok(PullBranchUpdate::UpToDate { .. }) => self.forget_landing(&pull.id).await?,
+                    Outcome::Ok(PullBranchUpdate::NeedsAgent { paths, .. }) => {
+                        self.forget_landing(&pull.id).await?;
+                        let named = if paths.is_empty() { String::new() } else { format!(" ({})", paths.join(", ")) };
+                        return Ok(Outcome::fail(
+                            FailureCode::Conflict,
+                            format!(
+                                "{base} has moved since this pull request was made, and both changed the same files{named}. Merge {base} into it, resolve any conflicts, push, and merge again."
+                            ),
+                        ));
+                    }
+                    // Only those who can push where its branch is can catch
+                    // it up; anyone may merge it another way.
+                    Outcome::Fail(failure) if failure.code == FailureCode::Forbidden => {
+                        self.forget_landing(&pull.id).await?;
+                        let source = pull.source_path(&a.repo);
+                        return Ok(Outcome::fail(
+                            FailureCode::Conflict,
+                            merging::cannot_fast_forward(&base, &format!("{}/{}", source.namespace, source.name)),
+                        ));
+                    }
+                    Outcome::Fail(failure) => {
+                        self.forget_landing(&pull.id).await?;
+                        return Ok(Outcome::Fail(failure));
+                    }
                 }
             }
         }
 
         // Whether the actor may write to the repository is decided by repos.
+        let head = pull.head_commit.clone();
         let landed: Outcome<Landed> = g1t_kit::call(
             &self.repos,
             "land",
             &LandArgs {
-                // A pull request from a branch lands from the repository itself.
-                source_id: pull.fork_repo_id.clone().unwrap_or_else(|| repo.id.clone()),
+                // A pull request from a branch lands from the repository
+                // itself, or from the fork the branch is in.
+                source_id: pull.source_id().to_owned(),
                 branch: pull.branch.clone(),
                 actor: a.actor.clone(),
                 target_branch: Some(base.clone()),
-                expected_commit: pull.head_commit.clone(),
+                expected_commit: head.clone(),
+                target_id: pull.target_id(),
+                method: Some(method),
+                message,
+                author: merging::squash_author(&pull, method),
+                sign_off: settings.require_web_commit_sign_off,
             },
         )
         .await?;
         let landed = check!(landed);
         self.record_merge_evaluations(&repo, &pull, &gate).await;
-        Ok(Outcome::Ok(
-            self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed)
-                .await?,
-        ))
+        let merged = self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed).await?;
+        // Its branch, where the merger or the repository says it goes.
+        if merged.status == PullStatus::Merged {
+            self.delete_branch_after_merge(&repo, &merged, &a.actor, a.delete_branch, head).await?;
+        }
+        Ok(Outcome::Ok(self.pull_by_id(&merged.id).await?.unwrap_or(merged)))
     }
 
     /// Records a pull request as merged once the default branch holds it:
@@ -2280,15 +2380,34 @@ impl Work {
         keep_issue_open: bool,
         landed: Landed,
     ) -> Result<Pull> {
-        // Only a merge into the default branch resolves the issue: into
-        // another branch, the work has not landed yet.
-        let keep_issue_open = keep_issue_open || !pull.targets_default(&repo.default_branch);
+        // Only a merge into the default branch resolves issues: into
+        // another branch, the work has not landed yet. Its own issue and
+        // those it names close, where the repository closes them that way.
+        let settings = self.settings(&repo.id).await?;
+        let closes = merging::issues_to_close(&pull, repo, &settings, keep_issue_open);
         let issue = match pull.issue {
-            Some(number) if !keep_issue_open => self
+            Some(number) if closes.contains(&number) => self
                 .issue(&repo.id, number)
                 .await?
                 .filter(|issue| issue.state == State::Open),
             _ => None,
+        };
+        // The others it names: open issues of this repository, not pull
+        // requests.
+        let named = try_join_all(
+            closes
+                .iter()
+                .filter(|number| Some(**number) != pull.issue)
+                .map(|number| self.issue(&repo.id, *number)),
+        )
+        .await?;
+        let named: Vec<Issue> = named.into_iter().flatten().filter(|issue| issue.state == State::Open).collect();
+        // A fast-forward leaves the base at what was landed, which is its
+        // head; the other methods leave its head as it was.
+        let head = if landed.method == g1t_contracts::rules::MergeMethod::FastForward {
+            Some(landed.commit.clone())
+        } else {
+            pull.head_commit.clone().or_else(|| Some(landed.commit.clone()))
         };
         let now = rfc3339(now_ms());
         let mut statements = vec![
@@ -2296,18 +2415,39 @@ impl Work {
                 .prepare(
                     "UPDATE pulls
                      SET status = 'merged', head_commit = ?, merge_base = ?, merged_by = ?,
-                         merged_at = ?, updated_at = ?
+                         merged_at = ?, updated_at = ?, merge_method = ?, merge_commit = ?,
+                         auto_merge = NULL, closes = ?
                      WHERE id = ? AND status <> 'merged' RETURNING id AS value",
                 )
                 .bind(&[
-                    landed.commit.as_str().into(),
+                    optional(&head),
                     optional(&landed.previous),
                     actor.username.as_str().into(),
                     now.as_str().into(),
                     now.as_str().into(),
+                    landed.method.as_str().into(),
+                    landed.commit.as_str().into(),
+                    serde_json::to_string(&closes)?.into(),
                     pull.id.as_str().into(),
                 ])?,
         ];
+        for closing in &named {
+            statements.push(
+                self.db
+                    .prepare(
+                        "UPDATE issues
+                         SET state = 'closed', reason = 'completed', resolved_by = ?,
+                             closed_at = ?, updated_at = ?
+                         WHERE id = ? AND state = 'open'",
+                    )
+                    .bind(&[
+                        pull.number.into(),
+                        now.as_str().into(),
+                        now.as_str().into(),
+                        closing.id.as_str().into(),
+                    ])?,
+            );
+        }
         if let Some(issue) = &issue {
             statements.push(
                 self.db
@@ -2353,7 +2493,7 @@ impl Work {
             },
         )
         .await?;
-        if let Some(issue) = &issue {
+        for issue in issue.iter().chain(&named) {
             self.publish(
                 "issue.closed",
                 &repo.id,
@@ -2368,8 +2508,8 @@ impl Work {
         }
 
         let who = (actor.id.as_str(), actor.username.as_str());
-        self.note(&repo.id, pull.number, who, "merged this").await?;
-        if let Some(issue) = &issue {
+        self.note(&repo.id, pull.number, who, merging::merged_note(landed.method)).await?;
+        for issue in issue.iter().chain(&named) {
             self.note(
                 &repo.id,
                 issue.number,
@@ -2396,6 +2536,7 @@ impl Work {
                 evidence: serde_json::json!({
                     "commit": landed.commit,
                     "previous": landed.previous,
+                    "method": landed.method,
                     "merge_queue": through_queue,
                 }),
             },
@@ -2408,8 +2549,15 @@ impl Work {
         {
             self.issue_resolved(&repo.id, number, actor, issue.is_some(), Some(pull.number)).await;
         }
+        for closed in &named {
+            self.issue_resolved(&repo.id, closed.number, actor, true, Some(pull.number)).await;
+        }
         pull.status = PullStatus::Merged;
-        pull.head_commit = Some(landed.commit.clone());
+        pull.head_commit = head;
+        pull.merge_method = Some(landed.method);
+        pull.merge_commit = Some(landed.commit.clone());
+        pull.auto_merge = None;
+        pull.closes = closes;
         pull.merge_base = landed.previous;
         pull.merged_by = Some(actor.username.clone());
         pull.merged_at = Some(now.clone());
@@ -2473,7 +2621,7 @@ impl Work {
                     revisions: snapshot.revisions,
                 })
             } else {
-                let behind = self.is_behind(&pull.repo_id, &pull).await?;
+                let behind = self.is_behind(&pull).await?;
                 self.assess(&pull, &issue, behind)
                     .await?
                     .map(|(lifecycle, _)| lifecycle)
@@ -2639,16 +2787,20 @@ impl Work {
             );
         }
         if let Some(branch) = git_ref.strip_prefix("refs/heads/") {
+            // A branch of the repository, and a branch of a fork pull
+            // requests into other repositories were opened from.
             pulls.extend(
                 self.db
                     .prepare(format!(
-                        "{moved} WHERE repo_id = ? AND source_branch = ? AND {active} {returning}"
+                        "{moved} WHERE {} AND {active} {returning}",
+                        head_repo::ON_BRANCH
                     ))
                     .bind(&[
                         after.into(),
                         now.as_str().into(),
                         pusher.clone(),
                         now.as_str().into(),
+                        repo_id.into(),
                         repo_id.into(),
                         branch.into(),
                         after.into(),
@@ -2667,6 +2819,8 @@ impl Work {
                 self.refresh_code_owners(&pull).await;
                 // A new overlap with another pull request is announced.
                 self.announce_overlaps(&pull, event.actor.clone()).await;
+                // Auto-merge someone else turned on stops (automerge.rs).
+                self.auto_merge_after_push(&pull, event.actor.as_deref()).await?;
                 moved_pulls.push(pull);
             }
         }
@@ -2775,6 +2929,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "edit_comment" => reply(&work.edit_comment(args(body)?).await?),
         "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
+        "commit_comments" => reply(&work.commit_comments(args(body)?).await?),
+        "add_commit_comment" => reply(&work.add_commit_comment(args(body)?).await?),
+        "edit_commit_comment" => reply(&work.edit_commit_comment(args(body)?).await?),
+        "delete_commit_comment" => reply(&work.delete_commit_comment(args(body)?).await?),
         "seen_checks" => reply(&work.seen_checks(args(body)?).await?),
         "report_checks" => reply(&work.report_checks(args(body)?).await?),
         "set_commit_status" => reply(&work.set_commit_status(args(body)?).await?),
@@ -2815,6 +2973,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "reopen_pull" => reply(&work.reopen_pull(args(body)?).await?),
         "convert_pull_to_draft" => reply(&work.convert_pull_to_draft(args(body)?).await?),
         "merge_pull" => reply(&work.merge_pull(args(body)?).await?),
+        // How it may merge, auto-merge and its branch (merging.rs, automerge.rs).
+        "merge_choices" => reply(&work.merge_choices(args(body)?).await?),
+        "set_auto_merge" => reply(&work.set_auto_merge(args(body)?).await?),
+        "delete_head_branch" => reply(&work.delete_head_branch(args(body)?).await?),
+        "restore_head_branch" => reply(&work.restore_head_branch(args(body)?).await?),
         "list_active_pulls" => reply(&work.list_active_pulls(args(body)?).await?),
         "by_author" => reply(&work.by_author(args(body)?).await?),
         "contributions" => reply(&work.contributions(args(body)?).await?),
@@ -2879,7 +3042,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         }
         // A repository renamed or transferred: its runs and guardrails
         // follow.
-        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[runs::TRANSFERRED, guardrails::TRANSFERRED].concat()).await? {
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[runs::TRANSFERRED, guardrails::TRANSFERRED, head_repo::TRANSFERRED].concat()).await? {
             message.ack();
             continue;
         }

@@ -18,8 +18,33 @@ pub struct Repo {
     pub is_private: bool,
     pub owner_id: String,
     pub default_branch: String,
-    /// Set when this repo is a pull request's working copy of another repo.
+    /// Set when this repo is a pull request's working copy of another repo
+    /// (namespace `pulls`, hidden from listings). A fork someone made into
+    /// a workspace is an ordinary repository with `parent_id` instead.
     pub fork_of: Option<String>,
+    /// The repository this one was forked from, when someone forked it
+    /// into their workspace. Null for a repository that is not a fork, and
+    /// once a fork is detached or its parent changes who can see it.
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// The repository this one was made a fork of, kept when it is
+    /// detached: what forks start with (Actions and issues off) holds for
+    /// it until someone chooses, and pull requests opened while it was a
+    /// fork still merge.
+    #[serde(default)]
+    pub forked_from: Option<String>,
+    /// Where `parent_id` is, for a viewer who may read it: filled in by
+    /// `get`, `get_by_id` and `forks`, null otherwise.
+    #[serde(default)]
+    pub parent: Option<RepoPath>,
+    /// A private repository's admins let others fork it. Public
+    /// repositories can always be forked.
+    #[serde(default)]
+    pub allow_forking: bool,
+    /// The most branches and tags one push may change; pushes that would
+    /// change more are refused whole. Null for no limit.
+    #[serde(default)]
+    pub max_ref_updates: Option<u32>,
     /// Whether the default branch is protected: it changes only by merging
     /// a pull request, and pushes to it are refused.
     #[serde(default)]
@@ -272,6 +297,17 @@ pub struct Landed {
     /// The commit it pointed to before, if it had one. Comparing against
     /// this shows what the pull request changed.
     pub previous: Option<String>,
+    /// How it landed; `fast_forward` for one that made no commit.
+    #[serde(default = "fast_forward")]
+    pub method: crate::rules::MergeMethod,
+    /// For `rebase`: the commits made, oldest first, each paired with the
+    /// one of the branch it was made from.
+    #[serde(default)]
+    pub rebased: Vec<(String, String)>,
+}
+
+fn fast_forward() -> crate::rules::MergeMethod {
+    crate::rules::MergeMethod::FastForward
 }
 
 /// `get`. Returns `Outcome<Repo>`.
@@ -356,7 +392,121 @@ pub struct UpdateArgs {
     /// Its home page; an empty string clears it.
     #[serde(default)]
     pub website: Option<String>,
+    /// Whether a private repository may be forked (Admin).
+    #[serde(default)]
+    pub allow_forking: Option<bool>,
+    /// The most branches and tags one push may change (Admin); 0 for no
+    /// limit.
+    #[serde(default)]
+    pub max_ref_updates: Option<u32>,
     /// Where the request came in, for the audit log; g1t.sh when absent.
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// `fork`: copies a repository into a workspace the actor may create
+/// repositories in, as a new repository whose `parent_id` is the source.
+/// Anyone who can read a public repository may fork it; a private one only
+/// when its admins allow forking, and its fork stays private. The fork
+/// gets the source's code and description, nothing else: no settings,
+/// secrets, rules, webhooks or deployments, and Actions off until turned
+/// on. Its stored size counts toward the workspace it goes in. Returns
+/// `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForkRepoArgs {
+    pub actor: User,
+    /// The repository to fork.
+    pub path: RepoPath,
+    /// The workspace to fork it into.
+    pub namespace: String,
+    /// The fork's name; the source's when absent.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The fork's description; the source's when absent, cleared when
+    /// empty.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Copy only the default branch (the default), or every branch and
+    /// tag.
+    #[serde(default = "yes")]
+    pub default_branch_only: bool,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// `forks`: the forks of a repository the viewer may read, newest first,
+/// with `parent` filled in. Returns `Outcome<Vec<Repo>>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForksArgs {
+    pub viewer: Viewer,
+    pub path: RepoPath,
+    /// At most 100; 30 when absent.
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// `sync_fork`: brings a branch of a fork (its default branch when absent)
+/// up to date with the branch of the same name in its parent. A branch
+/// that is only behind moves forward; one with commits of its own gets a
+/// merge commit, merged line by line where both changed a file, and is
+/// left alone (`Conflicted`) when their lines clash. Needs Write on the
+/// fork and Read on the parent. Returns `Outcome<SyncedFork>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncForkArgs {
+    pub actor: User,
+    pub path: RepoPath,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub surface: Option<crate::audit::Surface>,
+}
+
+/// What `sync_fork` did.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncStatus {
+    /// It already had every commit of the parent's branch.
+    UpToDate,
+    /// It was only behind and now points where the parent's does.
+    FastForwarded,
+    /// It had commits of its own; a merge commit joins the two.
+    Merged,
+    /// Both sides changed the same files: nothing was changed. Merge
+    /// the parent's branch locally, or open a pull request.
+    Conflicted,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncedFork {
+    pub status: SyncStatus,
+    pub branch: String,
+    /// The branch's head after syncing.
+    pub head: String,
+    /// Commits the parent's branch had that the fork's did not.
+    pub behind: u32,
+    /// Commits the fork's branch had that the parent's did not.
+    pub ahead: u32,
+    /// For `Conflicted`: the files both sides changed (at most 20).
+    #[serde(default)]
+    pub conflicts: Vec<String>,
+}
+
+/// `detach_fork`: makes a fork an ordinary repository with no parent
+/// (Admin on the fork). Its pull requests into the parent stay as they
+/// are. Returns `Outcome<Repo>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetachForkArgs {
+    pub actor: User,
+    pub path: RepoPath,
     #[serde(default)]
     pub surface: Option<crate::audit::Surface>,
 }
@@ -436,6 +586,45 @@ pub struct LandArgs {
     /// Refuse if the source no longer names the commit that was checked.
     #[serde(default)]
     pub expected_commit: Option<String>,
+    /// The repository the pull request merges into, when its source is a
+    /// fork of it (`Repo::parent_id`, directly or through other forks)
+    /// rather than a working copy or the repository itself. Refused when
+    /// the source is not in its fork network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    /// How it lands. Absent is `fast_forward`, as every landing was before
+    /// merge methods: the target branch moves to `expected_commit` only if
+    /// that contains its head. `merge`, `squash` and `rebase` make new
+    /// commits on the target branch's head, merging text line by line
+    /// where both sides changed a file, and refuse with `conflict`
+    /// (naming the files) when lines clash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<crate::rules::MergeMethod>,
+    /// The new commit's message, for `merge` and `squash`: its first line
+    /// is the title. Required for those two.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// For `squash`: who the commit is by (the pull request's author); the
+    /// committer is `actor`. `actor` when absent. Everyone else whose
+    /// commits are squashed is credited with a `Co-authored-by:` trailer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<User>,
+    /// Add a `Signed-off-by:` trailer for `actor` to every commit made.
+    #[serde(default)]
+    pub sign_off: bool,
+}
+
+/// How a pull request's branch is brought up to date with its base
+/// (`update_pull_branch`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateMethod {
+    /// A merge commit on the branch joins the base's new commits.
+    #[default]
+    Merge,
+    /// The branch's commits are made again on the base's head, and the
+    /// branch is moved there (a force push).
+    Rebase,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -524,6 +713,12 @@ pub struct CompareArgs {
     /// comparison is read on its own. At most 50.
     #[serde(default)]
     pub paths: Option<Vec<String>>,
+    /// With no `base`: a repository `repo_id` is a fork of (directly or
+    /// through other forks) whose branch (`base_branch`, else its default
+    /// branch) the head is compared from, as for a pull request from a
+    /// fork. Both must be readable by the viewer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
 }
 
 /// Lines `start` to `end` of a file, inclusive and counted from 1, last
@@ -705,6 +900,12 @@ pub struct BehindArgs {
     /// when absent.
     #[serde(default)]
     pub target_branch: Option<String>,
+    /// The repository the pull request merges into, when its source is a
+    /// fork of it (`Repo::parent_id`, directly or through other forks)
+    /// rather than a working copy or the repository itself. Refused when
+    /// the source is not in its fork network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
 }
 
 /// `divergence`: how a pull request's source and the default branch it
@@ -756,6 +957,18 @@ pub struct UpdatePullBranchArgs {
     /// The branch of the target to merge in; its default branch when absent.
     #[serde(default)]
     pub target_branch: Option<String>,
+    /// The repository the pull request merges into, when its source is a
+    /// fork of it (`Repo::parent_id`, directly or through other forks)
+    /// rather than a working copy or the repository itself. Refused when
+    /// the source is not in its fork network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    /// Merge the base in (the default), or rebase the branch onto it.
+    #[serde(default)]
+    pub method: UpdateMethod,
+    /// Refuse if the branch no longer points here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_head: Option<String>,
 }
 
 /// Why an update has to be left to a sandbox.
@@ -889,6 +1102,10 @@ pub struct CommitFileArgs {
     pub path: String,
     pub content: String,
     pub message: String,
+    /// Add a `Signed-off-by:` trailer for `actor`: required where the
+    /// repository asks web commits to be signed off.
+    #[serde(default)]
+    pub sign_off: bool,
 }
 
 /// The commit `commit_file` made.

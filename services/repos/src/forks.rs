@@ -134,11 +134,11 @@ impl<R: GitRepo> GitRepo for Viewed<R> {
         self.inner.read_file(self.resolve(git_ref), path).await
     }
 
-    async fn fork(&self, target_key: &str) -> Result<()> {
+    async fn fork(&self, target_key: &str, default_branch_only: bool) -> Result<()> {
         if self.alias.is_some() {
             return Err(worker::Error::RustError("a removed working copy is not forked".into()));
         }
-        self.inner.fork(target_key).await
+        self.inner.fork(target_key, default_branch_only).await
     }
 
     fn at_refs_version(&mut self, version: Option<u64>) {
@@ -352,7 +352,7 @@ impl<S: GitStore> Repos<S> {
         };
         let key = store_key(fork);
         let parent_git = self.store.open(&store_key(&parent)).await?;
-        parent_git.fork(&key).await?;
+        parent_git.fork(&key, true).await?;
         let git = self.store.open(&key).await?;
         let current = git.log(&fork.default_branch, 1).await?.into_iter().next().map(|commit| commit.hash);
         if current.as_deref() != Some(head.as_str()) {

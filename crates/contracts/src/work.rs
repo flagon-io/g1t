@@ -8,7 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::repos::{CompareArgs, RepoPath};
+use crate::repos::{CompareArgs, RepoPath, UpdateMethod};
+use crate::rules::MergeMethod;
 use crate::{User, Viewer};
 
 // Sessions, claims and dependencies: work/coordination.rs.
@@ -394,7 +395,8 @@ pub enum Runtime {
 }
 
 /// A proposed change. It is made either in a fork created for it, which is
-/// how agents work, or on a branch pushed to the repository itself.
+/// how agents work, on a branch pushed to the repository itself, or on a
+/// branch of someone's fork of it (`head_repo`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Pull {
@@ -415,9 +417,18 @@ pub struct Pull {
     pub fork: Option<RepoPath>,
     /// The fork's repository id.
     pub fork_repo_id: Option<String>,
-    /// The branch of the repository holding the change, unless it is in a
-    /// fork.
+    /// The branch holding the change, unless it is in a working copy
+    /// (`fork`): of `head_repo` when set, else of the repository.
     pub branch: Option<String>,
+    /// A fork of the repository (`Repo::parent_id`, directly or through
+    /// other forks) whose `branch` holds the change, when it was opened
+    /// from one. Unset for a branch of the repository itself and for a
+    /// working copy (`fork`).
+    #[serde(default)]
+    pub head_repo: Option<RepoPath>,
+    /// `head_repo`'s id.
+    #[serde(default)]
+    pub head_repo_id: Option<String>,
     pub head_commit: Option<String>,
     /// For a merged pull request, what the branch pointed to before the
     /// merge. Comparing against it shows what the pull request changed.
@@ -426,6 +437,27 @@ pub struct Pull {
     pub merged_by: Option<String>,
     /// RFC 3339.
     pub merged_at: Option<String>,
+    /// How it merged, once merged.
+    #[serde(default)]
+    pub merge_method: Option<MergeMethod>,
+    /// The commit its merge left the base at: the merge or squash commit,
+    /// the last rebased one, or its head for a fast-forward.
+    #[serde(default)]
+    pub merge_commit: Option<String>,
+    /// Merge it on its own once everything it needs is met, as a person
+    /// asked: see [`AutoMerge`].
+    #[serde(default)]
+    pub auto_merge: Option<AutoMerge>,
+    /// The issues it closes when it merges into the default branch: `issue`
+    /// and those its title and description name after a closing keyword
+    /// (`Fixes #12`, or `closes owner/repo#3` naming this repository), in
+    /// the order named. Empty where the repository does not close issues.
+    #[serde(default)]
+    pub closes: Vec<u32>,
+    /// Its branch was deleted after it merged or closed, and can be
+    /// restored at `head_commit` (`restore_head_branch`).
+    #[serde(default)]
+    pub head_branch_deleted: bool,
     /// Set on a pull request closed because another one for the same issue
     /// was merged: that one's number.
     pub superseded_by: Option<u32>,
@@ -537,30 +569,71 @@ impl Pull {
         self.base_branch(default_branch) == default_branch
     }
 
+    /// The id of the repository holding the change: its working copy, the
+    /// fork its branch is in, or the repository itself.
+    pub fn source_id(&self) -> &str {
+        self.fork_repo_id
+            .as_deref()
+            .or(self.head_repo_id.as_deref())
+            .unwrap_or(&self.repo_id)
+    }
+
+    /// The repository holding the change, by path: its working copy, the
+    /// fork its branch is in, or `repo` (the path of the repository it is
+    /// in).
+    pub fn source_path(&self, repo: &RepoPath) -> RepoPath {
+        self.fork
+            .clone()
+            .or_else(|| self.head_repo.clone())
+            .unwrap_or_else(|| repo.clone())
+    }
+
+    /// Whether the change is in another repository than the one it merges
+    /// into: a working copy or someone's fork.
+    pub fn from_other_repo(&self) -> bool {
+        self.source_id() != self.repo_id
+    }
+
+    /// Whether it was opened from a branch of someone's fork.
+    pub fn from_head_repo(&self) -> bool {
+        self.fork_repo_id.is_none() && self.head_repo_id.is_some()
+    }
+
+    /// For repos operations given its source (`target_id`): the repository
+    /// it merges into, set only for a branch of a fork, since a working copy
+    /// and a branch of the repository know their target themselves.
+    pub fn target_id(&self) -> Option<String> {
+        self.from_head_repo().then(|| self.repo_id.clone())
+    }
+
     /// What to ask the repos service to see what this pull request changes.
     ///
-    /// A fork is compared as a whole. A branch is compared by name while
-    /// the pull request is open, and by the commit it was merged or closed
-    /// at afterwards, so later pushes to the branch do not change the record.
+    /// A working copy is compared as a whole. A branch, of the repository or
+    /// of a fork, is compared by name while the pull request is open, and by
+    /// the commit it was merged or closed at afterwards, so later pushes to
+    /// the branch do not change the record.
     pub fn comparison(&self, viewer: &Viewer) -> CompareArgs {
         let settled = matches!(self.status, PullStatus::Merged | PullStatus::Closed);
-        let (repo_id, head) = match &self.fork_repo_id {
-            Some(fork) => (fork.clone(), None),
-            None => (
-                self.repo_id.clone(),
-                self.head_commit
-                    .clone()
-                    .filter(|_| settled)
-                    .or_else(|| self.branch.clone()),
-            ),
+        let head = match &self.fork_repo_id {
+            Some(_) => None,
+            // A fork's branch, by the commit it was last seen at: one the
+            // repository it merges into holds too (`refs/pull/<n>/head`),
+            // so those who read that repository can read it.
+            None if self.from_head_repo() => self.head_commit.clone().or_else(|| self.branch.clone()),
+            None => self
+                .head_commit
+                .clone()
+                .filter(|_| settled)
+                .or_else(|| self.branch.clone()),
         };
         CompareArgs {
-            repo_id,
+            repo_id: self.source_id().to_owned(),
             viewer: viewer.clone(),
             base: self.merge_base.clone(),
             head,
             base_branch: self.base.clone().filter(|base| !base.is_empty()),
             paths: None,
+            target_id: self.target_id(),
         }
     }
 }
@@ -1277,6 +1350,62 @@ pub struct RepoSettings {
     /// (its CODEOWNERS file) have approved, as many as each section asks.
     /// Only people count, and `g1t` only where the file names `@g1t`.
     pub require_code_owner_review: bool,
+    /// Whether issues can be opened in it: null for the default, which is
+    /// on for a repository and off for a fork of one. Existing issues stay
+    /// readable either way.
+    pub has_issues: Option<bool>,
+    /// Whether issues can be opened in it now: `has_issues`, or its
+    /// default. Filled in by the service; `update_settings` ignores it.
+    pub issues_enabled: bool,
+    /// Which merge methods a pull request may use (at least one). Rules
+    /// can narrow them for a branch (`allowed_merge_methods`).
+    #[serde(default = "yes")]
+    pub allow_merge_commit: bool,
+    #[serde(default = "yes")]
+    pub allow_squash_merge: bool,
+    #[serde(default = "yes")]
+    pub allow_rebase_merge: bool,
+    #[serde(default)]
+    pub allow_fast_forward: bool,
+    /// The method offered first, and used when none is named.
+    #[serde(default = "merge_method")]
+    pub default_merge_method: MergeMethod,
+    /// What merge and squash commits say unless their merger writes it.
+    #[serde(default)]
+    pub merge_commit_message: CommitMessageDefault,
+    #[serde(default)]
+    pub squash_commit_message: CommitMessageDefault,
+    /// For `Custom`: a template whose `{title}`, `{number}`, `{body}`,
+    /// `{branch}`, `{head_repo}`, `{base}`, `{author}`, `{commits}`,
+    /// `{issues}` and `{co_authors}` are filled in.
+    #[serde(default)]
+    pub merge_commit_template: Option<String>,
+    #[serde(default)]
+    pub squash_commit_template: Option<String>,
+    /// Offer to bring a pull request up to date whenever its base has new
+    /// commits, not only when it must be.
+    #[serde(default = "yes")]
+    pub suggest_updating_branches: bool,
+    /// Let people turn on auto-merge for a pull request.
+    #[serde(default = "yes")]
+    pub allow_auto_merge: bool,
+    /// Delete a pull request's branch once it merges (restorable from it).
+    #[serde(default)]
+    pub delete_branch_on_merge: bool,
+    /// Commits made on g1t.sh (web edits, merges, squashes) carry a
+    /// `Signed-off-by:` trailer for whoever made them, agreeing to the
+    /// repository's terms, commonly the Developer Certificate of Origin.
+    #[serde(default)]
+    pub require_web_commit_sign_off: bool,
+    /// Let anyone who can read it comment on its commits. Existing
+    /// comments stay readable either way.
+    #[serde(default = "yes")]
+    pub allow_commit_comments: bool,
+    /// Close the issues a pull request names (its issue, and `Fixes #12`
+    /// in its title or description) when it merges into the default
+    /// branch.
+    #[serde(default = "yes")]
+    pub auto_close_issues: bool,
     /// Username of the member who last changed the settings, if anyone has.
     pub updated_by: Option<String>,
     /// RFC 3339.
@@ -1294,10 +1423,122 @@ impl Default for RepoSettings {
             allow_ignoring_checks: true,
             merge_queue: false,
             require_code_owner_review: false,
+            has_issues: None,
+            issues_enabled: true,
+            allow_merge_commit: true,
+            allow_squash_merge: true,
+            allow_rebase_merge: true,
+            allow_fast_forward: false,
+            default_merge_method: MergeMethod::Merge,
+            merge_commit_message: CommitMessageDefault::Default,
+            squash_commit_message: CommitMessageDefault::Default,
+            merge_commit_template: None,
+            squash_commit_template: None,
+            suggest_updating_branches: true,
+            allow_auto_merge: true,
+            delete_branch_on_merge: false,
+            require_web_commit_sign_off: false,
+            allow_commit_comments: true,
+            auto_close_issues: true,
             updated_by: None,
             updated_at: None,
         }
     }
+}
+
+impl RepoSettings {
+    /// Whether issues can be opened: as `has_issues` says, else on unless
+    /// the repository is a fork (`is_fork`).
+    pub fn issues_on(&self, is_fork: bool) -> bool {
+        self.has_issues.unwrap_or(!is_fork)
+    }
+
+    /// Whether the repository lets pull requests merge by `method`.
+    pub fn allows(&self, method: MergeMethod) -> bool {
+        match method {
+            MergeMethod::Merge => self.allow_merge_commit,
+            MergeMethod::Squash => self.allow_squash_merge,
+            MergeMethod::Rebase => self.allow_rebase_merge,
+            MergeMethod::FastForward => self.allow_fast_forward,
+        }
+    }
+
+    /// The methods it allows, in the order they are offered.
+    pub fn allowed_methods(&self) -> Vec<MergeMethod> {
+        MergeMethod::ALL.into_iter().filter(|method| self.allows(*method)).collect()
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn merge_method() -> MergeMethod {
+    MergeMethod::Merge
+}
+
+/// A comment on a commit: on the whole commit, or on one line of a file it
+/// changed (`path` and `line`, a line of the file as the commit left it).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitComment {
+    pub id: String,
+    pub repo_id: String,
+    /// The commit's full hash.
+    pub commit: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub line: Option<u32>,
+    /// Username.
+    pub author: String,
+    /// Markdown.
+    pub body: String,
+    /// RFC 3339.
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// `commit_comments`: a commit's comments, oldest first; with no `commit`,
+/// the repository's, newest first, a page of 30 at a time. Returns
+/// `Outcome<Vec<CommitComment>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitCommentsArgs {
+    pub viewer: Viewer,
+    pub repo: RepoPath,
+    #[serde(default)]
+    pub commit: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+}
+
+/// `add_commit_comment`: needs Read (refused where the repository turned
+/// commit comments off), and the commit must exist. Notifies the commit's
+/// author and anyone mentioned; publishes `commit_comment.created`.
+/// Returns `Outcome<CommitComment>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddCommitCommentArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub commit: String,
+    pub body: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub line: Option<u32>,
+}
+
+/// `edit_commit_comment` (its author) and `delete_commit_comment` (its
+/// author, or Maintain and up). `body` is ignored when deleting. Returns
+/// `Outcome<CommitComment>` and `Outcome<bool>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitCommentArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub id: String,
+    #[serde(default)]
+    pub body: String,
 }
 
 /// `update_settings`: replaces a repository's settings. Members of its
@@ -1541,7 +1782,8 @@ pub fn may_change_comment(
 
 /// `open_pull`. Without `branch`, forks the repo and returns a draft pull
 /// request to push to. With it, opens a pull request, ready for review,
-/// for a branch already pushed to the repo. Returns `Outcome<Pull>`.
+/// for a branch already pushed to the repo, or to `head_repo`, a fork of
+/// it. Returns `Outcome<Pull>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenPullArgs {
     pub actor: User,
@@ -1555,9 +1797,14 @@ pub struct OpenPullArgs {
     /// What changed and why. Usually set later, when a draft is marked ready.
     #[serde(default)]
     pub body: String,
-    /// A branch of the repository that already holds the change.
+    /// A branch of the repository that already holds the change: of
+    /// `head_repo` when given.
     #[serde(default)]
     pub branch: Option<String>,
+    /// A fork of the repository (directly or through other forks) whose
+    /// `branch` holds the change. Needs `branch`.
+    #[serde(default)]
+    pub head_repo: Option<RepoPath>,
     #[serde(default)]
     pub agent: String,
     pub runtime: Runtime,
@@ -1570,11 +1817,118 @@ pub struct OpenPullArgs {
     pub draft: bool,
 }
 
+/// A person's request that a pull request merge on its own once its
+/// checks, reviews and rules allow (`set_auto_merge`). Cleared when it
+/// merges or closes, when someone turns it off, and when someone other
+/// than who asked pushes to it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoMerge {
+    pub method: MergeMethod,
+    /// The commit message's first line and the rest, for `merge` and
+    /// `squash`; the repository's default when absent.
+    #[serde(default)]
+    pub commit_title: Option<String>,
+    #[serde(default)]
+    pub commit_message: Option<String>,
+    /// Username of who asked.
+    pub enabled_by: String,
+    /// RFC 3339.
+    pub enabled_at: String,
+}
+
+/// `set_auto_merge`: turns a pull request's auto-merge on (with how to
+/// merge) or off. Turning it on needs the Write role, since it merges as
+/// whoever turned it on; its author may also turn it off. Refused where
+/// the repository does not allow auto-merge, and for a method the
+/// repository or its rules do not allow. A pull request that may merge
+/// already merges at once instead. Publishes `pull.auto_merge_enabled` or
+/// `pull.auto_merge_disabled`. Returns `Outcome<Pull>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAutoMergeArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub number: u32,
+    pub enabled: bool,
+    /// The repository's default method when absent.
+    #[serde(default)]
+    pub merge_method: Option<MergeMethod>,
+    #[serde(default)]
+    pub commit_title: Option<String>,
+    #[serde(default)]
+    pub commit_message: Option<String>,
+}
+
+/// `merge_choices`: how a pull request may merge now, for whoever is
+/// looking: the merge box's choices and their default messages. Takes
+/// `ViewArgs`. Returns `Outcome<MergeChoices>`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeChoices {
+    /// The methods it may merge by: the repository's, as the rules for the
+    /// branch it merges into allow (linear history rules out merge
+    /// commits). In the order offered.
+    pub methods: Vec<MergeMethod>,
+    /// The one offered first: the repository's default when it may be
+    /// used, else the first of `methods`. Null when none may.
+    pub default_method: Option<MergeMethod>,
+    /// Each of `methods`, with its default commit message and whether it
+    /// can be used now.
+    pub options: Vec<MergeChoice>,
+    /// Its base has commits it does not have.
+    pub behind: bool,
+    /// It contains its base's head, so it can fast-forward as it is.
+    pub can_fast_forward: bool,
+    /// Offer to bring it up to date: it is behind, and the repository
+    /// suggests updating branches (or requires them up to date).
+    pub suggest_update: bool,
+    /// The repository requires it to be up to date before it merges.
+    pub require_up_to_date: bool,
+    /// It merges through the merge queue, which lands it as tested
+    /// whatever method is chosen.
+    pub merge_queue: bool,
+    /// The viewer may turn on auto-merge for it: the repository allows it,
+    /// it is open or a draft, and they may merge it.
+    pub auto_merge_allowed: bool,
+    /// Whether "delete the branch" starts ticked: the repository deletes
+    /// branches on merge, and its branch can be deleted.
+    pub delete_branch_default: bool,
+    /// Its branch can be deleted once it merges: a branch of the
+    /// repository (not its base) or of a fork, never a working copy.
+    pub can_delete_branch: bool,
+    /// Commits made merging it carry a `Signed-off-by:` trailer for the
+    /// merger.
+    pub sign_off: bool,
+}
+
+/// One way a pull request may merge (`MergeChoices::options`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeChoice {
+    pub method: MergeMethod,
+    /// For `merge` and `squash`: the commit's title and the rest of its
+    /// message, as the repository's settings write them.
+    #[serde(default)]
+    pub commit_title: Option<String>,
+    #[serde(default)]
+    pub commit_message: Option<String>,
+    /// Why it cannot merge this way now, if it cannot.
+    #[serde(default)]
+    pub unavailable: Option<String>,
+}
+
 /// `ready_pull`, `close_pull`, `reopen_pull`, `convert_pull_to_draft` and
 /// `merge_pull`. Each returns `Outcome<Pull>`. `reopen_pull` opens a closed
 /// pull request again (never a merged one), as the draft it was if it was
 /// closed as one; `convert_pull_to_draft` turns one that is open back into
 /// a draft, which leaves the merge queue.
+///
+/// Also `delete_head_branch` (a merged or closed one's branch, for whoever
+/// may push where it is; never a working copy's, which repos retires) and
+/// `restore_head_branch` (makes it again at `head_commit`). Both publish
+/// `pull.head_branch_deleted` or `pull.head_branch_restored` and return
+/// `Outcome<Pull>`.
 ///
 /// Also `catch_up_pull`: brings the pull request up to date with the
 /// default branch without a sandbox where that is safe, as the repos
@@ -1604,6 +1958,48 @@ pub struct PullActionArgs {
     /// lists the actor as one who may bypass it. Recorded as a bypass.
     #[serde(default)]
     pub bypass_rules: bool,
+    /// For `merge_pull`: how to merge; the repository's default method
+    /// when absent. Refused when the repository or a rule does not allow
+    /// it.
+    #[serde(default)]
+    pub merge_method: Option<MergeMethod>,
+    /// For `merge_pull` with `merge` or `squash`: the commit's title and
+    /// the rest of its message; the repository's default when absent.
+    #[serde(default)]
+    pub commit_title: Option<String>,
+    #[serde(default)]
+    pub commit_message: Option<String>,
+    /// For `merge_pull` (and `catch_up_pull`): refuse if the pull
+    /// request's head is no longer this commit.
+    #[serde(default)]
+    pub expected_head: Option<String>,
+    /// For `merge_pull`: delete its branch once merged; the repository's
+    /// setting when absent.
+    #[serde(default)]
+    pub delete_branch: Option<bool>,
+    /// For `catch_up_pull`: merge the base in (the default) or rebase.
+    #[serde(default)]
+    pub update_method: Option<UpdateMethod>,
+}
+
+/// What a merge or squash commit's message says by default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommitMessageDefault {
+    /// Merge: "Merge pull request #12 from owner/branch" and its title.
+    /// Squash: its title for one commit, else its title and the commits'
+    /// messages.
+    #[default]
+    Default,
+    /// Its title, with its number.
+    PullTitle,
+    /// Its title, and its description below.
+    PullTitleAndDescription,
+    /// Squash only: its title, and each commit's message below.
+    PullTitleAndCommits,
+    /// The repository's own template (`merge_commit_template` or
+    /// `squash_commit_template`).
+    Custom,
 }
 
 /// `update_pull`: changes who a pull request is assigned to, whose review
@@ -2225,6 +2621,54 @@ mod authorship_tests {
         pull.author = author;
         pull.requested_by = requested_by;
         pull
+    }
+
+    #[test]
+    fn a_pull_request_knows_where_its_change_is() {
+        let repo = RepoPath { namespace: "flagon".into(), name: "g1t".into() };
+        let viewer: Viewer = None;
+        // A branch of the repository itself.
+        let mut branch = pull(User::default(), None);
+        branch.branch = Some("fix".into());
+        assert_eq!((branch.source_id(), branch.source_path(&repo)), ("rep_1", repo.clone()));
+        assert!(!branch.from_other_repo() && branch.target_id().is_none());
+        let compared = branch.comparison(&viewer);
+        assert_eq!((compared.repo_id.as_str(), compared.head.as_deref()), ("rep_1", Some("fix")));
+        assert!(compared.target_id.is_none());
+
+        // A branch of someone's fork: compared by name in the fork, from
+        // the repository it merges into.
+        let fork = RepoPath { namespace: "ana".into(), name: "g1t".into() };
+        let mut forked = branch.clone();
+        forked.head_repo = Some(fork.clone());
+        forked.head_repo_id = Some("rep_2".into());
+        assert_eq!((forked.source_id(), forked.source_path(&repo)), ("rep_2", fork));
+        assert!(forked.from_other_repo() && forked.from_head_repo());
+        assert_eq!(forked.target_id().as_deref(), Some("rep_1"));
+        let compared = forked.comparison(&viewer);
+        assert_eq!((compared.repo_id.as_str(), compared.head.as_deref()), ("rep_2", Some("fix")));
+        assert_eq!(compared.target_id.as_deref(), Some("rep_1"));
+        // Settled, by the commit it was closed at.
+        forked.status = PullStatus::Closed;
+        forked.head_commit = Some("abc".into());
+        assert_eq!(forked.comparison(&viewer).head.as_deref(), Some("abc"));
+
+        // A working copy: compared as a whole, and knows its own target.
+        let mut copy = pull(User::default(), None);
+        copy.fork = Some(RepoPath { namespace: "pulls".into(), name: "pr_1".into() });
+        copy.fork_repo_id = Some("rep_3".into());
+        assert_eq!(copy.source_id(), "rep_3");
+        assert!(copy.from_other_repo() && !copy.from_head_repo() && copy.target_id().is_none());
+        let compared = copy.comparison(&viewer);
+        assert_eq!((compared.repo_id.as_str(), compared.head), ("rep_3", None));
+    }
+
+    #[test]
+    fn a_pull_request_from_before_forks_reads_without_a_head_repo() {
+        let read = pull(User::default(), None);
+        assert!(read.head_repo.is_none() && read.head_repo_id.is_none());
+        let json = serde_json::to_value(&read).unwrap();
+        assert!(json.get("headRepo").is_some() && json.get("headRepoId").is_some());
     }
 
     #[test]

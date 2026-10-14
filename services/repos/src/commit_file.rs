@@ -114,6 +114,13 @@ impl<S: GitStore> Repos<S> {
         };
 
         let author = self.commit_identity(&a.actor).await;
+        let signed;
+        let message = if a.sign_off {
+            signed = crate::merge_methods::with_trailers(message, &[crate::merge_methods::sign_off_trailer(&author.name, &author.email)]);
+            signed.as_str()
+        } else {
+            message
+        };
         let commit = commit_object(
             &merged.tree,
             &[&head.hash],

@@ -1,5 +1,5 @@
 import { waitUntil } from "cloudflare:workers";
-import { Box, Link2, Lock } from "lucide-react";
+import { Box, GitFork, Link2, Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, useRouteLoaderData } from "react-router";
 
@@ -18,14 +18,18 @@ import { seesSettings } from "../../lib/access";
 import { WatchMenu } from "../../components/notifications";
 import { PinButton } from "../../components/pin-button";
 import { StarButton } from "../../components/star-button";
+import { ForkButton, type Forking } from "../../components/fork-button";
 import { ArchivedBanner } from "../../components/repo-lifecycle";
 import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
 import { accessFor, countsFor, projectFor, repoFor } from "../../lib/access.server";
-import { inbox, projects, repos } from "../../lib/services.server";
+import { inbox, projects, repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+
+/** How many forks the header counts before it says "100+". */
+const FORKS_COUNTED = 100;
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` });
@@ -36,7 +40,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   // Members pin the workspace's projects, and what they open is their Recent.
   const member = viewer ? roleIn(viewer, params.owner) != null : false;
-  const [repo, counts, found, watching, shortcuts, stars] = await Promise.all([
+  const [repo, counts, found, watching, shortcuts, stars, forks, issues] = await Promise.all([
     repoFor(context, params),
     countsFor(context, params),
     projectFor(context, params),
@@ -49,6 +53,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     member ? projects.shortcuts(params.owner, viewer).catch(() => null) : null,
     // How many starred it and whether they did, for the header's Star button.
     repos.stars(path, viewer).then((found) => (found.ok ? found.value : null)).catch(() => null),
+    // Its forks the viewer can see, counted up to 100, for the header's Fork button.
+    repos.forks(path, viewer, FORKS_COUNTED).then((found) => (found.ok ? found.value.length : null)).catch(() => null),
+    // Whether issues can be opened in it (off by default in a fork): Issues
+    // leaves its menus when they cannot. On when it could not be read.
+    work.getSettings(path, viewer).then((found) => (found.ok ? (found.value.issuesEnabled ?? true) : true)).catch(() => true),
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.
@@ -71,6 +80,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const access = accessFor(viewer, value);
   // Just given access with an invite: welcomed once (routes/invite.tsx).
   const welcome = Boolean(access.role) && welcomes(request.headers.get("cookie"), `${value.namespace}/${value.name}`);
+  // Fork shows when it may be forked, and to its admins turned off when it
+  // may not; never on a pull request's working copy.
+  const forkable = !value.isPrivate || Boolean(value.allowForking);
+  const forking: Forking | null =
+    value.forkOf || forks == null || (!forkable && !access.can.administer)
+      ? null
+      : { count: Math.min(forks, FORKS_COUNTED), more: forks >= FORKS_COUNTED, allowed: forkable };
   const headers = welcome ? { "Set-Cookie": clearWelcome(new URL(request.url).protocol === "https:") } : undefined;
   return data({
     welcome,
@@ -82,6 +98,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     watching,
     // Null for a pull request's working copy, or when it could not be read.
     stars: value.forkOf ? null : stars,
+    forking,
+    issues,
     signedIn: Boolean(viewer),
     // Null when they cannot pin it: not one of their workspaces.
     pinned: member && project ? (shortcuts?.pinned ?? []).some((pinned) => pinned.id === project.id) : null,
@@ -104,8 +122,10 @@ export function useProject() {
 }
 
 /** The project's name row: its kind, owner and name, visibility, and Pin, Watch and Star at the end. */
-function Header({ project, isPrivate, archived, namespace, name, large, actions }: {
+function Header({ project, isPrivate, archived, namespace, name, large, actions, parent }: {
   project: Project | null;
+  /** The repository it was forked from, when the viewer can see it. */
+  parent?: { namespace: string; name: string } | null;
   isPrivate: boolean;
   namespace: string;
   name: string;
@@ -134,6 +154,15 @@ function Header({ project, isPrivate, archived, namespace, name, large, actions 
       <Badge size="md">{isPrivate ? "private" : "public"}</Badge>
       {archived && <Badge size="md">archived</Badge>}
       {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
+      {parent && (
+        <p className="flex basis-full items-center gap-1.5 text-xs text-muted">
+          <GitFork size={12} className="shrink-0 text-faint" />
+          forked from
+          <Link to={`/${parent.namespace}/${parent.name}`} className="font-mono text-fg/80 hover:text-accent hover:underline">
+            {parent.namespace}/{parent.name}
+          </Link>
+        </p>
+      )}
     </div>
   );
 }
@@ -167,7 +196,7 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 }
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
-  const { repo, project, member, access, welcome, watching, pinned, stars, signedIn } = loaderData;
+  const { repo, project, member, access, welcome, watching, pinned, stars, forking, signedIn } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
   // The project's own description, else the repository's as it is now.
   const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
@@ -175,7 +204,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const site = projectHomepage(project) ?? repo.website ?? null;
   const { pathname } = useLocation();
   const rest = pathname.slice(base.length + 1);
-  const tabs = tabsFor(rest, member, access.can);
+  const tabs = tabsFor(rest, member, access.can, { issues: loaderData.issues });
   // One row of tabs for the project's pages, along the header's border (a
   // member's sidebar has them on a computer), and the views of the section
   // the page is in as a quieter row at the top of its content.
@@ -190,13 +219,15 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             archived={Boolean(repo.archivedAt)}
             namespace={repo.namespace}
             name={repo.name}
+            parent={repo.parent}
             actions={
-              watching || stars || (project && pinned != null) ? (
+              watching || stars || forking || (project && pinned != null) ? (
                 <>
                   {project && pinned != null && (
                     <PinButton workspace={project.workspace} slug={project.slug} name={project.name} pinned={pinned} />
                   )}
                   {watching && <WatchMenu action={`${base}/notifications`} level={watching.level} events={watching.events} />}
+                  {forking && <ForkButton base={base} name={`${repo.namespace}/${repo.name}`} forking={forking} signedIn={signedIn} />}
                   {stars && <StarButton base={base} name={`${repo.namespace}/${repo.name}`} stars={stars} signedIn={signedIn} />}
                 </>
               ) : null
@@ -216,7 +247,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           )}
           <Topics topics={repo.topics} className="mt-3" />
           <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>
-            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} />
+            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} issues={loaderData.issues} />
           </div>
         </div>
       </div>

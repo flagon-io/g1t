@@ -366,6 +366,32 @@ pub struct ActionsSettings {
     /// A public repository's are anyone's. See [`ACCESS_LEVELS`].
     #[serde(default = "no_access")]
     pub access_level: String,
+    /// Whether the repository's workflows run at all. Unchosen, on for a
+    /// repository and off for a fork (a repository with a parent), so a
+    /// fork starts no workflows until someone turns them on. While off, no
+    /// run starts from any event, schedule or dispatch.
+    #[serde(default = "on")]
+    pub enabled: bool,
+    /// Whether the repository chose `enabled`, rather than taking it as
+    /// above.
+    #[serde(default)]
+    pub enabled_chosen: bool,
+}
+
+fn on() -> bool {
+    true
+}
+
+/// Whether a repository's workflows run: as chosen, else on, and off for
+/// a fork.
+pub fn actions_enabled(chosen: Option<bool>, is_fork: bool) -> bool {
+    chosen.unwrap_or(!is_fork)
+}
+
+/// Why a workflow does not start by hand while a repository's Actions are
+/// off.
+pub fn actions_disabled_message(namespace: &str, name: &str) -> String {
+    format!("Actions is turned off for {namespace}/{name}. Turn it on in Settings → Actions.")
 }
 
 fn no_access() -> String {
@@ -458,6 +484,10 @@ pub struct SetActionsSettingsArgs {
     /// [`ActionsSettings::access_level`].
     #[serde(default)]
     pub access_level: Option<String>,
+    /// Turns the repository's workflows on or off. See
+    /// [`ActionsSettings::enabled`].
+    #[serde(default)]
+    pub enabled: Option<bool>,
 }
 
 /// `environments`: every environment a repository's workflows, secrets,

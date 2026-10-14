@@ -335,8 +335,11 @@ export function TreeView({
   about = null,
   canPush = false,
   deployments = null,
+  fork = null,
 }: {
   tree: Tree;
+  /** Above the files of a fork: where it came from, Sync fork and Contribute (components/fork-bar.tsx). */
+  fork?: ReactNode;
   branches?: Branch[] | null;
   /** Each entry's last commit, streamed in after the list. */
   lastCommits?: Promise<FileCommits | null> | null;
@@ -375,6 +378,7 @@ export function TreeView({
     <div className={path ? "" : "grid gap-8 lg:grid-cols-[1fr_17rem]"}>
       <div className="min-w-0">
         <CodeBar base={base} repo={repo} gitRef={ref} path={path} branches={branches} />
+        {fork}
         <Card tone="plain" className="overflow-hidden">
           <CommitBar commit={head} base={base} checks={checks} />
           {lastCommits ? (

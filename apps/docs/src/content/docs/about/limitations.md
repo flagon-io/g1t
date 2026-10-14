@@ -130,33 +130,33 @@ a branch, or force-pushing over commits, does not lower it.
 
 ## Pull requests and forks
 
-### Forks are only for pull requests
+### A fork's storage counts in full
 
-You can't fork a repository into your own workspace. On g1t, a fork is a
-pull request's own working copy, made when the pull request is opened.
-
-- **Why.** We built forks to isolate each pull request's work, so many
-  people and agents can work at once.
-  See [Forks and branches](/concepts/forks/).
-- **Instead.** To contribute, open a pull request: it gets its own fork. To
-  start a copy of your own, clone the repository and push it to a new one
-  in your workspace; pushing creates it.
-- **Status.** Not scheduled.
-
-### Pull request forks are removed a day after they close
-
-A day after a pull request merges or closes, its fork's git data is
-removed. The pull request's changes stay readable: its head is kept in the
-repository as `refs/pull/<pull request id>/head`. Pushing to the fork, or
-reopening the pull request, makes the fork again from there.
+A fork counts toward its workspace's private repository storage at its
+whole size, even where it is the same as the repository it came from.
 
 - **Why.** Cloudflare has not documented whether a fork shares stored
-  objects with its source or copies them, so forks are not kept longer
-  than they are useful.
+  objects with its source or copies them, so g1t never assumes a fork is
+  cheaper than a copy.
+- **Instead.** Fork with **Copy the default branch only** (the default)
+  unless you need every branch and tag, and delete forks you no longer use.
+- **Status.** Depends on Cloudflare. See
+  [What a fork costs](/concepts/forks/#what-a-fork-costs).
+
+### Pull requests' working copies are removed a day after they close
+
+A day after a pull request merges or closes, its working copy's git data
+is removed. The pull request's changes stay readable: its head is kept in the
+repository as `refs/pull/<pull request id>/head`. Pushing to the working
+copy, or reopening the pull request, makes it again from there.
+
+- **Why.** Cloudflare has not documented whether a fork shares stored
+  objects with its source or copies them, so working copies are not
+  kept longer than they are useful.
 - **Instead.** Nothing you need to do. To keep working on a closed pull
   request's change, fetch `refs/pull/<pull request id>/head` and push it
   to a branch.
-- **Status.** Clear fork storage rules depend on Cloudflare.
+- **Status.** Clear storage rules for copies depend on Cloudflare.
 
 ### Some dependency update options are not applied yet
 
@@ -196,6 +196,17 @@ You can't resolve a merge conflict on the pull request's page.
 - **Instead.** Fix it on the command line.
   See [Conflicts](/guides/pull-requests/#conflicts).
 - **Status.** Planned.
+
+### Large merges, squashes and rebases
+
+g1t merges, squashes, rebases and updates a pull request's branch by itself
+up to 1,000 changed files, 100 files merged line by line (each up to 1 MiB)
+and 250 commits in a rebase. Beyond them it refuses, and nothing changes.
+
+- **Instead.** Squash or merge instead of rebasing, or merge the base into
+  the branch in a clone and push. See
+  [Merge methods](/guides/pull-requests/#merge-methods).
+- **Status.** Not scheduled.
 
 ## Actions and runners
 

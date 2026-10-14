@@ -19,6 +19,7 @@
 //! | `pull.merged`, `pull.closed`, `issue.closed`, `issue.reopened` | everyone subscribed | state_change | success for a merge, else info |
 //! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
 //! | `comment.created` by a workspace's agent | the same, shown as "Margo (agent)"; a review also tells the owner, "(advisory)" | the same, or author | the same |
+//! | `commit_comment.created` | everyone mentioned, the people of teams mentioned, and the commit's author when their address is a g1t account's; one thread per commit | mention, team_mention, author | info |
 //! | `issue.opened`, `pull.opened` | whoever was assigned, asked to review or mentioned in its description (people and teams); watchers | assign, review_requested, mention, team_mention, subscribed | info |
 //! | `secret_scanning_alert.summary`, `code_scanning_alert.summary`, `vulnerability_alert.summary` | the workspace's owners and security managers, whoever pushed a refused push, and watchers who chose security and may see findings; one thread per repository and alert type | security_alert | error for critical or high (told at once), info for the rest (a digest, unless the person chose at once) |
 //! | `security_advisory.reported` | the workspace's owners and security managers | security_alert | warning |
@@ -131,7 +132,7 @@ pub fn wants(event: &Event) -> Option<Wanted> {
         })
     };
     match event.kind.as_str() {
-        "pull.stalled" | "pull.merged" | "pull.closed" | "pull.opened"
+        "pull.stalled" | "pull.merged" | "pull.closed" | "pull.opened" | "pull.auto_merge_disabled"
         | "pull.review_requested" | "pull.assigned" | "issue.opened" | "issue.closed" | "issue.reopened"
         | "issue.assigned" => on(Some(number("number")?), None),
         "checks.completed" => match data["status"].as_str() {
@@ -146,6 +147,8 @@ pub fn wants(event: &Event) -> Option<Wanted> {
         // A workflow run's jobs wait for their environment's reviewers.
         "deployment.review_requested" => on(None, None),
         "comment.created" => on(Some(number("number")?), Some(text("commentId")?)),
+        // A commit is a thread of its own, its link the commit's page.
+        "commit_comment.created" => on(None, None),
         // Security alerts are threads of their own, not of an issue.
         kind if SECURITY_EVENTS.contains(&kind) => on(None, None),
         _ => None,
@@ -226,6 +229,14 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
                 link: None,
             }
         }
+        // One commit's comments (work/src/commit_comments.rs).
+        "commit_comment.created" => Thread {
+            key: format!("{}/commit/{}", wanted.repo_id, text("commit").unwrap_or_default()),
+            kind: None,
+            number: None,
+            run_id: None,
+            link: text("link"),
+        },
         // A repository's alerts of one type (`rep_1/security/vulnerability`),
         // its reports, one advisory, or one bypass request: the page is the link.
         kind if SECURITY_EVENTS.contains(&kind) => {
@@ -422,6 +433,15 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                 for name in &issue.assignees {
                     told.tell(name, Reason::Agent, Severity::Warning, &title, &body, true);
                 }
+            }
+        }
+        // Whoever turned auto-merge on hears that it is off, unless they
+        // turned it off themselves: it will not merge without them now.
+        ("pull.auto_merge_disabled", Some(pull)) => {
+            if let Some(by) = data["autoMergeBy"].as_str() {
+                let detail = data["detail"].as_str().map(str::trim).filter(|detail| !detail.is_empty());
+                let title = format!("Auto-merge was turned off on {at}");
+                told.tell(by, Reason::StateChange, Severity::Warning, &title, detail.unwrap_or(&pull.title), true);
             }
         }
         ("pull.review_requested", Some(pull)) => {
@@ -621,6 +641,25 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                         told.tell(name, Reason::SecurityAlert, severity, &title, &body, false);
                     }
                 }
+            }
+        }
+        // The work service names who: the people and teams mentioned, and
+        // the commit's author when they have an account.
+        ("commit_comment.created", None) => {
+            let short = data["commit"].as_str().map(short).unwrap_or_default();
+            let at = format!("{repo}@{short}");
+            let body = data["excerpt"].as_str().unwrap_or_default();
+            for name in names(data, "mentions") {
+                told.tell(&name, Reason::Mention, Severity::Info, &format!("{who} mentioned you on {at}"), body, true);
+            }
+            for team in data["teamMentions"].as_array().into_iter().flatten() {
+                let title = format!("{who} mentioned @{} on {at}", team["team"].as_str().unwrap_or_default());
+                for name in names(team, "members") {
+                    told.tell(&name, Reason::TeamMention, Severity::Info, &title, body, true);
+                }
+            }
+            if let Some(author) = data["commitAuthor"].as_str() {
+                told.tell(author, Reason::Author, Severity::Info, &format!("{who} commented on your commit {at}"), body, false);
             }
         }
         ("comment.created", Some(on)) => {
@@ -2158,6 +2197,18 @@ mod tests {
     }
 
     #[test]
+    fn whoever_turned_on_auto_merge_hears_it_is_off() {
+        let off = event("pull.auto_merge_disabled", None, json!({ "number": 7, "autoMergeBy": "bo", "detail": "Its branch conflicts with main." }));
+        let notices_ = notices(&off, "acme/rocket", &Actor::default(), Some(&pull()), &nobody());
+        assert_eq!(told(&notices_), vec![("bo", Reason::StateChange, Severity::Warning)]);
+        assert_eq!(notices_[0].title, "Auto-merge was turned off on acme/rocket#7");
+        assert_eq!(notices_[0].body, "Its branch conflicts with main.");
+        // Turning it off yourself tells no one.
+        let notices_ = notices(&off, "acme/rocket", &actor("usr_bo", "bo"), Some(&pull()), &nobody());
+        assert!(notices_.is_empty());
+    }
+
+    #[test]
     fn whatever_an_agent_waits_on_closes_when_it_goes_on() {
         for kind in RESUMES {
             assert_eq!(resolves(&event(kind, None, json!({ "repoId": "rep_1", "number": 7 }))), Some("rep_1#7".into()));
@@ -2620,6 +2671,36 @@ mod tests {
         assert_eq!(subscribes(&created, Some(&on)), vec![("bo".into(), Reason::Comment), ("cy".into(), Reason::Mention)]);
         let on = comment(person(AGENT_ID, "g1t"), "done", &[]);
         assert!(subscribes(&created, Some(&on)).is_empty());
+    }
+
+    #[test]
+    fn a_commit_comment_tells_who_it_mentions_and_the_commit_s_author() {
+        let created = event(
+            "commit_comment.created",
+            Some("usr_bo"),
+            json!({
+                "repoId": "rep_1", "commit": "abcdef1234567890", "link": "/acme/rocket/commit/abcdef1234567890",
+                "excerpt": "@cy why this?", "mentions": ["cy", "bo"], "commitAuthor": "ana",
+                "teamMentions": [{ "team": "acme/web", "members": ["dee", "cy"] }],
+            }),
+        );
+        let wanted = wants(&created).unwrap();
+        assert_eq!(wanted.number, None);
+        let thread = thread_of(&created, &wanted, None);
+        assert_eq!(thread.key, "rep_1/commit/abcdef1234567890");
+        assert_eq!(url(Some("acme/rocket"), thread.kind, thread.number, None, thread.link.as_deref()), "/acme/rocket/commit/abcdef1234567890");
+        let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody());
+        assert_eq!(
+            told(&notices_),
+            vec![
+                ("cy", Reason::Mention, Severity::Info),
+                ("dee", Reason::TeamMention, Severity::Info),
+                ("ana", Reason::Author, Severity::Info),
+            ]
+        );
+        assert_eq!(notices_[0].title, "bo mentioned you on acme/rocket@abcdef1");
+        assert_eq!(notices_[2].title, "bo commented on your commit acme/rocket@abcdef1");
+        assert_eq!(notices_[0].body, "@cy why this?");
     }
 
     #[test]

@@ -18,7 +18,7 @@ use g1t_actions::filter::Pattern;
 use g1t_actions::permissions::TokenDefault;
 use g1t_contracts::access::{self, AccessSource, Capability, CollaboratorPermissionArgs, PermissionInfo};
 use g1t_contracts::actions::{
-    APPROVAL_POLICIES, ActionsSettings, ActionsSettingsArgs, SetWorkspaceActionsSettingsArgs, WorkspaceActionsSettings,
+    APPROVAL_POLICIES, actions_enabled, ActionsSettings, ActionsSettingsArgs, SetWorkspaceActionsSettingsArgs, WorkspaceActionsSettings,
     WorkspaceActionsSettingsArgs, BranchPattern, DeleteEnvironmentArgs, Environment, EnvironmentReviewer,
     EnvironmentsArgs, MAX_ENVIRONMENT_REVIEWERS, MAX_WAIT_MINUTES, PendingDeployment, PendingDeploymentsArgs, ReviewDeploymentsArgs,
     RunActionArgs, RunApproval, SetActionsSettingsArgs, SetEnvironmentArgs, WorkflowRun,
@@ -50,6 +50,9 @@ struct SettingsRow {
     /// Migration 0008: who may use its actions and reusable workflows.
     #[serde(default)]
     access_level: Option<String>,
+    /// Migration 0023: whether its workflows run at all.
+    #[serde(default)]
+    enabled: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -261,7 +264,7 @@ impl Actions {
     async fn repo_choices(&self, repo_id: &str) -> Result<SettingsRow> {
         Ok(self
             .db
-            .prepare("SELECT default_permissions, approval_policy, can_approve_pulls, access_level FROM repo_settings WHERE repo_id = ?")
+            .prepare("SELECT default_permissions, approval_policy, can_approve_pulls, access_level, enabled FROM repo_settings WHERE repo_id = ?")
             .bind(&[repo_id.into()])?
             .first::<SettingsRow>(None)
             .await?
@@ -313,7 +316,25 @@ impl Actions {
             can_approve_pull_requests: workspace.can_approve_pull_requests && row.can_approve_pulls == Some(1),
             workspace_allows_pull_requests: workspace.can_approve_pull_requests,
             access_level: row.access_level.as_deref().and_then(g1t_contracts::actions::access_level).unwrap_or("none").to_owned(),
+            enabled: actions_enabled(row.enabled.map(|on| on == 1), repo.forked_from.is_some()),
+            enabled_chosen: row.enabled.is_some(),
         })
+    }
+
+    /// Whether `repo`'s workflows run at all: as chosen, else on, and off
+    /// for a fork. Nothing starts a run while they are off.
+    pub(crate) async fn actions_on(&self, repo: &Repo) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct Enabled {
+            enabled: Option<u32>,
+        }
+        let row = self
+            .db
+            .prepare("SELECT enabled FROM repo_settings WHERE repo_id = ?")
+            .bind(&[repo.id.as_str().into()])?
+            .first::<Enabled>(None)
+            .await?;
+        Ok(actions_enabled(row.and_then(|row| row.enabled).map(|on| on == 1), repo.forked_from.is_some()))
     }
 
     /// What a workflow without `permissions:` gets in the repository, and
@@ -388,13 +409,16 @@ impl Actions {
                 None => return Ok(fail(FailureCode::Invalid, "access_level is none or organization.")),
             }
         }
+        if let Some(on) = a.enabled {
+            row.enabled = Some(u32::from(on));
+        }
         // 0006's artifact retention is kept, or its default for a new row.
         self.db
             .prepare(
-                "INSERT INTO repo_settings (repo_id, artifact_retention_days, default_permissions, approval_policy, can_approve_pulls, access_level, updated_at, updated_by)
-                 VALUES (?1, ?7, ?2, ?3, ?4, ?8, ?5, ?6)
+                "INSERT INTO repo_settings (repo_id, artifact_retention_days, default_permissions, approval_policy, can_approve_pulls, access_level, enabled, updated_at, updated_by)
+                 VALUES (?1, ?7, ?2, ?3, ?4, ?8, ?9, ?5, ?6)
                  ON CONFLICT (repo_id) DO UPDATE SET default_permissions = ?2, approval_policy = ?3, can_approve_pulls = ?4,
-                   access_level = ?8, updated_at = ?5, updated_by = ?6",
+                   access_level = ?8, enabled = ?9, updated_at = ?5, updated_by = ?6",
             )
             .bind(&[
                 repo.id.as_str().into(),
@@ -405,6 +429,7 @@ impl Actions {
                 a.actor.username.as_str().into(),
                 g1t_contracts::actions::ARTIFACT_RETENTION_DEFAULT_DAYS.into(),
                 optional(row.access_level.as_deref()),
+                row.enabled.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into),
             ])?
             .run()
             .await?;
@@ -1166,6 +1191,22 @@ fn refuse_job_token<T>(actor: &User) -> Option<Outcome<T>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actions_are_on_unless_a_fork_or_turned_off() {
+        // Unchosen: on for a repository, off for a fork.
+        assert!(actions_enabled(None, false));
+        assert!(!actions_enabled(None, true));
+        // Chosen: as chosen, fork or not.
+        assert!(actions_enabled(Some(true), true));
+        assert!(!actions_enabled(Some(false), false));
+        assert!(actions_enabled(Some(true), false));
+        assert!(!actions_enabled(Some(false), true));
+        assert_eq!(
+            g1t_contracts::actions::actions_disabled_message("ada", "fork"),
+            "Actions is turned off for ada/fork. Turn it on in Settings → Actions."
+        );
+    }
 
     fn env(reviewers: &[(&str, &str)]) -> Environment {
         Environment {

@@ -384,6 +384,10 @@ export function reposClient(service: ServiceBinding): ReposApi {
     blame: (path, viewer, ref, filePath) => call("blame", { path, viewer, ref, filePath }),
     forkForPull: (sourceId, pullId, actor) =>
       call("fork_for_pull", { sourceId, pullId, actor }),
+    fork: (actor, path, input) => call("fork", { actor, path, ...input }),
+    forks: (path, viewer, limit) => call("forks", { path, viewer, limit: limit ?? null }),
+    syncFork: (actor, path, branch) => call("sync_fork", { actor, path, branch: branch ?? null }),
+    detachFork: (actor, path) => call("detach_fork", { actor, path }),
     gitAccess: (path, viewer, service) =>
       call("git_access", { path, viewer, service }),
     branches: (path, viewer) => call("branches", { path, viewer }),
@@ -409,7 +413,8 @@ export function reposClient(service: ServiceBinding): ReposApi {
     rawFile: (repoId, ref, path, maxBytes) => call("raw_file", { repoId, ref, path, maxBytes }),
     commitFile: (repo, actor, file) => call("commit_file", { repo, actor, ...file }),
     land: (sourceId, actor, branch) => call("land", { sourceId, actor, branch }),
-    compare: (repoId, viewer, base, head, baseBranch, paths) => call("compare", { repoId, viewer, base, head, baseBranch, paths: paths ?? null }),
+    compare: (repoId, viewer, base, head, baseBranch, paths, targetId) =>
+      call("compare", { repoId, viewer, base, head, baseBranch, paths: paths ?? null, ...(targetId ? { targetId } : {}) }),
     claimBackups: (limit, maxRunning) => call("claim_backups", { limit, maxRunning }),
     // The sandbox's own calls are snake_case (they come through the API).
     failBackup: (jobId, token, error) => call("backup_fail", { job_id: jobId, token, error }),
@@ -509,7 +514,18 @@ export function workClient(service: ServiceBinding): WorkApi {
       ),
     updatePull: (actor, repo, number, changes) =>
       call("update_pull", { actor, repo, number, ...changes }),
-    catchUpPull: (actor, repo, number) => call("catch_up_pull", { actor, repo, number }),
+    catchUpPull: (actor, repo, number, options = {}) => call("catch_up_pull", { actor, repo, number, ...options }),
+    setAutoMerge: (actor, repo, number, enabled, options = {}) =>
+      call("set_auto_merge", { actor, repo, number, enabled, ...options }),
+    mergeChoices: (viewer, repo, number) => call("merge_choices", { viewer, repo, number }),
+    deleteHeadBranch: (actor, repo, number) => call("delete_head_branch", { actor, repo, number }),
+    restoreHeadBranch: (actor, repo, number) => call("restore_head_branch", { actor, repo, number }),
+    commitComments: (viewer, repo, commit, page) =>
+      call("commit_comments", { viewer, repo, commit: commit ?? null, page: page ?? null }),
+    addCommitComment: (actor, repo, commit, body, at) =>
+      call("add_commit_comment", { actor, repo, commit, body, path: at?.path ?? null, line: at?.line ?? null }),
+    editCommitComment: (actor, repo, id, body) => call("edit_commit_comment", { actor, repo, id, body }),
+    deleteCommitComment: (actor, repo, id) => call("delete_commit_comment", { actor, repo, id }),
     readyPull: (actor, repo, number, summary) =>
       call("ready_pull", { actor, repo, number, summary }),
     closePull: (actor, repo, number) => call("close_pull", { actor, repo, number }),

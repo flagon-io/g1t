@@ -634,6 +634,11 @@ impl Actions {
         if new.repo.archived() {
             return Ok(None);
         }
+        // Nor while its Actions are off (Settings, Actions; a fork's are
+        // until someone turns them on), whatever started it.
+        if !self.actions_on(&new.repo).await? {
+            return Ok(None);
+        }
         let workflow_row = self.workflow_row(&new.repo, &new.path, &new.workflow.display_name(&new.path), &new.source).await?;
         let numbered = self
             .db
@@ -2170,6 +2175,9 @@ impl Actions {
             Some(repo) if repo.archived() => {
                 return Ok(fail(FailureCode::Forbidden, g1t_contracts::repos::archived_message(&repo.namespace, &repo.name)));
             }
+            Some(repo) if !self.actions_on(&repo).await? => {
+                return Ok(fail(FailureCode::Forbidden, g1t_contracts::actions::actions_disabled_message(&repo.namespace, &repo.name)));
+            }
             Some(_) => {}
             None => return Ok(fail(FailureCode::NotFound, "There is no such repository.")),
         }
@@ -2525,7 +2533,7 @@ impl Actions {
                 )
                 .await?;
                 match located {
-                    Outcome::Ok(detail) => match detail.pull.fork {
+                    Outcome::Ok(detail) => match detail.pull.fork.or(detail.pull.head_repo) {
                         Some(fork) => format!("{SITE}/{}/{}.git", fork.namespace, fork.name),
                         None => format!("{SITE}/{}.git", run.repo),
                     },

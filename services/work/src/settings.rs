@@ -31,13 +31,84 @@ struct SettingsRow {
     required_checks: Option<String>,
     #[serde(default)]
     require_code_owner_review: u8,
+    /// NULL for the default (migrations/0041_pull_head_repo.sql).
+    #[serde(default)]
+    has_issues: Option<u8>,
+    // How pull requests merge (migrations/0042_merge_settings.sql): NULL
+    // for the default.
+    #[serde(default)]
+    allow_merge_commit: Option<u8>,
+    #[serde(default)]
+    allow_squash_merge: Option<u8>,
+    #[serde(default)]
+    allow_rebase_merge: Option<u8>,
+    #[serde(default)]
+    allow_fast_forward: Option<u8>,
+    #[serde(default)]
+    default_merge_method: Option<String>,
+    #[serde(default)]
+    merge_commit_message: Option<String>,
+    #[serde(default)]
+    squash_commit_message: Option<String>,
+    #[serde(default)]
+    merge_commit_template: Option<String>,
+    #[serde(default)]
+    squash_commit_template: Option<String>,
+    #[serde(default)]
+    suggest_updating_branches: Option<u8>,
+    #[serde(default)]
+    allow_auto_merge: Option<u8>,
+    #[serde(default)]
+    delete_branch_on_merge: Option<u8>,
+    #[serde(default)]
+    require_web_commit_sign_off: Option<u8>,
+    #[serde(default)]
+    allow_commit_comments: Option<u8>,
+    #[serde(default)]
+    auto_close_issues: Option<u8>,
     updated_by: String,
     updated_at: String,
 }
 
+/// A stored flag, or `default` where none was stored.
+fn flag(stored: Option<u8>, default: bool) -> bool {
+    stored.map_or(default, |on| on != 0)
+}
+
+/// A stored name of a contract enum (snake_case), if it names one.
+fn named<T: serde::de::DeserializeOwned>(stored: Option<&str>) -> Option<T> {
+    serde_json::from_value(serde_json::Value::String(stored?.to_owned())).ok()
+}
+
+/// The snake_case name a contract enum is stored as.
+fn name_of<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_value(value).ok().and_then(|value| value.as_str().map(str::to_owned)).unwrap_or_default()
+}
+
+/// A stored flag to bind.
+fn bit(on: bool) -> worker::wasm_bindgen::JsValue {
+    u32::from(on).into()
+}
+
 impl From<SettingsRow> for RepoSettings {
     fn from(row: SettingsRow) -> Self {
+        let defaults = RepoSettings::default();
         RepoSettings {
+            allow_merge_commit: flag(row.allow_merge_commit, defaults.allow_merge_commit),
+            allow_squash_merge: flag(row.allow_squash_merge, defaults.allow_squash_merge),
+            allow_rebase_merge: flag(row.allow_rebase_merge, defaults.allow_rebase_merge),
+            allow_fast_forward: flag(row.allow_fast_forward, defaults.allow_fast_forward),
+            default_merge_method: named(row.default_merge_method.as_deref()).unwrap_or(defaults.default_merge_method),
+            merge_commit_message: named(row.merge_commit_message.as_deref()).unwrap_or_default(),
+            squash_commit_message: named(row.squash_commit_message.as_deref()).unwrap_or_default(),
+            merge_commit_template: row.merge_commit_template,
+            squash_commit_template: row.squash_commit_template,
+            suggest_updating_branches: flag(row.suggest_updating_branches, defaults.suggest_updating_branches),
+            allow_auto_merge: flag(row.allow_auto_merge, defaults.allow_auto_merge),
+            delete_branch_on_merge: flag(row.delete_branch_on_merge, defaults.delete_branch_on_merge),
+            require_web_commit_sign_off: flag(row.require_web_commit_sign_off, defaults.require_web_commit_sign_off),
+            allow_commit_comments: flag(row.allow_commit_comments, defaults.allow_commit_comments),
+            auto_close_issues: flag(row.auto_close_issues, defaults.auto_close_issues),
             auto_merge: row.auto_merge != 0,
             required_checks: row
                 .required_checks
@@ -50,6 +121,10 @@ impl From<SettingsRow> for RepoSettings {
             allow_ignoring_checks: row.allow_ignoring_checks != 0,
             merge_queue: row.merge_queue != 0,
             require_code_owner_review: row.require_code_owner_review != 0,
+            has_issues: row.has_issues.map(|on| on != 0),
+            // Whether the repository is a fork is not known here: see
+            // `issues_enabled`.
+            issues_enabled: row.has_issues.is_none_or(|on| on != 0),
             updated_by: Some(row.updated_by),
             updated_at: Some(row.updated_at),
         }
@@ -108,6 +183,10 @@ impl Work {
             return Ok(Outcome::Fail(failure));
         }
         let before = self.default_branch_settings(&repo).await?;
+        let a = match tidy_merge_settings(a.settings) {
+            Ok(settings) => UpdateSettingsArgs { settings, ..a },
+            Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+        };
         let settings = RepoSettings {
             required_approvals: a.settings.required_approvals.min(MAX_REQUIRED_APPROVALS),
             required_checks: tidy_required(&a.settings.required_checks),
@@ -127,8 +206,14 @@ impl Work {
                 "INSERT INTO repo_settings
                    (repo_id, auto_merge, require_up_to_date, required_approvals,
                     count_agent_approvals, allow_ignoring_checks,
-                    merge_queue, required_checks, require_code_owner_review, updated_by, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    merge_queue, required_checks, require_code_owner_review, has_issues,
+                    allow_merge_commit, allow_squash_merge, allow_rebase_merge, allow_fast_forward,
+                    default_merge_method, merge_commit_message, squash_commit_message,
+                    merge_commit_template, squash_commit_template, suggest_updating_branches,
+                    allow_auto_merge, delete_branch_on_merge, require_web_commit_sign_off,
+                    allow_commit_comments, auto_close_issues,
+                    updated_by, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id) DO UPDATE SET
                    auto_merge = excluded.auto_merge,
                    require_up_to_date = excluded.require_up_to_date,
@@ -138,6 +223,22 @@ impl Work {
                    merge_queue = excluded.merge_queue,
                    required_checks = excluded.required_checks,
                    require_code_owner_review = excluded.require_code_owner_review,
+                   has_issues = excluded.has_issues,
+                   allow_merge_commit = excluded.allow_merge_commit,
+                   allow_squash_merge = excluded.allow_squash_merge,
+                   allow_rebase_merge = excluded.allow_rebase_merge,
+                   allow_fast_forward = excluded.allow_fast_forward,
+                   default_merge_method = excluded.default_merge_method,
+                   merge_commit_message = excluded.merge_commit_message,
+                   squash_commit_message = excluded.squash_commit_message,
+                   merge_commit_template = excluded.merge_commit_template,
+                   squash_commit_template = excluded.squash_commit_template,
+                   suggest_updating_branches = excluded.suggest_updating_branches,
+                   allow_auto_merge = excluded.allow_auto_merge,
+                   delete_branch_on_merge = excluded.delete_branch_on_merge,
+                   require_web_commit_sign_off = excluded.require_web_commit_sign_off,
+                   allow_commit_comments = excluded.allow_commit_comments,
+                   auto_close_issues = excluded.auto_close_issues,
                    updated_by = excluded.updated_by,
                    updated_at = excluded.updated_at",
             )
@@ -151,6 +252,22 @@ impl Work {
                 u32::from(settings.merge_queue).into(),
                 serde_json::to_string(&settings.required_checks)?.into(),
                 u32::from(settings.require_code_owner_review).into(),
+                settings.has_issues.map_or(worker::wasm_bindgen::JsValue::NULL, |on| u32::from(on).into()),
+                bit(settings.allow_merge_commit),
+                bit(settings.allow_squash_merge),
+                bit(settings.allow_rebase_merge),
+                bit(settings.allow_fast_forward),
+                name_of(&settings.default_merge_method).into(),
+                name_of(&settings.merge_commit_message).into(),
+                name_of(&settings.squash_commit_message).into(),
+                crate::optional(&settings.merge_commit_template),
+                crate::optional(&settings.squash_commit_template),
+                bit(settings.suggest_updating_branches),
+                bit(settings.allow_auto_merge),
+                bit(settings.delete_branch_on_merge),
+                bit(settings.require_web_commit_sign_off),
+                bit(settings.allow_commit_comments),
+                bit(settings.auto_close_issues),
                 settings.updated_by.as_deref().unwrap_or_default().into(),
                 settings.updated_at.as_deref().unwrap_or_default().into(),
             ])?
@@ -159,8 +276,62 @@ impl Work {
         if protection_changed(&before, &settings) {
             self.write_branch_protection(&repo, &settings, &a.actor).await?;
         }
+        // Auto-merge turned off: every pull request waiting to merge on its
+        // own stops waiting (automerge.rs).
+        if before.allow_auto_merge && !settings.allow_auto_merge {
+            self.auto_merge_turned_off(&repo, &a.actor).await?;
+        }
         Ok(Outcome::Ok(self.default_branch_settings(&repo).await?))
     }
+
+    /// Whether issues can be opened in `repo`: its setting, or on unless it
+    /// is a fork of another repository.
+    pub(crate) async fn issues_enabled(&self, repo: &g1t_contracts::repos::Repo) -> Result<bool> {
+        Ok(self.settings(&repo.id).await?.issues_on(repo.forked_from.is_some()))
+    }
+}
+
+/// Why an issue cannot be opened in `repo`: its issues are off.
+pub(crate) fn issues_off(repo: &g1t_contracts::repos::Repo) -> String {
+    format!(
+        "Issues are turned off for {}/{}. Its admins can turn them on in Settings.",
+        repo.namespace, repo.name
+    )
+}
+
+/// The longest merge or squash commit template.
+const MAX_TEMPLATE_CHARS: usize = 2_000;
+
+/// How pull requests merge, made consistent, or why it cannot be: at least
+/// one method allowed, the default one of them (else the first allowed),
+/// templates trimmed, and a custom message only with a template.
+fn tidy_merge_settings(mut settings: RepoSettings) -> std::result::Result<RepoSettings, String> {
+    if settings.allowed_methods().is_empty() {
+        return Err("Allow at least one way to merge pull requests.".to_owned());
+    }
+    if !settings.allows(settings.default_merge_method) {
+        settings.default_merge_method = settings.allowed_methods()[0];
+    }
+    // A squash's commits are listed only in a squash's message.
+    if settings.merge_commit_message == CommitMessageDefault::PullTitleAndCommits {
+        return Err("A merge commit's message cannot list the pull request's commits; choose another default.".to_owned());
+    }
+    for (template, kind) in [
+        (&mut settings.merge_commit_template, "merge"),
+        (&mut settings.squash_commit_template, "squash"),
+    ] {
+        *template = template.as_deref().map(str::trim).filter(|text| !text.is_empty()).map(str::to_owned);
+        if template.as_ref().is_some_and(|text| text.chars().count() > MAX_TEMPLATE_CHARS) {
+            return Err(format!("The {kind} commit template is too long: keep it to {MAX_TEMPLATE_CHARS} characters."));
+        }
+    }
+    if settings.merge_commit_message == CommitMessageDefault::Custom && settings.merge_commit_template.is_none() {
+        return Err("Write the merge commit template, or choose another default message.".to_owned());
+    }
+    if settings.squash_commit_message == CommitMessageDefault::Custom && settings.squash_commit_template.is_none() {
+        return Err("Write the squash commit template, or choose another default message.".to_owned());
+    }
+    Ok(settings)
 }
 
 /// Whether the branch protection part of the settings differs.
@@ -194,5 +365,105 @@ mod tests {
         assert!(!protection_changed(&checks, &same), "names compare without case");
         let approvals = RepoSettings { required_approvals: 1, ..RepoSettings::default() };
         assert!(protection_changed(&before, &approvals));
+        let issues = RepoSettings { has_issues: Some(false), ..RepoSettings::default() };
+        assert!(!protection_changed(&before, &issues), "issues are not protection");
+    }
+
+    #[test]
+    fn merge_settings_are_made_consistent_or_refused() {
+        use g1t_contracts::rules::MergeMethod;
+        let none = RepoSettings {
+            allow_merge_commit: false,
+            allow_squash_merge: false,
+            allow_rebase_merge: false,
+            allow_fast_forward: false,
+            ..RepoSettings::default()
+        };
+        assert!(tidy_merge_settings(none).is_err(), "one method at least");
+        // A default that is not allowed becomes the first that is.
+        let squash_only = RepoSettings { allow_merge_commit: false, allow_rebase_merge: false, ..RepoSettings::default() };
+        assert_eq!(tidy_merge_settings(squash_only).unwrap().default_merge_method, MergeMethod::Squash);
+        let ff = RepoSettings {
+            allow_merge_commit: false,
+            allow_squash_merge: false,
+            allow_rebase_merge: false,
+            allow_fast_forward: true,
+            default_merge_method: MergeMethod::Rebase,
+            ..RepoSettings::default()
+        };
+        assert_eq!(tidy_merge_settings(ff).unwrap().default_merge_method, MergeMethod::FastForward);
+        // Templates are trimmed; an empty one is none, which Custom needs.
+        let blank = RepoSettings {
+            squash_commit_message: CommitMessageDefault::Custom,
+            squash_commit_template: Some("  ".into()),
+            ..RepoSettings::default()
+        };
+        assert!(tidy_merge_settings(blank).is_err());
+        let custom = RepoSettings {
+            merge_commit_message: CommitMessageDefault::Custom,
+            merge_commit_template: Some("  {title} (#{number})\n".into()),
+            ..RepoSettings::default()
+        };
+        assert_eq!(tidy_merge_settings(custom).unwrap().merge_commit_template.as_deref(), Some("{title} (#{number})"));
+        let long = RepoSettings { merge_commit_template: Some("x".repeat(MAX_TEMPLATE_CHARS + 1)), ..RepoSettings::default() };
+        assert!(tidy_merge_settings(long).is_err());
+        let commits = RepoSettings { merge_commit_message: CommitMessageDefault::PullTitleAndCommits, ..RepoSettings::default() };
+        assert!(tidy_merge_settings(commits).is_err(), "squash only");
+    }
+
+    #[test]
+    fn a_row_from_before_merge_settings_reads_as_the_defaults() {
+        let read: RepoSettings = serde_json::from_value::<SettingsRow>(serde_json::json!({
+            "auto_merge": 0, "require_up_to_date": 0, "required_approvals": 0,
+            "count_agent_approvals": 1, "allow_ignoring_checks": 1,
+            "updated_by": "ana", "updated_at": ""
+        }))
+        .unwrap()
+        .into();
+        let defaults = RepoSettings::default();
+        assert_eq!(read.allowed_methods(), defaults.allowed_methods());
+        assert_eq!(read.default_merge_method, defaults.default_merge_method);
+        assert!(read.allow_auto_merge && read.auto_close_issues && read.allow_commit_comments && read.suggest_updating_branches);
+        assert!(!read.delete_branch_on_merge && !read.require_web_commit_sign_off);
+        let stored: RepoSettings = serde_json::from_value::<SettingsRow>(serde_json::json!({
+            "auto_merge": 0, "require_up_to_date": 0, "required_approvals": 0,
+            "count_agent_approvals": 1, "allow_ignoring_checks": 1,
+            "allow_merge_commit": 0, "allow_fast_forward": 1, "default_merge_method": "fast_forward",
+            "squash_commit_message": "pull_title_and_commits", "delete_branch_on_merge": 1,
+            "updated_by": "ana", "updated_at": ""
+        }))
+        .unwrap()
+        .into();
+        assert!(!stored.allow_merge_commit && stored.allow_fast_forward && stored.delete_branch_on_merge);
+        assert_eq!(stored.default_merge_method, g1t_contracts::rules::MergeMethod::FastForward);
+        assert_eq!(stored.squash_commit_message, CommitMessageDefault::PullTitleAndCommits);
+        assert_eq!(name_of(&stored.squash_commit_message), "pull_title_and_commits");
+    }
+
+    #[test]
+    fn issues_are_on_by_default_except_in_a_fork() {
+        let unset = RepoSettings::default();
+        assert!(unset.issues_on(false));
+        assert!(!unset.issues_on(true));
+        let on = RepoSettings { has_issues: Some(true), ..RepoSettings::default() };
+        assert!(on.issues_on(true), "a fork can turn them on");
+        let off = RepoSettings { has_issues: Some(false), ..RepoSettings::default() };
+        assert!(!off.issues_on(false));
+    }
+
+    #[test]
+    fn a_stored_row_keeps_the_issues_setting_or_its_absence() {
+        let row = |has_issues: serde_json::Value| -> RepoSettings {
+            serde_json::from_value::<SettingsRow>(serde_json::json!({
+                "auto_merge": 0, "require_up_to_date": 0, "required_approvals": 0,
+                "count_agent_approvals": 1, "allow_ignoring_checks": 1,
+                "has_issues": has_issues, "updated_by": "ana", "updated_at": ""
+            }))
+            .unwrap()
+            .into()
+        };
+        assert_eq!(row(serde_json::Value::Null).has_issues, None);
+        assert_eq!(row(serde_json::json!(0)).has_issues, Some(false));
+        assert_eq!(row(serde_json::json!(1)).has_issues, Some(true));
     }
 }

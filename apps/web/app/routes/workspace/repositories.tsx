@@ -1,4 +1,4 @@
-import { Box, Lock, Search, Settings } from "lucide-react";
+import { Box, GitFork, Lock, Search, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Form, Link, data, useNavigation, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
 
@@ -245,7 +245,7 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
                       />
                     )}
                     <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
-                      {repo.isPrivate ? <Lock size={13} /> : <Box size={13} />}
+                      {repo.isPrivate ? <Lock size={13} /> : repo.parentId ? <GitFork size={13} /> : <Box size={13} />}
                     </span>
                     <div className="min-w-0 grow">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -254,7 +254,16 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
                         </Link>
                         <Badge>{repo.isPrivate ? "private" : "public"}</Badge>
                         {repo.archivedAt && <Badge tone="warn">archived</Badge>}
+                        {repo.parentId && <Badge>fork</Badge>}
                       </div>
+                      {repo.parent && (
+                        <p className="mt-0.5 text-xs text-muted">
+                          Forked from{" "}
+                          <Link to={`/${repo.parent.namespace}/${repo.parent.name}`} className="font-mono hover:text-accent hover:underline">
+                            {repo.parent.namespace}/{repo.parent.name}
+                          </Link>
+                        </p>
+                      )}
                       {repo.description && <p className="mt-0.5 line-clamp-2 text-sm text-muted">{repo.description}</p>}
                       <p className="mt-1 text-xs text-faint">
                         {repo.archivedAt ? (

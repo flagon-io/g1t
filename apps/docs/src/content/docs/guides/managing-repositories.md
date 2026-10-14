@@ -104,10 +104,76 @@ stars on a private repository are seen only by people who can read it.
 | **Details** | Its description, website and topics, shown on its page, in [search and Explore](/guides/search/). |
 | **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, and the [merge queue](/guides/merge-queue/). What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
 | **Artifacts** | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts). |
-| **Danger zone** | Change visibility, archive, [transfer](/guides/transferring-repositories/) and delete. Shown to people with the Admin role. |
+| **Features** | Whether it has issues. A [fork](/concepts/forks/) starts with them off. |
+| **Forking** | For a private repository, whether people who can read it may [fork it](/guides/forking-repositories/#allow-forking-a-private-repository). Public repositories can always be forked. |
+| **Danger zone** | Change visibility, archive, [transfer](/guides/transferring-repositories/), [detach a fork](/guides/forking-repositories/#detach-a-fork) and delete. Shown to people with the Admin role. |
 
 While a repository is [archived](#archive-a-repository), the settings that
 change it are turned off until it is unarchived.
+
+## Settings
+
+How a repository handles pull requests, commits, pushes and issues. Each
+setting is a field of
+[`PATCH /repos/{owner}/{name}/settings`](/reference/api/repositories/update-repo-settings/)
+(the `repository` tool's `update_settings` action), except
+`max_ref_updates`, which is
+[`PATCH /repos/{owner}/{name}`](/reference/api/repositories/update-repo/)'s.
+Fields you leave out stay as they are. Changing them needs the Maintain
+[role](/guides/access-and-roles/) or higher; `max_ref_updates` needs Admin.
+
+### Pull requests
+
+| Setting | Field | Default | What it does |
+| --- | --- | --- | --- |
+| Allow merge commits | `allow_merge_commit` | On | Pull requests may merge with a merge commit (`merge`). |
+| Allow squash merging | `allow_squash_merge` | On | They may merge as one squashed commit (`squash`). |
+| Allow rebase merging | `allow_rebase_merge` | On | They may merge by making each commit again on the base (`rebase`). |
+| Allow fast-forward merging | `allow_fast_forward` | Off | They may merge by moving the base to their head, with no new commit (`fast_forward`). |
+| Default merge method | `default_merge_method` | `merge` | The method the merge button offers first, and the one a merge that names none uses. It must be allowed. |
+| Default merge commit message | `merge_commit_message` | `default` | What a merge commit says unless its merger writes it: `default`, `pull_title`, `pull_title_and_description` or `custom`. |
+| Default squash commit message | `squash_commit_message` | `default` | What a squash commit says: the same, and `pull_title_and_commits`. |
+| Merge and squash commit templates | `merge_commit_template`, `squash_commit_template` | None | The message used with `custom`, with [placeholders](/guides/pull-requests/#commit-messages). An empty string clears it. |
+| Always suggest updating branches | `suggest_updating_branches` | On | Offer to update a pull request's branch whenever its base has new commits, not only when it must be up to date. |
+| Allow auto-merge | `allow_auto_merge` | On | People may turn on [auto-merge](/guides/pull-requests/#auto-merge) for a pull request. |
+| Delete branches when they merge | `delete_branch_on_merge` | Off | A pull request's branch is deleted once it merges. It can be [restored](/guides/pull-requests/#deleting-the-branch) from the pull request. |
+
+At least one method stays allowed. [Rules](/guides/rules/#pull-requests-and-checks)
+can narrow the methods for a branch, with `allowed_merge_methods` and
+**Require linear history**; they never allow one the repository does not.
+
+### Commits
+
+| Setting | Field | Default | What it does |
+| --- | --- | --- | --- |
+| Require sign-off on web commits | `require_web_commit_sign_off` | Off | Commits made on g1t (web edits, merge and squash commits) end with a `Signed-off-by:` trailer for whoever made them, agreeing to the repository's terms, commonly the Developer Certificate of Origin. |
+| Allow comments on commits | `allow_commit_comments` | On | Anyone who can read the repository may [comment on its commits](/guides/pull-requests/#commit-comments). Off keeps existing comments readable and refuses new ones. |
+
+### Pushes
+
+| Setting | Field | Default | What it does |
+| --- | --- | --- | --- |
+| Limit how many branches and tags a push can update | `max_ref_updates` | No limit | The most branches and tags one push may create, move or delete, 1 to 1,000. A push that would change more is declined whole, so nothing of it lands: "This push changes N branches and tags; owner/name takes at most M at a time. Push fewer at once." `0` removes the limit. |
+
+### Archives
+
+| Setting | Field | Default | What it does |
+| --- | --- | --- | --- |
+| Include Git LFS objects in archives | None yet | Off | Coming soon. g1t does not store Git LFS files yet (see [limitations](/about/limitations/)), so archives hold what git stores; the setting is shown, turned off, until it does. |
+
+### Issues
+
+| Setting | Field | Default | What it does |
+| --- | --- | --- | --- |
+| Issues | `has_issues` | On; off for a [fork](/concepts/forks/) | Whether issues can be opened. Off keeps existing issues readable. `null` goes back to the default. `issues_enabled` says whether they can be opened now. |
+| Close issues when pull requests merge | `auto_close_issues` | On | A pull request that merges into the default branch closes its issue and those it names after a [closing keyword](/guides/pull-requests/#closing-issues). |
+
+```sh
+curl -X PATCH https://api.g1t.sh/repos/acme/rocket/settings \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"allow_merge_commit": false, "default_merge_method": "squash", "squash_commit_message": "pull_title_and_description", "delete_branch_on_merge": true}'
+```
 
 ## Who can do what
 
@@ -118,6 +184,8 @@ Owners of its workspace have Admin on it.
 | --- | --- |
 | Description, website, topics | Maintain |
 | How long artifacts are kept | Maintain |
+| [Merge, commit and issue settings](#settings) | Maintain |
+| How many branches and tags a push may update | Admin |
 | Default branch | Admin |
 | Create, delete or restore a branch | Write; the default branch is never deleted. See [branches](/guides/git/#the-branches-page) |
 | Rename a branch | Write; Admin for the default branch |
@@ -291,6 +359,11 @@ private one can be seen only by people with a
    **Make public**.
 3. Read what changes, type the repository's full name (`<workspace>/<repo>`)
    to confirm, and choose **Make private** or **Make public** again.
+
+A [fork](/concepts/forks/) is as visible as the repository it came from and
+cannot change on its own: [detach it](/guides/forking-repositories/#detach-a-fork)
+first. When a repository with forks is made public or private, its forks
+are detached and keep the visibility they had.
 
 | | Making it public | Making it private |
 | --- | --- | --- |

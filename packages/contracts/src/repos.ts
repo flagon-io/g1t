@@ -11,8 +11,30 @@ export type Repo = {
   isPrivate: boolean;
   ownerId: string;
   defaultBranch: string;
-  /** Set when this repo is a pull request's working copy of another repo. */
+  /**
+   * Set when this repo is a pull request's working copy of another repo
+   * (namespace `pulls`, hidden from listings). A fork someone made into a
+   * workspace is an ordinary repository with `parentId` instead.
+   */
   forkOf: string | null;
+  /**
+   * The repository this one was forked from, when someone forked it into
+   * their workspace. Null once it is detached, or when its parent changed
+   * who can see it.
+   */
+  parentId?: string | null;
+  /**
+   * What it was made a fork of, kept when it is detached: Actions and
+   * issues stay off by default, and its pull requests into the parent
+   * still merge.
+   */
+  forkedFrom?: string | null;
+  /** Where `parentId` is, for a viewer who may read it (from `get`, `getById` and `forks`). */
+  parent?: RepoPath | null;
+  /** A private repository's admins let others fork it. Public ones can always be forked. */
+  allowForking?: boolean;
+  /** The most branches and tags one push may change; pushes over it are refused whole. Null for no limit. */
+  maxRefUpdates?: number | null;
   /**
    * Whether the default branch is protected: it changes only by merging a
    * pull request, and pushes to it are refused.
@@ -33,6 +55,36 @@ export type Repo = {
    * requests are locked. Null when it is not archived.
    */
   archivedAt?: string | null;
+};
+
+export type ForkRepoInput = {
+  /** The workspace to fork it into. */
+  namespace: string;
+  /** The fork's name; the source's when absent. */
+  name?: string;
+  /** The source's when absent; an empty string clears it. */
+  description?: string;
+  /** Copy only the default branch (the default), or every branch and tag. */
+  defaultBranchOnly?: boolean;
+};
+
+/** How a pull request's branch is brought up to date: a merge commit, or its commits made again on the base. */
+export type UpdateMethod = "merge" | "rebase";
+
+/** What `syncFork` did. */
+export type SyncStatus = "up_to_date" | "fast_forwarded" | "merged" | "conflicted";
+
+export type SyncedFork = {
+  status: SyncStatus;
+  branch: string;
+  /** The branch's head after syncing. */
+  head: string;
+  /** Commits the parent's branch had that the fork's did not. */
+  behind: number;
+  /** Commits the fork's branch had that the parent's did not. */
+  ahead: number;
+  /** For `conflicted`: the files both sides changed (at most 20). */
+  conflicts: string[];
 };
 
 /** How long a deleted repository can be restored before it is purged. */
@@ -161,6 +213,10 @@ export interface ReposApi {
       topics?: string[];
       /** An empty string clears it. */
       website?: string;
+      /** Whether a private repository may be forked (Admin). */
+      allowForking?: boolean;
+      /** The most branches and tags one push may change (Admin); 0 for no limit. */
+      maxRefUpdates?: number;
     },
   ): Promise<Result<Repo>>;
   /**
@@ -246,6 +302,25 @@ export interface ReposApi {
    * to work in.
    */
   forkForPull(sourceId: string, pullId: string, actor: User): Promise<Result<Repo>>;
+  /**
+   * Forks `path` into the workspace `input.namespace`: a new repository
+   * with the source's code (its default branch unless
+   * `defaultBranchOnly` is false) and description, nothing else. Public
+   * repositories can always be forked, private ones when their admins
+   * allow it; a fork is as visible as its source. Publishes `repo.created`
+   * and `repo.forked`.
+   */
+  fork(actor: User, path: RepoPath, input: ForkRepoInput): Promise<Result<Repo>>;
+  /** The forks of `path` the viewer may read, newest first. */
+  forks(path: RepoPath, viewer: Viewer, limit?: number): Promise<Result<Repo[]>>;
+  /**
+   * Brings a fork's branch (its default branch when absent) up to date
+   * with its parent's: fast-forwarded when only behind, merged when the
+   * two changed different files, left alone (`conflicted`) otherwise.
+   */
+  syncFork(actor: User, path: RepoPath, branch?: string): Promise<Result<SyncedFork>>;
+  /** Makes a fork an ordinary repository with no parent (Admin). */
+  detachFork(actor: User, path: RepoPath): Promise<Result<Repo>>;
 
   /**
    * Authorizes a git operation and returns where to send it. Pushing to a
@@ -351,7 +426,10 @@ export interface ReposApi {
    * With no `base`, a branch is compared from where it left `baseBranch`
    * (the default branch when absent). With `paths`, only those files (at
    * most 50), with their lines: how a file a large comparison lists as
-   * `omitted` is read.
+   * `omitted` is read. With `targetId` (no `base`), `repoId` is a fork of
+   * that repository, directly or through other forks, and the head is
+   * compared from where it left `baseBranch` there: a pull request from a
+   * fork. Both must be readable.
    */
   compare(
     repoId: string,
@@ -360,6 +438,7 @@ export interface ReposApi {
     head?: string | null,
     baseBranch?: string | null,
     paths?: string[] | null,
+    targetId?: string | null,
   ): Promise<Result<Comparison>>;
 
   /**

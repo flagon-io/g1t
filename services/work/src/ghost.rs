@@ -15,7 +15,7 @@ use g1t_contracts::account_deletion::{GHOST_ID, GHOST_USERNAME};
 /// (`g1t_kit::user_deleted`). `ghost`'s id and name are written in.
 pub(crate) fn statements() -> Vec<String> {
     let mut sql = Vec::new();
-    for table in ["issues", "pulls", "comments", "plans", "agent_messages"] {
+    for table in ["issues", "pulls", "comments", "plans", "agent_messages", "commit_comments"] {
         sql.push(format!(
             "UPDATE {table} SET author_id = '{GHOST_ID}', author_name = '{GHOST_USERNAME}' WHERE author_id = ?1"
         ));

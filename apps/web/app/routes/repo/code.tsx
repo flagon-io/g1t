@@ -9,6 +9,8 @@ import { showOneCommit } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { useProject } from "./layout";
+import { ForkBar } from "../../components/fork-bar";
+import { forkSourceFor } from "../../lib/forks.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 
@@ -19,12 +21,14 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const viewer = getViewer(context);
-  const [tree, branches, environments] = await Promise.all([
+  const [tree, branches, environments, fork] = await Promise.all([
     repos.tree(path, viewer, null, ""),
     // For the branch menu; the page still shows without it.
     repos.branches(path, viewer).catch(() => null),
     // For the About sidebar's Deployments panel; null without any.
     environmentsFor(path, viewer),
+    // A fork's parent, for the bar above its files.
+    forkSourceFor(context, params, viewer),
   ]);
   // Each entry's last commit walks history: streamed in after the list.
   const lastCommits = lastCommitsFor(path, viewer, null, "");
@@ -35,7 +39,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const about = value.head ? aboutFor(path, viewer, value.repo.id) : null;
   // The latest commit's checks: streamed in beside it.
   const checks = commitChecksFor(path, viewer, [value.head?.hash]);
-  return { tree: value, branches: branches?.ok ? branches.value : null, lastCommits, about, deployments: environments, checks };
+  return { tree: value, branches: branches?.ok ? branches.value : null, lastCommits, about, deployments: environments, checks, fork };
 }
 
 export default function Code({ loaderData }: Route.ComponentProps) {
@@ -53,6 +57,16 @@ export default function Code({ loaderData }: Route.ComponentProps) {
       about={loaderData.about}
       canPush={Boolean(project?.access.can.push)}
       deployments={loaderData.deployments}
+      fork={
+        loaderData.fork && project && branches?.some((branch) => branch.name === tree.ref) ? (
+          <ForkBar
+            base={`/${tree.repo.namespace}/${tree.repo.name}`}
+            branch={tree.ref}
+            parent={loaderData.fork}
+            canPush={Boolean(project.access.can.push)}
+          />
+        ) : null
+      }
     />
   );
 }

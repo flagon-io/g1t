@@ -240,8 +240,9 @@ repositories, code on default branches, issues, pull requests and people.
 Repositories: find, read and create them, change their settings, manage
 their [labels](/guides/labels/) and [milestones](/guides/milestones/),
 see and dismiss their [security alerts](/guides/security/), read what their
-default branch says (languages, contributors, license), star them, and
-publish [releases](/guides/releases/). Deleting, purging
+default branch says (languages, contributors, license), star them,
+publish [releases](/guides/releases/) and
+[comment on their commits](/guides/pull-requests/#commit-comments). Deleting, purging
 and changing visibility need `confirm`, the repository's full name typed
 out.
 
@@ -250,11 +251,16 @@ out.
 | [`list`](/reference/api/repositories/list-repos/) | Repositories you can see, optionally filtered by `query`. | None | `repo:read` |
 | [`get`](/reference/api/repositories/get-repo/) | One repository's details. | `repo` | `repo:read` |
 | [`commits`](/reference/api/repositories/list-commits/) | A branch's commits, newest first, each with its `sha`, `message`, `author` (`name` as git recorded it, and `username` when the author's address is a g1t account's; never the address), `authored_at` and `html_url`; `ref` names another branch, tag or commit, `limit` is 30 unless you say (at most 100). With `path`, only the commits that changed that file or directory (its history), newest first, with `last_changed` (the newest) and `complete` (false when a long history was not walked to its start in time). | `repo` | `code:read` |
+| [`commit_comments`](/reference/api/commit-comments/list-commit-comments/) | A commit's comments (`sha`), oldest first: on the whole commit, or on a `line` of a `path` it changed. | `repo`, `sha` | `repo:read` |
+| [`list_commit_comments`](/reference/api/commit-comments/list-repo-commit-comments/) | All the repository's commit comments, newest first, 30 a `page`. | `repo` | `repo:read` |
+| [`comment_on_commit`](/reference/api/commit-comments/create-commit-comment/) | Comment on commit `sha`, or with `path` and `line` on one line of a file it changed. Refused where the repository turned commit comments off. | `repo`, `sha`, `body` | `issues:write` |
+| [`edit_commit_comment`](/reference/api/commit-comments/update-commit-comment/) | Change a commit comment's `body`, by `comment_id`. Its author only. | `repo`, `comment_id`, `body` | `issues:write` |
+| [`delete_commit_comment`](/reference/api/commit-comments/delete-commit-comment/) | Delete a commit comment by `comment_id`. Its author, or the Maintain role. | `repo`, `comment_id` | `issues:write` |
 | [`contents`](/reference/api/repositories/get-contents/) | What it holds at `path` (the root when left out) at `ref` (the default branch when left out): a file's `text` (null for a binary one; at most 200,000 characters), or a directory's `entries` and its README. | `repo` | `code:read` |
 | [`tarball`](/reference/api/repositories/download-tarball-archive/) | A link to a branch, tag or commit (`ref`, the default branch when left out) as a `.tar.gz` that needs no token, good for 10 minutes, as `url`, with the `commit` it is of. | `repo` | `code:read` |
 | [`zipball`](/reference/api/repositories/download-zipball-archive/) | The same as a `.zip`. | `repo` | `code:read` |
 | [`create`](/reference/api/repositories/create-repo/) | Create a repository in one of your workspaces, empty or as a copy of a public git repository (`import_url`). `workspace` may be left out if you belong to exactly one. | `name` | `repo:write` |
-| [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, and whether it is `private`. Maintain role; `protected`, `private` and `default_branch` need Admin, and `private` the [member privileges](/guides/workspaces/#member-privileges) unless you are an owner. | `repo` | `repo:write` |
+| [`update`](/reference/api/repositories/update-repo/) | Change its `description`, `website`, `topics` and `default_branch`, whether its default branch is `protected`, whether it is `private`, and whether a private repository may be forked (`allow_forking`). Maintain role; `protected`, `private`, `allow_forking` and `default_branch` need Admin, and `private` the [member privileges](/guides/workspaces/#member-privileges) unless you are an owner. | `repo` | `repo:write` |
 | [`get_settings`](/reference/api/repositories/get-repo-settings/) | How it handles pull requests: how they merge, and the default branch's required checks, approvals, bypassing checks, being up to date and merge queue as its [rulesets](/guides/rules/) stack. | `repo` | `repo:read` |
 | [`update_settings`](/reference/api/repositories/update-repo-settings/) | Change those settings. Only the fields given change; `required_checks` replaces the whole list. Maintain role. | `repo` | `repo:write` |
 | [`check_names`](/reference/api/repositories/list-check-names/) | The check names reported on its commits in the last 30 days, most recent first, each with `name`, `events` and `last_seen`: the names `required_checks` takes. | `repo` | `repo:read` |
@@ -297,6 +303,10 @@ out.
 | [`delete_branch`](/reference/api/repositories/delete-branch/) | Delete a branch, never the default; answers with the commit it pointed to. With `head`, a branch that has moved is left alone. Write role; the rules for deleting it hold.  | `repo`, `branch` | `repo:write` |
 | [`rename`](/reference/api/repositories/rename-repo/) | Give it a new name in its workspace; the old address redirects. Admin role. | `repo`, `name` | `repo:admin` |
 | [`transfer`](/reference/api/repositories/transfer-repo/) | Move it to another workspace, keeping its name; the old address redirects. An owner, or an Admin when the member privileges allow it; and someone who can create a repository in the other workspace. See [transferring a repository](/guides/transferring-repositories/). | `repo`, `to` | `repo:admin` |
+| [`fork`](/reference/api/repositories/fork-repo/) | [Fork it](/guides/forking-repositories/) into `workspace` (your personal workspace when left out), as `name` with `description` (its own when left out); `default_branch_only` (true unless you say) copies the default branch alone. Only its code and description are copied; workflows and issues start off. A private repository only when its admins allow forking. | `repo` | `repo:write` |
+| [`forks`](/reference/api/repositories/list-forks/) | Its forks you can see, newest first, each with `parent`; `limit` at most 100. | `repo` | `repo:read` |
+| [`sync_fork`](/reference/api/repositories/sync-fork/) | Bring a fork's `branch` (its default branch when left out) up to date with its parent: `status` is `up_to_date`, `fast_forwarded`, `merged` or `conflicted` (with `conflicts`), with `behind` and `ahead`. Write role on the fork. | `repo` | `repo:write` |
+| [`detach_fork`](/reference/api/repositories/detach-fork/) | Make a fork an ordinary repository with no parent, whose visibility can then change. It cannot be attached again. Admin role. | `repo` | `repo:admin` |
 | [`archive`](/reference/api/repositories/archive-repo/) | Make it read-only: pushes and merges are refused, issues and pull requests are locked, and workflows stop. Admin role. | `repo` | `repo:admin` |
 | [`unarchive`](/reference/api/repositories/unarchive-repo/) | Make it writable again. Admin role. | `repo` | `repo:admin` |
 | [`set_visibility`](/reference/api/repositories/set-repo-visibility/) | Make it public or private; `confirm` is its full name. Admin role. | `repo`, `private`, `confirm` | `repo:admin` |
@@ -315,7 +325,15 @@ out.
 merge until the [code owners](/guides/codeowners/) of every file it changes
 approve. See
 [required status checks](/guides/pull-requests/#required-status-checks).
-`update` with `private` or `default_branch` also needs `repo:admin`.
+It also takes the repository's [merge, commit and issue settings](/guides/managing-repositories/#settings):
+the merge methods it allows (`allow_merge_commit`, `allow_squash_merge`,
+`allow_rebase_merge`, `allow_fast_forward`) and `default_merge_method`,
+`merge_commit_message`, `squash_commit_message` and their templates,
+`suggest_updating_branches`, `allow_auto_merge`, `delete_branch_on_merge`,
+`require_web_commit_sign_off`, `allow_commit_comments`,
+`auto_close_issues` and `has_issues`.
+`update` with `private`, `default_branch`, `allow_forking` or
+`max_ref_updates` also needs `repo:admin`.
 
 See [managing a repository](/guides/managing-repositories/) for what each
 of these changes, and what refuses it, and
@@ -353,15 +371,16 @@ requests share numbers, so `comment` works on either.
 ## `pull_request`
 
 Pull requests: start a change for an issue, record your session, mark it
-ready, review and merge. Read `overlaps` and `behind` on `get` before going
-far.
+ready, review, update its branch, and merge by a merge commit, a squash, a
+rebase or a fast-forward, now or with auto-merge. Read `overlaps` and
+`behind` on `get` before going far.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
 | [`list`](/reference/api/pull-requests/list-pull-requests/) | Pull requests, newest first. `open` covers drafts and those ready for review. `label`, `milestone` and `base` filter them. | `repo` | `pull_requests:read` |
 | [`get`](/reference/api/pull-requests/get-pull-request/) | Status, head commit, comments and reviews, who is asked to review (`pull.reviewers`, and `pull.team_reviewers` as `workspace/team`), its issue, its checks (`statuses`, and `required_checks`: each check the default branch requires, as `success`, `failure`, `pending` or `expected`), `code_owners` (whose approval the changed files need, and what is still `missing`), `behind`, and `overlaps`. | `repo`, `number` | `pull_requests:read` |
 | [`changes`](/reference/api/pull-requests/get-pull-request-changes/) | The files it changes, with line-by-line diffs. | `repo`, `number` | `pull_requests:read` |
-| [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed. Give `issue` whenever there is one. It merges into the default branch unless `base` names another. | `repo` | `pull_requests:write` |
+| [`create`](/reference/api/pull-requests/create-pull-request/) | Open a draft pull request with its own fork and get its git remote; or, with `branch`, one from a branch already pushed (with `head_repo`, a branch of your fork). Give `issue` whenever there is one. It merges into the default branch unless `base` names another. | `repo` | `pull_requests:write` |
 | [`update`](/reference/api/pull-requests/update-pull-request/) | Change its `base` (the branch it merges into; Write role), `labels`, `milestone`, `assignees` or `reviewers`. `state` `open` reopens it and `closed` closes it. | `repo`, `number` | `pull_requests:write` |
 | [`record_session`](/reference/api/sessions/record-session/) | Append entries to a pull request's session. Each has `kind` and `text`, and `tool` for tool entries. | `repo`, `number`, `entries` | `pull_requests:write` |
 | [`read_session`](/reference/api/sessions/read-session/) | The recorded session, oldest first. `after` skips to entries after a sequence number. | `repo`, `number` | `pull_requests:read` |
@@ -374,7 +393,13 @@ far.
 | [`review`](/reference/api/pull-requests/review-pull-request/) | `approve`, or `request_changes` with a `body`. Not on your own pull request. | `repo`, `number`, `verdict` | `pull_requests:write` |
 | [`close`](/reference/api/pull-requests/close-pull-request/) | Close it without merging. | `repo`, `number` | `pull_requests:write` |
 | [`reopen`](/reference/api/pull-requests/reopen-pull-request/) | Reopen a closed pull request, as the draft it was if it was closed as one. Never a merged one. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
-| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on its [base](/guides/base-branches/), or add it to the [merge queue](/guides/merge-queue/), once it meets every [rule](/guides/rules/) of its base, required checks included; `bypass_rules` merges past rules a ruleset lets you bypass. Into the default branch, it resolves its issue. `ignore_checks` bypasses required checks where the repository allows it. Write role. | `repo`, `number` | `pull_requests:write` |
+| [`merge`](/reference/api/pull-requests/merge-pull-request/) | Land it on its [base](/guides/base-branches/), or add it to the [merge queue](/guides/merge-queue/), once it meets every [rule](/guides/rules/) of its base, required checks included. `merge_method` is `merge`, `squash`, `rebase` or `fast_forward` (the repository's default when left out); `commit_title` and `commit_message` write a merge or squash commit's message; `sha` refuses if its head moved; `delete_branch` deletes its branch once merged. `bypass_rules` merges past rules a ruleset lets you bypass, and `ignore_checks` past required checks where the repository allows it. Into the default branch, it closes the issues in `closes`. Write role. | `repo`, `number` | `pull_requests:write` |
+| [`merge_options`](/reference/api/pull-requests/get-pull-request-merge-options/) | How it may merge now: `methods`, `default_method`, each method's default commit message, whether it is `behind` or `can_fast_forward`, and whether you may turn on auto-merge. | `repo`, `number` | `pull_requests:read` |
+| [`update_branch`](/reference/api/pull-requests/update-pull-request-branch/) | Bring its branch up to date with its base: `update_method` `merge` (the default) or `rebase`; `expected_head_sha` refuses if its head moved. `outcome` is `updated`, `up_to_date` or `needs_agent` (nothing pushed; the same lines changed on both sides). | `repo`, `number` | `pull_requests:write` |
+| [`enable_auto_merge`](/reference/api/pull-requests/enable-pull-request-auto-merge/) | Merge it on its own, as you, once its checks, reviews and rules allow, by `merge_method` with `commit_title` and `commit_message`. Write role, or its author. | `repo`, `number` | `pull_requests:write` |
+| [`disable_auto_merge`](/reference/api/pull-requests/disable-pull-request-auto-merge/) | Turn its auto-merge off. | `repo`, `number` | `pull_requests:write` |
+| [`delete_branch`](/reference/api/pull-requests/delete-pull-request-head-branch/) | Delete a merged or closed pull request's branch; `restore_branch` brings it back. Write role. | `repo`, `number` | `pull_requests:write` |
+| [`restore_branch`](/reference/api/pull-requests/restore-pull-request-head-branch/) | Make its deleted branch again at its head commit. Write role. | `repo`, `number` | `pull_requests:write` |
 | [`merge_queue`](/reference/api/pull-requests/get-merge-queue/) | The pull requests waiting to land, in order, each with the state it is tested in and how that went; then those that recently landed or left. | `repo` | `pull_requests:read` |
 
 `record_session` takes a list of `entries`, each with a `kind` (`prompt`,
@@ -470,6 +495,8 @@ deployments; and the self-hosted runners workflows run on. See
 | [`set_approval_policy`](/reference/api/run-protection/set-fork-pr-approval/) | Set `approval_policy`: `first_time_contributors`, `outside_contributors` or `all_external_contributors`. Admin role. | `repo`, `approval_policy` | `repo:admin` |
 | [`get_access`](/reference/api/run-protection/get-actions-access/) | Who may use this private repository's actions and reusable workflows: `access_level` `none` (only itself) or `organization` (the workspace's private repositories). | `repo` | `repo:read` |
 | [`set_access`](/reference/api/run-protection/set-actions-access/) | Set `access_level`: `none` or `organization`. Admin role. | `repo`, `access_level` | `repo:admin` |
+| [`get_enabled`](/reference/api/run-protection/get-actions-permissions/) | Whether its workflows run at all: `enabled` (on for a repository, off for a fork until someone chooses), `enabled_chosen`. | `repo` | `repo:read` |
+| [`set_enabled`](/reference/api/run-protection/set-actions-permissions/) | Turn its workflows on or off with `enabled`. Off, nothing starts a run. Admin role. | `repo`, `enabled` | `repo:admin` |
 | [`repository_dispatch`](/reference/api/run-protection/create-repository-dispatch/) | Start the default branch's `repository_dispatch` workflows for `event_type`, with `client_payload`. Write role. | `repo`, `event_type` | `code:write` |
 | [`list_runners`](/reference/api/runners/list-runners-for-workspace/) | [Self-hosted runners](/guides/self-hosted-runners/): a workspace's (`workspace`), or a repository's own and the workspace's it may use (`repo`), with status, labels and what each is running. | `workspace` or `repo` | `runners:read` |
 | [`create_runner_token`](/reference/api/runners/create-runner-registration-token-for-workspace/) | A registration token for `g1t-runner register`, an hour long; `group` for a workspace's. Owners, or a repository's admins; not workspace tokens. | `workspace` or `repo` | `runners:admin` |

@@ -64,6 +64,22 @@ pub static COMMANDS: &[Mapping] = &[
         ops: &["list_repos"],
     },
     Mapping {
+        command: "repo fork",
+        ops: &["fork_repo"],
+    },
+    Mapping {
+        command: "repo forks",
+        ops: &["list_forks"],
+    },
+    Mapping {
+        command: "repo sync",
+        ops: &["sync_fork"],
+    },
+    Mapping {
+        command: "repo detach",
+        ops: &["detach_fork"],
+    },
+    Mapping {
         command: "issue list",
         ops: &["list_issues"],
     },
@@ -129,7 +145,15 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "pr merge",
-        ops: &["merge_pull_request", "delete_branch"],
+        ops: &[
+            "merge_pull_request",
+            "enable_pull_request_auto_merge",
+            "disable_pull_request_auto_merge",
+        ],
+    },
+    Mapping {
+        command: "pr update-branch",
+        ops: &["update_pull_request_branch"],
     },
     Mapping {
         command: "pr ready",

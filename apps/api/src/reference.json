@@ -707,7 +707,7 @@
       "website": "https://hello.g1t.page",
       "archived_at": null
     },
-    "notes": "Only the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/)."
+    "notes": "Only the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private`, `allow_forking`, `max_ref_updates` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. A fork cannot change `private` (`422`): detach it first. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/)."
   },
   "transfer_repo": {
     "request": {
@@ -728,6 +728,95 @@
       "archived_at": null
     },
     "notes": "The repository at its new address. Refused with `409` when the destination already has a repository of that name, `403` unless you own both workspaces, and `402` when a free destination has no room for a private repository. The old address redirects. See [Transferring a repository](/guides/transferring-repositories/)."
+  },
+  "fork_repo": {
+    "request": {
+      "workspace": "ada",
+      "default_branch_only": true
+    },
+    "response": {
+      "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
+      "namespace": "ada",
+      "name": "hello",
+      "description": "A tiny service that says hello.",
+      "is_private": false,
+      "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
+      "default_branch": "main",
+      "fork_of": null,
+      "parent_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "parent": {
+        "namespace": "flagon-io",
+        "name": "hello"
+      },
+      "allow_forking": false,
+      "protected": false,
+      "created_at": "2026-10-14T09:30:12.418Z",
+      "website": null,
+      "archived_at": null
+    },
+    "notes": "The new fork, with `parent` naming the repository it came from. Refused with `403` when the repository is private and its admins have not allowed forking, or when you cannot create repositories in the workspace; `409` when the workspace already has a repository of that name (give another `name`); `402` when a free workspace's private storage has no room for a private fork. Its code and description are copied; nothing else is. See [Forking a repository](/guides/forking-repositories/) and [Forks](/concepts/forks/)."
+  },
+  "list_forks": {
+    "query": {
+      "limit": "30"
+    },
+    "response": [
+      {
+        "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
+        "namespace": "ada",
+        "name": "hello",
+        "description": "A tiny service that says hello.",
+        "is_private": false,
+        "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
+        "default_branch": "main",
+        "fork_of": null,
+        "parent_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+        "parent": {
+          "namespace": "flagon-io",
+          "name": "hello"
+        },
+        "allow_forking": false,
+        "protected": false,
+        "created_at": "2026-10-14T09:30:12.418Z",
+        "website": null,
+        "archived_at": null
+      }
+    ],
+    "notes": "Only the forks you can read, newest first: a private repository's forks are listed for people who can read them. Forks of a fork are listed on that fork. See [Forks](/concepts/forks/)."
+  },
+  "sync_fork": {
+    "request": {
+      "branch": "main"
+    },
+    "response": {
+      "status": "fast_forwarded",
+      "branch": "main",
+      "head": "9c4e1f0b7a2d3e5f6a8b9c0d1e2f3a4b5c6d7e8f",
+      "behind": 3,
+      "ahead": 0,
+      "conflicts": []
+    },
+    "notes": "`status` is `up_to_date`, `fast_forwarded`, `merged` (a merge commit joins the fork's own commits and the parent's) or `conflicted`: both sides changed the files in `conflicts`, and nothing was changed. Merge the parent's branch in a clone and push. Refused with `422` when the repository is not a fork, `403` without the Write role on it, and `404` when its parent is gone or you can no longer read it. See [Sync a fork](/guides/forking-repositories/#sync-a-fork)."
+  },
+  "detach_fork": {
+    "response": {
+      "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
+      "namespace": "ada",
+      "name": "hello",
+      "description": "A tiny service that says hello.",
+      "is_private": false,
+      "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
+      "default_branch": "main",
+      "fork_of": null,
+      "parent_id": null,
+      "parent": null,
+      "allow_forking": false,
+      "protected": false,
+      "created_at": "2026-10-14T09:30:12.418Z",
+      "website": null,
+      "archived_at": null
+    },
+    "notes": "The repository, now with no parent. Needs the Admin role (`403` otherwise); `422` when it is not a fork. It cannot be attached again. See [Detach a fork](/guides/forking-repositories/#detach-a-fork)."
   },
   "rename_repo": {
     "request": {
@@ -946,6 +1035,23 @@
       "allow_ignoring_checks": true,
       "merge_queue": false,
       "require_code_owner_review": false,
+      "has_issues": null,
+      "issues_enabled": true,
+      "allow_merge_commit": true,
+      "allow_squash_merge": true,
+      "allow_rebase_merge": true,
+      "allow_fast_forward": false,
+      "default_merge_method": "merge",
+      "merge_commit_message": "default",
+      "squash_commit_message": "default",
+      "merge_commit_template": null,
+      "squash_commit_template": null,
+      "suggest_updating_branches": true,
+      "allow_auto_merge": true,
+      "delete_branch_on_merge": false,
+      "require_web_commit_sign_off": false,
+      "allow_commit_comments": true,
+      "auto_close_issues": true,
       "updated_by": null,
       "updated_at": null
     }
@@ -959,7 +1065,11 @@
       "required_approvals": 1,
       "count_agent_approvals": false,
       "merge_queue": true,
-      "require_code_owner_review": true
+      "require_code_owner_review": true,
+      "allow_merge_commit": false,
+      "default_merge_method": "squash",
+      "squash_commit_message": "pull_title_and_description",
+      "delete_branch_on_merge": true
     },
     "response": {
       "auto_merge": false,
@@ -973,10 +1083,27 @@
       "allow_ignoring_checks": true,
       "merge_queue": true,
       "require_code_owner_review": true,
+      "has_issues": null,
+      "issues_enabled": true,
+      "allow_merge_commit": false,
+      "allow_squash_merge": true,
+      "allow_rebase_merge": true,
+      "allow_fast_forward": false,
+      "default_merge_method": "squash",
+      "merge_commit_message": "default",
+      "squash_commit_message": "pull_title_and_description",
+      "merge_commit_template": null,
+      "squash_commit_template": null,
+      "suggest_updating_branches": true,
+      "allow_auto_merge": true,
+      "delete_branch_on_merge": true,
+      "require_web_commit_sign_off": false,
+      "allow_commit_comments": true,
+      "auto_close_issues": true,
       "updated_by": "syntaqx",
       "updated_at": "2026-10-04T16:20:37.508Z"
     },
-    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/)."
+    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_issues` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings)."
   },
   "list_check_names": {
     "response": [
@@ -2050,9 +2177,52 @@
     },
     "notes": "Takes them off who is asked; anyone not asked is ignored. Reviews they already gave stay, as do the people a team's review assignment picked: remove them by username."
   },
+  "get_pull_request_merge_options": {
+    "response": {
+      "methods": [
+        "merge",
+        "squash",
+        "rebase"
+      ],
+      "default_method": "squash",
+      "options": [
+        {
+          "method": "merge",
+          "commit_title": "Merge pull request #14 from flagon-io/greet-caller",
+          "commit_message": "Greeting should name the caller",
+          "unavailable": null
+        },
+        {
+          "method": "squash",
+          "commit_title": "Greeting should name the caller (#14)",
+          "commit_message": "* Read the name from the first argument\n* Fall back to \"world\"",
+          "unavailable": null
+        },
+        {
+          "method": "rebase",
+          "commit_title": null,
+          "commit_message": null,
+          "unavailable": null
+        }
+      ],
+      "behind": false,
+      "can_fast_forward": false,
+      "suggest_update": false,
+      "require_up_to_date": false,
+      "merge_queue": false,
+      "auto_merge_allowed": true,
+      "delete_branch_default": true,
+      "can_delete_branch": true,
+      "sign_off": false
+    },
+    "notes": "`methods` are the repository's allowed methods, narrowed by the rules for the branch it merges into: required linear history leaves out `merge`. `fast_forward` lists `unavailable` until the branch contains its base's head. `merge` and `squash` carry the commit message a merge would use if you wrote none. See [Merging a pull request](/guides/pull-requests/#merging-a-pull-request)."
+  },
   "merge_pull_request": {
     "request": {
-      "keep_issue_open": false
+      "merge_method": "squash",
+      "commit_title": "Greeting names the caller (#14)",
+      "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "delete_branch": true
     },
     "response": {
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
@@ -2070,6 +2240,190 @@
       },
       "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
       "branch": null,
+      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+      "merged_by": "syntaqx",
+      "merged_at": "2026-10-01T18:52:17.093Z",
+      "merge_method": "squash",
+      "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
+      "closes": [
+        12
+      ],
+      "superseded_by": null,
+      "check_status": "passed",
+      "files": [
+        {
+          "path": "src/main.rs",
+          "additions": 6,
+          "deletions": 2
+        }
+      ],
+      "assignees": [],
+      "reviewers": [
+        "ana"
+      ],
+      "labels": [],
+      "milestone": null,
+      "base": "main",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:20:02.117Z",
+      "updated_at": "2026-10-01T18:52:17.093Z"
+    },
+    "notes": "A draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by`, closes the issues in `closes` (into the default branch, where `auto_close_issues` is on) and sets `superseded_by` on the pull requests it closes. A `merge_method` the repository or a rule for the base does not allow answers `422`, and a head that moved since `sha`, `409`. `merge_commit` is the commit the base is at afterwards: the merge or squash commit, the last rebased one, or the head for a fast-forward. See [Merging a pull request](/guides/pull-requests/#merging-a-pull-request)."
+  },
+  "update_pull_request_branch": {
+    "request": {
+      "expected_head_sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "update_method": "merge"
+    },
+    "response": {
+      "outcome": "updated",
+      "commit": "5b8d0f2a4c6e8a0c2e4a6c8e0a2c4e6a8c0e2a4c",
+      "previous": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+    },
+    "notes": "`outcome` is `updated` (its branch moved from `previous` to `commit`), `up_to_date` (it already holds its base's head; `commit` only) or `needs_agent` (nothing was pushed: `reason` is `overlap`, `conflicting` or `unsupported`, with `detail` and the `paths` concerned). `update_method` `rebase` rewrites its branch, so pull it again before pushing more. A head that moved since `expected_head_sha` answers `409`. See [Keeping a pull request up to date](/guides/pull-requests/#keeping-it-up-to-date)."
+  },
+  "enable_pull_request_auto_merge": {
+    "request": {
+      "merge_method": "squash",
+      "commit_title": "Greeting names the caller (#14)"
+    },
+    "response": {
+      "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "number": 14,
+      "issue": 12,
+      "title": "Greeting should name the caller",
+      "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+      "agent": "claude-code",
+      "runtime": "external",
+      "status": "open",
+      "fork": {
+        "namespace": "pulls",
+        "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+      },
+      "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+      "branch": null,
+      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+      "merged_by": null,
+      "merged_at": null,
+      "superseded_by": null,
+      "check_status": "running",
+      "files": [
+        {
+          "path": "src/main.rs",
+          "additions": 6,
+          "deletions": 2
+        }
+      ],
+      "assignees": [],
+      "reviewers": [
+        "ana"
+      ],
+      "labels": [],
+      "milestone": null,
+      "base": "main",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:20:02.117Z",
+      "updated_at": "2026-10-01T18:44:09.310Z",
+      "auto_merge": {
+        "method": "squash",
+        "commit_title": "Greeting names the caller (#14)",
+        "commit_message": null,
+        "enabled_by": "syntaqx",
+        "enabled_at": "2026-10-01T18:44:09.310Z"
+      },
+      "closes": [
+        12
+      ]
+    },
+    "notes": "A repository with `allow_auto_merge` off answers `422`, as does a method it or a rule for the base does not allow. A pull request that may already merge merges at once: check `status`. `auto_merge` is cleared when it merges or closes, when it is turned off, and when someone other than `enabled_by` pushes to it. See [Auto-merge](/guides/pull-requests/#auto-merge)."
+  },
+  "disable_pull_request_auto_merge": {
+    "response": {
+      "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "number": 14,
+      "issue": 12,
+      "title": "Greeting should name the caller",
+      "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+      "agent": "claude-code",
+      "runtime": "external",
+      "status": "open",
+      "fork": {
+        "namespace": "pulls",
+        "name": "pr_01m43smh3vexsr5pmp60qwv0vs"
+      },
+      "fork_repo_id": "rep_01m43smh5xd7aw2kq9tv0b4c8e",
+      "branch": null,
+      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+      "merged_by": null,
+      "merged_at": null,
+      "superseded_by": null,
+      "check_status": "running",
+      "files": [
+        {
+          "path": "src/main.rs",
+          "additions": 6,
+          "deletions": 2
+        }
+      ],
+      "assignees": [],
+      "reviewers": [
+        "ana"
+      ],
+      "labels": [],
+      "milestone": null,
+      "base": "main",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:20:02.117Z",
+      "updated_at": "2026-10-01T18:44:09.310Z",
+      "auto_merge": null,
+      "closes": [
+        12
+      ]
+    }
+  },
+  "delete_pull_request_head_branch": {
+    "response": {
+      "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "number": 14,
+      "issue": 12,
+      "title": "Greeting should name the caller",
+      "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+      "agent": "claude-code",
+      "runtime": "external",
+      "status": "merged",
+      "fork": null,
+      "fork_repo_id": null,
+      "branch": "greet-caller",
       "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
       "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
       "merged_by": "syntaqx",
@@ -2100,9 +2454,174 @@
       },
       "requested_by": null,
       "created_at": "2026-10-01T18:20:02.117Z",
-      "updated_at": "2026-10-01T18:52:17.093Z"
+      "updated_at": "2026-10-01T18:53:02.415Z",
+      "merge_method": "squash",
+      "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
+      "closes": [
+        12
+      ],
+      "head_branch_deleted": true
     },
-    "notes": "A draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by` and sets `superseded_by` on the pull requests it closes."
+    "notes": "An open pull request answers `409`: close or merge it first. `head_branch_deleted` is then `true`; [restore it](/reference/api/pull-requests/restore-pull-request-head-branch/) at `head_commit`."
+  },
+  "restore_pull_request_head_branch": {
+    "response": {
+      "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "number": 14,
+      "issue": 12,
+      "title": "Greeting should name the caller",
+      "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
+      "agent": "claude-code",
+      "runtime": "external",
+      "status": "merged",
+      "fork": null,
+      "fork_repo_id": null,
+      "branch": "greet-caller",
+      "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "merge_base": "3a7e9c1b5d2f4a6c8e0b2d4f6a8c0e2b4d6f8a1c",
+      "merged_by": "syntaqx",
+      "merged_at": "2026-10-01T18:52:17.093Z",
+      "superseded_by": null,
+      "check_status": "passed",
+      "files": [
+        {
+          "path": "src/main.rs",
+          "additions": 6,
+          "deletions": 2
+        }
+      ],
+      "assignees": [],
+      "reviewers": [
+        "ana"
+      ],
+      "labels": [],
+      "milestone": null,
+      "base": "main",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:20:02.117Z",
+      "updated_at": "2026-10-02T09:10:44.902Z",
+      "merge_method": "squash",
+      "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
+      "closes": [
+        12
+      ],
+      "head_branch_deleted": false
+    },
+    "notes": "The branch is made again at `head_commit`. A branch of that name that exists again answers `409`."
+  },
+  "list_repo_commit_comments": {
+    "query": {
+      "page": 1
+    },
+    "response": [
+      {
+        "id": "ccm_01m4a2s1b5c7e9g3k6m0p4s8v2",
+        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+        "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+        "path": null,
+        "line": null,
+        "author": "syntaqx",
+        "body": "Released as v0.4.0.",
+        "created_at": "2026-10-02T08:30:57.664Z",
+        "updated_at": null
+      },
+      {
+        "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+        "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+        "path": "src/main.rs",
+        "line": 12,
+        "author": "ana",
+        "body": "Should an empty name fall back to \"world\"?",
+        "created_at": "2026-10-01T19:02:11.208Z",
+        "updated_at": null
+      }
+    ],
+    "notes": "Newest first, 30 a page. A comment with `path` and `line` is on that line of the file as its `commit` left it; one without is on the whole commit."
+  },
+  "list_commit_comments": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+    },
+    "response": [
+      {
+        "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+        "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+        "path": "src/main.rs",
+        "line": 12,
+        "author": "ana",
+        "body": "Should an empty name fall back to \"world\"?",
+        "created_at": "2026-10-01T19:02:11.208Z",
+        "updated_at": null
+      }
+    ],
+    "notes": "Oldest first."
+  },
+  "create_commit_comment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "sha": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+    },
+    "request": {
+      "body": "Should an empty name fall back to \"world\"?",
+      "path": "src/main.rs",
+      "line": 12
+    },
+    "response": {
+      "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "path": "src/main.rs",
+      "line": 12,
+      "author": "ana",
+      "body": "Should an empty name fall back to \"world\"?",
+      "created_at": "2026-10-01T19:02:11.208Z",
+      "updated_at": null
+    },
+    "notes": "`line` needs `path`, a file the commit changed, and counts lines of that file as the commit left it. A repository with `allow_commit_comments` off answers `403`; a commit it does not have, `404`. See [Commit comments](/guides/pull-requests/#commit-comments)."
+  },
+  "update_commit_comment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "comment_id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4"
+    },
+    "request": {
+      "body": "Should an empty name fall back to \"world\"? The README says it does."
+    },
+    "response": {
+      "id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4",
+      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+      "path": "src/main.rs",
+      "line": 12,
+      "author": "ana",
+      "body": "Should an empty name fall back to \"world\"? The README says it does.",
+      "created_at": "2026-10-01T19:02:11.208Z",
+      "updated_at": "2026-10-01T19:05:40.117Z"
+    },
+    "notes": "Its author only."
+  },
+  "delete_commit_comment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "comment_id": "ccm_01m4a2r7k3d9f1h5j8n2q6t0w4"
+    },
+    "notes": "Answers `204` with no body. Its author, or someone with the Maintain role or higher."
   },
   "close_pull_request": {
     "response": {
@@ -11410,6 +11929,33 @@
     "response": {
       "access_level": "none"
     }
+  },
+  "get_actions_permissions": {
+    "params": {
+      "owner": "ada",
+      "name": "hello"
+    },
+    "response": {
+      "enabled": false,
+      "enabled_chosen": false,
+      "allowed_actions": "all"
+    },
+    "notes": "A fork's workflows are off until someone turns them on: here `ada/hello` is a fork nobody has chosen for yet. See [Forks](/concepts/forks/)."
+  },
+  "set_actions_permissions": {
+    "params": {
+      "owner": "ada",
+      "name": "hello"
+    },
+    "request": {
+      "enabled": true
+    },
+    "response": {
+      "enabled": true,
+      "enabled_chosen": true,
+      "allowed_actions": "all"
+    },
+    "notes": "Needs the Admin role (`403` otherwise); a workflow job's own token is refused. Turning workflows on starts nothing by itself. See [Turn workflows off](/guides/actions/#turn-workflows-on-or-off)."
   },
   "set_actions_access": {
     "params": {

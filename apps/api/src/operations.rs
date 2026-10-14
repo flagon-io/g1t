@@ -13,7 +13,9 @@ use g1t_contracts::codeowners::CodeOwnersErrorsArgs;
 use g1t_contracts::identity::AgentScope;
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{CreateWorkspaceArgs, UpdateWorkspaceArgs, Workspace};
-use g1t_contracts::repos::{CreateArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath};
+use g1t_contracts::repos::{
+    CreateArgs, DetachForkArgs, ForkRepoArgs, ForksArgs, GetArgs, ListArgs as ListReposArgs, Repo, RepoPath, SyncForkArgs,
+};
 use g1t_contracts::teams::{
     CreateTeamArgs, DeleteTeamArgs, ListTeamsArgs, RemoveTeamMemberArgs, RemoveTeamRepoArgs, ReviewAlgorithm,
     ReviewAssignment, SetTeamCreationArgs, SetTeamMemberArgs, SetTeamRepoArgs, Team, TeamArgs, TeamCreation, TeamRole,
@@ -42,6 +44,8 @@ use crate::token_policy::TokenOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
 use g1t_contracts::inbox::{Reason, Severity, WATCH_EVENTS, WatchLevel};
+use g1t_contracts::repos::UpdateMethod;
+use g1t_contracts::rules::MergeMethod;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde::Serialize;
@@ -142,6 +146,10 @@ pub enum Op {
     CreateRepo,
     UpdateRepo,
     TransferRepo,
+    ForkRepo,
+    ListForks,
+    SyncFork,
+    DetachFork,
     RenameRepo,
     RenameBranch,
     CreateBranch,
@@ -197,6 +205,17 @@ pub enum Op {
     ReopenPullRequest,
     GetPullRequestChanges,
     MergePullRequest,
+    GetPullRequestMergeOptions,
+    UpdatePullRequestBranch,
+    EnablePullRequestAutoMerge,
+    DisablePullRequestAutoMerge,
+    DeletePullRequestHeadBranch,
+    RestorePullRequestHeadBranch,
+    ListRepoCommitComments,
+    ListCommitComments,
+    CreateCommitComment,
+    UpdateCommitComment,
+    DeleteCommitComment,
     ListEvents,
     ListIntegrations,
     ConnectIntegration,
@@ -482,6 +501,17 @@ fn comment_id_schema() -> Value {
     })
 }
 
+fn commit_sha_schema() -> Value {
+    json!({ "type": "string", "description": "The commit's hash, as list_commits gives it." })
+}
+
+fn commit_comment_id_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "The commit comment's id, as list_commit_comments and list_repo_commit_comments give it.",
+    })
+}
+
 fn workspace_schema() -> Value {
     json!({ "type": "string", "description": "The workspace's slug, e.g. \"flagon-io\"." })
 }
@@ -725,6 +755,50 @@ fn subscription_target(more: Value) -> Value {
     properties
 }
 
+/// How a pull request merges.
+fn merge_method_schema(description: &str) -> Value {
+    json!({
+        "type": "string",
+        "enum": MergeMethod::ALL.map(MergeMethod::as_str),
+        "description": description,
+    })
+}
+
+/// A merge method given by name, if one was given: `Err` names the ones
+/// there are.
+fn merge_method(input: &Value, key: &str) -> std::result::Result<Option<MergeMethod>, String> {
+    match input[key].as_str().map(str::trim).filter(|given| !given.is_empty()) {
+        None => Ok(None),
+        Some(given) => MergeMethod::ALL
+            .into_iter()
+            .find(|method| method.as_str().eq_ignore_ascii_case(given))
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be merge, squash, rebase or fast_forward, not {given}.")),
+    }
+}
+
+/// What a merge or squash commit says by default.
+const COMMIT_MESSAGE_DEFAULTS: [(&str, CommitMessageDefault); 5] = [
+    ("default", CommitMessageDefault::Default),
+    ("pull_title", CommitMessageDefault::PullTitle),
+    ("pull_title_and_description", CommitMessageDefault::PullTitleAndDescription),
+    ("pull_title_and_commits", CommitMessageDefault::PullTitleAndCommits),
+    ("custom", CommitMessageDefault::Custom),
+];
+
+fn commit_message_default(input: &Value, key: &str) -> std::result::Result<Option<CommitMessageDefault>, String> {
+    match input[key].as_str().map(str::trim).filter(|given| !given.is_empty()) {
+        None => Ok(None),
+        Some(given) => COMMIT_MESSAGE_DEFAULTS
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(given))
+            .map(|(_, value)| Some(*value))
+            .ok_or_else(|| {
+                format!("{key} must be default, pull_title, pull_title_and_description, pull_title_and_commits or custom, not {given}.")
+            }),
+    }
+}
+
 fn alert_id_schema() -> Value {
     json!({
         "type": "string",
@@ -733,7 +807,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 385] = [
+    pub const ALL: [Op; 402] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -764,6 +838,10 @@ impl Op {
         Op::CreateRepo,
         Op::UpdateRepo,
         Op::TransferRepo,
+        Op::ForkRepo,
+        Op::ListForks,
+        Op::SyncFork,
+        Op::DetachFork,
         Op::RenameRepo,
         Op::RenameBranch,
         Op::CreateBranch,
@@ -819,6 +897,17 @@ impl Op {
         Op::ReopenPullRequest,
         Op::GetPullRequestChanges,
         Op::MergePullRequest,
+        Op::GetPullRequestMergeOptions,
+        Op::UpdatePullRequestBranch,
+        Op::EnablePullRequestAutoMerge,
+        Op::DisablePullRequestAutoMerge,
+        Op::DeletePullRequestHeadBranch,
+        Op::RestorePullRequestHeadBranch,
+        Op::ListRepoCommitComments,
+        Op::ListCommitComments,
+        Op::CreateCommitComment,
+        Op::UpdateCommitComment,
+        Op::DeleteCommitComment,
         Op::ListEvents,
         Op::ListIntegrations,
         Op::ConnectIntegration,
@@ -1060,6 +1149,8 @@ impl Op {
         Op::Protection(ProtectionOp::SetForkPrApproval),
         Op::Protection(ProtectionOp::GetActionsAccess),
         Op::Protection(ProtectionOp::SetActionsAccess),
+        Op::Protection(ProtectionOp::GetActionsPermissions),
+        Op::Protection(ProtectionOp::SetActionsPermissions),
         Op::Protection(ProtectionOp::CreateRepositoryDispatch),
         Op::Protection(ProtectionOp::GetWorkspaceWorkflowPermissions),
         Op::Protection(ProtectionOp::SetWorkspaceWorkflowPermissions),
@@ -1158,6 +1249,10 @@ impl Op {
             Op::CreateRepo => "create_repo",
             Op::UpdateRepo => "update_repo",
             Op::TransferRepo => "transfer_repo",
+            Op::ForkRepo => "fork_repo",
+            Op::ListForks => "list_forks",
+            Op::SyncFork => "sync_fork",
+            Op::DetachFork => "detach_fork",
             Op::RenameRepo => "rename_repo",
             Op::RenameBranch => "rename_branch",
             Op::CreateBranch => "create_branch",
@@ -1213,6 +1308,17 @@ impl Op {
             Op::ConvertPullRequestToDraft => "convert_pull_request_to_draft",
             Op::GetPullRequestChanges => "get_pull_request_changes",
             Op::MergePullRequest => "merge_pull_request",
+            Op::GetPullRequestMergeOptions => "get_pull_request_merge_options",
+            Op::UpdatePullRequestBranch => "update_pull_request_branch",
+            Op::EnablePullRequestAutoMerge => "enable_pull_request_auto_merge",
+            Op::DisablePullRequestAutoMerge => "disable_pull_request_auto_merge",
+            Op::DeletePullRequestHeadBranch => "delete_pull_request_head_branch",
+            Op::RestorePullRequestHeadBranch => "restore_pull_request_head_branch",
+            Op::ListRepoCommitComments => "list_repo_commit_comments",
+            Op::ListCommitComments => "list_commit_comments",
+            Op::CreateCommitComment => "create_commit_comment",
+            Op::UpdateCommitComment => "update_commit_comment",
+            Op::DeleteCommitComment => "delete_commit_comment",
             Op::ListEvents => "list_events",
             Op::ListIntegrations => "list_integrations",
             Op::ConnectIntegration => "connect_integration",
@@ -1416,7 +1522,7 @@ impl Op {
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
             Op::UpdateRepo => {
-                "Change a repository's description, website, topics and default branch, whether its default branch is protected, and whether it is private. Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it."
+                "Change a repository's description, website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork)."
             }
             Op::RenameRepo => {
                 "Give a repository a new name in its workspace. Needs the Admin role. Everything stays with it: git data, issues, pull requests, workflow runs, deployments, secrets and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. The new name must be free in the workspace, including names held by recently deleted repositories."
@@ -1454,11 +1560,23 @@ impl Op {
             Op::TransferRepo => {
                 "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, issues, pull requests, comments, labels, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
             }
+            Op::ForkRepo => {
+                "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code and description come with it: the default branch, or every branch and tag with default_branch_only false. Its issues, pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; issues are off in the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from."
+            }
+            Op::ListForks => {
+                "A repository's forks that you can see, newest first, each with parent naming the repository. limit is at most 100, 30 when left out. Forks of its forks are listed on them."
+            }
+            Op::SyncFork => {
+                "Bring a fork's branch up to date with its parent: branch (the fork's default branch when left out) takes in the parent's branch of the same name, or the parent's default branch for the fork's default branch. Needs the Write role on the fork and read access to its parent. A branch that is only behind moves forward (fast_forwarded); one with commits of its own gets a merge commit when the two sides' changes do not clash, edits to the same file merging line by line (merged); when both changed the same lines (or one deleted a file the other changed, or both changed a binary file) nothing is changed (conflicted, with the files in conflicts, at most 20): merge the parent's branch in a clone and push, or open a pull request. Returns status, branch, head (the branch's commit afterwards), behind and ahead (the commits each side had that the other lacked)."
+            }
+            Op::DetachFork => {
+                "Detach a fork from its parent: it becomes an ordinary repository with no parent, and can then be made public or private. Needs the Admin role on the fork. Its code, settings, and the pull requests it already opened into the parent stay as they are; it can no longer be synced or open new pull requests into the parent. It cannot be attached again."
+            }
             Op::GetRepoSettings => {
-                "How a repository handles pull requests: whether they merge by themselves, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for every pull request, whoever opened it. list_repo_rulesets and get_branch_rules show every rule."
+                "How a repository handles pull requests, commits and issues: the merge methods it allows and the one offered first, what merge and squash commits say by default (merge_commit_message, squash_commit_message, and the templates for custom), whether pull requests may turn on auto-merge, whether their branches are deleted once merged, whether to suggest updating branches, whether web commits are signed off, whether commit comments are allowed, whether merged pull requests close the issues they name, and whether issues can be opened (issues_enabled); also whether they merge by themselves, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for every pull request, whoever opened it. list_repo_rulesets and get_branch_rules show every rule."
             }
             Op::UpdateRepoSettings => {
-                "Change how a repository handles pull requests. Only the fields given are changed; required_checks replaces the whole list. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field."
+                "Change how a repository handles pull requests, commits and issues. Only the fields given are changed; required_checks replaces the whole list. At least one merge method must stay allowed, and default_merge_method must be one of them. A custom commit message (merge_commit_message or squash_commit_message custom) uses its template, whose {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in; pull_title_and_commits is for squash commits only. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field."
             }
             Op::ListCheckNames => {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
@@ -1575,7 +1693,40 @@ impl Op {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue. A large one lists every file (up to 300; truncated says when there were more) but has the lines of only the first, about 20,000 lines read: the files after that come with omitted true and no lines or counts. Ask again with paths (up to 50 at a time) to have those files' lines."
             }
             Op::MergePullRequest => {
-                "Land a pull request on its base, the branch it merges into (the default branch unless it names another). Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch resolves the issue it was made for: the issue closes recording this pull request, and the other pull requests still in progress for that issue close as superseded; merging into another branch leaves the issue open. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead, so pull the base into its fork or branch, push, and merge again. Check status in the result to see whether it has landed."
+                "Land a pull request on its base, the branch it merges into (the default branch unless it names another). merge_method says how: merge (a merge commit joins its branch to the base, its commits included), squash (one new commit holds everything it changed), rebase (each of its commits is made again on top of the base, in order) or fast_forward (the base moves to its head, exactly the commit that was checked; only when its branch contains the base's head). Left out, the repository's default_merge_method. A method the repository does not allow (allow_merge_commit, allow_squash_merge, allow_rebase_merge, allow_fast_forward on update_repo_settings), or that a rule for the base does not (allowed_merge_methods, and required linear history, which refuses merge), is refused. commit_title and commit_message are a merge or squash commit's message: its first line and the rest; left out, the repository's merge_commit_message or squash_commit_message decides. With sha, the merge is refused (409) if the pull request's head is no longer that commit. delete_branch deletes its branch once it has merged (left out, the repository's delete_branch_on_merge); restore_pull_request_head_branch brings it back. Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch closes the issues in its closes: the issue it was made for and those its title and description name after a closing keyword (Fixes #12), where the repository closes issues (auto_close_issues); the other pull requests still in progress for its issue close as superseded. Merging into another branch closes nothing. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead: update_pull_request_branch, then merge again. Check status in the result to see whether it has landed, and merge_method and merge_commit for how."
+            }
+            Op::GetPullRequestMergeOptions => {
+                "How a pull request may merge now, as the merge box offers it to you: the methods it may merge by (the repository's, as the rules for its base allow them) and the one offered first (default_method); each method's default commit title and message, and why one cannot be used now (unavailable); whether it is behind its base, can fast-forward as it is, should be offered an update (suggest_update) or must be up to date (require_up_to_date); whether it goes through the merge queue; whether you may turn on auto-merge; whether deleting its branch starts ticked and is possible; and whether commits made merging it are signed off."
+            }
+            Op::UpdatePullRequestBranch => {
+                "Bring a pull request's branch up to date with its base: update_method merge (the default) makes a merge commit on its branch that takes in the base's new commits; rebase makes each of its commits again on top of the base's head and moves its branch there, rewriting its history. Pushed as you, so you must be able to push to its branch: the Write role for a branch of the repository, its owner for a working copy, and push access to the fork for a branch of a fork. With expected_head_sha, refused (409) if its head is no longer that commit. Edits to the same file merge line by line; a rebase drops merge commits and commits the base already has, keeps authors, dates and messages, and moves its branch only if its head is still where it was. Returns outcome: updated (with commit, its head now, and previous), up_to_date, or needs_agent when both sides changed the same lines (with reason, detail and the paths): nothing was pushed, so merge or rebase in a clone and push."
+            }
+            Op::EnablePullRequestAutoMerge => {
+                "Turn on auto-merge for a pull request: it merges on its own, as you, once its required checks, reviews and rules allow, with merge_method (the repository's default when left out) and, for merge and squash, commit_title and commit_message. Needs the Write role, since it merges as you, and a repository that allows auto-merge (allow_auto_merge). A method the repository or a rule for its base does not allow is refused. A pull request that may merge already merges at once instead. Auto-merge is turned off when it merges or closes, when someone turns it off, and when someone other than whoever turned it on pushes to it. Publishes pull.auto_merge_enabled. Returns the pull request, with auto_merge saying how and who asked."
+            }
+            Op::DisablePullRequestAutoMerge => {
+                "Turn off auto-merge for a pull request: it waits for someone to merge it. Needs the Write role, or to be its author. Publishes pull.auto_merge_disabled. Returns the pull request, with auto_merge null."
+            }
+            Op::DeletePullRequestHeadBranch => {
+                "Delete a merged or closed pull request's branch: a branch of the repository, or of a fork you can push to. Needs the Write role (push access to the fork, for a fork's branch). Refused while the pull request is open, for the default branch, for a branch an open pull request still uses, and where rules protect it. head_branch_deleted is then true, and restore_pull_request_head_branch makes it again at its head. Publishes pull.head_branch_deleted. Returns the pull request."
+            }
+            Op::RestorePullRequestHeadBranch => {
+                "Make a pull request's deleted branch again, at the pull request's head commit (head_commit). Needs the Write role (push access to the fork, for a fork's branch). Refused when a branch of that name exists again. Publishes pull.head_branch_restored. Returns the pull request."
+            }
+            Op::ListRepoCommitComments => {
+                "A repository's commit comments, newest first, 30 a page (page from 1). Each names its commit; one on a line of a file has path and line. Anyone who can read the repository can read them."
+            }
+            Op::ListCommitComments => {
+                "A commit's comments, oldest first: on the whole commit, or on one line of a file it changed (path and line). sha is the commit's hash. Anyone who can read the repository can read them."
+            }
+            Op::CreateCommitComment => {
+                "Comment on a commit, as a whole or, with path and line, on one line of a file the commit changed (a line of the file as the commit left it). Anyone who can read the repository may, unless it has turned commit comments off (allow_commit_comments on update_repo_settings). The commit's author and anyone mentioned are notified. Publishes commit_comment.created."
+            }
+            Op::UpdateCommitComment => {
+                "Change a commit comment's text, named by comment_id. Its author only. Publishes commit_comment.edited."
+            }
+            Op::DeleteCommitComment => {
+                "Delete a commit comment, named by comment_id. Its author may, and so may anyone with the Maintain role or higher. This cannot be undone. Publishes commit_comment.deleted."
             }
             Op::ListEvents => {
                 "The timeline of a repository: pushes, issues, pull requests, comments, sessions, claims and integration results, newest first; page back with before. To follow it, give after (an event id): the events written after that one come oldest first, and the last one's id is the next call's after. With after and wait (seconds, at most 25), a call that finds nothing holds on until a matching event is written or the wait ends, then returns what it has, perhaps nothing. Narrow it with types, numbers (issues and pull requests, matching events about them and comments on them), since and limit (50 by default, at most 200)."
@@ -2107,6 +2258,37 @@ impl Op {
                 }),
                 &["repo", "to"],
             ),
+            Op::ForkRepo => object(
+                json!({
+                    "repo": repo_schema(),
+                    "workspace": {
+                        "type": "string",
+                        "description": "The slug of the workspace to fork it into, e.g. \"flagon-io\". Your personal workspace when left out.",
+                    },
+                    "name": { "type": "string", "description": "The fork's name; the repository's own when left out." },
+                    "description": { "type": "string", "description": "The fork's description; the repository's own when left out, none when empty." },
+                    "default_branch_only": {
+                        "type": "boolean",
+                        "description": "Copy only the default branch (the default). false copies every branch and tag.",
+                    },
+                }),
+                &["repo"],
+            ),
+            Op::ListForks => object(
+                json!({
+                    "repo": repo_schema(),
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "At most this many; 30 when left out." },
+                }),
+                &["repo"],
+            ),
+            Op::SyncFork => object(
+                json!({
+                    "repo": repo_schema(),
+                    "branch": { "type": "string", "description": "The fork's branch to sync; its default branch when left out." },
+                }),
+                &["repo"],
+            ),
+            Op::DetachFork => repo_only(),
             Op::GetRepo | Op::ListLabels | Op::AddDefaultLabels => repo_only(),
             Op::CreateLabel => object(
                 json!({
@@ -2193,6 +2375,16 @@ impl Op {
                     "default_branch": {
                         "type": "string",
                         "description": "Make this existing branch the default: the one clones check out and pull requests merge into.",
+                    },
+                    "allow_forking": {
+                        "type": "boolean",
+                        "description": "Let people who can read this private repository fork it; their forks stay private. Public repositories can always be forked.",
+                    },
+                    "max_ref_updates": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000,
+                        "description": "The most branches and tags one push may change, 1 to 1,000; a push that would change more is declined whole. 0 for no limit.",
                     },
                 }),
                 &["repo"],
@@ -2322,6 +2514,69 @@ impl Op {
                     "require_code_owner_review": {
                         "type": "boolean",
                         "description": "Refuse to merge until the code owners of every file a pull request changes, as the CODEOWNERS file of the branch it merges into names them, have approved it, as many as each section asks. Only people's approvals count, and g1t's only where the file names @g1t.",
+                    },
+                    "allow_merge_commit": {
+                        "type": "boolean",
+                        "description": "Let pull requests merge with a merge commit (merge). At least one method stays allowed.",
+                    },
+                    "allow_squash_merge": {
+                        "type": "boolean",
+                        "description": "Let pull requests merge as one squashed commit (squash).",
+                    },
+                    "allow_rebase_merge": {
+                        "type": "boolean",
+                        "description": "Let pull requests merge by making each of their commits again on the base (rebase).",
+                    },
+                    "allow_fast_forward": {
+                        "type": "boolean",
+                        "description": "Let pull requests merge by moving the base to their head, with no new commit (fast_forward). Off unless turned on.",
+                    },
+                    "default_merge_method": merge_method_schema("The method offered first, and used when a merge names none. Must be allowed."),
+                    "merge_commit_message": {
+                        "type": "string",
+                        "enum": ["default", "pull_title", "pull_title_and_description", "custom"],
+                        "description": "What a merge commit says unless its merger writes it: default (\"Merge pull request #12 from owner/branch\" and its title), pull_title (its title, with its number), pull_title_and_description (and its description below), or custom (merge_commit_template).",
+                    },
+                    "squash_commit_message": {
+                        "type": "string",
+                        "enum": ["default", "pull_title", "pull_title_and_description", "pull_title_and_commits", "custom"],
+                        "description": "What a squash commit says unless its merger writes it: default (its title for one commit, else its title and the commits' messages), pull_title, pull_title_and_description, pull_title_and_commits (its title, and each commit's message below), or custom (squash_commit_template).",
+                    },
+                    "merge_commit_template": {
+                        "type": "string",
+                        "description": "With merge_commit_message custom: the message, its first line the title. {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in. An empty string clears it.",
+                    },
+                    "squash_commit_template": {
+                        "type": "string",
+                        "description": "With squash_commit_message custom: the message, with the same placeholders as merge_commit_template. An empty string clears it.",
+                    },
+                    "suggest_updating_branches": {
+                        "type": "boolean",
+                        "description": "Offer to update a pull request's branch whenever its base has new commits, not only when it must be up to date to merge.",
+                    },
+                    "allow_auto_merge": {
+                        "type": "boolean",
+                        "description": "Let people turn on auto-merge for a pull request, so it merges on its own once everything it needs is met.",
+                    },
+                    "delete_branch_on_merge": {
+                        "type": "boolean",
+                        "description": "Delete a pull request's branch once it merges. It can be restored from the pull request.",
+                    },
+                    "require_web_commit_sign_off": {
+                        "type": "boolean",
+                        "description": "Commits made on g1t (web edits, merge and squash commits) carry a Signed-off-by: trailer for whoever made them.",
+                    },
+                    "allow_commit_comments": {
+                        "type": "boolean",
+                        "description": "Let anyone who can read the repository comment on its commits. Existing comments stay readable either way.",
+                    },
+                    "auto_close_issues": {
+                        "type": "boolean",
+                        "description": "Close the issues a pull request names (its issue, and Fixes #12 in its title or description) when it merges into the default branch.",
+                    },
+                    "has_issues": {
+                        "type": "boolean",
+                        "description": "Whether issues can be opened in it. null goes back to the default: on for a repository, off for a fork. Existing issues stay readable either way.",
                     },
                 }),
                 &["repo"],
@@ -2515,7 +2770,11 @@ impl Op {
                     },
                     "branch": {
                         "type": "string",
-                        "description": "A branch already pushed to the repository that holds the change. Leave out to get a fork.",
+                        "description": "A branch already pushed to the repository (or to head_repo) that holds the change. Leave out to get a fork.",
+                    },
+                    "head_repo": {
+                        "type": "string",
+                        "description": "A fork of the repository, \"owner/name\", whose branch holds the change: to propose a change from your fork. Needs branch.",
                     },
                     "body": {
                         "type": "string",
@@ -2602,8 +2861,99 @@ impl Op {
                         "type": "boolean",
                         "description": "Merge although rules are not met, where a ruleset lists you as one who may bypass it. Recorded as a bypass in its evaluations.",
                     },
+                    "merge_method": merge_method_schema("How to merge: merge, squash, rebase or fast_forward. The repository's default_merge_method when left out."),
+                    "commit_title": {
+                        "type": "string",
+                        "description": "For merge and squash: the commit message's first line. The repository's default when left out.",
+                    },
+                    "commit_message": {
+                        "type": "string",
+                        "description": "For merge and squash: the rest of the commit message. The repository's default when left out.",
+                    },
+                    "sha": {
+                        "type": "string",
+                        "description": "The head commit you reviewed: refused (409) if the pull request's head has moved since.",
+                    },
+                    "delete_branch": {
+                        "type": "boolean",
+                        "description": "Delete its branch once merged. The repository's delete_branch_on_merge when left out.",
+                    },
                 })),
                 &["repo", "number"],
+            ),
+            Op::UpdatePullRequestBranch => object(
+                numbered(json!({
+                    "expected_head_sha": {
+                        "type": "string",
+                        "description": "The head commit you saw: refused (409) if the pull request's head has moved since.",
+                    },
+                    "update_method": {
+                        "type": "string",
+                        "enum": ["merge", "rebase"],
+                        "description": "merge (the default): a merge commit on its branch takes in the base's new commits. rebase: its commits are made again on the base's head, rewriting its branch.",
+                    },
+                })),
+                &["repo", "number"],
+            ),
+            Op::EnablePullRequestAutoMerge => object(
+                numbered(json!({
+                    "merge_method": merge_method_schema("How it will merge: merge, squash, rebase or fast_forward. The repository's default_merge_method when left out."),
+                    "commit_title": {
+                        "type": "string",
+                        "description": "For merge and squash: the commit message's first line. The repository's default when left out.",
+                    },
+                    "commit_message": {
+                        "type": "string",
+                        "description": "For merge and squash: the rest of the commit message. The repository's default when left out.",
+                    },
+                })),
+                &["repo", "number"],
+            ),
+            Op::GetPullRequestMergeOptions
+            | Op::DisablePullRequestAutoMerge
+            | Op::DeletePullRequestHeadBranch
+            | Op::RestorePullRequestHeadBranch => {
+                just_numbered()
+            }
+            Op::ListRepoCommitComments => object(
+                json!({
+                    "repo": repo_schema(),
+                    "page": { "type": "integer", "minimum": 1, "description": "From 1; 30 comments a page." },
+                }),
+                &["repo"],
+            ),
+            Op::ListCommitComments => object(
+                json!({ "repo": repo_schema(), "sha": commit_sha_schema() }),
+                &["repo", "sha"],
+            ),
+            Op::CreateCommitComment => object(
+                json!({
+                    "repo": repo_schema(),
+                    "sha": commit_sha_schema(),
+                    "body": { "type": "string", "description": "Markdown." },
+                    "path": {
+                        "type": "string",
+                        "description": "A file the commit changed, from the repository's root, to comment on one of its lines.",
+                    },
+                    "line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "With path: the line, as the commit left the file, counted from 1.",
+                    },
+                }),
+                &["repo", "sha", "body"],
+            ),
+            Op::UpdateCommitComment => object(
+                json!({
+                    "repo": repo_schema(),
+                    "comment_id": commit_comment_id_schema(),
+                    "body": { "type": "string", "description": "The new text, in Markdown." },
+                }),
+                &["repo", "comment_id", "body"],
+            ),
+            Op::DeleteCommitComment => object(
+                json!({ "repo": repo_schema(), "comment_id": commit_comment_id_schema() }),
+                &["repo", "comment_id"],
             ),
             Op::ListEvents => object(
                 json!({
@@ -3380,6 +3730,7 @@ impl Op {
             Op::ListRepos
                 | Op::Search
                 | Op::GetRepo
+                | Op::ListForks
                 | Op::ListIssues
                 | Op::GetIssue
                 | Op::ListLabels
@@ -3392,6 +3743,9 @@ impl Op {
                 | Op::ListDecisions
                 | Op::Why
                 | Op::GetPullRequestChanges
+                | Op::GetPullRequestMergeOptions
+                | Op::ListRepoCommitComments
+                | Op::ListCommitComments
                 | Op::ListEvents
                 | Op::GetRepoSettings
                 | Op::ListCheckNames
@@ -3412,6 +3766,7 @@ impl Op {
                         | ProtectionOp::GetWorkflowPermissions
                         | ProtectionOp::GetForkPrApproval
                         | ProtectionOp::GetActionsAccess
+                        | ProtectionOp::GetActionsPermissions
                 )
         )
     }
@@ -3706,6 +4061,12 @@ impl Op {
             keep_issue_open: input["keep_issue_open"].as_bool() == Some(true),
             ignore_checks: input["ignore_checks"].as_bool() == Some(true),
             bypass_rules: input["bypass_rules"].as_bool() == Some(true),
+            merge_method: None,
+            commit_title: None,
+            commit_message: None,
+            expected_head: None,
+            delete_branch: None,
+            update_method: None,
         };
         let Services {
             identity,
@@ -4098,6 +4459,72 @@ impl Op {
                 )
                 .await
             }
+            Op::ForkRepo => {
+                let owner = actor();
+                // Your personal workspace (your username's), or the only
+                // one you belong to, when none is named.
+                let namespace = optional_text(input, "workspace").map(|slug| slug.to_lowercase()).unwrap_or_else(|| {
+                    if owner.workspaces.iter().any(|w| w.slug == owner.username) {
+                        owner.username.clone()
+                    } else {
+                        match owner.workspaces.as_slice() {
+                            [only] => only.slug.clone(),
+                            _ => String::new(),
+                        }
+                    }
+                });
+                pass(
+                    repos,
+                    "fork",
+                    &ForkRepoArgs {
+                        actor: owner,
+                        path: repo,
+                        namespace,
+                        name: optional_text(input, "name"),
+                        description: input["description"].as_str().map(str::to_owned),
+                        default_branch_only: input["default_branch_only"].as_bool() != Some(false),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::ListForks => {
+                pass(
+                    repos,
+                    "forks",
+                    &ForksArgs {
+                        viewer: viewer.clone(),
+                        path: repo,
+                        limit: integer(input, "limit"),
+                    },
+                )
+                .await
+            }
+            Op::SyncFork => {
+                pass(
+                    repos,
+                    "sync_fork",
+                    &SyncForkArgs {
+                        actor: actor(),
+                        path: repo,
+                        branch: optional_text(input, "branch"),
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
+            Op::DetachFork => {
+                pass(
+                    repos,
+                    "detach_fork",
+                    &DetachForkArgs {
+                        actor: actor(),
+                        path: repo,
+                        surface: Some(services.audit.surface),
+                    },
+                )
+                .await
+            }
             Op::ListRepos => {
                 let found: Vec<Repo> = g1t_kit::call(
                     repos,
@@ -4124,6 +4551,10 @@ impl Op {
                 .await
             }
             Op::UpdateRepo => {
+                let max_ref_updates = integer(input, "max_ref_updates");
+                if input.get("max_ref_updates").is_some_and(|given| !given.is_null()) && max_ref_updates.is_none() {
+                    return failed(FailureCode::Invalid, "max_ref_updates must be a whole number, 0 for no limit.");
+                }
                 let updated = pass(
                     repos,
                     "update",
@@ -4135,6 +4566,8 @@ impl Op {
                         "protected": input["protected"].as_bool(),
                         "topics": strings(input, "topics"),
                         "website": input["website"].as_str(),
+                        "allowForking": input["allow_forking"].as_bool(),
+                        "maxRefUpdates": max_ref_updates,
                         "surface": services.audit.surface,
                     }),
                 )
@@ -4328,7 +4761,51 @@ impl Op {
                     Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
                 };
                 let flag = |key: &str, now: bool| input[key].as_bool().unwrap_or(now);
+                let default_merge_method = match merge_method(input, "default_merge_method") {
+                    Ok(method) => method.unwrap_or(current.default_merge_method),
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let merge_commit_message = match commit_message_default(input, "merge_commit_message") {
+                    Ok(Some(CommitMessageDefault::PullTitleAndCommits)) => {
+                        return failed(FailureCode::Invalid, "pull_title_and_commits is for squash commits: use it in squash_commit_message.");
+                    }
+                    Ok(given) => given.unwrap_or(current.merge_commit_message),
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let squash_commit_message = match commit_message_default(input, "squash_commit_message") {
+                    Ok(given) => given.unwrap_or(current.squash_commit_message),
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                // A template given empty clears it; one left out stays.
+                let template = |key: &str, now: &Option<String>| match input.get(key) {
+                    None => now.clone(),
+                    Some(given) => given.as_str().map(str::to_owned).filter(|text| !text.trim().is_empty()),
+                };
+                let has_issues = match input.get("has_issues") {
+                    None => current.has_issues,
+                    Some(Value::Null) => None,
+                    Some(given) => match given.as_bool() {
+                        Some(on) => Some(on),
+                        None => return failed(FailureCode::Invalid, "has_issues must be true, false or null."),
+                    },
+                };
                 let settings = RepoSettings {
+                    allow_merge_commit: flag("allow_merge_commit", current.allow_merge_commit),
+                    allow_squash_merge: flag("allow_squash_merge", current.allow_squash_merge),
+                    allow_rebase_merge: flag("allow_rebase_merge", current.allow_rebase_merge),
+                    allow_fast_forward: flag("allow_fast_forward", current.allow_fast_forward),
+                    default_merge_method,
+                    merge_commit_message,
+                    squash_commit_message,
+                    merge_commit_template: template("merge_commit_template", &current.merge_commit_template),
+                    squash_commit_template: template("squash_commit_template", &current.squash_commit_template),
+                    suggest_updating_branches: flag("suggest_updating_branches", current.suggest_updating_branches),
+                    allow_auto_merge: flag("allow_auto_merge", current.allow_auto_merge),
+                    delete_branch_on_merge: flag("delete_branch_on_merge", current.delete_branch_on_merge),
+                    require_web_commit_sign_off: flag("require_web_commit_sign_off", current.require_web_commit_sign_off),
+                    allow_commit_comments: flag("allow_commit_comments", current.allow_commit_comments),
+                    auto_close_issues: flag("auto_close_issues", current.auto_close_issues),
+                    has_issues,
                     auto_merge: flag("auto_merge", current.auto_merge),
                     required_checks: strings(input, "required_checks").unwrap_or(current.required_checks.clone()),
                     require_up_to_date: flag("require_up_to_date", current.require_up_to_date),
@@ -4643,6 +5120,15 @@ impl Op {
             Op::GetPullRequest => pass(work, "get_pull", &view()).await,
             Op::CreatePullRequest => {
                 let user = actor();
+                // A fork named but not as `owner/name` is refused, never
+                // read as the repository's own branch of that name.
+                let head_repo = match optional_text(input, "head_repo") {
+                    Some(_) => match repo_path(&json!({ "repo": input["head_repo"] })) {
+                        Some(path) => Some(path),
+                        None => return failed(FailureCode::Invalid, "Give head_repo as owner/name."),
+                    },
+                    None => None,
+                };
                 let opened: Outcome<Pull> = call(
                     work,
                     "open_pull",
@@ -4653,6 +5139,7 @@ impl Op {
                         title: text(input, "title"),
                         body: text(input, "body"),
                         branch: optional_text(input, "branch"),
+                        head_repo,
                         // Unnamed, the change is its author's, unless an agent's token opened it.
                         agent: optional_text(input, "agent")
                             .unwrap_or_else(|| if g1t_contracts::rules::is_agent(&user) { "agent".into() } else { user.username.clone() }),
@@ -4667,8 +5154,9 @@ impl Op {
                     Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
                 };
                 // Where to push. A pull request from a branch has no fork:
-                // push to that branch of the repository.
-                let source = pull.fork.as_ref().unwrap_or(&repo);
+                // push to that branch of the repository, or of the fork
+                // it was opened from.
+                let source = pull.fork.as_ref().or(pull.head_repo.as_ref()).unwrap_or(&repo);
                 let remote = services.addresses.git_remote(&source.namespace, &source.name);
                 ok(&json!({
                     "pull": pull,
@@ -4750,7 +5238,114 @@ impl Op {
                 let method = if self == Op::EditComment { "edit_comment" } else { "delete_comment" };
                 pass(work, method, &asked).await
             }
-            Op::MergePullRequest => pass(work, "merge_pull", &pull_action()).await,
+            Op::MergePullRequest => {
+                let method = match merge_method(input, "merge_method") {
+                    Ok(method) => method,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let asked = PullActionArgs {
+                    merge_method: method,
+                    commit_title: optional_text(input, "commit_title"),
+                    commit_message: input["commit_message"].as_str().map(str::to_owned),
+                    expected_head: optional_text(input, "sha"),
+                    delete_branch: input["delete_branch"].as_bool(),
+                    ..pull_action()
+                };
+                pass(work, "merge_pull", &asked).await
+            }
+            Op::GetPullRequestMergeOptions => pass(work, "merge_choices", &view()).await,
+            Op::UpdatePullRequestBranch => {
+                let update_method = match input["update_method"].as_str().map(str::trim).filter(|given| !given.is_empty()) {
+                    None => None,
+                    Some(given) if given.eq_ignore_ascii_case("merge") => Some(UpdateMethod::Merge),
+                    Some(given) if given.eq_ignore_ascii_case("rebase") => Some(UpdateMethod::Rebase),
+                    Some(given) => return failed(FailureCode::Invalid, &format!("update_method must be merge or rebase, not {given}.")),
+                };
+                let asked = PullActionArgs {
+                    expected_head: optional_text(input, "expected_head_sha"),
+                    update_method,
+                    ..pull_action()
+                };
+                pass(work, "catch_up_pull", &asked).await
+            }
+            Op::EnablePullRequestAutoMerge | Op::DisablePullRequestAutoMerge => {
+                let enabled = self == Op::EnablePullRequestAutoMerge;
+                let method = match merge_method(input, "merge_method") {
+                    Ok(method) => method.filter(|_| enabled),
+                    Err(message) if enabled => return failed(FailureCode::Invalid, &message),
+                    Err(_) => None,
+                };
+                pass(
+                    work,
+                    "set_auto_merge",
+                    &SetAutoMergeArgs {
+                        actor: actor(),
+                        repo,
+                        number,
+                        enabled,
+                        merge_method: method,
+                        commit_title: optional_text(input, "commit_title").filter(|_| enabled),
+                        commit_message: input["commit_message"].as_str().map(str::to_owned).filter(|_| enabled),
+                    },
+                )
+                .await
+            }
+            Op::DeletePullRequestHeadBranch => pass(work, "delete_head_branch", &pull_action()).await,
+            Op::RestorePullRequestHeadBranch => pass(work, "restore_head_branch", &pull_action()).await,
+            Op::ListRepoCommitComments | Op::ListCommitComments => {
+                let commit = if self == Op::ListCommitComments {
+                    match optional_text(input, "sha") {
+                        Some(sha) => Some(sha),
+                        None => return failed(FailureCode::Invalid, "Give sha: the commit's hash."),
+                    }
+                } else {
+                    None
+                };
+                pass(
+                    work,
+                    "commit_comments",
+                    &CommitCommentsArgs {
+                        viewer: viewer.clone(),
+                        repo,
+                        commit,
+                        page: integer(input, "page").filter(|page| *page > 0),
+                    },
+                )
+                .await
+            }
+            Op::CreateCommitComment => {
+                let body = text(input, "body");
+                if body.trim().is_empty() {
+                    return failed(FailureCode::Invalid, "Give body: the comment, in Markdown.");
+                }
+                let Some(commit) = optional_text(input, "sha") else {
+                    return failed(FailureCode::Invalid, "Give sha: the commit's hash.");
+                };
+                let path = optional_text(input, "path");
+                let line = integer(input, "line").filter(|line| *line > 0);
+                if input.get("line").is_some_and(|given| !given.is_null()) && line.is_none() {
+                    return failed(FailureCode::Invalid, "line is counted from 1.");
+                }
+                if line.is_some() && path.is_none() {
+                    return failed(FailureCode::Invalid, "Give path with line: the file the line is in.");
+                }
+                pass(
+                    work,
+                    "add_commit_comment",
+                    &AddCommitCommentArgs { actor: actor(), repo, commit, body, path, line },
+                )
+                .await
+            }
+            Op::UpdateCommitComment | Op::DeleteCommitComment => {
+                let editing = self == Op::UpdateCommitComment;
+                let body = text(input, "body");
+                if editing && body.trim().is_empty() {
+                    return failed(FailureCode::Invalid, "Give body: the new text, in Markdown.");
+                }
+                let asked = CommitCommentArgs { actor: actor(), repo, id: text(input, "comment_id"), body };
+                let method = if editing { "edit_commit_comment" } else { "delete_commit_comment" };
+                pass(work, method, &asked).await
+            }
             Op::GetPullRequestChanges => {
                 let found: Outcome<PullDetail> = call(work, "get_pull", &view()).await?;
                 match found {

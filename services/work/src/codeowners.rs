@@ -432,16 +432,11 @@ impl Work {
         else {
             return Ok(());
         };
-        let (source_id, source) = match (&pull.fork_repo_id, &pull.fork) {
-            (Some(id), Some(fork)) => (id.clone(), fork.clone()),
-            _ => (
-                repo.id.clone(),
-                RepoPath {
-                    namespace: repo.namespace.clone(),
-                    name: repo.name.clone(),
-                },
-            ),
-        };
+        let source = pull.source_path(&RepoPath {
+            namespace: repo.namespace.clone(),
+            name: repo.name.clone(),
+        });
+        let source_id = pull.source_id().to_owned();
         let viewer = self.owner_viewer(pull).await?;
         let checked = self
             .check_codeowners(&source_id, &source, head, &viewer, (&repo.id, &repo.namespace))

@@ -52,6 +52,16 @@ async fn changed_files<R: GitRepo>(
     old_root: Option<&str>,
     new_root: &str,
 ) -> Result<(Vec<Change>, bool)> {
+    changed_files_up_to(repo, old_root, new_root, MAX_FILES).await
+}
+
+/// [`changed_files`], cut short after `max_files` files.
+async fn changed_files_up_to<R: GitRepo>(
+    repo: &R,
+    old_root: Option<&str>,
+    new_root: &str,
+    max_files: usize,
+) -> Result<(Vec<Change>, bool)> {
     let mut changes = Vec::new();
     let mut level = vec![(
         String::new(),
@@ -95,7 +105,7 @@ async fn changed_files<R: GitRepo>(
                 }
                 let (old_file, new_file) = (file(before), file(after));
                 if old_file.is_some() || new_file.is_some() {
-                    if changes.len() >= MAX_FILES {
+                    if changes.len() >= max_files {
                         changes.sort_by(|a: &Change, b: &Change| a.path.cmp(&b.path));
                         return Ok((changes, true));
                     }
@@ -138,7 +148,18 @@ pub async fn changed_entries<R: GitRepo>(
     old_tree: Option<&str>,
     new_tree: &str,
 ) -> Result<(Vec<(String, Option<FileEntry>, Option<FileEntry>)>, bool)> {
-    let (changes, truncated) = changed_files(repo, old_tree, new_tree).await?;
+    changed_entries_up_to(repo, old_tree, new_tree, MAX_FILES).await
+}
+
+/// [`changed_entries`], listing up to `max_files` files rather than the
+/// comparison's limit: what a merge applies (merge_methods.rs).
+pub async fn changed_entries_up_to<R: GitRepo>(
+    repo: &R,
+    old_tree: Option<&str>,
+    new_tree: &str,
+    max_files: usize,
+) -> Result<(Vec<(String, Option<FileEntry>, Option<FileEntry>)>, bool)> {
+    let (changes, truncated) = changed_files_up_to(repo, old_tree, new_tree, max_files).await?;
     let entries = changes
         .into_iter()
         .map(|change| {
@@ -321,7 +342,7 @@ mod tests {
         async fn read_file(&self, _git_ref: &str, _path: &str) -> Result<Option<Vec<u8>>> {
             Ok(None)
         }
-        async fn fork(&self, _target_key: &str) -> Result<()> {
+        async fn fork(&self, _target_key: &str, _default_branch_only: bool) -> Result<()> {
             Ok(())
         }
     }

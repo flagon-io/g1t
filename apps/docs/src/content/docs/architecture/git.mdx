@@ -143,7 +143,7 @@ never retried on your behalf.
 ## Pull request forks
 
 A pull request made for an issue gets a fork of its own
-([Forks and branches](/concepts/forks/)). `fork_for_pull` makes it in the
+([Forks and working copies](/concepts/forks/)). `fork_for_pull` makes it in the
 same namespace as its source, as `pulls--<pull request id>`, with
 Artifacts' own fork of the default branch, and it is served at
 `g1t.sh/pulls/<id>.git`. Anyone who can read the source can read the fork.
@@ -163,8 +163,10 @@ the target, without parsing it or holding it whole.
 `repos` also builds the test merge for every pull request,
 `refs/pull/<n>/merge`, without a sandbox, using a line-level merge on
 files up to 1 MiB (`test_merge.rs`). When a pull request is behind and the
-two sides changed different files, **Catch up with main** is done the same
-way (`catch_up.rs`). Testing several pull requests together is the merge
+two sides' changes do not clash, updating its branch is done the same way
+(`catch_up.rs`), by a merge or a rebase; so are merge, squash and rebase
+merges, up to 1,000 changed files, 100 files merged line by line and 250
+commits in a rebase. Testing several pull requests together is the merge
 queue's job ([Work and the merge queue](/architecture/work/#the-merge-queue)).
 
 ## Backups

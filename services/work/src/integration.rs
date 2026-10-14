@@ -556,7 +556,7 @@ impl Work {
         )
         .await?;
         let Outcome::Ok(repo) = repo else { return Ok(Vec::new()) };
-        let path = pull.fork.clone().unwrap_or_else(|| RepoPath {
+        let path = pull.source_path(&RepoPath {
             namespace: repo.namespace.clone(),
             name: repo.name.clone(),
         });
@@ -1100,6 +1100,12 @@ impl Work {
                 keep_issue_open: row.keep_issue_open != 0,
                 ignore_checks: false,
                 bypass_rules: false,
+                merge_method: None,
+                commit_title: None,
+                commit_message: None,
+                expected_head: None,
+                delete_branch: None,
+                update_method: None,
             })
             .await?;
         let short = &sha[..sha.len().min(12)];

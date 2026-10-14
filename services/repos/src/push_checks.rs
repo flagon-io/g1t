@@ -73,6 +73,12 @@ impl<S: GitStore> Repos<S> {
     /// read, `whole` whether that is all of it. Push protection runs only
     /// when `scan` says to: a push the size limits decline is not scanned.
     pub(crate) async fn check_receive(&self, repo: &Repo, pusher: Option<&User>, body: &[u8], whole: bool, scan: bool) -> Result<Checks> {
+        // A push that changes more branches and tags than the repository
+        // takes at once is refused whole, before anything else is asked.
+        let full_name = format!("{}/{}", repo.namespace, repo.name);
+        if let Some((reason, lines)) = crate::git_http::too_many_ref_updates(body, repo.max_ref_updates, &full_name) {
+            return Ok(Checks { verdict: Verdict::Refused(crate::git_http::declined(body, &reason, &lines)?), spans: Vec::new(), bases: None });
+        }
         let git = self.store.open(&store_key(repo)).await?;
         let token = crate::workflow_gate::gated(pusher);
 
