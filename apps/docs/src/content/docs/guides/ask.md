@@ -167,6 +167,39 @@ repository's Work page and on its own session page, with its subagents, and
 Ask can tell you where it stands. If a session already holds the issue, Ask
 links it rather than proposing another.
 
+### Building something new
+
+Ask for something that has no repository yet, such as "build a status page
+for our API", and the card proposes a new one in your workspace: **Build
+"Status page" in acme/status-page**. Under its title it says what starting
+it does, for example "Creates the private repository, turns on its
+deployments, then runs in your own harness and pushes the first version,
+which goes live on g1t.page." The repository is public only if you ask for
+that, and deployments are left off if you ask for that too.
+
+Choosing **Start session** or **Copy Claude Code command**:
+
+1. Creates the repository as you, with the issue's title as its project's
+   description.
+2. Turns on its [deployments](/guides/deployments/). This needs the
+   workspace on the g1t plan and the Admin role on the repository, which
+   you have as its creator. If it can't, the card says **Not deployed:**
+   and why, and the session still builds the app.
+3. Opens the issue and starts the session.
+
+The card then shows **Created** with a link to the repository, and **Live
+once the first version is pushed at** its production address on
+g1t.page. The session pushes its first working version straight to the
+default branch, since an empty repository has nothing to open a pull
+request against, closes the issue, and watches `g1t deploy list` until
+production is live, ending its report with the address. Every change after
+that goes through pull requests as usual. Choosing the card again, or Copy
+after Start, uses the repository it already made.
+
+Ask itself still changes nothing: your click on the card does. For a
+repository that already exists, deployments are turned on in its
+**Settings → Deployments**.
+
 ## Ask from Home
 
 [Home](/guides/home/#ask-from-home) asks g1t for you in three places, all
