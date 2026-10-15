@@ -11,6 +11,7 @@ import type { DeployStatus } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
 import { type Need, type NeedKind, sparkPoints } from "../lib/mission";
+import { Boundary } from "./boundary";
 import { TimeAgo } from "./ui";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -28,9 +29,12 @@ export function Panel({
   extra,
   children,
   className,
+  what,
 }: {
   id?: string;
   title: ReactNode;
+  /** What it shows, in a few words, said if it fails to draw; its title when that is text. */
+  what?: string;
   icon?: ReactNode;
   count?: number | null;
   all?: { to: string; label?: string } | null;
@@ -57,22 +61,14 @@ export function Panel({
           </Link>
         )}
       </div>
-      <div className="mt-3">{children}</div>
+      <div className="mt-3">
+        <Boundary what={what ?? (typeof title === "string" ? title : "This section")}>{children}</Boundary>
+      </div>
     </section>
   );
 }
 
-/** Says a section could not be loaded, without taking the page down. */
-export function Unavailable({ what }: { what: string }) {
-  return (
-    <Card asChild tone="plain" className="flex items-center gap-2 border-dashed px-4 py-5 text-sm text-muted">
-      <p>
-        <TriangleAlert size={14} className="text-warn" />
-        {what} could not be loaded just now. It will be back on the next refresh.
-      </p>
-    </Card>
-  );
-}
+export { Unavailable } from "./boundary";
 
 /** A quiet, dashed empty state with an optional call to action. */
 export function Quiet({ children, action }: { children: ReactNode; action?: ReactNode }) {
