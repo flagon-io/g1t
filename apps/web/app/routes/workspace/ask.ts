@@ -19,10 +19,10 @@
  */
 import { data } from "react-router";
 
-import { AGENT_MODES, type User } from "@g1t/contracts";
+import { AGENT_MODES, type AskProposalState, type User } from "@g1t/contracts";
 
 import type { Route } from "./+types/ask";
-import { agentSessions, ai, deployments, projects, repos } from "../../lib/services.server";
+import { agentSessions, ai, chat, deployments, projects, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -50,33 +50,88 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return Response.json({ error: "That repository isn't in this workspace." }, { status: 400 });
   }
   const text = (key: string) => (typeof input?.[key] === "string" && (input[key] as string).trim()) || undefined;
-  const issue = Number.isInteger(input?.issue) && (input?.issue as number) > 0 ? (input?.issue as number) : undefined;
+  const handoff = input?.handoff === true;
+  // What the card did is kept on the answer that proposed it, step by step, so
+  // the card shows it wherever the answer is read and another click carries on.
+  const kept = keeper(user, params.owner, input);
+  const before = await kept.save({});
+  if (before?.started && !handoff) {
+    return Response.json({ ...before, handoff: false, command: null, prompt: "" });
+  }
+  if (!handoff && before?.starting_at && Date.now() - before.starting_at < STARTING_MS) {
+    return Response.json({ error: "It's already starting. This card shows it in a moment.", ...before }, { status: 409 });
+  }
+  const asked = Number.isInteger(input?.issue) && (input?.issue as number) > 0 ? (input?.issue as number) : undefined;
+  // An issue a click already opened is worked on, not opened again.
+  const issue = asked ?? before?.issue;
   const title = issue ? undefined : text("title");
   if (!issue && !title) return Response.json({ error: "The proposal names no issue." }, { status: 400 });
   const mode = AGENT_MODES.find((one) => one.mode === input?.mode)?.mode ?? "implement";
+  if (!handoff) await kept.save({ starting_at: Date.now() });
   let instruction = text("instruction");
   let built: Built | null = null;
   if (input?.new_repository === true) {
-    const made = await newRepository(user, namespace, name, { title: title ?? name, isPrivate: input.private === true, deploy: input.deploy !== false });
-    if ("error" in made) return Response.json({ error: made.error }, { status: 400 });
+    const made = before?.repo_url && before.default_branch
+      ? { repo_url: before.repo_url, default_branch: before.default_branch, production_url: before.production_url ?? null, deploy_error: before.deploy_error ?? null }
+      : await newRepository(user, namespace, name, { title: (title ?? text("title")) || name, isPrivate: input.private === true, deploy: input.deploy !== false });
+    if ("error" in made) {
+      await kept.save({ starting_at: 0 });
+      return Response.json({ error: made.error }, { status: 400 });
+    }
     built = made;
+    await kept.save(made);
     instruction = [firstPush(made), instruction].filter(Boolean).join("\n\n");
   }
   const result = await agentSessions
-    .start(user, { namespace, name }, { issue, title, body: issue ? undefined : text("body"), instruction, mode, handoff: input?.handoff === true })
+    .start(user, { namespace, name }, { issue, title, body: issue ? undefined : text("body"), instruction, mode, handoff })
     .catch(() => null);
-  if (!result) return Response.json({ error: "The session could not be started. Try again in a moment.", ...built }, { status: 502 });
-  if (!result.ok) return Response.json({ error: result.error.message, ...built }, { status: 400 });
+  if (!result?.ok) {
+    if (!handoff) await kept.save({ starting_at: 0 });
+    if (!result) return Response.json({ error: "The session could not be started. Try again in a moment.", ...built }, { status: 502 });
+    return Response.json({ error: result.error.message, ...built }, { status: 400 });
+  }
   const started = result.value;
+  const session_url = started.sessionUrl ?? (started.session ? `/${namespace}/${name}/work/sessions/${started.session.id}` : null);
+  await kept.save(
+    started.handoff
+      ? { issue: started.issue }
+      : { issue: started.issue, started: true, session_url, provider_session_url: started.providerSessionUrl ?? null },
+  );
   return Response.json({
     issue: started.issue,
-    session_url: started.sessionUrl ?? (started.session ? `/${namespace}/${name}/work/sessions/${started.session.id}` : null),
+    session_url,
     provider_session_url: started.providerSessionUrl,
     handoff: started.handoff,
     command: started.command,
     prompt: started.prompt,
     ...built,
   });
+}
+
+/** How long a click that began starting a proposal holds off another. */
+const STARTING_MS = 90_000;
+
+/**
+ * Keeps what a proposal's card did on the @g1t answer it came in
+ * (`message_id` in `channel_id`, the viewer's direct message with g1t),
+ * through chat's `g1t_proposal`; `save({})` only reads it. Without a
+ * message, or when chat can't be reached, nothing is kept and null is said:
+ * the card still works, it just won't remember.
+ */
+function keeper(user: User, workspace: string, input: Record<string, unknown> | null) {
+  const id = typeof input?.id === "string" ? input.id : "";
+  const channel = typeof input?.channel_id === "string" ? input.channel_id : "";
+  const message = typeof input?.message_id === "string" ? input.message_id : "";
+  return {
+    async save(change: Omit<AskProposalState, "id">): Promise<AskProposalState | null> {
+      if (!id || !channel || !message) return null;
+      const kept = await chat.g1tProposal(workspace.toLowerCase(), channel, user, message, { ...change, id }).catch((error: unknown) => {
+        console.error("ask: proposal state not kept", id, error);
+        return null;
+      });
+      return kept?.ok ? kept.value : null;
+    },
+  };
 }
 
 /** What the card made before the session: the repository, and where it deploys or why it can't. */

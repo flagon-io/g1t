@@ -18,6 +18,7 @@ import {
   readsNote,
   shownAnswer,
   startsAnswer,
+  withProposalState,
   type SaidRow,
 } from "./g1t.ts";
 
@@ -250,4 +251,27 @@ test("an answer left mid-stream by a room that went away shows as stopped", () =
   assert.equal(shownAnswer({ state: "streaming" }, at, Date.parse(at) + 3_600_000)!.state, "stopped");
   assert.equal(shownAnswer({ state: "done" }, at, Date.parse(at) + 3_600_000)!.state, "done");
   assert.equal(shownAnswer(undefined, at, 0), null);
+});
+
+test("what a proposal's card did is kept on its answer, merged step by step", () => {
+  const answer = { state: "done" as const, steps: [{ type: "proposal", id: "proposal_1_0", repo: "acme/hello" }] };
+  assert.equal(withProposalState(answer, { id: "proposal_9_9" }), null, "no such proposal");
+  const made = withProposalState(answer, { id: "proposal_1_0", starting_at: 5, repo_url: "/acme/hello", production_url: "https://hello-acme.g1t.page" })!;
+  assert.deepEqual(made.state, { id: "proposal_1_0", starting_at: 5, repo_url: "/acme/hello", production_url: "https://hello-acme.g1t.page" });
+  assert.equal(made.answer.steps!.length, 2);
+  // A later step merges into the same one; unknown fields are dropped.
+  const started = withProposalState(made.answer, { id: "proposal_1_0", issue: 1, started: true, session_url: "/s", evil: "x" } as never)!;
+  assert.equal(started.answer.steps!.length, 2);
+  assert.deepEqual(started.answer.steps![1], {
+    type: "proposal_state",
+    id: "proposal_1_0",
+    starting_at: 5,
+    repo_url: "/acme/hello",
+    production_url: "https://hello-acme.g1t.page",
+    issue: 1,
+    started: true,
+    session_url: "/s",
+  });
+  // Only the id: says what is kept, changes nothing.
+  assert.deepEqual(withProposalState(started.answer, { id: "proposal_1_0" })!.state, started.state);
 });

@@ -73,7 +73,7 @@ export function G1tAnswer({
           {message.body}
         </MessageResponse>
       )}
-      {!live && <AskTrail events={answer?.steps} working={false} part="proposals" slug={context.slug} />}
+      {!live && <AskTrail events={answer?.steps} working={false} part="proposals" slug={context.slug} message={message} />}
       {!live && <AskTrail events={answer?.steps} working={false} part="sources" />}
       {!live && message.body && <FolioUnfurls slug={context.slug} body={message.body} />}
       {actions && !live && (

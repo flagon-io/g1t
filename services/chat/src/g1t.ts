@@ -11,7 +11,7 @@
  * src/index.ts writes the messages.
  */
 // The modules themselves, not the package's index, so the tests load them.
-import { G1T_KEY, type ChatAnswer, type MemberProfile } from "@g1t/contracts/chat";
+import { G1T_KEY, type AskProposalState, type ChatAnswer, type MemberProfile } from "@g1t/contracts/chat";
 import { ASK_MAX_MESSAGES, ASK_MAX_MESSAGE_CHARS, ASK_MAX_TOTAL_CHARS, type AskMessage, type AskPage } from "@g1t/contracts/ai";
 
 /** How @g1t shows in chat: the g1t mark, never a person. */
@@ -44,6 +44,37 @@ export function parseMeta(text: string | null | undefined): MessageMeta {
   } catch {
     return {};
   }
+}
+
+/** What a proposal's card has done so far, kept on the answer as a `proposal_state` step. */
+export type ProposalState = AskProposalState;
+
+const PROPOSAL_TEXT = ["production_url", "deploy_error", "session_url", "provider_session_url"] as const;
+
+/**
+ * An answer with what its proposal `id`'s card did merged into it: one
+ * `proposal_state` step per proposal, made the first time, merged after.
+ * Only the known fields are kept, texts cut to 500 characters. Null when
+ * the answer has no such proposal.
+ */
+export function withProposalState(answer: ChatAnswer, change: ProposalState): { answer: ChatAnswer; state: ProposalState } | null {
+  const steps = answer.steps ?? [];
+  if (!steps.some((step) => step.type === "proposal" && step.id === change.id)) return null;
+  const at = steps.findIndex((step) => step.type === "proposal_state" && step.id === change.id);
+  const state: ProposalState = { ...(at === -1 ? {} : (steps[at] as unknown as ProposalState)), id: change.id };
+  for (const key of PROPOSAL_TEXT) {
+    const value = change[key];
+    if (value === null) state[key] = null;
+    else if (typeof value === "string") state[key] = value.slice(0, 500);
+  }
+  if (typeof change.repo_url === "string") state.repo_url = change.repo_url.slice(0, 500);
+  if (typeof change.default_branch === "string") state.default_branch = change.default_branch.slice(0, 200);
+  if (Number.isInteger(change.issue) && change.issue! > 0) state.issue = change.issue;
+  if (typeof change.starting_at === "number") state.starting_at = change.starting_at;
+  if (change.started === true) state.started = true;
+  const step = { type: "proposal_state", ...state } as Record<string, unknown>;
+  const next = at === -1 ? [...steps, step] : steps.map((kept, index) => (index === at ? step : kept));
+  return { answer: { ...answer, steps: next }, state };
 }
 
 export function metaColumn(meta: MessageMeta): string | null {

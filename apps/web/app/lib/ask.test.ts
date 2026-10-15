@@ -50,7 +50,9 @@ test("an answer's kept lines fold into its steps, each as it last was, and its s
   );
   assert.equal(folded.sources.length, 1);
   assert.equal(folded.sources[0]!.url, "https://g1t.sh/acme/web/pull/7");
-  assert.deepEqual(foldAnswer("junk"), { steps: [], sources: [], proposals: [] });
+  assert.deepEqual(foldAnswer("junk"), { steps: [], sources: [], proposals: [], kept: {} });
+  const kept = foldAnswer([{ type: "proposal", id: "p", repo: "a/b", issue: null, title: "x", body: null, mode: "implement", instruction: null }, { type: "proposal_state", id: "p", started: true, session_url: "/s" }]).kept;
+  assert.deepEqual(kept, { p: { id: "p", started: true, session_url: "/s" } }, "what a card did comes back with its answer");
 });
 
 test("a proposed session is kept once and says what it will do", () => {
