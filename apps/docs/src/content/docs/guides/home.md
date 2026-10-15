@@ -26,7 +26,8 @@ then Spent and Settled for you.
 
 For a workspace's owners, Home also opens
 [Getting started](/guides/workspaces/#getting-started), the setup guide,
-until they finish or close it; `?setup=1` opens it again.
+until they finish or close it. The **Getting started** button at the top
+of Home opens it again at any time, as `?setup=1` does.
 
 Every number on the page comes from what g1t has recorded. Nothing is
 estimated. When a part of g1t does not answer, the section it feeds says
