@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { BEAT, CHECKS, LOOP_MS, PILLS, SESSION, STILLS, frameAt, pillAt, pillProgress, sameFrame } from "./tour.ts";
+import { BEAT, CHECKS, LOOP_MS, PILLS, SESSION, SETTLED, STILLS, SUMMARIZED, SUMMARY_WORDS, frameAt, pillAt, pillProgress, sameFrame } from "./tour.ts";
 
 test("the first frame is the pull request before its checks, the same on the server and the client", () => {
   const frame = frameAt(0);
@@ -18,7 +18,7 @@ test("the scenes come in the story's order: the pull request first", () => {
     const scene = frameAt(t).scene;
     if (order[order.length - 1] !== scene) order.push(scene);
   }
-  assert.deepEqual(order, ["code", "session", "chat", "docs"]);
+  assert.deepEqual(order, ["code", "session", "home", "chat"]);
 });
 
 test("checks pass before review, and the queue merges only after approval", () => {
@@ -35,9 +35,9 @@ test("the cursor leaves the code only once it has merged, for the Session tab", 
   assert.equal(frameAt(BEAT.railChatClick).click, true);
 });
 
-test("the session plays back in full before the tour moves on to chat", () => {
+test("the session plays back in full before the tour moves on to Home", () => {
   assert.equal(frameAt(BEAT.session - 1).entries, 0);
-  assert.equal(frameAt(BEAT.railChatClick - 1).entries, SESSION.length);
+  assert.equal(frameAt(BEAT.railHomeClick - 1).entries, SESSION.length);
   assert.equal(SESSION[0].kind, "prompt");
 });
 
@@ -60,10 +60,26 @@ test("each still shows its step's point", () => {
   assert.equal(frameAt(STILLS.code).approved, true);
   assert.equal(frameAt(STILLS.session).entries, SESSION.length);
   assert.equal(frameAt(STILLS.chat).told, true);
-  assert.equal(frameAt(STILLS.docs).docUpdated, true);
+  assert.equal(frameAt(STILLS.home).words, SUMMARY_WORDS.length);
+  assert.equal(frameAt(STILLS.home).cleared, SETTLED.length);
 });
 
 test("Dana tells support only after Priya says it shipped", () => {
   assert.equal(frameAt(BEAT.told - 1).told, false);
   assert.equal(frameAt(BEAT.told).shipped, true);
+});
+
+test("on Home, notifications settle and leave before Summarize, and the summary finishes before chat", () => {
+  assert.equal(frameAt(BEAT.home - 1).settled, 0);
+  assert.equal(frameAt(BEAT.home + 1).settled, 0);
+  const before = frameAt(BEAT.summarizeClick);
+  assert.equal(before.settled, SETTLED.length);
+  assert.equal(before.cleared, SETTLED.length);
+  assert.equal(before.cursor, "home-summarize");
+  assert.equal(before.click, true);
+  assert.equal(frameAt(BEAT.word0 - 1).words, 0);
+  assert.ok(SUMMARIZED < BEAT.railChatClick - 1500);
+  assert.equal(frameAt(BEAT.railChatClick - 1).words, SUMMARY_WORDS.length);
+  assert.equal(frameAt(BEAT.live - 1).live, false);
+  assert.equal(frameAt(BEAT.live).live, true);
 });
