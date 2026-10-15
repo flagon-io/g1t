@@ -407,6 +407,24 @@ mod tests {
         assert_eq!(encoded("a"), "YQA=");
     }
 
+    /// Runs the script as administrator, through Windows' prompt, with
+    /// nothing to do: the prompt shows, and its answer comes back.
+    /// `cargo test -- --ignored as_administrator --nocapture`, and say Yes.
+    #[test]
+    #[ignore]
+    fn as_administrator_with_nothing_to_do_it_is_done() {
+        let dir = std::env::temp_dir().join(format!("g1t-setup-admin-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (log, marker) = (dir.join("setup.log"), dir.join(RESTART_FILE));
+        let outcome = run_elevated(&script(&Plan::default(), &log, &marker), 0);
+        let said = std::fs::read_to_string(&log).unwrap_or_default();
+        println!("{outcome:?}\n{said}");
+        assert_eq!(outcome, Outcome::Done, "{said}");
+        assert_eq!(said.trim(), "g1t setup: Done.");
+        assert!(!marker.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Runs the script's WSL step as this user with `--version`, which
     /// changes nothing: wsl.exe started hidden, what it said logged line by
     /// line, and its exit code read. `cargo test -- --ignored the_wsl_step --nocapture`.
