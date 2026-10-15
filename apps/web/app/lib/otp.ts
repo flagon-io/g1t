@@ -23,3 +23,14 @@ export function otpInputProps({ id, recovery = false }: { id: string; recovery?:
     placeholder: recovery ? "k7m2q-9xw4d" : "123 456",
   } as const;
 }
+
+/** A code as pasted, without the spaces and dashes people copy with it ("123 456", "123-456"). */
+export function codeDigits(pasted: string): string {
+  return pasted.replace(/[\s-]/g, "");
+}
+
+/** Whether pasted text is a recovery code (`k7m2q-9xw4d`) rather than an app's six digits: it has letters in it. */
+export function looksLikeRecoveryCode(pasted: string): boolean {
+  const text = codeDigits(pasted.trim());
+  return /[a-z]/i.test(text) && /^[a-z0-9]{6,20}$/i.test(text);
+}

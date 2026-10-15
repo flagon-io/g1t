@@ -4,15 +4,15 @@ import { Form } from "react-router";
 
 import type { Route } from "./+types/two-factor";
 import { ConfirmItIsYou } from "../../components/emails-section";
+import { TwoFactorCodeField } from "../../components/one-time-code";
 import { QrCode } from "../../components/qr-code";
-import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
+import { CopyLine, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Unavailable } from "../../components/boundary";
 import { githubSignIn } from "../../lib/github.server";
 import { page } from "../../lib/meta";
-import { otpInputProps } from "../../lib/otp";
 import { accounts } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 import { TWO_FACTOR_INTENTS, twoFactorAction } from "../../lib/two-factor.server";
@@ -46,15 +46,6 @@ export async function action({ request, context }: Route.ActionArgs) {
 /** A base32 secret in groups of four, as people type it. */
 function grouped(secret: string): string {
   return secret.match(/.{1,4}/g)?.join(" ") ?? secret;
-}
-
-/** The six digits an app shows, typed. */
-function CodeInput({ label = "Code from your app", recovery = false }: { label?: string; recovery?: boolean }) {
-  return (
-    <Field label={label} htmlFor="totp-code" hint={recovery ? "Or a recovery code, such as k7m2q-9xw4d." : undefined}>
-      <Input {...otpInputProps({ id: "totp-code", recovery })} required />
-    </Field>
-  );
 }
 
 /** Recovery codes, shown once, with a way to keep them. */
@@ -152,11 +143,9 @@ export default function TwoFactorSettings({ loaderData, actionData }: Route.Comp
                   ? `You would lose access to ${status.required_by.join(", ")} until you turn it on again.`
                   : "Your account is safer with it on."}
               </p>
-              <Form method="post" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <Form method="post" className="mt-4 flex flex-col items-start gap-3">
                 <input type="hidden" name="intent" value="two-factor-disable" />
-                <div className="grow sm:max-w-56">
-                  <CodeInput recovery />
-                </div>
+                <TwoFactorCodeField label="Code from your app" recovery />
                 <SubmitButton variant="destructive" match={{ intent: "two-factor-disable" }} pending="Turning off…">
                   Turn off
                 </SubmitButton>
@@ -184,13 +173,11 @@ export default function TwoFactorSettings({ loaderData, actionData }: Route.Comp
               </li>
               <li>
                 <p className="text-muted">2. Enter the six-digit code your app shows.</p>
-                <Form method="post" className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <Form method="post" className="mt-3 flex flex-col items-start gap-3">
                   <input type="hidden" name="intent" value="two-factor-enable" />
                   <input type="hidden" name="secret" value={setup.secret} />
                   <input type="hidden" name="uri" value={setup.uri} />
-                  <div className="grow sm:max-w-56">
-                    <CodeInput />
-                  </div>
+                  <TwoFactorCodeField label="Code from your app" />
                   <SubmitButton match={{ intent: "two-factor-enable" }} pending="Checking…">
                     Turn on
                   </SubmitButton>

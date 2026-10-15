@@ -5,6 +5,7 @@ import { CONFIRM_TTL_SECONDS, tidyConfirmCode } from "@g1t/contracts";
 
 import type { Route } from "./+types/confirm-email";
 import { page } from "../lib/meta";
+import { CodeSlots } from "../components/one-time-code";
 import { ButtonLink, ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { Button } from "../components/ui/button";
 import { Hint } from "../components/ui/hint";
@@ -129,23 +130,8 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
         <Form method="post" className="mt-6 space-y-4">
           <input type="hidden" name="intent" value="confirm" />
           <Field label="Confirmation code" htmlFor="email-verification-code" hint={`The code and the link work for ${MINUTES} minutes.`}>
-            <Input
-              id="email-verification-code"
-              name="code"
-              type="text"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              autoComplete="one-time-code"
-              inputMode="numeric"
-              pattern="[0-9 -]*"
-              maxLength={9}
-              required
-              autoFocus
-              placeholder="123456"
-              aria-describedby="code-error"
-              style={{ fontSize: "1.5rem", letterSpacing: "0.4em", fontFamily: "var(--font-mono)", textAlign: "center" }}
-            />
+            {/* Sent as soon as the sixth digit is in. */}
+            <CodeSlots id="email-verification-code" autoFocus submit invalid={errorFor("confirm") != null} describedBy="code-error" />
           </Field>
           <div id="code-error">
             <ErrorText>{errorFor("confirm")}</ErrorText>
