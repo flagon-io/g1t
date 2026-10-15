@@ -129,11 +129,15 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
       {address && (
         <Form method="post" className="mt-6 space-y-4">
           <input type="hidden" name="intent" value="confirm" />
-          <Field label="Confirmation code" htmlFor="email-verification-code" hint={`The code and the link work for ${MINUTES} minutes.`}>
-            {/* Sent as soon as the sixth digit is in. */}
-            <CodeSlots id="email-verification-code" autoFocus submit invalid={errorFor("confirm") != null} describedBy="code-error" />
-          </Field>
-          <div id="code-error">
+          {/* The boxes sit in the middle, under the line that says what to enter; sent as soon as the sixth digit is in. */}
+          <div>
+            <label htmlFor="email-verification-code" className="sr-only">
+              Confirmation code
+            </label>
+            <CodeSlots id="email-verification-code" autoFocus submit centered invalid={errorFor("confirm") != null} describedBy="code-error" />
+            <p className="mt-2 text-center text-xs text-faint">The code and the link work for {MINUTES} minutes.</p>
+          </div>
+          <div id="code-error" className="text-center">
             <ErrorText>{errorFor("confirm")}</ErrorText>
           </div>
           <div className="*:w-full">
