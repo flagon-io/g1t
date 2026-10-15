@@ -450,6 +450,7 @@ impl Search {
             .filter(|row| keep.contains(&row.repo_id))
             .map(|row| ExploreRepo {
                 archived: archived.contains(&row.repo_id),
+                id: row.repo_id,
                 namespace: row.namespace,
                 name: row.name,
                 description: row.description,

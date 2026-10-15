@@ -32,11 +32,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const explore = await search
     .explore(getViewer(context), { sort, language, topic, page: pageNumber })
     .catch(() => null);
-  // Each one's homepage or production, from its project; the page shows without them.
-  const links = explore
-    ? await projects.publicLinks(explore.repos.map((repo) => ({ namespace: repo.namespace, name: repo.name }))).catch(() => ({}))
-    : {};
-  return { sort, language, topic, explore, links: links as Record<string, string> };
+  // Each one's homepage or production, and its description, from its project;
+  // the page shows without them.
+  const [links, about] = explore
+    ? await Promise.all([
+        projects.publicLinks(explore.repos.map((repo) => ({ namespace: repo.namespace, name: repo.name }))).catch(() => ({})),
+        projects.descriptions(explore.repos.map((repo) => repo.id).filter(Boolean)).catch(() => ({})),
+      ])
+    : [{}, {}];
+  const described = (about as Record<string, string>) ?? {};
+  // A search from before ids keeps its own copy until it is deployed too.
+  const repos = (explore?.repos ?? []).map((repo) => ({ ...repo, description: repo.id ? (described[repo.id] ?? null) : repo.description }));
+  return { sort, language, topic, explore: explore && { ...explore, repos }, links: links as Record<string, string> };
 }
 
 /** The address of Explore with some of its filters changed. */
