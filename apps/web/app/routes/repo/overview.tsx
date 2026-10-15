@@ -34,7 +34,7 @@ import { githubApp } from "../../lib/github.server";
 import { ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { type LivePull, LiveNowList, StartHere } from "../../components/coordination";
-import { liveByIssue } from "../../lib/coordination";
+import { awakeAndIdle, liveByIssue } from "../../lib/coordination";
 import { type Need, ageBuckets, firstPassRate, passRate, rankNeeds, runHealth } from "../../lib/mission";
 import { count, duration, percent } from "../../lib/observability";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
@@ -817,12 +817,15 @@ function Overview({
     : null;
   const addImage = canChange ? `${base}/settings#production-image` : null;
   const elsewhereUrl = loaderData.deployment?.url ?? project?.productionUrl ?? null;
-  const working = claims.length + sessions.length > 0;
+  // Idle sessions fold under the list (LiveNowList); the counts are of the rest.
+  const { awake, idle } = awakeAndIdle(sessions);
+  const busy = claims.length + awake.length > 0;
+  const working = busy || idle.length > 0;
   // Deployments, checks, releases, claims and sessions show as they happen.
   useRepoLive({ match: repoPages.overview(loaderData.commit?.hash) });
   // Claims lapse and sessions go idle with no event to say so.
   useRefreshWhile(working, 15_000);
-  const live = liveByIssue(claims, sessions);
+  const live = liveByIssue(claims, awake);
   const moreIssues = live.issues.length - LIVE_SHOWN;
 
   return (
@@ -892,11 +895,12 @@ function Overview({
 
           <Panel
             title="Live now"
-            icon={<Radio size={14} className={working ? "text-success" : undefined} />}
+            icon={<Radio size={14} className={busy ? "text-success" : undefined} />}
             extra={
               working ? (
                 <span className="text-xs text-muted">
-                  {plural(sessions.length, "session")} · {plural(claims.length, "claim")}
+                  {plural(awake.length, "session")} · {plural(claims.length, "claim")}
+                  {idle.length > 0 && ` · ${idle.length} idle`}
                 </span>
               ) : null
             }

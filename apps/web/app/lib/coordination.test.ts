@@ -10,6 +10,7 @@ import {
   feedLine,
   harnessName,
   intentTitle,
+  awakeAndIdle,
   liveByIssue,
   sessionTitle,
   duration,
@@ -105,6 +106,21 @@ test("a claim says when it lapses; one that ended says nothing", () => {
   assert.equal(span(2 * 3_600_000), "2h");
 });
 
+test("Live now lists sessions heard from lately and folds away the idle, the latest first", () => {
+  const { awake, idle } = awakeAndIdle([
+    session("ses_a", { state: "active" }),
+    session("ses_b", { state: "idle", title: "Tidy the README", lastSeenAt: "2026-10-12T10:00:00Z" }),
+    session("ses_c", { state: "idle", lastSeenAt: "2026-10-12T10:10:00Z" }),
+  ]);
+  assert.deepEqual(awake.map((one) => one.id), ["ses_a"]);
+  assert.deepEqual(idle.map((one) => one.id), ["ses_c", "ses_b"]);
+  // A tab opened and never typed in is in neither; once it says what it is for, it shows.
+  const opened = session("ses_d", { state: "active", title: null, startedAt: "2026-10-12T10:00:00Z", lastSeenAt: "2026-10-12T10:00:00Z" });
+  assert.deepEqual(awakeAndIdle([opened]), { awake: [], idle: [] });
+  assert.equal(awakeAndIdle([{ ...opened, lastSeenAt: "2026-10-12T10:00:05Z" }]).awake.length, 1);
+  assert.equal(awakeAndIdle([{ ...opened, title: "Fix the build" }]).awake.length, 1);
+});
+
 test("live work is grouped by issue, most recent first, with sessions on no issue apart", () => {
   const { issues, loose } = liveByIssue(
     [claim(1), claim(2, { createdAt: "2026-10-12T10:20:00Z" }), claim(2, { actor: bo })],
@@ -162,6 +178,8 @@ test("a session is never title-less: its title, its first prompt's intent, its b
 
 test("a prompt's intent is its first line or sentence, plain, clipped on a word", () => {
   assert.equal(intentTitle("Make preview builds faster. They time out on big repositories."), "Make preview builds faster");
+  // What an editor puts ahead of the prompt is not the prompt.
+  assert.equal(intentTitle("<ide_opened_file>The user opened a.ts in the IDE.</ide_opened_file>\nWhy is the page crashing?"), "Why is the page crashing?");
   assert.equal(intentTitle("Why does `src/app.ts` fail? It worked yesterday."), "Why does src/app.ts fail?");
   assert.equal(intentTitle("```js\nconst a = 1;\n```\n## Clean **this** up\nmore"), "Clean this up");
   assert.equal(intentTitle("\n\n- look at [the docs](https://docs.g1t.sh) for g1t.mjs"), "Look at the docs for g1t.mjs");

@@ -12,7 +12,7 @@ import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { PullIcon } from "../../components/work-icons";
 import { requireRepo } from "../../lib/access.server";
-import { COORDINATION_TYPES, feedLine } from "../../lib/coordination";
+import { COORDINATION_TYPES, awakeAndIdle, feedLine } from "../../lib/coordination";
 import { page } from "../../lib/meta";
 import { useRefreshWhile } from "../../lib/refresh";
 import { repoPages } from "../../lib/repo-live";
@@ -121,7 +121,10 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
   const { claims, sessions, queue, feed, titles, pulls, landed, defaultBranch } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const now = Date.now();
-  const working = claims.length > 0 || sessions.length > 0;
+  // Idle sessions fold under the list (LiveNowList); the counts are of the rest.
+  const { awake, idle } = awakeAndIdle(sessions);
+  const busy = claims.length + awake.length > 0;
+  const working = busy || idle.length > 0;
   // Claims, sessions, overlaps, integration results and merges as they happen.
   useRepoLive({ match: repoPages.work() });
   // Claims lapse and sessions go idle with no event to say so.
@@ -139,11 +142,11 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
       </p>
 
       <Section
-        icon={<Radio size={15} className={working ? "text-success" : "text-faint"} />}
+        icon={<Radio size={15} className={busy ? "text-success" : "text-faint"} />}
         title="Live now"
         aside={
           working
-            ? `${claims.length} ${claims.length === 1 ? "claim" : "claims"}, ${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`
+            ? `${claims.length} ${claims.length === 1 ? "claim" : "claims"}, ${awake.length} ${awake.length === 1 ? "session" : "sessions"}${idle.length > 0 ? `, ${idle.length} idle` : ""}`
             : undefined
         }
       >
