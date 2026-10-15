@@ -19,6 +19,7 @@ import {
   StartHere,
   WindowSwitch,
 } from "../../components/home";
+import { HomeAsk, SummarizeButton } from "../../components/home-ask";
 import { Skeleton } from "../../components/ui/skeleton";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
@@ -81,7 +82,9 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 const NOTIFICATIONS_READ = 50;
 
 /**
- * Home: the workspace's front page. Where you're needed now, with no time
+ * Home: the workspace's front page. First a box that asks g1t
+ * (components/home-ask: Summarize on the span and Explain on each change
+ * that landed ask it too); then where you're needed now, with no time
  * window; what happened since you were last here (or over the last 24
  * hours or 7 days, `?window=`): what people did, from the events
  * service's digest of the span and chat's, then what landed; what is
@@ -242,22 +245,20 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   return (
     <div className="mx-auto w-full max-w-260 space-y-5 px-4 py-5 md:px-10 md:py-8">
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-[1.75rem] leading-tight font-semibold tracking-tight">{span.key === "last" && span.note == null ? "Welcome back" : "Home"}</h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">
-            <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
-              <Await resolve={head}>
-                {([digest, happened, att]) => (
-                  <>
-                    <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
-                  </>
-                )}
-              </Await>
-            </Suspense>
-          </p>
-        </div>
-        <WindowSwitch span={span} />
+      {/* 0. Ask g1t anything: the answer opens in the top bar's Ask panel. */}
+      <header className="space-y-3">
+        <HomeAsk span={span} tz={tz} />
+        <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">
+          <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
+            <Await resolve={head}>
+              {([digest, happened, att]) => (
+                <>
+                  <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
+                </>
+              )}
+            </Await>
+          </Suspense>
+        </p>
       </header>
 
       {/* 1. Where you're needed now: no window, first and biggest. Start here beside it on wide screens, under it on phones. */}
@@ -288,13 +289,19 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
       {/* 2. What happened in the span. */}
       <section aria-labelledby="since" className="space-y-4">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-2">
-          <h2 id="since" className="text-lg font-semibold tracking-tight text-fg">
-            {span.key === "last" && span.note == null ? "Since you were last here" : span.words}
-          </h2>
-          <p className="text-sm text-muted">
-            {span.key === "last" && span.note == null ? `${span.words} · ${span.length}` : spanNote(span.note)}
-          </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-2">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 id="since" className="text-lg font-semibold tracking-tight text-fg">
+              {span.key === "last" && span.note == null ? "Since you were last here" : span.words}
+            </h2>
+            <p className="text-sm text-muted">
+              {span.key === "last" && span.note == null ? `${span.words} · ${span.length}` : spanNote(span.note)}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <SummarizeButton span={span} tz={tz} />
+            <WindowSwitch span={span} />
+          </div>
         </div>
         <Suspense
           fallback={

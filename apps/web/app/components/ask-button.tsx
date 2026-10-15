@@ -9,6 +9,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { useLocation } from "react-router";
 
+import { ASK_EVENT } from "../lib/ask";
 import { MarkGlyph } from "./logo";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
@@ -21,10 +22,23 @@ const AskSheet = lazy(() => load().then((module) => ({ default: module.AskSheet 
 export function AskButton({ slug }: { slug: string }) {
   const [open, setOpen] = useState(false);
   const [wanted, setWanted] = useState(false);
+  // A question a page asked (lib/ask.ts askG1t), until the panel sends it.
+  const [queued, setQueued] = useState<{ text: string; at: number } | null>(null);
   const location = useLocation();
   // Any completed navigation, including answer citations and the current DM,
   // reveals its destination. Revalidation and links opened in another tab do not.
   useEffect(() => setOpen(false), [location.key]);
+  useEffect(() => {
+    const onAsk = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text?.trim();
+      if (!text) return;
+      setQueued({ text, at: Date.now() });
+      setWanted(true);
+      setOpen(true);
+    };
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
+  }, []);
   const change = (next: boolean) => {
     if (next) setWanted(true);
     setOpen(next);
@@ -41,7 +55,7 @@ export function AskButton({ slug }: { slug: string }) {
       </Hint>
       {wanted && (
         <Suspense fallback={<Loading />}>
-          <AskSheet slug={slug} open={open} />
+          <AskSheet slug={slug} open={open} queued={queued} onQueuedTaken={() => setQueued(null)} />
         </Suspense>
       )}
     </Sheet>
