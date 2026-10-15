@@ -25,8 +25,9 @@ token, cannot transfer. Your email address must be confirmed.
 
 ## Transfer a repository
 
-1. Open the repository's **Settings → Repository**.
-2. Under **Danger zone**, choose **Transfer**.
+1. Open the project's **Settings → General**.
+2. Under **Danger zone**, choose **Transfer**. The project moves with its
+   repository.
 3. Pick the workspace to move it to. Only workspaces where you can create
    a repository like it are listed.
 4. Read what changes, type the repository's full name (`<old>/<repo>`) to

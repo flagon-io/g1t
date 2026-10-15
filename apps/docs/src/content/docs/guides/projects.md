@@ -223,11 +223,11 @@ A project's **Settings** has a tab for each part:
 
 | Tab | What it holds |
 | --- | --- |
-| **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), its [links](#links), and its [production image](#uploading-an-image). Only projects have descriptions: a repository has none of its own, and search, link previews and lists of repositories show its project's. A fork's project starts with the description of the project it was forked from. |
+| **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), its [links](#links), and its [production image](#uploading-an-image), and its danger zone: archive, [transfer](/guides/transferring-repositories/) and delete, which take its repository with it. Only projects have descriptions: a repository has none of its own, and search, link previews and lists of repositories show its project's. A fork's project starts with the description of the project it was forked from. |
 | **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
 | **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
 | **Guardrails** | How long g1t's checks, merge queue and merge checks may run here. See [guardrails](/guides/guardrails/). |
-| **Repository** | The repository's name, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, archive, transfer and delete. See [Managing a repository](/guides/managing-repositories/). |
+| **Repository** | The repository's name, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, and detaching a fork. See [Managing a repository](/guides/managing-repositories/). |
 | **Access** | Who has a [role](/guides/access-and-roles/) on the repository, and invitations. |
 | **Branches and merging** | Auto-merge, the CODEOWNERS file's errors, and what the rules hold for the default branch. |
 | **Rules** | [Rulesets](/guides/rules/): branch and tag protection, [required status checks](/guides/pull-requests/#required-status-checks), approvals and the merge queue, with Insights. |
@@ -248,7 +248,7 @@ repository:
 | **Rules**, **Guardrails** | Admin |
 | **Access**: seeing who has a role; changing it | Write; Admin |
 | **Deployments**, **Domains**, **Secrets and variables**, **Runners**, **Webhooks** | Admin |
-| On **Repository**: its name, default branch, and the danger zone (visibility, archive) | Admin |
+| On **Repository**: its name, default branch, and the danger zone (visibility); on **General**, archive | Admin |
 | Transfer and delete | An owner of the workspace |
 
 Someone without the role does not see the tab.

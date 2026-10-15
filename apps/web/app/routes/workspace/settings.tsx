@@ -16,6 +16,7 @@ import { page } from "../../lib/meta";
 import { useAddresses } from "../../lib/addresses";
 import { AvatarField } from "../../components/avatar-field";
 import { GettingStartedButton } from "../../components/onboarding";
+import { ConfirmName } from "../../components/confirm-name";
 import { DangerAction, DangerZone } from "../../components/danger-zone";
 import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import {
@@ -467,21 +468,7 @@ function DeleteAction({
               </li>
               <li>Members keep their own accounts.</li>
             </ul>
-            <FormField>
-              <FieldLabel htmlFor="confirm-delete">
-                Type <span className="font-mono text-fg">{workspace.slug}</span> to confirm
-              </FieldLabel>
-              <TextInput
-                id="confirm-delete"
-                name="confirm"
-                value={confirm}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoComplete="off"
-                onChange={(event) => setConfirm(event.target.value)}
-                className="font-mono"
-              />
-            </FormField>
+            <ConfirmName confirm={workspace.slug} id="confirm-delete" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
@@ -625,19 +612,13 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
                 <li>After {SLUG_HOLD_DAYS} days, anyone can take the name {workspace.slug}.</li>
                 <li>You can change the address again after {RENAME_COOLDOWN_HOURS} hours.</li>
               </ul>
-              <FormField>
-                <FieldLabel htmlFor="confirm-slug">
-                  Type <span className="font-mono text-fg">{wanted}</span> to confirm
-                </FieldLabel>
-                <TextInput
-                  id="confirm-slug"
-                  value={confirm}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  onChange={(event) => setConfirm(event.target.value)}
-                  className="font-mono"
-                />
-              </FormField>
+              <ConfirmName
+                confirm={wanted}
+                id="confirm-slug"
+                name={undefined}
+                value={confirm}
+                onChange={(event) => setConfirm(event.target.value)}
+              />
               <ErrorText>{error}</ErrorText>
               <AlertDialogFooter>
                 <AlertDialogCancel type="button">Cancel</AlertDialogCancel>

@@ -12,8 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
-import { FieldLabel, Field as FormField } from "./ui/field";
-import { Input as TextInput } from "./ui/input";
+import { ConfirmName } from "./confirm-name";
 import { confirmsName } from "../lib/repo-lifecycle";
 
 /**
@@ -94,21 +93,7 @@ export function ConfirmDialog({
             {children && <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">{children}</ul>}
             {extra}
             {confirm != null && (
-              <FormField>
-                <FieldLabel htmlFor={`${id}-confirm`}>
-                  Type <span className="font-mono break-all text-fg">{confirm}</span> to confirm
-                </FieldLabel>
-                <TextInput
-                  id={`${id}-confirm`}
-                  name="confirm"
-                  value={typed}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoComplete="off"
-                  onChange={(event) => setTyped(event.target.value)}
-                  className="font-mono"
-                />
-              </FormField>
+              <ConfirmName confirm={confirm} id={`${id}-confirm`} value={typed} onChange={(event) => setTyped(event.target.value)} />
             )}
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
@@ -148,7 +133,7 @@ export function ArchivedBanner({ base, owner, settings }: { base: string; owner:
       </p>
       {owner && (
         <Link
-          to={`${base}/settings/repository#danger-zone`}
+          to={`${base}/settings#danger-zone`}
           className="shrink-0 pl-6.5 font-medium text-warn hover:underline sm:pl-0"
         >
           Unarchive
