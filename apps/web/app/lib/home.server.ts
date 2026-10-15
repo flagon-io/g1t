@@ -21,6 +21,7 @@ import {
   type User,
   type WorkflowRun,
   notifyClient,
+  G1T_KEY,
 } from "@g1t/contracts";
 
 import {
@@ -194,7 +195,7 @@ export async function loadNames(keys: string[]): Promise<Record<string, string>>
   const names: Record<string, string> = {};
   const userIds: string[] = [];
   for (const key of keys.slice(0, MAX_NAMES)) {
-    if (key === G1T_ACTOR || key === "user:g1t" || key.startsWith("user:wsp_")) names[key] = "g1t";
+    if (key === G1T_ACTOR || key === "user:g1t" || key === G1T_KEY || key.startsWith("user:wsp_")) names[key] = "g1t";
     else if (key.startsWith("agent:") || key.startsWith("user:agt_")) continue;
     else if (key.startsWith("user:")) userIds.push(key.slice("user:".length));
   }

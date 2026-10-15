@@ -36,6 +36,9 @@ import {
   type Digest,
   type DigestActor,
   type DigestColumn,
+  type WorkKind,
+  WORK_KINDS,
+  WORK_LABEL,
   type LandedChange,
   type RunningRow,
   type ShipInfo,
@@ -47,6 +50,7 @@ import {
   explainQuestion,
   landedByDay,
   listOf,
+  plural,
   shippedLabel,
   timeOfDay,
   waited,
@@ -312,54 +316,97 @@ function inSpan(span: Pick<Span, "key" | "note" | "words">): string {
   return span.key === "last" && span.note == null ? "since you were last here" : span.words.charAt(0).toLowerCase() + span.words.slice(1);
 }
 
-/** The faces of the most active, with a tooltip naming each, and how many more there were. */
-const FACES = 5;
+/** Each kind's colour: the chart's categorical slots, in WORK_KINDS order (app.css --color-series-*). */
+const WORK_FILL: Record<WorkKind, string> = {
+  pushes: "bg-series-1",
+  pulls: "bg-series-2",
+  issues: "bg-series-3",
+  shipped: "bg-series-4",
+  docs: "bg-series-5",
+  chat: "bg-series-6",
+};
 
-function Faces({ actors }: { actors: DigestActor[] }) {
-  if (actors.length === 0) return null;
-  const shown = actors.slice(0, FACES);
-  const more = actors.length - shown.length;
+/** The most rows the chart shows; the rest are counted under it. */
+const WHO_ROWS = 6;
+
+/** What one actor's bar says, for a screen reader and the tooltip's lead. */
+function actorWords(actor: DigestActor): string {
+  const parts = WORK_KINDS.filter((kind) => actor.parts[kind]).map((kind) => `${WORK_LABEL[kind].toLowerCase()} ${actor.parts[kind]!.toLocaleString("en-US")}`);
+  return `${actor.name}${actor.kind === "agent" ? " (agent)" : ""}: ${parts.join(", ")}`;
+}
+
+/**
+ * Who did what: a row per person or agent, most active first, each a bar
+ * split by kind of work and as long as their share of the busiest. A
+ * segment names itself on hover; the legend under it is the totals.
+ */
+function WhoChart({ column }: { column: DigestColumn }) {
+  const shown = column.actors.slice(0, WHO_ROWS);
+  const more = column.actors.length - shown.length;
+  const top = Math.max(1, ...shown.map((actor) => actor.count));
   return (
-    <div className="flex items-center gap-1.5">
-      <ul className="flex -space-x-1.5" aria-label="Most active">
-        {shown.map((actor) => (
-          <li key={actor.key} className="rounded-full ring-2 ring-surface">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="block">
-                  <Avatar name={actor.name} size={22} />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {actor.name} · {actor.count.toLocaleString("en-US")} {actor.count === 1 ? "thing" : "things"}
-              </TooltipContent>
-            </Tooltip>
-          </li>
-        ))}
-      </ul>
-      {more > 0 && <span className="text-xs text-muted">+{more.toLocaleString("en-US")}</span>}
-    </div>
+    <ul className="mt-4 space-y-2.5" aria-label="Who did what">
+      {shown.map((actor) => (
+        <li key={actor.key} className="grid grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_2.5rem] items-center gap-3" aria-label={actorWords(actor)}>
+          <span className="flex min-w-0 items-center gap-2">
+            <Avatar name={actor.name} size={20} agent={actor.kind === "agent"} ring="var(--color-surface)" />
+            <span className="truncate text-sm text-fg">{actor.name}</span>
+          </span>
+          <span className="flex h-2.5 gap-0.5 overflow-hidden rounded-full" style={{ width: `${Math.max(4, (actor.count / top) * 100)}%` }} aria-hidden>
+            {WORK_KINDS.filter((kind) => actor.parts[kind]).map((kind) => (
+              <Tooltip key={kind}>
+                <TooltipTrigger asChild>
+                  <span className={cn("h-full min-w-1 transition-opacity hover:opacity-80", WORK_FILL[kind])} style={{ flexGrow: actor.parts[kind] }} />
+                </TooltipTrigger>
+                <TooltipContent>
+                  {actor.name} · {WORK_LABEL[kind]}: {actor.parts[kind]!.toLocaleString("en-US")}
+                  {kind === "pushes" && actor.commits > 0 ? ` (${plural(actor.commits, "commit")})` : ""}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </span>
+          <span className="text-right text-xs text-muted tabular-nums">{actor.count.toLocaleString("en-US")}</span>
+        </li>
+      ))}
+      {more > 0 && <li className="text-xs text-muted">and {plural(more, "more")}</li>}
+    </ul>
   );
 }
 
-/** The lines: each what was done, with its count in the words, linked to where it is listed. */
-function Lines({ column }: { column: DigestColumn }) {
+/** The legend: each kind with its colour, what it was in words, linked to where it is listed. */
+function WorkLegend({ column }: { column: DigestColumn }) {
   return (
-    <ul className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-      {column.lines.map((line) => (
-        <li key={line.key} className="flex items-start gap-2 text-sm text-fg">
-          <span className="mt-1.75 size-1.5 shrink-0 rounded-full bg-fg-soft/60" aria-hidden />
-          {line.to ? (
-            <Link to={line.to} className="hover:underline">
-              {line.text}
-            </Link>
-          ) : (
-            <span>{line.text}</span>
-          )}
-        </li>
-      ))}
+    <ul className="mt-4 grid gap-x-6 gap-y-1.5 border-t border-line pt-3 sm:grid-cols-2">
+      {column.lines.map((line) => {
+        const body = (
+          <>
+            <span className={cn("mt-1.25 size-2.5 shrink-0 rounded-[3px]", WORK_FILL[line.key])} aria-hidden />
+            <span className="min-w-0">
+              <span className="font-medium text-fg">{WORK_LABEL[line.key]}</span> <span className="text-muted">{line.text}</span>
+            </span>
+          </>
+        );
+        return (
+          <li key={line.key} className="text-sm">
+            {line.to ? (
+              <Link to={line.to} className="group flex items-start gap-2 hover:[&_.text-muted]:text-fg-soft">
+                {body}
+              </Link>
+            ) : (
+              <span className="flex items-start gap-2">{body}</span>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
+}
+
+/** "2 people · 1 agent". */
+function whoCount(actors: DigestActor[]): string {
+  const people = actors.filter((actor) => actor.kind === "person").length;
+  const agents = actors.length - people;
+  return [people > 0 ? plural(people, "person", "people") : null, agents > 0 ? plural(agents, "agent") : null].filter(Boolean).join(" · ");
 }
 
 /**
@@ -387,22 +434,22 @@ export function PeopleSummary({ digest, span, code }: { digest: Digest | null; s
         </h3>
         {col.actors.length > 0 && (
           <Badge tone="neutral" size="md" className="tabular-nums">
-            {col.actors.length.toLocaleString("en-US")} active
+            {whoCount(col.actors)}
           </Badge>
         )}
-        <span className="ml-auto">
-          <Faces actors={col.actors} />
-        </span>
       </div>
       {col.lines.length > 0 ? (
-        <Lines column={col} />
+        <>
+          {col.actors.length > 0 && <WhoChart column={col} />}
+          <WorkLegend column={col} />
+        </>
       ) : (
         <p className="mt-3 text-sm text-muted">
           {silent.length > 0
             ? `Nothing from what could be read ${when}.`
             : code
-              ? `Nobody pushed, opened, merged, reviewed, edited a doc or said anything ${when}.`
-              : `Nobody edited a doc or said anything ${when}.`}
+              ? `Nothing pushed, opened, merged, reviewed, edited or said ${when}.`
+              : `No doc edited and nothing said ${when}.`}
         </p>
       )}
       {silent.length > 0 && (
