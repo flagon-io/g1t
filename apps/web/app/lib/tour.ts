@@ -7,14 +7,17 @@
  * The story is about the code. Priya's pull request #431 runs its checks,
  * is approved by Dana and is merged by the queue, and production deploys.
  * Then how it was made: the session Priya's coding agent recorded onto the
- * pull request through g1t's MCP server. Then the people: #web, where Dana
- * reported the bug and hears it shipped. Last, the docs page Dana updates.
+ * pull request through g1t's MCP server. Then Priya comes back to Home:
+ * the notifications that settled themselves leave Where you're needed,
+ * Start here picks what is left, and What changed tells her in plain
+ * English what landed and that #431 is live. Last, the people: #web, where
+ * Dana reported the bug and hears it shipped.
  */
 
-export type Scene = "code" | "session" | "chat" | "docs";
+export type Scene = "code" | "session" | "home" | "chat";
 
 /** Where the soft cursor points: an element marked `data-tour="<target>"`. */
-export type CursorTarget = "pr-session" | "rail-code" | "rail-chat" | "rail-docs" | "idle";
+export type CursorTarget = "pr-session" | "rail-code" | "rail-home" | "home-summarize" | "home-explain" | "rail-chat" | "idle";
 
 export type Frame = {
   scene: Scene;
@@ -28,12 +31,22 @@ export type Frame = {
   merged: boolean;
   /** Entries of the recorded session shown, 0 to SESSION.length. */
   entries: number;
+  /** Notifications on Home that have settled themselves, 0 to SETTLED.length. */
+  settled: number;
+  /** Settled rows that have left Where you're needed, 0 to SETTLED.length. */
+  cleared: number;
+  /** Home has scrolled to What changed, as Summarize brings it into view. */
+  summarizing: boolean;
+  /** Words of What changed's summary shown, 0 to SUMMARY_WORDS.length. */
+  words: number;
+  /** The summary is finished: Ask a follow-up and Summarize again show. */
+  summarized: boolean;
+  /** #431 is live in production (Landed says so). */
+  live: boolean;
   /** Priya posted in #web that it shipped. */
   shipped: boolean;
   /** Dana says support has been told, in #web. */
   told: boolean;
-  /** The docs page shows the changed line. */
-  docUpdated: boolean;
   cursor: CursorTarget;
   /** The cursor is pressing. */
   click: boolean;
@@ -55,6 +68,22 @@ export const SESSION: SessionEntry[] = [
 
 export const CHECKS = ["build", "test", "lint", "preview"];
 
+/**
+ * The notifications waiting on Priya that settle themselves while she
+ * looks, each with the reason the events service writes when it settles
+ * (services/events/src/inbox.rs).
+ */
+export const SETTLED: { title: string; detail: string; why: string }[] = [
+  { title: "Deploy failed on main", detail: "acme/web main · Production on an older build", why: "Production of web deployed at 3f9c2a1" },
+  { title: "CI failed on csv-export", detail: "acme/web csv-export · Run 412", why: "CI passed in run 413" },
+];
+
+/** What Changed's answer, as g1t streams it onto Home. */
+export const SUMMARY =
+  "Two changes landed in acme/web since you were last here. CSV exports now stream in batches of 1,000 rows (#431), so the largest accounts no longer time out; it went live 9 minutes after the merge queue merged it. Jordan pinned the build image's cache key, which fixed last night's failed deploy. Your webhook retries (#433) are ready to merge.";
+
+export const SUMMARY_WORDS = SUMMARY.split(" ");
+
 /** The beats of the story, in ms from the start of the loop. */
 export const BEAT = {
   code: 0,
@@ -66,16 +95,27 @@ export const BEAT = {
   sessionClick: 6300,
   session: 6450,
   entry0: 6700,
-  entryGap: 500,
-  railChatClick: 10000,
-  chat: 10150,
-  shipped: 11000,
-  told: 12200,
-  railDocsClick: 14000,
-  docs: 14150,
-  docUpdated: 15300,
-  end: 20000,
+  entryGap: 450,
+  railHomeClick: 9300,
+  home: 9450,
+  settle0: 10300,
+  settleGap: 650,
+  /** How long a settled row stays, saying why, before it leaves the list. */
+  clearAfter: 1100,
+  summarizeClick: 12700,
+  summarizing: 12850,
+  word0: 13500,
+  wordGap: 48,
+  live: 14600,
+  railChatClick: 18200,
+  chat: 18350,
+  shipped: 19200,
+  told: 20400,
+  end: 23500,
 } as const;
+
+/** When the summary has finished streaming. */
+export const SUMMARIZED = BEAT.word0 + SUMMARY_WORDS.length * BEAT.wordGap + 200;
 
 /** The whole loop, in ms. */
 export const LOOP_MS = BEAT.end;
@@ -84,8 +124,8 @@ export const LOOP_MS = BEAT.end;
 export const PILLS: { scene: Scene; label: string; start: number }[] = [
   { scene: "code", label: "Pull request", start: 0 },
   { scene: "session", label: "Session", start: BEAT.session },
+  { scene: "home", label: "Home", start: BEAT.home },
   { scene: "chat", label: "Chat", start: BEAT.chat },
-  { scene: "docs", label: "Artifacts", start: BEAT.docs },
 ];
 
 /** Which pill a time falls under. */
@@ -115,21 +155,27 @@ function cursorAt(t: number): { cursor: CursorTarget; click: boolean } {
   const press = (at: number) => t >= at && t < at + 180;
   const moves: [number, CursorTarget][] = [
     [BEAT.merged + 300, "pr-session"],
-    [BEAT.session + 2600, "rail-chat"],
-    [BEAT.told + 500, "rail-docs"],
-    [BEAT.docs + 500, "idle"],
+    [BEAT.session + 1900, "rail-home"],
+    [BEAT.home + 400, "idle"],
+    [BEAT.summarizeClick - 900, "home-summarize"],
+    [BEAT.summarizing + 300, "idle"],
+    [SUMMARIZED + 300, "home-explain"],
+    [BEAT.railChatClick - 900, "rail-chat"],
+    [BEAT.chat + 500, "idle"],
   ];
   let cursor: CursorTarget = "idle";
   for (const [at, target] of moves) if (t >= at) cursor = target;
-  const click = press(BEAT.sessionClick) || press(BEAT.railChatClick) || press(BEAT.railDocsClick);
+  const click = press(BEAT.sessionClick) || press(BEAT.railHomeClick) || press(BEAT.summarizeClick) || press(BEAT.railChatClick);
   return { cursor, click };
 }
 
 /** The frame at time t (ms into the loop). */
 export function frameAt(time: number): Frame {
   const t = ((time % LOOP_MS) + LOOP_MS) % LOOP_MS;
-  const scene: Scene = t >= BEAT.docs ? "docs" : t >= BEAT.chat ? "chat" : t >= BEAT.session ? "session" : "code";
+  const scene: Scene = t >= BEAT.chat ? "chat" : t >= BEAT.home ? "home" : t >= BEAT.session ? "session" : "code";
   const { cursor, click } = cursorAt(t);
+  // Home is what Priya comes back to: nothing on it moves until she is there.
+  const onHome = t >= BEAT.home;
   return {
     scene,
     checks: count(t, BEAT.check0, BEAT.checkGap, CHECKS.length),
@@ -138,9 +184,14 @@ export function frameAt(time: number): Frame {
     merged: t >= BEAT.merged,
     // The session was recorded before the story opens; the tour plays it back once its tab is opened.
     entries: t < BEAT.session ? 0 : count(t, BEAT.entry0, BEAT.entryGap, SESSION.length),
+    settled: onHome ? count(t, BEAT.settle0, BEAT.settleGap, SETTLED.length) : 0,
+    cleared: onHome ? count(t, BEAT.settle0 + BEAT.clearAfter, BEAT.settleGap, SETTLED.length) : 0,
+    summarizing: t >= BEAT.summarizing,
+    words: count(t, BEAT.word0, BEAT.wordGap, SUMMARY_WORDS.length),
+    summarized: t >= SUMMARIZED,
+    live: t >= BEAT.live,
     shipped: t >= BEAT.shipped,
     told: t >= BEAT.told,
-    docUpdated: t >= BEAT.docUpdated,
     cursor,
     click,
     cursorShown: t >= BEAT.merged && t < BEAT.end - 600,
@@ -150,9 +201,9 @@ export function frameAt(time: number): Frame {
 /** A still frame for each pill, for reduced motion: the moment the step makes its point. */
 export const STILLS: Record<Scene, number> = {
   code: BEAT.approved + 200,
-  session: BEAT.railChatClick - 400,
+  session: BEAT.railHomeClick - 400,
+  home: SUMMARIZED + 400,
   chat: BEAT.told + 400,
-  docs: BEAT.docUpdated + 400,
 };
 
 /** Whether two frames would draw the same. */
