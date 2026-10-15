@@ -418,10 +418,11 @@ export function Landing() {
             </span>
           </h1>
           <p className="mx-auto mt-7 max-w-2xl animate-fade-up text-lg leading-8 text-fg-soft/80 text-balance">
-            Repositories, pull requests, required checks, a merge queue and
-            deployments, with chat and docs for your team. Connect the coding
-            agents you already use, and their work lands through the same
-            checks as everyone&apos;s.
+            Start each day on Home: what landed, what is live, and what needs
+            you next. Behind it, repositories, pull requests, required checks,
+            a merge queue and deployments, with chat and docs for your team.
+            Connect the coding agents you already use, and their work lands
+            through the same checks as everyone&apos;s.
           </p>
           <div className="mt-9 flex animate-fade-up flex-wrap items-center justify-center gap-3">
             <ButtonLink to="/register" size="lg" className="rounded-full">
@@ -476,10 +477,11 @@ export function Landing() {
             Start every day knowing where things stand.
           </h2>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Home is your daily update. g1t keeps track of everything your team
-            and its coding agents did, clears what resolved itself, tells you
-            in plain English what changed and what is live, and asks you only
-            for what is yours to decide: a merge, a review, a fix.
+            Home is your daily update and your way into the forge. g1t keeps
+            track of everything your team and its coding agents did, clears
+            what resolved itself, tells you in plain English what changed and
+            what is live, and takes you straight to what is yours to decide: a
+            merge, a review, a fix.
           </p>
         </div>
 
