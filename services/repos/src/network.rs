@@ -212,8 +212,21 @@ impl<S: GitStore> Repos<S> {
         let (source_namespace, _) = locate(&store_key(&source));
         let residency = self.residency_of(&fork.namespace).await?;
         if forks_in_place(&source_namespace, residency, self.placement.eu.as_deref()) {
+            if !self.registry.lock_copy(&source, &fork).await? {
+                return Ok(Outcome::fail(FailureCode::Conflict, "This repository is already being copied. Try again after the copy finishes."));
+            }
+            let (measured, pending) = self.registry.copy_size(&source).await?;
+            let bytes = measured.saturating_add(pending);
             self.registry.claim_store_key(&fork, Some(&source_namespace), &default).await?;
+            self.registry.insert(&fork).await?;
+            if !self.registry.reserve_public(&fork, bytes, self.free_public_bytes).await? {
+                self.registry.remove(&fork.id).await?;
+                self.registry.unlock_copy(&source, &fork).await?;
+                return Ok(Outcome::fail(FailureCode::Forbidden, "This fork would exceed the workspace's public storage limit."));
+            }
             self.store.open(&store_key(&source)).await?.fork(&store_key(&fork), a.default_branch_only).await?;
+            self.registry.finish_public(&fork, measured, measured).await?;
+            self.registry.unlock_copy(&source, &fork).await?;
         } else {
             // Kept in the EU: copied there, never forked across.
             let placed = match self.place(&fork).await? {
@@ -221,30 +234,34 @@ impl<S: GitStore> Repos<S> {
                 Err(unplaced) => return Ok(Outcome::fail(FailureCode::Conflict, unplaced.message())),
             };
             self.registry.claim_store_key(&fork, placed.as_deref(), &default).await?;
+            self.registry.insert(&fork).await?;
             self.store.create(&store_key(&fork), None, &fork.default_branch).await?;
             let from = self.store.open(&store_key(&source)).await?.access(Scope::Read).await?;
             let to = self.store.open(&store_key(&fork)).await?.access(Scope::Write).await?;
             let copied = if a.default_branch_only {
                 let head = self.store.open(&store_key(&source)).await?.log(&source.default_branch, 1).await?;
                 match head.first() {
-                    Some(head) => land::fast_forward(&from, &to, &fork.default_branch, None, &head.hash).await?,
+                    Some(head) => land::fast_forward(&from, &to, &fork.default_branch, None, &head.hash, self.public_quota(&fork)).await?,
                     None => Ok(()),
                 }
             } else {
-                copy::copy(
+                match copy::copy(
                     &copy::Endpoint::bearer(&from.remote, &from.token),
                     &copy::Endpoint::bearer(&to.remote, &to.token),
+                    |bytes| self.registry.reserve_public(&fork, bytes, self.free_public_bytes),
                 )
-                .await?
-                .map(|_| ())
-                .map_err(|problem| problem.to_string())
+                .await? {
+                    Ok(copied) => {
+                        self.registry.finish_public(&fork, copied.pack_bytes, copied.pack_bytes).await?;
+                        Ok(())
+                    }
+                    Err(problem) => Err(problem.to_string()),
+                }
             };
             if let Err(reason) = copied {
                 return Ok(Outcome::fail(FailureCode::Unavailable, format!("The fork could not be copied: {reason}")));
             }
         }
-        self.registry.insert(&fork).await?;
-        self.registry.set_stored_bytes(&fork.id, bytes).await?;
         self.registry.drop_redirect(&RepoPath { namespace: fork.namespace.clone(), name: fork.name.clone() }).await?;
         self.refs_moved(&fork.id).await;
         // Whoever forks a repository is an Admin of the fork.
@@ -396,7 +413,7 @@ impl<S: GitStore> Repos<S> {
             }
             let from = parent_git.access(Scope::Read).await?;
             let to = fork_git.access(Scope::Write).await?;
-            let moved = land::fast_forward(&from, &to, &branch, Some(&head.hash), &their_head.hash).await?;
+            let moved = land::fast_forward(&from, &to, &branch, Some(&head.hash), &their_head.hash, self.public_quota(&fork)).await?;
             self.refs_moved(&fork.id).await;
             if moved.is_err() {
                 return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} moved while it was being synced. Nothing was lost; try again.")));

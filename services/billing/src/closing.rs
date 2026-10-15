@@ -106,7 +106,10 @@ pub(crate) fn decide(facts: &Facts) -> std::result::Result<Settle, String> {
 /// The workspace's invoices sent and not paid: open (sent, or being
 /// charged) or failed. Either is money already asked for that closing must
 /// not ask for again.
-pub(crate) const UNPAID_INVOICES_SQL: &str = "SELECT count(*) AS n FROM workspace_invoices WHERE workspace = ? AND status IN ('open', 'failed')";
+pub(crate) const UNPAID_INVOICES_SQL: &str = "SELECT
+    (SELECT count(*) FROM workspace_invoices WHERE workspace = ?1 AND status IN ('open', 'failed')) +
+    (SELECT count(*) FROM invoice_attempts a WHERE workspace = ?1 AND NOT EXISTS
+      (SELECT 1 FROM workspace_invoices i WHERE i.invoice_id = a.invoice_id AND i.status IN ('paid', 'void'))) AS n";
 
 #[derive(Deserialize)]
 struct Count {

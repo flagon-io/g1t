@@ -1,9 +1,10 @@
-import { Archive, Hash, Lock, Search } from "lucide-react";
+import { Archive, Hash, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import type { Route } from "./+types/browse";
 import { ChatUnavailable } from "../../../components/chat/empty";
+import { ChannelMark } from "../../../components/chat/sidebar";
 import { CreateChannelButton, OWNERS_ONLY_CHANNELS, useChannelCreation, useChatSend } from "../../../components/chat/actions";
 import { channelPath } from "../../../lib/chat";
 import { sidebarOrNull } from "../../../lib/chat.server";
@@ -18,9 +19,10 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 /**
- * Every public channel in the workspace, joined or not, and the private
- * ones the viewer is in (the chat service leaves out the rest). With
- * `?archived=1`, the archived ones instead.
+ * Every channel the viewer may join, joined or not: for a member, those
+ * kept to the workspace and the public ones; for a guest, the public ones
+ * only; and the private ones the viewer is in (the chat service leaves
+ * out the rest). With `?archived=1`, the archived ones instead.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
@@ -29,7 +31,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const [listed, sidebar] = await Promise.all([chat.browse(slug, viewer, { archived }).catch(() => null), sidebarOrNull(slug, viewer)]);
   if (!listed?.ok) return { slug, unavailable: true as const };
   const joined = (sidebar?.entries ?? []).map((entry) => entry.channel.id);
-  return { slug, unavailable: false as const, archived, channels: listed.value, joined };
+  return { slug, unavailable: false as const, archived, channels: listed.value, joined, guest: sidebar?.guest === true, name: sidebar?.workspace?.name ?? slug };
 }
 
 export default function Browse({ loaderData }: Route.ComponentProps) {
@@ -49,13 +51,17 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 lg:py-12">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{loaderData.archived ? "Archived channels" : "Browse channels"}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {loaderData.archived ? "Archived channels" : loaderData.guest ? `Public channels in ${loaderData.name}` : "Browse channels"}
+          </h1>
           <p className="mt-1 text-sm text-muted">
             {loaderData.archived
               ? "Channels no one posts in any more. Their history stays readable; whoever may archive a channel may bring it back."
-              : `Every public channel in ${loaderData.slug}, which anyone in the workspace can read and join, and the private ones you're in.`}
+              : loaderData.guest
+                ? `You're not a member of ${loaderData.name}. These channels are open to anyone on g1t: read them, join them and talk in them as a guest.`
+                : `Every channel in ${loaderData.name} anyone in the workspace can read and join, its public ones open to anyone on g1t, and the private ones you're in.`}
           </p>
-          {!loaderData.archived && !may.any && <p className="mt-1 text-xs text-faint">{OWNERS_ONLY_CHANNELS}</p>}
+          {!loaderData.archived && !loaderData.guest && !may.any && <p className="mt-1 text-xs text-faint">{OWNERS_ONLY_CHANNELS}</p>}
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -65,7 +71,7 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
             {loaderData.archived ? <Hash size={15} /> : <Archive size={15} />}
             {loaderData.archived ? "Current channels" : "Archived"}
           </Link>
-          {!loaderData.archived && <CreateChannelButton slug={loaderData.slug} variant="button" />}
+          {!loaderData.archived && !loaderData.guest && <CreateChannelButton slug={loaderData.slug} variant="button" />}
         </div>
       </div>
       <Card asChild radius="lg" className="mt-6 flex h-10 items-center gap-2 px-3 text-sm focus-within:border-accent-dim">
@@ -97,11 +103,9 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
                 key={channel.id}
                 className="group/card relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-raised/50 has-[a:focus-visible]:bg-raised/50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-accent has-[a:focus-visible]:ring-inset"
               >
-                {channel.private ? (
-                  <Lock size={15} className="shrink-0 text-faint" aria-label="Private" />
-                ) : (
-                  <Hash size={16} className="shrink-0 text-faint" aria-label="Public" />
-                )}
+                <span className="flex w-4 shrink-0 justify-center text-faint">
+                  <ChannelMark channel={channel} size={16} />
+                </span>
                 <div className="min-w-0 grow">
                   <Link
                     to={channelPath(loaderData.slug, channel)}
@@ -109,7 +113,9 @@ export default function Browse({ loaderData }: Route.ComponentProps) {
                   >
                     {channel.name}
                   </Link>
-                  {channel.private && <span className="ml-2 text-xs text-faint">Private</span>}
+                  {channel.visibility !== "workspace" && (
+                    <span className="ml-2 text-xs text-faint">{channel.visibility === "public" ? "Public · anyone on g1t" : "Private"}</span>
+                  )}
                   {channel.topic && <p className="truncate text-sm text-muted">{channel.topic}</p>}
                 </div>
                 {loaderData.archived ? (

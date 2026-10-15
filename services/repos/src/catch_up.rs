@@ -599,7 +599,12 @@ impl<S: GitStore> Repos<S> {
     ) -> Result<Outcome<PullBranchUpdate>> {
         let branch = update.branch;
         let source_access = source_git.access(Scope::Write).await?;
+        if !self.registry.reserve_public(source, pack.len() as u64, self.free_public_bytes).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+        }
+        let bytes = pack.len() as u64;
         let pushed = land::push_pack(&source_access, branch, Some(update.head), update.commit, pack).await?;
+        self.registry.finish_public(source, bytes, bytes).await?;
         self.refs_moved(&source.id).await;
         let git_ref = format!("refs/heads/{branch}");
         let path = RepoPath {

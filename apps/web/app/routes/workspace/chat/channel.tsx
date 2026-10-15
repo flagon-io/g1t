@@ -2,16 +2,16 @@ import { useEffect } from "react";
 import { type ShouldRevalidateFunctionArgs, data, redirect } from "react-router";
 
 
-import type { Channel, ChannelMember, ChatMessage, User } from "@g1t/contracts";
+import type { Channel, ChannelAccessRequest, ChannelDetail, ChannelInvitation, ChannelMember, ChatMessage, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/channel";
 import { ChannelView } from "../../../components/chat/channel";
 import { conversationCache } from "../../../components/chat/conversation-cache";
-import { ChatUnavailable } from "../../../components/chat/empty";
+import { ChatUnavailable, RequestAccess } from "../../../components/chat/empty";
 import { channelPath } from "../../../lib/chat";
 import { rememberChat } from "../../../lib/chat.server";
 import { page } from "../../../lib/meta";
-import { chat } from "../../../lib/services.server";
+import { chat, identity } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
@@ -20,7 +20,16 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 }
 
 export type ChannelData =
-  | { unavailable: true; title: string }
+  | {
+      unavailable: true;
+      title: string;
+      /**
+       * A channel by name the viewer cannot open: private, kept to a
+       * workspace they are not in, or not there at all (which looks the
+       * same). They may ask to be let in.
+       */
+      locked?: { name: string; workspace: { slug: string; name: string }; member: boolean };
+    }
   | {
       unavailable: false;
       title: string;
@@ -32,6 +41,15 @@ export type ChannelData =
       joined: boolean;
       /** Whether the viewer may rename, archive and unarchive it (the workspace's chat settings). */
       can_manage?: boolean;
+      /** What else the viewer may do there, and who is asked in or asks to come in (`ChannelDetail`). */
+      can_make_public?: boolean;
+      can_invite_guests?: boolean;
+      can_remove_members?: boolean;
+      /** The viewer is not a member of the workspace: a guest here. */
+      guest?: boolean;
+      workspace?: ChannelDetail["workspace"];
+      invited?: ChannelInvitation[];
+      requests?: ChannelAccessRequest[];
     };
 
 /**
@@ -41,10 +59,12 @@ export type ChannelData =
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Members and guests alike: the chat service answers with what the viewer may read.
+  const member = roleIn(viewer, params.owner) != null;
   const slug = params.owner.toLowerCase();
   const name = "channel" in params ? (params.channel as string | undefined) : undefined;
-  // `-/chat/dm/g1t`: the viewer's direct message with @g1t, opened on first use.
+  // `-/chat/dm/g1t`: the viewer's direct message with @g1t, opened on first use; members only.
+  if (!member && "id" in params) throw data(null, { status: 404 });
   if ("id" in params && params.id === "g1t") {
     const opened = await chat.g1tDm(slug, viewer).catch(() => null);
     if (opened?.ok) throw redirect(channelPath(slug, opened.value));
@@ -56,7 +76,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       return "unavailable" as const;
     },
   );
-  if (read === "missing") throw data(null, { status: 404 });
+  if (read === "missing") {
+    // A channel's link that does not open: offer to ask to be let in, the same whether or not it is there.
+    if (!name) throw data(null, { status: 404 });
+    const workspace = await identity.getWorkspace(slug).catch(() => null);
+    if (!workspace) throw data(null, { status: 404 });
+    return data(
+      { unavailable: true, title: `#${name}`, locked: { name, workspace: { slug: workspace.slug.toLowerCase(), name: workspace.name }, member } } satisfies ChannelData,
+      { status: 403 },
+    );
+  }
   if (read === "unavailable") return { unavailable: true, title: fallbackTitle } satisfies ChannelData;
   const secure = new URL(request.url).protocol === "https:";
   return data(read, { headers: { "Set-Cookie": rememberChat(channelPath(slug, read.channel), secure) } });
@@ -92,6 +121,13 @@ async function readConversation(
     older: history.ok ? history.value.older : null,
     joined,
     can_manage: detail.value.can_manage === true,
+    can_make_public: detail.value.can_make_public === true,
+    can_invite_guests: detail.value.can_invite_guests === true,
+    can_remove_members: detail.value.can_remove_members === true,
+    guest: detail.value.guest === true,
+    workspace: detail.value.workspace,
+    invited: detail.value.invited ?? [],
+    requests: detail.value.requests ?? [],
   };
 }
 
@@ -133,6 +169,6 @@ export default function ChannelPage({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     if (!loaderData.unavailable) cache.set(window.location.pathname, loaderData);
   }, [loaderData]);
-  if (loaderData.unavailable) return <ChatUnavailable title={loaderData.title} />;
+  if (loaderData.unavailable) return "locked" in loaderData && loaderData.locked ? <RequestAccess {...loaderData.locked} /> : <ChatUnavailable title={loaderData.title} />;
   return <ChannelView key={loaderData.channel.id} data={loaderData} />;
 }

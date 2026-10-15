@@ -173,6 +173,8 @@ pub struct LoginPage {
 #[derive(Deserialize)]
 pub struct StripeSubscription {
     pub id: String,
+    #[serde(default)]
+    pub latest_invoice: Option<String>,
     /// `active`, `trialing`, `past_due`, `unpaid`, `canceled`, `incomplete`…
     pub status: String,
     #[serde(default)]
@@ -183,6 +185,12 @@ pub struct StripeSubscription {
     /// …newer ones on each item.
     #[serde(default)]
     pub items: Option<Items>,
+    /// A change waiting on its payment (`payment_behavior=pending_if_incomplete`):
+    /// until it is paid the subscription keeps its items.
+    #[serde(default)]
+    pub pending_update: Option<serde_json::Value>,
+    #[serde(default)]
+    pub metadata: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Deserialize)]
@@ -193,10 +201,26 @@ pub struct Items {
 #[derive(Deserialize)]
 pub struct Item {
     #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
     pub current_period_end: Option<i64>,
+    #[serde(default)]
+    pub price: Option<ItemPrice>,
+}
+
+#[derive(Deserialize)]
+pub struct ItemPrice {
+    pub id: String,
+    #[serde(default)]
+    pub unit_amount: Option<i64>,
 }
 
 impl StripeSubscription {
+    /// The subscription's only item, as complimentary enrollment makes it.
+    pub fn first_item(&self) -> Option<&Item> {
+        self.items.as_ref().and_then(|items| items.data.first())
+    }
+
     /// When the period paid for ends, in Unix seconds.
     pub fn period_end(&self) -> Option<i64> {
         self.current_period_end.or_else(|| {
@@ -228,7 +252,7 @@ fn encode(value: &str) -> String {
 /// in test mode the field is left out and the payment goes through untaxed;
 /// with a live key the request is refused instead (`untaxed_body`).
 pub(crate) fn taxed_path(path: &str) -> bool {
-    path == "/checkout/sessions" || path == "/invoices" || path == "/subscriptions"
+    path == "/checkout/sessions" || path == "/invoices" || path == "/subscriptions" || path.starts_with("/subscriptions/")
 }
 
 /// A form body without its `automatic_tax[…]` fields.
@@ -1033,7 +1057,7 @@ impl Stripe {
     /// is `plan`), made the first time it is
     /// needed, with g1t's tax code. One made before Stripe Tax was on is
     /// given the code when it is found.
-    async fn product(&self, tag: &str, name: &str) -> Result<String> {
+    pub(crate) async fn product(&self, tag: &str, name: &str) -> Result<String> {
         #[derive(Deserialize)]
         struct Product {
             id: String,
@@ -1173,6 +1197,8 @@ mod tax_mode_tests {
         let body = form(&[("mode", "payment".to_owned()), ("automatic_tax[enabled]", "true".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]);
         assert_eq!(without_automatic_tax(&body), form(&[("mode", "payment".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]));
         assert!(taxed_path("/checkout/sessions") && taxed_path("/invoices") && taxed_path("/subscriptions"));
+        // An enrollment converting to the plan turns tax on by updating it.
+        assert!(taxed_path("/subscriptions/sub_1") && taxed_path("/subscriptions/sub_1?expand[]=latest_invoice"));
         assert!(!taxed_path("/invoices/in_1/finalize") && !taxed_path("/payment_intents"));
     }
 

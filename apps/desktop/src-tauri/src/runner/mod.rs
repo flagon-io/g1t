@@ -6,8 +6,9 @@
 //!
 //! - **When.** On by default; settings turn it off ("Run jobs on this
 //!   computer while g1t is open"), and Stop in settings or the tray stops
-//!   it until Start, or until g1t starts again. It starts a few seconds
-//!   after the window, never before.
+//!   it until Start, or until g1t starts again. It starts once the site's
+//!   page has loaded (or 20 s have passed) and 5 s more, never before, on a
+//!   thread of its own that a panic restarts rather than ending the app.
 //! - **How.** The backend settings choose (backend.rs): Sandboxed, the
 //!   default, where nothing a job does reaches this computer; Docker; or
 //!   directly on this computer. The two that are not sandboxes are only
@@ -65,8 +66,9 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
-use std::sync::Mutex;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -86,8 +88,28 @@ pub const STATUS_EVENT: &str = "g1t-runner-status";
 /// What the site's page listens for: the app needs a registration token for a workspace.
 pub const WANTED_EVENT: &str = "g1t-runner-wanted";
 
-/// How long after the window the runner starts.
-const AFTER_START: Duration = Duration::from_secs(4);
+/// How long after the site's page has loaded the runner starts: the
+/// window, the page and its first calls to the app come first.
+const AFTER_START: Duration = Duration::from_secs(5);
+/// The longest the runner waits for the site's page before starting
+/// anyway (offline, the server picker, a site too old to say it loaded).
+const SITE_WAIT: Duration = Duration::from_secs(20);
+/// How long after the runner's thread failed it starts again.
+const AFTER_PANIC: Duration = Duration::from_secs(15);
+
+/// A lock that a failed runner thread can't take the app down with: a
+/// panic while holding one leaves it poisoned, and `unwrap` on the main
+/// thread would then end the app. The data is plain state, never half
+/// written in a way that matters, so it is used as it is.
+trait Held<T> {
+    fn held(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> Held<T> for Mutex<T> {
+    fn held(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
 /// How often the thread looks at the runner when nothing has happened.
 const TICK: Duration = Duration::from_secs(5);
 /// How long after starting the first look for an update is, then how often.
@@ -331,7 +353,7 @@ fn workspace(app: &AppHandle) -> Option<String> {
     if let Some(registration) = Registration::load(app).filter(|r| r.server == server) {
         return Some(registration.workspace);
     }
-    let site = app.state::<Shared>().site.lock().unwrap().clone();
+    let site = app.state::<Shared>().site.held().clone();
     site.current.filter(|slug| site.owned.iter().any(|o| &o.slug == slug)).or_else(|| site.owned.first().map(|o| o.slug.clone()))
 }
 
@@ -359,7 +381,7 @@ fn facts(app: &AppHandle, now: &Now) -> Facts {
         live: now.live,
         starting: now.starting.clone(),
         download: now.download.clone(),
-        held: !settings.runner || *app.state::<Shared>().paused.lock().unwrap(),
+        held: !settings.runner || *app.state::<Shared>().paused.held(),
         update: update_facts(app, now, backend),
     }
 }
@@ -369,7 +391,7 @@ fn facts(app: &AppHandle, now: &Now) -> Facts {
 /// its program while they run; a runner with no kinds of job takes it
 /// itself.
 fn update_facts(app: &AppHandle, now: &Now, backend: Backend) -> diagnosis::Update {
-    let updates = app.state::<Shared>().updates.lock().unwrap().clone();
+    let updates = app.state::<Shared>().updates.held().clone();
     let sandbox = now.sandbox.as_ref().filter(|_| backend == Backend::Sandboxed);
     let mut waiting = Vec::new();
     if updates.image {
@@ -417,7 +439,7 @@ fn rfc3339(at: SystemTime) -> String {
 
 pub fn view(app: &AppHandle) -> View {
     let shared = app.state::<Shared>();
-    let now = shared.now.lock().unwrap().clone();
+    let now = shared.now.held().clone();
     let settings = config::settings(app);
     let facts = facts(app, &now);
     let server = config::server(app);
@@ -431,19 +453,19 @@ pub fn view(app: &AppHandle) -> View {
         backend: settings.runner_backend,
         link: facts.workspace.as_ref().and_then(|w| server.join(&format!("{w}/-/runners")).ok()).map(|u| u.to_string()),
         workspace: facts.workspace,
-        workspaces: shared.site.lock().unwrap().owned.clone(),
+        workspaces: shared.site.held().owned.clone(),
         enabled: settings.runner,
-        paused: *shared.paused.lock().unwrap(),
+        paused: *shared.paused.held(),
         machine: facts.machine,
         platform: facts.platform,
-        log: shared.tail.lock().unwrap().iter().cloned().collect(),
+        log: shared.tail.held().iter().cloned().collect(),
     }
 }
 
 /// Whether the runner is running a job: what restarts g1t waits for it,
 /// since restarting stops the runner and would cut the job short.
 pub fn busy(app: &AppHandle) -> bool {
-    let now = app.state::<Shared>().now.lock().unwrap().clone();
+    let now = app.state::<Shared>().now.held().clone();
     now.code == Code::Busy || now.sandbox.as_ref().is_some_and(|status| status.job().is_some())
 }
 
@@ -464,7 +486,7 @@ fn publish(app: &AppHandle) {
 }
 
 fn ask(app: &AppHandle, ask: Ask) {
-    if let Some(tx) = app.state::<Shared>().tx.lock().unwrap().as_ref() {
+    if let Some(tx) = app.state::<Shared>().tx.held().as_ref() {
         let _ = tx.send(ask);
     }
 }
@@ -472,11 +494,73 @@ fn ask(app: &AppHandle, ask: Ask) {
 /// Starts the thread that keeps the runner, as the app starts.
 pub fn install(app: &AppHandle) {
     let (tx, rx) = mpsc::channel();
-    *app.state::<Shared>().tx.lock().unwrap() = Some(tx.clone());
+    *app.state::<Shared>().tx.held() = Some(tx.clone());
     let handle = app.clone();
-    let spawned = std::thread::Builder::new().name("g1t-runner".into()).spawn(move || Keeper::new(handle, tx).keep(rx));
+    let spawned = std::thread::Builder::new().name("g1t-runner".into()).spawn(move || supervise(handle, tx, rx));
     if let Err(error) = spawned {
         eprintln!("g1t: the runner's thread could not start: {error}");
+    }
+}
+
+/// The runner's thread, kept apart from the app: it starts only once the
+/// window and the site's page are up, and a panic in it ends neither the
+/// app nor the runner for good: the keeper starts again a little later,
+/// reaping what the last one left, as it does after a crash of the app.
+fn supervise(app: AppHandle, tx: Sender<Ask>, rx: Receiver<Ask>) {
+    let mut held = match settle(&app, &rx) {
+        Ok(held) => held,
+        Err(done) => {
+            let _ = done.send(());
+            return;
+        }
+    };
+    loop {
+        let keeper = Keeper::new(app.clone(), tx.clone());
+        let asks = std::mem::take(&mut held);
+        match catch_unwind(AssertUnwindSafe(|| keeper.keep(&rx, asks))) {
+            Ok(()) => return,
+            Err(panic) => {
+                let why = panic.downcast_ref::<&str>().map(|s| (*s).to_owned()).or_else(|| panic.downcast_ref::<String>().cloned()).unwrap_or_default();
+                eprintln!("g1t: the runner's thread failed ({why}); starting it again in {}s", AFTER_PANIC.as_secs());
+                // Asks that come meanwhile wait for the next keeper; Quit ends it all.
+                let until = Instant::now() + AFTER_PANIC;
+                while let Some(left) = until.checked_duration_since(Instant::now()).filter(|d| !d.is_zero()) {
+                    match rx.recv_timeout(left) {
+                        Ok(Ask::Quit(done)) => {
+                            let _ = done.send(());
+                            return;
+                        }
+                        Ok(ask) => held.push(ask),
+                        Err(RecvTimeoutError::Timeout) => break,
+                        Err(RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Waits, doing nothing the window could notice, until the site's page has
+/// loaded (or SITE_WAIT has passed) and AFTER_START more: the runner starts
+/// with the app, but never in its way. What is asked meanwhile is kept for
+/// after; Quit returns its sender at once.
+fn settle(app: &AppHandle, rx: &Receiver<Ask>) -> Result<Vec<Ask>, Sender<()>> {
+    let began = Instant::now();
+    let mut loaded: Option<Instant> = None;
+    let mut held = Vec::new();
+    loop {
+        if loaded.is_none() && (config::site_ready(app) || began.elapsed() >= SITE_WAIT) {
+            loaded = Some(Instant::now());
+        }
+        if loaded.is_some_and(|at| at.elapsed() >= AFTER_START) {
+            return Ok(held);
+        }
+        match rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(Ask::Quit(done)) => return Err(done),
+            Ok(ask) => held.push(ask),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => return Ok(held),
+        }
     }
 }
 
@@ -488,7 +572,7 @@ pub fn settings_changed(app: &AppHandle) {
 
 /// Start or Stop, from settings or the tray.
 pub fn set_paused(app: &AppHandle, paused: bool) {
-    *app.state::<Shared>().paused.lock().unwrap() = paused;
+    *app.state::<Shared>().paused.held() = paused;
     // Start with the setting off turns the setting on: that is what was asked.
     if !paused && !config::settings(app).runner {
         let mut settings = config::settings(app);
@@ -508,7 +592,7 @@ pub fn set_kind(app: &AppHandle, kind: &str, on: bool) -> Result<(), String> {
     }
     if on {
         settings.runner = true;
-        *app.state::<Shared>().paused.lock().unwrap() = false;
+        *app.state::<Shared>().paused.held() = false;
     }
     settings::apply(app, settings)?;
     if on {
@@ -526,7 +610,7 @@ pub fn toggle(app: &AppHandle) {
 
 /// Retry and Restart: now, rather than when the wait is over.
 pub fn retry(app: &AppHandle) {
-    *app.state::<Shared>().paused.lock().unwrap() = false;
+    *app.state::<Shared>().paused.held() = false;
     ask(app, Ask::Retry);
 }
 
@@ -536,7 +620,7 @@ pub fn offer(app: &AppHandle, signed_in: bool, owned: Vec<Offered>, current: Opt
     let next = Site { signed_in: Some(signed_in), owned, current: current.map(|c| c.to_ascii_lowercase()) };
     let changed = {
         let shared = app.state::<Shared>();
-        let mut site = shared.site.lock().unwrap();
+        let mut site = shared.site.held();
         let changed = *site != next;
         *site = next;
         changed
@@ -572,7 +656,7 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
         "stop" => set_paused(app, true),
         "retry" | "restart" => retry(app),
         "remove_sandbox" => {
-            *app.state::<Shared>().paused.lock().unwrap() = false;
+            *app.state::<Shared>().paused.held() = false;
             ask(app, Ask::RemoveSandbox);
         }
         "check_updates" => ask(app, Ask::Check),
@@ -657,7 +741,7 @@ fn windows_features() -> Result<(), String> {
 
 /// The workspace a token is wanted for now, if one is: the site asks as it loads.
 pub fn wanted(app: &AppHandle) -> Option<String> {
-    app.state::<Shared>().wanted.lock().unwrap().clone()
+    app.state::<Shared>().wanted.held().clone()
 }
 
 /// The runner's log, for the settings window to open.
@@ -667,7 +751,7 @@ pub fn log_file(app: &AppHandle) -> PathBuf {
 
 /// Stops the runner as g1t quits or restarts, and waits for it.
 pub fn shutdown(app: &AppHandle) {
-    let tx = app.state::<Shared>().tx.lock().unwrap().take();
+    let tx = app.state::<Shared>().tx.held().take();
     if let Some(tx) = tx {
         let (done, wait) = mpsc::channel();
         if tx.send(Ask::Quit(done)).is_ok() {
@@ -825,9 +909,12 @@ impl Keeper {
         }
     }
 
-    fn keep(mut self, rx: Receiver<Ask>) {
+    fn keep(mut self, rx: &Receiver<Ask>, asks: Vec<Ask>) {
         self.reap();
         self.set(Code::Starting, detail("Starting after g1t's window."));
+        for ask in asks {
+            self.handle(ask);
+        }
         loop {
             match rx.recv_timeout(TICK) {
                 Ok(Ask::Quit(done)) => {
@@ -860,7 +947,7 @@ impl Keeper {
     }
 
     fn with_updates<R>(&self, change: impl FnOnce(&mut Updates) -> R) -> R {
-        change(&mut self.app.state::<Shared>().updates.lock().unwrap())
+        change(&mut self.app.state::<Shared>().updates.held())
     }
 
     /// What an idle runner shows: why its last update failed, until one works.
@@ -874,7 +961,7 @@ impl Keeper {
     fn set(&mut self, code: Code, extra: Extra) {
         let changed = {
             let shared = self.app.state::<Shared>();
-            let mut now = shared.now.lock().unwrap();
+            let mut now = shared.now.held();
             let job = if code == Code::Busy { now.job.clone() } else { None };
             let next = Now {
                 code,
@@ -896,12 +983,12 @@ impl Keeper {
     }
 
     fn code(&self) -> Code {
-        self.app.state::<Shared>().now.lock().unwrap().code
+        self.app.state::<Shared>().now.held().code
     }
 
     fn note(&mut self, job: Option<String>, version: Option<String>) {
         let shared = self.app.state::<Shared>();
-        let mut now = shared.now.lock().unwrap();
+        let mut now = shared.now.held();
         if job.is_some() {
             now.job = job;
         }
@@ -914,7 +1001,7 @@ impl Keeper {
     fn write_log(&mut self, line: &str) {
         {
             let shared = self.app.state::<Shared>();
-            let mut tail = shared.tail.lock().unwrap();
+            let mut tail = shared.tail.held();
             if tail.len() == TAIL {
                 tail.pop_front();
             }
@@ -969,7 +1056,7 @@ impl Keeper {
             Ask::Checked(found) => self.checked(found),
             Ask::Token { workspace, token } => {
                 let shared = self.app.state::<Shared>();
-                let mut wanted = shared.wanted.lock().unwrap();
+                let mut wanted = shared.wanted.held();
                 if wanted.as_deref() == Some(workspace.as_str()) {
                     *wanted = None;
                     self.token = Some((workspace, token));
@@ -979,7 +1066,7 @@ impl Keeper {
             Ask::Refused { workspace, allowed, why } => {
                 let matched = {
                     let shared = self.app.state::<Shared>();
-                    let mut wanted = shared.wanted.lock().unwrap();
+                    let mut wanted = shared.wanted.held();
                     let matched = wanted.as_deref() == Some(workspace.as_str());
                     if matched {
                         *wanted = None;
@@ -1007,7 +1094,7 @@ impl Keeper {
                 if let Some(download) = launcher::download(line) {
                     let changed = {
                         let shared = self.app.state::<Shared>();
-                        let mut now = shared.now.lock().unwrap();
+                        let mut now = shared.now.held();
                         let changed = now.download.as_ref() != Some(&download);
                         now.download = Some(download);
                         changed
@@ -1117,7 +1204,7 @@ impl Keeper {
                     }
                 };
                 let shared = self.app.state::<Shared>();
-                let mut now = shared.now.lock().unwrap();
+                let mut now = shared.now.held();
                 now.sandbox = stopped.filter(|_| how != Down::Delete);
                 now.starting.clear();
                 now.download = None;
@@ -1192,22 +1279,22 @@ impl Keeper {
 
     /// Asks the site for a registration token for `workspace`.
     fn want(&mut self, workspace: &str) {
-        *self.app.state::<Shared>().wanted.lock().unwrap() = Some(workspace.to_owned());
+        *self.app.state::<Shared>().wanted.held() = Some(workspace.to_owned());
         let _ = self.app.emit_to(EventTarget::webview(frame::SITE), WANTED_EVENT, workspace.to_owned());
         self.not_before = Instant::now() + ASK_AGAIN;
-        let signed_out = self.app.state::<Shared>().site.lock().unwrap().signed_in == Some(false);
+        let signed_out = self.app.state::<Shared>().site.held().signed_in == Some(false);
         self.set(if signed_out { Code::SignedOut } else { Code::Registering }, Extra::default());
     }
 
     /// The thread's look round: what should run, and whether it does.
     fn look(&mut self) {
         let settings = config::settings(&self.app);
-        let paused = *self.app.state::<Shared>().paused.lock().unwrap();
+        let paused = *self.app.state::<Shared>().paused.held();
         if !settings.runner || paused {
             if self.run.is_some() {
                 self.halt();
             }
-            *self.app.state::<Shared>().wanted.lock().unwrap() = None;
+            *self.app.state::<Shared>().wanted.held() = None;
             self.set(if paused { Code::Stopped } else { Code::Off }, Extra::default());
             return;
         }
@@ -1264,7 +1351,7 @@ impl Keeper {
         };
         let Some(workspace) = workspace else {
             self.not_before = Instant::now() + LOOK_AGAIN;
-            let code = match app.state::<Shared>().site.lock().unwrap().signed_in {
+            let code = match app.state::<Shared>().site.held().signed_in {
                 Some(false) => Code::SignedOut,
                 Some(true) => Code::NoWorkspace,
                 None => Code::Starting,
@@ -1449,7 +1536,7 @@ impl Keeper {
             self.program = None;
         }
         // The sandbox's image is the release's version; one older takes the newest.
-        let sandbox = self.app.state::<Shared>().now.lock().unwrap().sandbox.clone();
+        let sandbox = self.app.state::<Shared>().now.held().sandbox.clone();
         let launcher = self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher);
         let image = launcher
             && found.images
@@ -1510,7 +1597,7 @@ impl Keeper {
             self.not_before = Instant::now();
             return true;
         }
-        let Some(status) = self.app.state::<Shared>().now.lock().unwrap().sandbox.clone() else { return false };
+        let Some(status) = self.app.state::<Shared>().now.held().sandbox.clone() else { return false };
         if self.program.is_some() {
             let running = native_kinds(&status);
             if running.is_empty() {
@@ -1694,7 +1781,7 @@ impl Keeper {
     fn now_starting(&self, kinds: Vec<String>) {
         let changed = {
             let shared = self.app.state::<Shared>();
-            let mut now = shared.now.lock().unwrap();
+            let mut now = shared.now.held();
             let changed = now.starting != kinds;
             now.starting = kinds;
             changed
@@ -1713,7 +1800,7 @@ impl Keeper {
         if !self.run.as_ref().is_some_and(|run| run.engine == Engine::Launcher) {
             return;
         }
-        let Some(status) = self.app.state::<Shared>().now.lock().unwrap().sandbox.clone() else { return };
+        let Some(status) = self.app.state::<Shared>().now.held().sandbox.clone() else { return };
         if !status.per_kind() {
             return;
         }
@@ -1767,7 +1854,7 @@ impl Keeper {
                 other => {
                     self.token = other;
                     if wanted(&self.app).is_none() {
-                        *self.app.state::<Shared>().wanted.lock().unwrap() = Some(workspace.to_owned());
+                        *self.app.state::<Shared>().wanted.held() = Some(workspace.to_owned());
                         let _ = self.app.emit_to(EventTarget::webview(frame::SITE), WANTED_EVENT, workspace.to_owned());
                     }
                     return;
@@ -1884,7 +1971,7 @@ impl Keeper {
     /// Keeps what a status says for the tray, settings and the site.
     fn seen(&mut self, status: &Status) {
         let shared = self.app.state::<Shared>();
-        let mut now = shared.now.lock().unwrap();
+        let mut now = shared.now.held();
         now.sandbox = Some(status.clone());
         if let Some(version) = status.version() {
             now.version = Some(version);
@@ -1894,7 +1981,7 @@ impl Keeper {
 
     /// The sandbox as it is now, while it is the run.
     fn sandbox_now(&mut self, status: Status) {
-        let had = self.app.state::<Shared>().now.lock().unwrap().job.clone();
+        let had = self.app.state::<Shared>().now.held().job.clone();
         let Some(run) = self.run.as_mut() else { return };
         let step = run.step();
         let job = status.job().map(launcher::Job::said);
@@ -1990,7 +2077,7 @@ impl Keeper {
         let status = launcher::parse(&printed);
         {
             let shared = self.app.state::<Shared>();
-            let mut now = shared.now.lock().unwrap();
+            let mut now = shared.now.held();
             now.starting.clear();
             now.download = None;
         }
@@ -2059,7 +2146,7 @@ impl Keeper {
                 self.not_before = Instant::now() + wait;
                 // The cards say why from what `up` said, not from the stopped sandbox.
                 if let Some(failed) = status {
-                    self.app.state::<Shared>().now.lock().unwrap().sandbox = Some(failed);
+                    self.app.state::<Shared>().now.held().sandbox = Some(failed);
                 }
                 return self.set(code, Extra { detail: Some(cause), fix, wait_seconds: Some(wait.as_secs()), ..Extra::default() });
             }

@@ -208,8 +208,10 @@ which works only while the setting is on and only for g1t's own pages.
 The app runs a [self-hosted runner](/guides/self-hosted-runners/) for
 you while it is open: your workspace's jobs that ask for `self-hosted`
 run on your computer, at no cost, and nothing has to be downloaded,
-registered or started by hand. It starts a few seconds after the window
-opens, and stops when g1t quits. Time on it is free, as on any of your
+registered or started by hand. It starts a few seconds after g1t's page has loaded
+(or after 20 seconds without it), and stops when g1t quits. It runs apart
+from the window: a runner that fails starts again on its own, and never takes
+the app down with it. Time on it is free, as on any of your
 runners.
 
 To stop it, press **Stop** in [the runner menu](#the-runner-menu), or
@@ -261,7 +263,7 @@ isolation), and these:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| **Run jobs on this computer while g1t is open** | On | Starts the runner a few seconds after the window. Off, nothing runs. |
+| **Run jobs on this computer while g1t is open** | On | Starts the runner a few seconds after g1t's page loads. Off, nothing runs. |
 | **How jobs run** | Sandboxed | Sandboxed, in Docker, or directly on this computer. See [how jobs run](#how-jobs-run). |
 | **Linux jobs**, **Windows jobs** (sandboxed) | Both on | Each kind of job's card has its own **Stop** and **Start**, which leave the other kind as it is. |
 | **Workspace** | The one you were in when it first registered | The workspace whose jobs the runner runs. Lists the workspaces you own. |
@@ -320,7 +322,7 @@ never roams to other computers with your profile
 
 | When | The app runs |
 | --- | --- |
-| A few seconds after g1t opens | `g1t-runner sandbox up --json --state-dir <data folder>/sandbox --url <server> --name <computer> --labels desktop`, with the registration token the first time only, in its environment as `G1T_RUNNER_TOKEN`, never on its command line, where anyone on the computer could read it. The first `up` downloads and checks the sandbox's image and makes the VM, which takes a few minutes. |
+| A few seconds after g1t's page loads | `g1t-runner sandbox up --json --state-dir <data folder>/sandbox --url <server> --name <computer> --labels desktop`, with the registration token the first time only, in its environment as `G1T_RUNNER_TOKEN`, never on its command line, where anyone on the computer could read it. The first `up` downloads and checks the sandbox's image and makes the VM, which takes a few minutes. |
 | Every few seconds while it runs | `g1t-runner sandbox status --json`, for the tray, the settings and the Runners page. |
 | When g1t quits, or you press **Stop running jobs** | `g1t-runner sandbox down`: a job that is running is cut short. |
 | When you press **Stop** on one kind of job's card | `g1t-runner sandbox down --only windows` (or `linux`): that kind stops, a job of its own cut short, and stays off; the other runs on. Every `up` names the kinds that are on, `--only linux,windows`, so one you stopped never starts by itself. |

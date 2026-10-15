@@ -54,6 +54,7 @@ mod stats;
 mod store;
 mod test_merge;
 mod transfer;
+mod public_storage;
 mod workflow_gate;
 
 use g1t_contracts::events::{
@@ -230,6 +231,8 @@ pub(crate) struct Repos<S: GitStore> {
     identity: Option<Fetcher>,
     /// What a free workspace's private repositories may hold.
     free_private_bytes: i64,
+    /// Finite public storage allowance, including paid workspaces.
+    free_public_bytes: i64,
     /// Days a pull request's working copy is kept after it settles (forks.rs).
     pub(crate) fork_days: u64,
     /// The most a repository may hold (pack_limits.rs), and what happens
@@ -703,11 +706,16 @@ impl<S: GitStore> Repos<S> {
                 .access(Scope::Write)
                 .await?;
             let target = copy::Endpoint::bearer(&access.remote, &access.token);
-            let copied = copy::copy(&copy::Endpoint::anonymous(&url), &target).await?;
+            let copied = copy::copy(&copy::Endpoint::anonymous(&url), &target,
+                |bytes| self.registry.reserve_public(&repo, bytes, self.free_public_bytes)).await?;
             self.refs_moved(&repo.id).await;
             match copied {
-                Ok(copied) => pushed = copy::import_pushes(&copied.updated, &repo.default_branch),
+                Ok(copied) => {
+                    self.registry.finish_public(&repo, copied.pack_bytes, copied.pack_bytes).await?;
+                    pushed = copy::import_pushes(&copied.updated, &repo.default_branch);
+                }
                 Err(reason) => {
+                    self.store.delete(&store_key(&repo)).await?;
                     self.registry.remove(&repo.id).await?;
                     return Ok(Outcome::fail(
                         FailureCode::Invalid,
@@ -724,11 +732,16 @@ impl<S: GitStore> Repos<S> {
                 .access(Scope::Write)
                 .await?;
             let target = copy::Endpoint::bearer(&access.remote, &access.token);
-            let copied = copy::copy(&source, &target).await?;
+            let copied = copy::copy(&source, &target,
+                |bytes| self.registry.reserve_public(&repo, bytes, self.free_public_bytes)).await?;
             self.refs_moved(&repo.id).await;
             match copied {
-                Ok(copied) => pushed = copy::import_pushes(&copied.updated, &repo.default_branch),
+                Ok(copied) => {
+                    self.registry.finish_public(&repo, copied.pack_bytes, copied.pack_bytes).await?;
+                    pushed = copy::import_pushes(&copied.updated, &repo.default_branch);
+                }
                 Err(reason) => {
+                    self.store.delete(&store_key(&repo)).await?;
                     self.registry.remove(&repo.id).await?;
                     return Ok(Outcome::fail(
                         FailureCode::Invalid,
@@ -1492,6 +1505,10 @@ impl<S: GitStore> Repos<S> {
                 self.live(&repo).await?;
                 let write = a.service == GitService::ReceivePack;
                 if write {
+                    return Ok(Outcome::fail(FailureCode::Forbidden,
+                        "Push through g1t's HTTPS remote so the public storage limit can be enforced."));
+                }
+                if write {
                     // A push with this credential would not pass through
                     // here, so nothing that lists the refs is kept until it
                     // has expired (see refs_cache.rs).
@@ -1740,7 +1757,7 @@ impl<S: GitStore> Repos<S> {
         let source_access = source_git.access(Scope::Read).await?;
         let target_access = target_git.access(Scope::Write).await?;
         let pushed =
-            land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new)
+            land::fast_forward(&source_access, &target_access, branch, old.as_deref(), &new, self.public_quota(&target))
                 .await?;
         self.refs_moved(&target.id).await;
         if let Err(reason) = pushed {
@@ -2189,7 +2206,7 @@ impl<S: GitStore> Repos<S> {
         let checks = async |head: &[u8], whole: bool, scan: bool| self.check_receive(&repo, viewer.as_ref(), head, whole, scan).await;
         // What a push may bring (pack_limits.rs): the repository's size is
         // its own and its pull requests' working copies'.
-        let limits = if let Some(held) = held {
+        let mut limits = if let Some(held) = held {
             git_http::PushLimits {
                 held,
                 repo_limit: self.repo_limit,
@@ -2199,6 +2216,21 @@ impl<S: GitStore> Repos<S> {
         } else {
             git_http::PushLimits::default()
         };
+        // Reserve an upper bound before any bytes reach the upstream store.
+        // No Content-Length is required: chunked pushes reserve the platform
+        // body limit. The body walker independently enforces this allowance.
+        let public_reserved = if pushing {
+            let requested = request.headers().get("content-length")?
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(pack_limits::PLATFORM_BODY_LIMIT_BYTES)
+                .min(pack_limits::PLATFORM_BODY_LIMIT_BYTES);
+            if !self.registry.reserve_public(&repo, requested, self.free_public_bytes).await? {
+                return git_ops::public_storage_full_response(&repo.namespace,
+                    self.registry.public_bytes(&repo.namespace).await?, self.free_public_bytes);
+            }
+            limits.repo_limit = limits.repo_limit.min(limits.held.saturating_add(requested));
+            Some(requested)
+        } else { None };
         let mut outcome = git_http::forward(
             request,
             body,
@@ -2235,11 +2267,13 @@ impl<S: GitStore> Repos<S> {
             match outcome {
                 git_http::Push::Forwarded(forwarded) => forwarded,
                 git_http::Push::Refused(response) => {
+                    if let Some(reserved) = public_reserved { self.registry.release_public(&repo, reserved).await?; }
                     after.ended(403, Some("The push was declined by rules.".to_owned()));
                     after.spawn(env, ctx);
                     return Ok(response);
                 }
                 git_http::Push::Blocked(response) => {
+                    if let Some(reserved) = public_reserved { self.registry.release_public(&repo, reserved).await?; }
                     after.ended(403, Some("The push adds a secret.".to_owned()));
                     after.spawn(env, ctx);
                     return Ok(response);
@@ -2262,6 +2296,13 @@ impl<S: GitStore> Repos<S> {
         timing.mark("store");
         let mut response = forwarded.response;
         let status = response.status_code();
+        if let Some(reserved) = public_reserved {
+            // Retain the whole reservation on ambiguous upstream failure.
+            // Successful uploads replace it with the actual admitted pack.
+            if status == 200 {
+                self.registry.finish_public(&repo, reserved, forwarded.pack_bytes).await?;
+            }
+        }
         if write && !get {
             // A push: the store has moved its refs once it has answered in
             // full, so the answer is read before the change is recorded, and
@@ -2317,7 +2358,7 @@ impl<S: GitStore> Repos<S> {
                 repo,
                 pushed: forwarded.pushed,
                 deleted: forwarded.deleted,
-                pack_bytes: forwarded.pack_bytes,
+                pack_bytes: if public_reserved.is_some() { 0 } else { forwarded.pack_bytes },
                 caused_by_job: viewer.as_ref().and_then(g1t_contracts::events::job_run_of).map(str::to_owned),
                 // The calendar credits people, never a job's, an agent's or a workspace's token.
                 credit: viewer
@@ -2393,13 +2434,11 @@ impl<S: GitStore> Repos<S> {
                 )));
             }
         }
-        if git.service == GitService::ReceivePack && git.endpoint == "info/refs" && !repo.is_private {
+        if git.service == GitService::ReceivePack && !repo.is_private {
             let free = git_ops::free_public_bytes(env);
             if free > 0 {
-                let held = self.registry.public_bytes(&namespace).await.unwrap_or(0);
-                if git_ops::public_storage_full(held, free)
-                    && git_ops::is_free(env.service("BILLING").ok().as_ref(), &namespace).await
-                {
+                let held = self.registry.public_bytes(&namespace).await?;
+                if git_ops::public_storage_full(held, free) {
                     return Ok(Some((
                         git_ops::public_storage_full_response(&namespace, held, free)?,
                         403,
@@ -2685,7 +2724,7 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
     let shared = shared::Shared::from_env(env).map(Rc::new);
     let deferred = Rc::new(store::Deferred::default());
     Ok(Repos {
-        registry: Registry { db: env.d1("DB")? },
+        registry: Registry { db: Rc::new(env.d1("DB")?) },
         store: ArtifactsStore::new(env, shared.clone(), deferred.clone())?,
         deferred,
         shared,
@@ -2696,6 +2735,7 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
         identity: env.service("IDENTITY").ok(),
         work: env.service("WORK").ok(),
         free_private_bytes: git_ops::free_private_bytes(env),
+        free_public_bytes: git_ops::free_public_bytes(env),
         fork_days: forks::retention_days(env),
         repo_limit: env
             .var("REPO_STORAGE_LIMIT_BYTES")
@@ -2787,7 +2827,7 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
     // A replica near the caller when it asks for one (crates/kit/src/d1.rs).
     // Git over HTTPS above always reads the primary.
     let (db, served) = g1t_kit::d1::open(&env, "DB", &request)?;
-    repos.registry.db = db;
+    repos.registry.db = db.into();
     let body: serde_json::Value = request.json().await?;
 
     let answered = async { match method.as_str() {
@@ -3124,7 +3164,7 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 /// restored with it, or purged with it.
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, ctx: Context) -> Result<()> {
-    let registry = Registry { db: env.d1("DB")? };
+    let registry = Registry { db: Rc::new(env.d1("DB")?) };
     let identity = env.service("IDENTITY")?;
     let handled = handle_events(&batch, &env, &registry, &identity).await;
     flush_later(&env, &ctx);

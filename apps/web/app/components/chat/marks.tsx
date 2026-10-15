@@ -3,6 +3,7 @@ import { WithPresence } from "../presence";
 
 import { cn } from "../../lib/cn";
 import { Avatar } from "../ui/avatar";
+import { Hint } from "../ui/hint";
 
 /**
  * A member's face: a person's avatar, or, on an old message from an agent
@@ -49,5 +50,26 @@ export function AgentPill({ className, deleted = false }: { className?: string; 
     >
       {deleted ? "Deleted agent" : "Agent"}
     </span>
+  );
+}
+
+/**
+ * GUEST beside the name of someone who is not a member of the workspace
+ * whose chat this is: asked into a channel, or talking in a public one.
+ * Wherever people show (messages, members, mentions), so who is in the
+ * workspace is never in doubt.
+ */
+export function GuestPill({ className, workspace }: { className?: string; workspace?: string | null }) {
+  return (
+    <Hint label={`Not a member of ${workspace ?? "this workspace"}`}>
+      <span
+        className={cn(
+          "inline-flex h-4 shrink-0 items-center rounded-sm border border-line-strong px-1 text-[0.5625rem] font-semibold tracking-[0.06em] text-muted uppercase",
+          className,
+        )}
+      >
+        Guest
+      </span>
+    </Hint>
   );
 }

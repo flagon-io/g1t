@@ -188,6 +188,9 @@ pub struct LedgerEntry {
     /// workspace's last trial run that went past its trial credit.
     #[serde(default)]
     pub given_micros: i64,
+    /// For usage: what a complimentary allowance from g1t paid of it.
+    #[serde(default)]
+    pub gift_micros: i64,
     /// For usage: what the account's discount took off its price. The
     /// price is `-amount_micros` plus this and what paid for it.
     #[serde(default)]
@@ -861,6 +864,11 @@ pub enum PlanKind {
     Internal,
     /// Paid for by an enterprise account, invoiced.
     Enterprise,
+    /// Enrolled by g1t staff (`admin_set_complimentary`): the plan's
+    /// features, a monthly usage allowance valued at ordinary prices, and a
+    /// monthly fee of its own (often none). Never charged on demand: past
+    /// the allowance new billable work stops.
+    Complimentary,
 }
 
 impl PlanKind {
@@ -870,12 +878,13 @@ impl PlanKind {
             PlanKind::Paid => "paid",
             PlanKind::Internal => "internal",
             PlanKind::Enterprise => "enterprise",
+            PlanKind::Complimentary => "complimentary",
         }
     }
 
     /// Whether usage past what is included may be charged (on demand).
     pub fn on_demand(self) -> bool {
-        !matches!(self, PlanKind::Free)
+        !matches!(self, PlanKind::Free | PlanKind::Complimentary)
     }
 }
 
@@ -1046,6 +1055,50 @@ pub struct Entitlements {
     /// Where usage stands against what is included and the limits, from 50%.
     #[serde(default)]
     pub alerts: Vec<UsageAlert>,
+    /// A complimentary enrollment's allowance this month, when the plan is
+    /// `complimentary` (or g1t's own with one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complimentary: Option<ComplimentaryMonth>,
+}
+
+/// A complimentary allowance this calendar month (UTC), as the workspace's
+/// Billing page and sudo show it. Usage counts at its ordinary price.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComplimentaryMonth {
+    /// `YYYY-MM`.
+    pub month: String,
+    /// This month's allowance; `unlimited` ignores it.
+    pub allowance_micros: i64,
+    #[serde(default)]
+    pub unlimited: bool,
+    /// Usage this month the allowance paid for.
+    pub used_micros: i64,
+    /// Usage this month not on the ledger yet (storage, git operations and
+    /// other month-end meters), which the allowance will pay for.
+    #[serde(default)]
+    pub pending_micros: i64,
+    /// What work running now holds against it.
+    #[serde(default)]
+    pub held_micros: i64,
+    /// What is left after all three; 0 at most stops new billable work.
+    pub remaining_micros: i64,
+    /// What g1t covered this month past the allowance (work already
+    /// running when it ran out): never charged to the workspace.
+    #[serde(default)]
+    pub overrun_micros: i64,
+    /// When the next month's allowance starts: RFC 3339.
+    pub resets_at: String,
+    /// The recurring monthly fee, in cents; 0: waived.
+    #[serde(default)]
+    pub fee_cents: u32,
+    /// Past the allowance, usage is charged to the workspace's own card at
+    /// ordinary prices, under its limits; false: new paid work stops.
+    #[serde(default)]
+    pub charge_past_allowance: bool,
+    /// A card is on file to charge past the allowance.
+    #[serde(default)]
+    pub has_card: bool,
 }
 
 /// One level reached: 50, 75, 90 or 100 percent of something.
@@ -1303,6 +1356,166 @@ pub struct AdminRecordPaymentArgs {
     pub reference: String,
     pub note: String,
     pub by: String,
+}
+
+// --- Complimentary enrollment (sudo) -----------------------------------------
+//
+// Staff enroll a workspace by hand; no workspace is ever enrolled on its
+// own. The enrollment is the plan's features, a monthly usage allowance at
+// ordinary prices, and a recurring monthly fee of its own, each set apart.
+// A real Stripe customer and subscription stand for it.
+
+/// The most a monthly complimentary allowance can be, against a slipped
+/// finger: $100,000. `unlimited` is how to give more.
+pub const MAX_COMPLIMENTARY_MICROS: i64 = 100_000 * MICROS_PER_DOLLAR;
+/// The most a complimentary enrollment's monthly fee can be: $100,000.
+pub const MAX_COMPLIMENTARY_FEE_CENTS: u32 = 10_000_000;
+
+/// `admin_set_complimentary`: enrolls a workspace, or changes the terms of
+/// its enrollment from now on. Changing the amount keeps what this month
+/// already used; lowering it below that leaves nothing more this month and
+/// never a debt. Recorded with who and why. Returns
+/// `Outcome<ComplimentaryStanding>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminSetComplimentaryArgs {
+    pub workspace: String,
+    /// The monthly usage allowance, valued at ordinary prices.
+    pub allowance_micros: i64,
+    /// No monthly cap on the allowance (g1t's own workspaces). g1t's
+    /// infrastructure limits still apply.
+    #[serde(default)]
+    pub unlimited: bool,
+    /// The recurring monthly fee, in cents, before tax; 0 waives it.
+    #[serde(default)]
+    pub fee_cents: u32,
+    /// Past the allowance, charge the workspace's own card at ordinary
+    /// prices under its limits (an employee's or a friend's workspace g1t
+    /// covers up to an amount); false: new paid work stops there.
+    #[serde(default)]
+    pub charge_past_allowance: bool,
+    pub note: String,
+    pub by: String,
+}
+
+/// `admin_end_complimentary`: ends an enrollment now. The workspace goes
+/// back to Free; usage the allowance paid for stays paid for. Its Stripe
+/// subscription is canceled. Returns `Outcome<ComplimentaryStanding>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminEndComplimentaryArgs {
+    pub workspace: String,
+    pub note: String,
+    pub by: String,
+}
+
+/// `admin_complimentary`: a workspace's enrollment, if it ever had one.
+/// Returns `Option<ComplimentaryStanding>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminComplimentaryArgs {
+    pub workspace: String,
+}
+
+/// A complimentary enrollment, as sudo shows it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComplimentaryStanding {
+    pub workspace: String,
+    pub grant_id: String,
+    /// `pending` (Stripe not confirmed yet), `active` or `ended`.
+    pub status: String,
+    pub allowance_micros: i64,
+    #[serde(default)]
+    pub unlimited: bool,
+    #[serde(default)]
+    pub fee_cents: u32,
+    #[serde(default)]
+    pub charge_past_allowance: bool,
+    /// Whether its Stripe objects are live-mode ones.
+    #[serde(default)]
+    pub live: bool,
+    #[serde(default)]
+    pub customer_id: Option<String>,
+    #[serde(default)]
+    pub subscription_id: Option<String>,
+    #[serde(default)]
+    pub stripe_status: Option<String>,
+    /// A Stripe step still owed (`create`, `terms`, `cancel`, `convert`),
+    /// tried again every fifteen minutes.
+    #[serde(default)]
+    pub pending_op: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    pub note: String,
+    pub created_by: String,
+    pub created_at: String,
+    pub updated_by: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub ended_at: Option<String>,
+    /// `revoked` or `converted`.
+    #[serde(default)]
+    pub ended_reason: Option<String>,
+    /// This month, while it is active.
+    #[serde(default)]
+    pub month: Option<ComplimentaryMonth>,
+    /// Its terms over time, newest first.
+    #[serde(default)]
+    pub periods: Vec<ComplimentaryPeriod>,
+    /// Money the workspace actually paid g1t, all time: plan and fee
+    /// invoices, payments in advance and bank transfers, net of refunds.
+    #[serde(default)]
+    pub money_received_micros: i64,
+    /// Credit g1t gave it (promotional and goodwill), all time: never money.
+    #[serde(default)]
+    pub promotional_credit_micros: i64,
+    /// Usage complimentary allowances paid for, all time: never money.
+    #[serde(default)]
+    pub gifted_micros: i64,
+}
+
+/// One stretch of an enrollment's terms.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComplimentaryPeriod {
+    pub id: String,
+    pub starts_at: String,
+    #[serde(default)]
+    pub ends_at: Option<String>,
+    pub allowance_micros: i64,
+    #[serde(default)]
+    pub unlimited: bool,
+    #[serde(default)]
+    pub fee_cents: u32,
+    #[serde(default)]
+    pub charge_past_allowance: bool,
+    pub note: String,
+    pub created_by: String,
+}
+
+/// `convert_to_paid`: an owner or billing manager of a complimentary
+/// workspace starts the g1t plan on the same Stripe customer and
+/// subscription. The plan, and usage past the included amount, start only
+/// once its first payment succeeds; until then the enrollment stands. Safe
+/// to call again: a conversion waiting on the bank is answered, never
+/// started twice. Returns `Outcome<Conversion>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertToPaidArgs {
+    pub actor: crate::User,
+    pub workspace: String,
+    pub return_url: String,
+}
+
+/// Where a conversion stands.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Conversion {
+    /// `converted`; `needs_card` (no saved card: `url` checks one);
+    /// `needs_action` (the bank wants the person: `url` is the invoice to
+    /// pay); `declined` (nothing changed; the enrollment stands).
+    pub status: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    pub message: String,
 }
 
 // --- Overages and goodwill (sudo) --------------------------------------------

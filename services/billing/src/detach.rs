@@ -72,19 +72,25 @@ const PLAN_REVERSAL: &str = "_test_detach";
 /// Every workspace holding a billing row, with what test mode left on it.
 /// `?1` one workspace, or NULL for all; `?2` this month (`YYYY-MM`).
 /// `{internal}` is `sales::INTERNAL_SQL`.
-pub(crate) const FOUND: &str = "WITH candidates(workspace) AS (
+pub(crate) const FOUND: &str = "WITH payment_candidates(workspace) AS MATERIALIZED (
     SELECT workspace FROM accounts
     UNION SELECT workspace FROM subscriptions
     UNION SELECT workspace FROM card_checks
     UNION SELECT workspace FROM checkouts WHERE status = 'open'
-    UNION SELECT workspace FROM workspace_invoices
+  ), credit_candidates(workspace) AS MATERIALIZED (
+    SELECT workspace FROM workspace_invoices
     UNION SELECT workspace FROM credit_grants
     UNION SELECT workspace FROM plan_payments
     UNION SELECT workspace FROM ai_reload
-    UNION SELECT workspace FROM limits WHERE autopay_failed_at IS NOT NULL OR autopay_error IS NOT NULL OR dispute_owed_micros <> 0
+  ), usage_candidates(workspace) AS MATERIALIZED (
+    SELECT workspace FROM limits WHERE autopay_failed_at IS NOT NULL OR autopay_error IS NOT NULL OR dispute_owed_micros <> 0
     UNION SELECT workspace FROM pending_usage WHERE charged_at IS NULL
     UNION SELECT scope FROM allowance_use WHERE kind = 'plan_credit' AND month = ?2
     UNION SELECT workspace FROM disputes WHERE status = 'open'
+  ), candidates(workspace) AS MATERIALIZED (
+    SELECT workspace FROM payment_candidates
+    UNION SELECT workspace FROM credit_candidates
+    UNION SELECT workspace FROM usage_candidates
   )
   SELECT c.workspace AS workspace,
     CASE WHEN c.workspace IN ({internal}) THEN 1 ELSE 0 END AS comped,
@@ -157,6 +163,7 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "UPDATE ai_reload SET enabled = 0, updated_by = ?3, updated_at = ?2 WHERE workspace = ?1 AND enabled <> 0",
     "UPDATE limits SET autopay_failed_at = NULL, autopay_error = NULL WHERE workspace = ?1 AND (autopay_failed_at IS NOT NULL OR autopay_error IS NOT NULL)",
     "UPDATE workspace_invoices SET status = 'void' WHERE workspace = ?1 AND status IN ('open', 'failed')",
+    "DELETE FROM invoice_attempts WHERE workspace = ?1",
     "INSERT OR IGNORE INTO plan_payments (invoice_id, workspace, amount_micros, paid_at)
      SELECT invoice_id || '_test_detach', workspace, -amount_micros, paid_at FROM plan_payments
      WHERE workspace = ?1 AND amount_micros > 0 AND substr(invoice_id, -12) <> '_test_detach'",
@@ -179,6 +186,12 @@ pub(crate) const STATEMENTS: &[&str] = &[
     // Test-mode disputes: nothing owed for them, none left open.
     "UPDATE limits SET dispute_owed_micros = 0 WHERE workspace = ?1 AND dispute_owed_micros <> 0",
     "UPDATE disputes SET status = 'detached', updated_at = ?2 WHERE workspace = ?1 AND status = 'open'",
+    // A test-mode complimentary enrollment ends: its Stripe objects never
+    // carry into live mode, and staff enroll the workspace again there.
+    "UPDATE complimentary_periods SET ends_at = ?2 WHERE workspace = ?1 AND ends_at IS NULL
+       AND EXISTS (SELECT 1 FROM complimentary WHERE workspace = ?1 AND live = 0 AND status <> 'ended')",
+    "UPDATE complimentary SET status = 'ended', ended_at = ?2, ended_reason = 'revoked', pending_op = NULL, stripe_status = 'detached',
+       updated_by = ?3, updated_at = ?2 WHERE workspace = ?1 AND live = 0 AND status <> 'ended'",
 ];
 
 /// A past month marked closed. `?1` workspace, `?2` month, `?3` why, `?4` now.
@@ -218,6 +231,9 @@ pub(crate) const USES: &[(&str, &[&str])] = &[
     ("allowance_use", &["kind", "scope", "month", "used"]),
     ("disputes", &["workspace", "status", "updated_at"]),
     ("workspace_invoices", &["workspace", "status"]),
+    ("invoice_attempts", &["workspace"]),
+    ("complimentary", &["workspace", "status", "ended_at", "ended_reason", "pending_op", "stripe_status", "updated_by", "updated_at", "live"]),
+    ("complimentary_periods", &["workspace", "ends_at"]),
     ("credit_grants", &[
         "id", "workspace", "kind", "scope", "source", "closed_at", "closed_reason", "closed_note", "closed_by", "closed_micros",
     ]),
@@ -798,9 +814,10 @@ mod tests {
     }
 
     #[test]
-    fn nothing_is_deleted_but_card_checks_open_checkouts_and_this_months_plan_draws() {
+    fn only_transient_payment_state_and_this_months_plan_draws_are_deleted() {
         let all = every_sql().join("\n");
-        assert_eq!(all.matches("DELETE FROM").count(), 3);
+        assert_eq!(all.matches("DELETE FROM").count(), 4);
+        assert!(all.contains("DELETE FROM invoice_attempts WHERE workspace = ?1"));
         assert!(all.contains("DELETE FROM card_checks WHERE workspace = ?1"));
         assert!(all.contains("DELETE FROM checkouts WHERE workspace = ?1 AND status = 'open'"));
         // Only the plan's included usage, only this month: the trial and

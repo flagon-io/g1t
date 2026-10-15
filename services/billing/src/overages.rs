@@ -207,7 +207,7 @@ impl Billing {
             .db
             .prepare(
                 "SELECT * FROM ledger WHERE workspace = ? AND kind = 'usage' AND created_at >= ?
-                 ORDER BY (-amount_micros + credit_micros + trial_micros + oss_micros + given_micros) DESC LIMIT 10",
+                 ORDER BY (-amount_micros + credit_micros + gift_micros + trial_micros + oss_micros + given_micros) DESC LIMIT 10",
             )
             .bind(&[workspace.into(), month_start.as_str().into()])?
             .all()

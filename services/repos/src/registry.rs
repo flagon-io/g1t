@@ -326,7 +326,7 @@ fn optional(value: &Option<String>) -> JsValue {
 }
 
 pub struct Registry {
-    pub db: D1Database,
+    pub db: std::rc::Rc<D1Database>,
 }
 
 impl Registry {
@@ -660,7 +660,7 @@ impl Registry {
         }
         Ok(self
             .db
-            .prepare("SELECT SUM(stored_bytes) AS bytes FROM repos WHERE namespace = ? AND is_private = 0 AND fork_of IS NULL AND deleted_at IS NULL")
+            .prepare("SELECT SUM(stored_bytes + storage_reserved_bytes) AS bytes FROM repos WHERE namespace = ? AND is_private = 0 AND fork_of IS NULL")
             .bind(&[namespace.into()])?
             .first::<Row>(None)
             .await?
@@ -681,17 +681,6 @@ impl Registry {
             .await?
             .and_then(|row| row.bytes)
             .unwrap_or(0.0) as i64)
-    }
-
-    /// Sets what a repository is counted as holding: a fork, made holding
-    /// as much as its source.
-    pub async fn set_stored_bytes(&self, id: &str, bytes: i64) -> Result<()> {
-        self.db
-            .prepare("UPDATE repos SET stored_bytes = ? WHERE id = ?")
-            .bind(&[(bytes as f64).into(), id.into()])?
-            .run()
-            .await?;
-        Ok(())
     }
 
     /// Makes a fork an ordinary repository with no parent.

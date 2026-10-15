@@ -31,7 +31,7 @@ pub(crate) const CARD_CHECK: &str = "card_check";
 /// card, which anyone can buy as many of as they like to farm trials. A
 /// prepaid card still works for the plan and for paying.
 pub(crate) fn trial_for_card(fingerprint: Option<&str>, funding: Option<&str>, checked_elsewhere: u32) -> bool {
-    fingerprint.is_some() && funding != Some("prepaid") && checked_elsewhere == 0
+    fingerprint.is_some() && matches!(funding, Some("credit" | "debit")) && checked_elsewhere == 0
 }
 
 impl Billing {
@@ -113,15 +113,6 @@ impl Billing {
         let Some(card) = stripe.checked_card(setup).await? else {
             return Ok(Err("The card could not be verified. Try another card, or try again.".to_owned()));
         };
-        let claimed = self
-            .db
-            .prepare("UPDATE checkouts SET status = 'paid' WHERE id = ? AND status = 'open' RETURNING id")
-            .bind(&[session_id.into()])?
-            .first::<serde_json::Value>(None)
-            .await?;
-        if claimed.is_none() {
-            return Ok(Ok("ignored: settled meanwhile".to_owned()));
-        }
         let workspace = open.workspace;
         // The address entered with the card, onto a customer that has none,
         // so the plan and invoices that follow can be taxed.
@@ -205,6 +196,10 @@ impl Billing {
             &open.created_by,
         )
         .await?;
+        // The saved card and trial must survive before checkout is complete.
+        // All preceding writes are repeatable after a partial failure.
+        self.db.prepare("UPDATE checkouts SET status = 'paid' WHERE id = ? AND status = 'open'")
+            .bind(&[session_id.into()])?.run().await?;
         Ok(Ok(format!("{workspace}: card checked; {trial}")))
     }
 
@@ -261,5 +256,7 @@ mod tests {
         assert!(!trial_for_card(None, Some("credit"), 0));
         // Prepaid cards are how trials get farmed: none.
         assert!(!trial_for_card(Some("fp_2"), Some("prepaid"), 0));
+        assert!(!trial_for_card(Some("fp_2"), Some("unknown"), 0));
+        assert!(!trial_for_card(Some("fp_2"), None, 0));
     }
 }

@@ -267,18 +267,25 @@ pub async fn totals(db: &D1Database, month: &str, since: Option<&str>, namespace
         .collect())
 }
 
-/// Whether billing says the workspace is free. Unknown (billing not bound
-/// or not answering) counts as not free: nothing is slowed down on a guess.
+/// Whether billing says the workspace is free, or may meter nothing more
+/// this month (a complimentary allowance used up: `hasPlan` false). Unknown
+/// (billing not bound or not answering) counts as not free: nothing is
+/// slowed down on a guess.
 pub async fn is_free(billing: Option<&Fetcher>, namespace: &str) -> bool {
     let Some(billing) = billing else { return false };
     let args = g1t_contracts::billing::EntitlementsArgs { workspace: namespace.to_owned() };
     match g1t_kit::call::<_, serde_json::Value>(billing, "entitlements", &args).await {
-        Ok(found) => found["plan"].as_str() == Some("free"),
+        Ok(found) => free_from(&found),
         Err(error) => {
             worker::console_error!("could not ask billing about {namespace}: {error}");
             false
         }
     }
+}
+
+/// What an `entitlements` answer says: free, or nothing more metered.
+pub fn free_from(found: &serde_json::Value) -> bool {
+    found["plan"].as_str() == Some("free") || found["hasPlan"].as_bool() == Some(false)
 }
 
 /// [`is_free`], kept for a few minutes: asked only of a workspace past its
@@ -304,18 +311,18 @@ pub fn free_private_bytes(env: &worker::Env) -> i64 {
         .unwrap_or(1_000_000_000)
 }
 
-/// What a free workspace's public repositories may hold together:
-/// `FREE_PUBLIC_STORAGE_BYTES` (5 GB). Public repositories are never
-/// charged for storage, on any plan; past it, a free workspace's pushes to
-/// them stop, and on the plan they never do. `0` is no cap.
+/// What every workspace's public repositories may hold together:
+/// `FREE_PUBLIC_STORAGE_BYTES` (5 GB). Public storage stays free on every
+/// plan. Invalid or nonpositive configuration retains the finite default.
 pub fn free_public_bytes(env: &worker::Env) -> i64 {
     env.var("FREE_PUBLIC_STORAGE_BYTES")
         .ok()
         .and_then(|value| value.to_string().parse().ok())
+        .filter(|bytes: &i64| *bytes > 0)
         .unwrap_or(5_000_000_000)
 }
 
-/// Whether a free workspace's push to a public repository should be
+/// Whether a workspace's push to a public repository should be
 /// refused: its public repositories already hold `free_bytes`.
 pub fn public_storage_full(public_bytes: i64, free_bytes: i64) -> bool {
     free_bytes > 0 && public_bytes >= free_bytes
@@ -326,7 +333,7 @@ pub fn public_storage_full(public_bytes: i64, free_bytes: i64) -> bool {
 pub fn public_storage_full_response(namespace: &str, public_bytes: i64, free_bytes: i64) -> Result<Response> {
     let gb = |bytes: i64| bytes as f64 / 1_000_000_000.0;
     let message = format!(
-        "{namespace}'s public repositories hold {:.2} GB, and a workspace on the free plan keeps {:.0} GB of them. Public repositories are never charged for storage, so pushes to them stop here. Delete what you no longer need, or start the g1t plan, where pushes to public repositories never stop: https://g1t.sh/{namespace}/-/billing
+        "{namespace}'s public repositories hold {:.2} GB. Every workspace has a {:.0} GB public storage limit, including paid workspaces. Public storage is free. Make room before adding more public data: https://g1t.sh/{namespace}/-/billing
 ",
         gb(public_bytes),
         gb(free_bytes)
@@ -368,6 +375,17 @@ pub fn too_many(namespace: &str, free_cap: u64, hourly: u64) -> Result<Response>
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_used_up_complimentary_allowance_meters_nothing_more() {
+        use serde_json::json;
+        assert!(super::free_from(&json!({"plan": "free", "hasPlan": false})));
+        assert!(super::free_from(&json!({"plan": "complimentary", "hasPlan": false})));
+        assert!(!super::free_from(&json!({"plan": "complimentary", "hasPlan": true})));
+        assert!(!super::free_from(&json!({"plan": "paid", "hasPlan": true})));
+        assert!(!super::free_from(&json!({"plan": "internal"})));
+    }
+
     use super::*;
 
     #[test]

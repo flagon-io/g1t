@@ -125,37 +125,6 @@ pub(crate) fn pay_outcome(status: Option<&str>, error: Option<&str>) -> PayOutco
     }
 }
 
-/// The idempotency key of a workspace invoice's draft and lines: the same
-/// workspace, customer, reason, period and lines (each as the cents sent
-/// to Stripe) is the same invoice however often it is attempted, until one
-/// of its invoices is paid (`paid_today` counts the workspace's invoices
-/// paid that day) or voided (`voided` counts them), when the next is a new
-/// one. With the customer in it, a key never comes back with another
-/// customer's fields, which Stripe refuses. With every line's cents in it,
-/// a retry after usage moved a line (but not the total's cent) is a new
-/// draft, never the old key with other parameters, which Stripe refuses
-/// until the key expires.
-pub(crate) fn invoice_key(
-    workspace: &str,
-    customer: &str,
-    reason: &str,
-    period: &str,
-    lines: &[(&str, i64)],
-    paid_today: u32,
-    voided: u32,
-) -> String {
-    let total: i64 = lines.iter().map(|(_, cents)| cents).sum();
-    // FNV-1a over every line, so the key stays short however many there are.
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for (description, cents) in lines {
-        for byte in format!("{description}={cents};").bytes() {
-            hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-    let key = format!("ws-invoice/{workspace}/{customer}/{reason}/{period}/{total}/{hash:016x}/p{paid_today}");
-    if voided == 0 { key } else { format!("{key}/v{voided}") }
-}
-
 /// Whether `viewer` may see a workspace's invoices: its owners and billing
 /// managers, as for its billing details; never any other member.
 pub(crate) fn may_see_invoices(viewer: &g1t_contracts::Viewer, workspace: &str) -> bool {
@@ -169,11 +138,6 @@ pub(crate) enum Settled {
     /// One is still unpaid (declined, no card, or Stripe not finished):
     /// nothing else is invoiced until it is paid.
     Stop(std::result::Result<WorkspaceInvoice, String>),
-}
-
-#[derive(Deserialize)]
-struct Count {
-    n: Option<f64>,
 }
 
 /// A workspace invoice's draft: charged to the card, taxed by Stripe Tax,
@@ -285,6 +249,9 @@ impl Billing {
             Settled::Clear(paid) => paid,
             Settled::Stop(unpaid) => return Ok(unpaid),
         };
+        if let Some(attempt) = self.pending_invoice_attempt(workspace).await? {
+            return self.finish_invoice_attempt(workspace, attempt).await;
+        }
         // Read again: paying an earlier invoice credited the balance.
         let Some(account) = self.row(workspace).await? else { return Ok(Err("Nothing billed yet.".into())) };
         let Some(customer) = account.customer_id else { return Ok(Err("No card on file.".into())) };
@@ -380,42 +347,57 @@ impl Billing {
             }
             Err(error) => return Err(error),
         }
-        // Each line in cents; no card fee on top, as g1t's prices include it.
+        let attempt = self.begin_invoice_attempt(workspace, account.balance_micros, crate::invoice_attempt::Request {
+            customer, workspace: workspace.to_owned(), reason: reason.to_owned(), period: period.to_owned(),
+            through_at: now, lines,
+        }).await?;
+        self.finish_invoice_attempt(workspace, attempt).await
+    }
+
+    async fn finish_invoice_attempt(
+        &self, workspace: &str, attempt: crate::invoice_attempt::Attempt,
+    ) -> Result<std::result::Result<WorkspaceInvoice, String>> {
+        let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
+        let request: crate::invoice_attempt::Request = serde_json::from_str(&attempt.payload)
+            .map_err(|e| worker::Error::RustError(e.to_string()))?;
+        let customer = request.customer;
+        let reason = request.reason.as_str();
+        let period = request.period.as_str();
+        let now = request.through_at;
+        let lines = request.lines;
         let cents = line_cents(&lines);
-        // How many of its invoices were voided, and paid today, is part of
-        // the key: one voided at Stripe, or paid, is never handed back for
-        // the same total within the day.
-        let today = &now[..10];
-        let count = |sql: &'static str| async move {
-            Ok::<u32, worker::Error>(
-                self.db
-                    .prepare(sql)
-                    .bind(&[workspace.into(), today.into()])?
-                    .first::<Count>(None)
-                    .await?
-                    .and_then(|c| c.n)
-                    .unwrap_or(0.0) as u32,
-            )
-        };
-        let voided = count("SELECT COUNT(*) AS n FROM workspace_invoices WHERE workspace = ?1 AND status = 'void' AND ?2 IS NOT NULL").await?;
-        let paid_today =
-            count("SELECT COUNT(*) AS n FROM workspace_invoices WHERE workspace = ?1 AND status = 'paid' AND substr(paid_at, 1, 10) = ?2")
-                .await?;
-        let keyed: Vec<(&str, i64)> = lines.iter().zip(&cents).map(|(line, cents)| (line.description.as_str(), *cents)).collect();
-        let key = invoice_key(workspace, &customer, reason, period, &keyed, paid_today, voided);
+        let key = attempt.id;
+        let original_workspace = &request.workspace;
         let description = match reason {
-            "month" => format!("g1t usage for {workspace}, {period}"),
-            _ => format!("g1t usage for {workspace}, charged as it neared its limit"),
+            "month" => format!("g1t usage for {original_workspace}, {period}"),
+            _ => format!("g1t usage for {original_workspace}, charged as it neared its limit"),
         };
         // The draft first, then its lines on it: lines left pending on the
         // customer by an attempt that failed half way would otherwise be
         // swept into the next invoice (this one's retry with a different
         // total, or the plan's renewal) on top of their own new lines.
-        let draft: StripeInvoice =
-            stripe.post_idempotent("/invoices", &draft_fields(&customer, workspace, reason, period, description), &key).await?;
-        for (position, (line, cents)) in lines.iter().zip(&cents).enumerate() {
-            let fields = item_fields(&customer, &draft.id, workspace, &line.description, *cents);
-            let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{position}")).await?;
+        let too_old = !crate::invoice_attempt::safe_to_build(attempt.created_ms, now_ms());
+        let draft: StripeInvoice = if let Some(id) = &attempt.invoice_id {
+            stripe.get(&format!("/invoices/{id}")).await?
+        } else {
+            if too_old {
+                return Err(worker::Error::RustError(format!("{workspace}: invoice attempt {key} needs reconciliation before retrying an expired Stripe idempotency key")));
+            }
+            let draft: StripeInvoice = stripe.post_idempotent(
+                "/invoices", &draft_fields(&customer, &request.workspace, reason, period, description), &key,
+            ).await?;
+            self.db.prepare("UPDATE invoice_attempts SET invoice_id = ? WHERE id = ?")
+                .bind(&[draft.id.as_str().into(), key.as_str().into()])?.run().await?;
+            draft
+        };
+        if draft.status.as_deref() == Some("draft") {
+            if too_old {
+                return Err(worker::Error::RustError(format!("{workspace}: draft {} needs reconciliation before retrying expired invoice-item keys", draft.id)));
+            }
+            for (position, (line, cents)) in lines.iter().zip(&cents).enumerate() {
+                let fields = item_fields(&customer, &draft.id, &request.workspace, &line.description, *cents);
+                let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{position}")).await?;
+            }
         }
         // A retry finds it finalized already; that is fine.
         let finalized = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
@@ -443,7 +425,7 @@ impl Billing {
         let mut writes = vec![self
             .db
             .prepare(
-                "INSERT OR REPLACE INTO workspace_invoices
+                "INSERT OR IGNORE INTO workspace_invoices
                    (invoice_id, workspace, reason, period, amount_micros, status, hosted_url, pdf_url, through_at, created_at, paid_at,
                     fee_micros, tax_micros)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -467,7 +449,7 @@ impl Billing {
         for (position, line) in lines.iter().enumerate() {
             writes.push(
                 self.db
-                    .prepare("INSERT OR REPLACE INTO workspace_invoice_lines (invoice_id, position, description, amount_micros) VALUES (?, ?, ?, ?)")
+                    .prepare("INSERT OR IGNORE INTO workspace_invoice_lines (invoice_id, position, description, amount_micros) VALUES (?, ?, ?, ?)")
                     .bind(&[invoice.id.as_str().into(), (position as u32).into(), line.description.as_str().into(), (line.amount_micros as f64).into()])?,
             );
         }
@@ -640,13 +622,15 @@ impl Billing {
             return Ok(false);
         }
         let description = format!("Paid invoice {}{}", invoice.id, crate::tax::paid_with(extras));
-        match self.enter(workspace, EntryKind::TopUp, amount, &description, &invoice.id, None, None, None).await {
-            Ok(()) => {}
+        let mut writes = self.entry_statements(workspace, EntryKind::TopUp, amount, &description, &invoice.id, None, None, None)?;
+        writes.extend(self.after_entry_statements(workspace, "top_up", amount)?);
+        writes.extend(self.extras_statements(workspace, &invoice.id, invoice.payment_intent.as_deref(), extras, None)?);
+        match self.db.batch(writes).await {
+            Ok(_) => {}
             // Credited a moment ago by the event or the charge alongside.
             Err(error) if crate::is_duplicate(&error) => return Ok(false),
             Err(error) => return Err(error),
         }
-        self.record_extras(workspace, &invoice.id, invoice.payment_intent.as_deref(), extras, None).await?;
         // Prepaid cards pay, but never raise the limit.
         if let (Some(stripe), Some(charge)) = (&self.stripe, &invoice.charge)
             && let Ok(charge) = stripe.get::<Value>(&format!("/charges/{charge}")).await
@@ -932,42 +916,6 @@ mod tests {
         }
         // A key problem (401) is g1t's, never the payer's: tried again.
         assert!(!needs_card(r#"the card processor answered 401: {"error": {"type": "invalid_request_error"}}"#));
-    }
-
-    #[test]
-    fn an_invoice_attempted_again_is_the_same_until_one_is_paid_or_voided() {
-        let lines = [("Sandbox time", 3_500), ("Git operations", 501)];
-        let key = invoice_key("acme", "cus_1", "month", "2026-09", &lines, 0, 0);
-        assert!(key.starts_with("ws-invoice/acme/cus_1/month/2026-09/4001/"), "{key}");
-        assert!(key.ends_with("/p0"), "{key}");
-        assert_eq!(key, invoice_key("acme", "cus_1", "month", "2026-09", &lines, 0, 0));
-        // A voided invoice is never handed back for the next.
-        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", &lines, 0, 1));
-        // Nor one paid earlier the same day for the same total.
-        assert_ne!(key, invoice_key("acme", "cus_1", "month", "2026-09", &lines, 1, 0));
-        // Nor one made for another customer.
-        assert_ne!(key, invoice_key("acme", "cus_2", "month", "2026-09", &lines, 0, 0));
-    }
-
-    #[test]
-    fn a_retry_whose_lines_moved_is_a_new_draft_not_the_old_key_with_other_amounts() {
-        // Owed 40.000000 then 40.000001 after a sliver more usage: the old
-        // key (whole cents of what was owed, rounded down) was 4000 for
-        // both, while the lines sent are 4000 and 4001 cents. Stripe refuses
-        // a key sent again with other parameters, so the retry was stuck
-        // until the key expired or the total crossed a cent.
-        let before = line_cents(&items(&[40_000_000]));
-        let after = line_cents(&items(&[40_000_001]));
-        assert_ne!(before, after);
-        let key = |cents: &[i64]| {
-            let lines: Vec<(&str, i64)> = cents.iter().map(|c| ("Sandbox time", *c)).collect();
-            invoice_key("acme", "cus_1", "threshold", "2026-10-14", &lines, 0, 0)
-        };
-        assert_ne!(key(&before), key(&after));
-        // The same total spread over other lines is another invoice too.
-        let a = invoice_key("acme", "cus_1", "month", "2026-09", &[("Sandbox time", 300), ("Git operations", 200)], 0, 0);
-        let b = invoice_key("acme", "cus_1", "month", "2026-09", &[("Sandbox time", 200), ("Git operations", 300)], 0, 0);
-        assert_ne!(a, b);
     }
 
     fn items(micros: &[i64]) -> Vec<InvoiceItem> {
