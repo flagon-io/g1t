@@ -73,7 +73,11 @@ already recorded on g1t.
    `g1t pr ready --summary "what changed and why"`, then `g1t pr merge`
    when you are allowed to merge. With the merge queue on, merging adds the
    pull request to the queue; if the queue reports an integration failure,
-   use the `fix-integration` skill.
+   use the `fix-integration` skill. The merge closes the issue the pull
+   request was made for. Where you commit straight to the default branch
+   instead, the commit that finishes the issue says `Closes #N` in its
+   message (`Fixes` and `Resolves` work too); a bare `(#N)` only links the
+   issue, and it stays open.
 9. **Let go.** If you stop before it is done, hand it off rather than
    leaving a claim to expire: `g1t work handoff N --note "where it stands,
    what is left, what to watch out for"`.

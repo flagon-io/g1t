@@ -892,7 +892,7 @@ export function work(job, env = process.env) {
 // --- the hooks ---------------------------------------------------------
 
 /** What every session is told about trailers, so commits find their way back. */
-const TRAILER = "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session.";
+const TRAILER = "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session. A commit pushed straight to the default branch that finishes an issue says `Closes #N` in its message: a bare `(#N)` only links it, and the issue stays open.";
 
 /**
  * SessionStart: marks the session as one in a g1t working copy, and

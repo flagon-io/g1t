@@ -112,7 +112,8 @@ pub fn system_prompt() -> String {
      The setup makes your commits the person's who started you: never set another author or committer.\n\
      - Work on a branch whose name starts with the issue number, and open a draft pull request early. Never push to the default branch, \
      except a repository's first commit when it has none yet: there is nothing to open a pull request against, so the first version goes \
-     straight to it.\n\
+     straight to it. That commit says `Closes #N` in its message for the issue it finishes: a bare `(#N)` only links the issue, \
+     and it stays open.\n\
      - A push to the default branch of a project with deployments on deploys production. When you push there, watch it with \
      `g1t deploy list` until it is live or failed; if it failed, read why, fix it and push again. Say where it is live in your report.\n\
      - Never write `@g1t` in what you post on g1t: that asks g1t for another session.\n\

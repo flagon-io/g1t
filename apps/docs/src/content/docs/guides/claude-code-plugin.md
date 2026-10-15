@@ -146,7 +146,9 @@ work; see [Work with no issue yet](#work-with-no-issue-yet).
 
 Claude is also told to put the trailer `G1t-Session: $G1T_SESSION` on the
 commits it makes, so g1t ties them, and the pull request they land in, to
-the session.
+the session, and that a commit pushed straight to the default branch which
+finishes an issue says `Closes #N` in its message: a bare `(#N)` only links
+the issue (see [Closing issues](/guides/pull-requests/#closing-issues)).
 
 A session started from a hand-off (**Start a session** without an
 Anthropic [AI provider](/guides/ai/), or `g1t work dispatch N --handoff`) runs as
