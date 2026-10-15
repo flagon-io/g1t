@@ -8,10 +8,15 @@
  * later each time, sooner once the browser says it is back online. While
  * one is waiting, `useReconnecting` says so (components/connection-toast.tsx).
  *
- * A refresh of the page already showing keeps trying for as long as it
- * takes: the page stays as it is meanwhile, and a click elsewhere cancels
- * it. A read for another page (a click) tries for `PATIENCE_MS`, then
- * reaches the error page, which keeps trying on its own (lib/reconnect.ts).
+ * A refresh of the page already showing keeps the page as it is while it
+ * tries, and a click elsewhere cancels it. It waits out the browser being
+ * offline for as long as that lasts, but not a network that is up and
+ * still never answers (an extension or proxy blocking g1t, broken DNS):
+ * that is no blip, so after `REFRESH_PATIENCE_MS` of it the error is shown.
+ * A read for another page (a click) tries for `PATIENCE_MS`. Either way the
+ * error page then keeps trying on its own, on its own slower schedule
+ * (lib/reconnect.ts): while it shows, reads are not retried here as well.
+ * Nothing is retried from a tab out of view; it waits to be looked at.
  * A read the router gave up on itself (its signal aborted) stops at once.
  * Writes are never sent again: one that failed may have arrived, and
  * sending it twice could do it twice.
@@ -20,6 +25,9 @@ import { useSyncExternalStore } from "react";
 
 /** How long a read keeps trying; under lib/stuck.ts's `STUCK_NAVIGATION_MS`, so a click still lands on an error page that recovers rather than a whole-page load that cannot. */
 export const PATIENCE_MS = 45_000;
+
+/** How long a refresh keeps the page while the browser says it is online and nothing answers. */
+export const REFRESH_PATIENCE_MS = 120_000;
 
 /** The wait before try `attempt` (1 is the first retry): 0.25 s, 0.5 s, 1 s, 2 s, then every 5 s. */
 export function retryDelay(attempt: number): number {
@@ -66,6 +74,31 @@ export function refreshesCurrent(url: URL, current: { pathname: string; search: 
   return query(url.search) === query(current.search);
 }
 
+/** What a read has been through, to decide whether to try it again after `wait`. */
+export type Tried = {
+  /** A refresh of the page already showing, not a navigation. */
+  refresh: boolean;
+  /** Since the read started. */
+  elapsedMs: number;
+  /** Waited between tries while the browser said it was online. */
+  onlineMs: number;
+  /** Whether the error page is showing, trying on its own. */
+  erroring: boolean;
+};
+
+/** Whether to try a read again after `wait`: never twice over, never forever on a network that is up. */
+export function keepTrying(tried: Tried, wait: number): boolean {
+  if (tried.erroring) return false;
+  if (tried.refresh) return tried.onlineMs + wait <= REFRESH_PATIENCE_MS;
+  return tried.elapsedMs + wait <= PATIENCE_MS;
+}
+
+/** Set by the error page while it tries on its own (lib/reconnect.ts). */
+let erroring = false;
+export function setErroring(on: boolean) {
+  erroring = on;
+}
+
 // ── Whether a read is waiting on the network ─────────────────────────────
 
 let waiting = 0;
@@ -87,23 +120,37 @@ export function useReconnecting(): boolean {
   );
 }
 
-/** Waits `ms`, or less once the browser is back online; rejects when `signal` aborts. */
+/**
+ * Waits `ms`, or less once the browser is back online, and then for as long
+ * as the tab is out of view; rejects when `signal` aborts.
+ */
 function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason);
-    const done = () => {
+    const cleanup = () => {
       clearTimeout(timer);
-      window.removeEventListener("online", done);
+      window.removeEventListener("online", due);
+      document.removeEventListener("visibilitychange", shown);
       signal?.removeEventListener("abort", stop);
+    };
+    let elapsed = false;
+    function due() {
+      elapsed = true;
+      if (document.visibilityState !== "visible") return;
+      cleanup();
       resolve();
-    };
-    const stop = () => {
-      clearTimeout(timer);
-      window.removeEventListener("online", done);
+    }
+    // Only once the wait is over: coming into view does not cut it short.
+    function shown() {
+      if (elapsed) due();
+    }
+    function stop() {
+      cleanup();
       reject(signal?.reason);
-    };
-    const timer = setTimeout(done, ms);
-    window.addEventListener("online", done, { once: true });
+    }
+    const timer = setTimeout(due, ms);
+    window.addEventListener("online", due);
+    document.addEventListener("visibilitychange", shown);
     signal?.addEventListener("abort", stop, { once: true });
   });
 }
@@ -126,8 +173,9 @@ export function installResilientFetch() {
     const method = init?.method ?? request?.method ?? "GET";
     if (!retriable(url, method, window.location.origin)) return original(input, init);
     const signal = init?.signal ?? request?.signal;
-    const patient = refreshesCurrent(url, window.location);
+    const refresh = refreshesCurrent(url, window.location);
     const started = Date.now();
+    let onlineMs = 0;
     let counted = false;
     try {
       for (let attempt = 1; ; attempt++) {
@@ -137,7 +185,8 @@ export function installResilientFetch() {
         } catch (error) {
           const wait = retryDelay(attempt);
           if (!isNetworkFailure(error) || signal?.aborted) throw error;
-          if (!patient && Date.now() - started + wait > PATIENCE_MS) throw error;
+          if (!keepTrying({ refresh, elapsedMs: Date.now() - started, onlineMs, erroring }, wait)) throw error;
+          if (navigator.onLine) onlineMs += wait;
           // The first miss may be nothing; from the second, say so.
           if (attempt === 2 && !counted) {
             counted = true;
