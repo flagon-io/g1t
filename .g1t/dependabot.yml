@@ -1,0 +1,60 @@
+# Dependency updates for this repository.
+#
+# g1t reads .g1t/dependabot.yml in place of a .github/dependabot.yml. It is
+# Dependabot's `dependabot.yml` format, version 2, and nothing else: every key
+# here is one Dependabot accepts, so this file can be copied to or from a
+# .github/dependabot.yml unchanged.
+#
+# Ecosystems and directories come from the repository's manifests and
+# lockfiles:
+#   npm             /                         package.json + package-lock.json
+#                                             (one lockfile for every
+#                                             workspace: apps/*, services/*,
+#                                             packages/*)
+#   cargo           /                         Cargo.toml workspace + Cargo.lock
+#                   /apps/desktop/src-tauri   the Tauri app, excluded from the
+#                                             workspace, with its own Cargo.lock
+#   docker          the directories holding a Dockerfile whose base images
+#                   are named in it (services/runner's comes from a build
+#                   argument, so there is nothing there to update)
+#   docker-compose  /deploy/self-host         docker-compose.yml
+#   github-actions  /                         .github/workflows (Dependabot
+#                                             reads workflows only there)
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "cargo"
+    directories:
+      - "/"
+      - "/apps/desktop/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/deploy/runner"
+      - "/deploy/sandbox"
+      - "/deploy/self-host"
+      - "/deploy/self-host/gitstore"
+      - "/services/runner/base"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "docker-compose"
+    directory: "/deploy/self-host"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
