@@ -546,7 +546,7 @@ function Agent({ change }: { change: LandedChange }) {
 
 function LandedItem({ change, now, tz, timeOnly }: { change: LandedChange; now: number; tz: string | null; timeOnly?: boolean }) {
   return (
-    <li className={cn(rowClass, "group items-start")}>
+    <li className={cn(rowClass, "items-start")}>
       <span className="mt-0.5 shrink-0">{LANDED_ICON[change.kind]}</span>
       <div className="min-w-0 grow">
         <div className="flex min-w-0 items-center gap-1.5">
