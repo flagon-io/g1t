@@ -83,9 +83,9 @@ const NOTIFICATIONS_READ = 50;
 
 /**
  * Home: the workspace's front page. First a box that asks g1t
- * (components/home-ask; What changed summarizes the span on the page, and
- * Explain on each change that landed asks too); then where you're needed now, with no time
- * window; what happened since you were last here (or over the last 24
+ * (components/home-ask: What changed summarizes the span on the page, and
+ * Explain on each change that landed asks about it); then where you're
+ * needed now, with no time window; what happened since you were last here (or over the last 24
  * hours or 7 days, `?window=`): what people did, from the events
  * service's digest of the span and chat's, then what landed; what is
  * running; what the span cost. The last visit is kept by notify, per
