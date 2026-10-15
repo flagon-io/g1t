@@ -265,7 +265,6 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
   const { slug, role, staff, account, statement, group, plan, securityPlan, entitlements, entitlementsFailed, credits, report, details, trialMicros, firstMonthMicros, notice, problem } =
     loaderData;
   const limit = orElse(loaderData.limit, null);
-  const requests = orElse(loaderData.requests, []);
   const { status } = account;
   const owner = role === "owner" || loaderData.managesBilling;
   const error = actionData as SectionError;
@@ -365,7 +364,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <>
             <SpendLimitCard limit={limit} owner={owner} error={err("limit")} />
             <BudgetAlerts limit={limit} owner={owner} error={err("budget")} />
-            <RaiseCard requests={requests} owner={owner} error={err("raise")} />
+            <RaiseCard requests={loaderData.requests} owner={owner} error={err("raise")} />
             <PrepayCard prepaidMicros={prepaid} owner={owner} live={status.live || !staff} error={err("prepay")} />
           </>
         )}
@@ -378,13 +377,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           credits && <CreditsCard credits={credits} />
         )}
 
-        {/* Past requests are listed on the limit's cards: without them, say so rather than show none. */}
-        {isFailed(loaderData.requests) && (paying || (limit && selfServe)) && (
-          <div className="mb-6">
-            <Unavailable what={loaderData.requests.what} compact />
-          </div>
-        )}
-        {paying && <OverageCard requests={requests} owner={owner} error={err("overage")} />}
+        {/* Each request card says so itself when the requests could not be read. */}
+        {paying && <OverageCard requests={loaderData.requests} owner={owner} error={err("overage")} />}
 
         <AddOns plan={plan} security={securityPlan} error={err("security")} />
 

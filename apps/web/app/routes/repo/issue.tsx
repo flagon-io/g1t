@@ -677,11 +677,10 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 </summary>
                 <Form method="post" className="mt-2 space-y-2" key={issue.assignees.join()}>
                   <input type="hidden" name="action" value="assign" />
-                  {isFailed(members) ? (
-                    <Unavailable what="The workspace's people" compact />
-                  ) : (
-                    <PeoplePicker name="assignee" members={members} chosen={issue.assignees} />
-                  )}
+                  {/* Without the workspace's people the picker still holds who is
+                      assigned now, so saving never clears them. */}
+                  {isFailed(members) && <Unavailable what="The workspace's people" compact />}
+                  <PeoplePicker name="assignee" members={isFailed(members) ? [] : members} chosen={issue.assignees} />
                   <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
                     Save assignees
                   </SubmitButton>
