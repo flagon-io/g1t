@@ -105,11 +105,17 @@ export type EventPayloads = {
   /** A fork left its fork network: detached, or its parent changed who can see it. */
   "repo.detached": { repoId: string; parentId: string };
   /**
-   * A repository's description, topics or visibility changed.
+   * A repository's website, topics or visibility changed.
    * `visibilityChanged` says whether it went public or private, which
    * `repo.visibility_changed` also announces on its own.
    */
   "repo.updated": { repoId: string; namespace: string; name: string; isPrivate: boolean; visibilityChanged: boolean };
+  /**
+   * A project's name or description changed. `primary` says whether it is
+   * its repository's own project, whose description is the one search and
+   * repository lists show.
+   */
+  "project.updated": { projectId: string; workspace: string; slug: string; repoId: string; primary: boolean; description: string | null };
   "repo.visibility_changed": { repoId: string; isPrivate: boolean };
   /**
    * A repository's name changed within its workspace `namespace`, from

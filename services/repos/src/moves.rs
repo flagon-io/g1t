@@ -465,7 +465,7 @@ impl<S: GitStore> Repos<S> {
                     switched.push((item.clone(), from, to, BTreeMap::new()));
                     continue;
                 }
-                self.store.create(&to, item.description.as_deref(), &item.default_branch).await?;
+                self.store.create(&to, None, &item.default_branch).await?;
                 made.push(to.clone());
                 match self.copy_until_same(&from, &to).await? {
                     Ok(refs) => switched.push((item.clone(), from, to, refs)),
@@ -625,7 +625,7 @@ mod tests {
 
     fn repo(fork_of: Option<&str>) -> Repo {
         serde_json::from_value(serde_json::json!({
-            "id": "rep_1", "namespace": "acme", "name": "rocket", "description": null, "isPrivate": true,
+            "id": "rep_1", "namespace": "acme", "name": "rocket", "isPrivate": true,
             "ownerId": "usr_1", "defaultBranch": "main", "forkOf": fork_of, "protected": false,
             "createdAt": "2026-10-07T00:00:00Z"
         }))

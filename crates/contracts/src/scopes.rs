@@ -1901,7 +1901,7 @@ mod tests {
     #[test]
     fn making_a_repository_public_or_private_needs_repo_admin() {
         let maintainer = token(&[Scope::RepoWrite]);
-        assert!(decide(&maintainer, "update_repo", &json!({ "description": "x" })).allowed);
+        assert!(decide(&maintainer, "update_repo", &json!({ "website": "https://x.dev" })).allowed);
         assert!(!decide(&maintainer, "update_repo", &json!({ "private": true })).allowed);
     }
 

@@ -45,8 +45,8 @@ export type PageMeta = {
 };
 
 type ProjectData = {
-  repo?: { description?: string | null };
-  project?: { name?: string; description?: string | null; descriptionInherited?: boolean } | null;
+  /** Only projects have descriptions; a repository has none. */
+  project?: { name?: string; description?: string | null } | null;
   open?: { issues?: number; pulls?: number };
 };
 type WorkspaceData = { workspace?: { name?: string; description?: string | null; avatar?: string | null } };
@@ -100,25 +100,19 @@ export function cardUrl(pathname: string, version?: unknown, og: string = OG): s
   return url.toString();
 }
 
-/** A project's own description; null while it follows its repository's. */
-function ownDescription(project: { description?: string | null; descriptionInherited?: boolean } | null | undefined): string | null {
-  return project && !project.descriptionInherited ? (project.description ?? null) : null;
-}
-
 export function page(args: PageArgs, meta: PageMeta): MetaDescriptor[] {
   const project = loaded<ProjectData>(args, "routes/repo/layout");
   const workspace = loaded<WorkspaceData>(args, "routes/workspace/layout");
   const description = summary(
     meta.description ||
-      ownDescription(project?.project) ||
-      project?.repo?.description ||
+      project?.project?.description ||
       workspace?.workspace?.description ||
       DESCRIPTION,
   );
   const version =
     meta.version ??
     (project
-      ? [project.project?.name, ownDescription(project.project) ?? project.repo?.description, project.open]
+      ? [project.project?.name, project.project?.description ?? null, project.open]
       : workspace
         ? [
             workspace.workspace?.name,

@@ -25,6 +25,7 @@ export function parseFilter(value: string | null | undefined): RepoFilter {
 /** What filtering needs to know about a repository. */
 export type Filterable = {
   name: string;
+  /** Its project's description. */
   description?: string | null;
   topics?: string[];
   isPrivate: boolean;

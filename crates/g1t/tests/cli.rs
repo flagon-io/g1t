@@ -1575,7 +1575,7 @@ fn any_harness_checking_its_updates_says_which_files_it_changed() {
 
 fn repo_json(namespace: &str, name: &str, parent: Option<(&str, &str)>) -> Value {
     json!({
-        "id": format!("rep_{name}"), "namespace": namespace, "name": name, "description": "A web app.",
+        "id": format!("rep_{name}"), "namespace": namespace, "name": name,
         "is_private": false, "default_branch": "main", "fork_of": null, "archived_at": null,
         "parent_id": parent.map(|_| "rep_parent"),
         "parent": parent.map(|(owner, name)| json!({ "namespace": owner, "name": name })),
@@ -1622,15 +1622,27 @@ fn repo_view_says_what_a_fork_came_from_and_forks_lists_them() {
     let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
         ("GET", "/repos/ana/web") => (200, repo_json("ana", "web", Some(("acme", "web")))),
         ("GET", "/repos/acme/web/forks") => (200, json!([repo_json("ana", "web", Some(("acme", "web")))])),
+        // A repository has no description: its own project's is shown.
+        ("GET", "/workspaces/ana/projects") => (
+            200,
+            json!([
+                { "slug": "web", "repository": "ana/web", "primary": true, "description": "A web app." },
+                { "slug": "docs", "repository": "ana/web", "primary": false, "description": "Not this one." },
+            ]),
+        ),
         _ => (404, json!({ "error": { "code": "not_found", "message": "No." } })),
     });
     let out = run(&mock, &["repo", "view", "ana/web"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(out.stdout.contains("Forked from acme/web"), "{}", out.stdout);
+    assert!(out.stdout.contains("A web app."), "{}", out.stdout);
+    assert!(!out.stdout.contains("Not this one."), "{}", out.stdout);
     let out = run(&mock, &["repo", "forks", "acme/web", "-L", "5"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert!(out.stdout.contains("ana/web"), "{}", out.stdout);
-    assert_eq!(mock.requests()[1].target, "/repos/acme/web/forks?limit=5");
+    assert!(out.stdout.contains("A web app."), "{}", out.stdout);
+    let targets: Vec<String> = mock.requests().iter().map(|r| r.target.clone()).collect();
+    assert!(targets.contains(&"/repos/acme/web/forks?limit=5".to_owned()), "{targets:?}");
 }
 
 #[test]

@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use g1t_contracts::events::Event;
+use g1t_contracts::events::{Event, ProjectUpdated};
 use g1t_contracts::identity::{DirectoryArgs, DirectoryEntry, DirectoryPage, Profile, SlugArgs, UsernameArgs, Workspace};
 use g1t_contracts::repos::{
     AllIdsArgs, BlobText, ChangedFilesArgs, FileList, IdPage, ListFilesArgs, PathByIdArgs, ReadBlobsArgs, RepoPath, TreeArgs,
@@ -208,7 +208,9 @@ impl Search {
 
     // ---- Repositories --------------------------------------------------------
 
-    /// Reads a repository's details and README again and stores them.
+    /// Reads a repository's details and README again and stores them. Its
+    /// description is its project's, kept from `project.updated`, so it is
+    /// left as it is here.
     /// `None`, and the repository forgotten, when it is gone or a fork.
     pub async fn refresh_repo(&self, repo_id: &str) -> Result<Option<TreeView>> {
         let Some(path) = self.path_of(repo_id).await? else {
@@ -232,16 +234,15 @@ impl Search {
         let topics = repo.topics.join(" ");
         let mut statements = vec![store::prepare(
             &self.db,
-            "INSERT INTO repos (repo_id, namespace, name, description, topics, readme, private, default_branch, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO repos (repo_id, namespace, name, topics, readme, private, default_branch, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (repo_id) DO UPDATE SET namespace = excluded.namespace, name = excluded.name,
-               description = excluded.description, topics = excluded.topics, readme = excluded.readme,
+               topics = excluded.topics, readme = excluded.readme,
                private = excluded.private, default_branch = excluded.default_branch, updated_at = excluded.updated_at",
             vec![
                 p(&repo.id),
                 p(&repo.namespace.to_lowercase()),
                 p(&repo.name.to_lowercase()),
-                Param::opt(repo.description.as_deref()),
                 p(&topics),
                 Param::opt(readme.as_deref()),
                 Param::Int(i64::from(repo.is_private)),
@@ -804,6 +805,16 @@ impl Search {
             | "repo.unarchived" => {
                 if let Ok(repo) = serde_json::from_value::<RepoEvent>(data.clone()) {
                     self.refresh_repo(&repo.repo_id).await?;
+                }
+            }
+            // A repository's description is its own project's. Refreshing
+            // first makes sure it is indexed, whichever event comes first.
+            "project.updated" => {
+                let Ok(project) = serde_json::from_value::<ProjectUpdated>(data.clone()) else { return Ok(()) };
+                if project.primary && self.refresh_repo(&project.repo_id).await?.is_some() {
+                    let description = vec![Param::opt(project.description.as_deref()), p(&project.repo_id)];
+                    let statement = store::prepare(&self.db, "UPDATE repos SET description = ? WHERE repo_id = ?", description)?;
+                    store::run_all(&self.db, vec![statement]).await?;
                 }
             }
             // A deleted repository is forgotten at once (repos hides it, so a

@@ -12,9 +12,16 @@ when you do.
 ## What it is, and the facts beside the files
 
 The header at the top of every page of a repository (Code, Issues, Pull
-requests, Actions, Settings and the rest) shows its description, website
-and topics, as you set them under [Edit the details](#edit-the-details).
-The website is the project's homepage when it has one.
+requests, Actions, Settings and the rest) shows its project's description,
+and its website and topics as you set them under
+[Edit the details](#edit-the-details). The website is the project's
+homepage when it has one.
+
+A repository has no description of its own: its
+[project](/guides/projects/) has, and search, link previews and lists of
+repositories show that one. Change it in the project's **Settings →
+General**, or with
+[`update_project`](/reference/api/projects/update-project/).
 
 The **Code** page shows its files with its facts beside them. On a phone
 they come after the files.
@@ -104,7 +111,7 @@ stars on a private repository are seen only by people who can read it.
 | Section | What it holds |
 | --- | --- |
 | **Name** | The repository's name, the second part of its address. |
-| **Details** | Its description, website and topics, shown on its page, in [search and Explore](/guides/search/). |
+| **Details** | Its website and topics, shown on its page, in [search and Explore](/guides/search/). Its description is its project's, on **General**. |
 | **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, and the [merge queue](/guides/merge-queue/). What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
 | **Artifacts** | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts). |
 | **Features** | Whether it has issues. A [fork](/concepts/forks/) starts with them off. |
@@ -185,7 +192,7 @@ Owners of its workspace have Admin on it.
 
 | Change | Needs |
 | --- | --- |
-| Description, website, topics | Maintain |
+| Website, topics | Maintain |
 | How long artifacts are kept | Maintain |
 | [Merge, commit and issue settings](#settings) | Maintain |
 | How many branches and tags a push may update | Admin |
@@ -206,12 +213,12 @@ and archiving it are done by a person, not a workspace token.
 ## Edit the details
 
 1. Open the repository's **Settings → Repository**.
-2. Under **Details**, change **Description**, **Website** or **Topics**.
+2. Under **Details**, change **Website** or **Topics**. The description
+   is the project's: change it on **Settings → General**.
 3. Choose **Save**.
 
 | Field | Rules |
 | --- | --- |
-| Description | Up to 200 characters. Empty clears it. |
 | Website | An http or https address. `https://` is added when you leave the scheme out. Empty clears it. |
 | Topics | Lowercase letters, digits and hyphens, at most 20, each up to 35 characters. Separate them with commas or spaces. |
 
@@ -223,7 +230,7 @@ with the fields to change. Fields you leave out stay as they are.
 curl -X PATCH https://api.g1t.sh/repos/acme/rocket \
   -H "Authorization: Bearer $G1T_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"description": "Launches things.", "website": "rocket.acme.dev", "topics": ["cli", "rust"]}'
+  -d '{"website": "rocket.acme.dev", "topics": ["cli", "rust"]}'
 ```
 
 Over MCP, it is the `repository` tool's `update` action, with `repo` and
@@ -372,7 +379,7 @@ are detached and keep the visibility they had.
 | --- | --- | --- |
 | Who can see it | Anyone: its code, issues and pull requests, and cloning it, without signing in. | Only people with a role on it: its workspace's owners, its members (unless the [base permission](/guides/access-and-roles/#the-base-permission) is None), and anyone given a role on it. Anyone else gets a page that says it does not exist. |
 | Search and Explore | It is added to [search](/guides/search/) and Explore for everyone. | It leaves search and Explore for everyone outside the workspace. |
-| Link previews | Links to it show a preview card with its name and description. | Links to it stop showing a preview card. |
+| Link previews | Links to it show a preview card with its name and its project's description. | Links to it stop showing a preview card. |
 | Storage | It stops counting toward the workspace's private storage. | It counts toward the workspace's private storage. A free workspace has 1 GB; making it private is refused when that would go over. See [what is free](/guides/usage-and-billing/#what-is-free). |
 
 Nothing else changes: its address, members, settings, secrets, webhooks
@@ -572,7 +579,7 @@ in the [audit log](/guides/audit-log/):
 
 | Change | Event |
 | --- | --- |
-| Description, website, topics, protection | `repo.updated` |
+| Website, topics, protection | `repo.updated` |
 | Visibility | `repo.visibility_changed` |
 | Rename | `repo.renamed` |
 | Default branch | `repo.default_branch_changed` |

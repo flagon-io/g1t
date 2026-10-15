@@ -31,7 +31,7 @@ test("a page gets its title, description, Open Graph and Twitter tags", () => {
 test("pages under a project describe the project, and their card follows its details", () => {
   const project = {
     id: "routes/repo/layout",
-    loaderData: { repo: { description: "Repo words" }, project: { name: "Web", description: "The storefront" }, open: { issues: 2, pulls: 1 } },
+    loaderData: { project: { name: "Web", description: "The storefront" }, open: { issues: 2, pulls: 1 } },
   };
   const meta = tags(page({ location: { pathname: "/acme/web/commits/" }, matches: [project] }, { title: "Commits · acme/web · g1t" }));
   assert.equal(meta.get("description"), "The storefront");

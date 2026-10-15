@@ -609,7 +609,7 @@ mod tests {
 
     fn repo(id: &str, namespace: &str, private: bool) -> Repo {
         serde_json::from_value(json!({
-            "id": id, "namespace": namespace, "name": id, "description": null, "isPrivate": private,
+            "id": id, "namespace": namespace, "name": id, "isPrivate": private,
             "ownerId": "ws_1", "defaultBranch": "main", "forkOf": null, "createdAt": ""
         }))
         .unwrap()

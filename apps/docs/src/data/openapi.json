@@ -8841,7 +8841,6 @@
                       "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                       "namespace": "flagon-io",
                       "name": "hello",
-                      "description": "A tiny service that says hello.",
                       "is_private": false,
                       "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "default_branch": "main",
@@ -12025,7 +12024,6 @@
                     "slug": "g1t",
                     "name": "g1t",
                     "description": "Git hosting where people and agents work together.",
-                    "description_inherited": true,
                     "url": "https://g1t.sh/flagon-io/g1t",
                     "repository": "flagon-io/g1t",
                     "root_dir": "",
@@ -12073,7 +12071,6 @@
                     "slug": "hello",
                     "name": "hello",
                     "description": "Greets people from the command line.",
-                    "description_inherited": false,
                     "url": "https://g1t.sh/flagon-io/hello",
                     "repository": "flagon-io/hello",
                     "root_dir": "",
@@ -12423,7 +12420,6 @@
                   "slug": "g1t",
                   "name": "g1t",
                   "description": "Git hosting where people and agents work together.",
-                  "description_inherited": true,
                   "url": "https://g1t.sh/flagon-io/g1t",
                   "repository": "flagon-io/g1t",
                   "root_dir": "",
@@ -12564,7 +12560,6 @@
                   "slug": "g1t",
                   "name": "g1t",
                   "description": "Git hosting where people and agents work together.",
-                  "description_inherited": true,
                   "url": "https://g1t.sh/flagon-io/g1t",
                   "repository": "flagon-io/g1t",
                   "root_dir": "",
@@ -26952,7 +26947,6 @@
                     "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "namespace": "flagon-io",
                     "name": "hello",
-                    "description": "A tiny service that says hello.",
                     "is_private": false,
                     "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                     "default_branch": "main",
@@ -27007,7 +27001,7 @@
           "Repositories"
         ],
         "summary": "Create a repository",
-        "description": "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere.\n\n`owner_id` is the id of the person who created the repository. With `import_url`, `default_branch` is the default branch of the repository copied.",
+        "description": "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's.\n\n`owner_id` is the id of the person who created the repository. With `import_url`, `default_branch` is the default branch of the repository copied.",
         "x-operation": "create_repo",
         "x-mcp-tool": "repository",
         "x-mcp-action": "create",
@@ -27030,7 +27024,6 @@
                   "id": "rep_01m43tk1jhehztx23drs87f5fc",
                   "namespace": "flagon-io",
                   "name": "hello-cli",
-                  "description": "Command-line client for hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -27109,7 +27102,8 @@
                     "type": "string"
                   },
                   "description": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "What it is, in a line: the description of its project. A repository has none of its own."
                   },
                   "private": {
                     "type": "boolean"
@@ -27141,7 +27135,7 @@
           "Search"
         ],
         "summary": "Search g1t",
-        "description": "Search all of g1t: repositories (name, description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind.\n\n`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too. An issue or pull request g1t opened has `author` `g1t` and `requested_by` the person it was for; `author:` matches the author.",
+        "description": "Search all of g1t: repositories (name, their project's description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind.\n\n`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too. An issue or pull request g1t opened has `author` `g1t` and `requested_by` the person it was for; `author:` matches the author.",
         "x-operation": "search",
         "x-mcp-tool": "search",
         "x-mcp-action": "code",
@@ -27370,7 +27364,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -27431,7 +27424,7 @@
           "Repositories"
         ],
         "summary": "Update a repository",
-        "description": "Change a repository's description, website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork).\n\nOnly the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private`, `allow_forking`, `max_ref_updates` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. A fork cannot change `private` (`422`): detach it first. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/).",
+        "description": "Change a repository's website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork). A repository has no description: its project has, changed with update_project.\n\nOnly the fields given change. `website` gets `https://` when no scheme is given; an empty string clears it. `default_branch` must name a branch that exists (`422` otherwise); it is changed after the other fields. `description`, `website`, `topics` and `protected` need the Maintain role or higher, and `private`, `allow_forking`, `max_ref_updates` and `default_branch` the Admin role (`403` otherwise, saying which role). Changing `private` here needs no confirmation; `POST /repos/{owner}/{name}/visibility` asks for one. Making it private is refused with `402` when a free workspace's private storage has no room for it. A fork cannot change `private` (`422`): detach it first. See [Managing a repository](/guides/managing-repositories/) and [Access and roles](/guides/access-and-roles/).",
         "x-operation": "update_repo",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update",
@@ -27473,7 +27466,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "Says hello, politely.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "trunk",
@@ -27578,7 +27570,7 @@
                   },
                   "website": {
                     "type": "string",
-                    "description": "Its home page, an http or https address shown beside its description; https:// is added when no scheme is given. An empty string clears it."
+                    "description": "Its home page, an http or https address shown beside its project's description; https:// is added when no scheme is given. An empty string clears it."
                   },
                   "default_branch": {
                     "type": "string",
@@ -27597,7 +27589,6 @@
                 }
               },
               "example": {
-                "description": "Says hello, politely.",
                 "website": "hello.g1t.page",
                 "default_branch": "trunk",
                 "protected": true
@@ -27654,7 +27645,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "deleted_at": "2026-10-05T09:30:00.000Z",
                   "deleted_by": "syntaqx",
@@ -28295,7 +28285,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -28400,7 +28389,7 @@
           "Repositories"
         ],
         "summary": "Fork a repository",
-        "description": "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code and description come with it: the default branch, or every branch and tag with default_branch_only false. Its issues, pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; issues are off in the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from.\n\nThe new fork, with `parent` naming the repository it came from. Refused with `403` when the repository is private and its admins have not allowed forking, or when you cannot create repositories in the workspace; `409` when the workspace already has a repository of that name (give another `name`); `402` when a free workspace's private storage has no room for a private fork. Its code and description are copied; nothing else is. See [Forking a repository](/guides/forking-repositories/) and [Forks](/concepts/forks/).",
+        "description": "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code comes with it: the default branch, or every branch and tag with default_branch_only false. Its project starts with the parent project's description. Its issues, pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; issues are off in the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from.\n\nThe new fork, with `parent` naming the repository it came from. Refused with `403` when the repository is private and its admins have not allowed forking, or when you cannot create repositories in the workspace; `409` when the workspace already has a repository of that name (give another `name`); `402` when a free workspace's private storage has no room for a private fork. Its code and description are copied; nothing else is. See [Forking a repository](/guides/forking-repositories/) and [Forks](/concepts/forks/).",
         "x-operation": "fork_repo",
         "x-mcp-tool": "repository",
         "x-mcp-action": "fork",
@@ -28442,7 +28431,6 @@
                   "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
                   "namespace": "ada",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
                   "default_branch": "main",
@@ -28537,10 +28525,6 @@
                     "type": "string",
                     "description": "The fork's name; the repository's own when left out."
                   },
-                  "description": {
-                    "type": "string",
-                    "description": "The fork's description; the repository's own when left out, none when empty."
-                  },
                   "default_branch_only": {
                     "type": "boolean",
                     "description": "Copy only the default branch (the default). false copies every branch and tag."
@@ -28616,7 +28600,6 @@
                     "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
                     "namespace": "ada",
                     "name": "hello",
-                    "description": "A tiny service that says hello.",
                     "is_private": false,
                     "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
                     "default_branch": "main",
@@ -28859,7 +28842,6 @@
                   "id": "rep_01m4b7k2v9c3tq8x5n6d0fr1hz",
                   "namespace": "ada",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kq3r8w2m6vd5e9t0hy7jx4cb",
                   "default_branch": "main",
@@ -28969,7 +28951,6 @@
                     "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                     "namespace": "flagon-io",
                     "name": "hello",
-                    "description": "A tiny service that says hello.",
                     "is_private": false,
                     "deleted_at": "2026-10-05T09:30:00.000Z",
                     "deleted_by": "syntaqx",
@@ -29074,7 +29055,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -29317,7 +29297,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "greeter",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -29458,7 +29437,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -29577,7 +29555,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -29696,7 +29673,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": true,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -29862,7 +29838,6 @@
                   "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
                   "namespace": "flagon-io",
                   "name": "hello",
-                  "description": "A tiny service that says hello.",
                   "is_private": false,
                   "owner_id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                   "default_branch": "main",
@@ -40670,10 +40645,6 @@
                   "color": {
                     "type": "string",
                     "description": "Six hex digits."
-                  },
-                  "description": {
-                    "type": "string",
-                    "description": "An empty string clears it."
                   }
                 }
               },

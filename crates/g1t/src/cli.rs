@@ -242,9 +242,6 @@ pub struct RepoForkArgs {
     /// The fork's name; the repository's own when left out.
     #[arg(long)]
     pub name: Option<String>,
-    /// The fork's description; the repository's own when left out.
-    #[arg(short, long)]
-    pub description: Option<String>,
     /// Copy every branch and tag, not only the default branch.
     #[arg(long)]
     pub all_branches: bool,
@@ -309,6 +306,7 @@ pub struct RepoCreateArgs {
     /// Only people with a role on it can see it (the default).
     #[arg(long)]
     pub private: bool,
+    /// What it is, in a line: its project's description.
     #[arg(short, long)]
     pub description: Option<String>,
     /// Clone it once it is made.
@@ -326,7 +324,7 @@ pub struct RepoCreateArgs {
 pub struct RepoListArgs {
     /// Only this workspace's.
     pub workspace: Option<String>,
-    /// Only those whose name or description holds this.
+    /// Only those whose name holds this.
     #[arg(short, long)]
     pub query: Option<String>,
     #[arg(short = 'L', long, default_value_t = 20)]

@@ -1341,7 +1341,7 @@ mod tests {
             updated_at: "2026-10-07T00:00:00.000Z".into(),
         };
         let repo: Repo = serde_json::from_value(serde_json::json!({
-            "id": "rep_1", "namespace": "Acme", "name": "web", "description": null, "isPrivate": true, "ownerId": "usr_1",
+            "id": "rep_1", "namespace": "Acme", "name": "web", "isPrivate": true, "ownerId": "usr_1",
             "defaultBranch": "main", "forkOf": null, "createdAt": ""
         }))
         .unwrap();

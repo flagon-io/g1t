@@ -86,7 +86,7 @@ pub const TOOLS: &[Tool] = &[
             a("tarball", Op::Archives(ArchiveOp::DownloadTarball), "A 10-minute link to a branch, tag or commit as a .tar.gz"),
             a("zipball", Op::Archives(ArchiveOp::DownloadZipball), "A 10-minute link to a branch, tag or commit as a .zip"),
             a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
-            a("update", Op::UpdateRepo, "Change description, website, topics, default branch, protection, forking"),
+            a("update", Op::UpdateRepo, "Change website, topics, default branch, protection, forking"),
             a("get_settings", Op::GetRepoSettings, "How pull requests merge, and the default branch's protection as its rules stack"),
             a("update_settings", Op::UpdateRepoSettings, "Change how pull requests merge and the default branch protection ruleset"),
             a("check_names", Op::ListCheckNames, "Check names reported lately, to require in a ruleset"),

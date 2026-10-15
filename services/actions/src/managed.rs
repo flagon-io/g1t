@@ -619,7 +619,6 @@ mod tests {
             id: "rep_2".into(),
             namespace: "acme".into(),
             name: name.into(),
-            description: None,
             is_private: private,
             owner_id: String::new(),
             default_branch: "main".into(),

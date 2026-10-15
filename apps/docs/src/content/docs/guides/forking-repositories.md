@@ -33,8 +33,9 @@ run or an agent's run cannot fork.
 1. Open the repository and choose **Fork** in its header.
 2. Pick the **workspace** to fork it into. Only workspaces where you can
    create a repository of its kind are listed.
-3. Keep its **name**, or give the fork another, and change its
-   **description** if you like.
+3. Keep its **name**, or give the fork another. Its project starts with
+   the parent project's **description**; change it later on the fork's
+   **Settings → General**.
 4. Leave **Copy the `<default>` branch only** on to copy just the default
    branch, or turn it off to copy every branch and tag.
 5. Choose **Create fork**.
@@ -60,9 +61,8 @@ curl -X POST https://api.g1t.sh/repos/acme/rocket/forks \
   -d '{"workspace": "ada-labs", "default_branch_only": true}'
 ```
 
-`workspace`, `name`, `description` and `default_branch_only` may each be
-left out: your personal workspace, the parent's name and description, and
-the default branch only. Over MCP, it is the `repository` tool's `fork`
+`workspace`, `name` and `default_branch_only` may each be left out: your
+personal workspace, the parent's name, and the default branch only. Over MCP, it is the `repository` tool's `fork`
 action.
 
 ### What the fork gets
@@ -70,7 +70,7 @@ action.
 | Copied | Not copied |
 | --- | --- |
 | The default branch, or every branch and tag | Issues, pull requests, comments and labels |
-| The description | Settings, rulesets and branch protection |
+| Its project's description, to the fork's project | Settings, rulesets and branch protection |
 | | Secrets, variables and webhooks |
 | | Environments, projects, deployments and custom domains |
 | | Releases, packages and stars |

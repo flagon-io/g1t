@@ -41,7 +41,6 @@ pub(crate) fn project_json(project: &Value, site: &str) -> Value {
         "slug": slug,
         "name": project["name"],
         "description": project["description"],
-        "description_inherited": project["descriptionInherited"].as_bool().unwrap_or(false),
         "url": format!("{}/{workspace}/{slug}", site.trim_end_matches('/')),
         "repository": repository,
         "root_dir": source["rootDir"].as_str().unwrap_or_default(),
@@ -183,7 +182,7 @@ mod tests {
     fn project() -> Value {
         json!({
             "id": "prj_1", "workspace": "flagon-io", "slug": "g1t", "name": "g1t",
-            "description": "Git hosting for people and agents.", "descriptionInherited": true,
+            "description": "Git hosting for people and agents.",
             "source": {
                 "kind": "hosted", "repoId": "repo_1", "repo": { "namespace": "flagon-io", "name": "g1t" },
                 "rootDir": "", "defaultBranch": "main",
@@ -211,7 +210,6 @@ mod tests {
         assert_eq!(shown["repository"], "flagon-io/g1t");
         assert_eq!(shown["root_dir"], "");
         assert_eq!(shown["default_branch"], "main");
-        assert_eq!(shown["description_inherited"], true);
         assert_eq!(shown["kind_reason"]["by"], "set");
         assert_eq!(shown["production_url"], "https://g1t.sh");
         assert_eq!(shown["setting"]["runs"], "elsewhere");

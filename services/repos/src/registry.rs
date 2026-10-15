@@ -15,7 +15,6 @@ pub(crate) struct RepoRow {
     id: String,
     namespace: String,
     name: String,
-    description: Option<String>,
     is_private: u8,
     owner_id: String,
     default_branch: String,
@@ -243,7 +242,6 @@ impl From<RepoRow> for Repo {
             id: row.id,
             namespace: row.namespace,
             name: row.name,
-            description: row.description,
             is_private: row.is_private != 0,
             owner_id: row.owner_id,
             default_branch: row.default_branch,
@@ -363,7 +361,6 @@ impl Registry {
     pub async fn update(
         &self,
         id: &str,
-        description: Option<&str>,
         protected: bool,
         topics: &[String],
         website: Option<&str>,
@@ -372,11 +369,10 @@ impl Registry {
     ) -> Result<()> {
         self.db
             .prepare(
-                "UPDATE repos SET description = ?, protected = ?, topics = ?, website = ?, allow_forking = ?, max_ref_updates = ?
+                "UPDATE repos SET protected = ?, topics = ?, website = ?, allow_forking = ?, max_ref_updates = ?
                  WHERE id = ?",
             )
             .bind(&[
-                description.map_or(JsValue::NULL, JsValue::from),
                 u32::from(protected).into(),
                 serde_json::to_string(topics)?.into(),
                 website.map_or(JsValue::NULL, JsValue::from),
@@ -486,8 +482,7 @@ impl Registry {
             params.push(namespace.to_lowercase().into());
         }
         if let Some(query) = query.map(str::trim).filter(|query| !query.is_empty()) {
-            conditions
-                .push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')".to_owned());
+            conditions.push("name LIKE ? ESCAPE '\\'".to_owned());
             // LIKE wildcards in the query are matched literally.
             let escaped: String = query
                 .chars()
@@ -497,7 +492,6 @@ impl Registry {
                 })
                 .collect();
             let pattern = format!("%{escaped}%");
-            params.push(pattern.as_str().into());
             params.push(pattern.into());
         }
         let sql = format!(
@@ -872,15 +866,14 @@ impl Registry {
         self.db
             .prepare(
                 "INSERT INTO repos
-                   (id, namespace, name, description, is_private, owner_id,
+                   (id, namespace, name, is_private, owner_id,
                     default_branch, fork_of, parent_id, forked_from, created_at, store)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 repo.id.as_str().into(),
                 repo.namespace.as_str().into(),
                 repo.name.as_str().into(),
-                optional(&repo.description),
                 (repo.is_private as u8).into(),
                 repo.owner_id.as_str().into(),
                 repo.default_branch.as_str().into(),
@@ -922,7 +915,6 @@ mod tests {
             id: format!("rep_row_{}", version.is_some()),
             namespace: "acme".into(),
             name: "rocket".into(),
-            description: None,
             is_private: 0,
             owner_id: "usr_owner".into(),
             default_branch: "main".into(),
@@ -957,7 +949,7 @@ mod tests {
         assert!(migration.contains("ALTER TABLE repos ADD COLUMN max_ref_updates INTEGER;"));
         let row = |limit: serde_json::Value| -> RepoRow {
             serde_json::from_value(serde_json::json!({
-                "id": "rep_1", "namespace": "acme", "name": "web", "description": null, "is_private": 0,
+                "id": "rep_1", "namespace": "acme", "name": "web", "is_private": 0,
                 "owner_id": "usr_1", "default_branch": "main", "fork_of": null, "protected": 0, "created_at": "",
                 "max_ref_updates": limit,
             }))
@@ -1006,7 +998,6 @@ mod tests {
             id: "rep_1".into(),
             namespace: "acme".into(),
             name: "rocket".into(),
-            description: None,
             is_private: private,
             owner_id: "usr_owner".into(),
             default_branch: "main".into(),

@@ -7,7 +7,6 @@ export type Repo = {
   /** The slug of the workspace that owns it: the first URL segment. */
   namespace: string;
   name: string;
-  description: string | null;
   isPrivate: boolean;
   ownerId: string;
   defaultBranch: string;
@@ -62,8 +61,6 @@ export type ForkRepoInput = {
   namespace: string;
   /** The fork's name; the source's when absent. */
   name?: string;
-  /** The source's when absent; an empty string clears it. */
-  description?: string;
   /** Copy only the default branch (the default), or every branch and tag. */
   defaultBranchOnly?: boolean;
 };
@@ -95,7 +92,6 @@ export type DeletedRepo = {
   id: string;
   namespace: string;
   name: string;
-  description: string | null;
   isPrivate: boolean;
   /** RFC 3339. */
   deletedAt: string;
@@ -158,7 +154,6 @@ export type CreateRepoInput = {
   /** The workspace to create it in; the creator must be a member. */
   namespace: string;
   name: string;
-  description?: string | null;
   isPrivate?: boolean;
   /**
    * The https address of a public git repository to copy the default branch
@@ -201,13 +196,12 @@ export interface ReposApi {
   create(owner: User, input: CreateRepoInput): Promise<Result<Repo>>;
   /**
    * Changes whichever details are given. Members of the repository's
-   * workspace only. An empty description clears it.
+   * workspace only. A repository has no description: its project does.
    */
   update(
     actor: User,
     path: RepoPath,
     changes: {
-      description?: string;
       isPrivate?: boolean;
       protected?: boolean;
       topics?: string[];
@@ -305,7 +299,8 @@ export interface ReposApi {
   /**
    * Forks `path` into the workspace `input.namespace`: a new repository
    * with the source's code (its default branch unless
-   * `defaultBranchOnly` is false) and description, nothing else. Public
+   * `defaultBranchOnly` is false), nothing else; its project starts
+   * with the source project's description. Public
    * repositories can always be forked, private ones when their admins
    * allow it; a fork is as visible as its source. Publishes `repo.created`
    * and `repo.forked`.

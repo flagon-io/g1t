@@ -8,7 +8,7 @@ import { ErrorText, SubmitButton } from "../components/ui";
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from "../components/ui/field";
 import { Input, InputAddon, InputGroup } from "../components/ui/input";
 import { RadioCard, RadioGroup } from "../components/ui/radio-group";
-import { repos } from "../lib/services.server";
+import { projects, repos } from "../lib/services.server";
 import { GithubMark } from "../components/github";
 import { githubApp } from "../lib/github.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
@@ -39,11 +39,16 @@ export async function action({ request, context }: Route.ActionArgs) {
   const result = await repos.create(user, {
     namespace: String(form.get("workspace") ?? ""),
     name: String(form.get("name") ?? ""),
-    description: String(form.get("description") ?? ""),
     isPrivate: form.get("visibility") === "private",
     importUrl: form.get("source") === "import" ? String(form.get("importUrl") ?? "").trim() || undefined : undefined,
   });
   if (!result.ok) return { error: result.error.message };
+  // A repository has no description: the one given is its project's.
+  const description = String(form.get("description") ?? "").trim();
+  if (description) {
+    const described = await projects.describe(user, result.value.id, description).catch((error: unknown) => String(error));
+    if (typeof described === "string" || !described.ok) console.error("new repository without its description", result.value.id, described);
+  }
   throw redirect(`/${result.value.namespace}/${result.value.name}`);
 }
 

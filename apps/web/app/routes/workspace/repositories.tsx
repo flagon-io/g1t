@@ -22,7 +22,7 @@ import {
   parseFilter,
   summariseBulk,
 } from "../../lib/repo-lifecycle";
-import { repos } from "../../lib/services.server";
+import { projects, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -39,7 +39,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     repos.list(viewer, { namespace: params.owner, memberOnly: true }),
     owner ? repos.deleted(viewer, params.owner) : Promise.resolve([]),
   ]);
-  return { repos: list, deleted, owner, slug: params.owner.toLowerCase() };
+  // A repository has no description: its project's is shown, and searched.
+  const about = await projects.descriptions(list.map((repo) => repo.id));
+  return {
+    repos: list.map((repo) => ({ ...repo, description: about[repo.id] ?? null })),
+    deleted,
+    owner,
+    slug: params.owner.toLowerCase(),
+  };
 }
 
 /** Filtering and searching change only the address: the list is already here. */

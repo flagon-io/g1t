@@ -125,7 +125,7 @@ g1t repo view [OPTIONS] [REPOSITORY]
 | `[REPOSITORY]` | OWNER/NAME; the current repository when left out. |
 | `-w, --web` | Open it in the browser. |
 
-Calls [`get_repo`](/reference/api/repositories/get-repo/).
+Calls [`get_repo`](/reference/api/repositories/get-repo/), [`list_projects`](/reference/api/projects/list-projects/).
 
 ### g1t repo clone
 
@@ -156,7 +156,7 @@ g1t repo create [OPTIONS] [NAME]
 | `[NAME]` | NAME, or WORKSPACE/NAME. |
 | `--public` | Anyone can see it. Repositories are private unless this is given. |
 | `--private` | Only people with a role on it can see it (the default). |
-| `-d, --description <DESCRIPTION>` |  |
+| `-d, --description <DESCRIPTION>` | What it is, in a line: its project's description. |
 | `-c, --clone` | Clone it once it is made. |
 | `--source <DIR>` | Add it as a remote of this directory's repository and push it there. |
 | `--remote <REMOTE>` | The remote's name, with --source. Default: `origin`. |
@@ -174,10 +174,10 @@ g1t repo list [OPTIONS] [WORKSPACE]
 | Argument or flag | |
 | --- | --- |
 | `[WORKSPACE]` | Only this workspace's. |
-| `-q, --query <QUERY>` | Only those whose name or description holds this. |
+| `-q, --query <QUERY>` | Only those whose name holds this. |
 | `-L, --limit <LIMIT>` | Default: `20`. |
 
-Calls [`list_repos`](/reference/api/repositories/list-repos/).
+Calls [`list_repos`](/reference/api/repositories/list-repos/), [`list_projects`](/reference/api/projects/list-projects/).
 
 ### g1t repo fork
 
@@ -192,7 +192,6 @@ g1t repo fork [OPTIONS] [REPOSITORY]
 | `[REPOSITORY]` | OWNER/NAME; the current repository when left out. |
 | `-w, --workspace <WORKSPACE>` | The workspace to fork it into; your personal workspace when left out. |
 | `--name <NAME>` | The fork's name; the repository's own when left out. |
-| `-d, --description <DESCRIPTION>` | The fork's description; the repository's own when left out. |
 | `--all-branches` | Copy every branch and tag, not only the default branch. |
 | `-c, --clone` | Clone the fork, with the repository it came from as the remote upstream. |
 
@@ -211,7 +210,7 @@ g1t repo forks [OPTIONS] [REPOSITORY]
 | `[REPOSITORY]` | OWNER/NAME; the current repository when left out. |
 | `-L, --limit <LIMIT>` | Default: `30`. |
 
-Calls [`list_forks`](/reference/api/repositories/list-forks/).
+Calls [`list_forks`](/reference/api/repositories/list-forks/), [`list_projects`](/reference/api/projects/list-projects/).
 
 ### g1t repo sync
 

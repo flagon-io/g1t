@@ -27,7 +27,8 @@ parent and can open pull requests into it.
 ### What a fork starts with
 
 Forking copies the parent's **code** (its default branch, or every branch
-and tag) and its **description**. Nothing else comes with it: no issues or
+and tag), and the fork's project starts with the **description** of the
+parent's project. Nothing else comes with it: no issues or
 pull requests, settings, rulesets, secrets, variables, webhooks,
 environments, deployments or releases. The fork starts with its own
 defaults, and with two things off:

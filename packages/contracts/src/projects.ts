@@ -21,10 +21,8 @@ export type Project = {
   /** Unique in its workspace; the project's address is `g1t.sh/<workspace>/<slug>`. */
   slug: string;
   name: string;
-  /** The project's own description, or its repository's while it has none. */
+  /** What it is, in a line. Only projects have descriptions; repositories do not. */
   description: string | null;
-  /** Whether `description` is its repository's, following it as it changes. */
-  descriptionInherited: boolean;
   source: ProjectSource;
   /** Whether its repository is private: only people with a role on it can see it. */
   private: boolean;
@@ -135,7 +133,7 @@ export const MAX_LINK_URL = 255;
 /** A change to a project; only what is given changes. */
 export type ProjectChanges = {
   name?: string;
-  /** Null or blank goes back to the repository's. */
+  /** Null or blank clears it. */
   description?: string | null;
   rootDir?: string;
   /** What it is; `auto` leaves it to detection. Anything but an app or docs stops it running anywhere. */
@@ -184,6 +182,16 @@ export interface ProjectsApi {
   get(workspace: string, slug: string, viewer: Viewer): Promise<Result<Project>>;
   /** The projects built from a repository, its primary one first. For services. */
   byRepo(repoId: string): Promise<Project[]>;
+  /**
+   * The descriptions of repositories' own projects, by repository id, for
+   * lists of repositories; one without is left out. Up to 500 ids.
+   */
+  descriptions(repoIds: string[]): Promise<Record<string, string>>;
+  /**
+   * Sets the description of a repository's own project, making the project
+   * first if need be: for what makes a repository with a description.
+   */
+  describe(actor: User, repoId: string, description: string | null): Promise<Result<Project>>;
   /** Members only. */
   create(actor: User, workspace: string, input: NewProject): Promise<Result<Project>>;
   /**

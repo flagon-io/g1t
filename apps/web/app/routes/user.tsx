@@ -38,7 +38,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { IssueIcon, PullIcon } from "../components/work-icons";
 import { lastDay } from "../lib/contribution-calendar";
 import { notFound } from "../lib/not-found.server";
-import { identity, repos, work } from "../lib/services.server";
+import { identity, projects, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
 type Tab = "overview" | "pulls" | "issues" | "stars";
@@ -117,6 +117,8 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       : null,
   ]);
   const activity = authored.ok ? authored.value : EMPTY;
+  // A repository has no description: its project's is shown.
+  const about = await projects.descriptions(starred.map(({ repo }) => repo.id)).catch(() => ({}) as Record<string, string>);
   // The calendar ends today, as the work service counted it (UTC).
   const today = (year && lastDay(year.from)) || new Date().toISOString().slice(0, 10);
   return {
@@ -126,7 +128,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     activity,
     failed: !authored.ok,
     workspaces: shown,
-    starred,
+    starred: starred.map((star) => ({ ...star, description: about[star.repo.id] ?? null })),
     contributions: year ? { ...year, today } : null,
     isSelf: viewer?.username === profile.username,
     publicCounts: viewer ? null : activity.counts,
@@ -305,7 +307,7 @@ function ProfileTabs({
 
 // --- Stars -------------------------------------------------------------------------
 
-function StarredList({ starred, isSelf }: { starred: StarredRepo[]; isSelf: boolean }) {
+function StarredList({ starred, isSelf }: { starred: (StarredRepo & { description: string | null })[]; isSelf: boolean }) {
   if (starred.length === 0) {
     return (
       <EmptyState title={isSelf ? "You have not starred anything yet" : "No stars yet"}>
@@ -316,7 +318,7 @@ function StarredList({ starred, isSelf }: { starred: StarredRepo[]; isSelf: bool
   return (
     <Card asChild divided className="overflow-hidden">
       <ul>
-        {starred.map(({ repo, starredAt, stars }) => (
+        {starred.map(({ repo, description, starredAt, stars }) => (
           <li key={repo.id} className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <Link to={`/${repo.namespace}/${repo.name}`} className="min-w-0 truncate font-medium hover:text-accent">
@@ -328,7 +330,7 @@ function StarredList({ starred, isSelf }: { starred: StarredRepo[]; isSelf: bool
                 {stars.toLocaleString("en-US")}
               </span>
             </div>
-            {repo.description && <p className="mt-1 text-sm text-muted">{repo.description}</p>}
+            {description && <p className="mt-1 text-sm text-muted">{description}</p>}
             <p className="mt-1 text-xs text-faint">
               Starred <TimeAgo at={starredAt} />
             </p>
