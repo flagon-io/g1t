@@ -156,6 +156,12 @@ const DETECT_PER_LIST = 10;
 
 const now = () => new Date().toISOString();
 
+/**
+ * Whether this isolate has seen the descriptions sweep done (see
+ * `sweepDescriptions`), so a listing reads its row once, not every time.
+ */
+let descriptionsSwept = false;
+
 function toProject(row: Row): Project {
   const setting = { kind: kindSetting(row.kind_setting), runs: runsSetting(row.runs_setting) };
   const facts: Omit<KindFacts, "setting"> = {
@@ -323,6 +329,7 @@ class Projects {
   async list(a: { workspace: string; viewer: Viewer }): Promise<Result<Project[]>> {
     const workspace = a.workspace.toLowerCase();
     await this.backfill(workspace);
+    if (!descriptionsSwept) this.defer(this.sweepDescriptions());
     const rows = await this.db
       .prepare("SELECT * FROM projects WHERE workspace = ? AND repo_deleted_at IS NULL ORDER BY name COLLATE NOCASE")
       .bind(workspace)
@@ -337,6 +344,7 @@ class Projects {
   async get(a: { workspace: string; slug: string; viewer: Viewer }): Promise<Result<Project>> {
     const workspace = a.workspace.toLowerCase();
     await this.backfill(workspace);
+    if (!descriptionsSwept) this.defer(this.sweepDescriptions());
     const row = await this.db
       .prepare("SELECT * FROM projects WHERE workspace = ? AND slug = ? AND repo_deleted_at IS NULL")
       .bind(workspace, a.slug.toLowerCase())
@@ -401,23 +409,36 @@ class Projects {
   private async updated(row: Row, actor: User): Promise<void> {
     if (!this.env.EVENTS) return;
     await eventsClient(this.env.EVENTS)
-      .publish([
-        {
-          type: "project.updated",
-          source: "projects",
-          repoId: row.repo_id,
-          actor: actor.username,
-          data: {
-            projectId: row.id,
-            workspace: row.workspace,
-            slug: row.slug,
-            repoId: row.repo_id,
-            primary: row.is_primary === 1,
-            description: row.description,
-          },
-        },
-      ])
+      .publish([projectUpdated(row, actor.username)])
       .catch((error: unknown) => console.error("project.updated not published", row.id, String(error)));
+  }
+
+  /**
+   * Once for all of g1t: tells search every repository's own project's
+   * description. Search kept repositories' descriptions until #45, so a
+   * project that already had its own showed the repository's old one there.
+   * Claimed by its row in `sweeps` (migrations/0016), so it runs once.
+   */
+  private async sweepDescriptions(): Promise<void> {
+    if (!this.env.EVENTS) return;
+    const done = await this.db.prepare("SELECT 1 FROM sweeps WHERE key = 'descriptions'").first();
+    if (done) {
+      descriptionsSwept = true;
+      return;
+    }
+    const claimed = await this.db.prepare("INSERT OR IGNORE INTO sweeps (key, at) VALUES ('descriptions', ?)").bind(now()).run();
+    descriptionsSwept = true;
+    if (!claimed.meta.changes) return;
+    const rows = await this.db
+      .prepare("SELECT * FROM projects WHERE is_primary = 1 AND repo_deleted_at IS NULL AND description IS NOT NULL")
+      .all<Row>();
+    const events = rows.results.map((row) => projectUpdated(row, null));
+    for (let at = 0; at < events.length; at += 50) {
+      await eventsClient(this.env.EVENTS)
+        .publish(events.slice(at, at + 50))
+        .catch((error: unknown) => console.error("descriptions sweep: some not published", String(error)));
+    }
+    console.log("descriptions sweep: published", events.length);
   }
 
   /**
@@ -1163,6 +1184,24 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
     default:
       return new Response("Unknown method\n", { status: 404 });
   }
+}
+
+/** `project.updated` for a project as it is now. */
+function projectUpdated(row: Row, actor: string | null) {
+  return {
+    type: "project.updated" as const,
+    source: "projects",
+    repoId: row.repo_id,
+    actor,
+    data: {
+      projectId: row.id,
+      workspace: row.workspace,
+      slug: row.slug,
+      repoId: row.repo_id,
+      primary: row.is_primary === 1,
+      description: row.description,
+    },
+  };
 }
 
 export default {
