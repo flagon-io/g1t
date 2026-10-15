@@ -4,20 +4,20 @@
  * paused, resumed, jumped to a step, or shown still, and the server and
  * the first client render agree (t = 0).
  *
- * The story is about the code. Priya's pull request #431 runs its checks,
- * is approved by Dana and is merged by the queue, and production deploys.
- * Then how it was made: the session Priya's coding agent recorded onto the
- * pull request through g1t's MCP server. Then Priya comes back to Home:
- * the notifications that settled themselves leave Where you're needed,
- * Start here picks what is left, and What changed tells her in plain
- * English what landed and that #431 is live. Last, the people: #web, where
- * Dana reported the bug and hears it shipped.
+ * The story is Priya's morning. She opens Home: the notifications that
+ * settled overnight leave Where you're needed, Start here picks what is
+ * left, and What changed tells her in plain English what landed, that it
+ * is live, and that her pull request #431 is in review. She opens #431: it
+ * runs its checks, is approved by Dana and is merged by the queue, and
+ * production deploys. Then how it was made: the session Priya's coding
+ * agent recorded onto the pull request through g1t's MCP server. Last, the
+ * people: #web, where Dana reported the bug and hears it shipped.
  */
 
-export type Scene = "code" | "session" | "home" | "chat";
+export type Scene = "home" | "code" | "session" | "chat";
 
 /** Where the soft cursor points: an element marked `data-tour="<target>"`. */
-export type CursorTarget = "pr-session" | "rail-code" | "rail-home" | "home-summarize" | "home-explain" | "rail-chat" | "idle";
+export type CursorTarget = "home-summarize" | "home-pr" | "pr-session" | "rail-code" | "rail-chat" | "idle";
 
 export type Frame = {
   scene: Scene;
@@ -41,8 +41,6 @@ export type Frame = {
   words: number;
   /** The summary is finished: Ask a follow-up and Summarize again show. */
   summarized: boolean;
-  /** #431 is live in production (Landed says so). */
-  live: boolean;
   /** Priya posted in #web that it shipped. */
   shipped: boolean;
   /** Dana says support has been told, in #web. */
@@ -75,43 +73,43 @@ export const CHECKS = ["build", "test", "lint", "preview"];
  */
 export const SETTLED: { title: string; detail: string; why: string }[] = [
   { title: "Deploy failed on main", detail: "acme/web main · Production on an older build", why: "Production of web deployed at 3f9c2a1" },
-  { title: "CI failed on csv-export", detail: "acme/web csv-export · Run 412", why: "CI passed in run 413" },
+  { title: "Preview failed on webhook-retries", detail: "acme/web #433 · Run 410", why: "Alex merged #433 after run 411 passed" },
 ];
 
 /** What Changed's answer, as g1t streams it onto Home. */
 export const SUMMARY =
-  "Two changes landed in acme/web since you were last here. CSV exports now stream in batches of 1,000 rows (#431), so the largest accounts no longer time out; it went live 9 minutes after the merge queue merged it. Jordan pinned the build image's cache key, which fixed last night's failed deploy. Your webhook retries (#433) are ready to merge.";
+  "Two changes landed in acme/web since you were last here, and both are live. Jordan pinned the build image's cache key, which fixed last night's failed deploy, and Alex merged webhook retries (#433). Your CSV export fix (#431) is up: rows now stream in batches of 1,000, so the largest accounts no longer time out. Dana is reviewing it.";
 
 export const SUMMARY_WORDS = SUMMARY.split(" ");
 
 /** The beats of the story, in ms from the start of the loop. */
 export const BEAT = {
-  code: 0,
-  check0: 900,
-  checkGap: 650,
-  diff: 1300,
-  approved: 3900,
-  merged: 5000,
-  sessionClick: 6300,
-  session: 6450,
-  entry0: 6700,
-  entryGap: 450,
-  railHomeClick: 9300,
-  home: 9450,
-  settle0: 10300,
+  home: 0,
+  settle0: 900,
   settleGap: 650,
   /** How long a settled row stays, saying why, before it leaves the list. */
   clearAfter: 1100,
-  summarizeClick: 12700,
-  summarizing: 12850,
-  word0: 13500,
+  summarizeClick: 3600,
+  summarizing: 3750,
+  word0: 4400,
   wordGap: 48,
-  live: 14600,
-  railChatClick: 18200,
-  chat: 18350,
-  shipped: 19200,
-  told: 20400,
-  end: 23500,
+  /** #431 in What changed's answer, pressed once the answer is in. */
+  prClick: 8500,
+  code: 8650,
+  check0: 9550,
+  checkGap: 650,
+  diff: 9950,
+  approved: 12550,
+  merged: 13650,
+  sessionClick: 14950,
+  session: 15100,
+  entry0: 15350,
+  entryGap: 450,
+  railChatClick: 18000,
+  chat: 18150,
+  shipped: 19000,
+  told: 20200,
+  end: 23300,
 } as const;
 
 /** When the summary has finished streaming. */
@@ -122,9 +120,9 @@ export const LOOP_MS = BEAT.end;
 
 /** The step pills under the frame: where each starts, for jumping to it. */
 export const PILLS: { scene: Scene; label: string; start: number }[] = [
-  { scene: "code", label: "Pull request", start: 0 },
-  { scene: "session", label: "Session", start: BEAT.session },
   { scene: "home", label: "Home", start: BEAT.home },
+  { scene: "code", label: "Pull request", start: BEAT.code },
+  { scene: "session", label: "Session", start: BEAT.session },
   { scene: "chat", label: "Chat", start: BEAT.chat },
 ];
 
@@ -154,28 +152,25 @@ function count(t: number, first: number, gap: number, max: number): number {
 function cursorAt(t: number): { cursor: CursorTarget; click: boolean } {
   const press = (at: number) => t >= at && t < at + 180;
   const moves: [number, CursorTarget][] = [
-    [BEAT.merged + 300, "pr-session"],
-    [BEAT.session + 1900, "rail-home"],
-    [BEAT.home + 400, "idle"],
     [BEAT.summarizeClick - 900, "home-summarize"],
     [BEAT.summarizing + 300, "idle"],
-    [SUMMARIZED + 300, "home-explain"],
+    [SUMMARIZED + 300, "home-pr"],
+    [BEAT.code + 400, "idle"],
+    [BEAT.merged + 300, "pr-session"],
     [BEAT.railChatClick - 900, "rail-chat"],
     [BEAT.chat + 500, "idle"],
   ];
   let cursor: CursorTarget = "idle";
   for (const [at, target] of moves) if (t >= at) cursor = target;
-  const click = press(BEAT.sessionClick) || press(BEAT.railHomeClick) || press(BEAT.summarizeClick) || press(BEAT.railChatClick);
+  const click = press(BEAT.summarizeClick) || press(BEAT.prClick) || press(BEAT.sessionClick) || press(BEAT.railChatClick);
   return { cursor, click };
 }
 
 /** The frame at time t (ms into the loop). */
 export function frameAt(time: number): Frame {
   const t = ((time % LOOP_MS) + LOOP_MS) % LOOP_MS;
-  const scene: Scene = t >= BEAT.chat ? "chat" : t >= BEAT.home ? "home" : t >= BEAT.session ? "session" : "code";
+  const scene: Scene = t >= BEAT.chat ? "chat" : t >= BEAT.session ? "session" : t >= BEAT.code ? "code" : "home";
   const { cursor, click } = cursorAt(t);
-  // Home is what Priya comes back to: nothing on it moves until she is there.
-  const onHome = t >= BEAT.home;
   return {
     scene,
     checks: count(t, BEAT.check0, BEAT.checkGap, CHECKS.length),
@@ -184,25 +179,25 @@ export function frameAt(time: number): Frame {
     merged: t >= BEAT.merged,
     // The session was recorded before the story opens; the tour plays it back once its tab is opened.
     entries: t < BEAT.session ? 0 : count(t, BEAT.entry0, BEAT.entryGap, SESSION.length),
-    settled: onHome ? count(t, BEAT.settle0, BEAT.settleGap, SETTLED.length) : 0,
-    cleared: onHome ? count(t, BEAT.settle0 + BEAT.clearAfter, BEAT.settleGap, SETTLED.length) : 0,
+    settled: count(t, BEAT.settle0, BEAT.settleGap, SETTLED.length),
+    cleared: count(t, BEAT.settle0 + BEAT.clearAfter, BEAT.settleGap, SETTLED.length),
     summarizing: t >= BEAT.summarizing,
     words: count(t, BEAT.word0, BEAT.wordGap, SUMMARY_WORDS.length),
     summarized: t >= SUMMARIZED,
-    live: t >= BEAT.live,
     shipped: t >= BEAT.shipped,
     told: t >= BEAT.told,
     cursor,
     click,
-    cursorShown: t >= BEAT.merged && t < BEAT.end - 600,
+    // Out of the way while the pull request's checks run and it merges.
+    cursorShown: (t >= BEAT.summarizeClick - 1500 && t < BEAT.code + 600) || (t >= BEAT.merged && t < BEAT.end - 600),
   };
 }
 
 /** A still frame for each pill, for reduced motion: the moment the step makes its point. */
 export const STILLS: Record<Scene, number> = {
-  code: BEAT.approved + 200,
-  session: BEAT.railHomeClick - 400,
   home: SUMMARIZED + 400,
+  code: BEAT.approved + 200,
+  session: BEAT.railChatClick - 400,
   chat: BEAT.told + 400,
 };
 

@@ -1,11 +1,10 @@
 /**
  * The landing page's product tour: g1t browsing itself. A faithful app
  * frame (rail, sidebars, the real colours) plays one story on a loop, with
- * a soft cursor that moves and clicks: the pull request going green and
- * merging, the session its author's coding agent recorded onto it, Home
- * when its author comes back (what settled by itself, what still needs her,
- * and What changed in plain English), and the people in #web hearing it
- * shipped.
+ * a soft cursor that moves and clicks: Home as its author starts her day
+ * (what settled by itself, what still needs her, and What changed in plain
+ * English), her pull request going green and merging, the session her
+ * coding agent recorded onto it, and the people in #web hearing it shipped.
  *
  * The frame is a pure function of time (lib/tour.ts). One rAF loop drives
  * the clock and re-renders only when the frame changes; the step pills'
@@ -21,7 +20,7 @@
  * the conversation's own header as the app does, and the app's own cards.
  * The coding agent is one people bring: its commits carry its mark, as
  * components/coding-agent.tsx draws it, and its session is the pull
- * request's Session tab. Everything the tour shows works today.
+ * request's Session tab.
  */
 import {
   Activity,
@@ -131,7 +130,7 @@ function useTourClock(): Clock {
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (motion.matches) {
       setReduced(true);
-      const next = frameAt(STILLS.code);
+      const next = frameAt(STILLS.home);
       shown.current = next;
       setFrame(next);
       return;
@@ -197,31 +196,6 @@ function pillOf(frame: Frame): number {
   return Math.max(0, PILLS.findIndex((pill) => pill.scene === frame.scene));
 }
 
-/** What the line under the frame says about the moment. Everything in the tour works today. */
-const HONESTY: Record<Scene, string> = {
-  code: "Works today",
-  session: "Works today: recorded by your coding agent through MCP",
-  home: "Works today: summaries run on your workspace's own AI provider",
-  chat: "Works today",
-};
-
-/** The line under the frame. Not part of the app, so it sits outside it. */
-function HonestyNote({ frame, className }: { frame: Frame; className?: string }) {
-  const label = HONESTY[frame.scene];
-  return (
-    <span
-      key={label}
-      className={cn(
-        "tour-fade inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-medium text-success ring-1 ring-success/25",
-        className,
-      )}
-    >
-      <span className="size-1.5 rounded-full bg-success" />
-      {label}
-    </span>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Small parts                                                         */
 /* ------------------------------------------------------------------ */
@@ -258,14 +232,14 @@ function PresenceDot({ away, ring = "var(--tour-side)" }: { away?: boolean; ring
   );
 }
 
-/** Text with @mentions, #channels and #numbers picked out, as chat shows them. */
-function Rich({ text }: { text: string }) {
+/** Text with @mentions, #channels and #numbers picked out, as chat shows them; `targets` marks some for the cursor. */
+function Rich({ text, targets }: { text: string; targets?: Record<string, CursorTarget> }) {
   const parts = text.split(/(@[a-z0-9-]+|#[a-z0-9]+)/gi);
   return (
     <>
       {parts.map((part, index) =>
         /^[@#]/.test(part) ? (
-          <span key={index} className={part.startsWith("@") ? "rounded bg-accent/15 px-0.5 text-accent" : "text-accent"}>
+          <span key={index} data-tour={targets?.[part]} className={part.startsWith("@") ? "rounded bg-accent/15 px-0.5 text-accent" : "text-accent"}>
             {part}
           </span>
         ) : (
@@ -297,7 +271,7 @@ function Message({ who, time, children, enter }: { who: string; time: string; ch
 
 /** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
 const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
-  { key: "home", icon: <House size={15} />, label: "Home", target: "rail-home", scenes: ["home"] },
+  { key: "home", icon: <House size={15} />, label: "Home", scenes: ["home"] },
   { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scenes: ["chat"], badge: 3 },
   { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scenes: ["code", "session"] },
   { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts" },
@@ -842,9 +816,9 @@ function HomeCard({ title, hint, link, children, className }: { title: ReactNode
 
 const HOME_ROW = "flex items-center gap-2.5 border-t border-line px-4 py-2";
 
-/** What still waits on Priya once the notifications above settle: her pull request ready to merge, and a review asked of her. */
+/** What still waits on Priya once the notifications above settle: her pull request in review, and a review asked of her. */
 const STAYING = [
-  { icon: <GitMerge size={14} className="text-success" />, title: "Retry webhook deliveries with backoff", detail: "acme/web #433 · Ready to land when you merge it.", stake: "Ready to merge", action: "Open" },
+  { icon: <GitPullRequest size={14} className="text-success" />, title: "Stream CSV exports in batches", detail: "acme/web #431 · Checks running · Dana is reviewing", stake: "Yours", action: "Open" },
   { icon: <GitPullRequest size={14} className="text-info" />, title: "Add audit log export", detail: "acme/web #435 · Your review", stake: "+212 −40", action: "Review" },
 ];
 
@@ -899,12 +873,12 @@ function NeededCard({ frame, phone }: { frame: Frame; phone?: boolean }) {
   );
 }
 
-/** Start here: the deploy failure while it is open (it comes before anything else), then the pull request ready to merge. */
+/** Start here: the deploy failure while it is open (it comes before anything else), then Priya's pull request. */
 function StartCard({ frame }: { frame: Frame }) {
   const deploy = frame.settled === 0;
   const pick = deploy
     ? { icon: <Rocket size={14} className="text-danger" />, title: SETTLED[0].title, next: "See the build", why: "Production is serving an older build until this is fixed, so it comes before anything else.", button: "See the build" }
-    : { icon: <GitMerge size={14} className="text-success" />, title: STAYING[0].title, next: "Merge", why: "Everything it needs is met; it lands when you merge it.", button: "Open pull request" };
+    : { icon: <GitPullRequest size={14} className="text-success" />, title: STAYING[0].title, next: "Lands when Dana approves", why: "Dana's report in #web is waiting on it. Once its checks pass and she approves, the merge queue lands it.", button: "Open pull request" };
   return (
     <HomeCard
       title={
@@ -922,7 +896,7 @@ function StartCard({ frame }: { frame: Frame }) {
           <dt className="text-muted">Next</dt>
           <dd className="text-fg-soft">{pick.next}</dd>
           <dt className="text-muted">At stake</dt>
-          <dd className={deploy ? "text-danger" : "text-fg-soft"}>{deploy ? "Production on an older build" : "Ready to merge"}</dd>
+          <dd className={deploy ? "text-danger" : "text-fg-soft"}>{deploy ? "Production on an older build" : "Big accounts' exports time out"}</dd>
         </dl>
         <p className="mt-2.5 rounded-lg bg-raised/60 px-2.5 py-2 text-[10.5px] leading-relaxed text-fg-soft">
           <span className="font-medium text-fg">Why this one: </span>
@@ -962,7 +936,7 @@ function WhatChangedCardMock({ frame }: { frame: Frame }) {
         ) : (
           <>
             <p className="text-[12.5px] leading-[1.6] text-fg-soft">
-              <Rich text={text} />
+              <Rich text={text} targets={{ "#431": "home-pr" }} />
               {!frame.summarized && <span className="tour-caret ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 rounded-[1px] bg-accent" />}
             </p>
             <div className={cn("mt-3 flex items-center gap-1.5 border-t border-line pt-2.5 transition-opacity duration-500", frame.summarized ? "opacity-100" : "opacity-0")}>
@@ -982,40 +956,11 @@ function WhatChangedCardMock({ frame }: { frame: Frame }) {
   );
 }
 
-/** Landed: each change with whether it is live, the agent's mark on the one it helped make, and Explain. */
-function LandedCardMock({ frame }: { frame: Frame }) {
+/** Landed: each change that came in overnight with whether it is live, the agent's mark on the one it helped make, and Explain. */
+function LandedCardMock() {
   const rows = [
-    {
-      title: "Stream CSV exports in batches",
-      detail: "web#431 · by priya",
-      agent: true,
-      explain: "home-explain" as const,
-      badge: frame.live ? (
-        <Badge key="live" tone="success" className="tour-pop">
-          <Rocket size={9} />
-          Live 9 min after merge
-        </Badge>
-      ) : (
-        <Badge key="deploying" tone="info">
-          <Loader size={9} className="tour-spin" />
-          Deploying
-        </Badge>
-      ),
-      at: "9:41 AM",
-    },
-    {
-      title: "Pin the build image's cache key",
-      detail: "web · 1 push by jordan",
-      agent: false,
-      explain: undefined,
-      badge: (
-        <Badge tone="success">
-          <Rocket size={9} />
-          Live 4 min after push
-        </Badge>
-      ),
-      at: "8:15 AM",
-    },
+    { title: "Pin the build image's cache key", detail: "web · 1 push by jordan", agent: false, live: "Live 4 min after push", at: "8:15 AM" },
+    { title: "Retry webhook deliveries with backoff", detail: "web#433 · by alex", agent: true, live: "Live 6 min after merge", at: "7:52 AM" },
   ];
   return (
     <HomeCard title="Landed" hint="1 pull request merged · 1 push">
@@ -1029,10 +974,13 @@ function LandedCardMock({ frame }: { frame: Frame }) {
             </p>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="truncate text-[10.5px] text-muted">{row.detail}</span>
-              {row.badge}
+              <Badge tone="success">
+                <Rocket size={9} />
+                {row.live}
+              </Badge>
             </div>
           </div>
-          <span data-tour={row.explain} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted">
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted">
             <Sparkles size={12} />
           </span>
           <span className="shrink-0 text-[10.5px] text-faint tabular-nums">{row.at}</span>
@@ -1043,7 +991,7 @@ function LandedCardMock({ frame }: { frame: Frame }) {
 }
 
 /**
- * Home, as Priya comes back to it (routes/workspace/home.tsx): "What are
+ * Home, as Priya starts her day on it (routes/workspace/home.tsx): "What are
  * we building today?" over the box that asks g1t, Where you're needed
  * beside Start here, then Since you were last here with What changed and
  * Landed. Pressing the first starter brings What changed into view, as the
@@ -1112,7 +1060,7 @@ function HomeMain({ frame, phone = false }: { frame: Frame; phone?: boolean }) {
           <p className="truncate text-[11px] text-muted">Yesterday at 6:12 PM · 15 hours</p>
         </div>
         <WhatChangedCardMock frame={frame} />
-        <LandedCardMock frame={frame} />
+        <LandedCardMock />
       </div>
     </div>
   );
@@ -1193,7 +1141,7 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const scenes: Scene[] = ["code", "session", "home", "chat"];
+  const scenes: Scene[] = ["home", "code", "session", "chat"];
   const mains: Record<Scene, ReactNode> = {
     chat: <ChatMain frame={frame} />,
     session: <SessionMain frame={frame} />,
@@ -1259,7 +1207,7 @@ const TABS: { scenes: Scene[]; icon: ReactNode; label: string }[] = [
 ];
 
 function Phone({ frame }: { frame: Frame }) {
-  const scenes: Scene[] = ["code", "session", "home", "chat"];
+  const scenes: Scene[] = ["home", "code", "session", "chat"];
   return (
     <div className="relative flex h-136 w-full flex-col overflow-hidden rounded-2xl bg-bg text-left text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
@@ -1431,7 +1379,7 @@ const STYLES = `
 
 /**
  * The hero's tour: the frame (a full app on wider screens, one pane on a
- * phone), the step pills under it, and a line saying what is a preview.
+ * phone), the step pills under it, and a line about the story.
  */
 export function ProductTour({ className }: { className?: string }) {
   const clock = useTourClock();
@@ -1441,7 +1389,7 @@ export function ProductTour({ className }: { className?: string }) {
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div
         role="img"
-        aria-label="A tour of g1t: a pull request passes its checks, is approved and is merged by the merge queue, and its session from the coding agent that helped write it is replayed. Back on Home, notifications that settled themselves leave Where you're needed, Start here picks the pull request ready to merge, and What changed sums up in plain English what landed and that it is live. Then the team hears it shipped in a channel."
+        aria-label="A tour of g1t: on Home, notifications that settled themselves overnight leave Where you're needed, Start here picks the pull request in review, and What changed sums up in plain English what landed and that it is live. The pull request then passes its checks, is approved and is merged by the merge queue, and the session from the coding agent that helped write it is replayed. Then the team hears it shipped in a channel."
         onMouseEnter={() => clock.hover(true)}
         onMouseLeave={() => clock.hover(false)}
       >
@@ -1452,10 +1400,7 @@ export function ProductTour({ className }: { className?: string }) {
           <Phone frame={frame} />
         </div>
       </div>
-      <div className="mt-4 flex justify-center" aria-live="polite">
-        <HonestyNote frame={frame} />
-      </div>
-      <div className="mx-auto mt-3 grid max-w-xl grid-cols-4 gap-2" role="tablist" aria-label="Steps of the tour">
+      <div className="mx-auto mt-4 grid max-w-xl grid-cols-4 gap-2" role="tablist" aria-label="Steps of the tour">
         {PILLS.map((pill, index) => {
           const on = clock.pill === index;
           return (
@@ -1486,9 +1431,8 @@ export function ProductTour({ className }: { className?: string }) {
         })}
       </div>
       <p className="mx-auto mt-3 max-w-xl text-center text-xs leading-5 text-faint text-balance">
-        Everything here works today. Priya wrote the fix with Claude Code, connected to g1t through its MCP server: the
-        commits carry its mark, and the session it recorded stays on the pull request. Home&apos;s summary runs on the
-        workspace&apos;s own AI provider.
+        Priya&apos;s day starts on Home. She wrote the fix with Claude Code, connected to g1t through its MCP server: the
+        commits carry its mark, and the session it recorded stays on the pull request.
       </p>
     </div>
   );
