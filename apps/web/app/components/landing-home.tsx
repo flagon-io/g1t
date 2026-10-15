@@ -2,7 +2,7 @@
  * The landing page's pictures of Home (routes/workspace/home.tsx), drawn
  * from the same parts and words as the real cards in components/home.tsx
  * and components/home-ask.tsx: What changed and Landed, for coming back to
- * what happened; While you were away, Where you're needed and Start here,
+ * what happened; Settled for you, Where you're needed and Start here,
  * for what still needs you. They are pictures, so nothing in them takes
  * focus or a click (`inert`), and the page reads them as one image.
  */
@@ -109,8 +109,8 @@ export function WhatChangedArt() {
 /** What still needs you: what settled by itself, Where you're needed, and Start here. */
 export function NeedsYouArt() {
   return (
-    <Picture label="Home: While you were away lists notifications that settled themselves and why, Where you're needed lists a pull request ready to merge and a review asked of you, and Start here opens the one to do first">
-      <HomeCard title="While you were away" hint="What finished by itself, and what is live">
+    <Picture label="Home: Settled for you lists notifications that settled themselves and why, Where you're needed lists a pull request ready to merge and a review asked of you, and Start here opens the one to do first">
+      <HomeCard title="Settled for you" hint="3 finished by themselves">
         <div className="flex flex-wrap gap-1.5 px-4 pb-3">
           <Badge tone="success" size="md">3 notifications settled</Badge>
           <Badge tone="warn" size="md">2 things still need you</Badge>
