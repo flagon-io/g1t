@@ -67,8 +67,10 @@ static JWT: LazyLock<Regex> = LazyLock::new(|| re(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[
 static PEM: LazyLock<Regex> =
     LazyLock::new(|| re(r"(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\z)"));
 
-/// A long run that may be random: judged by [`random_looking`].
-static LONG: LazyLock<Regex> = LazyLock::new(|| re(r"[A-Za-z0-9+/_=-]{32,}"));
+/// A long run that may be random: judged by [`random_looking`]. A `/`
+/// ends a run, so a path is judged a folder at a time: joined, its names
+/// read as one random string (`AppData/Local/Temp/claude/c--Users-…`).
+static LONG: LazyLock<Regex> = LazyLock::new(|| re(r"[A-Za-z0-9+_=-]{32,}"));
 
 /// A value that names a secret rather than holding one: `$TOKEN`,
 /// `${{ secrets.X }}`, `process.env.X`, or one already hidden.
@@ -264,6 +266,7 @@ mod tests {
         for ordinary in [
             "git show 58def4040e93a1dcda5f388f55360f3cd46cd97e",
             "services/work/src/coordination/sessions.rs",
+            r#"cat "C:/Users/syntaqx/AppData/Local/Temp/claude/c--Users-syntaqx-Code-syntaqx-g1t/3fcf65eb-fb45-440a-81ed-c3586c68531a/tasks/bzf08tti3.output""#,
             "CoordinationOp::StartAgentSession and ListWorkSessionsArgs",
             "MSYS_NO_PATHCONV=1 git show origin/40-g1t_upkeep:.g1t/upkeep.yml",
             "Fix the merge queue: it re-tests every pull request after a push",
