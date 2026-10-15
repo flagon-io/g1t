@@ -521,8 +521,8 @@ export function Landing() {
             title="Main only moves to what passed"
             art={<QueueArt className="w-full" />}
             points={[
-              "Checks in a clean sandbox, or on your own runners",
-              "Workflows from .g1t/workflows",
+              "Checks in a clean sandbox, or free on your own runners",
+              "Your computer as a runner, with the desktop app",
               "A merge queue that tests changes together",
               "Conflicts found on every push, before a merge",
               "Catch up with main in seconds",
@@ -530,7 +530,8 @@ export function Landing() {
             ]}
             more={["The merge queue", `${DOCS}/guides/merge-queue/`]}
           >
-            Required checks run on g1t&apos;s runners or your own. The queue
+            Required checks run on g1t&apos;s runners, or free on your own: a
+            server, or your computer while the desktop app is open. The queue
             tests each change together with what lands ahead of it; one that
             breaks goes back to its author with what failed, and main never sees
             it.
@@ -563,13 +564,16 @@ export function Landing() {
               "A live preview for every pull request",
               "Production on every merge to main",
               "Custom domains, with certificates",
+              "A new app from one sentence on Home",
             ]}
             more={["Deployments", `${DOCS}/guides/deployments/`]}
           >
             Turn on deployments and every pull request gets its own address on
             g1t.page; merging ships production. Reviewers click through a
             change instead of reading a diff. An app nobody visits runs nothing
-            and costs nothing.
+            and costs nothing. Or start from Home: ask for something new, and one
+            click makes its repository, starts your coding agent on it and puts
+            the first version live.
           </Pillar>
         </div>
       </section>
@@ -728,14 +732,17 @@ export function Landing() {
               Many agents, no collisions
             </h3>
             <p className="mt-3 text-sm leading-6 text-muted">
-              Run as many coding agents as you like. Each change is a pull
-              request, pull requests that touch the same files are flagged to
-              each other, conflicts are found on every push, and the merge queue
-              tests changes together with what lands ahead of them. Five agents
+              Run as many coding agents as you like. Each claims the issue it
+              takes, and every session shows live as it works, so everyone sees
+              who is on what. Two that start changing the same files are told
+              while they work, before either opens a pull request. The merge
+              queue tests changes together with what lands ahead of them, and
+              one that breaks another goes back to the session that caused it,
+              with the change it breaks and the check that failed. Five agents
               can open pull requests the same afternoon and main still only
               moves to what passed.
             </p>
-            <More to={`${DOCS}/guides/merge-queue/`}>The merge queue</More>
+            <More to={`${DOCS}/guides/sessions/`}>Sessions, claims and overlaps</More>
           </div>
         </div>
       </section>
