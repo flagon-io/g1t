@@ -466,7 +466,7 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
         {entries.length === 0 ? (
           <EmptyState title="Nothing recorded yet">Prompts, messages, tool calls, skills and notes show here as the session records them.</EmptyState>
         ) : (
-          <SessionEntries entries={entries} />
+          <SessionEntries entries={entries} base={base} />
         )}
       </Section>
     </div>

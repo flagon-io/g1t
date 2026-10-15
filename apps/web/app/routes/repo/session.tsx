@@ -64,7 +64,7 @@ export default function SessionPage({ loaderData, params }: Route.ComponentProps
           <p className="mt-3 text-sm text-muted">Nothing recorded yet.</p>
         ) : (
           <div className="mt-3">
-            <SessionEntries entries={shown} />
+            <SessionEntries entries={shown} base={base} />
           </div>
         )}
         {entries.length >= 2000 && (
