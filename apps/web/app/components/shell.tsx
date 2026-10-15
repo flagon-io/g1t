@@ -1,4 +1,4 @@
-import { Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -1582,6 +1582,7 @@ const SECTIONS: Record<string, string> = {
   work: "Work",
   chat: "Chat",
   artifacts: "Artifacts",
+  routines: "Routines",
   home: "Home",
   apps: "Apps",
   "code-access": "Code access",
@@ -1777,6 +1778,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
           { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
+          { label: "Routines", hint: "Standing work for @g1t (soon)", to: `/${ws.slug}/-/routines`, icon: <Repeat size={15} /> },
           { label: "Apps", hint: "Everything installed that you can use", to: `/${ws.slug}/-/apps`, icon: <LayoutGrid size={15} /> },
           { label: "Workspace", hint: "Billing, policies, settings", to: `/${ws.slug}/-/workspace`, icon: <Building2 size={15} /> },
         ]
@@ -1901,15 +1903,15 @@ export function Progress() {
 }
 
 /**
- * Which sidebar sits beside the page: each mode's own, or none. Home and
- * Apps are pages at full width, and so are g1t's own pages, such as its
+ * Which sidebar sits beside the page: each mode's own, or none. Home,
+ * Apps and Routines are pages at full width, and so are g1t's own pages, such as its
  * policies, which are no workspace's. g1t beyond your workspaces (Explore,
  * a profile, another workspace's projects) has Explore's. Without a
  * workspace, only your own settings and Notifications have one.
  */
 function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
   if (!workspace) return mode === "account" || mode === "notifications" ? mode : null;
-  if (mode === "home" || mode === "apps" || mode === "site") return null;
+  if (mode === "home" || mode === "apps" || mode === "routines" || mode === "site") return null;
   return mode;
 }
 

@@ -232,6 +232,7 @@ export type ModeKey =
   | "notifications"
   | "code"
   | "artifacts"
+  | "routines"
   | "people"
   | "workspace"
   | "apps"
@@ -244,6 +245,7 @@ const PAGE_MODES: Record<string, ModeKey> = {
   home: "home",
   chat: "chat",
   artifacts: "artifacts",
+  routines: "routines",
   apps: "apps",
   people: "people",
   members: "workspace",
@@ -307,6 +309,8 @@ export function modeHome(mode: ModeKey, slug: string): string {
       return `/${slug}/-/chat`;
     case "artifacts":
       return `/${slug}/-/artifacts`;
+    case "routines":
+      return `/${slug}/-/routines`;
     case "code":
       return `/${slug}/-/overview`;
     case "people":

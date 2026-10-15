@@ -217,6 +217,9 @@ export default [
       route("-/home/seen", "routes/workspace/home-seen.ts"),
       route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),
       route("-/apps", "routes/workspace/apps.tsx"),
+      // Routines: standing work for @g1t, on a schedule or when something
+      // happens. Not on yet: the page shows what it will be, every control off.
+      route("-/routines", "routes/workspace/routines.tsx"),
       // What Code's pages say to a member without Code.
       route("-/code-access", "routes/workspace/code-access.tsx"),
       route("-/security", "routes/workspace/security.tsx"),
