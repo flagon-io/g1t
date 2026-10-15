@@ -59,8 +59,10 @@ export default function LoginTwoFactor({ actionData }: Route.ComponentProps) {
     >
       <Form id="two-factor-sign-in" method="post" className="space-y-4">
         {/* Sent as soon as the sixth digit is in; a recovery code pasted into the boxes moves to its own field. */}
-        <TwoFactorCodeField recovery autoFocus submit invalid={Boolean(actionData?.error)} />
-        <ErrorText>{actionData?.error}</ErrorText>
+        <TwoFactorCodeField recovery autoFocus submit centered invalid={Boolean(actionData?.error)} />
+        <div className="text-center">
+          <ErrorText>{actionData?.error}</ErrorText>
+        </div>
         <div className="pt-2 *:w-full">
           <SubmitButton pending="Checking…">Verify</SubmitButton>
         </div>
