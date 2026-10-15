@@ -64,6 +64,11 @@ People with the Write [role](/guides/access-and-roles/) or higher can press
 again on the same commit. Every push to the pull request runs its workflows
 again on the new head.
 
+g1t's own **Dependency review** check has **Re-run dependency review**
+beside it, for the same people, since advisories are published every day:
+it reviews the head again and updates the check and its one comment. See
+[dependency review](/guides/security/supply-chain/#dependency-review).
+
 ### A repository with no checks
 
 When a repository has no workflows, the merge box says **This repository
@@ -171,7 +176,9 @@ author. Nobody is asked to review their own pull request.
 When the repository has a [CODEOWNERS file](/guides/codeowners/), the
 owners of the files a pull request changes are asked by themselves, and
 the pull request shows **Code owners**: who owns which files and whose
-approval is still needed.
+approval is still needed. Where the rules do not require code owners'
+approval, the box says **Approval not required**, and a rule nobody has
+approved yet says **No approval yet**: nothing is waiting on it.
 
 Through the API, `POST /repos/{owner}/{name}/pulls/{number}/requested_reviewers`
 takes `reviewers` (usernames) and `team_reviewers` (teams, as
@@ -179,6 +186,20 @@ takes `reviewers` (usernames) and `team_reviewers` (teams, as
 already; `DELETE` on the same route takes requests away. On
 the MCP server they are the `pull_request` tool's `request_reviewers` and
 `remove_requested_reviewers` actions.
+
+### Reviewing
+
+Anyone signed in other than its author can review an open pull request.
+Write in the comment box under the conversation, then choose **Comment**,
+**Approve** or **Request changes**.
+
+A review that only approves or requests changes, with nothing written and
+no line it is about, shows as one line in the conversation, the way an
+event does: who reviewed, **approved these changes** or **requested
+changes**, and when. A coding agent's review shows its name with its
+**Agent** badge and an **Advisory** chip: an agent's review never counts
+toward required approvals or code owners. A review with text, or one on a
+line of a file, keeps a card of its own, like a comment.
 
 ## Sessions
 
@@ -286,7 +307,8 @@ edit and delete anyone's.
   removed for everyone and cannot be brought back.
 
 A review that approved or requested changes can be edited but not deleted,
-so its verdict stays on record. The notes in the timeline of what happened,
+so its verdict stays on record. One with nothing written has nothing to
+edit, so it has neither. The notes in the timeline of what happened,
 such as "closed this", cannot be edited or deleted.
 
 Through the API, `PATCH /repos/{owner}/{name}/issues/comments/{comment_id}`
