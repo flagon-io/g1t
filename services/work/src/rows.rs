@@ -33,6 +33,44 @@ pub(crate) fn requester(id: Option<String>, username: Option<String>) -> Option<
     Some(user(id?, username?))
 }
 
+/// Who wrote a comment or did what an event notes, as stored: g1t, and
+/// whom it acted for, when a session g1t started for someone did it (as
+/// `work::authorship` records what it opens); whoever it was otherwise.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct By<'a> {
+    pub id: &'a str,
+    pub name: &'a str,
+    /// The person's id and username.
+    pub acting_for: Option<(&'a str, &'a str)>,
+}
+
+impl<'a> From<(&'a str, &'a str)> for By<'a> {
+    fn from((id, name): (&'a str, &'a str)) -> Self {
+        By { id, name, acting_for: None }
+    }
+}
+
+impl<'a> From<(&'a String, &'a String)> for By<'a> {
+    fn from((id, name): (&'a String, &'a String)) -> Self {
+        By { id, name, acting_for: None }
+    }
+}
+
+impl<'a> From<&'a User> for By<'a> {
+    fn from(actor: &'a User) -> Self {
+        if actor.kind == g1t_contracts::PrincipalKind::Agent || actor.acting.is_some() {
+            let acting_for = actor
+                .acting
+                .as_deref()
+                .map(|acting| &acting.on_behalf_of)
+                .filter(|person| !g1t_contracts::system::is_system_id(&person.id))
+                .map(|person| (person.id.as_str(), person.username.as_str()));
+            return By { id: g1t_contracts::identity::AGENT_ID, name: g1t_contracts::identity::AGENT_NAME, acting_for };
+        }
+        By { id: &actor.id, name: &actor.username, acting_for: None }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct IssueRow {
     pub id: String,
@@ -324,6 +362,9 @@ impl From<CommentRow> for Comment {
             _ => None,
         };
         let advisory_verdict = row.agent_verdict.as_deref().and_then(AgentVerdict::parse);
+        // Whom it acted for: a former workspace agent's, or g1t's in a
+        // session someone started.
+        let acted = agent.is_some() || row.author_id == g1t_contracts::identity::AGENT_ID;
         let mut author = user(row.author_id, row.author_name);
         if agent.is_some() {
             author.kind = g1t_contracts::PrincipalKind::Agent;
@@ -339,7 +380,7 @@ impl From<CommentRow> for Comment {
             verdict: row.verdict.or(advisory_verdict.and_then(AgentVerdict::verdict)),
             created_at: row.created_at,
             edited_at: row.edited_at,
-            acting_for: agent.as_ref().and(requester(row.acting_for_id, row.acting_for_name)),
+            acting_for: if acted { requester(row.acting_for_id, row.acting_for_name) } else { None },
             advisory: agent.is_some() && advisory_verdict.is_some(),
             agent,
             reactions: Vec::new(),
@@ -451,6 +492,41 @@ mod tests {
         assert_eq!(own.owner().id, "usr_1");
         // Half a requester is nobody.
         assert!(requester(Some("usr_1".into()), None).is_none());
+    }
+
+    /// A session g1t started for someone acts as them (credentials::as_person)
+    /// with what it acts as kept: what it writes is g1t's, for them, and
+    /// reads back that way, so they can still edit it.
+    #[test]
+    fn a_session_s_comment_is_g1t_s_for_the_person() {
+        use g1t_contracts::credentials::{Acting, Principal};
+        let person = User { id: "usr_1".into(), username: "syntaqx".into(), ..User::default() };
+        assert_eq!(By::from(&person), By { id: "usr_1", name: "syntaqx", acting_for: None });
+        let session = User {
+            acting: Some(Box::new(Acting {
+                credential_id: "tok_1".into(),
+                agent: "g1t".into(),
+                on_behalf_of: Principal { id: "usr_1".into(), username: "syntaqx".into() },
+                scope: g1t_contracts::identity::AgentScope {
+                    repo: RepoPath { namespace: "acme".into(), name: "rocket".into() },
+                    operations: Vec::new(),
+                    run: None,
+                },
+            })),
+            ..person.clone()
+        };
+        let by = By::from(&session);
+        assert_eq!((by.id, by.name, by.acting_for), (G1T.0, "g1t", Some(ASKER)));
+        let row: CommentRow = serde_json::from_value(serde_json::json!({
+            "id": "cmt_1", "kind": "event", "author_id": by.id, "author_name": by.name,
+            "body": "closed this as completed", "path": null, "line": null, "verdict": null,
+            "created_at": "", "acting_for_id": "usr_1", "acting_for_name": "syntaqx"
+        }))
+        .unwrap();
+        assert_eq!(row.answerable_id(), "usr_1");
+        let comment: Comment = row.into();
+        assert_eq!((comment.author.username.as_str(), comment.author.kind), ("g1t", PrincipalKind::Agent));
+        assert_eq!(comment.acting_for.map(|user| user.username).as_deref(), Some("syntaqx"));
     }
 
     #[test]

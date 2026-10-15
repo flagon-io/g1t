@@ -299,9 +299,21 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   g1t's MCP server is attached too, for anything the CLI has no command
   for. Its sandbox reaches the internet as a CI runner does, and it can
   search and read the web (web search and web fetch), for a fact the work
-  needs from outside g1t or to open its own deploy. Both reach g1t with a token made for you
-  and that repository only, which lasts the session and is revoked when it
-  ends. The token is kept in a vault on the Anthropic account: the MCP
+  needs from outside g1t or to open its own deploy. Both reach g1t with one token: g1t
+  acting on your behalf, in that repository only, which lasts the session
+  and is revoked when it ends. What the session does on g1t shows as
+  **g1t, on behalf of @you**: its comments and reviews, what it closes or
+  labels, and the issues and pull requests it opens (g1t's, requested by
+  you); the audit log says "g1t on behalf of you". What it may do is your
+  role in that repository, never more than Write, with what working on an
+  issue needs (`repo:read`, `code:write`, `issues:write`,
+  `pull_requests:write`, and reading checks, workflows, deployments and
+  observability): never settings, members, secrets, webhooks or merging.
+  The session itself, its claims and its commits stay yours, and its
+  pushes are yours too: to the repository and to its pull requests'
+  working copies, under the repository's rules. An approval it gives is
+  g1t's, so it counts toward required approvals only where agents'
+  approvals do. The token is kept in a vault on the Anthropic account: the MCP
   server's credential, and `G1T_TOKEN`, which the sandbox holds only as a
   placeholder that is swapped for the token on its way to g1t. It is never
   in the prompt, and the model never sees it. The session has g1t's skills

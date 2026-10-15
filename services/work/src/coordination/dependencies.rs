@@ -111,7 +111,7 @@ impl Work {
             return Ok(());
         }
         let list = |numbers: &[u32]| numbers.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ");
-        let who = (actor.id.as_str(), actor.username.as_str());
+        let who = actor;
         if !added.is_empty() {
             self.note(&issue.repo_id, issue.number, who, &format!("marked this as blocked by {}", list(&added))).await?;
         }

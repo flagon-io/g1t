@@ -2,13 +2,14 @@
 //!
 //! A sandbox's runner clones, fetches and pushes with a credential bound to
 //! its run (see `g1t_contracts::credentials`): it may read the repositories
-//! its run needs, push only to its pull request's fork or branch, and acts
+//! its run needs, push only to its pull request's fork or branch (a
+//! session's: its repository and its pull requests' forks), and acts
 //! as the person it works for once let through, so the repository's own
 //! rules then apply to them too. Every git request a run credential makes
 //! is recorded, and so is every push, by anyone.
 
 use g1t_contracts::audit::{AuditActor, AuditTarget, NewAuditEntry, RecordAuditArgs, Surface};
-use g1t_contracts::credentials::{Decision, as_person, decide_git, decide_refs, limits_branches};
+use g1t_contracts::credentials::{Decision, RunCredentialKind, as_person, decide_git_at, decide_refs, limits_branches};
 use g1t_contracts::repos::{GitService, Repo, RepoPath};
 use g1t_contracts::{PrincipalKind, Viewer};
 use worker::js_sys::Uint8Array;
@@ -213,7 +214,17 @@ impl<S: GitStore> Repos<S> {
             });
         };
 
-        let mut decision = decide_git(&scope, &git.path, write);
+        // A session's credential reaches its repository's pull requests'
+        // working copies too, made after it was: by what they copy.
+        let source = match found.and_then(|repo| repo.fork_of.as_deref()) {
+            Some(source_id) if scope.run.as_ref().is_some_and(|run| run.kind == RunCredentialKind::Session) => self
+                .registry
+                .by_id(source_id)
+                .await?
+                .map(|source| RepoPath { namespace: source.namespace, name: source.name }),
+            _ => None,
+        };
+        let mut decision = decide_git_at(&scope, &git.path, source.as_ref(), write);
         let mut refs = Vec::new();
         if decision.allowed && post && write && limits_branches(&scope, &git.path) {
             let body = request.bytes().await?;
