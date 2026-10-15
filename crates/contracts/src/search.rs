@@ -286,6 +286,10 @@ pub struct ExploreArgs {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExploreRepo {
+    /// The repository's id, for what other services keep about it, such as
+    /// its project's description.
+    #[serde(default)]
+    pub id: String,
     pub namespace: String,
     pub name: String,
     pub description: Option<String>,

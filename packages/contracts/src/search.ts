@@ -77,6 +77,8 @@ export type SearchResults = {
 };
 
 export type ExploreRepo = {
+  /** The repository's id: its description is its project's, read by it. */
+  id: string;
   namespace: string;
   name: string;
   description: string | null;
