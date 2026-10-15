@@ -73,6 +73,7 @@ import { page } from "../../lib/meta";
 import { inbox } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
 import { homePagePath } from "../../lib/workspace-nav";
+import { Boundary } from "../../components/boundary";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Home · ${params.owner} · g1t` });
@@ -312,7 +313,14 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             link={{ label: "Notifications", to: "/notifications" }}
           >
             <Suspense fallback={<RowsSkeleton rows={4} />}>
-              <Await resolve={waiting}>{(att) => <NeedsList attention={att} now={now} />}</Await>
+              {/* Each section's data says what did not answer; a section that fails to draw keeps that to itself. */}
+              <Await resolve={waiting}>
+                {(att) => (
+                  <Boundary what="Where you're needed">
+                    <NeedsList attention={att} now={now} />
+                  </Boundary>
+                )}
+              </Await>
             </Suspense>
           </Card>
         </div>
@@ -321,7 +329,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <aside aria-label="Now" className="contents lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:block lg:space-y-5">
           <Card title="Running now" className="order-2">
             <Suspense fallback={<RowsSkeleton rows={2} />}>
-              <Await resolve={runningNow}>{(value) => <RunningList rows={value.rows} missing={value.missing} now={now} />}</Await>
+              <Await resolve={runningNow}>
+                {(value) => (
+                  <Boundary what="Running now">
+                    <RunningList rows={value.rows} missing={value.missing} now={now} />
+                  </Boundary>
+                )}
+              </Await>
             </Suspense>
           </Card>
           <div className="order-4">
@@ -332,7 +346,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Card>
               }
             >
-              <Await resolve={spend}>{(value) => <SpendCard spend={value} slug={slug} span={span} />}</Await>
+              <Await resolve={spend}>
+                {(value) => (
+                  <Boundary what="Spent">
+                    <SpendCard spend={value} slug={slug} span={span} />
+                  </Boundary>
+                )}
+              </Await>
             </Suspense>
           </div>
           <div className="order-5">
@@ -343,7 +363,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Card>
               }
             >
-              <Await resolve={away}>{(value) => <SettledCard away={value} now={now} />}</Await>
+              <Await resolve={away}>
+                {(value) => (
+                  <Boundary what="Settled for you">
+                    <SettledCard away={value} now={now} />
+                  </Boundary>
+                )}
+              </Await>
             </Suspense>
           </div>
         </aside>
@@ -367,7 +393,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </div>
           <div className="border-t border-line">
             <Suspense fallback={<SpanSkeleton />}>
-              <Await resolve={digest}>{(value) => <PeopleSummary digest={value} span={span} code={loaderData.code} />}</Await>
+              <Await resolve={digest}>
+                {(value) => (
+                  <Boundary what="Who did what">
+                    <PeopleSummary digest={value} span={span} code={loaderData.code} />
+                  </Boundary>
+                )}
+              </Await>
             </Suspense>
           </div>
           <Suspense
@@ -379,15 +411,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           >
             <Await resolve={happened}>
               {(value) => (
-                <LandedFeed
-                  landed={value?.landed ?? null}
-                  missing={value?.landedMissing ?? []}
-                  code={loaderData.code}
-                  now={now}
-                  tz={tz}
-                  byDay={span.key === "7d"}
-                  scope={span.key}
-                />
+                <Boundary what="What landed">
+                  <LandedFeed
+                    landed={value?.landed ?? null}
+                    missing={value?.landedMissing ?? []}
+                    code={loaderData.code}
+                    now={now}
+                    tz={tz}
+                    byDay={span.key === "7d"}
+                    scope={span.key}
+                  />
+                </Boundary>
               )}
             </Await>
           </Suspense>

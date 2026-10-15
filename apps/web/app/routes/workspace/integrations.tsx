@@ -21,6 +21,8 @@ import { Card } from "../../components/ui/card";
 import { Combobox } from "../../components/ui/combobox";
 import { integrations, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, orElse, part, type Failed } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const kind = sectionKind(params.section);
@@ -39,16 +41,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // One kind of connection's page: the directory at `-/integrations` finds them.
   const kind = sectionKind(params.section);
   if (!kind) throw new Response(null, { status: 404 });
-  const [connections, listed] = await Promise.all([integrations.list(slug, viewer), repos.list(viewer, { namespace: slug })]);
+  // The connections are what the page is about. The repositories a new
+  // one can file issues in, and what each alert source sent lately, are
+  // beside them: each says so in its place when it cannot be read.
+  const [connections, listed] = await Promise.all([integrations.list(slug, viewer), part(repos.list(viewer, { namespace: slug }), "Repositories")]);
   const all = unwrap(connections);
   // What each alert source has sent lately, to see it is wired up.
-  const deliveries: Record<string, Delivery[]> = {};
+  const deliveries: Record<string, Delivery[] | Failed> = {};
   await Promise.all(
     all
       .filter((connection) => connection.kind === "alerts")
       .map(async (connection) => {
-        const found = await integrations.deliveries(slug, viewer, connection.id);
-        deliveries[connection.id] = found.ok ? found.value.slice(0, 5) : [];
+        const found = await part(integrations.deliveries(slug, viewer, connection.id), "What it sent lately");
+        deliveries[connection.id] = isFailed(found) ? found : found.ok ? found.value.slice(0, 5) : [];
       }),
   );
   const adding = new URL(request.url).searchParams.get("add");
@@ -58,7 +63,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     kind,
     connections: all,
     deliveries,
-    repos: listed.map((repo) => `${repo.namespace}/${repo.name}`),
+    repos: isFailed(listed) ? listed : listed.map((repo) => `${repo.namespace}/${repo.name}`),
     adding: isProvider(adding) && PROVIDERS[adding].kind === kind ? adding : null,
   };
 }
@@ -139,8 +144,11 @@ const PROVIDER_BLURB: Partial<Record<Provider, string>> = {
 };
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, kind, connections, deliveries, repos: repoNames, adding } = loaderData;
+  const { slug, role, kind, connections, deliveries, adding } = loaderData;
+  const repoNames = orElse(loaderData.repos, []);
+  // A new connection can still be added without the list to choose a repository from: say why it is empty.
   const owner = role === "owner";
+  const reposMissing = isFailed(loaderData.repos) && adding && owner ? <Unavailable what={loaderData.repos.what} compact /> : null;
   const justConnected = actionData && "connected" in actionData ? actionData.connected : null;
   const tested = (actionData && "tested" in actionData ? actionData.tested : null) ?? null;
   const error = (actionData && "error" in actionData ? actionData.error : null) ?? null;
@@ -167,6 +175,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           deliveries={deliveries}
         />
         {owner && <Choices kind="alerts" slug={slug} adding={adding} />}
+        {adding && PROVIDERS[adding].kind === "alerts" && reposMissing}
         {adding && PROVIDERS[adding].kind === "alerts" && owner && (
           <AddForm
             provider={adding}
@@ -189,6 +198,7 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
           deliveries={deliveries}
         />
         {owner && <Choices kind="tracker" slug={slug} adding={adding} />}
+        {adding && PROVIDERS[adding].kind === "tracker" && reposMissing}
         {adding && PROVIDERS[adding].kind === "tracker" && owner && (
           <AddForm
             provider={adding}
@@ -232,7 +242,7 @@ function Connections({
   tested: { id: string; ok: boolean; message: string } | null;
   /** The connection whose secret was just saved. */
   updated: string | null;
-  deliveries: Record<string, Delivery[]>;
+  deliveries: Record<string, Delivery[] | Failed>;
 }) {
   if (list.length === 0) return null;
   return (
@@ -275,7 +285,7 @@ function ConnectionRow({
   owner: boolean;
   tested: { id: string; ok: boolean; message: string } | null;
   updated: boolean;
-  deliveries: Delivery[];
+  deliveries: Delivery[] | Failed;
 }) {
   const { config } = connection;
   const facts = [
@@ -286,7 +296,8 @@ function ConnectionRow({
     config.keys?.length ? config.keys.join(", ") : null,
     connection.secretHint && `key ${connection.secretHint}`,
   ].filter(Boolean);
-  const waitingForSecret = connection.provider === "sentry" && !deliveries.length && !connection.lastUsedAt;
+  // Unread deliveries say nothing about whether its secret was set.
+  const waitingForSecret = connection.provider === "sentry" && !isFailed(deliveries) && !deliveries.length && !connection.lastUsedAt;
   return (
     <div>
       <div className="flex items-center gap-3">
@@ -342,7 +353,11 @@ function ConnectionRow({
           {updated && <span className="pb-2 text-sm text-muted">Saved.</span>}
         </Form>
       )}
-      {deliveries.length > 0 && (
+      {isFailed(deliveries) ? (
+        <div className="mt-3">
+          <Unavailable what={deliveries.what} compact />
+        </div>
+      ) : deliveries.length > 0 && (
         <ul className="mt-3 space-y-1 text-xs">
           {deliveries.map((delivery) => (
             <li key={delivery.id} className="flex items-center gap-2 text-muted">

@@ -41,6 +41,8 @@ import { filterMembers, invitationFilterOf, memberFilters } from "../../lib/invi
 import { billing, identity } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { forgetWorkspace } from "../../lib/workspace-choice";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part, type Failed } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Members · ${params.owner} · g1t` });
@@ -60,25 +62,30 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!role) throw data(null, { status: 404 });
   const owner = role === "owner";
   const [members, workspace, outside, teams, free, invites] = await Promise.all([
+    // The members are what the page is about. The rest is beside them, and
+    // each part says so in its place when it cannot be read.
     identity.listMembers(params.owner, viewer),
-    identity.getWorkspace(params.owner),
-    owner ? identity.outsideCollaborators(viewer, params.owner).catch(() => null) : null,
+    // Only for the workspace's name, which its address stands in for.
+    identity.getWorkspace(params.owner).catch(() => null),
+    owner ? part(identity.outsideCollaborators(viewer, params.owner), "Outside collaborators") : null,
     // Each member's teams, as the viewer may see them.
-    identity.teamMemberships(viewer, params.owner).catch(() => null),
+    part(identity.teamMemberships(viewer, params.owner), "Each member's teams"),
     // A free workspace adds no one until it starts the plan; identity
     // refuses it either way, so a failure here only hides the note.
     billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
     // How many invitations wait, for the line that leads to them.
-    owner ? identity.workspaceInvites(params.owner, viewer).catch(() => null) : null,
+    owner ? part(identity.workspaceInvites(params.owner, viewer), "Invitations") : null,
   ]);
   return {
     role,
     name: workspace?.name?.trim() || params.owner,
     free: free.includes(params.owner.toLowerCase()),
     members: unwrap(members),
-    outside: outside?.ok ? outside.value : [],
-    teams: Object.fromEntries((teams?.ok ? teams.value : []).map((person) => [person.username, person.teams])),
-    pendingInvitations: invites?.ok ? invites.value.filter((invite) => invitationFilterOf(invite.status) === "pending").length : 0,
+    outside: isFailed(outside) ? outside : outside?.ok ? outside.value : [],
+    teams: Object.fromEntries((!isFailed(teams) && teams.ok ? teams.value : []).map((person) => [person.username, person.teams])),
+    teamsFailed: isFailed(teams) ? teams : null,
+    /** Null when how many wait could not be read: the line still leads to them. */
+    pendingInvitations: isFailed(invites) ? null : invites?.ok ? invites.value.filter((invite) => invitationFilterOf(invite.status) === "pending").length : 0,
     me: viewer?.username ?? null,
   };
 }
@@ -366,7 +373,7 @@ function MembersToolbar({
 }
 
 export default function WorkspaceMembers({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { role, members, outside, teams, free, me, name, pendingInvitations } = loaderData;
+  const { role, members, outside, teams, teamsFailed, free, me, name, pendingInvitations } = loaderData;
   const owner = role === "owner";
   const owners = members.filter((member) => member.role === "owner").length;
   const rowError = (username: string) =>
@@ -386,6 +393,11 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
   const membersTab = (
     <>
       <MembersToolbar owner={owner} teams={teamChoices} invite={invite} />
+      {teamsFailed && (
+        <div className="mb-4">
+          <Unavailable what={teamsFailed.what} compact />
+        </div>
+      )}
       {owner && free && (
         <div className="mb-4">
           <StartPlanToInvite workspace={params.owner} owner={owner} />
@@ -446,7 +458,16 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
       )}
       <p className="mt-2 text-xs text-faint">
         {filtered ? `${shown.length} of ${members.length}` : members.length} {members.length === 1 ? "member" : "members"}
-        {owner && pendingInvitations > 0 && (
+        {owner && pendingInvitations === null && (
+          <>
+            {" · "}
+            <Link to={`/${params.owner}/-/members/invitations?state=pending`} className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline">
+              <Mail size={12} aria-hidden="true" />
+              Invitations
+            </Link>
+          </>
+        )}
+        {owner && pendingInvitations != null && pendingInvitations > 0 && (
           <>
             {" · "}
             <Link to={`/${params.owner}/-/members/invitations?state=pending`} className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline">
@@ -502,16 +523,20 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
         >
           <TabsList className="mb-4">
             <TabsTrigger value="members">Members · {members.length}</TabsTrigger>
-            <TabsTrigger value="outside">Outside collaborators · {outside.length}</TabsTrigger>
+            <TabsTrigger value="outside">{isFailed(outside) ? "Outside collaborators" : `Outside collaborators · ${outside.length}`}</TabsTrigger>
           </TabsList>
           <TabsContent value="members">{membersTab}</TabsContent>
           <TabsContent value="outside">
-            <OutsideCollaborators
-              people={outside}
-              slug={params.owner}
-              free={free}
-              error={actionData && "converting" in actionData && actionData.converting ? actionData.error : null}
-            />
+            {isFailed(outside) ? (
+              <Unavailable what={outside.what} />
+            ) : (
+              <OutsideCollaborators
+                people={outside}
+                slug={params.owner}
+                free={free}
+                error={actionData && "converting" in actionData && actionData.converting ? actionData.error : null}
+              />
+            )}
           </TabsContent>
         </Tabs>
       ) : (
@@ -528,7 +553,7 @@ function OutsideCollaborators({
   free,
   error,
 }: {
-  people: Route.ComponentProps["loaderData"]["outside"];
+  people: Exclude<Route.ComponentProps["loaderData"]["outside"], Failed>;
   slug: string;
   free: boolean;
   error: string | null | undefined;

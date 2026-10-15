@@ -14,6 +14,8 @@ import { Card } from "../../components/ui/card";
 import { repos, security, securitySuite } from "../../lib/services.server";
 import { getViewer, managesSecurity, roleIn, unwrap } from "../../lib/session.server";
 import { planPrice } from "../../lib/security-suite.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security · ${params.owner} · g1t` });
@@ -25,8 +27,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const [scanned, current, overview, requests, price] = await Promise.all([
     security.workspace(params.owner, viewer),
     repos.list(viewer, { namespace: params.owner.toLowerCase() }),
-    securitySuite.overview(params.owner, viewer, 30),
-    securitySuite.bypassRequests(params.owner, viewer, "pending"),
+    // The alerts are what the page is about. The overview beside them says
+    // so in its place when it cannot be read, rather than offering the plan
+    // to a workspace that may have it; the pending count is only a badge.
+    part(securitySuite.overview(params.owner, viewer, 30), "The security overview"),
+    part(securitySuite.bypassRequests(params.owner, viewer, "pending"), "Pending bypass requests"),
     planPrice(params.owner, viewer),
   ]);
   // Only repositories that are still there: a deleted one's alerts stay
@@ -45,7 +50,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     (a, b) =>
       SEVERITIES.reduce((order, severity) => order || b.counts[severity] - a.counts[severity], 0) || a.name.localeCompare(b.name),
   );
-  const full = overview.ok
+  const full = !isFailed(overview) && overview.ok
     ? {
         ...overview.value,
         repos: overview.value.repos
@@ -57,7 +62,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     projects,
     total,
     overview: full,
-    pending: requests.ok ? requests.value.length : 0,
+    overviewFailed: isFailed(overview) ? overview : null,
+    pending: !isFailed(requests) && requests.ok ? requests.value.length : 0,
     price,
     owner: managesSecurity(viewer, params.owner),
   };
@@ -70,7 +76,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function WorkspaceSecurity({ loaderData, params }: Route.ComponentProps) {
-  const { projects, total, overview, pending, price, owner } = loaderData;
+  const { projects, total, overview, overviewFailed, pending, price, owner } = loaderData;
   // The full overview counts private repositories with the plan; without it, a workspace
   // with private ones sees the free list of every repository's open alerts.
   const full = overview && (overview.activated || overview.privateHidden === 0);
@@ -102,7 +108,11 @@ export default function WorkspaceSecurity({ loaderData, params }: Route.Componen
         </>
       ) : (
         <>
-          <ActivationPrompt workspace={params.owner} feature="The security overview" monthlyCents={price} isOwner={owner} />
+          {overviewFailed ? (
+            <Unavailable what={overviewFailed.what} />
+          ) : (
+            <ActivationPrompt workspace={params.owner} feature="The security overview" monthlyCents={price} isOwner={owner} />
+          )}
           <div>
             <SeverityCountsGrid counts={total} />
             <p className="mt-2 text-xs text-faint">

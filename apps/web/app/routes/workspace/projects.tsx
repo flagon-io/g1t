@@ -32,6 +32,8 @@ import { ProjectIcon } from "../../components/project-icon";
 import { deployments, projects } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return pageMeta(args, { title: `Projects · ${params.owner} · g1t` });
@@ -49,10 +51,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const query = readProjectQuery(new URL(request.url).searchParams);
   const [listed, deploys, shortcuts] = await Promise.all([
     workspaceProjects(slug, viewer),
-    role ? deployments.overview(slug, viewer).catch(() => null) : null,
+    // Where each project runs: without it, rows lead to their homepage
+    // rather than production, and the page says why.
+    role ? part(deployments.overview(slug, viewer), "Production links") : null,
+    // The viewer's pins only order the list; without them it is in its usual order.
     role ? projects.shortcuts(slug, viewer).catch(() => null) : null,
   ]);
-  const live = new Map((deploys?.ok ? deploys.value : []).map((entry) => [entry.slug, entry]));
+  const live = new Map((!isFailed(deploys) && deploys?.ok ? deploys.value : []).map((entry) => [entry.slug, entry]));
   const full = new Map((listed.ok ? listed.value : []).map((project) => [project.id, project]));
   const all: Listed[] = (listed.ok ? listed.value : []).map((project) => ({
     id: project.id,
@@ -86,6 +91,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     facets: facetsOf(all),
     pinned: (shortcuts?.pinned ?? []).map((project) => project.id),
     failed: !listed.ok,
+    deploysFailed: isFailed(deploys) ? deploys : null,
   };
 }
 
@@ -494,6 +500,11 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
       </div>
 
       <div ref={list} onKeyDown={onListKey} aria-busy={busy || undefined} className={`mt-4 transition-opacity ${busy ? "opacity-60" : ""}`}>
+        {!failed && loaderData.deploysFailed && (
+          <div className="mb-3">
+            <Unavailable what={loaderData.deploysFailed.what} compact />
+          </div>
+        )}
         {failed ? (
           <EmptyState title="Projects cannot be listed right now">Try again in a moment.</EmptyState>
         ) : total === 0 ? (

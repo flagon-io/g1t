@@ -9,6 +9,7 @@ import { columns, defaultGrain, type Grain, type GroupBy, resolveRange } from ".
 import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
 import { getViewer, managesBilling, roleIn } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
 
 /** Where the usage API is documented. */
 export const USAGE_API = "https://docs.g1t.sh/reference/api/#usage";
@@ -129,7 +130,16 @@ export default function UsagePage({ loaderData }: Route.ComponentProps) {
         </UsageSkeleton>
       }
     >
-      <Await resolve={report}>
+      {/* When billing does not answer, the filters stay and the report says so in its place. */}
+      <Await
+        resolve={report}
+        errorElement={
+          <div className="space-y-6">
+            <UsageFilterBar filters={filters} products={PRODUCTS} projects={filters.projects} report={null} apiHref={USAGE_API} />
+            <Unavailable what="Usage" />
+          </div>
+        }
+      >
         {(loaded) => <UsageView slug={slug} owner={owner} filters={filters} url={url} report={loaded.report} error={loaded.error} />}
       </Await>
     </Suspense>

@@ -5,6 +5,8 @@ import type { Route } from "./+types/code-access";
 import { page } from "../../lib/meta";
 import { identity } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Code access · ${params.owner} · g1t` });
@@ -17,8 +19,9 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
-  const members = await identity.listMembers(params.owner, viewer).catch(() => null);
-  const owners = members?.ok ? members.value.filter((m) => m.role === "owner").slice(0, 4).map((m) => m.username) : [];
+  // Who to ask is beside what the page says: without it, the page says that much.
+  const members = await part(identity.listMembers(params.owner, viewer), "The workspace's owners");
+  const owners = isFailed(members) ? members : members.ok ? members.value.filter((m) => m.role === "owner").slice(0, 4).map((m) => m.username) : [];
   const from = new URL(request.url).searchParams.get("from");
   // Only a path on this site, shown as text.
   return { owners, from: from && /^\/[^/]/.test(from) ? from.split("?")[0] : null };
@@ -43,7 +46,11 @@ export default function CodeAccess({ loaderData, params }: Route.ComponentProps)
         )}{" "}
         Your membership includes Chat, Artifacts and Notifications. An owner can turn on Code access for you.
       </p>
-      {owners.length > 0 && (
+      {isFailed(owners) ? (
+        <div className="mt-4 flex justify-center">
+          <Unavailable what={owners.what} compact />
+        </div>
+      ) : owners.length > 0 && (
         <p className="mt-4 text-sm text-muted">
           Owners:{" "}
           {owners.map((owner, index) => (

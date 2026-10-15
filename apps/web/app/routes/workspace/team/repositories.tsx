@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { teamPath } from "../../../lib/teams";
 import { identity, repos } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
+import { Unavailable } from "../../../components/boundary";
+import { isFailed, orElse, part } from "../../../lib/partial";
 
 const isRole = (value: string): value is RepoRole => (REPO_ROLES as readonly string[]).includes(value);
 
@@ -21,9 +23,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const [granted, list] = await Promise.all([
     identity.teamRepos(viewer, params.owner, params.team).then(unwrap),
-    repos.list(viewer, { namespace: params.owner, memberOnly: true }).catch(() => []),
+    // The repositories to add it to: without them, adding says so in its place.
+    part(repos.list(viewer, { namespace: params.owner, memberOnly: true }), "Repositories to add"),
   ]);
-  return { granted, names: list.filter((repo) => !repo.archivedAt).map((repo) => repo.name) };
+  return { granted, names: isFailed(list) ? list : list.filter((repo) => !repo.archivedAt).map((repo) => repo.name) };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -64,7 +67,7 @@ export default function TeamRepositories({ loaderData, actionData }: Route.Compo
   const team = useTeam();
   const { granted, names } = loaderData;
   const own = new Set(granted.filter((repo) => repo.inherited_from == null).map((repo) => repo.repo.split("/")[1]));
-  const addable = names.filter((name) => !own.has(name));
+  const addable = orElse(names, []).filter((name) => !own.has(name));
   const [role, setRole] = useState<RepoRole>("write");
 
   return (
@@ -88,6 +91,7 @@ export default function TeamRepositories({ loaderData, actionData }: Route.Compo
         </Card>
       )}
 
+      {isFailed(names) && team.can_manage && <Unavailable what={names.what} compact />}
       {addable.length > 0 && (
         <Card asChild key={granted.length} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
           <Form method="post">

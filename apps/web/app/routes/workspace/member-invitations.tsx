@@ -51,7 +51,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (roleIn(viewer, params.owner) !== "owner") throw data(null, { status: 404 });
   const [invites, workspace, free] = await Promise.all([
     identity.workspaceInvites(params.owner, viewer),
-    identity.getWorkspace(params.owner),
+    // Only for the workspace's name, which its address stands in for.
+    identity.getWorkspace(params.owner).catch(() => null),
     billing.freeWorkspaces([params.owner]).catch(() => [] as string[]),
   ]);
   return {
