@@ -2,6 +2,7 @@
 
 pub mod alias;
 pub mod api;
+pub mod attach;
 pub mod auth;
 pub mod browse;
 pub mod cache;
@@ -52,6 +53,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Session(command) => session::run(&Ctx::new(cli.global)?, command),
         Command::Work(command) => work::run(&Ctx::new(cli.global)?, command),
         Command::Why(args) => why::run(&Ctx::new(cli.global)?, args),
+        Command::Attach(args) => attach::run(&Ctx::new(cli.global)?, args),
         Command::Api(args) => api::run(&Ctx::new(cli.global)?, args),
         Command::Browse(args) => browse::run(&Ctx::new(cli.global)?, args),
     }

@@ -7,6 +7,7 @@
 pub mod about;
 pub mod access;
 pub mod advisories;
+pub mod attachments;
 pub mod agent_sessions;
 pub mod ai;
 pub mod account_deletion;

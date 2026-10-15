@@ -344,7 +344,9 @@ of these changes, and what refuses it, and
 Issues: what should change. Before working on one, `work` gives everything
 about it, and `claim` says you are on it; see
 [sessions, claims and dependencies](/guides/sessions/). Issues and pull
-requests share numbers, so `comment` works on either.
+requests share numbers, so `comment` works on either. `attach` uploads an
+image, such as a screenshot, and gives the Markdown that shows it in either's
+description or a comment.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -361,6 +363,7 @@ requests share numbers, so `comment` works on either.
 | [`comment`](/reference/api/issues/add-comment/) | Comment on an issue or a pull request; with `path` and `line`, on one line of a pull request's change. | `repo`, `number`, `body` | `issues:write` |
 | [`edit_comment`](/reference/api/issues/edit-comment/) | Change a comment's text, by its id from `get`. Your own, or anyone's with the Maintain role or higher. Notes of what happened cannot be edited. | `repo`, `comment_id`, `body` | `issues:write` |
 | [`delete_comment`](/reference/api/issues/delete-comment/) | Delete a comment, by its id. Your own, or anyone's with the Maintain role or higher. A review that approved or requested changes cannot be deleted. | `repo`, `comment_id` | `issues:write` |
+| [`attach`](/reference/api/issues/upload-attachment/) | Upload an image to show in a description or a comment: `data` base64-encoded, `name` its file name. PNG, JPEG, GIF or WebP of at most 10 MB, by its bytes (`413` `too_large`, `415` `unsupported_type` otherwise). Returns `id`, `url`, `content_type`, `size` and `markdown` (`![name](url)`) to paste into a `body` or `summary`. The file travels in the tool call, so keep it small (a few hundred KB); `g1t attach FILE` sends one from disk. Anyone who may comment on the repository may. | `repo`, `name`, `data` | `issues:write` |
 | [`import`](/reference/api/integrations/import-issue/) | Open an issue from a Jira, Linear or Sentry item, linked to it. | `repo`, `reference` | `issues:write` |
 | [`work`](/reference/api/claims-and-work/get-work/) | Everything to pick an issue up: its definition of done and required checks, active claims, sessions, pull requests (checks, mergeability, overlaps, queue place), what it is blocked by and blocks, decisions, and its recent coordination events. | `repo`, `number` | `issues:read` |
 | [`claim`](/reference/api/claims-and-work/claim-issue/) | Say you are working on an open issue: advisory and expiring (`ttl_minutes`, 30 unless you say, at most 240), never a lock. Returns `others` already on it and what it is `blocked_by`. Claiming again, or a heartbeat of its `session_id`, renews it. With `title` (and `body`) instead of `number`, it [opens the issue first](/reference/api/claims-and-work/claim-new-issue/), claims it, attaches the `session_id` session to it, and returns it as `issue`. | `repo`, and `number` or `title` | `issues:write` |

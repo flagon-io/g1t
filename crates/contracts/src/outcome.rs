@@ -30,6 +30,10 @@ pub enum FailureCode {
     ReauthRequired,
     /// Another host g1t depends on for this did not answer.
     Unavailable,
+    /// What was sent is larger than this takes, such as an attachment over 10 MB.
+    TooLarge,
+    /// What was sent is not of a type this takes, such as an attachment that is not an image.
+    UnsupportedType,
 }
 
 impl FailureCode {
@@ -48,6 +52,8 @@ impl FailureCode {
             FailureCode::Paused => 409,
             FailureCode::ReauthRequired => 403,
             FailureCode::Unavailable => 503,
+            FailureCode::TooLarge => 413,
+            FailureCode::UnsupportedType => 415,
         }
     }
 }

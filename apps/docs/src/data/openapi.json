@@ -391,6 +391,7 @@
         "edit_comment",
         "delete_comment",
         "react",
+        "upload_attachment",
         "list_issue_labels",
         "add_issue_labels",
         "set_issue_labels",
@@ -61455,6 +61456,179 @@
         }
       }
     },
+    "/repos/{owner}/{name}/attachments": {
+      "post": {
+        "operationId": "upload_attachment",
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Upload an attachment",
+        "description": "Upload an image to show in an issue's or a pull request's description or in a comment: a screenshot of a preview, say, instead of committing it to the repository. data is the file base64-encoded, name its file name (the image's alt text), content_type optional (checked against the bytes). PNG, JPEG, GIF and WebP of at most 10 MB; a larger file is refused with 413 too_large, another type (SVG, PDF, anything its bytes do not show to be one of those) with 415 unsupported_type. Anyone who may comment on the repository may. Returns its id, url (on the usercontent origin, g1tusercontent.com on g1t.sh), name, size, content_type, and markdown (`![name](url)`) to paste into the body or summary of create_issue, update_issue, add_comment, create_pull_request or mark_pull_request_ready. Its address is its permission: anyone given it can see the image, even one from a private repository. Over MCP the file travels in the tool call, so keep it small (a few hundred KB); `g1t attach FILE` uploads one from disk and prints the markdown.\n\n`data` is the file base64-encoded: `base64 -w0 preview.png`. Paste `markdown` into the `body` of an issue, pull request or comment, or a pull request's `summary`. The type is read from the bytes; a file over 10 MB is refused with `413` (`too_large`), one that is not a PNG, JPEG, GIF or WebP with `415` (`unsupported_type`). From a shell, `g1t attach preview.png` does all of it and prints the markdown.",
+        "x-operation": "upload_attachment",
+        "x-mcp-tool": "issue",
+        "x-mcp-action": "attach",
+        "x-scope": "issues:write",
+        "security": [
+          {
+            "token": [
+              "issues:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace that owns the repository."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The repository's name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "3f9c2a7e5b1d48c6a0e7f4b2d9c81a6e5f3b7d2c9a4e8f1b6c0d5a7e2f9b3c41",
+                  "name": "preview.png",
+                  "url": "https://g1tusercontent.com/attachments/3f9c2a7e5b1d48c6a0e7f4b2d9c81a6e5f3b7d2c9a4e8f1b6c0d5a7e2f9b3c41",
+                  "markdown": "![preview.png](https://g1tusercontent.com/attachments/3f9c2a7e5b1d48c6a0e7f4b2d9c81a6e5f3b7d2c9a4e8f1b6c0d5a7e2f9b3c41)",
+                  "content_type": "image/png",
+                  "size": 184213
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is over 10 MB (`too_large`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The file is not a PNG, JPEG, GIF or WebP image by its bytes, or not the content_type given (`unsupported_type`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The file's name, such as preview.png: the image's alt text in the markdown."
+                  },
+                  "content_type": {
+                    "type": "string",
+                    "enum": [
+                      "image/png",
+                      "image/jpeg",
+                      "image/gif",
+                      "image/webp"
+                    ],
+                    "description": "What the file is. Optional: it is read from the bytes, and refused when it says otherwise."
+                  },
+                  "data": {
+                    "type": "string",
+                    "contentEncoding": "base64",
+                    "description": "The file, base64-encoded: PNG, JPEG, GIF or WebP of at most 10 MB."
+                  }
+                },
+                "required": [
+                  "name",
+                  "data"
+                ]
+              },
+              "example": {
+                "name": "preview.png",
+                "content_type": "image/png",
+                "data": "iVBORw0KGgoAAAANSUhEUgAA…"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "owner": "flagon-io",
+          "name": "session-lab"
+        }
+      }
+    },
     "/repos/{owner}/{name}/pulls": {
       "get": {
         "operationId": "list_pull_requests",
@@ -69140,7 +69314,9 @@
                   "forbidden",
                   "not_found",
                   "conflict",
-                  "invalid"
+                  "invalid",
+                  "too_large",
+                  "unsupported_type"
                 ]
               },
               "message": {

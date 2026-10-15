@@ -2421,6 +2421,23 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "upload_attachment",
+        method: "POST",
+        path: "/repos/{owner}/{name}/attachments",
+        tag: "Issues",
+        summary: "Upload an attachment",
+        scope: Some("issues:write"),
+        params: &[
+            Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "content_type", kind: "string", required: false, values: &["image/png", "image/jpeg", "image/gif", "image/webp"] },
+            Field { name: "data", kind: "string", required: true, values: &[] },
+            Field { name: "name", kind: "string", required: true, values: &[] },
+        ],
+    },
+    Operation {
         id: "add_default_labels",
         method: "POST",
         path: "/repos/{owner}/{name}/labels/defaults",

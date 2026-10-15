@@ -1351,6 +1351,8 @@ mod tests {
             "get_work",
             "claim_issue",
             "add_comment",
+            // A screenshot of its preview, for a pull request or a comment.
+            "upload_attachment",
             "close_issue",
             "create_pull_request",
             "review_pull_request",
@@ -1364,6 +1366,7 @@ mod tests {
             assert_eq!(decision.rule, "run:session/runner");
         }
         assert_eq!(decide("add_comment", &path("acme", "billing")).rule, "scope:repository");
+        assert_eq!(decide("upload_attachment", &path("acme", "billing")).rule, "scope:repository");
         for operation in ["merge_pull_request", "update_repo_settings", "set_actions_secret", "list_members", "delete_repo"] {
             assert_eq!(decide(operation, &rocket).rule, "never", "{operation}");
         }

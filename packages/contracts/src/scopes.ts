@@ -495,6 +495,7 @@ export const OPERATION_SCOPES = [
   ["close_issue", "issues:write"],
   ["reopen_issue", "issues:write"],
   ["add_comment", "issues:write"],
+  ["upload_attachment", "issues:write"],
   ["edit_comment", "issues:write"],
   ["delete_comment", "issues:write"],
   ["react", "issues:write"],

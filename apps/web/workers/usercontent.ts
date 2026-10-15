@@ -14,6 +14,12 @@ export const AVATAR_PATH = /^\/avatars\/([0-9a-f]{64})$/;
 export const EMOJI_PATH = /^\/emoji\/([0-9a-f]{64})$/;
 /** A project's uploaded production image, by the SHA-256 of its bytes: kept by projects under `production/<hash>` in the same namespace. */
 export const PRODUCTION_IMAGE_PATH = /^\/production-images\/([0-9a-f]{64})$/;
+/**
+ * An image put in an issue's, a pull request's or a comment's Markdown, by its
+ * random id (256 bits, so its address is its permission): kept by work under
+ * `attachments/<id>` in the same namespace (services/work/src/attachments.rs).
+ */
+export const ATTACHMENT_PATH = /^\/attachments\/([0-9a-f]{64})$/;
 /** A file put in a Docs page, by its random key: kept by the artifacts service (services/artifacts). */
 export const DOCS_FILE_PATH = /^\/docs-files\/([0-9a-f]{64})$/;
 /** The only types identity stores, having checked each image's bytes. */
@@ -46,6 +52,8 @@ export async function serveUsercontent(env: Env, ctx: ExecutionContext, request:
   if (emoji) return serveAvatar(env, ctx, method, `emoji/${emoji[1]!}`, new URL(request.url).origin);
   const production = PRODUCTION_IMAGE_PATH.exec(path);
   if (production) return serveAvatar(env, ctx, method, `production/${production[1]!}`, new URL(request.url).origin);
+  const attachment = ATTACHMENT_PATH.exec(path);
+  if (attachment) return serveAvatar(env, ctx, method, `attachments/${attachment[1]!}`, new URL(request.url).origin);
   const docsFile = DOCS_FILE_PATH.exec(path);
   if (docsFile) return serveDocsFile(env, method, docsFile[1]!);
   const file = parseRawPath(path);
@@ -88,8 +96,9 @@ async function serveRaw(env: Env, request: Request, method: string, file: NonNul
 }
 
 /**
- * An uploaded avatar, a custom emoji (`key` is then `emoji/<hash>`) or a
- * production image (`production/<hash>`). Its
+ * An uploaded avatar, a custom emoji (`key` is then `emoji/<hash>`), a
+ * production image (`production/<hash>`) or an attachment
+ * (`attachments/<id>`, at the same path). Its
  * address is its hash, so it never changes and is
  * kept for good: each data centre keeps it in its cache after the first
  * view, and storage is read about once per place, not once per visitor.
@@ -99,7 +108,7 @@ async function serveRaw(env: Env, request: Request, method: string, file: NonNul
 async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, key: string, origin: string): Promise<Response> {
   // The Workers runtime's own cache, which the DOM types do not know.
   const cache = (caches as unknown as { default: Cache }).default;
-  const path = key.startsWith("emoji/") ? key : key.startsWith("production/") ? `production-images/${key.slice("production/".length)}` : `avatars/${key}`;
+  const path = key.startsWith("emoji/") || key.startsWith("attachments/") ? key : key.startsWith("production/") ? `production-images/${key.slice("production/".length)}` : `avatars/${key}`;
   const cacheKey = new Request(`${origin}/${path}`, { method: "GET" });
   const cached = await cache.match(cacheKey);
   if (cached) {

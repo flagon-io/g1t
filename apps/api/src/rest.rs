@@ -1060,6 +1060,8 @@ pub const ROUTES: &[Route] = &[
     route("PATCH", "/repos/:owner/:name/issues/comments/:comment_id", Op::EditComment, &[]),
     route("DELETE", "/repos/:owner/:name/issues/comments/:comment_id", Op::DeleteComment, &[]),
     route("POST", "/repos/:owner/:name/issues/:number/reactions", Op::React, &[]),
+    // An image to show in an issue's, a pull request's or a comment's Markdown.
+    route("POST", "/repos/:owner/:name/attachments", Op::UploadAttachment, &[]),
     route(
         "GET",
         "/repos/:owner/:name/pulls",
@@ -1594,6 +1596,7 @@ mod tests {
         // Still an issue's comments, labels and subscription.
         assert_eq!(op("POST", "/repos/acme/web/issues/7/comments"), Op::AddComment);
         assert_eq!(op("POST", "/repos/acme/web/issues/7/reactions"), Op::React);
+        assert_eq!(op("POST", "/repos/acme/web/attachments"), Op::UploadAttachment);
         assert_eq!(op("DELETE", "/repos/acme/web/issues/7/labels"), Op::RemoveIssueLabels);
         assert_eq!(op("DELETE", "/repos/acme/web/issues/7/subscription"), Op::DeleteThreadSubscription);
     }

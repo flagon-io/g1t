@@ -65,6 +65,7 @@ pub(crate) const PURGED: &[&str] = &[
     "DELETE FROM commit_check_suites WHERE repo_id = ?1",
     "DELETE FROM plans WHERE repo_id = ?1",
     crate::reactions::PURGED,
+    crate::attachments::PURGED,
     "DELETE FROM comments WHERE repo_id = ?1",
     "DELETE FROM pulls WHERE repo_id = ?1",
     "DELETE FROM issues WHERE repo_id = ?1",

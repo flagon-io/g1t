@@ -17,6 +17,10 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	// Attachments' bytes (src/attachments.rs), in the namespace the
+	// usercontent origin serves from (apps/web/workers/usercontent.ts),
+	// under attachments/<id>.
+	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
 	"services": [
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "REPOS", "service": "g1t-repos" },

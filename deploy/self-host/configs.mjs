@@ -242,7 +242,8 @@ function selfHosted(service) {
   if (service.web) {
     Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, OG_URL: "", USERCONTENT_URL: (process.env.USERCONTENT_URL ?? "").trim() });
   }
-  if (hosted.name === "g1t-api") Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL });
+  // The API names attachments by their address there too (upload_attachment).
+  if (hosted.name === "g1t-api") Object.assign(config.vars, { SITE_URL: PUBLIC_URL, API_URL, MCP_URL, USERCONTENT_URL: (process.env.USERCONTENT_URL ?? "").trim() });
   // Notifications on the g1t phone app go through Expo's push service (and
   // from there Google's and Apple's), with no setup here, unless
   // PHONE_PUSH=off: notify then sends phones nothing, and the site's

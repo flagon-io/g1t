@@ -1590,6 +1590,26 @@
     },
     "notes": "Answers `204` with no body. Its author, or someone with the Maintain role or higher. A review that approved or requested changes answers `409`: edit it instead."
   },
+  "upload_attachment": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "session-lab"
+    },
+    "request": {
+      "name": "preview.png",
+      "content_type": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAA…"
+    },
+    "response": {
+      "id": "3f9c2a7e5b1d48c6a0e7f4b2d9c81a6e5f3b7d2c9a4e8f1b6c0d5a7e2f9b3c41",
+      "name": "preview.png",
+      "url": "https://g1tusercontent.com/attachments/3f9c2a7e5b1d48c6a0e7f4b2d9c81a6e5f3b7d2c9a4e8f1b6c0d5a7e2f9b3c41",
+      "markdown": "![preview.png](https://g1tusercontent.com/attachments/3f9c2a7e5b1d48c6a0e7f4b2d9c81a6e5f3b7d2c9a4e8f1b6c0d5a7e2f9b3c41)",
+      "content_type": "image/png",
+      "size": 184213
+    },
+    "notes": "`data` is the file base64-encoded: `base64 -w0 preview.png`. Paste `markdown` into the `body` of an issue, pull request or comment, or a pull request's `summary`. The type is read from the bytes; a file over 10 MB is refused with `413` (`too_large`), one that is not a PNG, JPEG, GIF or WebP with `415` (`unsupported_type`). From a shell, `g1t attach preview.png` does all of it and prints the markdown."
+  },
   "react": {
     "params": {
       "number": 12,

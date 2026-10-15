@@ -295,12 +295,13 @@ g1t issue create [OPTIONS]
 | `-t, --title <TITLE>` |  |
 | `-b, --body <BODY>` | The text. Markdown. |
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 | `-l, --label <LABEL>` | A label; repeat for more. |
 | `-a, --assignee <ASSIGNEE>` | Someone to assign; repeat for more (@me for you). |
 | `-m, --milestone <MILESTONE>` | A milestone's number. |
 | `-w, --web` | Open the new-issue page in the browser instead. |
 
-Calls [`create_issue`](/reference/api/issues/create-issue/), [`update_issue`](/reference/api/issues/update-issue/).
+Calls [`create_issue`](/reference/api/issues/create-issue/), [`update_issue`](/reference/api/issues/update-issue/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
 
 ### g1t issue comment
 
@@ -315,8 +316,9 @@ g1t issue comment [OPTIONS] [NUMBER]
 | `[NUMBER]` | The number; for a pull request, the current branch's when left out. |
 | `-b, --body <BODY>` | The text. Markdown. |
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 
-Calls [`add_comment`](/reference/api/issues/add-comment/).
+Calls [`add_comment`](/reference/api/issues/add-comment/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
 
 ### g1t issue close
 
@@ -425,6 +427,7 @@ g1t pr create [OPTIONS]
 | `-t, --title <TITLE>` |  |
 | `-b, --body <BODY>` | The text. Markdown. |
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 | `-B, --base <BASE>` | The branch to merge into; the default branch when left out. |
 | `-H, --head <HEAD>` | The branch with the changes; the current one when left out. |
 | `-i, --issue <ISSUE>` | The issue it is for. Without a branch, starts a draft in a working copy of its own. |
@@ -433,7 +436,7 @@ g1t pr create [OPTIONS]
 | `--no-push` | Do not push the branch first. |
 | `--head-repo <OWNER/NAME>` | The fork, OWNER/NAME, that holds the branch. In a clone of your fork (origin) whose upstream is the repository, origin when left out. |
 
-Calls [`create_pull_request`](/reference/api/pull-requests/create-pull-request/), [`get_repo`](/reference/api/repositories/get-repo/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/).
+Calls [`create_pull_request`](/reference/api/pull-requests/create-pull-request/), [`get_repo`](/reference/api/repositories/get-repo/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
 
 ### g1t pr checkout
 
@@ -558,9 +561,10 @@ g1t pr ready [OPTIONS] [NUMBER]
 | --- | --- |
 | `[NUMBER]` |  |
 | `-s, --summary <SUMMARY>` | What changed and why; it becomes the description. The current one when left out. |
+| `--attach <FILE>` | An image to show after the summary (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 | `--undo` | Turn it back into a draft. |
 
-Calls [`mark_pull_request_ready`](/reference/api/pull-requests/mark-pull-request-ready/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/).
+Calls [`mark_pull_request_ready`](/reference/api/pull-requests/mark-pull-request-ready/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
 
 ### g1t pr comment
 
@@ -575,8 +579,9 @@ g1t pr comment [OPTIONS] [NUMBER]
 | `[NUMBER]` | The number; for a pull request, the current branch's when left out. |
 | `-b, --body <BODY>` | The text. Markdown. |
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 
-Calls [`add_comment`](/reference/api/issues/add-comment/).
+Calls [`add_comment`](/reference/api/issues/add-comment/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
 
 ### g1t pr close
 
@@ -1395,6 +1400,30 @@ g1t why [OPTIONS] <TARGET>
 | `--ref <REF>` | The branch, tag or commit to read it at; the default branch when left out. |
 
 Calls [`why`](/reference/api/decisions-and-why/why/).
+
+## g1t attach
+
+Upload images, such as a screenshot, to show in an issue, a pull request or a comment; prints their Markdown.
+
+```text
+g1t attach [OPTIONS] <FILE>...
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<FILE>` | The files: PNG, JPEG, GIF or WebP, at most 10 MB each. |
+
+```text
+Prints each image's Markdown, ![name](url), to paste into a description or a comment; --json prints
+{ id, name, url, markdown, content_type, size } (a list for several files). The image is served from
+g1t's usercontent address, and anyone given that address can see it, even from a private repository.
+--attach FILE on g1t issue create, g1t issue comment, g1t pr create, g1t pr comment and g1t pr ready
+uploads and adds the Markdown for you:
+  g1t attach preview.png
+  g1t pr comment --body 'The preview, after the fix:' --attach preview.png
+```
+
+Calls [`upload_attachment`](/reference/api/issues/upload-attachment/).
 
 ## g1t api
 

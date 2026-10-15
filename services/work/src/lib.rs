@@ -4,6 +4,7 @@
 //! `g1t_contracts::work` for the methods and their arguments. It also
 //! consumes its queue of events from the bus.
 
+mod attachments;
 mod authored;
 mod automerge;
 mod checks;
@@ -3041,6 +3042,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "delete_milestone" => reply(&work.delete_milestone(args(body)?).await?),
         "counts" => reply(&work.counts(args(body)?).await?),
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
+        "upload_attachment" => reply(&work.upload_attachment(&env, args(body)?).await?),
         "edit_comment" => reply(&work.edit_comment(args(body)?).await?),
         "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
         "react" => reply(&work.react(args(body)?).await?),
@@ -3174,6 +3176,10 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         if g1t_kit::user_deleted::on_event(&env.d1("DB")?, message.body(), &ghost).await? {
             message.ack();
             continue;
+        }
+        // A repository purged: its attachments' bytes go before their rows do.
+        if let Some(g1t_kit::lifecycle::Lifecycle::Purged(purged)) = g1t_kit::lifecycle::read(message.body()) {
+            attachments::purge(&env, &work.db, &purged.repo_id).await?;
         }
         // A repository deleted, archived or purged, or a branch renamed (retired.rs).
         if work.on_retired(message.body()).await? {
