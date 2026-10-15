@@ -280,6 +280,22 @@ site-search button[data-open-modal]:hover {
 		display: block;
 		overflow-x: auto;
 	}
+	/* A shadow at an edge with more columns past it, so a cut-off column
+	   reads as "scroll for more". The covers scroll with the table and hide
+	   the shadows at its ends. */
+	.sl-markdown-content table:not(:has(.status)) {
+		--cover: var(--g1t-bg);
+		/* On the dark page a shadow is a faint light, as a dark one would not show. */
+		--shade: rgb(255 255 255 / 0.12);
+		background:
+			linear-gradient(to right, var(--cover) 30%, transparent) left / 2.5rem 100% no-repeat local,
+			linear-gradient(to left, var(--cover) 30%, transparent) right / 2.5rem 100% no-repeat local,
+			radial-gradient(farthest-side at 0 50%, var(--shade), transparent) left / 0.875rem 100% no-repeat scroll,
+			radial-gradient(farthest-side at 100% 50%, var(--shade), transparent) right / 0.875rem 100% no-repeat scroll;
+	}
+	:root[data-theme='light'] .sl-markdown-content table:not(:has(.status)) {
+		--shade: rgb(24 24 27 / 0.16);
+	}
 }
 /*
  * There, a name, route or value in a table is never broken, not even at a
@@ -344,6 +360,14 @@ site-search button[data-open-modal]:hover {
 }
 
 /* --- On this page --------------------------------------------------------- */
+
+/* On a phone the list drops over the page: give it an edge and a shadow, so
+   where it stops is clear rather than its last row running into the text. */
+mobile-starlight-toc .dropdown {
+	border-color: var(--g1t-line);
+	border-bottom-color: var(--g1t-line-strong);
+	box-shadow: var(--g1t-docs-menu-shadow);
+}
 
 .right-sidebar-panel {
 	padding-top: 2.75rem;
