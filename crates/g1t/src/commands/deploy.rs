@@ -1,8 +1,9 @@
-//! `g1t deploy`: a repository's deployments, wherever they ran.
+//! `g1t deploy`: a repository's deployments, wherever they ran, and a
+//! project's g1t.page deployment settings.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::cli::{DeployCommand, DeployListArgs, DeployViewArgs};
+use crate::cli::{DeployCommand, DeployListArgs, DeployProjectArgs, DeploySettingsArgs, DeployViewArgs, Switch};
 use crate::context::Ctx;
 use crate::error::Result;
 use crate::output::{Cell, ago, s};
@@ -11,7 +12,114 @@ pub fn run(ctx: &Ctx, command: DeployCommand) -> Result<()> {
     match command {
         DeployCommand::List(args) => list(ctx, args),
         DeployCommand::View(args) => view(ctx, args),
+        DeployCommand::Settings(args) => settings(ctx, args),
+        DeployCommand::Enable(args) => switch(ctx, args, true),
+        DeployCommand::Disable(args) => switch(ctx, args, false),
     }
+}
+
+/// The change the flags ask for, as `update_deployment_settings` takes it.
+fn changes(args: &DeploySettingsArgs) -> Map<String, Value> {
+    let mut out = Map::new();
+    for (key, value) in [("production", args.production), ("previews", args.previews), ("via_workflow", args.via_workflow)] {
+        if let Some(value) = value {
+            out.insert(key.to_owned(), (value == Switch::On).into());
+        }
+    }
+    for (key, value) in [
+        ("build_as", &args.build_as),
+        ("build_command", &args.build_command),
+        ("output_dir", &args.output_dir),
+        ("dockerfile", &args.dockerfile),
+        ("instance_type", &args.instance_type),
+    ] {
+        if let Some(value) = value {
+            out.insert(key.to_owned(), value.clone().into());
+        }
+    }
+    if let Some(days) = args.idle_days {
+        out.insert("idle_days".to_owned(), days.into());
+    }
+    out
+}
+
+fn settings(ctx: &Ctx, args: DeploySettingsArgs) -> Result<()> {
+    let (workspace, project, client) = super::logs::resolve_project(ctx, args.project.as_deref())?;
+    let wanted = changes(&args);
+    let found = if wanted.is_empty() {
+        client
+            .op("get_deployment_settings")
+            .arg("workspace", &workspace)
+            .arg("project", &project)
+            .send()?
+    } else {
+        let mut call = client
+            .op("update_deployment_settings")
+            .arg("workspace", &workspace)
+            .arg("project", &project);
+        for (key, value) in wanted {
+            call = call.field(&key, value);
+        }
+        call.send()?
+    };
+    show(ctx, &found)
+}
+
+fn switch(ctx: &Ctx, args: DeployProjectArgs, on: bool) -> Result<()> {
+    let (workspace, project, client) = super::logs::resolve_project(ctx, args.project.as_deref())?;
+    let found = client
+        .op("update_deployment_settings")
+        .arg("workspace", &workspace)
+        .arg("project", &project)
+        .field("enabled", on)
+        .send()?;
+    if ctx.out.structured() {
+        return ctx.out.emit(&found);
+    }
+    if on {
+        eprintln!(
+            "{} Deployments are on for {workspace}/{project}: production is building at {}",
+            ctx.out.green("✓"),
+            s(&found, "production_url")
+        );
+    } else {
+        eprintln!("{} Deployments are off for {workspace}/{project}: every app is down.", ctx.out.green("✓"));
+    }
+    Ok(())
+}
+
+/// A project's deployment settings, one to a line.
+fn show(ctx: &Ctx, found: &Value) -> Result<()> {
+    if ctx.out.structured() {
+        return ctx.out.emit(found);
+    }
+    let out = &ctx.out;
+    let on = |key: &str| if found[key].as_bool() == Some(true) { "on" } else { "off" };
+    let text = |key: &str, unset: &str| found[key].as_str().filter(|v| !v.is_empty()).unwrap_or(unset).to_owned();
+    println!(
+        "{} {}",
+        out.bold(&format!("{}/{}", s(found, "workspace"), s(found, "project"))),
+        if found["enabled"].as_bool() == Some(true) { out.green("deployments on") } else { out.dim("deployments off") }
+    );
+    let rows = [
+        ("Production:", format!("{} at {}", on("production"), s(found, "production_url"))),
+        ("Previews:", on("previews").to_owned()),
+        ("Build as:", text("build_as", "auto")),
+        ("Build command:", text("build_command", "the project's own")),
+        ("Output dir:", text("output_dir", "found by itself")),
+        ("Dockerfile:", text("dockerfile", "Dockerfile or Containerfile")),
+        ("Container size:", text("instance_type", "lite")),
+        ("Idle days:", found["idle_days"].to_string()),
+        ("Via workflow:", on("via_workflow").to_owned()),
+        ("Detected:", text("detected", "at the first build")),
+    ];
+    for (label, value) in rows {
+        println!("{} {value}", out.dim(label));
+    }
+    if let Some(domain) = found["primary_domain"].as_str() {
+        println!("{} {domain}", out.dim("Domain:"));
+    }
+    Ok(())
 }
 
 fn list(ctx: &Ctx, args: DeployListArgs) -> Result<()> {
@@ -123,4 +231,27 @@ fn view(ctx: &Ctx, args: DeployViewArgs) -> Result<()> {
     println!();
     println!("{}", out.dim(&page));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::{Cli, Command};
+    use clap::Parser;
+
+    fn settings_args(argv: &[&str]) -> DeploySettingsArgs {
+        let cli = Cli::try_parse_from([&["g1t", "deploy", "settings"], argv].concat()).unwrap();
+        match cli.command {
+            Command::Deploy(DeployCommand::Settings(args)) => args,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn flags_become_only_the_changes_they_name() {
+        assert!(changes(&settings_args(&[])).is_empty());
+        let asked = changes(&settings_args(&["--previews", "off", "--build-command", "", "--idle-days", "14", "-p", "acme/web"]));
+        assert_eq!(Value::Object(asked), serde_json::json!({ "previews": false, "build_command": "", "idle_days": 14 }));
+        assert!(Cli::try_parse_from(["g1t", "deploy", "settings", "--production", "maybe"]).is_err());
+    }
 }

@@ -271,6 +271,7 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_commit_comments",
     "list_projects",
     "get_project",
+    "get_deployment_settings",
     "list_deleted_repos",
     "list_collaborators",
     "get_collaborator_permission",
@@ -377,6 +378,8 @@ pub const NEVER: &[&str] = &[
     "detach_fork",
     "update_repo",
     "update_project",
+    // Turning a project's deployments on starts paid work; off, takes it down.
+    "update_deployment_settings",
     "delete_repo",
     "list_deleted_repos",
     "restore_repo",

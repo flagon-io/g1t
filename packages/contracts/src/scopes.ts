@@ -580,6 +580,8 @@ export const OPERATION_SCOPES = [
   ["create_deployment", "deployments:write"],
   ["create_deployment_status", "deployments:write"],
   ["start_deployment_build", "deployments:write"],
+  ["get_deployment_settings", "deployments:read"],
+  ["update_deployment_settings", "repo:admin"],
   // Observability: what a project's software did, and how it is collected.
   ["get_observability_overview", "observability:read"],
   ["list_requests", "observability:read"],

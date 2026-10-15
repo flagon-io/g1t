@@ -541,7 +541,9 @@
         "create_deployment_status",
         "list_environments",
         "get_environment",
-        "start_deployment_build"
+        "start_deployment_build",
+        "get_deployment_settings",
+        "update_deployment_settings"
       ]
     },
     {
@@ -12761,6 +12763,320 @@
         "x-example-params": {
           "workspace": "flagon-io",
           "project": "g1t"
+        }
+      }
+    },
+    "/workspaces/{workspace}/projects/{project}/deployments/settings": {
+      "get": {
+        "operationId": "get_deployment_settings",
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Get a project's deployment settings",
+        "description": "A project's g1t.page deployment settings, as its Settings → Deployments page shows them: whether Deployments are on (`enabled`; off for every project until someone turns them on), whether the default branch deploys to production on every push (`production`) and every pull request gets a preview (`previews`), production's address (`production_url`, and `primary_domain` once a custom domain serves it), how it builds (`build_as`: auto, static, workers or docker; `build_command`, `output_dir`, `dockerfile` and `instance_type` for a container; `via_workflow` to build through the deploy workflow g1t manages), how many days an unvisited preview stays up (`idle_days`), and what its last finished build found it to be (`detected`: workers, static, html or container, with `framework`), null before one has. A repository's own project has its name. Needs the Read role on the project's repository.\n\nA repository's own project has the repository's name, so `flagon-io/session-lab`'s settings are at `/workspaces/flagon-io/projects/session-lab/deployments/settings`. `production_url` is where production is served once Deployments are on; `primary_domain` is the first active custom domain that serves it. `detected` and `framework` are what the last finished build found, and null before one has. Needs the Read role on the project's repository (`404` to anyone who cannot see it). See [Deployments](/guides/deployments/#settings).",
+        "x-operation": "get_deployment_settings",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "get_deployment_settings",
+        "x-scope": "deployments:read",
+        "security": [
+          {
+            "token": [
+              "deployments:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, as in g1t.sh/{workspace}/{project}; a repository's own project has its name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "project": "session-lab",
+                  "enabled": false,
+                  "production": true,
+                  "previews": true,
+                  "production_url": "https://session-lab-flagonio.g1t.page",
+                  "primary_domain": null,
+                  "build_as": "auto",
+                  "build_command": null,
+                  "output_dir": null,
+                  "dockerfile": null,
+                  "instance_type": "lite",
+                  "idle_days": 7,
+                  "via_workflow": false,
+                  "detected": null,
+                  "framework": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "session-lab"
+        }
+      },
+      "patch": {
+        "operationId": "update_deployment_settings",
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Update a project's deployment settings",
+        "description": "Change a project's g1t.page deployment settings; only what you give changes. `enabled: true` turns Deployments on, as Turn on deployments under Settings → Deployments does: production starts building from the default branch at once, and every pull request gets a preview. That needs the g1t plan on the workspace (refused with payment_required otherwise; an owner starts it under Billing), and is refused for a project set to be a library, a tool or other until update_project makes it an app. `enabled: false` takes production and every preview down now and stops building; turning `production` or `previews` off takes those apps down. build_command, output_dir and dockerfile take null or \"\" to go back to what is found by itself; idle_days is 1 to 90; build_as is auto, static, workers or docker; instance_type is a container size (lite, basic, standard-1 to standard-4). Needs the Admin role on the project's repository. Returns the settings as get_deployment_settings does.\n\nOnly the fields given change. `enabled: true` turns Deployments on: production starts building from the default branch at once (an empty repository's first push to it deploys), and every pull request gets a preview. It is refused with `402 payment_required` when the workspace does not have the [g1t plan](/guides/usage-and-billing/#the-g1t-plan), saying where an owner starts it, and with `409 conflict` for a project set to be a library, a tool or other (change `kind` with [`update_project`](/reference/api/projects/update-project/) first). `enabled: false` takes production and every preview down at once. `build_command`, `output_dir` and `dockerfile` given as null or `\"\"` go back to what is found by itself; `idle_days` is 1 to 90; anything else is refused with `422 invalid`. Needs the Admin role on the project's repository (`403` otherwise, saying so) and a token with `repo:admin`. To turn them on as a repository is made, give `deploy: true` to [`create_repo`](/reference/api/repositories/create-repo/). See [Turn on deployments](/guides/deployments/#turn-on-deployments).",
+        "x-operation": "update_deployment_settings",
+        "x-mcp-tool": "workflow",
+        "x-mcp-action": "update_deployment_settings",
+        "x-scope": "repo:admin",
+        "security": [
+          {
+            "token": [
+              "repo:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, as in g1t.sh/{workspace}/{project}; a repository's own project has its name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "project": "session-lab",
+                  "enabled": true,
+                  "production": true,
+                  "previews": true,
+                  "production_url": "https://session-lab-flagonio.g1t.page",
+                  "primary_domain": null,
+                  "build_as": "auto",
+                  "build_command": null,
+                  "output_dir": null,
+                  "dockerfile": null,
+                  "instance_type": "lite",
+                  "idle_days": 7,
+                  "via_workflow": false,
+                  "detected": null,
+                  "framework": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Turn Deployments on (production builds at once; needs the g1t plan) or off (every app comes down)."
+                  },
+                  "production": {
+                    "type": "boolean",
+                    "description": "Deploy the default branch to production on every push."
+                  },
+                  "previews": {
+                    "type": "boolean",
+                    "description": "A preview for every branch with an open pull request."
+                  },
+                  "build_as": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "static",
+                      "workers",
+                      "docker"
+                    ],
+                    "description": "What it is built as; auto finds it from its files."
+                  },
+                  "build_command": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Runs instead of the project's own build script; null or \"\" for its own."
+                  },
+                  "output_dir": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "What a static site serves; null or \"\" to find it by itself."
+                  },
+                  "dockerfile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "For a container: its Dockerfile's path inside the project; null or \"\" for Dockerfile or Containerfile."
+                  },
+                  "instance_type": {
+                    "type": "string",
+                    "enum": [
+                      "lite",
+                      "basic",
+                      "standard-1",
+                      "standard-2",
+                      "standard-3",
+                      "standard-4"
+                    ],
+                    "description": "For a container: the size it runs at."
+                  },
+                  "idle_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 90,
+                    "description": "A preview no one visits for this many days comes down."
+                  },
+                  "via_workflow": {
+                    "type": "boolean",
+                    "description": "Build through the deploy workflow g1t manages for the project, listed under Actions."
+                  }
+                }
+              },
+              "example": {
+                "enabled": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "session-lab"
         }
       }
     },
@@ -27001,7 +27317,7 @@
           "Repositories"
         ],
         "summary": "Create a repository",
-        "description": "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's.\n\n`owner_id` is the id of the person who created the repository. With `import_url`, `default_branch` is the default branch of the repository copied.",
+        "description": "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's. With deploy true, its project's g1t.page Deployments are turned on as soon as it is made, as update_deployment_settings with enabled true does: its first push to the default branch deploys production. The repository is made either way: the response has `deployments` (the settings, with production_url) when they are on, or `deploy_error` saying why not (the workspace has no g1t plan, or your role is too low).\n\n`owner_id` is the id of the person who created the repository. With `import_url`, `default_branch` is the default branch of the repository copied. With `deploy: true`, its project's [Deployments](/guides/deployments/) are turned on once it is made, as [`update_deployment_settings`](/reference/api/deployments/update-deployment-settings/) with `enabled: true` does, and the response adds `deployments` (those settings, with `production_url`) and `deploy_error` (null). When they cannot be turned on (the workspace has no g1t plan, or your role there is below Admin) the repository is still made: `deployments` is null and `deploy_error` says why, and they can be turned on later. Turning them on here needs no scope beyond `repo:create`: you are the new repository's admin.",
         "x-operation": "create_repo",
         "x-mcp-tool": "repository",
         "x-mcp-action": "create",
@@ -27111,6 +27427,10 @@
                   "import_url": {
                     "type": "string",
                     "description": "Copy the default branch of a public git repository at this https address, e.g. https://github.com/owner/repo."
+                  },
+                  "deploy": {
+                    "type": "boolean",
+                    "description": "Turn on its project's g1t.page Deployments once it is made, so its first push deploys production. Needs the g1t plan on the workspace; when they cannot be turned on, it is still made and deploy_error says why. False unless you say."
                   }
                 },
                 "required": [

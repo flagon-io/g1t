@@ -160,6 +160,7 @@ g1t repo create [OPTIONS] [NAME]
 | `-c, --clone` | Clone it once it is made. |
 | `--source <DIR>` | Add it as a remote of this directory's repository and push it there. |
 | `--remote <REMOTE>` | The remote's name, with --source. Default: `origin`. |
+| `--deploy` | Turn on its g1t.page deployments once it is made, so its first push deploys production. |
 
 Calls [`create_repo`](/reference/api/repositories/create-repo/).
 
@@ -905,7 +906,7 @@ Calls [`delete_cache`](/reference/api/actions/delete-cache/), [`delete_caches_by
 
 ## g1t deploy
 
-Deployments: list and view.
+Deployments: list and view, and turn a project's g1t.page deployments on or off.
 
 ### g1t deploy list
 
@@ -938,6 +939,57 @@ g1t deploy view [OPTIONS] <ID>
 | `-w, --web` |  |
 
 Calls [`get_deployment`](/reference/api/deployments/get-deployment/).
+
+### g1t deploy settings
+
+Show a project's g1t.page deployment settings, or change them with flags.
+
+```text
+g1t deploy settings [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-p, --project <PROJECT>` | The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out. |
+| `--production <SWITCH>` | Deploy the default branch on every push. One of `on`, `off`. |
+| `--previews <SWITCH>` | A preview for every branch with an open pull request. One of `on`, `off`. |
+| `--build-as <KIND>` | auto, static, workers or docker. |
+| `--build-command <COMMAND>` | Runs instead of the project's own build script; "" for its own. |
+| `--output-dir <DIR>` | What a static site serves; "" to find it by itself. |
+| `--dockerfile <PATH>` | A container's Dockerfile, inside the project; "" for Dockerfile or Containerfile. |
+| `--instance-type <SIZE>` | A container's size: lite, basic, standard-1 to standard-4. |
+| `--idle-days <DAYS>` | A preview no one visits this many days comes down: 1 to 90. |
+| `--via-workflow <SWITCH>` | Build through the deploy workflow g1t manages for the project. One of `on`, `off`. |
+
+Calls [`get_deployment_settings`](/reference/api/deployments/get-deployment-settings/), [`update_deployment_settings`](/reference/api/deployments/update-deployment-settings/).
+
+### g1t deploy enable
+
+Turn on a project's g1t.page deployments: production builds from the default branch at once.
+
+```text
+g1t deploy enable [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-p, --project <PROJECT>` | The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out. |
+
+Calls [`update_deployment_settings`](/reference/api/deployments/update-deployment-settings/).
+
+### g1t deploy disable
+
+Turn off a project's g1t.page deployments: production and every preview come down.
+
+```text
+g1t deploy disable [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-p, --project <PROJECT>` | The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out. |
+
+Calls [`update_deployment_settings`](/reference/api/deployments/update-deployment-settings/).
 
 ## g1t logs
 

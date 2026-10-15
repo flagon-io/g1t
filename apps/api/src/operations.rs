@@ -812,7 +812,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 406] = [
+    pub const ALL: [Op; 408] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1108,6 +1108,8 @@ impl Op {
         Op::Deployments(DeploymentsOp::ListEnvironments),
         Op::Deployments(DeploymentsOp::GetEnvironment),
         Op::Deployments(DeploymentsOp::StartDeploymentBuild),
+        Op::Deployments(DeploymentsOp::GetDeploymentSettings),
+        Op::Deployments(DeploymentsOp::UpdateDeploymentSettings),
         Op::Telemetry(TelemetryOp::GetOverview),
         Op::Telemetry(TelemetryOp::ListRequests),
         Op::Telemetry(TelemetryOp::GetRequest),
@@ -1599,7 +1601,7 @@ impl Op {
                 "A repository's merge queue: the pull requests waiting to land, in order, each with the state it is being tested in (the default branch with the pull requests ahead of it landed in turn, each by its merge method) and how that went; then those that recently landed or left. With the queue on, merging a pull request adds it here."
             }
             Op::CreateRepo => {
-                "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's."
+                "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's. With deploy true, its project's g1t.page Deployments are turned on as soon as it is made, as update_deployment_settings with enabled true does: its first push to the default branch deploys production. The repository is made either way: the response has `deployments` (the settings, with production_url) when they are on, or `deploy_error` saying why not (the workspace has no g1t plan, or your role is too low)."
             }
             Op::ListIssues => {
                 "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it. Filter by state, by a label's name, or by a milestone's number."
@@ -2606,6 +2608,10 @@ impl Op {
                     "import_url": {
                         "type": "string",
                         "description": "Copy the default branch of a public git repository at this https address, e.g. https://github.com/owner/repo.",
+                    },
+                    "deploy": {
+                        "type": "boolean",
+                        "description": "Turn on its project's g1t.page Deployments once it is made, so its first push deploys production. Needs the g1t plan on the workspace; when they cannot be turned on, it is still made and deploy_error says why. False unless you say.",
                     },
                 }),
                 &["name"],
@@ -3826,6 +3832,10 @@ impl Op {
         if let Op::Telemetry(_) = self {
             return false;
         }
+        // So do its deployment settings.
+        if let Op::Deployments(op) = self {
+            return op.needs_repo();
+        }
         if let Op::About(op) = self {
             return op.needs_repo();
         }
@@ -4922,7 +4932,22 @@ impl Op {
                         Err(error) => worker::console_error!("created {} without its description: {error}", repo["id"]),
                     }
                 }
-                Ok(created)
+                // Its deployments on from the start, when asked; the
+                // repository stays made whether or not they can be.
+                match created {
+                    Outcome::Ok(mut repo) if yes(input, "deploy") == Some(true) => {
+                        let namespace = repo["namespace"].as_str().unwrap_or_default().to_owned();
+                        let name = repo["name"].as_str().unwrap_or_default().to_owned();
+                        let (deployments, deploy_error) =
+                            crate::deployments::turn_on_for_new_repo(services, &serde_json::to_value(&owner)?, &namespace, &name).await;
+                        if let Some(fields) = repo.as_object_mut() {
+                            fields.insert("deployments".to_owned(), deployments);
+                            fields.insert("deploy_error".to_owned(), deploy_error);
+                        }
+                        Ok(Outcome::Ok(repo))
+                    }
+                    created => Ok(created),
+                }
             }
             Op::ListIssues => {
                 pass(

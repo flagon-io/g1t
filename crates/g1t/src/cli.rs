@@ -101,7 +101,7 @@ pub enum Command {
     /// The repository's actions/cache entries: list, usage, delete.
     #[command(subcommand)]
     Cache(CacheCommand),
-    /// Deployments: list and view.
+    /// Deployments: list and view, and turn a project's g1t.page deployments on or off.
     #[command(subcommand)]
     Deploy(DeployCommand),
     /// A project's logs and errors.
@@ -318,6 +318,9 @@ pub struct RepoCreateArgs {
     /// The remote's name, with --source.
     #[arg(long, default_value = "origin")]
     pub remote: String,
+    /// Turn on its g1t.page deployments once it is made, so its first push deploys production.
+    #[arg(long)]
+    pub deploy: bool,
 }
 
 #[derive(Debug, Args)]
@@ -978,6 +981,60 @@ pub enum DeployCommand {
     List(DeployListArgs),
     /// Show a deployment and its statuses.
     View(DeployViewArgs),
+    /// Show a project's g1t.page deployment settings, or change them with flags.
+    Settings(DeploySettingsArgs),
+    /// Turn on a project's g1t.page deployments: production builds from the default branch at once.
+    Enable(DeployProjectArgs),
+    /// Turn off a project's g1t.page deployments: production and every preview come down.
+    Disable(DeployProjectArgs),
+}
+
+/// A setting turned on or off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Switch {
+    On,
+    Off,
+}
+
+#[derive(Debug, Args)]
+pub struct DeployProjectArgs {
+    /// The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out.
+    #[arg(short, long)]
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct DeploySettingsArgs {
+    /// The project, as SLUG or WORKSPACE/SLUG; the current repository's when left out.
+    #[arg(short, long)]
+    pub project: Option<String>,
+    /// Deploy the default branch on every push.
+    #[arg(long, value_name = "SWITCH")]
+    pub production: Option<Switch>,
+    /// A preview for every branch with an open pull request.
+    #[arg(long, value_name = "SWITCH")]
+    pub previews: Option<Switch>,
+    /// auto, static, workers or docker.
+    #[arg(long, value_name = "KIND")]
+    pub build_as: Option<String>,
+    /// Runs instead of the project's own build script; "" for its own.
+    #[arg(long, value_name = "COMMAND")]
+    pub build_command: Option<String>,
+    /// What a static site serves; "" to find it by itself.
+    #[arg(long, value_name = "DIR")]
+    pub output_dir: Option<String>,
+    /// A container's Dockerfile, inside the project; "" for Dockerfile or Containerfile.
+    #[arg(long, value_name = "PATH")]
+    pub dockerfile: Option<String>,
+    /// A container's size: lite, basic, standard-1 to standard-4.
+    #[arg(long, value_name = "SIZE")]
+    pub instance_type: Option<String>,
+    /// A preview no one visits this many days comes down: 1 to 90.
+    #[arg(long, value_name = "DAYS")]
+    pub idle_days: Option<u32>,
+    /// Build through the deploy workflow g1t manages for the project.
+    #[arg(long, value_name = "SWITCH")]
+    pub via_workflow: Option<Switch>,
 }
 
 #[derive(Debug, Args)]

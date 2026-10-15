@@ -1804,6 +1804,19 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[],
     },
     Operation {
+        id: "get_deployment_settings",
+        method: "GET",
+        path: "/workspaces/{workspace}/projects/{project}/deployments/settings",
+        tag: "Deployments",
+        summary: "Get a project's deployment settings",
+        scope: Some("deployments:read"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "project", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
         id: "get_environment",
         method: "GET",
         path: "/repos/{owner}/{name}/environments/{environment}",
@@ -1880,6 +1893,30 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[
             Field { name: "project", kind: "string", required: false, values: &[] },
             Field { name: "sha", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
+        id: "update_deployment_settings",
+        method: "PATCH",
+        path: "/workspaces/{workspace}/projects/{project}/deployments/settings",
+        tag: "Deployments",
+        summary: "Update a project's deployment settings",
+        scope: Some("repo:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "project", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "build_as", kind: "string", required: false, values: &["auto", "static", "workers", "docker"] },
+            Field { name: "build_command", kind: "string", required: false, values: &[] },
+            Field { name: "dockerfile", kind: "string", required: false, values: &[] },
+            Field { name: "enabled", kind: "boolean", required: false, values: &[] },
+            Field { name: "idle_days", kind: "integer", required: false, values: &[] },
+            Field { name: "instance_type", kind: "string", required: false, values: &["lite", "basic", "standard-1", "standard-2", "standard-3", "standard-4"] },
+            Field { name: "output_dir", kind: "string", required: false, values: &[] },
+            Field { name: "previews", kind: "boolean", required: false, values: &[] },
+            Field { name: "production", kind: "boolean", required: false, values: &[] },
+            Field { name: "via_workflow", kind: "boolean", required: false, values: &[] },
         ],
     },
     Operation {
@@ -4166,6 +4203,7 @@ pub static OPERATIONS: &[Operation] = &[
         scope: Some("repo:create"),
         params: &[],
         body: &[
+            Field { name: "deploy", kind: "boolean", required: false, values: &[] },
             Field { name: "description", kind: "string", required: false, values: &[] },
             Field { name: "import_url", kind: "string", required: false, values: &[] },
             Field { name: "name", kind: "string", required: true, values: &[] },
