@@ -161,7 +161,11 @@ project's overview and the Work page), or on its page. Whoever runs a
 session can end it, and so can anyone with write access to the
 repository; nobody else sees the action. It ends with `end_reason`
 `ended by hand by @name`, its subagents still going end with it, and its
-claims stay until they are released or expire. Through the API,
+claims stay until they are released or expire. Ending by hand is a
+soft close: like a session that timed out, it comes back the moment
+its harness is heard from again (an update, a recorded entry or a
+start), so a harness that was in fact still running picks up where it
+was. Through the API,
 `end_session` on someone else's session does the same, without their
 `reason` or `result`. A session g1t runs on the workspace's Anthropic
 account is stopped from its page instead.

@@ -224,7 +224,7 @@ export function EndSessionDialog({
             <AlertDialogDescription>
               For a session its harness left behind: killed, or never told to end. It shows as ended by hand by you
               {subagents > 0 ? `, and its ${subagents === 1 ? "subagent" : "subagents"} still going end with it` : ""}. Its claims stay until they are
-              released or expire. If its harness is in fact still running, it may show again when it is next heard from.
+              released or expire. If its harness is still running, the session comes back the next time it is heard from.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {error && (
