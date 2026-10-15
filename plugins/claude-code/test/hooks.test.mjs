@@ -19,6 +19,7 @@ import {
   hasTitle,
   hook,
   intentTitle,
+  repoPath,
   MIN_CLI,
   TITLE_LIMIT,
   oldNode,
@@ -88,6 +89,13 @@ describe("plan", () => {
     assert.equal(intentTitle("[Image #1] the PR link is missing on Home"), "The PR link is missing on Home");
     assert.equal(intentTitle("[Image: source: C:\\tmp\\1.png]\nmake it render"), "Make it render");
     assert.equal(intentTitle('<pasted_content id="1">only a paste'), null);
+    // What VS Code puts ahead of what was typed is not a turn Claude Code started.
+    assert.equal(
+      intentTitle("<ide_opened_file>The user opened the file c:\\a\\Dockerfile in the IDE.</ide_opened_file>\nWhether it's the desktop app or the page, it crashes"),
+      "Whether it's the desktop app or the page, it crashes",
+    );
+    assert.equal(intentTitle("<ide_selection>const a = 1;</ide_selection>\n<ide_opened_file>a.ts</ide_opened_file>\nrename this"), "Rename this");
+    assert.equal(intentTitle("<ide_opened_file>a.ts</ide_opened_file>\n/clear"), null);
     // Not intents: slash commands, turns Claude Code starts, nothing to say.
     for (const prompt of ["/clear", "/compact keep the plan", "/g1t:status 4", "<command-name>/clear</command-name>", '<local-command-stdout lang="en">ok</local-command-stdout>', "```\ncode only\n```", "?", "", null]) {
       assert.equal(intentTitle(prompt), null, String(prompt));
@@ -288,6 +296,11 @@ describe("summaries", () => {
   test("say what a tool was called with, in one short line", () => {
     assert.equal(summarizeTool("Edit", { file_path: "/work/repo/src/a.ts", old_string: "x", new_string: "y" }, "/work/repo"), "Edit: src/a.ts");
     assert.equal(summarizeTool("Grep", { pattern: "TODO", path: "src" }, "/w"), "Grep: TODO in src");
+    // From the top of the working copy, wherever the shell has moved to.
+    assert.equal(repoPath("/work/repo/apps/web/app/a.ts", "/work/repo/apps/web", "/work/repo"), "apps/web/app/a.ts");
+    assert.equal(repoPath("app/a.ts", "/work/repo/apps/web", "/work/repo"), "apps/web/app/a.ts");
+    assert.equal(repoPath("/elsewhere/a.ts", "/work/repo/apps/web", "/work/repo"), null);
+    assert.equal(repoPath("/work/repo/src/a.ts", "/work/repo", null), "src/a.ts");
     assert.equal(summarizeTool("WebFetch", { url: "https://example.com", prompt: "p" }), "WebFetch: https://example.com");
     assert.equal(summarizeTool("Bash", { command: "echo one\necho two" }), "Bash: echo one …");
     assert.equal(summarizeTool("mcp__g1t__issue", { action: "get", number: 4 }), "mcp__g1t__issue: get");
@@ -360,8 +373,11 @@ describe("with a working copy", () => {
   afterEach(() => {
     // Every call the hooks made is one the real CLI takes (the stand-in refuses the rest).
     const refused = allCalls().filter((c) => refusal(c.args));
+    // And none let the CLI claim every uncommitted file as this session's (the stand-in logs `touch` then).
+    const guessing = allCalls().filter((c) => c.touch !== undefined);
     rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     assert.deepEqual(refused, [], "the CLI refuses these calls");
+    assert.deepEqual(guessing, [], "these calls let the CLI guess what was touched");
   });
 
   test("SessionStart gives Claude the branch's issue's work context", () => {
@@ -384,6 +400,31 @@ describe("with a working copy", () => {
     assert.deepEqual(start.args, ["session", "start", "--harness", "claude_code", "--harness-session-id", "abc-123", "--json"]);
     assert.deepEqual(logged, { args: ["session", "log", "--kind", "prompt", "--", "fix the login"], session: "ses_fake01" });
     assert.equal(readFileSync(sessionFiles(base.session_id, env).id, "utf8"), "ses_fake01");
+  });
+
+  test("a shell command's writes are this session's; what was uncommitted before it is not", () => {
+    const { job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work(job, env);
+    // Another session's edit, uncommitted in the same working copy.
+    writeFileSync(join(dir, "theirs.md"), "theirs");
+    const command = { ...base, cwd: dir, tool_name: "Bash", tool_use_id: "tu_1", tool_input: { command: "sed -i s/a/b/ mine.md" } };
+    hook({ ...command, hook_event_name: "PreToolUse" }, env);
+    writeFileSync(join(dir, "mine.md"), "mine");
+    const after = hook({ ...command, hook_event_name: "PostToolUse" }, env).job;
+    const touched = after.steps.filter((step) => step.args?.[1] === "touch").flatMap((step) => step.args.filter((arg) => arg.startsWith("--file=")));
+    assert.ok(touched.includes("--file=mine.md"), String(touched));
+    assert.ok(!touched.includes("--file=theirs.md"), String(touched));
+    // Read once: a command run again under the same id finds nothing kept.
+    assert.equal(existsSync(sessionFiles(base.session_id, env).shell("tu_1")), false);
+  });
+
+  test("the CLI never guesses touched files from the whole working copy", () => {
+    const { job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
+    work(job, env);
+    work(plan({ ...base, cwd: dir, hook_event_name: "Stop" }, env), env);
+    const heartbeat = calls().find((call) => call.args[0] === "session" && call.args[1] === "heartbeat");
+    assert.ok(heartbeat, "a heartbeat was sent");
+    assert.equal(heartbeat.touch, undefined);
   });
 
   test("background retrieval reaches the next tool without auto-acknowledging", () => {
@@ -808,7 +849,7 @@ describe("with a working copy", () => {
     assert.ok(!existsSync(envFile), "nothing is written before the session's id is known");
     work(job, env);
     // A plain assignment: Claude Code gives it to PowerShell commands too.
-    assert.equal(readFileSync(envFile, "utf8"), "export G1T_SESSION=ses_fake01\n");
+    assert.equal(readFileSync(envFile, "utf8"), "export G1T_SESSION=ses_fake01\nexport G1T_TOUCH=0\n");
   });
 
   test("on a Node older than 18 nothing is recorded, and that is said once", () => {

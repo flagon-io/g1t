@@ -75,7 +75,9 @@ export function refusal(args, contract = CONTRACT) {
 
 function main() {
   const args = process.argv.slice(2);
-  appendFileSync(process.env.FAKE_G1T_LOG, `${JSON.stringify({ args, session: process.env.G1T_SESSION ?? null })}\n`);
+  // `touch` only when the caller left the CLI to guess touched files from the whole working copy.
+  const guesses = process.env.G1T_TOUCH === "0" ? {} : { touch: process.env.G1T_TOUCH ?? "unset" };
+  appendFileSync(process.env.FAKE_G1T_LOG, `${JSON.stringify({ args, session: process.env.G1T_SESSION ?? null, ...guesses })}\n`);
   const refused = refusal(args);
   if (refused) {
     process.stderr.write(`g1t: ${refused} See --help.\n`);
