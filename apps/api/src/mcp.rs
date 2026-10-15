@@ -137,7 +137,7 @@ fn card(addresses: &crate::addresses::Addresses) -> Value {
             })
         })
         .collect();
-    json!({
+    let mut card = json!({
         "name": "g1t",
         "description": "The g1t MCP server: issues, pull requests and sessions for agents.",
         "endpoint": addresses.mcp,
@@ -163,7 +163,16 @@ fn card(addresses: &crate::addresses::Addresses) -> Value {
         "documentation_url": "https://docs.g1t.sh/guides/bring-your-own-agent/",
         "instructions": INSTRUCTIONS,
         "tools": tools,
-    })
+    });
+    // Codex also reads the endpoint itself as protected resource metadata.
+    // Keep the public card useful to people and valid for OAuth discovery.
+    if let (Some(card), Value::Object(metadata)) = (
+        card.as_object_mut(),
+        crate::oauth::protected_resource_metadata(addresses),
+    ) {
+        card.extend(metadata);
+    }
+    card
 }
 
 pub async fn handle(
@@ -227,6 +236,31 @@ pub async fn handle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_card_supports_oauth_discovery() {
+        use crate::addresses::Addresses;
+
+        for addresses in [
+            Addresses::default(),
+            Addresses::from_settings(
+                Some("https://forge.example".into()),
+                Some("https://api.forge.example".into()),
+                Some("https://api.forge.example/mcp".into()),
+            ),
+        ] {
+            let card = card(&addresses);
+            assert_eq!(card["resource"], addresses.mcp);
+            assert_eq!(card["authorization_servers"], json!([addresses.api]));
+            assert_eq!(card["bearer_methods_supported"], json!(["header"]));
+            assert!(card["scopes_supported"].as_array().is_some_and(|scopes| !scopes.is_empty()));
+            for (key, value) in crate::oauth::protected_resource_metadata(&addresses).as_object().unwrap() {
+                assert_eq!(&card[key], value, "discovery field {key}");
+            }
+            assert_eq!(card["endpoint"], addresses.mcp);
+            assert!(card["tools"].as_array().is_some_and(|tools| !tools.is_empty()));
+        }
+    }
 
     /// The instructions name every tool, in the order `tools/list` gives
     /// them, so that no tool goes unmentioned.

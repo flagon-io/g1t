@@ -228,6 +228,17 @@ async fn token(request: &mut Request, services: &Services) -> Result<Response> {
 
 /// Answers the request if it is for an OAuth endpoint. These are served on
 /// both hosts: an MCP client looks for the metadata next to the MCP server.
+/// Shared by well-known discovery and the MCP endpoint's server card.
+pub(crate) fn protected_resource_metadata(addresses: &Addresses) -> Value {
+    json!({
+        "resource": addresses.mcp,
+        "authorization_servers": [addresses.api],
+        "bearer_methods_supported": ["header"],
+        "resource_documentation": "https://docs.g1t.sh/guides/bring-your-own-agent/",
+        "scopes_supported": g1t_contracts::scopes::offered_scopes().iter().map(|scope| scope.as_str()).collect::<Vec<_>>(),
+    })
+}
+
 pub async fn handle(
     request: &mut Request,
     services: &Services,
@@ -240,13 +251,7 @@ pub async fn handle(
         }
         // Asked for with or without the MCP server's path appended.
         ("GET", path) if path.starts_with("/.well-known/oauth-protected-resource") => {
-            crate::reply(&json!({
-                "resource": services.addresses.mcp,
-                "authorization_servers": [services.addresses.api],
-                "bearer_methods_supported": ["header"],
-                "resource_documentation": "https://docs.g1t.sh/guides/bring-your-own-agent/",
-                "scopes_supported": g1t_contracts::scopes::offered_scopes().iter().map(|scope| scope.as_str()).collect::<Vec<_>>(),
-            }))?
+            crate::reply(&protected_resource_metadata(&services.addresses))?
         }
         ("POST", "/oauth/register") => register(request).await?,
         ("POST", "/oauth/token") => token(request, services).await?,
