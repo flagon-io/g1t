@@ -371,7 +371,7 @@ token reaches one workspace (or only its owner's account), all, chosen or
 only public repositories of it, with permissions (`contents`, `issues`,
 `workflows`, …) mapped to these scopes; a workspace may require an owner
 to approve one first. For a coding agent, use the Agent preset (every read
-scope but `runners:read` and `chat:read`, plus `code:write`,
+scope but `runners:read` and `chat:read`, plus `repo:create`, `code:write`,
 `issues:write`, `pull_requests:write`, `notifications:write`). For CI, the CI preset (`repo:read`, `code:read`,
 `code:write`, `packages:read`, `packages:write`, `workflows:read`,
 `workflows:write`, `checks:read`, `checks:write`, `deployments:read`,

@@ -9,7 +9,8 @@
 //!
 //! Each scope is a resource and a level, written `resource:level`, such as
 //! `issues:write`. A higher level of a resource includes the lower ones:
-//! `repo:admin` includes `repo:write`, which includes `repo:read`.
+//! `repo:admin` includes `repo:write`, which includes `repo:create`, which
+//! includes `repo:read`.
 //!
 //! This module is the one source of truth: the API (REST and MCP) and git
 //! enforce it, and identity stores it. `packages/contracts/src/scopes.ts`
@@ -170,6 +171,9 @@ impl Resource {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Level {
     Read,
+    /// Making something new without changing what is there: only
+    /// `repo:create`, which creates repositories and nothing more.
+    Create,
     Write,
     /// Starting g1t's own agents: only `agents:run`, which is retired.
     Run,
@@ -182,6 +186,7 @@ impl Level {
     pub fn as_str(self) -> &'static str {
         match self {
             Level::Read => "read",
+            Level::Create => "create",
             Level::Write => "write",
             Level::Run => "run",
             Level::Delete => "delete",
@@ -195,6 +200,9 @@ impl Level {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Scope {
     RepoRead,
+    /// Creating repositories, and nothing that changes or deletes one: what
+    /// the Agent preset gives, so an agent can start a repository.
+    RepoCreate,
     RepoWrite,
     RepoAdmin,
     CodeRead,
@@ -253,8 +261,9 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, grouped by resource, least first.
-    pub const ALL: [Scope; 49] = [
+    pub const ALL: [Scope; 50] = [
         Scope::RepoRead,
+        Scope::RepoCreate,
         Scope::RepoWrite,
         Scope::RepoAdmin,
         Scope::CodeRead,
@@ -308,6 +317,7 @@ impl Scope {
     pub fn as_str(self) -> &'static str {
         match self {
             Scope::RepoRead => "repo:read",
+            Scope::RepoCreate => "repo:create",
             Scope::RepoWrite => "repo:write",
             Scope::RepoAdmin => "repo:admin",
             Scope::CodeRead => "code:read",
@@ -374,6 +384,7 @@ impl Scope {
 
     pub fn level(self) -> Level {
         match self.as_str().rsplit_once(':').map_or("", |(_, level)| level) {
+            "create" => Level::Create,
             "write" => Level::Write,
             "run" => Level::Run,
             "delete" => Level::Delete,
@@ -398,6 +409,7 @@ impl Scope {
     pub fn describe(self) -> &'static str {
         match self {
             Scope::RepoRead => "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search",
+            Scope::RepoCreate => "Create repositories, and nothing that changes or deletes one",
             Scope::RepoWrite => "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases",
             Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts",
             Scope::CodeRead => "Clone and fetch private repositories with git",
@@ -652,7 +664,11 @@ impl Preset {
                 let mut scopes: Vec<Scope> = reads().filter(|scope| scope.resource() != Resource::Runners).collect();
                 // And answering what needs the person it works for: marking
                 // it done, subscribing, watching.
+                // And starting a repository for what it builds, which changes
+                // nothing already there: `repo:write` would let it change
+                // merge settings and delete branches and releases.
                 scopes.extend([
+                    Scope::RepoCreate,
                     Scope::CodeWrite,
                     Scope::IssuesWrite,
                     Scope::PullRequestsWrite,
@@ -1047,7 +1063,9 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_deleted_repos", Scope::RepoRead),
     ("list_security_alerts", Scope::RepoRead),
     ("get_codeowners_errors", Scope::RepoRead),
-    ("create_repo", Scope::RepoWrite),
+    // Creating one changes nothing already there: `repo:create`, which
+    // `repo:write` includes.
+    ("create_repo", Scope::RepoCreate),
     ("update_repo", Scope::RepoWrite),
     ("update_project", Scope::RepoWrite),
     ("update_repo_settings", Scope::RepoWrite),
@@ -1543,7 +1561,7 @@ pub fn decide_packages(access: &TokenAccess, level: Level, public: bool) -> Deci
     let (needed, doing) = match level {
         Level::Read => (Scope::PackagesRead, "pull a private package"),
         Level::Delete | Level::Admin => (Scope::PackagesDelete, "delete packages"),
-        Level::Write | Level::Run => (Scope::PackagesWrite, "push or publish packages"),
+        Level::Create | Level::Write | Level::Run => (Scope::PackagesWrite, "push or publish packages"),
     };
     if !access.allows(needed) && !(level == Level::Read && public) {
         return Decision::deny(
@@ -1584,6 +1602,9 @@ mod tests {
     fn a_higher_level_includes_the_lower_ones_of_its_resource_only() {
         assert!(Scope::RepoAdmin.includes(Scope::RepoRead));
         assert!(Scope::RepoAdmin.includes(Scope::RepoWrite));
+        assert!(Scope::RepoWrite.includes(Scope::RepoCreate));
+        assert!(Scope::RepoCreate.includes(Scope::RepoRead));
+        assert!(!Scope::RepoCreate.includes(Scope::RepoWrite));
         assert!(Scope::IssuesWrite.includes(Scope::IssuesRead));
         assert!(!Scope::IssuesRead.includes(Scope::IssuesWrite));
         assert!(!Scope::RepoAdmin.includes(Scope::CodeWrite));
@@ -1722,6 +1743,41 @@ mod tests {
         let asked = std::collections::BTreeMap::from([("chat".to_owned(), "write".to_owned())]);
         assert_eq!(resolve_permissions(&asked, true), Ok(vec![Scope::ChatWrite]));
         assert!(resolve_permissions(&asked, false).is_err());
+    }
+
+    #[test]
+    fn the_agent_preset_creates_repositories_and_changes_none() {
+        let agent = Preset::Agent.scopes().unwrap();
+        assert!(agent.contains(&Scope::RepoCreate));
+        assert!(!agent.contains(&Scope::RepoWrite) && !agent.contains(&Scope::RepoAdmin));
+        assert!(oauth_default().contains(&Scope::RepoCreate));
+        assert_eq!(Scope::parse("repo:create"), Some(Scope::RepoCreate));
+        assert_eq!(Scope::RepoCreate.level(), Level::Create);
+        assert!(!Scope::RepoCreate.dangerous());
+        // Creating needs repo:create, which repo:write still gives.
+        assert_eq!(scope_for("create_repo"), Some(Scope::RepoCreate));
+        let creator = token(&agent);
+        assert!(decide(&creator, "create_repo", &json!({ "name": "web" })).allowed);
+        assert!(decide(&token(&[Scope::RepoWrite]), "create_repo", &json!({ "name": "web" })).allowed);
+        assert!(!decide(&token(&[Scope::RepoRead]), "create_repo", &json!({ "name": "web" })).allowed);
+        // And nothing that changes or deletes what is there.
+        for op in [
+            "update_repo",
+            "update_repo_settings",
+            "delete_branch",
+            "rename_branch",
+            "delete_release",
+            "fork_repo",
+            "set_repo_visibility",
+            "delete_repo",
+            "transfer_repo",
+        ] {
+            assert!(!decide(&creator, op, &json!({ "repo": "acme/web" })).allowed, "{op}");
+        }
+        // As a permission it is one level of repositories.
+        let asked = std::collections::BTreeMap::from([("repo".to_owned(), "create".to_owned())]);
+        assert_eq!(resolve_permissions(&asked, true), Ok(vec![Scope::RepoCreate]));
+        assert_eq!(top_scopes(&[Scope::RepoRead, Scope::RepoCreate]), vec![Scope::RepoCreate]);
     }
 
     #[test]

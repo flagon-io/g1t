@@ -95,6 +95,8 @@ export function levelLabel(resource: ScopeResource, level: ScopeLevel | "none"):
       return "No access";
     case "read":
       return "Read";
+    case "create":
+      return "Read and create";
     case "write":
       return levelsOf(resource).includes("read") ? "Read and write" : "Write";
     case "run":

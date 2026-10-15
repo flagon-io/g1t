@@ -4162,7 +4162,7 @@ pub static OPERATIONS: &[Operation] = &[
         path: "/repos",
         tag: "Repositories",
         summary: "Create a repository",
-        scope: Some("repo:write"),
+        scope: Some("repo:create"),
         params: &[],
         body: &[
             Field { name: "description", kind: "string", required: false, values: &[] },

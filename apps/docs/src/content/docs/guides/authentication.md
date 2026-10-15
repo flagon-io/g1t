@@ -774,7 +774,7 @@ Repository permissions apply in every repository the token reaches:
 
 | Permission | Levels | Scope names |
 | --- | --- | --- |
-| Repositories | read, read and write, admin | `repo:read`, `repo:write`, `repo:admin` |
+| Repositories | read, read and create, read and write, admin | `repo:read`, `repo:create`, `repo:write`, `repo:admin` |
 | Code | read, read and write | `code:read`, `code:write` |
 | Security | read, read and write | `security:read`, `security:write` |
 | Packages | read, read and write, read, write and delete | `packages:read`, `packages:write`, `packages:delete` |
@@ -839,7 +839,7 @@ any row.
 | Preset | Permissions |
 | --- | --- |
 | Read only | Every resource at read except Chat. Changes nothing. |
-| Agent | Every resource at read except Self-hosted runners and Chat, and Code, Issues, Pull requests and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, works on issues and pull requests, pushes code, and answers your inbox. No admin level. |
+| Agent | Every resource at read except Self-hosted runners and Chat, Repositories at read and create, and Code, Issues, Pull requests and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, creates repositories, works on issues and pull requests, pushes code, and answers your inbox. It cannot change or delete a repository, its settings, branches or releases. No admin level. |
 | CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 
 **All** is not a preset that grows: it ticks every permission there is
@@ -854,7 +854,7 @@ A scope is a permission's level, written `resource:level`, such as
 `issues:write`. A token stores the highest scope of each resource it
 holds, and every check reads them. A higher level includes the lower ones
 of the same resource: `repo:admin` includes `repo:write`, which includes
-`repo:read`. It never includes another resource: `repo:admin` does not let
+`repo:create`, which includes `repo:read`. It never includes another resource: `repo:admin` does not let
 a token push, which is `code:write`.
 
 Applications that [sign in with OAuth](#signing-in-with-oauth) ask for
@@ -864,6 +864,7 @@ one.
 | Scope | What it lets a token do |
 | --- | --- |
 | `repo:read` | See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search |
+| `repo:create` | Create repositories, and nothing that changes or deletes one |
 | `repo:write` | Create repositories, rename branches, change how pull requests merge and publish releases |
 | `repo:admin` | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts |
 | `code:read` | Clone and fetch private repositories with git |
@@ -1100,8 +1101,11 @@ you cannot give it more than it asked for. Like a token, it reaches
 everything you can.
 
 An application that asks for no scopes in particular gets the
-[Agent preset](#presets): every `read` scope except `runners:read` and `chat:read`, and `code:write`,
-`issues:write`, `pull_requests:write` and `notifications:write`.
+[Agent preset](#presets): every `read` scope except `runners:read` and `chat:read`, and `repo:create`,
+`code:write`, `issues:write`, `pull_requests:write` and `notifications:write`.
+The scopes are kept when you approve it: an application approved before
+`repo:create` joined the preset gets it only once you add it under
+Connected applications, or sign it in again.
 It never gets an admin scope unless it asks for one and you leave it
 ticked, and it gets `chat:read` and `chat:write` only by asking for them;
 with them it can use [Chat](#chat-and-notifications-without-the-website).
