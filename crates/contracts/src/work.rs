@@ -659,10 +659,15 @@ pub fn g1t_author() -> User {
 /// Who is recorded as opening an issue or a pull request that `actor`
 /// opens, and who asked for it: `(author, requested_by)`.
 ///
-/// - g1t's retired agent, acting for someone through a token of its own
+/// - A session g1t started for someone, which acts as that person with
+///   g1t's credential (`credentials::as_person` keeps its `acting`), and
+///   g1t's retired agent, acting for someone through a token of its own
 ///   that still works: g1t, requested by that person.
 /// - Anyone else, and g1t's own work that nobody asked for: the actor, and
 ///   nobody asking.
+///
+/// What a session writes in a conversation (comments, reviews, what it
+/// closes) is recorded the same way: g1t, acting for the person.
 pub fn authorship(actor: &User) -> (User, Option<User>) {
     let person = |id: &str, username: &str| User {
         id: id.to_owned(),
@@ -670,7 +675,7 @@ pub fn authorship(actor: &User) -> (User, Option<User>) {
         kind: crate::PrincipalKind::User,
         ..User::default()
     };
-    if actor.kind == crate::PrincipalKind::Agent {
+    if actor.kind == crate::PrincipalKind::Agent || actor.acting.is_some() {
         let asked = actor
             .acting
             .as_ref()
@@ -904,7 +909,8 @@ pub struct Comment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<AgentRef>,
     /// Who the agent acted for: the person whose access it had, who
-    /// answers for it as its author would. Set with `agent`.
+    /// answers for it as its author would. Set with `agent`, and when g1t
+    /// wrote it (or did what an event notes) in a session someone started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acting_for: Option<User>,
     /// An agent's review: shown with its verdict (or none, for a review

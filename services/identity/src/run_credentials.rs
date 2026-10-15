@@ -1,5 +1,6 @@
 //! Run credentials: a token per sandbox run (checks, the merge queue, a
-//! merge check, a deployment or a security update's bump), bound to the
+//! merge check, a deployment, a security update's bump, or a session g1t
+//! started on an agent's harness), bound to the
 //! run, its repository and what its kind of work needs, acting as g1t on
 //! behalf of the person who started the work, or of the workspace for
 //! g1t's own. See `g1t_contracts::credentials` for the policy.
@@ -24,6 +25,9 @@ use crate::Identity;
 
 /// No run outlives this, whatever its caller asks for.
 const MAX_RUN_TTL_SECONDS: u64 = 6 * 60 * 60;
+/// Nor a session on an agent's harness this, which is stopped by then
+/// (integrations' agent_sessions.rs) and its credential revoked when it ends.
+const MAX_SESSION_TTL_SECONDS: u64 = 12 * 60 * 60;
 const MIN_RUN_TTL_SECONDS: u64 = 60;
 /// More hashes than one sandbox ever holds.
 const MAX_HASHES: usize = 8;
@@ -33,6 +37,14 @@ const MAX_HASHES: usize = 8;
 /// agents' (`RunCredentialKind::retired`).
 fn issued_for(kind: RunCredentialKind, usage: CredentialUse) -> bool {
     !kind.retired() && usage == CredentialUse::Runner
+}
+
+/// How long a credential of this kind may last.
+fn max_ttl(kind: RunCredentialKind) -> u64 {
+    match kind {
+        RunCredentialKind::Session => MAX_SESSION_TTL_SECONDS,
+        _ => MAX_RUN_TTL_SECONDS,
+    }
 }
 
 /// A SHA-256 in lowercase hex, as tokens are stored.
@@ -164,7 +176,7 @@ impl Identity {
                 ),
                 ttl_seconds: Some(
                     a.ttl_seconds
-                        .clamp(MIN_RUN_TTL_SECONDS, MAX_RUN_TTL_SECONDS),
+                        .clamp(MIN_RUN_TTL_SECONDS, max_ttl(a.kind)),
                 ),
                 // A run credential's scope is its run's; see agent_scope.
                 scopes: None,
@@ -261,9 +273,17 @@ mod tests {
             .filter(|kind| issued_for(**kind, CredentialUse::Runner))
             .map(|kind| kind.as_str())
             .collect();
-        assert_eq!(issued, ["checks", "queue", "mergecheck", "deploy", "bump"]);
+        assert_eq!(issued, ["checks", "queue", "mergecheck", "deploy", "bump", "session"]);
         // A retired hosted agent's tools token is never made.
         assert!(RunCredentialKind::ALL.iter().all(|kind| !issued_for(*kind, CredentialUse::Tools)));
+    }
+
+    /// A session's credential lasts as long as a session may run; every
+    /// other run's no longer than six hours.
+    #[test]
+    fn a_session_s_credential_lasts_as_long_as_it_may_run() {
+        assert_eq!(super::max_ttl(RunCredentialKind::Session), 12 * 60 * 60);
+        assert_eq!(super::max_ttl(RunCredentialKind::Checks), 6 * 60 * 60);
     }
 
     #[test]

@@ -472,7 +472,7 @@ impl Work {
         removed: &[String],
         colors: &[(String, String)],
     ) -> Result<()> {
-        let who = (actor.id.as_str(), actor.username.as_str());
+        let who = actor;
         if !added.is_empty() {
             self.note(item.repo_id(), item.number(), who, &label_note("added", added)).await?;
         }

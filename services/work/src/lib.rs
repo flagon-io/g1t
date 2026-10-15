@@ -400,29 +400,34 @@ impl Work {
 
     /// Records something that happened to an issue or a pull request, so
     /// that it shows in the conversation where it happened. `text` is what
-    /// `author` did, as the rest of a sentence starting with their name.
-    pub(crate) async fn note(
+    /// `author` did, as the rest of a sentence starting with their name:
+    /// an id and a name, or someone acting, as [`rows::By`] records them.
+    pub(crate) async fn note<'a>(
         &self,
         repo_id: &str,
         number: u32,
-        author: (&str, &str),
+        author: impl Into<rows::By<'a>>,
         text: &str,
     ) -> Result<()> {
+        let author = author.into();
         let now = now_ms();
         self.db
             .prepare(
                 "INSERT INTO comments
-                   (id, repo_id, number, author_id, author_name, body, kind, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, 'event', ?)",
+                   (id, repo_id, number, author_id, author_name, body, kind, created_at,
+                    acting_for_id, acting_for_name)
+                 VALUES (?, ?, ?, ?, ?, ?, 'event', ?, ?, ?)",
             )
             .bind(&[
                 new_id("cmt", now).into(),
                 repo_id.into(),
                 number.into(),
-                author.0.into(),
-                author.1.into(),
+                author.id.into(),
+                author.name.into(),
                 text.into(),
                 rfc3339(now).into(),
+                author.acting_for.map_or(JsValue::NULL, |(id, _)| id.into()),
+                author.acting_for.map_or(JsValue::NULL, |(_, name)| name.into()),
             ])?
             .run()
             .await?;
@@ -449,10 +454,11 @@ impl Work {
         };
         let new: Vec<&String> = after.iter().filter(|name| !before.contains(name)).collect();
         let gone: Vec<&String> = before.iter().filter(|name| !after.contains(name)).collect();
-        let who = (actor.id.as_str(), actor.username.as_str());
+        let who = actor;
         if !new.is_empty() {
-            // Taking something on oneself reads better said that way.
-            let text = if added == "assigned" && new == [&actor.username] {
+            // Taking something on oneself reads better said that way (not
+            // when g1t, acting for them, did it).
+            let text = if added == "assigned" && new == [&actor.username] && actor.acting.is_none() {
                 "self-assigned this".to_owned()
             } else {
                 format!("{added} {}", joined(new))
@@ -928,7 +934,7 @@ impl Work {
         self.note(
             &issue.repo_id,
             issue.number,
-            (&a.actor.id, &a.actor.username),
+            &a.actor,
             &pushed::closed_note(note, session.as_deref()),
         )
         .await?;
@@ -970,7 +976,7 @@ impl Work {
         self.note(
             &issue.repo_id,
             issue.number,
-            (&a.actor.id, &a.actor.username),
+            &a.actor,
             "reopened this",
         )
         .await?;
@@ -1062,10 +1068,12 @@ impl Work {
         };
 
         let now = now_ms();
+        // A session g1t started for someone writes as g1t, for them.
+        let by = rows::By::from(&a.actor);
         let comment = Comment {
             kind: CommentKind::Comment,
             id: new_id("cmt", now),
-            author: a.actor.clone(),
+            author: if by.id == a.actor.id { a.actor.clone() } else { rows::user(by.id.to_owned(), by.name.to_owned()) },
             body: body.to_owned(),
             path: path.map(str::to_owned),
             line,
@@ -1073,7 +1081,7 @@ impl Work {
             created_at: rfc3339(now),
             edited_at: None,
             agent: None,
-            acting_for: None,
+            acting_for: by.acting_for.map(|(id, name)| rows::user(id.to_owned(), name.to_owned())),
             advisory: false,
             reactions: Vec::new(),
         };
@@ -1083,21 +1091,23 @@ impl Work {
                     .prepare(
                         "INSERT INTO comments
                            (id, repo_id, number, author_id, author_name, body, path, line,
-                            verdict, created_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            verdict, created_at, acting_for_id, acting_for_name)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         comment.id.as_str().into(),
                         repo.id.as_str().into(),
                         a.number.into(),
-                        a.actor.id.as_str().into(),
-                        a.actor.username.as_str().into(),
+                        by.id.into(),
+                        by.name.into(),
                         body.into(),
                         optional(&comment.path),
                         optional_number(line),
                         a.verdict
                             .map_or(JsValue::NULL, |verdict| verdict.as_str().into()),
                         comment.created_at.as_str().into(),
+                        by.acting_for.map_or(JsValue::NULL, |(id, _)| id.into()),
+                        by.acting_for.map_or(JsValue::NULL, |(_, name)| name.into()),
                     ])?,
                 self.db
                     .prepare(format!(
@@ -1459,7 +1469,7 @@ impl Work {
         fill_base(&mut pull, &repo);
         if let Some(issue) = pull.issue {
             let text = format!("opened #{} for this", pull.number);
-            self.note(&repo.id, issue, (&a.actor.id, &a.actor.username), &text)
+            self.note(&repo.id, issue, &a.actor, &text)
                 .await?;
         }
         // Its head and merge refs in the repository, before its events go out.
@@ -1966,7 +1976,7 @@ impl Work {
         self.note(
             &pull.repo_id,
             pull.number,
-            (&actor.id, &actor.username),
+            actor,
             &format!("changed the base branch from `{before}` to `{base}`"),
         )
         .await?;
@@ -2036,7 +2046,7 @@ impl Work {
             self.note(
                 &pull.repo_id,
                 pull.number,
-                (&a.actor.id, &a.actor.username),
+                &a.actor,
                 "marked this ready for review",
             )
             .await?;
@@ -2078,7 +2088,7 @@ impl Work {
         self.note(
             &pull.repo_id,
             pull.number,
-            (&a.actor.id, &a.actor.username),
+            &a.actor,
             "closed this",
         )
         .await?;
@@ -2149,7 +2159,7 @@ impl Work {
         self.note(
             &pull.repo_id,
             pull.number,
-            (&a.actor.id, &a.actor.username),
+            &a.actor,
             "reopened this",
         )
         .await?;
@@ -2197,7 +2207,7 @@ impl Work {
         self.note(
             &pull.repo_id,
             pull.number,
-            (&a.actor.id, &a.actor.username),
+            &a.actor,
             "marked this as a draft",
         )
         .await?;

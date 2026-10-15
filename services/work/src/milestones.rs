@@ -336,7 +336,7 @@ impl Work {
             .run()
             .await?;
         if let Some(text) = milestone_note(before.as_ref(), after.as_ref()) {
-            self.note(&repo.id, item.number(), (&actor.id, &actor.username), &text).await?;
+            self.note(&repo.id, item.number(), actor, &text).await?;
         }
         for (what, milestone) in [("demilestoned", before), ("milestoned", after)] {
             let Some(milestone) = milestone else { continue };

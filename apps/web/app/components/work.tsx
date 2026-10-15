@@ -262,6 +262,7 @@ export function TimelineItem({
   author,
   bot = false,
   agent,
+  actingFor = agent?.actingFor,
   action,
   at,
   edited,
@@ -279,6 +280,8 @@ export function TimelineItem({
    * of `author`.
    */
   agent?: { ref: AgentRef; actingFor?: string | null };
+  /** Whom g1t acted for, when a session g1t started for someone wrote it. */
+  actingFor?: string | null;
   /** What they did, after their name: "commented", "opened this". */
   action: ReactNode;
   at?: string;
@@ -318,11 +321,11 @@ export function TimelineItem({
             )}
             {action}
             {at && <TimeAgo at={at} />}
-            {agent?.actingFor && (
+            {actingFor && (
               <span className="text-xs text-faint">
                 on behalf of{" "}
-                <PersonLink name={agent.actingFor} className="hover:text-fg hover:underline">
-                  @{agent.actingFor}
+                <PersonLink name={actingFor} className="hover:text-fg hover:underline">
+                  @{actingFor}
                 </PersonLink>
               </span>
             )}
@@ -644,12 +647,14 @@ export function CommentList({
             key={comment.id}
             id={comment.id}
             author={comment.author.username}
+            bot={comment.author.kind === "agent"}
             agent={
               comment.agent && {
                 ref: comment.agent,
                 actingFor: comment.actingFor?.username,
               }
             }
+            actingFor={comment.actingFor?.username}
             at={comment.createdAt}
             action={
               <>

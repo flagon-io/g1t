@@ -22,7 +22,7 @@ who is asking from the viewer it is handed.
 | Access token | `g1t_…`, personal or a workspace's, with scopes | The API, MCP, git, the CLI | `user_for_access_token` |
 | OAuth access token | Issued by `POST /oauth/token`, refreshed with `g1r_…` | MCP clients, the phone app, apps you authorise | `user_for_access_token` |
 | Job token | `G1T_TOKEN` in a workflow job | Actions, for that job alone | `user_for_access_token` |
-| Run credential | Made per sandbox run, up to 6 hours | Sandboxes | `user_for_access_token` |
+| Run credential | Made per sandbox run, up to 6 hours, or per [session](/guides/sessions/) g1t starts on Claude Managed Agents, up to 12 | Sandboxes; a session's agent, for the API, MCP, git and the CLI | `user_for_access_token` |
 | git password | Your account's password | git, only without two-factor authentication | `user_for_git_credentials` |
 
 The CLI signs in with the device flow of RFC 8628 (`/device/code`, then
@@ -41,7 +41,7 @@ arguments. It is `null` for someone signed out.
 | `kind` | `User`, `Workspace`, `Agent` or `System`: what kind of principal this is |
 | `workspaces` | Each membership: the role, the workspace's base permission, the roles that add to a member, such as billing or security manager, and privileges |
 | `grants` | Roles on repositories, directly or through teams |
-| `acting` | For a job or run token: the narrower scope it acts within |
+| `acting` | For a job or run token: the narrower scope it acts within. A session's run credential resolves to g1t acting on behalf of the person who started it; past the API it is that person with `acting` kept, so their role decides and what it writes is recorded as g1t's for them |
 
 A service never asks `identity` whether someone may do something. Each
 calls `can` in `g1t_contracts::access`, the same rules compiled into every

@@ -4,9 +4,12 @@
 //! g1t runs no model. With the workspace's Anthropic connection, g1t starts
 //! a Claude Managed Agents session with that key: it keeps one agent and one
 //! environment on the account (made once, updated when what g1t asks of them
-//! changes), and for each session a vault holding a g1t token made for the
-//! person who started it and that repository only, which lasts the session:
-//! the MCP server's credential (`static_bearer`) and `G1T_TOKEN` for git and
+//! changes), and for each session a vault holding a g1t token, which lasts
+//! the session: a session's run credential (`credentials::RunCredentialKind::Session`),
+//! g1t acting on behalf of the person who started it, in that repository
+//! only, so what it writes on g1t (comments, reviews, closes, the issues and
+//! pull requests it opens) shows as g1t's for them, while what it may do is
+//! their role there. It is the MCP server's credential (`static_bearer`) and `G1T_TOKEN` for git and
 //! the CLI (`environment_variable`, swapped in on the way out). The model and
 //! the sandbox never see the token, and it is never in the prompt; the key
 //! never leaves this service. g1t's own skills (work-on-issue, coordinate,
@@ -32,7 +35,8 @@
 use std::collections::BTreeMap;
 
 use g1t_contracts::agent_sessions::*;
-use g1t_contracts::identity::{CreateAccessTokenArgs, CreatedAccessToken, RemoveArgs};
+use g1t_contracts::credentials::{CreateRunCredentialArgs, CredentialUse, GitGrant, RunCredentialKind};
+use g1t_contracts::identity::{CreatedAccessToken, RemoveArgs};
 use g1t_contracts::ai::AiProvider;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
@@ -65,17 +69,6 @@ const MAX_SKILLS: usize = 20;
 const TOKEN_TTL_SECONDS: u64 = 12 * 60 * 60;
 /// A session still going after this long is stopped.
 const MAX_RUN_MS: u64 = 12 * 60 * 60 * 1000;
-/// The scopes of the token a session holds: what working on an issue needs.
-const SCOPES: [&str; 8] = [
-    "repo:read",
-    "code:write",
-    "issues:write",
-    "pull_requests:write",
-    "checks:read",
-    "workflows:read",
-    "deployments:read",
-    "observability:read",
-];
 /// The most events read from one stream in one look.
 const PAGE: u32 = 100;
 const MAX_PAGES: usize = 5;
@@ -109,7 +102,8 @@ pub fn system_prompt() -> String {
      - Use the g1t CLI from the clone, as the work-on-issue skill does: `g1t work context N`, `g1t work claim N --note …`, \
      `g1t pr create --issue N --draft --fill`, `g1t pr checks --watch --fail-fast`, `g1t run logs --failed`. \
      Add `--json` when you need fields; `g1t <command> --help` says the rest.\n\
-     - g1t's MCP server (the `g1t` tools) does the same as that person on that repository only. Use it when the CLI has no command for something.\n\
+     - g1t's MCP server (the `g1t` tools) does the same, on that repository only. Use it when the CLI has no command for something.\n\
+     - Your token is g1t's, acting for that person: what you do on g1t shows as g1t's on their behalf, and you may do what they may there.\n\
      - `G1T_TOKEN` is set for the CLI and git. In the sandbox it is a placeholder that becomes the token only in a header on the way to g1t, \
      never in a URL. Never print it or send it anywhere else.\n\
      - Follow the work-on-issue skill. Check the work context and the sessions on the issue before you start, and claim only what you take. \
@@ -123,7 +117,7 @@ pub fn system_prompt() -> String {
      `g1t deploy list` until it is live or failed; if it failed, read why, fix it and push again. Say where it is live in your report.\n\
      - Never write `@g1t` in what you post on g1t: that asks g1t for another session.\n\
      - When you finish, say in a few sentences what you did, what is left, and the pull request, if any. That is your report on g1t: it shows on the issue as this session's card, so never post it, \
-     or anything else, as a comment. Your token is the person's, and a comment would read as theirs."
+     or anything else, as a comment."
         .to_owned()
 }
 
@@ -1040,17 +1034,21 @@ impl Integrations {
             Some((number, title, _)) => format!("#{number} {}", title.trim()),
             None => format!("#{} {}", issue.number, issue.title.trim()),
         };
-        // The token the session holds: this person, this repository, until it ends.
+        // The token the session holds: g1t acting for this person, in this
+        // repository, until it ends (a session's run credential), so what
+        // it writes on g1t is g1t's for them, and its pushes are theirs.
         let created: CreatedAccessToken = g1t_kit::call(
             &self.identity,
-            "create_access_token",
-            &CreateAccessTokenArgs {
-                user: actor.clone(),
-                name: format!("Claude Managed Agents session on {repo_name}#{}", issue.number),
-                ttl_seconds: Some(TOKEN_TTL_SECONDS),
-                scopes: Some(SCOPES.iter().map(|scope| (*scope).to_owned()).collect()),
-                listed: false,
-                repo: Some(repo_name.clone()),
+            "create_run_credential",
+            &CreateRunCredentialArgs {
+                on_behalf_of: actor.clone(),
+                repo: repo.clone(),
+                kind: RunCredentialKind::Session,
+                usage: CredentialUse::Runner,
+                number: None,
+                read: Vec::new(),
+                push: vec![GitGrant { repo: repo.clone(), branch: None }],
+                ttl_seconds: TOKEN_TTL_SECONDS,
             },
         )
         .await?;

@@ -333,7 +333,11 @@ export type Comment = {
    * show it by `agent.displayName` with an Agent badge, never as a person.
    */
   agent?: AgentRef;
-  /** Who the agent acted for, whose access capped it. Set with `agent`. */
+  /**
+   * Who the agent acted for, whose access capped it. Set with `agent`, and
+   * when g1t (`author`) wrote it, or did what an event notes, in a session
+   * someone started: show "on behalf of @them".
+   */
   actingFor?: User;
   /**
    * An agent's review. Its `verdict` (none for a review that only

@@ -24,12 +24,15 @@ export type RunCredentialKind =
   | "queue"
   | "mergecheck"
   | "deploy"
-  | "bump";
+  | "bump"
+  /** A session g1t started on an agent's harness: g1t acting for the person, in one repository. */
+  | "session";
 
 /**
  * `runner`: g1t's runner in the sandbox, which clones, pushes and records
- * the session, acting downstream as the person. `tools`: the agent's own
- * MCP tools, acting as the agent.
+ * the session, acting downstream as the person (a session's, also over the
+ * API, MCP and the CLI, as g1t for them). `tools`: the agent's own MCP
+ * tools, acting as the agent.
  */
 export type CredentialUse = "runner" | "tools";
 

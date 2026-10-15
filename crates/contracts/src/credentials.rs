@@ -8,6 +8,11 @@
 //! intersection of the two: the run's scope, and what that person may do
 //! right now.
 //!
+//! A session g1t starts on an agent's harness (Claude Managed Agents) holds
+//! one too, of the kind `session`: what it does over the API, MCP and the
+//! CLI is recorded as g1t's, for that person, and git takes its pushes as
+//! theirs. See [`RunCredentialKind::Session`].
+//!
 //! g1t's retired hosted agents had run credentials too (`implement`,
 //! `revise`, `review`, `answer`, `update`, `plan`). Those kinds still parse,
 //! so stored tokens and the history they wrote read as before, but no
@@ -50,10 +55,19 @@ pub enum RunCredentialKind {
     /// A security update: raising one package's version in its lockfiles
     /// and pushing that to a branch of its own. Not an agent.
     Bump,
+    /// A session g1t started on an agent's harness (Claude Managed Agents)
+    /// for the person who asked, on one issue or pull request. It works
+    /// through the API, MCP and the CLI with what [`SESSION_SCOPES`] allow,
+    /// in its repository only, and pushes to that repository and its pull
+    /// requests' working copies. What it writes (comments, reviews, closes,
+    /// the issues and pull requests it opens) is g1t's, for that person;
+    /// what it may do is that person's role there, never beyond
+    /// [`AGENT_CEILING`].
+    Session,
 }
 
 impl RunCredentialKind {
-    pub const ALL: [RunCredentialKind; 11] = [
+    pub const ALL: [RunCredentialKind; 12] = [
         RunCredentialKind::Implement,
         RunCredentialKind::Revise,
         RunCredentialKind::Review,
@@ -65,6 +79,7 @@ impl RunCredentialKind {
         RunCredentialKind::Mergecheck,
         RunCredentialKind::Deploy,
         RunCredentialKind::Bump,
+        RunCredentialKind::Session,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -80,6 +95,7 @@ impl RunCredentialKind {
             RunCredentialKind::Mergecheck => "mergecheck",
             RunCredentialKind::Deploy => "deploy",
             RunCredentialKind::Bump => "bump",
+            RunCredentialKind::Session => "session",
         }
     }
 
@@ -105,7 +121,8 @@ impl RunCredentialKind {
 pub enum CredentialUse {
     /// g1t's runner: cloning, fetching and pushing what the run needs. It
     /// acts as the person downstream, so that what it pushes is theirs,
-    /// within the run's scope.
+    /// within the run's scope. A session's is also its agent's token for
+    /// the API, MCP and the CLI.
     Runner,
     /// A retired hosted agent's own tools, over MCP. Kept so stored tokens
     /// parse; never issued.
@@ -516,14 +533,42 @@ pub fn is_read(operation: &str) -> bool {
     READ_OPERATIONS.contains(&operation)
 }
 
+/// The scopes of a session's credential ([`RunCredentialKind::Session`]):
+/// what working on an issue needs, named as an access token's are.
+pub const SESSION_SCOPES: [&str; 8] = [
+    "repo:read",
+    "code:write",
+    "issues:write",
+    "pull_requests:write",
+    "checks:read",
+    "workflows:read",
+    "deployments:read",
+    "observability:read",
+];
+
 /// The API and MCP operations a run of `kind` may use with a credential
-/// for `usage`. Git is separate: see [`decide_git`]. None today: every run
-/// still issued works through git alone, and a
+/// for `usage`. Git is separate: see [`decide_git`]. A session's may use
+/// every operation [`SESSION_SCOPES`] allow, and never one in [`NEVER`];
+/// every other run still issued works through git alone, and a
 /// [retired](RunCredentialKind::retired) kind grants nothing. A stored
 /// token keeps the operations it was made with until it expires.
 pub fn operations_for(kind: RunCredentialKind, usage: CredentialUse) -> Vec<&'static str> {
-    let _ = (kind, usage);
-    Vec::new()
+    use crate::scopes::{NO_SCOPE, OPERATIONS, Scope};
+    if kind != RunCredentialKind::Session || usage != CredentialUse::Runner {
+        return Vec::new();
+    }
+    let held: Vec<Scope> = SESSION_SCOPES.iter().filter_map(|scope| Scope::parse(scope)).collect();
+    NO_SCOPE
+        .iter()
+        .copied()
+        .chain(
+            OPERATIONS
+                .iter()
+                .filter(|(_, needed)| held.iter().any(|scope| scope.includes(*needed)))
+                .map(|(name, _)| *name),
+        )
+        .filter(|name| !NEVER.contains(name))
+        .collect()
 }
 
 /// What a run's credential may do, in the scope vocabulary that access
@@ -538,7 +583,7 @@ pub fn run_scopes(kind: RunCredentialKind, usage: CredentialUse) -> Vec<crate::s
         .collect();
     if usage == CredentialUse::Runner && !kind.retired() {
         scopes.push(Scope::CodeRead);
-        if kind == RunCredentialKind::Bump {
+        if matches!(kind, RunCredentialKind::Bump | RunCredentialKind::Session) {
             scopes.push(Scope::CodeWrite);
         }
     }
@@ -660,6 +705,15 @@ pub fn decide_operation(
 /// Whether a run credential may clone or fetch (`write` false), or push to
 /// (`write` true), the repository at `repo`.
 pub fn decide_git(scope: &AgentScope, repo: &RepoPath, write: bool) -> Decision {
+    decide_git_at(scope, repo, None, write)
+}
+
+/// [`decide_git`] for the repository at `repo`, which is a pull request's
+/// working copy of `source` when `source` is set. A session's credential
+/// reaches the working copies of its own repository's pull requests as it
+/// does the repository: the pull requests it opens get theirs after the
+/// credential is made.
+pub fn decide_git_at(scope: &AgentScope, repo: &RepoPath, source: Option<&RepoPath>, write: bool) -> Decision {
     let Some(run) = scope
         .run
         .as_ref()
@@ -670,7 +724,8 @@ pub fn decide_git(scope: &AgentScope, repo: &RepoPath, write: bool) -> Decision 
             "A tools token cannot be used with git.",
         );
     };
-    let pushable = run.push.iter().any(|grant| same_repo(&grant.repo, repo));
+    let own_copy = run.kind == RunCredentialKind::Session && source.is_some_and(|source| same_repo(source, &scope.repo));
+    let pushable = own_copy || run.push.iter().any(|grant| same_repo(&grant.repo, repo));
     if write {
         return if pushable {
             Decision::allow(format!("{}:push", scope_rule(scope)))
@@ -795,7 +850,11 @@ pub fn intersect_grants(person: &[RepoGrant], namespace: &str) -> Vec<RepoGrant>
 }
 
 /// Who a runner's credential acts as downstream: the person, with only the
-/// agent's (already intersected) memberships. `None` for anything else.
+/// agent's (already intersected) memberships. A session's keeps what it
+/// acts as ([`Acting`]), so that what it writes is recorded as g1t's for
+/// that person ([`crate::work::authorship`]), while whose it is (its
+/// session, its claims) and what may be done stay the person's. `None`
+/// for anything else.
 pub fn as_person(user: &User) -> Option<User> {
     let acting = user.acting.as_ref()?;
     if user.kind != PrincipalKind::Agent {
@@ -813,7 +872,7 @@ pub fn as_person(user: &User) -> Option<User> {
         verified: user.verified,
         workspaces: user.workspaces.clone(),
         avatar: None,
-        acting: None,
+        acting: (run.kind == RunCredentialKind::Session).then(|| acting.clone()),
         grants: user.grants.clone(),
         token: None,
         held: Vec::new(),
@@ -857,6 +916,9 @@ mod tests {
             let parsed: RunCredentialKind = serde_json::from_value(serde_json::json!(kind.as_str())).unwrap();
             assert_eq!(parsed, kind);
             for usage in [CredentialUse::Runner, CredentialUse::Tools] {
+                if kind == RunCredentialKind::Session && usage == CredentialUse::Runner {
+                    continue;
+                }
                 assert!(operations_for(kind, usage).is_empty(), "{kind:?} {usage:?}");
                 if kind.retired() {
                     assert!(run_scopes(kind, usage).is_empty(), "{kind:?} {usage:?}");
@@ -1254,6 +1316,97 @@ mod tests {
         let written = serde_json::to_string(&own).unwrap();
         assert!(written.contains(r#""system":true"#));
         assert!(back_run(&written).system);
+    }
+
+    fn session_scope() -> AgentScope {
+        AgentScope {
+            repo: path("acme", "rocket"),
+            operations: operations_for(K::Session, Runner).into_iter().map(str::to_owned).collect(),
+            run: Some(RunBinding {
+                kind: K::Session,
+                usage: Runner,
+                run_id: None,
+                number: None,
+                agent: "g1t".to_owned(),
+                system: false,
+                read: Vec::new(),
+                push: vec![GitGrant { repo: path("acme", "rocket"), branch: None }],
+            }),
+        }
+    }
+
+    /// A session works on its issue through the API and MCP with what its
+    /// scopes allow, in its repository, and never with what no run may.
+    #[test]
+    fn a_session_does_what_its_scopes_allow_in_its_repository() {
+        let scope = session_scope();
+        let user = agent(&["acme"], scope.clone());
+        let rocket = path("acme", "rocket");
+        let decide = |operation: &str, repo: &RepoPath| decide_operation(&user, &scope, operation, Some(repo), true, Some(1));
+        for operation in [
+            "whoami",
+            "get_work",
+            "claim_issue",
+            "add_comment",
+            "close_issue",
+            "create_pull_request",
+            "review_pull_request",
+            "mark_pull_request_ready",
+            "record_session",
+            "update_session",
+            "get_workflow_run",
+        ] {
+            let decision = decide(operation, &rocket);
+            assert!(decision.allowed, "{operation}: {:?}", decision.reason);
+            assert_eq!(decision.rule, "run:session/runner");
+        }
+        assert_eq!(decide("add_comment", &path("acme", "billing")).rule, "scope:repository");
+        for operation in ["merge_pull_request", "update_repo_settings", "set_actions_secret", "list_members", "delete_repo"] {
+            assert_eq!(decide(operation, &rocket).rule, "never", "{operation}");
+        }
+        // What its scopes do not reach: workspaces' settings, deleting.
+        for operation in ["update_workspace", "delete_package", "create_webhook"] {
+            assert!(!decide(operation, &rocket).allowed, "{operation}");
+        }
+        use crate::scopes::Scope;
+        let scopes = run_scopes(K::Session, Runner);
+        assert!(scopes.contains(&Scope::CodeWrite) && scopes.contains(&Scope::IssuesWrite));
+        assert!(scopes.iter().all(|scope| !scope.dangerous()));
+    }
+
+    /// It pushes to its repository, any branch (a new repository's first
+    /// version goes to its default branch), and to the working copies of
+    /// that repository's pull requests, made after it was.
+    #[test]
+    fn a_session_pushes_to_its_repository_and_its_pull_requests() {
+        let session = session_scope();
+        let rocket = path("acme", "rocket");
+        let copy = path("pulls", "pul_9");
+        assert!(decide_git(&session, &rocket, true).allowed);
+        assert!(!limits_branches(&session, &rocket));
+        assert!(decide_git_at(&session, &copy, Some(&rocket), true).allowed);
+        assert!(decide_git_at(&session, &copy, Some(&rocket), false).allowed);
+        assert_eq!(decide_git(&session, &copy, true).rule, "git:push");
+        assert_eq!(decide_git_at(&session, &copy, Some(&path("acme", "billing")), true).rule, "git:push");
+        assert_eq!(decide_git(&session, &path("acme", "billing"), false).rule, "git:read");
+        // Another kind of run never reaches a pull request's copy this way.
+        assert!(!decide_git_at(&scope(K::Update, Runner), &copy, Some(&rocket), true).allowed);
+    }
+
+    /// Downstream it is the person, so the session and claims it records
+    /// are theirs, and it still says it is g1t acting for them, so what it
+    /// writes is g1t's.
+    #[test]
+    fn a_session_acts_downstream_as_the_person_through_g1t() {
+        let user = agent(&["acme"], session_scope());
+        let person = as_person(&user).unwrap();
+        assert_eq!((person.id.as_str(), person.kind), ("usr_1", PrincipalKind::User));
+        let acting = person.acting.as_ref().expect("it says it is g1t acting for them");
+        assert_eq!((acting.agent.as_str(), acting.on_behalf_of.username.as_str()), ("g1t", "syntaqx"));
+        assert_eq!(describe(&person), "g1t on behalf of syntaqx");
+        let (author, asked) = crate::work::authorship(&person);
+        assert_eq!(author.username, "g1t");
+        assert_eq!(asked.map(|asked| asked.username).as_deref(), Some("syntaqx"));
     }
 
     fn back_run(written: &str) -> RunBinding {
