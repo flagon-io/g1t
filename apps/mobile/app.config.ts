@@ -10,11 +10,11 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
  * profiles) picks an identity, so a development build, a preview build
  * and the store build install side by side on one phone:
  *
- * | Variant       | Android package / iOS bundle | Name        |
- * | ------------- | ---------------------------- | ----------- |
- * | `development` | `sh.g1t.app.dev`             | g1t (dev)   |
- * | `preview`     | `sh.g1t.app.preview`         | g1t (beta)  |
- * | production    | `sh.g1t.app`                 | g1t         |
+ * | Variant       | Android package / iOS bundle | Name               |
+ * | ------------- | ---------------------------- | ------------------ |
+ * | `development` | `sh.g1t.app.dev`             | g1t (dev)          |
+ * | `preview`     | `sh.g1t.app.preview`         | g1t (experimental) |
+ * | production    | `sh.g1t.app`                 | g1t                |
  *
  * The EAS project is g1t's on expo.dev; push notifications on Android
  * also need the Firebase credentials uploaded there (README.md).
@@ -25,7 +25,7 @@ const EAS_PROJECT = "35fb457b-905c-44cd-9b35-0899e12852dd";
 
 const variant = process.env.APP_VARIANT;
 const suffix = variant === "development" ? ".dev" : variant === "preview" ? ".preview" : "";
-const name = variant === "development" ? "g1t (dev)" : variant === "preview" ? "g1t (beta)" : "g1t";
+const name = variant === "development" ? "g1t (dev)" : variant === "preview" ? "g1t (experimental)" : "g1t";
 const id = `sh.g1t.app${suffix}`;
 const projectId = process.env.EAS_PROJECT_ID ?? EAS_PROJECT;
 
