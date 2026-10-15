@@ -114,7 +114,8 @@ pub fn system_prompt() -> String {
      never in a URL. Never print it or send it anywhere else.\n\
      - Follow the work-on-issue skill. Check the work context and the sessions on the issue before you start, and claim only what you take. \
      When work splits into independent parts, you may give a part to a copy of yourself; each is recorded on g1t as a subagent and sees the others.\n\
-     - Put the trailer `G1t-Session: <the session id in your first message>` on every commit, so g1t ties the commits to this session.\n\
+     - Put the trailer `G1t-Session: <the session id in your first message>` on every commit, so g1t ties the commits to this session. \
+     The setup makes your commits the person's who started you: never set another author or committer.\n\
      - Work on a branch whose name starts with the issue number, and open a draft pull request early. Never push to the default branch, \
      except a repository's first commit when it has none yet: there is nothing to open a pull request against, so the first version goes \
      straight to it.\n\
@@ -309,6 +310,9 @@ pub struct Kickoff<'a> {
     pub session_id: Option<&'a str>,
     /// For a session g1t starts: how to reach the repository.
     pub managed: bool,
+    /// For a session g1t starts: who its commits are by, the person who
+    /// started it (name, address), so it never sets an identity itself.
+    pub author: Option<(&'a str, &'a str)>,
 }
 
 fn cut(text: &str, max: usize) -> String {
@@ -362,7 +366,11 @@ pub fn kickoff(k: &Kickoff) -> String {
     text.push_str(match (k.mode, &k.pull) {
         (AgentMode::Plan, _) => "Plan it: work out how it should be done and post the plan as a comment on the issue. Change no code and open no pull request.",
         (AgentMode::Implement, Some(_)) => "Push the change to the pull request's branch, get its checks passing, and keep it a draft until it is ready.",
-        (AgentMode::Implement, None) => "Implement it: make the change on a branch, open a draft pull request for the issue early, get its checks passing, and mark it ready.",
+        (AgentMode::Implement, None) => {
+            "Implement it: make the change on a branch, open a draft pull request for the issue early, get its checks passing, and mark it ready. \
+             If the repository has no commits yet, there is nothing to open a pull request against: \
+             commit the first version straight to the default branch and push it there. That push is asked of you."
+        }
         (AgentMode::Review, _) => "Review it: read the issue's pull request and its checks, and review it on g1t with what should change, if anything.",
     });
     text.push('\n');
@@ -370,7 +378,7 @@ pub fn kickoff(k: &Kickoff) -> String {
         text.push_str(&format!("\nAlso: {}\n", cut(instruction, MAX_INSTRUCTION_CHARS)));
     }
     if k.managed {
-        text.push_str(&format!("\nSet up first, as one command:\n\n```sh\n{}\n```\n", setup_command(site, &repo, &k.repo.name, k.session_id)));
+        text.push_str(&format!("\nSet up first, as one command:\n\n```sh\n{}\n```\n", setup_command(site, &repo, &k.repo.name, k.session_id, k.author)));
         text.push_str(&format!(
             "\nIf /usr/local/bin cannot be written, install without G1T_INSTALL_DIR and run ~/.local/bin/g1t. Then work in /workspace/{}.\n",
             k.repo.name
@@ -386,14 +394,19 @@ pub fn kickoff(k: &Kickoff) -> String {
 /// What a sandbox runs before it works: the g1t CLI from the site, git
 /// sending `G1T_TOKEN` to the site in a header (the vault swaps the
 /// placeholder there), the clone, and the clone's g1t session where the
-/// CLI keeps it, so claims and notes are this session's.
-pub fn setup_command(site: &str, repo: &str, name: &str, session_id: Option<&str>) -> String {
+/// CLI keeps it, so claims and notes are this session's. Commits are by
+/// the person who started it.
+pub fn setup_command(site: &str, repo: &str, name: &str, session_id: Option<&str>, author: Option<(&str, &str)>) -> String {
     let site = site.trim_end_matches('/');
     let mut steps = vec![
         format!("curl -fsSL {site}/install | G1T_INSTALL_DIR=/usr/local/bin sh"),
         format!("git config --global http.{site}/.extraHeader \"Authorization: Bearer $G1T_TOKEN\""),
-        format!("git clone {site}/{repo}.git /workspace/{name}"),
     ];
+    if let Some((author, email)) = author {
+        steps.push(format!("git config --global user.name {}", shell_quote(author)));
+        steps.push(format!("git config --global user.email {}", shell_quote(email)));
+    }
+    steps.push(format!("git clone {site}/{repo}.git /workspace/{name}"));
     if let Some(id) = session_id {
         steps.push(format!("mkdir -p /workspace/{name}/.git/g1t && echo {id} > /workspace/{name}/.git/g1t/session"));
     }
@@ -980,6 +993,7 @@ impl Integrations {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let pull_number = issue.pull.as_ref().map(|(number, _, _)| *number);
+        let author_email = g1t_contracts::accounts::noreply_address(&actor.id, &actor.username);
         let kickoff_of = |session_id: Option<&str>, managed: bool| {
             kickoff(&Kickoff {
                 site: &self.site_url,
@@ -993,6 +1007,7 @@ impl Integrations {
                 instruction: a.instruction.as_deref(),
                 session_id,
                 managed,
+                author: managed.then_some((actor.username.as_str(), author_email.as_str())),
             })
         };
         // The hand-off: nothing starts here.
@@ -1580,6 +1595,7 @@ mod tests {
             instruction: Some("Keep it short."),
             session_id: Some("ses_1"),
             managed: true,
+            author: Some(("ada", "6c1d0efg+ada@users.noreply.g1t.sh")),
         });
         for text in [session.to_string(), prompt.clone()] {
             assert!(!text.contains("g1t_secret"));
@@ -1590,6 +1606,9 @@ mod tests {
         assert!(prompt.contains("curl -fsSL https://g1t.sh/install | G1T_INSTALL_DIR=/usr/local/bin sh"));
         assert!(prompt.contains("git config --global http.https://g1t.sh/.extraHeader \"Authorization: Bearer $G1T_TOKEN\""));
         assert!(prompt.contains("git clone https://g1t.sh/acme/web.git /workspace/web"));
+        assert!(prompt.contains("git config --global user.name 'ada'"));
+        assert!(prompt.contains("git config --global user.email '6c1d0efg+ada@users.noreply.g1t.sh'"));
+        assert!(prompt.contains("commit the first version straight to the default branch and push it there"), "an empty repository's first push is asked for");
         assert!(prompt.contains("echo ses_1 > /workspace/web/.git/g1t/session"));
         assert!(prompt.contains("G1t-Session: ses_1"));
         let environment = environment_body("g1t-acme-con_1", &hosts);
@@ -1612,6 +1631,7 @@ mod tests {
                 instruction: None,
                 session_id: None,
                 managed: false,
+                author: None,
             })
         };
         assert!(prompt(AgentMode::Plan).contains("Change no code"));
