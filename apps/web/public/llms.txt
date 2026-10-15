@@ -756,6 +756,7 @@ Get started:
 Coding agents:
 
 - [Connect a coding agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
+- [Build and ship an app with an agent](https://docs.g1t.sh/guides/build-and-ship/)
 - [Claude Code plugin](https://docs.g1t.sh/guides/claude-code-plugin/)
 - [Sessions, claims and dependencies](https://docs.g1t.sh/guides/sessions/)
 - [Sessions and why-blame](https://docs.g1t.sh/guides/why-blame/)
