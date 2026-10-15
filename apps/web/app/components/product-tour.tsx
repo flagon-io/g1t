@@ -70,6 +70,7 @@ import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, u
 import { codingAgentById } from "@g1t/contracts/coding-agents";
 
 import { cn } from "../lib/cn";
+import { WORK_KINDS, WORK_LABEL, type WorkKind } from "../lib/home";
 import { CHECKS, type CursorTarget, type Frame, LOOP_MS, PILLS, SESSION, SETTLED, SUMMARY_WORDS, type SessionEntry, STILLS, type Scene, frameAt, pillAt, pillProgress, sameFrame } from "../lib/tour";
 import { AgentBadge, AgentMark } from "./coding-agent";
 import { MarkGlyph } from "./logo";
@@ -957,6 +958,70 @@ function WhatChangedCardMock({ frame }: { frame: Frame }) {
   );
 }
 
+/** The chart's colour for each kind, as components/home.tsx gives it. */
+const TOUR_FILL: Record<WorkKind, string> = {
+  pushes: "bg-series-1",
+  pulls: "bg-series-2",
+  issues: "bg-series-3",
+  shipped: "bg-series-4",
+  docs: "bg-series-5",
+  chat: "bg-series-6",
+};
+
+/**
+ * People: who did what overnight as the real card draws it (components/home.tsx
+ * WhoChart): a row each for people and agents, a bar split by kind of work,
+ * and the legend with the totals.
+ */
+function PeopleCardMock() {
+  const rows: { name: string; agent: boolean; parts: Partial<Record<WorkKind, number>> }[] = [
+    { name: "jordan", agent: false, parts: { pushes: 4, pulls: 2, issues: 3, chat: 9 } },
+    { name: "alex", agent: false, parts: { pulls: 3, issues: 2, docs: 2, chat: 6 } },
+    { name: "claude", agent: true, parts: { pushes: 6, pulls: 2 } },
+    { name: "g1t", agent: true, parts: { shipped: 3, chat: 4 } },
+  ];
+  const legend: [WorkKind, string][] = [
+    ["pushes", "23 commits to 2 projects"],
+    ["pulls", "4 opened, 3 merged"],
+    ["issues", "3 opened, 2 closed"],
+    ["shipped", "3 deploys"],
+    ["docs", "2 docs edited"],
+    ["chat", "19 messages in 4 conversations"],
+  ];
+  const total = (parts: Partial<Record<WorkKind, number>>) => Object.values(parts).reduce((a, b) => a + b, 0);
+  const top = Math.max(...rows.map((row) => total(row.parts)));
+  return (
+    <HomeCard title="People" hint="2 people · 2 agents">
+      <ul className="space-y-2 px-4 pb-3">
+        {rows.map((row) => (
+          <li key={row.name} className="grid grid-cols-[5.5rem_minmax(0,1fr)_1.5rem] items-center gap-2.5">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Avatar name={row.name} size={16} agent={row.agent} ring="var(--color-surface)" />
+              <span className="truncate text-[11.5px] text-fg">{row.name}</span>
+            </span>
+            <span className="flex h-2 gap-0.5 overflow-hidden rounded-full" style={{ width: `${(total(row.parts) / top) * 100}%` }}>
+              {WORK_KINDS.filter((kind) => row.parts[kind]).map((kind) => (
+                <span key={kind} className={cn("h-full", TOUR_FILL[kind])} style={{ flexGrow: row.parts[kind] }} />
+              ))}
+            </span>
+            <span className="text-right text-[10.5px] text-muted tabular-nums">{total(row.parts)}</span>
+          </li>
+        ))}
+      </ul>
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-line px-4 py-2.5">
+        {legend.map(([kind, text]) => (
+          <li key={kind} className="flex min-w-0 items-center gap-1.5 text-[10.5px]">
+            <span className={cn("size-2 shrink-0 rounded-[2px]", TOUR_FILL[kind])} />
+            <span className="truncate">
+              <span className="font-medium text-fg">{WORK_LABEL[kind]}</span> <span className="text-muted">{text}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </HomeCard>
+  );
+}
+
 /** Landed: each change that came in overnight with whether it is live, the agent's mark on the one it helped make, and Explain. */
 function LandedCardMock() {
   const rows = [
@@ -994,8 +1059,8 @@ function LandedCardMock() {
 /**
  * Home, as Priya starts her day on it (routes/workspace/home.tsx): "What are
  * we building today?" over the box that asks g1t, Where you're needed
- * beside Start here, then Since you were last here with What changed and
- * Landed. Pressing the first starter brings What changed into view, as the
+ * beside Start here, then Since you were last here with What changed,
+ * People (who did what, agents beside people) and Landed. Pressing the first starter brings What changed into view, as the
  * real one does, and its answer streams in.
  */
 function HomeMain({ frame, phone = false }: { frame: Frame; phone?: boolean }) {
@@ -1061,6 +1126,7 @@ function HomeMain({ frame, phone = false }: { frame: Frame; phone?: boolean }) {
           <p className="truncate text-[11px] text-muted">Yesterday at 6:12 PM · 15 hours</p>
         </div>
         <WhatChangedCardMock frame={frame} />
+        <PeopleCardMock />
         <LandedCardMock />
       </div>
     </div>

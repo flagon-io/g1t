@@ -393,30 +393,51 @@ test("an actor is not a person when it is g1t or an agent of older rows; everyon
   assert.equal(actorKind("user:usr_bot", new Set(["user:usr_bot"])), "agent");
 });
 
-test("the digest: what people did, in lines with counts, and who", () => {
+test("the digest: what was done, by kind with counts, and who, agents marked", () => {
   const digest = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: busyChat, names: NAMES, code: true });
   assert.deepEqual(
-    digest.people.lines.map((line) => [line.text, line.to]),
+    digest.people.lines.map((line) => [line.key, line.text, line.to]),
     [
-      ["3 people pushed 41 commits to 4 projects", "/acme/-/repositories"],
-      ["opened 2 pull requests, merged 5", "/acme/-/repositories"],
-      ["reviewed 2 pull requests", "/acme/web/pulls"],
-      ["opened 2 issues, closed 1", "/acme/web/issues"],
-      ["left 4 comments", "/acme/web/issues"],
-      ["2 deploys went out", "/acme/web/deployments"],
-      ["published 1 release", "/acme/web/releases"],
-      ["created 1 doc, edited 6 docs", "/acme/-/artifacts"],
-      ["sent 105 messages in 5 conversations", "/acme/-/chat"],
+      ["pushes", "47 commits to 4 projects", "/acme/-/repositories"],
+      ["pulls", "5 opened, 5 merged, 4 reviewed", "/acme/-/repositories"],
+      ["issues", "2 opened, 2 closed, 7 comments", "/acme/web/issues"],
+      ["shipped", "2 deploys, 1 release, 1 package version", "/acme/web/deployments"],
+      ["docs", "1 doc created, 7 docs edited", "/acme/-/artifacts"],
+      ["chat", "120 messages in 5 conversations", "/acme/-/chat"],
     ],
   );
-  // Faces: most active first, by name.
+  // Rows: most active first, people and agents, each marked; nobody is "someone".
   assert.deepEqual(
-    digest.people.actors.map((actor) => actor.name),
-    ["ana", "bo", "cy"],
+    digest.people.actors.map((actor) => [actor.name, actor.kind]),
+    digest.people.actors.map((actor) => [actor.name, actor.name === "margo" || actor.name === "g1t" ? "agent" : "person"]),
   );
+  assert.deepEqual(new Set(digest.people.actors.map((actor) => actor.name)), new Set(["ana", "bo", "cy", "margo", "g1t"]));
+  assert.equal(digest.people.actors[0]!.name, "ana");
+  // Each row's parts add up to its count, and the kinds' counts to every row's.
+  for (const actor of digest.people.actors) {
+    assert.equal(Object.values(actor.parts).reduce((a, b) => a + b, 0), actor.count, actor.name);
+  }
+  // The summary still counts people only.
   assert.deepEqual(digest.summary, { people: 3, commits: 41, merged: 5, said: 105, anything: true, peopleRead: true });
   assert.deepEqual(digest.missing, []);
   assert.equal(digest.partial, false);
+});
+
+test("g1t is one row, named, whichever key it used: its account, a workspace, or chat's system:g1t", () => {
+  const chat: ChatActivity = { ...busyChat, messages: 5, channels: 1, authors: [{ key: "system:g1t", messages: 3 }, { key: ANA, messages: 2 }] };
+  const activity = { ...busyDay(), folios: null, repos: [{ ...quietRepo("rep_web"), comments: [count(G1T, 2), count("user:wsp_acme", 1)] }] };
+  const digest = digestOf({ slug: "acme", repos: REPOS, activity, chat, names: { [ANA]: "ana", "user:wsp_acme": "g1t", "system:g1t": "g1t" }, code: true });
+  assert.deepEqual(
+    digest.people.actors.map((actor) => [actor.name, actor.kind, actor.count, actor.parts]),
+    [
+      ["g1t", "agent", 6, { issues: 3, chat: 3 }],
+      ["ana", "person", 2, { chat: 2 }],
+    ],
+  );
+  assert.equal(digest.summary.people, 1);
+  // A person whose name could not be read is an unknown account, never "someone".
+  const unread = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: { ...chat, authors: [{ key: "user:usr_gone", messages: 1 }] }, names: {}, code: true });
+  assert.deepEqual(unread.people.actors.map((actor) => actor.name), ["unknown account"]);
 });
 
 test("the digest says which part didn't answer, and counts what could be read", () => {
@@ -427,7 +448,7 @@ test("the digest says which part didn't answer, and counts what could be read", 
   assert.deepEqual(noCode.missing, ["Code"]);
   assert.deepEqual(
     noCode.people.lines.map((line) => line.text),
-    ["sent 105 messages in 5 conversations"],
+    ["120 messages in 5 conversations"],
   );
   assert.equal(noCode.summary.peopleRead, true);
   // Without Code access, events are read for artifacts only: no repositories, nothing missing.
@@ -451,7 +472,7 @@ test("the digest says which part didn't answer, and counts what could be read", 
   });
   assert.deepEqual(
     imported.people.lines.map((line) => [line.text, line.to]),
-    [["7 commits pushed to 1 project", "/acme/web/activity"]],
+    [["7 commits to 1 project", "/acme/web/activity"]],
   );
   assert.equal(imported.summary.people, 0);
 });

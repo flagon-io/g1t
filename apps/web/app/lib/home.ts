@@ -103,7 +103,7 @@ export type Span = {
   note: "first" | "capped" | "unknown" | null;
 };
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 /** How long a stretch of time is, roughly: "a moment", "40 minutes", "3 hours", "3 days", "2 weeks". */
 export function duration(ms: number): string {
@@ -213,7 +213,7 @@ export type ActorKind = "person" | "agent";
 export const G1T_ACTOR = "user:usr_g1t_agent";
 
 export function actorKind(key: string, agents?: ReadonlySet<string>): ActorKind {
-  return key.startsWith("agent:") || key === G1T_ACTOR || isRobotKey(key) || agents?.has(key) ? "agent" : "person";
+  return key.startsWith("agent:") || key.startsWith("system:") || key === G1T_ACTOR || isRobotKey(key) || agents?.has(key) ? "agent" : "person";
 }
 
 /**
@@ -233,31 +233,55 @@ export function isAgentName(name: string | null | undefined): boolean {
 /** A repository as the digest's links and lines need it. */
 export type RepoRef = RepoPath & { defaultBranch: string };
 
-/** Someone who did something in the span: for the faces beside the card. */
-export type DigestActor = {
-  key: string;
-  /** Their username; `someone` when it could not be read. */
-  name: string;
-  /** How many things they did, over every line: the order of the faces. */
-  count: number;
+/**
+ * The kinds of work the span's chart is split into, in the order the
+ * legend and each bar show them (and the chart's colour slots).
+ */
+export const WORK_KINDS = ["pushes", "pulls", "issues", "shipped", "docs", "chat"] as const;
+export type WorkKind = (typeof WORK_KINDS)[number];
+
+/** Each kind's name in the legend. */
+export const WORK_LABEL: Record<WorkKind, string> = {
+  pushes: "Pushes",
+  pulls: "Pull requests",
+  issues: "Issues",
+  shipped: "Shipped",
+  docs: "Docs",
+  chat: "Chat",
 };
 
-/** One line: what was done, with its count, and where that is listed. */
-export type DigestLine = {
+/** A person, or an agent, who did something in the span: a row of the chart. */
+export type DigestActor = {
   key: string;
+  /** Their username; g1t for g1t; `unknown account` when it could not be read. */
+  name: string;
+  kind: ActorKind;
+  /** How many things they did, over every kind: the order of the rows. */
+  count: number;
+  /** The same things by kind (a push counts once, however many commits). */
+  parts: Partial<Record<WorkKind, number>>;
+  /** Commits in their pushes. */
+  commits: number;
+};
+
+/** One kind of work: what was done, with its count, and where that is listed. */
+export type DigestLine = {
+  key: WorkKind;
   text: string;
+  /** Things of this kind, in the bars' units. */
+  count: number;
   to: string | null;
 };
 
 export type DigestColumn = {
   lines: DigestLine[];
-  /** Most active first. */
+  /** Most active first: people and agents, each marked. */
   actors: DigestActor[];
 };
 
 /** What the sentence under the heading needs. */
 export type DigestSummary = {
-  /** Distinct people who did anything. */
+  /** Distinct people (not agents) who did anything. */
   people: number;
   /** Commits people pushed. */
   commits: number;
@@ -319,147 +343,164 @@ function placeFor(slug: string, repos: Record<string, RepoRef>, repoIds: Iterabl
   return only ? `/${only.namespace}/${only.name}/${page}` : `/${slug}/-/repositories`;
 }
 
+/** `3 opened, 5 merged`: the non-zero counts, `#` standing for each. */
+function counted(parts: [number, string][]): string {
+  return parts
+    .filter(([count]) => count > 0)
+    .map(([count, words]) => words.replace("#", count.toLocaleString("en-US")))
+    .join(", ");
+}
+
 /**
- * What people did in the span, as lines with counts and links, and who
- * did it. Pure: everything comes from the services' counts and the names
+ * What was done in the span, by kind, with counts and links, and who did
+ * it: people and agents both, each marked, so g1t and the agents show
+ * beside the people instead of being left out (or showing as nobody).
+ * g1t's keys (its account, its chat key, a workspace acting as it) are one
+ * row. Pure: everything comes from the services' counts and the names
  * looked up for them.
  */
 export function digestColumn(input: DigestInput): DigestColumn {
   const { slug, repos, activity, chat, names, agentKeys } = input;
   const lines: DigestLine[] = [];
-  const did = new Map<string, number>();
-  const credit = (actors: Map<string, number>) => {
-    for (const [key, n] of actors) did.set(key, (did.get(key) ?? 0) + n);
+  const rows = new Map<string, DigestActor>();
+  const row = (key: string): DigestActor | null => {
+    if (!key) return null;
+    const kind = actorKind(key, agentKeys);
+    const name = names[key] ?? (kind === "agent" ? (key.endsWith(":g1t") || key === G1T_ACTOR ? "g1t" : "agent") : "unknown account");
+    const id = name === "g1t" ? "g1t" : key;
+    let found = rows.get(id);
+    if (!found) {
+      found = { key: id, name, kind, count: 0, parts: {}, commits: 0 };
+      rows.set(id, found);
+    }
+    return found;
+  };
+  /** Credits each actor with their part of a tally; the tally's total. */
+  const credit = (kind: WorkKind, counts: ActorCount[]) => {
+    let total = 0;
+    for (const { actor, count } of counts) {
+      total += count;
+      const who = row(actor);
+      if (!who) continue;
+      who.count += count;
+      who.parts[kind] = (who.parts[kind] ?? 0) + count;
+    }
+    return total;
   };
 
   if (activity) {
     // Pushes: commits, projects, and who.
-    const pushers = new Map<string, number>();
     const pushed = new Set<string>();
     let commits = 0;
     let pushes = 0;
     for (const repo of activity.repos) {
-      let any = false;
       for (const by of repo.pushes.by) {
-        if (actorKind(by.actor, agentKeys) !== "person") continue;
-        any = true;
+        if (by.count === 0) continue;
+        pushed.add(repo.repo_id);
         commits += by.commits;
-        pushes += by.count;
-        if (by.actor) pushers.set(by.actor, (pushers.get(by.actor) ?? 0) + by.count);
+        pushes += credit("pushes", [{ actor: by.actor, count: by.count }]);
+        const who = row(by.actor);
+        if (who) who.commits += by.commits;
       }
-      if (any) pushed.add(repo.repo_id);
     }
     if (pushes > 0) {
-      const where = `to ${plural(pushed.size, "project")}`;
-      const text = pushers.size > 0 ? `${people(pushers.size)} pushed ${plural(commits, "commit")} ${where}` : `${plural(commits, "commit")} pushed ${where}`;
-      lines.push({ key: "pushes", text, to: placeFor(slug, repos, pushed, "activity") });
-      credit(pushers);
+      lines.push({ key: "pushes", text: `${plural(commits, "commit")} to ${plural(pushed.size, "project")}`, count: pushes, to: placeFor(slug, repos, pushed, "activity") });
     }
 
-    // Pull requests, reviews, issues, comments, deploys, releases, packages: summed over projects.
-    const sum = (pick: (repo: RepoDigest) => ActorCount[]) => {
-      const total = { count: 0, actors: new Map<string, number>(), repoIds: [] as string[] };
+    // The other kinds, summed over projects: how many, and where.
+    const sum = (kind: WorkKind, pick: (repo: RepoDigest) => ActorCount[]) => {
+      let count = 0;
+      const repoIds: string[] = [];
       for (const repo of activity.repos) {
-        const { count, actors } = part(pick(repo), agentKeys);
-        if (count === 0) continue;
-        total.count += count;
-        total.repoIds.push(repo.repo_id);
-        for (const [key, n] of actors) total.actors.set(key, (total.actors.get(key) ?? 0) + n);
+        const n = credit(kind, pick(repo));
+        if (n === 0) continue;
+        count += n;
+        repoIds.push(repo.repo_id);
       }
-      return total;
+      return { count, repoIds };
     };
-    const opened = sum((repo) => repo.pulls.opened);
-    const merged = sum((repo) => repo.pulls.merged);
-    const closed = sum((repo) => repo.pulls.closed);
-    if (opened.count + merged.count + closed.count > 0) {
-      const parts: string[] = [];
-      if (opened.count > 0) parts.push(`opened ${plural(opened.count, "pull request")}`);
-      if (merged.count > 0) parts.push(`merged ${opened.count > 0 ? merged.count.toLocaleString("en-US") : plural(merged.count, "pull request")}`);
-      if (closed.count > 0) parts.push(`closed ${closed.count.toLocaleString("en-US")} without merging`);
-      lines.push({ key: "pulls", text: parts.join(", "), to: placeFor(slug, repos, [...opened.repoIds, ...merged.repoIds, ...closed.repoIds], "pulls") });
-      credit(opened.actors);
-      credit(merged.actors);
-      credit(closed.actors);
+
+    const opened = sum("pulls", (repo) => repo.pulls.opened);
+    const merged = sum("pulls", (repo) => repo.pulls.merged);
+    const closed = sum("pulls", (repo) => repo.pulls.closed);
+    const reviews = sum("pulls", (repo) => repo.reviews);
+    const pulls = opened.count + merged.count + closed.count + reviews.count;
+    if (pulls > 0) {
+      const text = counted([
+        [opened.count, "# opened"],
+        [merged.count, "# merged"],
+        [closed.count, "# closed without merging"],
+        [reviews.count, "# reviewed"],
+      ]);
+      lines.push({ key: "pulls", text, count: pulls, to: placeFor(slug, repos, [...opened.repoIds, ...merged.repoIds, ...closed.repoIds, ...reviews.repoIds], "pulls") });
     }
-    const reviews = sum((repo) => repo.reviews);
-    if (reviews.count > 0) {
-      lines.push({ key: "reviews", text: `reviewed ${plural(reviews.count, "pull request")}`, to: placeFor(slug, repos, reviews.repoIds, "pulls") });
-      credit(reviews.actors);
+
+    const issuesOpened = sum("issues", (repo) => repo.issues.opened);
+    const issuesClosed = sum("issues", (repo) => repo.issues.closed);
+    const comments = sum("issues", (repo) => repo.comments);
+    const issues = issuesOpened.count + issuesClosed.count + comments.count;
+    if (issues > 0) {
+      const text = counted([
+        [issuesOpened.count, "# opened"],
+        [issuesClosed.count, "# closed"],
+        [comments.count, comments.count === 1 ? "# comment" : "# comments"],
+      ]);
+      lines.push({ key: "issues", text, count: issues, to: placeFor(slug, repos, [...issuesOpened.repoIds, ...issuesClosed.repoIds, ...comments.repoIds], "issues") });
     }
-    const issuesOpened = sum((repo) => repo.issues.opened);
-    const issuesClosed = sum((repo) => repo.issues.closed);
-    if (issuesOpened.count + issuesClosed.count > 0) {
-      const parts: string[] = [];
-      if (issuesOpened.count > 0) parts.push(`opened ${plural(issuesOpened.count, "issue")}`);
-      if (issuesClosed.count > 0) parts.push(`closed ${issuesOpened.count > 0 ? issuesClosed.count.toLocaleString("en-US") : plural(issuesClosed.count, "issue")}`);
-      lines.push({ key: "issues", text: parts.join(", "), to: placeFor(slug, repos, [...issuesOpened.repoIds, ...issuesClosed.repoIds], "issues") });
-      credit(issuesOpened.actors);
-      credit(issuesClosed.actors);
-    }
-    const comments = sum((repo) => repo.comments);
-    if (comments.count > 0) {
-      lines.push({ key: "comments", text: `left ${plural(comments.count, "comment")}`, to: placeFor(slug, repos, comments.repoIds, "issues") });
-      credit(comments.actors);
-    }
-    const succeeded = sum((repo) => repo.deployments.succeeded);
-    const failed = sum((repo) => repo.deployments.failed);
-    if (succeeded.count + failed.count > 0) {
-      const text = succeeded.count > 0 ? `${plural(succeeded.count, "deploy")} went out${failed.count > 0 ? `, ${failed.count.toLocaleString("en-US")} failed` : ""}` : `${plural(failed.count, "deploy")} failed`;
-      lines.push({ key: "deploys", text, to: placeFor(slug, repos, [...succeeded.repoIds, ...failed.repoIds], "deployments") });
-      credit(succeeded.actors);
-      credit(failed.actors);
-    }
-    const releases = sum((repo) => tallyOf(repo.releases.map((release) => release.actor)));
-    if (releases.count > 0) {
-      lines.push({ key: "releases", text: `published ${plural(releases.count, "release")}`, to: placeFor(slug, repos, releases.repoIds, "releases") });
-      credit(releases.actors);
-    }
-    const packages = sum((repo) => tallyOf(repo.packages.map((pkg) => pkg.actor)));
-    if (packages.count > 0) {
-      lines.push({ key: "packages", text: `published ${plural(packages.count, "package version")}`, to: `/${slug}/-/packages` });
-      credit(packages.actors);
+
+    const succeeded = sum("shipped", (repo) => repo.deployments.succeeded);
+    const failed = sum("shipped", (repo) => repo.deployments.failed);
+    const releases = sum("shipped", (repo) => tallyOf(repo.releases.map((release) => release.actor)));
+    const packages = sum("shipped", (repo) => tallyOf(repo.packages.map((pkg) => pkg.actor)));
+    const shipped = succeeded.count + failed.count + releases.count + packages.count;
+    if (shipped > 0) {
+      const text = counted([
+        [succeeded.count, succeeded.count === 1 ? "# deploy" : "# deploys"],
+        [failed.count, "# failed"],
+        [releases.count, releases.count === 1 ? "# release" : "# releases"],
+        [packages.count, packages.count === 1 ? "# package version" : "# package versions"],
+      ]);
+      const deployed = [...succeeded.repoIds, ...failed.repoIds];
+      const to =
+        deployed.length > 0 ? placeFor(slug, repos, deployed, "deployments") : releases.count > 0 ? placeFor(slug, repos, releases.repoIds, "releases") : `/${slug}/-/packages`;
+      lines.push({ key: "shipped", text, count: shipped, to });
     }
 
     // Artifacts: made, and whose content changed.
     if (activity.folios) {
-      const made = part(activity.folios.created, agentKeys);
-      const edited = new Set<string>();
-      const editors = new Map<string, number>();
+      const made = credit("docs", activity.folios.created);
+      const edits: ActorCount[] = [];
+      let edited = 0;
       let allDocs = true;
       for (const folio of activity.folios.edited) {
-        const mine = folio.authors.filter((author) => actorKind(author, agentKeys) === "person");
-        if (mine.length === 0) continue;
-        edited.add(folio.folio_id);
+        if (folio.authors.length === 0) continue;
+        edited += 1;
         if (folio.kind !== "doc") allDocs = false;
-        for (const author of mine) editors.set(author, (editors.get(author) ?? 0) + 1);
+        for (const author of folio.authors) edits.push({ actor: author, count: 1 });
       }
-      const what = (n: number) => plural(n, allDocs ? "doc" : "artifact");
-      if (made.count + edited.size > 0) {
+      credit("docs", edits);
+      const what = (count: number) => plural(count, allDocs ? "doc" : "artifact");
+      if (made + edited > 0) {
         const parts: string[] = [];
-        if (made.count > 0) parts.push(`created ${what(made.count)}`);
-        if (edited.size > 0) parts.push(`edited ${what(edited.size)}`);
-        lines.push({ key: "docs", text: parts.join(", "), to: `/${slug}/-/artifacts` });
-        credit(made.actors);
-        credit(editors);
+        if (made > 0) parts.push(`${what(made)} created`);
+        if (edited > 0) parts.push(`${what(edited)} edited`);
+        lines.push({ key: "docs", text: parts.join(", "), count: made + edits.length, to: `/${slug}/-/artifacts` });
       }
     }
   }
 
-  // Chat: what people said.
+  // Chat: what was said.
   if (chat) {
-    const said = part(
+    const said = credit(
+      "chat",
       chat.authors.map((author) => ({ actor: author.key, count: author.messages })),
-      agentKeys,
     );
-    if (said.count > 0) {
-      lines.push({ key: "chat", text: `sent ${plural(said.count, "message")} in ${plural(chat.channels, "conversation")}`, to: `/${slug}/-/chat` });
-      credit(said.actors);
+    if (said > 0) {
+      lines.push({ key: "chat", text: `${plural(said, "message")} in ${plural(chat.channels, "conversation")}`, count: said, to: `/${slug}/-/chat` });
     }
   }
 
-  const actors: DigestActor[] = [...did]
-    .map(([key, count]) => ({ key, name: names[key] ?? "someone", count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const actors = [...rows.values()].filter((actor) => actor.count > 0).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   return { lines, actors };
 }
 
@@ -489,7 +530,7 @@ export function digestOf(input: DigestInput): Digest {
   return {
     people: column,
     summary: {
-      people: column.actors.length,
+      people: column.actors.filter((actor) => actor.kind === "person").length,
       commits,
       merged,
       said,
