@@ -209,17 +209,20 @@ to yourself, say so in the repository's `CLAUDE.md`, and leave
 | Approve its own pull request | No | Someone else approves | |
 | Read deployments, logs and errors | Yes | `g1t deploy list` and `g1t logs`, or `workflow` `list_deployments` and `observability` | `deployments:read`, `observability:read` |
 | Start the g1t plan | No | An owner, under **Settings → Billing and plans** | |
-| Turn deployments on or off, or change their settings | No | You, under the project's **Settings → Deployments**, with the Admin role | |
+| Turn deployments on or off, or change their settings | No | You, under the project's **Settings → Deployments**, with the Admin role, or by starting [Ask's card for a new repository](/guides/ask/#building-something-new) | |
 | Build production again | No | **Redeploy** on the project's overview, with the Write role, or a push to the default branch | |
 
 Scopes are explained under [scopes](/guides/authentication/#scopes);
 [MCP tools](/reference/mcp/) and the [CLI reference](/reference/cli/) list
 every action and command.
 
-## Ask g1t only reads
+## Or start from Ask
 
-[Ask](/guides/ask/), and `@g1t` in Chat, reads g1t as you with read-only
-access: it cannot create a repository, push, merge or deploy. Asked to do
-work, it proposes a session in your own harness instead, with **Start
-session** or **Copy Claude Code command**; see
-[Asking for work](/guides/ask/#asking-for-work).
+[Ask](/guides/ask/), and `@g1t` in Chat, reads g1t as you and changes
+nothing itself: it cannot push, merge or deploy. Ask it to build something
+that has no repository yet, though, and it proposes a session for a new
+one. When you choose **Start session** or **Copy Claude Code command** on
+that card, your click creates the repository, turns on its deployments
+(with the g1t plan), opens the issue and starts the session, which pushes
+the first version and watches it go live. See
+[Building something new](/guides/ask/#building-something-new).
