@@ -166,7 +166,7 @@ fn starting_a_harness_session_again_returns_the_first() {
 fn a_quiet_session_times_out_and_a_heartbeat_brings_it_back() {
     let db = database();
     start(&db, "ses_1", Some("a"));
-    // Two hours and more without a heartbeat.
+    // 30 minutes and more without a heartbeat.
     let late = rfc3339(NOW + g1t_contracts::work::SESSION_TIMEOUT_MS);
     let ended: Vec<String> = db
         .prepare(&time_out_sessions_sql())

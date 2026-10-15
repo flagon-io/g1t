@@ -25,8 +25,9 @@ use crate::{User, Viewer};
 
 /// A session with no heartbeat for this long reads as idle.
 pub const SESSION_IDLE_MS: u64 = 15 * 60 * 1000;
-/// A session with no heartbeat for this long has ended (`timed_out`).
-pub const SESSION_TIMEOUT_MS: u64 = 2 * 60 * 60 * 1000;
+/// A session with no heartbeat for this long has ended (`timed_out`); a
+/// heartbeat brings it back, so this only says when it stops showing as live.
+pub const SESSION_TIMEOUT_MS: u64 = 30 * 60 * 1000;
 /// How long a claim lasts unless renewed, in minutes.
 pub const CLAIM_DEFAULT_MINUTES: u32 = 30;
 /// The longest a claim may be asked to last, in minutes.
@@ -104,7 +105,7 @@ pub enum SessionState {
     Active,
     /// Not heard from for 15 minutes; it may still come back.
     Idle,
-    /// Ended, or not heard from for 2 hours (`end_reason` `timed_out`).
+    /// Ended, or not heard from for 30 minutes (`end_reason` `timed_out`).
     Ended,
 }
 

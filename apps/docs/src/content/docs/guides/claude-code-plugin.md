@@ -113,8 +113,9 @@ It never records:
 - your files, environment or transcript.
 
 A session that stops sending heartbeats reads as idle after 15 minutes and
-ended after two hours, so a closed laptop does not leave work looking
-claimed.
+ended after 30 minutes, so a closed laptop does not leave work looking
+claimed. Ended that way it is not gone: the next prompt or tool call in
+the same Claude Code session brings it back, with everything it recorded.
 
 The hooks return at once: the CLI calls run in a background process, so a
 slow network never holds Claude up.
