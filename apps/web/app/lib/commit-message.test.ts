@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { messageParts, parseCommitMessage } from "./commit-message.ts";
+import { HINT_LIMIT, commitHint, messageParts, parseCommitMessage } from "./commit-message.ts";
 
 test("co-authors leave the body and keep only their names", () => {
   const parsed = parseCommitMessage(
@@ -68,4 +68,16 @@ test("a session's id is a session, as a note says what it closed the issue in", 
   for (const text of ["ses_short", "uses_01m4z1z7nse8w9cjnecymt7rzn"]) {
     assert.deepEqual(messageParts(text), [{ kind: "text", text }], text);
   }
+});
+
+test("a commit's hint is its subject, cut on a word when it runs long", () => {
+  assert.equal(commitHint("Fix the login\n\nBecause it broke."), "Fix the login");
+  assert.equal(commitHint("\n\nOnly a body line"), "Only a body line");
+  const long = `Sessions show by who is looking: ${"word ".repeat(80)}end`;
+  const hint = commitHint(long);
+  assert.ok(hint.length <= HINT_LIMIT, `${hint.length}`);
+  assert.ok(hint.endsWith("…"));
+  assert.ok(hint.startsWith("Sessions show by who is looking:"));
+  assert.ok(!/\s…$/.test(hint));
+  assert.equal(commitHint("x".repeat(400)).length, HINT_LIMIT);
 });

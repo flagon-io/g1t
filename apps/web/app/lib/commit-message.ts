@@ -69,3 +69,19 @@ export function messageParts(text: string): MessagePart[] {
   if (at < text.length) parts.push({ kind: "text", text: text.slice(at) });
   return parts;
 }
+
+/** The most of a commit's subject a hover hint shows. */
+export const HINT_LIMIT = 160;
+
+/**
+ * A commit message as a hover hint: its subject, cut on a word with `…`
+ * past [HINT_LIMIT] characters. Some subjects run to a paragraph, and a
+ * hint is a glance, not the message: the commit's page has it all.
+ */
+export function commitHint(message: string, limit = HINT_LIMIT): string {
+  const subject = (message.split("\n").find((line) => line.trim()) ?? "").trim();
+  if (subject.length <= limit) return subject;
+  const cut = subject.slice(0, limit - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > limit / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, "")}…`;
+}

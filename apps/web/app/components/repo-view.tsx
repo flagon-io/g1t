@@ -15,6 +15,7 @@ import { DeploymentsPanel } from "./deployments-panel";
 import { CodeLines } from "./code-lines";
 
 import { useAddresses } from "../lib/addresses";
+import { commitHint } from "../lib/commit-message";
 import { type Failed, isFailed } from "../lib/partial";
 import { Boundary, Unavailable } from "./boundary";
 import { isImagePath } from "../lib/usercontent";
@@ -321,7 +322,7 @@ function FileRows({
             </Link>
             <span className="hidden min-w-0 sm:block">
               {commit ? (
-                <Hint label={commit.message.split("\n")[0]}>
+                <Hint label={commitHint(commit.message)}>
                   <span className="block animate-fade-in truncate text-muted">
                     <CommitText text={commit.message.split("\n")[0] ?? ""} base={base} to={`${base}/commit/${commit.hash}`} linkClassName="hover:text-fg hover:underline" />
                   </span>

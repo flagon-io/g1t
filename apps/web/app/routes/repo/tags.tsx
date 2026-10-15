@@ -8,6 +8,7 @@ import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { EmptyState, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
+import { commitHint } from "../../lib/commit-message";
 import { page } from "../../lib/meta";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { showCommits } from "../../lib/commit-people.server";
@@ -66,7 +67,7 @@ export default function Tags({ loaderData, params }: Route.ComponentProps) {
                         <CommitNames commit={tag.commit} className="hover:text-fg" />
                       </span>
                       <span className="text-faint">·</span>
-                      <Hint label={tag.commit.message}>
+                      <Hint label={commitHint(tag.commit.message)}>
                         <span className="min-w-0 truncate">
                           <CommitText text={tag.commit.message.split("\n")[0] ?? ""} base={base} to={`${base}/commit/${tag.commit.hash}`} linkClassName="hover:text-fg" />
                         </span>
