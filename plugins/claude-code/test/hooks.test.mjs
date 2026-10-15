@@ -323,7 +323,7 @@ describe("summaries", () => {
       ["curl -u admin:pa55word https://x", "pa55word"],
       ["open https://x.com/cb?state=1&token=t0k3n", "t0k3n"],
       ["jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N", "dozjgNryP4J3"],
-      ["-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5v\n-----END OPENSSH PRIVATE KEY-----", "b3BlbnNzaC1"],
+      ["-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5v\n-----END OPENSSH PRIVATE KEY-----", "b3BlbnNzaC1"], // g1t:allow-secret
       ["here is my key: sk-ant-api03-abcDEF123456ghiJKL, use it", "abcDEF123456ghiJKL"],
     ]) {
       const out = redact(text);

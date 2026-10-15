@@ -251,11 +251,11 @@ mod tests {
         hidden("open https://x.com/cb?code=abc&state=1&token=t0k3n", "t0k3n");
         hidden("GET /file?X-Amz-Signature=deadbeef1234&x=1", "deadbeef1234");
         hidden("jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", "dozjgNryP4J3");
-        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----\nafter";
+        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----\nafter"; // g1t:allow-secret
         let out = redact(pem);
         assert!(!out.contains("b3BlbnNzaC1"), "{out}");
         assert!(out.ends_with("after"));
-        hidden("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn", "MIIEpAIBAAKCAQEA");
+        hidden("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn", "MIIEpAIBAAKCAQEA"); // g1t:allow-secret
     }
 
     #[test]
