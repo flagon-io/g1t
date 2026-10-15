@@ -22,6 +22,8 @@ import {
   spendRange,
 } from "../lib/billing";
 import { money, wholeDollars } from "../lib/money";
+import { type Failed, isFailed } from "../lib/partial";
+import { Unavailable } from "./boundary";
 import { ErrorText, SubmitButton } from "./ui";
 import { Badge } from "./ui/badge";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -359,15 +361,24 @@ function RequestList({ requests }: { requests: LimitRequest[] }) {
   );
 }
 
-export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[]; owner: boolean; error?: string }) {
+export function RaiseCard({ requests, owner, error }: { requests: LimitRequest[] | Failed; owner: boolean; error?: string }) {
+  const about =
+    "Ask for a higher limit than you can set yourself. A person at g1t reads it and answers within one business day, in the app and by email. Nothing about price is negotiated.";
+  // Without the requests there is no telling whether one is open: no form,
+  // so a second one is never sent while the first waits.
+  if (isFailed(requests)) {
+    return (
+      <Card id="raise" title="Raise my limit" about={about}>
+        <div className="mt-3">
+          <Unavailable what={requests.what} compact />
+        </div>
+      </Card>
+    );
+  }
   const mine = requests.filter((request) => request.kind === "limit");
   const waiting = mine.some((request) => request.status === "open");
   return (
-    <Card
-      id="raise"
-      title="Raise my limit"
-      about="Ask for a higher limit than you can set yourself. A person at g1t reads it and answers within one business day, in the app and by email. Nothing about price is negotiated."
-    >
+    <Card id="raise" title="Raise my limit" about={about}>
       {owner && !waiting && (
         <Form method="post" className="mt-4 space-y-3">
           <input type="hidden" name="intent" value="request" />
@@ -512,15 +523,24 @@ export function PrepayCard({
 
 // --- Overage -----------------------------------------------------------------------
 
-export function OverageCard({ requests, owner, error }: { requests: LimitRequest[]; owner: boolean; error?: string }) {
+export function OverageCard({ requests, owner, error }: { requests: LimitRequest[] | Failed; owner: boolean; error?: string }) {
+  const title = "Spent more than you meant to? Tell us.";
+  const about =
+    "A loop that ran all night, a workflow on every push: say what happened. g1t can credit usage you did not mean, once in 12 months; larger credits, or a second one within 12 months, are reviewed by a person.";
+  // As on Raise my limit: no form while an open request may be unseen.
+  if (isFailed(requests)) {
+    return (
+      <Card id="overage" title={title} about={about}>
+        <div className="mt-3">
+          <Unavailable what={requests.what} compact />
+        </div>
+      </Card>
+    );
+  }
   const mine = requests.filter((request) => request.kind === "overage");
   const waiting = mine.some((request) => request.status === "open");
   return (
-    <Card
-      id="overage"
-      title="Spent more than you meant to? Tell us."
-      about="A loop that ran all night, a workflow on every push: say what happened. g1t can credit usage you did not mean, once in 12 months; larger credits, or a second one within 12 months, are reviewed by a person."
-    >
+    <Card id="overage" title={title} about={about}>
       {owner && !waiting && (
         <Form method="post" className="mt-4 space-y-3">
           <input type="hidden" name="intent" value="request" />

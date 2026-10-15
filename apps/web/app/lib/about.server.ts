@@ -21,8 +21,11 @@ function within<T>(promise: Promise<T>): Promise<T | null> {
 }
 
 /** Like `within`, but one that fails or does not answer in time is `Failed`, for its section to say so. */
-function partWithin<T>(promise: Promise<T>, what: string): Promise<T | Failed> {
-  const late = new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`no answer in ${WAIT_MS} ms`)), WAIT_MS));
+function partWithin<T>(promise: Promise<T>, what: string): Promise<T | Failed | null> {
+  // Slow is not failed: a large repository's About can take longer than
+  // the page waits, and then it is quietly left out, as it always was.
+  // Only a service that did not answer or answered with an error says so.
+  const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), WAIT_MS));
   return part(Promise.race([promise, late]), what);
 }
 
