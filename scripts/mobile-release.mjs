@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Releases of the phone app (apps/mobile) for Android, published on
 // g1t.sh/download while the app is not in Google Play: built by EAS from
-// the `preview` profile (g1t (experimental), sh.g1t.app.preview, a signed release
+// the `preview` profile (g1t, sh.g1t.app.preview, a signed release
 // APK that needs no computer), downloaded, described in a manifest, and
 // published to the g1t-downloads R2 bucket that g1t.sh serves at
 // /downloads/mobile/ (apps/web/app/routes/downloads-runner.ts). The

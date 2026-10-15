@@ -1,6 +1,6 @@
 # Releases the phone app for Android (apps/mobile) on g1t.sh/download,
-# while it is not in Google Play: EAS builds the `preview` profile (g1t
-# (experimental), a signed release APK), and the APK is published to
+# while it is not in Google Play: EAS builds the `preview` profile (g1t,
+# a signed release APK), and the APK is published to
 # g1t.sh/downloads/mobile/ (the g1t-downloads R2 bucket), with latest.json
 # pointed at it. Google Play and the App Store wait on Flagon's D-U-N-S
 # number; until then this is how the app is given out.
