@@ -444,6 +444,10 @@ pub struct IssueCloseArgs {
     /// Leave a comment as it closes.
     #[arg(short, long)]
     pub comment: Option<String>,
+    /// The commit on the default branch that closed it: its message names
+    /// the issue after a closing keyword (Fixes #12). Its full hash.
+    #[arg(long)]
+    pub commit: Option<String>,
 }
 
 #[derive(Debug, Args)]

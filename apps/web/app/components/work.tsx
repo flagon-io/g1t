@@ -8,7 +8,7 @@ import { mayChangeComment } from "../lib/comments";
 import { messageParts } from "../lib/commit-message";
 import { chipStyle } from "../lib/labels";
 import { repoAt } from "../lib/markdown-plugins";
-import { CommitChip } from "./chat/ref-chip";
+import { CommitChip, SessionChip } from "./chat/ref-chip";
 import { RefLink } from "./commit-message";
 import { Markdown } from "./markdown";
 import { Reactions } from "./reactions";
@@ -409,6 +409,9 @@ function WithReferences({ text, base, filesUrl }: { text: string; base?: string;
               ) : part.kind === "commit" ? (
                 // The commit that closed or merged it, by its short hash.
                 <CommitChip key={at} href={`${base}/commit/${part.sha}`} sha={part.sha} />
+              ) : part.kind === "session" ? (
+                // The session it was closed in.
+                <SessionChip key={at} href={`${base}/work/sessions/${part.id}`} id={part.id} />
               ) : (
                 part.text
               ),

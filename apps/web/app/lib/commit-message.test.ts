@@ -55,3 +55,17 @@ test("a full hash is a commit; a short one, a link's fragment or a word's # are 
   }
   assert.deepEqual(messageParts(""), []);
 });
+
+test("a session's id is a session, as a note says what it closed the issue in", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const id = "ses_01m4z1z7nse8w9cjnecymt7rzn";
+  assert.deepEqual(messageParts(`closed this in ${sha} via session ${id}`), [
+    { kind: "text", text: "closed this in " },
+    { kind: "commit", text: sha, sha },
+    { kind: "text", text: " via session " },
+    { kind: "session", text: id, id },
+  ]);
+  for (const text of ["ses_short", "uses_01m4z1z7nse8w9cjnecymt7rzn"]) {
+    assert.deepEqual(messageParts(text), [{ kind: "text", text }], text);
+  }
+});

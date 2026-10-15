@@ -255,7 +255,10 @@ issues and pull requests it worked on, each in as many ways as it was
 A session's links cover its subagents too, and the issue and pull request
 pages list every session tied to them with its subagents. Put the trailer
 on the commits a session makes (`git commit --trailer "G1t-Session:
-$G1T_SESSION"`) and they lead back to it.
+$G1T_SESSION"`) and they lead back to it. An issue a session closes says
+so on its timeline, **via session** and a link to it: closed with the
+session's token while it works on the issue, or by a commit naming it in
+that trailer (see [Closing issues](/guides/pull-requests/#closing-issues)).
 
 When a file a session touched was touched by another active session as
 well (outside its own parents and subagents), g1t sends `overlap.detected`

@@ -356,6 +356,7 @@ fn close(ctx: &Ctx, args: IssueCloseArgs) -> Result<()> {
         .repo(&repo)
         .arg("number", args.number)
         .field_opt("reason", reason)
+        .field_opt("commit", args.commit.as_deref())
         .send()?;
     done(
         ctx,

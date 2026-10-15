@@ -688,12 +688,25 @@ impl Work {
         path: &RepoPath,
         number: u32,
     ) -> Result<Outcome<Issue>> {
+        Ok(match self.manageable_issue_at(actor, path, number).await? {
+            Outcome::Ok((_, issue)) => Outcome::Ok(issue),
+            Outcome::Fail(failure) => Outcome::Fail(failure),
+        })
+    }
+
+    /// `manageable_issue`, with the repository it is in.
+    async fn manageable_issue_at(
+        &self,
+        actor: &User,
+        path: &RepoPath,
+        number: u32,
+    ) -> Result<Outcome<(Repo, Issue)>> {
         let (repo, issue) = check!(self.issue_at(path, number, &Some(actor.clone())).await?);
         check!(writable(&repo));
         if issue.owner().id != actor.id {
             check!(allowed(Some(actor), &repo, Capability::Triage));
         }
-        Ok(Outcome::Ok(issue))
+        Ok(Outcome::Ok((repo, issue)))
     }
 
     async fn update_issue(&self, a: UpdateIssueArgs) -> Result<Outcome<Issue>> {
@@ -852,14 +865,36 @@ impl Work {
         Ok(Outcome::Ok(assignees))
     }
 
-    async fn close_issue(&self, a: IssueActionArgs) -> Result<Outcome<Issue>> {
-        let mut issue = check!(self.manageable_issue(&a.actor, &a.repo, a.number).await?);
+    async fn close_issue(&self, args: CloseIssueArgs) -> Result<Outcome<Issue>> {
+        let CloseIssueArgs { issue: a, commit } = args;
+        let (repo, mut issue) = check!(self.manageable_issue_at(&a.actor, &a.repo, a.number).await?);
         if issue.state == State::Closed {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "This issue is already closed.",
-            ));
+            let how = match (issue.resolved_by, issue.resolved_commit.as_deref()) {
+                (Some(pull), _) => format!(" #{pull} closed it."),
+                (None, Some(commit)) => format!(" Commit {} closed it.", &commit[..7.min(commit.len())]),
+                (None, None) => String::new(),
+            };
+            return Ok(Outcome::fail(FailureCode::Conflict, format!("This issue is already closed.{how}")));
         }
+        // Closed by a commit on the default branch: as its push would have.
+        if let Some(commit) = commit.as_deref() {
+            if a.reason == Some(IssueReason::NotPlanned) {
+                return Ok(Outcome::fail(FailureCode::Invalid, "A commit closes an issue as completed, not as not planned."));
+            }
+            let (commit, named) = check!(self.closing_commit(&repo, a.number, commit, &a.actor).await?);
+            let session = match named {
+                Some(session) => Some(session),
+                None => self.caller_session(&repo.id, a.number, &a.actor).await?,
+            };
+            if !self.close_by_commit(&repo, a.number, &commit, &a.actor, session.as_deref()).await? {
+                return Ok(Outcome::fail(FailureCode::Conflict, "This issue is already closed."));
+            }
+            return Ok(match self.issue(&repo.id, a.number).await? {
+                Some(issue) => Outcome::Ok(issue),
+                None => no_issue(),
+            });
+        }
+        let session = self.caller_session(&repo.id, a.number, &a.actor).await?;
         let reason = a.reason.unwrap_or(IssueReason::Completed);
         let now = rfc3339(now_ms());
         self.db
@@ -881,18 +916,20 @@ impl Work {
             &a.actor,
             IssueEvent {
                 reason: Some(reason.as_str()),
+                session: session.clone(),
                 ..Self::issue_event(&issue)
             },
         )
         .await?;
+        let note = match reason {
+            IssueReason::Completed => "closed this as completed",
+            IssueReason::NotPlanned => "closed this as not planned",
+        };
         self.note(
             &issue.repo_id,
             issue.number,
             (&a.actor.id, &a.actor.username),
-            match reason {
-                IssueReason::Completed => "closed this as completed",
-                IssueReason::NotPlanned => "closed this as not planned",
-            },
+            &pushed::closed_note(note, session.as_deref()),
         )
         .await?;
         // Its claims end, and the issues it blocks hear (coordination/).

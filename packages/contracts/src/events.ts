@@ -256,6 +256,8 @@ export type EventPayloads = {
     resolvedBy?: number;
     /** The commit whose message closed it, when one pushed to the default branch did. */
     commit?: string;
+    /** The session it was closed in: the one its closing commit names (`G1t-Session`), or the caller's own on the issue. */
+    session?: string;
   };
   "issue.reopened": { issueId: string; repoId: string; number: number };
   /**

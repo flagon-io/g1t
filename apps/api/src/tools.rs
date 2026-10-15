@@ -160,7 +160,7 @@ pub const TOOLS: &[Tool] = &[
             a("add_labels", Op::AddIssueLabels, "Add labels to an issue or pull request"),
             a("set_labels", Op::SetIssueLabels, "Replace the labels of an issue or pull request"),
             a("remove_labels", Op::RemoveIssueLabels, "Take labels off an issue or pull request"),
-            a("close", Op::CloseIssue, "Close it without a pull request"),
+            a("close", Op::CloseIssue, "Close it without a pull request; commit names the commit on the default branch that did it"),
             a("reopen", Op::ReopenIssue, "Reopen it"),
             a("comment", Op::AddComment, "Comment on an issue or pull request; path and line for one line of a change"),
             a("edit_comment", Op::EditComment, "Change a comment's text: your own, or any with the Maintain role"),
