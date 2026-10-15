@@ -11,6 +11,7 @@ import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { type HighlightedComparison, firstScreens } from "../../lib/diff";
+import { commitHint } from "../../lib/commit-message";
 import { page } from "../../lib/meta";
 import { showCommits } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
@@ -161,7 +162,7 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
                   <li key={commit.hash} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                     <GitCommitHorizontal size={15} className="shrink-0 text-faint" />
                     <CommitAvatars commit={commit} size={16} max={2} />
-                    <Hint label={commit.message}>
+                    <Hint label={commitHint(commit.message)}>
                       <span className="min-w-0 grow truncate">
                         <CommitText text={commit.message} base={repoBase} to={`${repoBase}/commit/${commit.hash}`} linkClassName="hover:text-accent" />
                       </span>

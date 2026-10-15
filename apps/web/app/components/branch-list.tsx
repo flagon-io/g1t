@@ -59,6 +59,7 @@ import { Input } from "./ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { PullIcon } from "./work-icons";
 import { isMerged } from "../lib/branches";
+import { commitHint } from "../lib/commit-message";
 
 /** What the page's action answers. */
 export type BranchActionData = { intent: string; branch?: string; hash?: string; error?: string };
@@ -149,7 +150,7 @@ function Updated({ row, base }: { row: BranchRowData; base: string }) {
     // browser, and the page then fails to hydrate.
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <CommitAvatars commit={row.commit} size={18} max={2} />
-      <Hint label={row.commit.message}>
+      <Hint label={commitHint(row.commit.message)}>
         <Link to={`${base}/commit/${row.commit.hash}`} className="text-muted hover:text-fg">
           <TimeAgo at={row.commit.at} />
         </Link>
