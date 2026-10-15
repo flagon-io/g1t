@@ -101,7 +101,7 @@ function LandedRow({ pull, base }: { pull: Pull; base: string }) {
               for #{pull.issue}
             </Link>
           )}
-          <Link to={`${base}/pull/${pull.number}?tab=session`} className="hover:text-fg">
+          <Link to={`${base}/pull/${pull.number}/session`} className="hover:text-fg">
             Why
           </Link>
           {pull.mergedBy && (

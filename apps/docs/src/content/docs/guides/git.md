@@ -184,15 +184,15 @@ git push origin my-change
 ### The Branches page
 
 A repository's **Branches** tab, `g1t.sh/<workspace>/<repo>/branches`, lists
-its branches under five tabs, kept in the address as `?tab=`:
+its branches under five tabs, each at its own address:
 
 | Tab | What it lists |
 | --- | --- |
 | **Overview** | The default branch, then the first five of each of the others below that has any: yours, active and stale, each with a link to the rest. |
-| **Yours** (`?tab=yours`) | Branches whose latest commit is yours. |
-| **Active** (`?tab=active`) | Branches with a commit in the last 90 days. |
-| **Stale** (`?tab=stale`) | Branches with no commit in the last 90 days. |
-| **All** (`?tab=all`) | Every branch but the default, newest commit first. |
+| **Yours** (`/branches/yours`) | Branches whose latest commit is yours. |
+| **Active** (`/branches/active`) | Branches with a commit in the last 90 days. |
+| **Stale** (`/branches/stale`) | Branches with no commit in the last 90 days. |
+| **All** (`/branches/all`) | Every branch but the default, newest commit first. |
 
 **Search branches** narrows any tab by name (`?q=`). Each branch shows:
 

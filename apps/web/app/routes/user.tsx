@@ -38,10 +38,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { IssueIcon, PullIcon } from "../components/work-icons";
 import { lastDay } from "../lib/contribution-calendar";
 import { notFound } from "../lib/not-found.server";
+import { type ProfileTab, movedTab, profilePath, profileTab } from "../lib/tab-paths";
 import { identity, projects, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
-type Tab = "overview" | "pulls" | "issues" | "stars";
+type Tab = ProfileTab;
 
 const EMPTY: Authored = {
   items: [],
@@ -79,13 +80,17 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const username = params.username.toLowerCase();
   const profile = await identity.profile(username);
   if (!profile) throw notFound("person");
+  // Its tabs are paths: `?tab=pulls`, the address before, is `/u/ada/pulls`.
+  const moved = movedTab(url, (asked) => profilePath(profile.username, asked));
+  if (moved) throw redirect(moved, 301);
+  const tab: Tab | null = profileTab(params.tab);
+  if (!tab) throw notFound("page");
   // One address per person: `/u/Ada` is `/u/ada`.
-  if (params.username !== profile.username) {
-    throw redirect(`/u/${profile.username}${url.search}`);
+  if (params.username !== profile.username || (params.tab != null && params.tab !== tab)) {
+    throw redirect(`${profilePath(profile.username, tab)}${url.search}`);
   }
 
   const query = url.searchParams;
-  const tab: Tab = pick(query.get("tab"), ["pulls", "issues", "stars"] as const) ?? "overview";
   const state = pick(query.get("state"), (tab === "pulls" ? ["open", "closed", "merged"] : ["open", "closed"]) as AuthoredState[]);
   const sort = pick(query.get("sort"), ["updated", "oldest"] as const satisfies AuthoredSort[]);
   const repo = query.get("repo")?.trim() || undefined;
@@ -281,7 +286,7 @@ function ProfileTabs({
 }) {
   const item = (value: Tab, label: string, icon: ReactNode, count?: number) => (
     <Link
-      to={value === "overview" ? `/u/${username}` : `/u/${username}?tab=${value}`}
+      to={profilePath(username, value)}
       aria-current={tab === value ? "page" : undefined}
       preventScrollReset
       className={`-mb-px flex items-center gap-2 border-b-2 px-3 pb-3 text-sm whitespace-nowrap transition-colors ${
@@ -363,19 +368,19 @@ function Overview({ profile, activity, failed, contributions }: Data) {
           label="Pull requests merged"
           value={counts.pullsMerged}
           icon={<GitMerge size={15} className="text-merged" />}
-          to={`/u/${profile.username}?tab=pulls&state=merged`}
+          to={`${profilePath(profile.username, "pulls")}?state=merged`}
         />
         <Stat
           label="Open pull requests"
           value={counts.pullsOpen}
           icon={<GitPullRequest size={15} className="text-success" />}
-          to={`/u/${profile.username}?tab=pulls&state=open`}
+          to={`${profilePath(profile.username, "pulls")}?state=open`}
         />
         <Stat
           label="Issues opened"
           value={counts.issues}
           icon={<CircleDot size={15} className="text-success" />}
-          to={`/u/${profile.username}?tab=issues`}
+          to={profilePath(profile.username, "issues")}
         />
       </dl>
 
@@ -394,12 +399,12 @@ function Overview({ profile, activity, failed, contributions }: Data) {
               {(counts.pulls > 0 || counts.issues > 0) && (
                 <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   {counts.pulls > 0 && (
-                    <Link to={`/u/${profile.username}?tab=pulls`} className="text-muted hover:text-fg">
+                    <Link to={profilePath(profile.username, "pulls")} className="text-muted hover:text-fg">
                       All {counts.pulls} pull {counts.pulls === 1 ? "request" : "requests"} →
                     </Link>
                   )}
                   {counts.issues > 0 && (
-                    <Link to={`/u/${profile.username}?tab=issues`} className="text-muted hover:text-fg">
+                    <Link to={profilePath(profile.username, "issues")} className="text-muted hover:text-fg">
                       All {counts.issues} {counts.issues === 1 ? "issue" : "issues"} →
                     </Link>
                   )}
@@ -498,7 +503,7 @@ function WorkList({ profile, tab, filter, activity, failed }: Data) {
   const pulls = tab === "pulls";
   const noun = pulls ? "pull requests" : "issues";
   const filtered = filter.state != null || filter.repo != null;
-  const base = `/u/${profile.username}?tab=${tab}`;
+  const base = profilePath(profile.username, tab);
   const [params] = useSearchParams();
   const next = new URLSearchParams(params);
   if (activity.next) next.set("before", activity.next);
@@ -596,12 +601,11 @@ function FilterAside({
   return (
     <aside aria-label="Filters" className="min-w-0 lg:order-2">
       <Card asChild tone="plain" className="space-y-5 p-4 lg:sticky lg:top-20">
-        <Form method="get">
-          <input type="hidden" name="tab" value={tab} />
+        <Form method="get" action={profilePath(username, tab)}>
           <FilterGroup title="Type">
             <RadioGroup
               value={tab}
-              onValueChange={(value) => void navigate(`/u/${username}?tab=${value}`, { preventScrollReset: true })}
+              onValueChange={(value) => void navigate(profilePath(username, value), { preventScrollReset: true })}
               aria-label="Type"
             >
               <RadioOption value="pulls" label={<Counted label="Pull requests" count={counts.pulls} />} />
@@ -670,7 +674,7 @@ function FilterAside({
               </Button>
             </noscript>
             {filtered && (
-              <Link to={`/u/${username}?tab=${tab}`} preventScrollReset className="text-xs text-muted hover:text-fg">
+              <Link to={profilePath(username, tab)} preventScrollReset className="text-xs text-muted hover:text-fg">
                 Clear filters
               </Link>
             )}

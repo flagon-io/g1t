@@ -969,7 +969,8 @@ website and when you joined; then your work in three tabs:
 - **Pull requests** and **Issues:** everything you opened, and what g1t
   opened for you, newest first,
   with filters beside the list for state (open, closed, merged), type,
-  repository and sort order. Add `?tab=pulls&state=merged` and the like to
+  repository and sort order. Each tab has its own address, such as `g1t.sh/u/<username>/pulls`;
+  add `?state=merged` and the like to
   link to a filtered list.
 
 **The contribution calendar.** The last year as a square a day, a column a
