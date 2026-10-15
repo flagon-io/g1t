@@ -1,16 +1,18 @@
 ---
 title: Home
-description: Your workspace's front page. Where you're needed now, what happened since you were last here, what is running, and the one item to start with. How every number is worked out.
+description: Your workspace's front page. Ask g1t what to do, where you're needed now, what happened since you were last here in plain English, what is running, and the one item to start with. How every number is worked out.
 ---
 
 **Home** is the first page of your workspace, at `/<workspace>/-/home`.
-It answers three questions, in this order:
+It opens with **What are we building today?** and a box that
+[asks g1t](#ask-from-home), then answers three questions, in this order:
 
 1. **Where you're needed**: everything waiting on you, however long ago
    it started, with the action beside each item.
-2. **What happened while you were away**: what settled by itself and
-   what went live; what people did; what landed; deploys and spend,
-   since you were last here.
+2. **What happened while you were away**: what changed, in plain
+   English when you ask for it; what settled by itself and what went
+   live; what people did; what landed; deploys and spend, since you were
+   last here.
 3. **What is running now**: workflow runs and builds still going.
 
 **Start here** picks the one item to do first.
@@ -21,7 +23,30 @@ until they finish or close it; `?setup=1` opens it again.
 
 Every number on the page comes from what g1t has recorded. Nothing is
 estimated. When a part of g1t does not answer, the section it feeds says
-so, and the rest of the page still shows.
+so, and the rest of the page still shows. Only what you ask g1t is written
+by a model: [What changed](#what-changed) and the answers in Ask.
+
+## Ask from Home
+
+The box at the top asks g1t anything about your work. Type a question and
+press **Enter** (**Shift+Enter** starts a new line): the top bar's
+[Ask](/guides/ask/) panel opens and sends it, and the answer streams in
+there. Under the box are questions to start with:
+
+| Starter | What it does |
+| --- | --- |
+| **Summarize what changed since I was last here** | Writes a summary of the span into [What changed](#what-changed), further down the page, and brings it into view. Over another span it says so, such as **Summarize what changed in the last 7 days** |
+| **What needs me first?** | Asks which things need you, most urgent first, one line each on what to do |
+| **What shipped today?** | Asks what shipped today: what is live, what is still deploying, and what failed |
+| **Who's working on what?** | Asks who is working on what right now, and whether anything is stuck |
+
+Everything you ask from Home goes to your
+[direct message with @g1t](/guides/ask/#one-conversation-in-ask-and-in-chat),
+as a question asked in Ask does, so you can carry on from it in Ask or in
+Chat. It answers with your workspace's own AI provider, so an owner has to
+[set Ask up](/guides/ask/#set-it-up) first. Until then, or while g1t is
+still answering an earlier question, the panel opens with your question
+in its box rather than sending it, so nothing you typed is lost.
 
 ## Where you're needed
 
@@ -37,6 +62,15 @@ stake, how long it has waited, and has its action beside it.
 
 A notification about something already on the list, such as a pull
 request whose row is there, is left out.
+
+Each row's button takes you to the place where you act on it: **See the
+build** for a failed production build, **Review** for a review asked of
+you, **Respond** for an invitation, **Look** for a job waiting for a
+runner or your pull request that can't land (**Review** when it waits
+for a verdict), **Reply** for a message, and
+**Open** for a notification. Your pull request that is ready to merge,
+marked **Ready to merge**, says **Open** too: it opens the pull request,
+where you merge it. Nothing on Home merges on the spot.
 
 Rows are ordered most pressing first, by tier, then by how long each has
 waited, longest first:
@@ -57,8 +91,17 @@ sentence under the page's heading starts with how many things need you.
 **Start here** is the first row of Where you're needed: the most pressing
 tier, and within it the row that has waited longest. g1t picks it with
 that rule, so the same rows always give the same pick.
-The card shows who is on it, the next action, how long it has waited, what
-is at stake, and why it was picked.
+The card shows who is on it (**Owner**), the step it waits for (**Next**,
+such as **Merge** or **Review**), how long it has waited (**Waiting**),
+what is at stake (**At stake**), and **Why this one**, such as
+"Everything it needs is met; it lands when you merge it." When others in
+its tier are waiting too, it adds that this one has waited longest.
+
+Its title links to what it picked: the pull request, issue or build. The
+button under it opens the same place. For a pull request (one ready to
+merge, a review asked of you, or yours that is stuck) it says **Open pull
+request**; you merge or review there. For anything else it names the
+action, such as **See the build** or **Respond**.
 
 ## Since you were last here
 
@@ -104,9 +147,36 @@ all was counted, it says so plainly:
 When Code and Chat both failed to answer, the sentence ends with "what
 people did couldn't be read" rather than reading as quiet.
 
+### What changed
+
+The first card, **What changed**, has g1t tell you what happened in the
+span in plain English: what changed, why, and what is live. It is not
+written until you ask, since each summary is a call to your workspace's
+AI provider:
+
+1. Choose **Summarize** on the card, or the
+   [starter](#ask-from-home) **Summarize what changed since I was last
+   here** at the top of the page.
+2. g1t's summary streams into the card as it is written. It reads g1t as
+   you, as [Ask](/guides/ask/#what-it-can-read) does, so it covers only
+   what you can see.
+3. When it is finished:
+   - **Ask a follow-up** opens the top bar's Ask on the same
+     conversation, so you can ask about anything in the summary.
+   - **Summarize again** writes a new one.
+   - **In your direct message with g1t** opens the conversation in Chat,
+     where the summary is kept.
+
+The question g1t is sent reads as you would ask it, with the span's start
+in your time zone: "Summarize what changed since I was last here (2:12
+PM) in plain English." Choosing another span with the switch starts the
+card over. When Ask is not set up, the card says so: owners get a link to
+connect a provider and choose it for Ask, and members are told to ask an
+owner.
+
 ### While you were away
 
-The first card says what finished by itself in the span, and what is
+The next card says what finished by itself in the span, and what is
 live. (Over **Last 24 hours** and **Last 7 days** it is called **Settled
 for you**.) Its first line counts:
 
@@ -161,6 +231,21 @@ The card's line counts them by kind. The first
 five show; **Show more** opens the rest. Over **Last 7 days** the rows are
 grouped by day (**Today**, **Yesterday**, **Sun, Oct 11**), five of each
 day showing.
+
+#### Explain a change
+
+Every row has an **Explain** button (the sparkle beside its time,
+"Explain this change in plain English"). It opens the top bar's
+[Ask](/guides/ask/) and asks g1t about that one change:
+
+| Row | What g1t is asked |
+| --- | --- |
+| A merge or a push | "Explain pull request #47 in acme/web in plain English: what changed, why, and is it live?" (or the commit, for a push) |
+| A production build | What went out in that deployment |
+| A release or a package version | What's new in it |
+
+The answer is kept in your direct message with @g1t, like everything you
+[ask from Home](#ask-from-home).
 
 #### Live after merge
 
@@ -255,6 +340,8 @@ When one does not answer:
   deployments or sessions can't be read, Landed shows its rows without
   their live labels or agent markers.
 - While you were away says when your notifications can't be read.
+- What changed says when Ask can't be reached or isn't set up, or when
+  the question could not be sent.
 - If your last visit can't be read, the span is the last 24 hours and the
   page says why.
 
