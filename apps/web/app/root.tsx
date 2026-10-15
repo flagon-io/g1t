@@ -93,6 +93,9 @@ import {
   useDeveloperMode,
 } from "./lib/developer-mode";
 import { DebugDetails } from "./components/debug-details";
+import { ConnectionToast } from "./components/connection-toast";
+import { isNetworkFailure } from "./lib/resilient-fetch";
+import { useReconnect } from "./lib/reconnect";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
@@ -591,6 +594,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <SiteFooter user={user} />
           </>
         )}
+        {/* A page that cannot reach g1t says so, and keeps what it shows (lib/resilient-fetch.ts). */}
+        <ConnectionToast />
         {/* Live notifications for the signed-in: the feed socket, toasts, the tab's count (components/notifications). */}
         {user && !awaitsConfirmation(user) && (
           <LiveNotifications
@@ -659,6 +664,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     import.meta.env.DEV;
   const [gaveUp, setGaveUp] = useState<string | null>(null);
   const reload = reloadable && !tried && gaveUp !== href;
+  // No answer from g1t at all: keep trying, and the page comes back by itself.
+  const offline = !reload && isNetworkFailure(error);
+  useReconnect(offline);
   useEffect(() => {
     if (!reload) return;
     try {
@@ -678,6 +686,23 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       >
         <title>Loading · g1t</title>
         Loading the latest version of g1t…
+      </PageMain>
+    );
+  }
+
+  if (offline) {
+    return (
+      <PageMain
+        className="mx-auto max-w-xl px-4 py-32 text-center"
+        aria-busy="true"
+      >
+        <title>Reconnecting · g1t</title>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Can't reach g1t
+        </h1>
+        <p className="mt-3 text-muted">
+          Check your connection. This page loads by itself once g1t answers.
+        </p>
       </PageMain>
     );
   }

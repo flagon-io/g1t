@@ -4,6 +4,10 @@ import { HydratedRouter } from "react-router/dom";
 
 // Product analytics, started before the app (lib/analytics.client.ts).
 import "./lib/analytics.client";
+import { installResilientFetch } from "./lib/resilient-fetch";
+
+// The router's reads outlast a moment offline (lib/resilient-fetch.ts).
+installResilientFetch();
 
 startTransition(() => {
   hydrateRoot(
