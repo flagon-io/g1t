@@ -98,7 +98,7 @@ repository, its items leave your notifications the next time you open them.
 A thread that leaves you nothing to do moves to Done by itself, read, the
 moment what it told you of is over: a later run passes, the pull request
 merges, the review is no longer asked of you. It leaves your unread count,
-the bell, [Home](/guides/home/)'s **Needs you** and `g1t status`, and
+the bell, [Home](/guides/home/)'s **Where you're needed** and `g1t status`, and
 stays under **Done** with its history. New activity brings it back, as with
 any thread.
 
