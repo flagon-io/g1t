@@ -294,8 +294,9 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   commits yet, where there is nothing to open one against: it pushes the
   first version straight to the default branch.
   g1t's MCP server is attached too, for anything the CLI has no command
-  for. It can search and read the web (web search and web fetch), for a
-  fact the work needs from outside g1t. Both reach g1t with a token made for you
+  for. Its sandbox reaches the internet as a CI runner does, and it can
+  search and read the web (web search and web fetch), for a fact the work
+  needs from outside g1t or to open its own deploy. Both reach g1t with a token made for you
   and that repository only, which lasts the session and is revoked when it
   ends. The token is kept in a vault on the Anthropic account: the MCP
   server's credential, and `G1T_TOKEN`, which the sandbox holds only as a
