@@ -33,7 +33,6 @@ import {
   type AttentionKind,
   type AttentionRow,
   type Away,
-  type DeployRow,
   type Digest,
   type DigestActor,
   type DigestColumn,
@@ -204,16 +203,26 @@ function NeedItem({ row, now, arrived }: { row: AttentionRow; now: number; arriv
   );
 }
 
-/** Everything waiting on you, most pressing and longest waiting first; past the first few, the rest fold away. */
+/**
+ * Everything waiting on you, most pressing and longest waiting first, with
+ * the one g1t picked to start with on top and why; past the first few, the
+ * rest fold away.
+ */
 export function NeedsList({ attention, now }: { attention: Attention; now: number }) {
-  const { rows, missing } = attention;
-  const arrived = useArrived(rows.map((row) => row.key));
+  const { start, missing } = attention;
+  const rows = start ? attention.rows.filter((row) => row.key !== start.row.key) : attention.rows;
+  const arrived = useArrived(attention.rows.map((row) => row.key));
   return (
     <>
-      {rows.length === 0 ? (
-        <Quiet>{missing.length > 0 ? "Nothing needs you in what could be read." : "Nothing needs you. Reviews, invitations and messages for you show here as soon as they arrive."}</Quiet>
+      {start ? (
+        <StartRow start={start} now={now} arrived={arrived.has(start.row.key)} />
       ) : (
-        <ul>
+        attention.rows.length === 0 && (
+          <Quiet>{missing.length > 0 ? "Nothing needs you in what could be read." : "Nothing needs you. Reviews, invitations and messages for you show here as soon as they arrive."}</Quiet>
+        )
+      )}
+      {rows.length > 0 && (
+        <ul className={cn(start && "border-t border-line")}>
           {rows.slice(0, ROWS).map((row) => (
             <NeedItem key={row.key} row={row} now={now} arrived={arrived.has(row.key)} />
           ))}
@@ -259,72 +268,40 @@ export function RowsSkeleton({ rows = 3 }: { rows?: number }) {
 /** Rows about a pull request: Start here's button opens it, and says so, rather than naming the step (Merge, Review) it can't take there. */
 const PULL_KINDS = new Set<AttentionKind>(["ready", "review", "pull_blocked"]);
 
-export function StartHere({ attention, now }: { attention: Attention; now: number }) {
-  const start = attention.start;
+/** The one g1t picked to start with: the first of Where you're needed, a step bigger, with why. */
+function StartRow({ start, now, arrived }: { start: NonNullable<Attention["start"]>; now: number; arrived?: boolean }) {
+  const { row } = start;
+  const owner = row.owner ? (row.owner.agent ? `@${row.owner.name}` : row.owner.name) : null;
   return (
-    <Card
-      title={
-        <>
-          Start here <span className="font-normal text-faint">· picked by g1t</span>
-        </>
-      }
-    >
-      {!start ? (
-        <Quiet>{attention.missing.length > 0 ? "Nothing to pick from what could be read." : "Nothing needs you, so there's nothing to pick."}</Quiet>
-      ) : (
-        <div className="px-5 pb-5">
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 shrink-0">{ICON[start.row.kind]}</span>
-            <div className="min-w-0">
-              <Link to={start.row.action.to} className="text-[0.9375rem] leading-snug font-semibold text-fg hover:underline">
-                {start.row.title}
-              </Link>
-              <p className="mt-1 line-clamp-2 text-xs text-muted">{start.row.detail}</p>
-            </div>
-          </div>
-          <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
-            {start.row.owner && (
-              <>
-                <dt className="text-muted">Owner</dt>
-                <dd className="flex min-w-0 items-center gap-1.5 text-fg-soft">
-                  <User size={12} className="shrink-0 text-muted" />
-                  <span className="truncate">{start.row.owner.agent ? `@${start.row.owner.name}` : start.row.owner.name}</span>
-                </dd>
-              </>
-            )}
-            <dt className="text-muted">Next</dt>
-            <dd className="text-fg-soft">{start.row.action.label}</dd>
-            {start.row.at > 0 && (
-              <>
-                <dt className="text-muted">Waiting</dt>
-                <dd className="text-fg-soft" suppressHydrationWarning>
-                  {waited(start.row.at, now)}
-                </dd>
-              </>
-            )}
-            {start.row.stake && (
-              <>
-                <dt className="text-muted">At stake</dt>
-                <dd>
-                  <StakeText stake={start.row.stake} />
-                </dd>
-              </>
-            )}
-          </dl>
-          <p className="mt-4 rounded-lg bg-raised/60 px-3 py-2.5 text-xs leading-relaxed text-fg-soft">
-            <span className="font-medium text-fg">Why this one: </span>
-            {start.why}
-          </p>
-          <Link
-            to={start.row.action.to}
-            className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent-hover"
-          >
-            {PULL_KINDS.has(start.row.kind) ? "Open pull request" : start.row.action.label}
-            <ArrowRight size={14} />
+    <div className={cn("mx-3 mb-3 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3.5", arrived && ARRIVED)}>
+      <p className="text-[0.6875rem] font-medium tracking-wide text-accent uppercase">Start here · picked by g1t</p>
+      <div className="mt-2 flex items-start gap-3">
+        <span className="mt-0.5 shrink-0">{ICON[row.kind]}</span>
+        <div className="min-w-0 grow">
+          <Link to={row.action.to} className="text-[0.9375rem] leading-snug font-semibold text-fg hover:underline">
+            {row.title}
           </Link>
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted">{row.detail}</p>
+          <p className="mt-2 text-xs leading-relaxed text-fg-soft">{start.why}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <ButtonLink to={row.action.to} variant="accent" size="sm">
+              {PULL_KINDS.has(row.kind) ? "Open pull request" : row.action.label}
+              <ArrowRight size={14} />
+            </ButtonLink>
+            <span className="flex flex-wrap items-center gap-x-2 text-xs text-faint">
+              {row.stake && <StakeText stake={row.stake} />}
+              {row.at > 0 && <span suppressHydrationWarning>waiting {waited(row.at, now)}</span>}
+              {owner && (
+                <span className="inline-flex items-center gap-1">
+                  <User size={11} />
+                  {owner}
+                </span>
+              )}
+            </span>
+          </div>
         </div>
-      )}
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -368,7 +345,7 @@ function Faces({ actors }: { actors: DigestActor[] }) {
 /** The lines: each what was done, with its count in the words, linked to where it is listed. */
 function Lines({ column }: { column: DigestColumn }) {
   return (
-    <ul className="mt-3 space-y-1.5">
+    <ul className="mt-3 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
       {column.lines.map((line) => (
         <li key={line.key} className="flex items-start gap-2 text-sm text-fg">
           <span className="mt-1.75 size-1.5 shrink-0 rounded-full bg-fg-soft/60" aria-hidden />
@@ -386,23 +363,23 @@ function Lines({ column }: { column: DigestColumn }) {
 }
 
 /**
- * What people did in the span: lines with counts linked to where each
- * thing is listed, and the most active faces. It says when it is empty,
- * and which part didn't answer.
+ * What people did in the span, the top of the span's card: lines with
+ * counts linked to where each thing is listed, and the most active faces.
+ * It says when it is empty, and which part didn't answer.
  */
-export function PeopleCard({ digest, span, code }: { digest: Digest | null; span: Pick<Span, "key" | "note" | "words">; code: boolean }) {
+export function PeopleSummary({ digest, span, code }: { digest: Digest | null; span: Pick<Span, "key" | "note" | "words">; code: boolean }) {
   const when = inSpan(span);
   if (!digest) {
     return (
-      <section className="rounded-2xl border border-line bg-surface p-5">
+      <div className="px-5 py-4">
         <p className="text-sm text-muted">What happened couldn&apos;t be read right now. It shows here once Code and Chat answer.</p>
-      </section>
+      </div>
     );
   }
   const silent = digest.missing.filter((name) => name === "Code" || name === "Chat");
   const col = digest.people;
   return (
-    <section className="rounded-2xl border border-line bg-surface p-5" aria-label="What people did">
+    <div className="px-5 py-4" aria-label="What people did">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-fg">
           <Users size={15} className="text-muted" />
@@ -435,13 +412,13 @@ export function PeopleCard({ digest, span, code }: { digest: Digest | null; span
         </p>
       )}
       {digest.partial && <p className="mt-3 text-xs text-faint">More happened than Home reads at once, so some counts are low.</p>}
-    </section>
+    </div>
   );
 }
 
 export function SpanSkeleton() {
   return (
-    <section className="space-y-3 rounded-2xl border border-line bg-surface p-5" aria-busy="true">
+    <div className="space-y-3 px-5 py-4" aria-busy="true">
       <div className="flex items-center justify-between">
         <Skeleton className="h-3.5 w-20" />
         <Skeleton className="h-5 w-24 rounded-full" />
@@ -449,7 +426,7 @@ export function SpanSkeleton() {
       <Skeleton className="h-3.5 w-3/4" />
       <Skeleton className="h-3.5 w-1/2" />
       <Skeleton className="h-3.5 w-2/3" />
-    </section>
+    </div>
   );
 }
 
@@ -574,7 +551,7 @@ function ExplainButton({ change }: { change: LandedChange }) {
 function LandedItem({ change, now, tz, timeOnly, arrived }: { change: LandedChange; now: number; tz: string | null; timeOnly?: boolean; arrived?: boolean }) {
   return (
     <li className={cn(rowClass, "items-start", arrived && ARRIVED)}>
-      <span className="mt-0.5 shrink-0">{LANDED_ICON[change.kind]}</span>
+      <span className="mt-0.5 shrink-0">{change.failed ? <Rocket size={15} className="shrink-0 text-danger" /> : LANDED_ICON[change.kind]}</span>
       <div className="min-w-0 grow">
         <div className="flex min-w-0 items-center gap-1.5">
           {change.refsIn ? (
@@ -600,14 +577,27 @@ function LandedItem({ change, now, tz, timeOnly, arrived }: { change: LandedChan
   );
 }
 
+/** How many of the span's merges and pushes are live, deploying, waiting or failed: the feed's line. */
+function shipFacts(landed: LandedChange[]): { key: string; text: string; tone: BadgeTone }[] {
+  const count = (state: ShipInfo["state"]) => landed.filter((change) => change.shipped?.state === state).length;
+  const failed = count("failed") + landed.filter((change) => change.failed).length;
+  const facts: { key: string; text: string; tone: BadgeTone }[] = [];
+  if (count("live") > 0) facts.push({ key: "live", text: `${count("live").toLocaleString("en-US")} live`, tone: "success" });
+  if (count("deploying") > 0) facts.push({ key: "deploying", text: `${count("deploying").toLocaleString("en-US")} deploying`, tone: "info" });
+  if (count("waiting") > 0) facts.push({ key: "waiting", text: `${count("waiting").toLocaleString("en-US")} waiting to deploy`, tone: "neutral" });
+  if (failed > 0) facts.push({ key: "failed", text: `${failed.toLocaleString("en-US")} deploy failed`, tone: "danger" });
+  return facts;
+}
+
 /**
- * Everything that landed in the span, newest first: pull requests merged,
- * commits pushed straight to a default branch, production builds that went
- * live, releases and package versions published. Each merge and push says
+ * Everything that landed in the span, newest first, in the span's card:
+ * pull requests merged, commits pushed straight to a default branch,
+ * releases and package versions published, and production builds no merge
+ * or push already speaks for (`landedDeploys`). Each merge and push says
  * whether it is live yet, and one made in a harness session carries the
  * agent marker. Over the last 7 days, day by day.
  */
-export function LandedCard({
+export function LandedFeed({
   landed,
   missing,
   code,
@@ -628,80 +618,67 @@ export function LandedCard({
   const arrived = useArrived(landed?.map((change) => change.key) ?? [], scope);
   if (!code) return null;
   const render = (change: LandedChange) => <LandedItem key={change.key} change={change} now={now} tz={tz} timeOnly={byDay} arrived={arrived.has(change.key)} />;
+  const facts = landed ? shipFacts(landed) : [];
   return (
-    <Card title="Landed" hint={landed && landed.length > 0 ? landedHint(landed) : undefined}>
+    <div className="border-t border-line">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 pt-3.5 pb-2">
+        <h3 className="text-sm font-semibold text-fg">Landed</h3>
+        {landed && landed.length > 0 && <span className="text-xs text-muted">{landedHint(landed)}</span>}
+        {facts.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 sm:ml-auto" aria-label="Deployed">
+            {facts.map((fact) => (
+              <li key={fact.key}>
+                <Badge tone={fact.tone}>{fact.text}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       {!landed ? (
         <Quiet>Code didn&apos;t answer, so what landed can&apos;t be listed right now.</Quiet>
       ) : landed.length === 0 ? (
         <Quiet>{missing.length > 0 ? "Nothing landed in what could be read." : "Nothing merged, pushed to a default branch, deployed to production or published in this span."}</Quiet>
       ) : byDay ? (
         landedByDay(landed, now, tz).map((day) => (
-          <section key={day.key} aria-label={day.label} className="border-t border-line first-of-type:border-t-0">
-            <h3 className="flex items-baseline gap-2 bg-raised/40 px-5 py-1.5 text-xs font-medium text-fg-soft">
+          <section key={day.key} aria-label={day.label} className="border-t border-line">
+            <h4 className="flex items-baseline gap-2 bg-raised/40 px-5 py-1.5 text-xs font-medium text-fg-soft">
               {day.label}
               <span className="font-normal text-faint tabular-nums">{day.rows.length.toLocaleString("en-US")}</span>
-            </h3>
+            </h4>
             <Folded items={day.rows} render={render} />
           </section>
         ))
       ) : (
-        <Folded items={landed} render={render} />
+        <div className="border-t border-line">
+          <Folded items={landed} render={render} />
+        </div>
       )}
       {landed && <Missing names={missing} what="everything that landed" />}
-    </Card>
+    </div>
   );
 }
 
-// --- While you were away -----------------------------------------------------------
+// --- Settled for you ---------------------------------------------------------------
 
 /**
- * What g1t settled for you since you were last here (a later run passed,
- * it merged, it deployed), what shipped, and what still needs you: the
- * counts on one line, then each thing that settled and why.
+ * Your notifications that settled by themselves in the span (a later run
+ * passed, it merged, it deployed), each with why: in the side column.
+ * What shipped is the Landed feed's; what still needs you, Where you're
+ * needed.
  */
-export function AwayCard({ away, span, now }: { away: Away | null; span: Pick<Span, "key" | "note" | "words">; now: number }) {
-  const title = span.key === "last" && span.note == null ? "While you were away" : "Settled for you";
-  if (!away) {
-    return (
-      <Card title={title}>
-        <Quiet>Your notifications couldn&apos;t be read, so what settled can&apos;t be listed right now.</Quiet>
-      </Card>
-    );
-  }
-  const facts: { key: string; text: string; tone: BadgeTone; to: string | null }[] = [];
-  const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-  facts.push({ key: "settled", text: `${plural(away.settled.length, "notification")} settled`, tone: away.settled.length > 0 ? "success" : "neutral", to: "/notifications?view=done" });
-  if (away.shipped > 0) facts.push({ key: "shipped", text: `${plural(away.shipped, "change")} live`, tone: "success", to: null });
-  if (away.deploying > 0) facts.push({ key: "deploying", text: `${away.deploying.toLocaleString("en-US")} deploying`, tone: "info", to: null });
-  if (away.waiting > 0) facts.push({ key: "waiting", text: `${away.waiting.toLocaleString("en-US")} waiting to deploy`, tone: "neutral", to: null });
-  if (away.failed > 0) facts.push({ key: "failed", text: `${away.failed.toLocaleString("en-US")} deploy failed`, tone: "danger", to: null });
-  facts.push({ key: "needs", text: away.needs > 0 ? `${plural(away.needs, "thing")} still ${away.needs === 1 ? "needs" : "need"} you` : "Nothing needs you", tone: away.needs > 0 ? "warn" : "neutral", to: "#needed" });
+export function SettledCard({ away, now }: { away: Away | null; now: number }) {
+  const count = away?.settled.length ?? 0;
   return (
-    <Card title={title} hint="What finished by itself, and what is live" link={{ label: "Done", to: "/notifications?view=done" }}>
-      <ul className="flex flex-wrap gap-1.5 px-5 pb-3" aria-label="In short">
-        {facts.map((fact) => (
-          <li key={fact.key}>
-            {fact.to ? (
-              <Link to={fact.to} className="rounded-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none">
-                <Badge tone={fact.tone} size="md">
-                  {fact.text}
-                </Badge>
-              </Link>
-            ) : (
-              <Badge tone={fact.tone} size="md">
-                {fact.text}
-              </Badge>
-            )}
-          </li>
-        ))}
-      </ul>
-      {away.settled.length > 0 && (
+    <Card title="Settled for you" hint={away ? (count > 0 ? `${count.toLocaleString("en-US")} finished by themselves` : "Nothing finished by itself") : undefined} link={{ label: "Done", to: "/notifications/done" }}>
+      {!away ? (
+        <Quiet>Your notifications couldn&apos;t be read, so what settled can&apos;t be listed right now.</Quiet>
+      ) : count === 0 ? null : (
         <div className="border-t border-line">
           <Folded
             items={away.settled}
             render={(row) => (
-              <li key={row.key} className={rowClass}>
-                <CheckCheck size={15} className="shrink-0 text-success" aria-hidden="true" />
+              <li key={row.key} className={cn(rowClass, "items-start px-4")}>
+                <CheckCheck size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
                 <div className="min-w-0 grow">
                   <Link to={row.to} className="block truncate text-sm text-fg hover:underline">
                     {row.title}
@@ -712,63 +689,13 @@ export function AwayCard({ away, span, now }: { away: Away | null; span: Pick<Sp
                   </p>
                 </div>
                 <span className="shrink-0 text-xs text-faint tabular-nums" suppressHydrationWarning>
-                  {waited(row.at, now)} ago
+                  {waited(row.at, now)}
                 </span>
               </li>
             )}
           />
         </div>
       )}
-    </Card>
-  );
-}
-
-export function DeploysCard({
-  deploys,
-  complete,
-  code,
-  now,
-  tz,
-  scope,
-}: {
-  deploys: DeployRow[] | null;
-  complete: boolean;
-  code: boolean;
-  now: number;
-  tz: string | null;
-  scope?: string;
-}) {
-  const arrived = useArrived(deploys?.map((row) => row.key) ?? [], scope);
-  // A workspace that doesn't deploy has nothing to say here.
-  if (!code || (deploys && deploys.length === 0)) return null;
-  const failed = deploys?.filter((row) => row.outcome === "failed").length ?? 0;
-  return (
-    <Card title="Deploys" hint={deploys ? `${deploys.length.toLocaleString("en-US")} finished${failed ? ` · ${failed} failed` : ""}` : undefined}>
-      {!deploys ? (
-        <Quiet>Deployments didn&apos;t answer, so builds can&apos;t be listed right now.</Quiet>
-      ) : (
-        <Folded
-          items={deploys}
-          render={(row) => (
-            <li key={row.key} className={cn(rowClass, arrived.has(row.key) && ARRIVED)}>
-              <Rocket size={15} className={cn("shrink-0", row.outcome === "failed" ? "text-danger" : "text-success")} />
-              <div className="min-w-0 grow">
-                <Link to={row.to} className="block truncate text-sm text-fg hover:underline">
-                  {row.kind === "production" ? "Production" : `Preview of ${row.branch ?? "a branch"}`} of {row.project}
-                  <span className={cn("ml-2 text-xs font-medium", row.outcome === "failed" ? "text-danger" : "text-success")}>
-                    {row.outcome === "failed" ? "Failed" : "Went live"}
-                  </span>
-                </Link>
-                <p className="truncate text-xs text-muted">
-                  <span className="font-mono">{row.commit}</span> · by {row.by}
-                </p>
-              </div>
-              <When at={row.at} now={now} tz={tz} />
-            </li>
-          )}
-        />
-      )}
-      {deploys && !complete && <p className="border-t border-line px-5 py-2.5 text-xs text-faint">Some projects&apos; builds couldn&apos;t be read.</p>}
     </Card>
   );
 }
@@ -795,7 +722,7 @@ export function SpendCard({ spend, slug, span }: { spend: Spend | null; slug: st
         <Quiet>Billing didn&apos;t answer, so spend can&apos;t be shown right now.</Quiet>
       ) : (
         <div className="px-5 pb-5">
-          <div className="text-3xl font-semibold tracking-tight text-fg tabular-nums">{money(spend.totalMicros)}</div>
+          <div className="text-2xl font-semibold tracking-tight text-fg tabular-nums">{money(spend.totalMicros)}</div>
           <p className="mt-1 text-xs text-muted">
             {spend.from === spend.to ? utcDay(spend.from) : `${utcDay(spend.from)} – ${utcDay(spend.to)}`}
             {spend.monthMicros != null && ` · ${money(spend.monthMicros)} this month so far`}
@@ -820,9 +747,7 @@ export function SpendCard({ spend, slug, span }: { spend: Spend | null; slug: st
               </ul>
             </>
           )}
-          <p className="mt-4 text-[0.6875rem] leading-relaxed text-faint">
-            At price, as your statement shows it. The statement keeps whole days, midnight to midnight UTC, so this counts from the start of the day the span began.
-          </p>
+          <p className="mt-4 text-[0.6875rem] leading-relaxed text-faint">At price, by whole UTC days from the day the span began.</p>
         </div>
       )}
     </Card>
@@ -857,21 +782,22 @@ export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missin
         <Folded
           items={rows}
           render={(row) => (
-            <li key={row.key} className={cn(rowClass, arrived.has(row.key) && ARRIVED)}>
-              <span className="shrink-0">{RUNNING_ICON[row.kind]}</span>
+            // In the side column: the title gets the width, its state and how long under it.
+            <li key={row.key} className={cn(rowClass, "items-start px-4", arrived.has(row.key) && ARRIVED)}>
+              <span className="mt-0.5 shrink-0">{RUNNING_ICON[row.kind]}</span>
               <div className="min-w-0 grow">
-                <Link to={row.to} className="block truncate text-sm text-fg hover:underline">
+                <Link to={row.to} className="line-clamp-2 text-sm text-fg hover:underline">
                   {row.title}
                 </Link>
                 <p className="truncate text-xs text-muted">{row.detail}</p>
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-fg-soft">
+                  <Loader size={11} className="animate-spin text-accent motion-reduce:animate-none" aria-hidden />
+                  {row.status}
+                  <span className="text-faint tabular-nums" suppressHydrationWarning>
+                    · {waited(row.at, now)}
+                  </span>
+                </p>
               </div>
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-raised px-2 py-0.5 text-xs text-fg-soft">
-                <Loader size={11} className="animate-spin text-accent motion-reduce:animate-none" aria-hidden />
-                {row.status}
-              </span>
-              <span className="hidden w-14 shrink-0 text-right text-xs text-faint tabular-nums sm:inline" suppressHydrationWarning>
-                {waited(row.at, now)}
-              </span>
             </li>
           )}
         />
