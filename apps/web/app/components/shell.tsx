@@ -75,6 +75,7 @@ import { GithubMark } from "./github";
 import { STATUS_URL, statusTitle } from "../lib/status";
 import { G1T_INVITES, leftBadge } from "../lib/invites";
 import { type ShortcutProject, movedPin, recentWith } from "../lib/pins";
+import { ProjectIcon } from "./project-icon";
 import type { AccountMenuData } from "../routes/settings-menu-json";
 import { useLiveBadges } from "../lib/notify-client";
 import { OwnPresenceDot, OwnPresenceItems, StatusDialog } from "./presence";
@@ -641,7 +642,7 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
   const row = (project: ShortcutProject, isPinned: boolean) => (
     <SidebarLink
       to={`/${project.namespace}/${project.name}`}
-      icon={project.isPrivate ? <Lock /> : <Box />}
+      icon={<ProjectIcon kind={project.kind} isPrivate={project.isPrivate} lockPrivate />}
       bare={isPinned}
       action={
         // At the row's end, where the row's other actions sit, and only on
@@ -1198,7 +1199,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
         <Rule />
         <NavGroup title="Projects">
           {projects.slice(0, 8).map((project) => (
-            <SidebarLink key={project.name} to={`/${project.namespace}/${project.name}`} icon={<Box size={15} />}>
+            <SidebarLink key={project.name} to={`/${project.namespace}/${project.name}`} icon={<ProjectIcon kind={project.kind} isPrivate={project.isPrivate} lockPrivate size={15} />}>
               {project.title}
             </SidebarLink>
           ))}

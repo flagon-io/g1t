@@ -1,4 +1,4 @@
-import { ArrowUpRight, Box, ChevronLeft, ChevronRight, LayoutGrid, List, Lock, Rocket, Search } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight, LayoutGrid, List, Rocket, Search } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Form, Link, useLocation, useNavigation, useSubmit } from "react-router";
 
@@ -28,6 +28,7 @@ import {
   readProjectQuery,
 } from "../../lib/project-list";
 import { kindLabel, primaryLink } from "../../lib/project-kind";
+import { ProjectIcon } from "../../components/project-icon";
 import { deployments, projects } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
@@ -120,7 +121,7 @@ function ProjectRow({ project, slug, pinned, member }: { project: Item; slug: st
   return (
     <li className="group relative flex items-center gap-3 px-4 py-3 transition-colors focus-within:bg-raised/60 hover:bg-raised/60">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
-        {project.private ? <Lock size={14} /> : <Box size={14} />}
+        <ProjectIcon kind={project.kind} size={14} />
       </span>
       <div className="min-w-0 grow">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -160,7 +161,7 @@ function ProjectTile({ project, slug, pinned, member }: { project: Item; slug: s
     <li className="group relative flex flex-col rounded-2xl border border-line bg-surface p-5 transition-colors focus-within:border-line-strong hover:border-line-strong">
       <div className="flex items-start gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-raised text-muted ring-1 ring-line">
-          {project.private ? <Lock size={15} /> : <Box size={15} />}
+          <ProjectIcon kind={project.kind} size={15} />
         </span>
         <div className="min-w-0 grow">
           <Link

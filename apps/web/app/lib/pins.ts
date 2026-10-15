@@ -5,8 +5,10 @@
  * service keeps both; opening a project records it after the page is sent.
  */
 
+import type { ProjectKind } from "@g1t/contracts";
+
 /** A project as the sidebar lists it. */
-export type ShortcutProject = { namespace: string; name: string; title?: string; isPrivate: boolean };
+export type ShortcutProject = { namespace: string; name: string; title?: string; isPrivate: boolean; kind?: ProjectKind };
 
 export const MAX_PINS = 8;
 export const MAX_RECENT = 5;
