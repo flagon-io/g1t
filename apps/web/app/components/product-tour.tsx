@@ -1380,7 +1380,7 @@ const STYLES = `
 
 /**
  * The hero's tour: the frame (a full app on wider screens, one pane on a
- * phone), the step pills under it, and a line about the story.
+ * phone) and the step pills under it.
  */
 export function ProductTour({ className }: { className?: string }) {
   const clock = useTourClock();
@@ -1431,10 +1431,6 @@ export function ProductTour({ className }: { className?: string }) {
           );
         })}
       </div>
-      <p className="mx-auto mt-3 max-w-xl text-center text-xs leading-5 text-faint text-balance">
-        Priya&apos;s day starts on Home. She wrote the fix with Claude Code, connected to g1t through its MCP server: the
-        commits carry its mark, and the session it recorded stays on the pull request.
-      </p>
     </div>
   );
 }
