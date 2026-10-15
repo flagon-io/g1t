@@ -88,6 +88,9 @@ export const SESSION_STATES: Record<SessionState, { label: string; hint: string 
 /** The most of a prompt's intent that titles a session. */
 export const TITLE_LIMIT = 80;
 
+/** A turn the harness starts itself, as a tag: `<command-name>`, `<task-notification>`, one with attributes. */
+const HARNESS_TAG = /^\s*<[a-z][\w-]*(?:\s[^>]*)?>/i;
+
 /**
  * What a prompt is for, as a session's title: its first line or sentence,
  * without code blocks or markdown, whitespace collapsed, clipped at
@@ -97,7 +100,13 @@ export const TITLE_LIMIT = 80;
  */
 export function intentTitle(prompt: string | null | undefined): string | null {
   let text = String(prompt ?? "").replace(/^\uFEFF/, "");
-  if (/^\s*\//.test(text) || /^\s*<[a-z][\w-]*>/i.test(text)) return null;
+  // What the harness pasted in or attached is not what the prompt is for:
+  // pasted text (Claude Code's <pasted_content id="…">…</pasted_content>)
+  // and image placeholders ([Image #1], [Image: source: …]) go first.
+  text = text
+    .replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)/gi, "\n")
+    .replace(/\[Image(?: #\d+)?(?::[^\]\n]*)?\]/g, " ");
+  if (/^\s*\//.test(text) || HARNESS_TAG.test(text)) return null;
   text = text
     .replace(/```[\s\S]*?(```|$)/g, "\n")
     .replace(/~~~[\s\S]*?(~~~|$)/g, "\n")
@@ -130,8 +139,9 @@ export function sessionTitle(
   session: Pick<WorkSession, "title" | "branch" | "firstPrompt">,
   firstPrompt: string | null | undefined = session.firstPrompt,
 ): string {
+  // A title that is only a harness tag (an early plugin's from a pasted prompt) reads as none.
   const title = session.title?.trim();
-  if (title) return title;
+  if (title && !HARNESS_TAG.test(title)) return title;
   const intent = intentTitle(firstPrompt);
   if (intent) return intent;
   return session.branch ? `Session on ${session.branch}` : "Untitled session";
