@@ -52,7 +52,7 @@ Three choices shape it:
 - **Nothing waits on a harness.** No cron sweeps for quiet sessions or
   stale claims. The next read or change of a repository's coordination
   finds them (`sweep`) and announces them then: a session quiet for 15
-  minutes is idle, one quiet for 2 hours has ended, and a claim not renewed
+  minutes is idle, one quiet for 30 minutes has ended, and a claim not renewed
   within its time (30 minutes unless asked, at most 240) has expired.
 - **Everything can be sent twice.** Starting a session is idempotent on the
   harness's own session id, and each entry on its `key`, so a hook can call

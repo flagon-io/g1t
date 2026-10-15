@@ -207,7 +207,7 @@ impl Work {
         Ok(Outcome::Ok(repo))
     }
 
-    /// Ends the repository's sessions that have gone two hours without a
+    /// Ends the repository's sessions that have gone 30 minutes without a
     /// heartbeat (`timed_out`) and expires its claims past their time, and
     /// announces each. Run before the repository's coordination is read or
     /// changed, so that nobody sees a stale one as live.

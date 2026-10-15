@@ -153,7 +153,7 @@ update and every batch of entries counts as a heartbeat:
 | --- | --- |
 | `active` | Heard from in the last 15 minutes. |
 | `idle` | Not heard from for 15 minutes. It may still come back. |
-| `ended` | Ended with `end_session`, or not heard from for 2 hours (`end_reason` `timed_out`). A heartbeat brings a timed-out session back; an ended one stays ended. |
+| `ended` | Ended with `end_session`, or not heard from for 30 minutes (`end_reason` `timed_out`). A heartbeat brings a timed-out session back; an ended one stays ended. |
 
 Entries of a session attached to a pull request show in that pull
 request's [session](/guides/why-blame/#sessions), beside what was recorded
@@ -490,7 +490,7 @@ issue or pull request it is about) and `issue` where there is one.
 | Event | When |
 | --- | --- |
 | `session.started` | A session (or a subagent) starts, or one that ended starts again. Not on a repeated start. |
-| `session.ended` | A session ends, or times out after 2 hours without a heartbeat. |
+| `session.ended` | A session ends, or times out after 30 minutes without a heartbeat. |
 | `session.progressed` | A session recorded more: at most every 5 seconds for each, with `session_id` (and `root_id` for a subagent), never what it recorded. Pages showing the session follow it with this. |
 | `work.claimed` | Someone claims an issue. `others` lists the claims already on it; `took_over` names a hand-off it takes. |
 | `work.released` | A claim is released, or its issue closed (`reason` `issue_closed`). |

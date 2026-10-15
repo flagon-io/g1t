@@ -210,7 +210,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "session",
         title: "Sessions",
-        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id; a subagent starts its own with parent_id), `update` as a heartbeat or to attach an issue, pull request, branch or head commit, `record` user-facing decisions, tool calls, skills used and what it touched (idempotent on key), `end` when done with what it reported. `list` with an issue, or a path, shows who else (sibling subagents too) is on the same work. `dispatch` starts work on an issue in a session on the person's own Claude. A session goes idle after 15 minutes without a heartbeat and ends after 2 hours.",
+        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id; a subagent starts its own with parent_id), `update` as a heartbeat or to attach an issue, pull request, branch or head commit, `record` user-facing decisions, tool calls, skills used and what it touched (idempotent on key), `end` when done with what it reported. `list` with an issue, or a path, shows who else (sibling subagents too) is on the same work. `dispatch` starts work on an issue in a session on the person's own Claude. A session goes idle after 15 minutes without a heartbeat and ends after 30 minutes; a heartbeat brings it back.",
         default_action: None,
         actions: &[
             a("start", Op::Coordination(CoordinationOp::StartSession), "Start one, or get the one started with this harness_session_id"),
