@@ -311,6 +311,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     needs: rankNeeds(needs),
     claims: ok(claims) ?? [],
     sessions: [...(ok(active) ?? []), ...(ok(idle) ?? [])],
+    // Who may end a session by hand from Live now: its own runner, or anyone with write access.
+    ender: { viewerId: viewer?.id ?? null, canPush: can.push },
     liveLoaded: claims?.ok === true || active?.ok === true,
     // Sections that could not be read say so in their place, rather than
     // reading as empty: what needs someone signed in (their open pull
@@ -930,6 +932,7 @@ function Overview({
                   base={base}
                   now={Date.now()}
                   limit={LIVE_SHOWN}
+                  ender={loaderData.ender}
                 />
                 {moreIssues > 0 && (
                   <Link to={`${base}/work`} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">

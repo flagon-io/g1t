@@ -710,7 +710,10 @@ pub struct UpdateSessionArgs {
 
 /// `end_session`. Returns `Outcome<Session>`; ending one already ended
 /// returns it as it is (taking `result` if it had none). Ending a session
-/// ends its subagents still going.
+/// ends its subagents still going. Whoever runs a session ends it, and so
+/// may anyone with write access to the repository, for one left behind
+/// (its harness killed, or never told to end): see [`may_end_session`] and
+/// [`session_end_reason`].
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EndSessionArgs {
     pub actor: User,
@@ -721,6 +724,35 @@ pub struct EndSessionArgs {
     /// What it reported when it finished.
     #[serde(default)]
     pub result: Option<String>,
+    /// Ended by a person from the site, not by its harness: recorded as
+    /// [`ended_by_hand`] whatever `reason` says.
+    #[serde(default)]
+    pub by_hand: bool,
+}
+
+/// How every [`ended_by_hand`] reason starts.
+pub const ENDED_BY_HAND: &str = "ended by hand by @";
+
+/// The `end_reason` of a session a person ended by hand (from the site,
+/// or someone else's): `ended by hand by @name`.
+pub fn ended_by_hand(username: &str) -> String {
+    format!("{ENDED_BY_HAND}{username}")
+}
+
+/// Whether `actor` may end a session `owner` runs: their own, or anyone's
+/// when they have write access (`can_push`) to the repository.
+pub fn may_end_session(owner: &str, actor: &str, can_push: bool) -> bool {
+    owner == actor || can_push
+}
+
+/// Why a session ended, as `end_session` records it: [`ended_by_hand`]
+/// when a person ended it by hand or it was not theirs (so it never reads
+/// as its harness's own words), else what the harness said, or `ended`.
+pub fn session_end_reason(own: bool, by_hand: bool, actor: &str, given: Option<&str>) -> String {
+    if by_hand || !own {
+        return ended_by_hand(actor);
+    }
+    given.map(str::trim).filter(|reason| !reason.is_empty()).map_or_else(|| "ended".to_owned(), str::to_owned)
 }
 
 /// `get_work_session`: a session and its entries after `after_seq`.
@@ -1238,6 +1270,24 @@ mod tests {
 
     fn issues(numbers: &[u32]) -> HashSet<u32> {
         numbers.iter().copied().collect()
+    }
+
+    #[test]
+    fn a_session_is_ended_by_whoever_runs_it_or_by_anyone_who_can_write() {
+        assert!(may_end_session("usr_1", "usr_1", false));
+        assert!(may_end_session("usr_1", "usr_2", true));
+        assert!(!may_end_session("usr_1", "usr_2", false));
+    }
+
+    #[test]
+    fn a_session_ended_by_hand_says_who_ended_it() {
+        assert_eq!(session_end_reason(true, false, "ana", Some("done")), "done");
+        assert_eq!(session_end_reason(true, false, "ana", Some("  ")), "ended");
+        assert_eq!(session_end_reason(true, false, "ana", None), "ended");
+        assert_eq!(session_end_reason(true, true, "ana", Some("done")), "ended by hand by @ana");
+        // Someone else's: never in its harness's words.
+        assert_eq!(session_end_reason(false, false, "bo", Some("done")), "ended by hand by @bo");
+        assert!(ended_by_hand("bo").starts_with(ENDED_BY_HAND));
     }
 
     #[test]

@@ -155,6 +155,17 @@ update and every batch of entries counts as a heartbeat:
 | `idle` | Not heard from for 15 minutes. It may still come back. |
 | `ended` | Ended with `end_session`, or not heard from for 30 minutes (`end_reason` `timed_out`). A heartbeat brings a timed-out session back; an ended one stays ended. |
 
+A session its harness left behind, killed or never told to end, can be
+ended by hand: **End session** in its menu under Live now (on the
+project's overview and the Work page), or on its page. Whoever runs a
+session can end it, and so can anyone with write access to the
+repository; nobody else sees the action. It ends with `end_reason`
+`ended by hand by @name`, its subagents still going end with it, and its
+claims stay until they are released or expire. Through the API,
+`end_session` on someone else's session does the same, without their
+`reason` or `result`. A session g1t runs on the workspace's Anthropic
+account is stopped from its page instead.
+
 Entries of a session attached to a pull request show in that pull
 request's [session](/guides/why-blame/#sessions), beside what was recorded
 on it with `record_session`, so reviewers and why-blame see them. Entries

@@ -1576,6 +1576,13 @@ export interface CoordinationApi {
   ): Promise<Result<WorkSession[]>>;
   getWorkSession(repo: RepoPath, id: string, viewer: Viewer, afterSeq?: number): Promise<Result<WorkSessionDetail>>;
   /**
+   * Ends a session by hand, from the site: the actor's own, or anyone's
+   * when they have write access to the repository. It ends as
+   * `ended by hand by @actor`, with its subagents still going
+   * (`end_session` with `by_hand`; g1t_contracts::work::session_end_reason).
+   */
+  endWorkSession(actor: User, repo: RepoPath, id: string): Promise<Result<WorkSession>>;
+  /**
    * The harness sessions tied to some pull requests (at most 100), any way
    * a session is tied to one; a subagent's as the session that started it.
    * Only pull requests with any are listed.
