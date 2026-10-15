@@ -341,7 +341,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </div>
         </aside>
 
-        {/* 3. What happened in the span: who did what, what changed in plain English, what landed. */}
+        {/* 3. What happened in the span: what changed in plain English first, then who did what, then what landed. */}
         <section aria-labelledby="since" className="order-3 rounded-2xl border border-line bg-surface lg:col-start-1 lg:row-start-2">
           <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-4">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -354,10 +354,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <WindowSwitch span={span} />
             </div>
           </header>
-          <Suspense fallback={<SpanSkeleton />}>
-            <Await resolve={digest}>{(value) => <PeopleSummary digest={value} span={span} code={loaderData.code} />}</Await>
-          </Suspense>
-          <WhatChangedCard key={span.key} slug={slug} span={span} tz={tz} />
+          {/* Summarize leads: the plain-English account is what most people come for. */}
+          <div className="mt-4">
+            <WhatChangedCard key={span.key} slug={slug} span={span} tz={tz} />
+          </div>
+          <div className="border-t border-line">
+            <Suspense fallback={<SpanSkeleton />}>
+              <Await resolve={digest}>{(value) => <PeopleSummary digest={value} span={span} code={loaderData.code} />}</Await>
+            </Suspense>
+          </div>
           <Suspense
             fallback={
               <div className="border-t border-line pt-4">
