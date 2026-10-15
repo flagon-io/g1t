@@ -21,6 +21,13 @@ export function monthLong(month: string): string {
   return match && MONTHS_LONG[index] ? `${MONTHS_LONG[index]} ${match[1]}` : month;
 }
 
+/** `2026-10-14` → `Oct 14`; anything else as it came. */
+export function dayShort(day: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  const name = match ? MONTHS[Number(match[2]) - 1] : undefined;
+  return match && name ? `${name} ${Number(match[3])}` : day;
+}
+
 /**
  * The top of an axis for values up to `max`: the next 1, 2, 2.5 or 5
  * times a power of ten, so its ticks are round numbers. A dollar when

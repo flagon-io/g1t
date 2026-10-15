@@ -656,6 +656,15 @@ export type Overview = {
   planMrrMicros?: number;
   /** What g1t gave this month, by source, apart from its margin. */
   given?: GivenFigures[];
+  /**
+   * This month so far by the Costs & margin model, the same figures the
+   * Costs page adds up (Cloudflare's bill included, credits spent among
+   * what was given), through `marginThrough`. Null before the month's
+   * first day is rolled up.
+   */
+  monthMargin?: OverallMargin | null;
+  /** The last day `monthMargin` holds. YYYY-MM-DD. */
+  marginThrough?: string | null;
   /** g1t's own and Flagon's workspaces: what their use cost, and why they are not charged. */
   internal?: InternalUse[];
   openRequests?: number;

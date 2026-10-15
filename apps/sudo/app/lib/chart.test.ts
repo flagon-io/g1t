@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { axisDollars, barPath, change, marginOf, monthBars, monthLong, monthShort, niceCeiling, shares, ticks } from "./chart.ts";
+import { axisDollars, barPath, change, dayShort, marginOf, monthBars, monthLong, monthShort, niceCeiling, shares, ticks } from "./chart.ts";
 
 const M = 1_000_000;
 const month = (m: string, charged: number, cost: number) => ({ month: m, chargedMicros: charged, costMicros: cost, paidMicros: 0 });
@@ -90,4 +90,10 @@ test("axis labels are short", () => {
 test("shares are against the largest", () => {
   assert.deepEqual(shares([50, 100, 0, -5]), [0.5, 1, 0, 0]);
   assert.deepEqual(shares([0, 0]), [0, 0]);
+});
+
+test("a day, briefly", () => {
+  assert.equal(dayShort("2026-10-14"), "Oct 14");
+  assert.equal(dayShort("2026-10-01"), "Oct 1");
+  assert.equal(dayShort("soon"), "soon");
 });

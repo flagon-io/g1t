@@ -600,7 +600,13 @@ impl Billing {
         let open_requests = count("SELECT COUNT(*) AS n FROM limit_requests WHERE status = 'open'", vec![]).await?;
         let open_spikes = count("SELECT COUNT(*) AS n FROM spikes WHERE status = 'open'", vec![]).await?;
         let overages = self.admin_overages(AdminOveragesArgs {}).await?.len() as u32;
+        let (month_margin, margin_through) = match self.month_margin(&format!("{month}-01")).await? {
+            Some((figures, through)) => (Some(figures), Some(through)),
+            None => (None, None),
+        };
         Ok(Overview {
+            month_margin,
+            margin_through,
             revenue_micros: this.charged_micros + this.plans_micros,
             active_plans: active_plans as u32,
             plan_mrr_micros: active_plans * i64::from(self.plans.plan_monthly_cents) * 10_000,
