@@ -204,6 +204,7 @@ g1t pr view 14 -R git.example.com/acme/web
 ```sh
 g1t repo create my-project --source . --remote g1t   # make it, add it as a remote, push
 g1t repo create acme/web --public --clone
+g1t repo create acme/site --deploy   # its g1t.page deployments on from the start
 g1t repo list acme
 g1t repo view acme/web --web
 g1t repo clone acme/web
@@ -341,6 +342,8 @@ turned on again, and a workflow the workspace requires stays on.
 ```sh
 g1t deploy list --env production
 g1t deploy view dep_01kq8m3t5v7x9z1b3d5f7h9k2m
+g1t deploy enable                       # turn on this project's g1t.page deployments
+g1t deploy settings --project acme/web --previews off --build-command "npm run build:site"
 
 g1t logs --since 1h --level error,fatal
 g1t logs -q '"payment failed"' --follow

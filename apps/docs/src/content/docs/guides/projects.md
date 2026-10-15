@@ -301,6 +301,11 @@ and actions on the [MCP](/reference/mcp/) `workspace` tool:
 | `GET /workspaces/{workspace}/projects/{project}` | `get_project` | One project, with `kind`, `runs`, `production_url`, `setting`, `detected` and `links`. |
 | `PATCH /workspaces/{workspace}/projects/{project}` | `update_project` | Changes `kind`, `runs`, `production_url`, `homepage`, `docs_url`, `links`, or its name, description or root directory. Needs `repo:write`. |
 
+Its g1t.page deployment settings, on the `workflow` tool, are at
+`GET` and `PATCH /workspaces/{workspace}/projects/{project}/deployments/settings`
+(`get_deployment_settings`, `update_deployment_settings`): `enabled: true`
+turns its deployments on. See [Turn on deployments](/guides/deployments/#without-the-site).
+
 To say an app is deployed by your own pipeline, with its docs:
 
 ```sh

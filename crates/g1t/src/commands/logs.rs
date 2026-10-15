@@ -58,14 +58,21 @@ pub fn clock(time_us: i64) -> String {
 /// The workspace and project: --project (SLUG or WORKSPACE/SLUG), or the
 /// current repository's project.
 fn project(ctx: &Ctx, args: &LogsArgs) -> Result<(String, String, Client)> {
-    if let Some(p) = &args.project
+    resolve_project(ctx, args.project.as_deref())
+}
+
+/// The workspace and slug of a project given as WORKSPACE/SLUG, as a SLUG
+/// in the current repository's workspace, or, when left out, the current
+/// repository's own project.
+pub(crate) fn resolve_project(ctx: &Ctx, given: Option<&str>) -> Result<(String, String, Client)> {
+    if let Some(p) = given
         && let Some((w, slug)) = p.split_once('/')
     {
         return Ok((w.to_owned(), slug.to_owned(), ctx.signed_in_client()?));
     }
     let (repo, client) = ctx.repo_client()?;
-    if let Some(slug) = &args.project {
-        return Ok((repo.owner.clone(), slug.clone(), client));
+    if let Some(slug) = given {
+        return Ok((repo.owner.clone(), slug.to_owned(), client));
     }
     let (workspace, slug) = project_of(&client, &repo)?;
     Ok((workspace, slug, client))

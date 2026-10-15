@@ -161,6 +161,19 @@ pub const ROUTES: &[Route] = &[
     ),
     route("GET", "/workspaces/:workspace/projects/:project", Op::GetProject, &[]),
     route("PATCH", "/workspaces/:workspace/projects/:project", Op::UpdateProject, &[]),
+    // Its g1t.page deployments: whether it deploys, and how it builds.
+    route(
+        "GET",
+        "/workspaces/:workspace/projects/:project/deployments/settings",
+        Op::Deployments(DeploymentsOp::GetDeploymentSettings),
+        &[],
+    ),
+    route(
+        "PATCH",
+        "/workspaces/:workspace/projects/:project/deployments/settings",
+        Op::Deployments(DeploymentsOp::UpdateDeploymentSettings),
+        &[],
+    ),
     // A project's observability: what its software did, and how it is collected.
     route(
         "GET",

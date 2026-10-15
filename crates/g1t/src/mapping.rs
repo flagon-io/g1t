@@ -250,6 +250,19 @@ pub static COMMANDS: &[Mapping] = &[
         command: "deploy view",
         ops: &["get_deployment"],
     },
+    // These find the current repository's project as `logs` does.
+    Mapping {
+        command: "deploy settings",
+        ops: &["get_deployment_settings", "update_deployment_settings"],
+    },
+    Mapping {
+        command: "deploy enable",
+        ops: &["update_deployment_settings"],
+    },
+    Mapping {
+        command: "deploy disable",
+        ops: &["update_deployment_settings"],
+    },
     Mapping {
         command: "logs",
         ops: &["list_logs", "list_errors", "list_projects", "get_repo"],

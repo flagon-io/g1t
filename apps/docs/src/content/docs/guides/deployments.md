@@ -78,6 +78,41 @@ them off again.
 Production starts building at once from the default branch. Every pull
 request opened or pushed to from then on gets a preview.
 
+### Without the site
+
+An agent, a script or the CLI turns them on the same way, as someone with
+the Admin role on the repository; the workspace still needs the g1t plan.
+
+- **As you make the repository.** Give `deploy` when you create it:
+  `g1t repo create acme/web --deploy`, `deploy: true` on the
+  [MCP](/reference/mcp/) `repository` tool's `create`, or on
+  [`POST /repos`](/reference/api/repositories/create-repo/). Its first
+  push to the default branch then deploys production. The repository is
+  made even when deployments can't be turned on: the response has
+  `deployments` (the settings, with `production_url`) when they are on, or
+  `deploy_error` saying why not, such as the workspace having no g1t plan.
+- **For a project that exists.** `g1t deploy enable` in its checkout
+  (`--project acme/web` from anywhere), the MCP `workflow` tool's
+  `update_deployment_settings` with `enabled: true`, or:
+
+```sh
+curl -X PATCH https://api.g1t.sh/workspaces/acme/projects/web/deployments/settings \
+  -H "Authorization: Bearer $G1T_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+It answers with the project's settings, `production_url` among them.
+Without the g1t plan it is refused with `402 payment_required`, saying
+where an owner starts it; without the Admin role, with `403`. Turning them
+on for an existing project needs a token with `repo:admin`; turning them
+on as you make a repository needs only `repo:create`, which the
+[Agent preset](/guides/authentication/#presets) gives, since you are the
+new repository's admin. `g1t deploy disable` (or `enabled: false`) turns
+them off. The other [settings](#settings) change the same way:
+`g1t deploy settings` shows them, and takes flags such as
+`--build-command` and `--previews off`.
+
 Deployments are for projects g1t.page hosts. Not every project is one: a
 library, a tool or documentation is published rather than deployed, and
 an app may deploy itself, with [a workflow](#deploying-from-a-workflow)
@@ -724,6 +759,14 @@ Under the project's **Settings → Deployments**,
 | Output directory | Found by itself | What a static site serves. |
 | Idle days | 7 | 1 to 90. A preview no one visits this long comes down. |
 | Build with a workflow | Off | Build through the deploy workflow g1t manages for the project; see [build with a workflow](#build-with-a-workflow). |
+
+The same settings are read and changed with
+[`get_deployment_settings`](/reference/api/deployments/get-deployment-settings/) and
+[`update_deployment_settings`](/reference/api/deployments/update-deployment-settings/)
+(`GET` and `PATCH /workspaces/{workspace}/projects/{project}/deployments/settings`,
+the MCP `workflow` tool's actions of those names, and `g1t deploy settings`), as
+`production`, `previews`, `build_as`, `dockerfile`, `instance_type`,
+`build_command`, `output_dir`, `idle_days` and `via_workflow`.
 
 ## Logs, traces and errors
 

@@ -132,6 +132,7 @@ fn create(ctx: &Ctx, args: RepoCreateArgs) -> Result<()> {
         .field_opt("workspace", workspace)
         .field_opt("description", args.description)
         .field("private", !args.public)
+        .field_opt("deploy", args.deploy.then_some(true))
         .send()?;
     let repo = Repo {
         host: client.host.name.clone(),
@@ -144,6 +145,16 @@ fn create(ctx: &Ctx, args: RepoCreateArgs) -> Result<()> {
     } else {
         eprintln!("{} Made {repo}", ctx.out.green("✓"));
         println!("{url}");
+        if args.deploy {
+            match made["deploy_error"].as_str() {
+                Some(why) => eprintln!("{} Deployments are off: {why}", ctx.out.yellow("!")),
+                None => eprintln!(
+                    "{} Deployments are on: its first push deploys production to {}",
+                    ctx.out.green("✓"),
+                    s(&made["deployments"], "production_url")
+                ),
+            }
+        }
     }
     let remote = format!("{url}.git");
     if let Some(dir) = &args.source {

@@ -422,9 +422,13 @@ The [`workflow` tool](/reference/mcp/#workflow) has an action for each route:
 | `get_environment` | `GET /repos/{owner}/{name}/environments/{environment}` |
 | `update_environment` | `PUT /repos/{owner}/{name}/environments/{environment}` |
 | `delete_environment` | `DELETE /repos/{owner}/{name}/environments/{environment}` |
+| `get_deployment_settings` | `GET /workspaces/{workspace}/projects/{project}/deployments/settings` |
+| `update_deployment_settings` | `PATCH /workspaces/{workspace}/projects/{project}/deployments/settings` |
 
 They take the repository as `repo`, written `owner/name`, and the same
-fields as the routes.
+fields as the routes; a project's g1t.page settings take `workspace` and
+`project` instead, and `update_deployment_settings` with `enabled: true`
+[turns its deployments on](/guides/deployments/#without-the-site).
 
 ## On the site
 

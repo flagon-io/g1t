@@ -1242,6 +1242,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("create_deployment", Scope::DeploymentsWrite),
     ("create_deployment_status", Scope::DeploymentsWrite),
     ("start_deployment_build", Scope::DeploymentsWrite),
+    // A project's g1t.page settings: reading them is reading its
+    // deployments; turning them on or off, or changing how it builds,
+    // takes the Admin role on the site and here.
+    ("get_deployment_settings", Scope::DeploymentsRead),
+    ("update_deployment_settings", Scope::RepoAdmin),
     // Observability: what a project's software did, and how it is collected.
     ("get_observability_overview", Scope::ObservabilityRead),
     ("list_requests", Scope::ObservabilityRead),

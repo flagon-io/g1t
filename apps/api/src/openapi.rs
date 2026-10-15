@@ -505,6 +505,8 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Deployments(DeploymentsOp::ListEnvironments),
             Op::Deployments(DeploymentsOp::GetEnvironment),
             Op::Deployments(DeploymentsOp::StartDeploymentBuild),
+            Op::Deployments(DeploymentsOp::GetDeploymentSettings),
+            Op::Deployments(DeploymentsOp::UpdateDeploymentSettings),
         ],
     ),
     (
