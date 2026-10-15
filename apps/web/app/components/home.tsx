@@ -249,6 +249,9 @@ export function RowsSkeleton({ rows = 3 }: { rows?: number }) {
 
 // --- Start here -----------------------------------------------------------------
 
+/** Rows about a pull request: Start here's button opens it, and says so, rather than naming the step (Merge, Review) it can't take there. */
+const PULL_KINDS = new Set<AttentionKind>(["ready", "review", "pull_blocked"]);
+
 export function StartHere({ attention, now }: { attention: Attention; now: number }) {
   const start = attention.start;
   return (
@@ -266,7 +269,9 @@ export function StartHere({ attention, now }: { attention: Attention; now: numbe
           <div className="flex items-start gap-3">
             <span className="mt-0.5 shrink-0">{ICON[start.row.kind]}</span>
             <div className="min-w-0">
-              <p className="text-[0.9375rem] leading-snug font-semibold text-fg">{start.row.title}</p>
+              <Link to={start.row.action.to} className="text-[0.9375rem] leading-snug font-semibold text-fg hover:underline">
+                {start.row.title}
+              </Link>
               <p className="mt-1 line-clamp-2 text-xs text-muted">{start.row.detail}</p>
             </div>
           </div>
@@ -307,7 +312,7 @@ export function StartHere({ attention, now }: { attention: Attention; now: numbe
             to={start.row.action.to}
             className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-bg transition-colors hover:bg-accent-hover"
           >
-            {start.row.action.label}
+            {PULL_KINDS.has(start.row.kind) ? "Open pull request" : start.row.action.label}
             <ArrowRight size={14} />
           </Link>
         </div>
