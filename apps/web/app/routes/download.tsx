@@ -543,7 +543,7 @@ function AndroidPanel({ data, device }: { data: Data; device: Device }) {
   const steps = [
     onPhone ? "Download the app." : "Scan the code with your phone's camera, or download it on the phone.",
     "Open the file, and allow your browser to install apps when Android asks.",
-    "Open g1t (experimental) and sign in.",
+    "Open g1t and sign in.",
   ];
   return (
     <Panel

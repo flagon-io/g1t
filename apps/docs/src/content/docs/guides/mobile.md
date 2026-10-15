@@ -26,7 +26,7 @@ opens it from anywhere.
 2. Open the downloaded file. Android asks once to allow your browser to
    install apps: allow it. If Play Protect warns about an unknown app,
    choose **More details**, then **Install anyway**.
-3. Open **g1t (experimental)** and choose **Sign in with g1t**.
+3. Open **g1t** and choose **Sign in with g1t**.
 
 Point at the file's name on the page to see its SHA-256, to check the file
 you have is the one g1t published. Like every g1t build during the alpha,
@@ -189,7 +189,7 @@ the commands for running it on a phone and the first-time setup.
 | Build | Command | What it makes |
 | --- | --- | --- |
 | Development | `eas build --profile development --platform android` | An APK of `g1t (dev)` (`sh.g1t.app.dev`) that loads its code from your computer. |
-| Preview | `npm run build:android:apk -w @g1t/mobile` | An APK of `g1t (experimental)` (`sh.g1t.app.preview`) to install on testers' phones. |
+| Preview | `npm run build:android:apk -w @g1t/mobile` | An APK of `g1t` (`sh.g1t.app.preview`) to install on testers' phones. |
 | Production | `npm run build:android -w @g1t/mobile` | An Android App Bundle of `g1t` (`sh.g1t.app`) for Google Play. |
 
 The three install side by side. `eas submit --platform android` sends
