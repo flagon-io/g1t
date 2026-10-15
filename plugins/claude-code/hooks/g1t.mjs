@@ -119,11 +119,17 @@ export function redact(text) {
 }
 
 /** A path as the repository names it: relative to its root, with forward slashes; null outside it. */
-export function repoPath(path, cwd) {
+export function repoPath(path, cwd, root = repoRoot(cwd)) {
   if (typeof path !== "string" || !path) return null;
-  if (!isAbsolute(path)) return path.replaceAll("\\", "/").replace(/^\.\//, "");
-  if (!cwd) return null;
-  const rel = relative(cwd, path);
+  // From the working copy's top, wherever the shell has moved to since
+  // (`cd apps/web` leaves Claude Code's cwd there); from cwd outside one.
+  const base = root || cwd;
+  if (!isAbsolute(path)) {
+    if (!cwd || !root) return path.replaceAll("\\", "/").replace(/^\.\//, "");
+    path = resolve(cwd, path);
+  }
+  if (!base) return null;
+  const rel = relative(base, path);
   if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
   return rel.replaceAll("\\", "/");
 }
@@ -218,6 +224,9 @@ export function agentResult(response) {
 /** A turn the harness starts itself, as a tag: `<command-name>`, `<task-notification>`, one with attributes. */
 const HARNESS_TAG = /^\s*<[a-z][\w-]*(?:\s[^>]*)?>/i;
 
+/** What an editor adds ahead of a prompt, a whole block at a time: `<ide_opened_file>…</ide_opened_file>`. */
+const IDE_CONTEXT = /^\s*<(ide_[a-z_]+|system-reminder)\b[^>]*>[\s\S]*?<\/\1>/i;
+
 /**
  * What a prompt is for, as a session's title: its first line or sentence,
  * without code blocks or markdown, whitespace collapsed, clipped at
@@ -234,6 +243,9 @@ export function intentTitle(prompt) {
   text = text
     .replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)/gi, "\n")
     .replace(/\[Image(?: #\d+)?(?::[^\]\n]*)?\]/g, " ");
+  // Context an editor puts before what was typed (VS Code's
+  // <ide_opened_file>, <ide_selection>) is not a turn the harness started.
+  while (IDE_CONTEXT.test(text)) text = text.replace(IDE_CONTEXT, "");
   if (/^\s*\//.test(text) || HARNESS_TAG.test(text)) return null;
   text = text
     .replace(/```[\s\S]*?(```|$)/g, "\n")
@@ -363,6 +375,14 @@ export function plan(event, env = process.env) {
         }
       }
       if (SHELL_TOOLS.has(tool)) {
+        // What the command wrote (sed, a script, a formatter): the files it
+        // changed, against what PreToolUse saw before it ran.
+        if (event.session_id && event.tool_use_id) {
+          const kept = sessionFiles(event.session_id, env).shell(event.tool_use_id);
+          const before = readJson(kept, null);
+          rmSync(kept, { force: true });
+          for (const file of shellChanges(before, before ? dirtyFiles(cwd) : null).slice(0, 100)) touch.push(`--file=${file}`);
+        }
         const issue = issueFromCommand(input.command);
         if (issue) {
           job.issue = issue;
@@ -406,6 +426,59 @@ function git(cwd, args) {
   return out.status === 0 ? out.stdout.trim() : null;
 }
 
+/** The most uncommitted files compared around one shell command. */
+const MAX_DIRTY = 2000;
+
+/**
+ * The working copy's uncommitted files (modified, added, deleted, renamed
+ * by their new name, untracked; never ignored), each with what it is now:
+ * its modified time and size, or "gone". Paths from the top of the working
+ * copy. Null outside one.
+ */
+export function dirtyFiles(cwd) {
+  const root = repoRoot(cwd);
+  if (!root) return null;
+  const out = spawnSync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd: root, encoding: "utf8", windowsHide: true, timeout: 3000 });
+  if (out.status !== 0) return null;
+  const files = {};
+  const records = out.stdout.split("\0");
+  let count = 0;
+  for (let i = 0; i < records.length && count < MAX_DIRTY; i++) {
+    const record = records[i];
+    if (record.length < 4) continue;
+    // A rename or copy names its new path, then its old one.
+    if (record[0] === "R" || record[0] === "C") i++;
+    const path = record.slice(3);
+    try {
+      const stat = statSync(join(root, path));
+      files[path] = `${stat.mtimeMs}:${stat.size}`;
+    } catch {
+      files[path] = "gone";
+    }
+    count++;
+  }
+  return files;
+}
+
+/**
+ * What a shell command wrote, from the uncommitted files before it and
+ * after: each one new since, or changed since. One it committed or put
+ * back is not a write. Others writing in the same working copy during the
+ * command are counted too, but only then, never what they wrote before.
+ */
+export function shellChanges(before, after) {
+  if (!before || !after) return [];
+  return Object.keys(after).filter((path) => before[path] !== after[path]);
+}
+
+const roots = new Map();
+/** The top of the working copy `cwd` is in, asked once per directory; null outside one. */
+function repoRoot(cwd) {
+  if (!cwd) return null;
+  if (!roots.has(cwd)) roots.set(cwd, git(cwd, ["rev-parse", "--show-toplevel"]) || null);
+  return roots.get(cwd);
+}
+
 /** The g1t CLI on PATH, without running it. G1T_BIN names another. */
 export function findCli(env = process.env) {
   if (env.G1T_BIN) return existsSync(env.G1T_BIN) ? env.G1T_BIN : null;
@@ -429,6 +502,10 @@ function cli(bin, args, options) {
     encoding: "utf8",
     windowsHide: true,
     ...options,
+    // The hooks say what this session wrote (see shellChanges); the CLI's
+    // own guess, every uncommitted file in the working copy, would claim
+    // what other sessions sharing it wrote too.
+    env: { ...(options?.env ?? process.env), G1T_TOUCH: "0" },
   });
 }
 
@@ -482,6 +559,7 @@ export function sessionFiles(sid, env = process.env) {
     turn: join(dir, `${safe}.turn`),
     titled: join(dir, `${safe}.titled`),
     task: (key) => join(dir, `${safe}.task.${safeName(key)}.json`),
+    shell: (toolUseId) => join(dir, `${safe}.shell.${safeName(toolUseId)}.json`),
     unrecorded: join(dir, `${safe}.unrecorded.json`),
     agent: (agentId) => join(dir, `${safe}.agent.${safeName(String(agentId).replace(/^agent-/, ""))}.id`),
   };
@@ -810,7 +888,8 @@ export function work(job, env = process.env) {
       // command, so a command before this (rare: it is the first second)
       // uses the working copy's remembered session.
       try {
-        writeFileSync(job.envFile, `export G1T_SESSION=${id}\n`, { flag: "a" });
+        // G1T_TOUCH=0: they say what they wrote through the hooks, as cli() does.
+        writeFileSync(job.envFile, `export G1T_SESSION=${id}\nexport G1T_TOUCH=0\n`, { flag: "a" });
       } catch {}
     }
   }
@@ -1056,6 +1135,11 @@ export function hook(event, env = process.env) {
   const name = event?.hook_event_name;
   if (name === "PreToolUse") {
     if (!event.session_id || !existsSync(sessionFiles(event.session_id, env).marker)) return { output: null, job: null };
+    // The uncommitted files as a shell command finds them, so PostToolUse can say which it wrote.
+    if (SHELL_TOOLS.has(event.tool_name) && event.tool_use_id) {
+      const before = dirtyFiles(event.cwd || process.cwd());
+      if (before) write(sessionFiles(event.session_id, env).shell(event.tool_use_id), JSON.stringify(before));
+    }
     const output = preToolUse(event, env);
     const context = updateContext(event, env, { throttle: true });
     if (!context) return { output, job: null };
