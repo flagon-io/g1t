@@ -40,8 +40,8 @@ run or an agent's run cannot fork.
    branch, or turn it off to copy every branch and tag.
 5. Choose **Create fork**.
 
-You land on the fork. Its header says **Forked from** and links to the
-parent.
+You land on the fork. Under its name, its header says **forked from** and
+links to the parent.
 
 From the CLI, `g1t repo fork` forks the current repository, or the one you
 name, into your personal workspace unless you say `--workspace`. With

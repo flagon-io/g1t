@@ -77,8 +77,10 @@ adds:
 
 The review's summary is commented on the pull request, a table per
 lockfile of what was added and removed, and the check links to
-`g1t.sh/<owner>/<project>/security/pulls/<number>`. Require **Dependency
-review** under **Settings → Branches** to block merges on it.
+`g1t.sh/<owner>/<project>/security/pulls/<number>`. To block merges on it,
+add **Dependency review** to a ruleset's **Require status checks to pass**
+rule under **Settings → Rules** (see
+[required status checks](/guides/pull-requests/#required-status-checks)).
 
 A pull request has one review comment. When a later review says something
 new, that comment is changed in place; when it says the same, the comment

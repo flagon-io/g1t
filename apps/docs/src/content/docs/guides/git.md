@@ -315,6 +315,32 @@ To leave them out, push branches and tags alone:
 `git push origin --all && git push origin --tags`. A push with `--atomic`
 that names one is refused whole.
 
+## Pushes that merge pull requests and close issues
+
+A push does the same bookkeeping as merging on the site:
+
+- **It merges the pull requests it lands.** When a push to a branch brings
+  in the head commit of an open pull request into that branch, by merging
+  it in a clone or pushing its commits straight there, the pull request is
+  marked merged by whoever pushed. The issues it closes close, as with any
+  merge, and it leaves the merge queue. See [merging by pushing](/guides/pull-requests/#merging-by-pushing).
+- **It closes the issues its commits name.** A commit pushed to the
+  default branch whose message says `Fixes #12`, `Closes #12` or another
+  closing keyword closes that issue as completed, and the issue says which
+  commit closed it and who pushed it. Up to 250 commits of a push are
+  read. See [closing issues](/guides/pull-requests/#closing-issues).
+
+```sh
+git commit -m "Greet the caller by name
+
+Closes #12"
+git push origin main
+```
+
+A repository whose **Auto-close issues with merged linked pull requests**
+setting is off closes no issues either way. In a commit message on g1t,
+`#12` links to that issue or pull request.
+
 ## Limits
 
 ### Size limits

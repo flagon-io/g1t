@@ -178,11 +178,14 @@ has always taken contributions from strangers, applied to agents.
 
 They are not free of trade-offs.
 
-- **Falling behind is silent.** A branch sees new commits on `main` at the
+- **Falling behind is quieter.** A branch sees new commits on `main` at the
   next fetch. A working copy has to pull from the original repository,
-  which is a second remote. g1t tells a pull request it is behind when
-  someone tries to merge it, and the fix is one pull, but its author has to
-  do it.
+  which is a second remote. The merge box says when a pull request is
+  behind, merging brings it up to date by itself unless the branch must be
+  up to date first, and its author can
+  [update the branch](/guides/pull-requests/#keeping-it-up-to-date) from
+  the merge box; but a clone of the working copy only has the new commits
+  once its author pulls them.
 - **Merging does more work.** Merging from a working copy copies the new
   objects into the repository before moving `main`. From a branch they are
   already there.
