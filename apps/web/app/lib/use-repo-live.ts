@@ -13,6 +13,9 @@
  * socket is down, the page refreshes when the tab comes back into view
  * (at most every 30 s) and once a minute while it is in view.
  *
+ * `useLive` is the same for a page over several repositories (Home,
+ * the workspace's): one `watch_repos` asks for them all.
+ *
  * Browser-only work happens in effects; on the server the hook does
  * nothing.
  */
@@ -60,6 +63,23 @@ export type RepoLive = {
   show: () => void;
 };
 
+/** A repository a live page watches: its id, as changes name it, and its `owner/name`, as it is asked for. */
+export type WatchedRepo = { id: string; path: string };
+
+export type LiveOptions = RepoLiveOptions & {
+  /** The repositories whose changes the page hears. */
+  repos: readonly WatchedRepo[];
+  /** Whether the viewer is signed in: only then is there a socket to hear on. */
+  signedIn: boolean;
+  /** However many changes arrive, the page refreshes at most this often (LIVE_MIN_GAP_MS). */
+  gap?: number;
+};
+
+export type Live = RepoLive & {
+  /** Something outside the repositories changed (the inbox, on Home): refresh as a change would. */
+  nudge: () => void;
+};
+
 // ── Watching ─────────────────────────────────────────────────────────────
 
 /** When each repository was last asked for, by `owner/name`, so pages and reconnects ask once. */
@@ -67,24 +87,28 @@ const asked = new Map<string, number>();
 /** Asking again sooner than this is the same ask. */
 const ASK_AGAIN_MS = 5000;
 
-async function watchRepo(path: string, force: boolean): Promise<boolean> {
+/** Asks to hear `paths`, one request for them all; true when any is watched. */
+async function watchRepos(paths: readonly string[], force: boolean): Promise<boolean> {
   const now = Date.now();
-  const last = asked.get(path);
-  if (!force && last != null && now - last < ASK_AGAIN_MS) return true;
-  asked.set(path, now);
+  const due = paths.filter((path) => {
+    const last = asked.get(path);
+    return force || last == null || now - last >= ASK_AGAIN_MS;
+  });
+  if (due.length === 0) return true;
+  for (const path of due) asked.set(path, now);
   try {
     const answer = await fetch("/-/notify", {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ intent: "watch_repo", repo: path }),
+      body: JSON.stringify(due.length === 1 ? { intent: "watch_repo", repo: due[0] } : { intent: "watch_repos", repos: due }),
     });
     if (!answer.ok) throw new Error(`status ${answer.status}`);
     const body = (await answer.json().catch(() => null)) as { ok?: unknown } | null;
     if (body?.ok !== true) throw new Error("refused");
     return true;
   } catch {
-    asked.delete(path);
+    for (const path of due) asked.delete(path);
     return false;
   }
 }
@@ -111,10 +135,22 @@ function pageAtBottom(): boolean {
 export function useRepoLive(options: RepoLiveOptions): RepoLive {
   const layout = useRouteLoaderData("routes/repo/layout") as LayoutData | undefined;
   const repo = layout?.repo ?? null;
-  const signedIn = layout?.signedIn === true;
-  const enabled = options.enabled !== false && !!repo;
-  const path = repo ? `${repo.namespace}/${repo.name}` : null;
-  const repoId = repo?.id ?? null;
+  const repos = repo ? [{ id: repo.id, path: `${repo.namespace}/${repo.name}` }] : [];
+  const { live, held, show } = useLive({ ...options, enabled: options.enabled !== false && !!repo, repos, signedIn: layout?.signedIn === true });
+  return { live, held, show };
+}
+
+/**
+ * A page that refreshes itself as any of `repos` changes (Home watches
+ * the workspace's): `useRepoLive` for a page with no repository layout.
+ */
+export function useLive(options: LiveOptions): Live {
+  const { repos, signedIn } = options;
+  // With no repositories there is nothing to hear: the page refreshes as it would without the socket.
+  const enabled = options.enabled !== false;
+  // One string for the effects: the same repositories are the same watch.
+  const paths = repos.map((repo) => repo.path).join(" ");
+  const ids = repos.map((repo) => repo.id).join(" ");
 
   const connected = useFeedConnected();
   const [watching, setWatching] = useState(false);
@@ -145,7 +181,7 @@ export function useRepoLive(options: RepoLiveOptions): RepoLive {
   const check = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    const decision = gate(state.current, { now: Date.now(), visible: visibleNow(), busy: busyNow(), navigating: latest.current.navigating });
+    const decision = gate(state.current, { now: Date.now(), visible: visibleNow(), busy: busyNow(), navigating: latest.current.navigating, gap: latest.current.options.gap });
     if (decision.action === "run") run();
     else if (decision.action === "wait") timer.current = setTimeout(check, decision.ms);
     // "hold": out of view; coming back into view (`back` below) asks again.
@@ -162,16 +198,16 @@ export function useRepoLive(options: RepoLiveOptions): RepoLive {
     [check],
   );
 
-  // Watching the repository: on opening the page, whenever the socket
+  // Watching the repositories: on opening the page, whenever the socket
   // (re)connects, and before the watch runs out.
   useEffect(() => {
-    if (!enabled || !signedIn || !connected || !path) {
+    if (!enabled || !signedIn || !connected || !paths) {
       setWatching(false);
       return;
     }
     let cancelled = false;
     const ask = (force: boolean) =>
-      void watchRepo(path, force).then((ok) => {
+      void watchRepos(paths.split(" "), force).then((ok) => {
         if (!cancelled) setWatching(ok);
       });
     ask(true);
@@ -180,21 +216,22 @@ export function useRepoLive(options: RepoLiveOptions): RepoLive {
       cancelled = true;
       clearInterval(renew);
     };
-  }, [enabled, signedIn, connected, path]);
+  }, [enabled, signedIn, connected, paths]);
 
   // Changes as they arrive.
   useEffect(() => {
-    if (!enabled || !repoId) return;
+    if (!enabled || !ids) return;
+    const watched = new Set(ids.split(" "));
     return onRepoChanges((changes) => {
       const { match, hold } = latest.current.options;
-      const mine = changes.filter((change) => change.repo_id === repoId);
+      const mine = changes.filter((change) => watched.has(change.repo_id));
       const holding = hold ? mine.filter((change) => hold(change)) : [];
       const matched = mine.filter((change) => !holding.includes(change) && match(change));
       if (holding.length) setHeld((before) => [...before, ...holding]);
       // While something is held, the rest waits with it: shown together.
       if (matched.length && !holding.length && heldCount.current === 0) queue();
     });
-  }, [enabled, repoId, queue]);
+  }, [enabled, ids, queue]);
 
   // Another branch or page: what was held is no longer about it.
   useEffect(() => {
@@ -245,5 +282,9 @@ export function useRepoLive(options: RepoLiveOptions): RepoLive {
     run();
   }, [run]);
 
-  return { live, held, show };
+  const nudge = useCallback(() => {
+    if (enabled && heldCount.current === 0) queue();
+  }, [enabled, queue]);
+
+  return { live, held, show, nudge };
 }

@@ -60,6 +60,8 @@
   --color-danger: light-dark(var(--g1t-light-danger), var(--g1t-danger));
 
   --animate-fade-up: fade-up 0.6s ease-out both;
+  /* A row that arrived on a live page (Home): in from above, lit for a moment. */
+  --animate-arrive: g1t-arrive 0.42s cubic-bezier(0.16, 1, 0.3, 1), g1t-fresh 2s ease-out;
   --animate-dash: dash 1.2s linear infinite;
 
   /* Menus, popovers and dialogs (components/ui): in quickly, out quicker. */
@@ -138,10 +140,17 @@
   }
 }
 
-/* A row that just arrived on a live page (Observability's logs). */
+/* A row that just arrived on a live page (Observability's logs, Home). */
 @keyframes g1t-fresh {
   from {
     background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+}
+
+@keyframes g1t-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
   }
 }
 
