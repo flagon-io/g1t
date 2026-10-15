@@ -73,9 +73,19 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
   const fetcher = useFetcher<{ error?: string }>();
   const unread = isUnread(item);
   const leaving = isPending(fetcher, { id: item.id }) && ["done", "snooze", "undone"].includes(String(fetcher.formData?.get("intent")));
+  // Once out, it stays out: the list reloads after its request settles, and
+  // dismissing several quickly keeps putting that reload off. It comes back
+  // only if the request failed or the item itself changed.
+  const [left, setLeft] = useState<string | null>(null);
+  useEffect(() => {
+    if (leaving) setLeft(item.updatedAt);
+  }, [leaving, item.updatedAt]);
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.error) setLeft(null);
+  }, [fetcher.state, fetcher.data]);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => setNow(Date.now()), [item.updatedAt]);
-  if (leaving) return null;
+  if (leaving || left === item.updatedAt) return null;
 
   const submit = (intent: string, extra?: Record<string, string>) =>
     fetcher.submit({ intent, id: item.id, ...extra }, { method: "post", action: ACTION });
