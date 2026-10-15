@@ -34,6 +34,7 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Serialize;
 
+use super::needs::Need;
 use super::sandbox::{Isolation, SandboxDriver};
 
 /// Whether a kind of sandbox can be made here, and if not, why and what
@@ -46,14 +47,22 @@ pub struct Availability {
     pub cause: Option<String>,
     /// What the person can do about it, in a sentence.
     pub fix: Option<String>,
+    /// What is missing, by name, first what must come first (needs.rs).
+    pub needs: Vec<Need>,
 }
 
 impl Availability {
     pub fn yes() -> Availability {
-        Availability { available: true, cause: None, fix: None }
+        Availability { available: true, cause: None, fix: None, needs: vec![] }
     }
     pub fn no(cause: impl Into<String>, fix: impl Into<String>) -> Availability {
-        Availability { available: false, cause: Some(cause.into()), fix: Some(fix.into()) }
+        Availability { available: false, cause: Some(cause.into()), fix: Some(fix.into()), needs: vec![] }
+    }
+    /// Not here until `needs` are met, said in the first one's words; here when there are none.
+    pub fn needing(needs: Vec<Need>, kind: &str) -> Availability {
+        let Some(first) = needs.first() else { return Availability::yes() };
+        let (cause, fix) = first.said(kind);
+        Availability { needs, ..Availability::no(cause, fix) }
     }
 }
 

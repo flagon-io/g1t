@@ -35,6 +35,7 @@ use super::guest::{self, GuestStatus, Settings};
 use super::image::{self, Local};
 use super::{Backend, Resources, StopMode, process_alive};
 use crate::selfhosted::native::Availability;
+use crate::selfhosted::needs::{self, KvmFacts};
 
 /// The seed disk's size: the settings' JSON, then zeros.
 pub const SEED_BYTES: usize = 1 << 20;
@@ -170,6 +171,19 @@ fn qemu_program() -> &'static str {
     if image::arch() == "arm64" { "qemu-system-aarch64" } else { "qemu-system-x86_64" }
 }
 
+/// vfkit: on the PATH, else where Homebrew puts it, since a program the
+/// desktop app starts on a Mac has only the system's folders on its PATH.
+fn vfkit_program() -> String {
+    if answers("vfkit") {
+        return "vfkit".into();
+    }
+    needs::HOMEBREW_BINS
+        .iter()
+        .map(|bin| Path::new(bin).join("vfkit"))
+        .find(|path| path.exists())
+        .map_or_else(|| "vfkit".into(), |path| path.display().to_string())
+}
+
 fn answers(program: &str) -> bool {
     Command::new(program).arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
 }
@@ -242,24 +256,25 @@ impl Backend for DiskVm {
     }
 
     fn availability(&self) -> Availability {
-        match self.hypervisor {
-            Hypervisor::Vfkit if !answers("vfkit") => Availability::no(
-                "vfkit, which runs the sandbox's VM with Apple's Virtualization framework, is not installed.",
-                "Install it with `brew install vfkit` (macOS 13 or later), then start the sandbox again.",
-            ),
-            Hypervisor::Qemu if !Path::new("/dev/kvm").exists() => Availability::no(
-                "This machine has neither Sysbox nor KVM, so there is nothing to sandbox the runner with.",
-                "Install Sysbox 0.7 or later (https://github.com/nestybox/sysbox), or turn on virtualization and install QEMU so /dev/kvm exists.",
-            ),
-            Hypervisor::Qemu if std::fs::OpenOptions::new().read(true).write(true).open("/dev/kvm").is_err() => {
-                Availability::no("This user may not use /dev/kvm.", "Add this user to the kvm group, then log in again.")
+        let needs = match self.hypervisor {
+            Hypervisor::Vfkit => {
+                let macos = Command::new("sw_vers").arg("-productVersion").output().ok().and_then(|o| needs::macos_major(&String::from_utf8_lossy(&o.stdout)));
+                let homebrew = answers("brew") || needs::HOMEBREW_BINS.iter().any(|bin| Path::new(bin).join("brew").exists());
+                needs::vfkit_needs(macos, answers(&vfkit_program()), homebrew)
             }
-            Hypervisor::Qemu if !answers(qemu_program()) => Availability::no(
-                format!("{} is not installed.", qemu_program()),
-                "Install QEMU (qemu-system on Debian and Ubuntu, qemu-kvm on Fedora), or Sysbox 0.7 or later.",
-            ),
-            _ => Availability::yes(),
-        }
+            Hypervisor::Qemu => {
+                let device = Path::new("/dev/kvm").exists();
+                let (cpu, guest) = needs::cpu_flags(&std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default());
+                needs::kvm_needs(&KvmFacts {
+                    device,
+                    usable: device && std::fs::OpenOptions::new().read(true).write(true).open("/dev/kvm").is_ok(),
+                    cpu,
+                    guest,
+                    qemu: answers(qemu_program()),
+                })
+            }
+        };
+        Availability::needing(needs, "linux")
     }
 
     fn exists(&self) -> bool {
@@ -333,8 +348,8 @@ impl Backend for DiskVm {
         let _ = std::fs::remove_file(&paths.control);
         let _ = std::fs::remove_file(&paths.console);
         let (program, args) = match self.hypervisor {
-            Hypervisor::Vfkit => ("vfkit", vfkit_args(&paths, &resources)),
-            Hypervisor::Qemu => (qemu_program(), qemu_args(image::arch(), &paths, &resources)),
+            Hypervisor::Vfkit => (vfkit_program(), vfkit_args(&paths, &resources)),
+            Hypervisor::Qemu => (qemu_program().to_owned(), qemu_args(image::arch(), &paths, &resources)),
         };
         let log = std::fs::File::create(self.dir.join("sandbox.log"))?;
         let mut command = Command::new(program);

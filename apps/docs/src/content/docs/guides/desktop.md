@@ -288,16 +288,8 @@ start, it says why and runs nothing.
 | **In Docker** | `g1t-runner` on your computer, driving your Docker. Each job is a container of its own. | `container` | Its own container; but the runner controls your Docker, which can reach your files (Docker Desktop shares your home folder with its VM), so this is not a sandbox. |
 | **Directly on this computer** | `g1t-runner` on your computer, each job a process in a folder of its own. For jobs that need the system itself, such as building a Windows installer. | `host` | Everything your account can: your files, your keys, what an earlier job left. Not a sandbox. Never given a public repository's work. |
 
-What the sandbox needs on each computer:
-
-| Computer | Linux jobs | Windows jobs |
-| --- | --- | --- |
-| Windows 11, any edition | WSL, installed once: `wsl --install --no-distribution` in an admin terminal, then a restart. The app's **Copy command** button copies it. | Windows Sandbox, on Pro, Enterprise and Education, version 24H2 or later, turned on in Windows features. Home has none, and Linux jobs still run. |
-| macOS 13 or later | [vfkit](https://github.com/crc-org/vfkit): `brew install vfkit` | Not released yet |
-| Linux | Sysbox 0.7 or later in Docker, or QEMU with KVM | None: Linux jobs are native |
-
-The sandbox also needs virtualization turned on in your computer's
-firmware (Intel VT-x or AMD-V), which most computers have on.
+What the sandbox needs on each computer, and how the app gets it there,
+is in [getting the runner running](#getting-the-runner-running).
 
 The sandbox keeps jobs from your computer, not your computer from the
 sandbox: anything running as your account can look inside it while a job
@@ -343,6 +335,123 @@ says *this computer has another sandbox*: **Remove it and start again**
 removes it, with its VM and registration, and makes the app's own; or keep
 it and turn the app's runner off. Uninstalling g1t with **Delete the
 application data** ticked removes the sandbox too.
+
+### Getting the runner running
+
+The sandbox is a small virtual machine, so it needs what any VM needs:
+virtualization on in your computer, and on Windows the parts of Windows
+that run Linux VMs. You don't need to know what those are. Before it
+downloads anything, the app asks `g1t-runner sandbox status` what your
+computer still lacks for each kind of job, and each kind's card says it in
+plain words: what is missing, why, and one button that fixes it, or the
+exact steps when only you can.
+
+| Computer | Linux jobs need | Windows jobs need |
+| --- | --- | --- |
+| Windows 11 (any edition), Windows 10 2004 or later | Virtualization on, the Virtual Machine Platform feature, and WSL 2.0 or later. **Set up** does the last two. | Windows 11 Pro, Enterprise or Education, 24H2 or later; virtualization on; the Windows Sandbox feature. **Set up** turns it on. |
+| macOS 13 or later, Apple silicon or Intel | [vfkit](https://github.com/crc-org/vfkit), from [Homebrew](https://brew.sh): `brew install vfkit`. | Not released yet. |
+| Linux | Sysbox 0.7 or later in Docker; or virtualization on, KVM, and QEMU. | None: Linux jobs are this computer's own. |
+
+Each kind of job is set up on its own: Windows jobs that can't run on
+Windows Home never stop Linux jobs, and Linux jobs waiting on WSL never
+stop Windows jobs. What is missing is looked at again within half a minute, so
+a card changes by itself once you have fixed it; **Check now** looks at
+once.
+
+**On Windows, Set up does what Windows can do itself, in one go.** It turns
+on Virtual Machine Platform and Windows Sandbox, for the kinds of job you
+have on, and installs or updates WSL. Windows asks you to allow it, once
+(on a standard account, an administrator types their password). The cards
+say *Setting up* meanwhile, a few minutes. When what it turned on takes a
+restart, they say *Restart needed*, with **Restart now**, which asks first
+(save your work), and **Later**. After the restart g1t opens again by
+itself and carries on: Linux jobs download their image and start. Set up
+is the same as running these in an admin terminal, and its log goes into
+the runner's:
+
+```powershell
+Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart
+Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All -NoRestart
+wsl --install --no-distribution   # or wsl --update, for an older WSL
+```
+
+Whatever is missing, nothing falls back to running jobs in Docker or
+directly on your computer: those are only ever [your choice](#how-jobs-run).
+
+#### On Windows
+
+| The card says | What is missing | What to do |
+| --- | --- | --- |
+| *Needs setting up*: *WSL isn't installed*, *Virtual Machine Platform is off*, *WSL needs an update* | WSL 2, which the Linux VM runs on: the Virtual Machine Platform feature, and WSL 2.0 or later from the Microsoft Store (not the one built into older Windows). | **Set up**, and restart if it asks. |
+| *Needs setting up*: *Windows Sandbox is off* | The Windows Sandbox feature, which each Windows job runs in. | **Set up**, then restart. |
+| *Not available*: *Not in Windows Home* | Windows Sandbox, which Windows Home doesn't have. Linux jobs run all the same. | Nothing, for Linux jobs. For Windows jobs, Windows 11 Pro, Enterprise or Education: **Open Activation** is where Windows upgrades. |
+| *Restart needed*: *Restart to finish setting up* | Set up turned on a Windows feature, which takes effect after a restart. | **Restart now**, or **Later** and restart when it suits you. g1t opens again after and carries on. |
+| *Virtualization is off* | Intel VT-x or AMD-V, turned off in your computer's firmware, where Windows can't turn it on. | [Turn on virtualization](#turning-on-virtualization), then **Check now**. |
+| *This VM can't run the sandbox* | g1t is in a virtual machine whose host doesn't pass virtualization through to it. | [Turn on nested virtualization](#in-a-virtual-machine) on the host. |
+| *Windows needs an update*, on Linux jobs | Windows older than Windows 10 version 2004, the first with WSL 2. | **Open Windows Update**, update, and restart. |
+| *Windows needs an update*, on Windows jobs | Windows Sandbox's command line, `wsb`, which came with Windows 11 24H2. | **Open Windows Update**, update to 24H2 or later, and restart. |
+| *Set up didn't finish* | You said No to Windows' prompt, or a step failed, with its reason. | **Set up** again; **View log** says what happened. |
+| *WSL uses mirrored networking* | A setting, not a part: `networkingMode=mirrored` in `%USERPROFILE%\.wslconfig` lets Linux reach your computer's own `localhost`, so the sandbox won't start with it. | Remove it, run `wsl --shutdown`, then **Retry**. |
+
+#### On Linux
+
+With Sysbox 0.7 or later in Docker, none of these is needed: the runner's
+image runs under Sysbox, without a VM. Without it, Linux jobs run in a VM
+under QEMU with KVM, and the card says what is missing for that, with the
+command that fixes it on **Copy command**.
+
+| The card says | What is missing | What to do |
+| --- | --- | --- |
+| *No access to KVM* | `/dev/kvm` is there, and your account may not use it. | `sudo usermod -aG kvm $USER`, then log out and back in. |
+| *KVM isn't loaded* | `/dev/kvm`, though your processor can run VMs. | `sudo modprobe kvm_intel` (Intel) or `sudo modprobe kvm_amd` (AMD). If it says the firmware disabled it, [turn on virtualization](#turning-on-virtualization). |
+| *QEMU isn't installed* | QEMU, which runs the VM. | `sudo apt install qemu-system-x86` (`qemu-system-arm` on Arm) on Debian and Ubuntu, `sudo dnf install qemu-kvm` on Fedora, `sudo pacman -S qemu-base` on Arch, `sudo zypper install qemu-kvm` on openSUSE. |
+| *Virtualization is off* | Your processor says it can't run VMs: virtualization is off in the firmware, or it has none. | [Turn on virtualization](#turning-on-virtualization), or install Sysbox. |
+| *This VM can't run the sandbox* | Linux in a VM whose host doesn't pass virtualization through. | [Turn on nested virtualization](#in-a-virtual-machine), or install Sysbox. |
+
+#### On macOS
+
+| The card says | What is missing | What to do |
+| --- | --- | --- |
+| *vfkit isn't installed*, with **Get Homebrew** | vfkit, and Homebrew, which installs it. | **Get Homebrew** and install it, then `brew install vfkit` in Terminal (**Copy command**). |
+| *vfkit isn't installed* | vfkit, which runs the VM with Apple's Virtualization framework. | `brew install vfkit` in Terminal (**Copy command**). |
+| *macOS needs an update* | macOS 13 or later. | **Open Software Update**, update, and open g1t again. |
+
+The VM's image is the one for your Mac's processor, Apple silicon or Intel;
+while a release has none for it yet, the card says *Waiting for image*.
+Every Mac g1t runs on has virtualization on.
+
+#### Turning on virtualization
+
+Virtualization (Intel VT-x, *Intel Virtualization Technology*; AMD-V,
+*SVM Mode*) is a setting in your computer's firmware, the BIOS or UEFI
+settings, which only you can change. Most computers have it on; some
+come with it off.
+
+1. Open the firmware settings. On Windows: **Settings**, **System**,
+   **Recovery**, **Advanced startup**, **Restart now**, then
+   **Troubleshoot**, **Advanced options**, **UEFI Firmware Settings**,
+   **Restart**. Or press its key as the computer starts: usually F2 (Dell,
+   Acer, ASUS, Lenovo IdeaPad), F10 (HP), F1 (Lenovo ThinkPad), or Del
+   (desktops: MSI, Gigabyte, ASRock).
+2. Find **Intel Virtualization Technology** (sometimes **VT-x** or **Intel
+   VT**) or **SVM Mode** (AMD), usually under **Advanced**, **CPU
+   Configuration** or **Security**, and turn it on.
+3. Save and exit, usually F10. Windows starts again, and the card changes
+   by itself.
+
+#### In a virtual machine
+
+g1t inside a VM runs the sandbox as a VM inside that VM, which works only
+when the host passes virtualization through: *nested virtualization*. Turn
+it on for the VM on its host, with the VM off, then start it again:
+
+| Host | How |
+| --- | --- |
+| Hyper-V | `Set-VMProcessor -VMName <name> -ExposeVirtualizationExtensions $true`, in an admin PowerShell on the host. |
+| VMware Workstation, Fusion | The VM's settings, **Processors**, **Virtualize Intel VT-x/EPT or AMD-V/RVI**. |
+| VirtualBox | The VM's settings, **System**, **Processor**, **Enable Nested VT-x/AMD-V**, or `VBoxManage modifyvm <name> --nested-hw-virt on`. |
+| Proxmox, KVM | The VM's processor type `host`. |
+| A cloud VM | A machine type with nested virtualization: on Azure, Dv3 and Ev3 or later; on Google Cloud, nested virtualization turned on for the instance. Elsewhere, ask your provider: some offer it only on bare-metal machines. |
 
 ### Registering
 
@@ -395,9 +504,9 @@ hourly look; **Check for runner updates** still looks, and installs.
 
 | Where | What it shows |
 | --- | --- |
-| The title bar | Its dot, right beside **Settings**, in the colour of what it is doing; hover it for the words (*Runner running*, *Running a job*, *Running 2 jobs*, *Runner starting*, *Runner stopped*, *Runner needs you*), which a wide window shows beside it. It opens the runner menu. |
+| The title bar | Its dot, right beside **Settings**, in the colour of what it is doing; hover it for the words (*Runner running*, *Running a job*, *Running 2 jobs*, *Runner starting*, *Runner setting up*, *Runner stopped*, *Runner needs you*), which a wide window shows beside it. It opens the runner menu. |
 | The tray | A row with what the runner is doing, *Runner: Waiting for jobs*, which opens the runner menu; **Stop running jobs** or **Start running jobs** under it. The icon's hover text says it too. |
-| [The runner menu](#the-runner-menu) | At the top, what the whole runner is doing, as the dot says it, with how jobs run, its workspace and version, and its own **Stop** or **Start**. When it needs you, only what is about the whole runner: signed out, no workspace, turned off, stopped, the sandbox down, with the fix's buttons. Sandboxed, a line for each kind of job: its state (*Running a job*, *Waiting for jobs*, *Starting*, *Downloading image* with how far, *Updating*, *Waiting for image*, *Stopped*, *Not available*, *Problem*), the job it is running with a link to it, a newer runner waiting for it (*0.3.2 ready, installs after this job*), and when it isn't running why and the fix, with the fix's buttons and its own **Stop** or **Start**. Then when the app last looked for a newer runner, with **Check for runner updates**; the last lines of its log, following along, with **Open the whole log**; and **Runner settings…**. |
+| [The runner menu](#the-runner-menu) | At the top, what the whole runner is doing, as the dot says it, with how jobs run, its workspace and version, and its own **Stop** or **Start**. When it needs you, only what is about the whole runner: signed out, no workspace, turned off, stopped, the sandbox down, with the fix's buttons. Sandboxed, a line for each kind of job: its state (*Running a job*, *Waiting for jobs*, *Starting*, *Downloading image* with how far, *Updating*, *Waiting for image*, *Needs setting up*, *Setting up*, *Restart needed*, *Stopped*, *Not available*, *Problem*), the job it is running with a link to it, a newer runner waiting for it (*0.3.2 ready, installs after this job*), and when it isn't running why and the fix, with the fix's buttons and its own **Stop** or **Start**. Then when the app last looked for a newer runner, with **Check for runner updates**; the last lines of its log, following along, with **Open the whole log**; and **Runner settings…**. |
 | [The runner's settings](#runner-settings) | The same, with a card for each kind of job side by side, which adds its runner's name on g1t, version, updates and isolation; then **Run jobs on this computer while g1t is open**, how jobs run, the workspace, and your computer's name, the runner's version and when the app last looked for a newer one, with **View on g1t**. In Docker or directly on this computer, one line says what it is doing, or why it isn't running and the fix. |
 | The workspace's [Runners page](/guides/self-hosted-runners/#the-runners-page) | **Desktops**: every computer with the app in the workspace, with what each is doing, or why it isn't running and the fix, in the same words; a sandboxed one's kinds of job as cards of their own, as in the settings, with a link to the run each is running, its version, when the app last looked for updates and a newer one waiting. Inside the app, this computer comes first, live, with its buttons, each kind's **Stop** or **Start** and **Check for runner updates** among them. A computer whose g1t is closed says *g1t is closed on* its name. |
 
@@ -421,18 +530,16 @@ the settings and the Runners page.
 | *Couldn't register with* a workspace: *only its owners can* | You aren't an owner of it. | Ask an owner to make you one, or **Choose workspace**. |
 | *Couldn't register with* a workspace, with g1t's reason | g1t refused the registration, such as for too many tokens in an hour. | **Retry**; it also tries again by itself. |
 | *Not running: Docker isn't running* | Running jobs in Docker needs Docker, and it isn't running or isn't installed. | **Open Docker** (Docker Desktop), or **Get Docker**. It starts by itself once Docker answers. |
-| *Not running: WSL isn't installed* | Windows: Linux jobs run in a WSL distribution of the runner's own. | Run `wsl --install --no-distribution` in an admin terminal (**Copy command**), then restart Windows. Every edition of Windows 11 has it, Home included. |
+| *Needs setting up*, *Setting up*, *Restart needed* on a card, and *Not running:* what it needs (*WSL isn't installed*, *virtualization is off*, …) | Your computer lacks something the sandbox needs: WSL, a Windows feature, virtualization, KVM, QEMU, vfkit. | **Set up** on Windows, or the card's steps. [Getting the runner running](#getting-the-runner-running) has a row for each, on each system. |
 | *Not running: WSL uses mirrored networking* | `networkingMode=mirrored` in `%USERPROFILE%\.wslconfig` lets Linux reach your computer's own `localhost`. | Remove it, run `wsl --shutdown`, then **Retry**. |
-| *Not running: virtualization is off* | The sandbox is a small VM, and virtualization is off in your computer's firmware, or Virtual Machine Platform is off in Windows features. | Turn them on (**Open Windows features** on Windows), then restart. |
-| *Not running: vfkit isn't installed* | macOS: the sandbox's VM runs under vfkit. | Run `brew install vfkit` (**Copy command**). It starts by itself once vfkit is there. |
-| *Not running: no Sysbox or KVM* | Linux: the sandbox needs Sysbox in Docker, or QEMU with KVM. | **Install Sysbox**, or turn on virtualization and install QEMU. |
+| *Not running: WSL isn't installed*, *virtualization is off*, *vfkit isn't installed*, *no Sysbox or KVM*, with **Copy command** or **Open Windows features** | The same, said by an older `g1t-runner`, from before it named what a computer lacks. | Its fix; the app downloads a newer `g1t-runner` by itself, which brings **Set up**. |
 | *Not running: the sandbox's image didn't download* | The image couldn't be fetched from g1t, with the reason. | It tries again by itself, waiting longer each time; check that your computer can reach g1t. **Retry** tries now. |
 | *Not running: the sandbox's image didn't check out* | The image that downloaded isn't the one the release signed (its signature or SHA-256), so it wasn't used. | It downloads it again by itself. If it keeps happening, something between your computer and g1t, such as a proxy or antivirus, is changing downloads: **Report** it. |
 | *Not running: the sandbox can't run here* | Something else the sandbox needs, in its own words. | What it says. |
 | *Not running: the sandbox failed* | The sandbox stopped, or didn't start, with its reason. | It starts again by itself, waiting longer each time. **Retry**, or **View log**. |
 | *Not running: this computer has another sandbox* | A sandbox this copy of g1t has no record of making: one you made with `g1t-runner sandbox up`, or one left from before g1t was installed again. A computer has one. | **Remove it and start again**, which asks first; its old runners stay listed on g1t, offline, until you remove them there. Or keep it, and turn the app's runner off. |
 | *Not running: this g1t-runner has no sandbox* | The app's `g1t-runner` is from before the sandbox. | It downloads a newer one by itself; **Retry** looks now. |
-| *Windows jobs: Not available*: *Windows Sandbox is off*, *Windows needs an update* | Windows Sandbox is off, this Windows is Home, or it is older than 24H2. Linux jobs still run. | On Pro, Enterprise or Education, turn on Windows Sandbox (**Open Windows features**) and restart, or update Windows. |
+| *Windows jobs: Not available*: *Not in Windows Home* | Windows Home has no Windows Sandbox. Linux jobs still run. | Nothing, for Linux jobs; Windows jobs need Pro, Enterprise or Education. |
 | *Windows jobs: Problem*: *Its runner didn't start* or *Its runner stopped* | The runner for Windows jobs didn't start, with why, or stopped by itself, while Linux jobs run. | It is started again by itself in a few minutes; **Retry** now, or **View log**. |
 | *macOS jobs: Not available*: *Not released yet* | Sandboxed macOS jobs aren't released. | Nothing: they come with a `g1t-runner` update, which the app downloads by itself. |
 | *Offline:* the server *unreachable* | Your computer can't reach g1t. | Check the connection; it carries on by itself. **Retry** tries now. |

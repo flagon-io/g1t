@@ -35,6 +35,7 @@ use super::guest::{GuestStatus, Settings};
 use super::image::{self, Local};
 use super::{Backend, Resources, StopMode, process_alive};
 use crate::selfhosted::native::{Availability, hide_window};
+use crate::selfhosted::needs::{self, WindowsFacts, WslFacts};
 
 /// What the distribution is called.
 pub const DISTRO: &str = "g1t-sandbox";
@@ -63,6 +64,12 @@ pub fn parse_list(text: &str) -> Vec<(String, String)> {
             (fields.len() >= 2).then(|| (fields[0].to_owned(), fields[1].to_owned()))
         })
         .collect()
+}
+
+/// Whether `wsl.exe --list --verbose` lists a WSL 2 distribution: WSL 2
+/// works here.
+pub fn has_wsl2(text: &str) -> bool {
+    text.replace('\0', "").lines().skip(1).any(|line| line.trim().trim_start_matches('*').split_whitespace().nth(2) == Some("2"))
 }
 
 /// Whether `.wslconfig` puts WSL on mirrored networking, where Linux
@@ -127,20 +134,22 @@ impl Backend for Wsl {
 
     fn availability(&self) -> Availability {
         let installed = wsl().arg("--status").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
-        if !installed {
-            return Availability::no(
-                "WSL is not installed, and the sandbox for Linux jobs is a WSL distribution of its own.",
-                "Open a terminal as administrator and run `wsl --install --no-distribution`, then restart Windows. It works on every edition of Windows 11, Home included.",
-            );
-        }
         let config = std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join(".wslconfig"));
-        if config.and_then(|c| std::fs::read_to_string(c).ok()).is_some_and(|text| mirrored(&text)) {
+        if installed && config.and_then(|c| std::fs::read_to_string(c).ok()).is_some_and(|text| mirrored(&text)) {
             return Availability::no(
                 "WSL is set to mirrored networking, in which Linux reaches this computer's own localhost.",
                 "Remove networkingMode=mirrored from %USERPROFILE%\\.wslconfig, run `wsl --shutdown`, and start the sandbox again.",
             );
         }
-        Availability::yes()
+        // Made already: WSL works, and what goes wrong from here starting it says.
+        if installed && self.exists() {
+            return Availability::yes();
+        }
+        let version = || wsl().arg("--version").stderr(Stdio::null()).output().ok().filter(|o| o.status.success()).and_then(|o| needs::wsl_version(&String::from_utf8_lossy(&o.stdout)));
+        let listed = || wsl().args(["--list", "--verbose"]).output().map(|o| has_wsl2(&String::from_utf8_lossy(&o.stdout))).unwrap_or(false);
+        let facts = WslFacts { installed, version: if installed { version() } else { None }, has_wsl2: installed && listed() };
+        let windows = WindowsFacts::look();
+        Availability::needing(needs::wsl_needs(&windows, &facts, needs::restart_pending(&self.dir, &windows)), "linux")
     }
 
     fn exists(&self) -> bool {
@@ -269,6 +278,9 @@ mod tests {
         assert_eq!(list[0], ("Ubuntu".to_owned(), "Stopped".to_owned()));
         assert_eq!(list[1], ("g1t-sandbox".to_owned(), "Running".to_owned()));
         assert_eq!(list.len(), 3);
+        assert!(has_wsl2(text));
+        assert!(!has_wsl2("  NAME      STATE           VERSION\n* Ubuntu    Stopped         1\n"));
+        assert!(!has_wsl2(""));
         // wsl.exe without WSL_UTF8 writes UTF-16: its NULs are dropped.
         assert_eq!(parse_list("N\0A\0M\0E\0\n\0g\x001\0t\0 \0R\0u\0n\0\n")[0].0, "g1t");
     }
