@@ -246,6 +246,15 @@ export type AskEvent =
       body: string | null;
       mode: "plan" | "implement" | "review";
       instruction: string | null;
+      /**
+       * `repo` does not exist yet: the card creates it (`private` or
+       * public), turns on its deployments when `deploy`, then opens the
+       * issue and starts the session, which pushes the first version to
+       * the default branch, and so deploys it.
+       */
+      new_repository?: boolean;
+      private?: boolean;
+      deploy?: boolean;
     }
   | { type: "done"; stop_reason: string | null }
   | { type: "error"; message: string };

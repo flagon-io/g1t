@@ -1,9 +1,9 @@
-import { Ban, Check, ChevronRight, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, SquareTerminal } from "lucide-react";
+import { Ban, Check, ChevronRight, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, Rocket, SquareTerminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { AskSource } from "@g1t/contracts";
 
-import { type Proposal, type Step, foldAnswer, proposalTitle } from "../lib/ask";
+import { type Proposal, type Step, foldAnswer, proposalSteps, proposalTitle } from "../lib/ask";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -116,7 +116,17 @@ export function AskTrail({ events, working, part, slug }: { events: unknown; wor
   );
 }
 
-type Started = { session_url: string | null; provider_session_url: string | null; handoff: boolean; command: string | null; prompt: string };
+type Started = {
+  session_url: string | null;
+  provider_session_url: string | null;
+  handoff: boolean;
+  command: string | null;
+  prompt: string;
+  /** A new repository's proposal: what the card made first. */
+  repo_url?: string;
+  production_url?: string | null;
+  deploy_error?: string | null;
+};
 
 /**
  * Work g1t proposed to hand to a session in the person's own harness. Ask
@@ -130,6 +140,7 @@ export function SessionProposal({ proposal, slug }: { proposal: Proposal; slug: 
   const [started, setStarted] = useState<Started | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [made, setMade] = useState<Pick<Started, "repo_url" | "production_url" | "deploy_error"> | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -152,6 +163,8 @@ export function SessionProposal({ proposal, slug }: { proposal: Proposal; slug: 
         body: JSON.stringify({ ...proposal, handoff }),
       });
       const body = (await response.json().catch(() => null)) as (Started & { error?: string }) | null;
+      // The repository may be made even when the session is not: keep where it is.
+      if (body?.repo_url) setMade({ repo_url: body.repo_url, production_url: body.production_url ?? null, deploy_error: body.deploy_error ?? null });
       if (!response.ok || !body) throw new Error(body?.error ?? "The session could not be started.");
       setStarted(body);
       if (handoff && body.command) {
@@ -176,12 +189,38 @@ export function SessionProposal({ proposal, slug }: { proposal: Proposal; slug: 
             <span className="truncate text-sm font-medium text-fg">{proposalTitle(proposal)}</span>
             <Badge className="px-1.5 py-0 font-normal">Session</Badge>
           </div>
-          <p className="mt-0.5 text-xs text-muted">
-            {proposal.issue ? "Runs in your own harness, with your skills, tied to the issue." : "Opens the issue, then runs in your own harness, tied to it."}
-          </p>
+          <p className="mt-0.5 text-xs text-muted">{proposalSteps(proposal)}</p>
           {proposal.instruction && <p className="mt-1 line-clamp-2 text-xs text-faint">{proposal.instruction}</p>}
         </div>
       </div>
+      {made && (
+        <div className="flex flex-col gap-1 text-xs">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <Check size={13} aria-hidden="true" className="text-success" />
+            <span className="text-muted">Created</span>
+            <Button asChild variant="link" size="inline" className="text-xs">
+              <a href={made.repo_url}>{proposal.repo}</a>
+            </Button>
+          </span>
+          {made.production_url && (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <Rocket size={13} aria-hidden="true" className="text-accent" />
+              <span className="text-muted">Live once the first version is pushed at</span>
+              <Button asChild variant="link" size="inline" className="text-xs">
+                <a href={made.production_url} target="_blank" rel="noreferrer">
+                  {made.production_url.replace(/^https?:\/\//, "")} <ExternalLink size={11} aria-hidden="true" />
+                </a>
+              </Button>
+            </span>
+          )}
+          {made.deploy_error && (
+            <span className="flex items-start gap-1.5 text-warn">
+              <CircleAlert size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
+              Not deployed: {made.deploy_error}
+            </span>
+          )}
+        </div>
+      )}
       {running ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Check size={13} aria-hidden="true" className="text-success" />
