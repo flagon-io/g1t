@@ -1,7 +1,7 @@
 {
   "name": "g1t",
   "short_name": "g1t",
-  "description": "Your team and its agents, working in one place.",
+  "description": "The code platform for your team and its coding agents.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

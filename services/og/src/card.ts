@@ -13,7 +13,7 @@ export const HEIGHT = 630;
 const PAD = 80;
 
 /** The launch line: what g1t is, on the brand card and under every page card. */
-export const TAGLINE = "Where people and agents ship software together.";
+export const TAGLINE = "The code platform for your team and its agents.";
 
 /** An element as satori reads it. */
 export type Node = { type: string; props: Record<string, unknown> & { style?: Style; children?: Child } };
