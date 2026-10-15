@@ -179,7 +179,7 @@ export function PlanSummary({
       }
       about={
         on
-          ? `Billing period ${period}. One price for the workspace, never per seat.`
+          ? `Usage month ${period}${subscription?.periodEnd ? `; the plan renews ${endsOn(subscription.periodEnd)}` : ""}. One price for the workspace, never per seat.`
           : "The forge is free: repositories, issues, pull requests, reviews, search and the audit log. Checks, workflows and deployments need the plan, or the trial."
       }
       aside={
