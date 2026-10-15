@@ -5,7 +5,7 @@
 # builds all run in it: git, Node, Python, Go, Rust (with the formatter,
 # the linter, and the wasm32 and musl targets), Java (Temurin 21), .NET
 # (SDK 8), Ruby (3.3), the usual build tools, Docker (Engine, Buildx,
-# Compose).
+# Compose), and the command-line tools GitHub's Ubuntu runners have.
 #
 # Built and pushed by `node scripts/deploy.mjs build-base` (by hand, or by
 # .g1t/workflows/runner-base.yml), which records what it pushed in
@@ -14,7 +14,8 @@
 # runner builds in seconds. The deploy-to-cloudflare guide explains the two.
 #
 # Layers go from what changes least to what changes most: the system's
-# packages, Docker, then Go, then Rust, then Java, .NET and Ruby.
+# packages, Docker, then Go, then Rust, then Java, .NET and Ruby, then
+# the command-line tools.
 #
 # Java and Ruby live in the runner's tool cache (RUNNER_TOOL_CACHE,
 # /home/runner/_tool), laid out as the setup actions look for them, so
@@ -189,5 +190,27 @@ RUN prefix="/home/runner/_tool/Ruby/${RUBY_VERSION}/x64" \
  && touch "$prefix.complete" \
  && chown -R node:node "/home/runner/_tool/Ruby"
 ENV PATH=${JAVA_HOME}/bin:/home/runner/_tool/Ruby/${RUBY_VERSION}/x64/bin:$PATH
+
+# The everyday tools a workflow written for GitHub's Ubuntu runners
+# reaches for without installing them first: process and system tools
+# (`free`, `ps`, `top`, `killall`, `lsof`, `time`), the network's (`ip`,
+# `ping`, `dig`, `nc`, `netstat`, `rsync`, `ssh`), archives (bzip2, lz4,
+# 7z, pigz, brotli), autotools, CMake and Ninja, Git LFS, ShellCheck,
+# SQLite, GNU parallel, `tree`, and `python` as python3. The last layer,
+# because this is the list most likely to grow: adding to it rebuilds
+# nothing above it.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
+ && apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-unsafe-io \
+      procps psmisc lsof time less tzdata acl \
+      iproute2 iputils-ping dnsutils netcat-openbsd net-tools rsync \
+      bzip2 lz4 p7zip-full pigz brotli \
+      autoconf automake libtool m4 bison flex cmake ninja-build patchelf \
+      git-lfs shellcheck sqlite3 libsqlite3-dev libbz2-dev liblzma-dev \
+      parallel tree python-is-python3 \
+ && rm -rf /var/log/apt /var/log/dpkg.log /var/cache/debconf/*-old \
+ && git lfs install --system --skip-repo \
+ && free -h && ps --version && dig -v && cmake --version | head -n1 && git lfs version && shellcheck --version | head -n2
 
 USER node

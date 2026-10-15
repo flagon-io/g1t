@@ -1,13 +1,13 @@
 {
-  "image": "registry.cloudflare.com/1e6f2cffa3f445920836e8ebe446bb58/g1t-runner:base-20261014-9cb0c1c3ba59",
-  "digest": "sha256:ac4349507e453028275dd60e5020d577c0d1673e1eac9582e7fcf5e64527119f",
+  "image": "registry.cloudflare.com/1e6f2cffa3f445920836e8ebe446bb58/g1t-runner:base-20261015-77b70a7e6383",
+  "digest": "sha256:71c62fecd7d95b6752df42689003a914fdaea0397f90e4bca2a8f8f9ccf1722e",
   "pushed": true,
-  "inputs": "9cb0c1c3ba5983ad9df9daa5a1b48d2e905a7f065f45cec2527edc30309f4488",
-  "built_at": "2026-10-14T20:06:49.272Z",
-  "size_bytes": 4155695227,
+  "inputs": "77b70a7e63830cca8f257491f23ee2c70a4a3590975b89d8e1ec1b21d8d18f96",
+  "built_at": "2026-10-15T13:28:06.296Z",
+  "size_bytes": 4319969665,
   "versions": {
-    "node": "v24.21.0",
-    "npm": "11.19.0",
+    "node": "v24.22.0",
+    "npm": "11.19.1",
     "python": "3.11.2",
     "go": "go1.27.1",
     "rust": "1.99.0",
@@ -15,7 +15,7 @@
     "dotnet": "8.0.425",
     "ruby": "3.3.12",
     "git": "2.39.5",
-    "docker": "29.8.2",
+    "docker": "29.9.1",
     "debian": "12.15"
   }
 }
