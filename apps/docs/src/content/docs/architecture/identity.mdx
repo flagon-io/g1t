@@ -39,7 +39,7 @@ arguments. It is `null` for someone signed out.
 | Field | Holds |
 | --- | --- |
 | `kind` | `User`, `Workspace`, `Agent` or `System`: what kind of principal this is |
-| `workspaces` | Each membership: the role, the workspace's base permission, organisation roles such as billing or security manager, and privileges |
+| `workspaces` | Each membership: the role, the workspace's base permission, the roles that add to a member, such as billing or security manager, and privileges |
 | `grants` | Roles on repositories, directly or through teams |
 | `acting` | For a job or run token: the narrower scope it acts within |
 
@@ -63,7 +63,7 @@ that owns the data, next to it.
 
 | Level | Roles |
 | --- | --- |
-| Workspace | Owner and member, plus organisation roles (billing manager, security manager) and member privileges |
+| Workspace | Owner and member, plus the roles that add to a member (billing manager, security manager) and member privileges |
 | Repository | Read, Triage, Write, Maintain and Admin, given to a person, a team, or everyone in the workspace as its base permission |
 | Outside collaborators | A repository role for someone who is not a member |
 
