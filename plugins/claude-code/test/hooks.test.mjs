@@ -1,7 +1,7 @@
 // Tests for the plugin's hooks: node --test plugins/claude-code/test/
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
@@ -29,7 +29,11 @@ import {
   isGitPush,
   issueFromBranch,
   issueFromCommand,
+  mayAddRemote,
+  pairSubagent,
   plan,
+  rememberTask,
+  takeTask,
   redact,
   sessionFiles,
   subagentHarnessId,
@@ -433,8 +437,9 @@ describe("with a working copy", () => {
     const started = hook(at(fixtures.subagentStart), env);
     assert.match(started.output.hookSpecificOutput.additionalContext, /session of your own/);
     assert.match(started.output.hookSpecificOutput.additionalContext, /g1t session list --issue 42 --subagents|g1t session list --subagents/);
-    assert.equal(started.job.agent.task, "Find API endpoints");
+    assert.equal(started.job.pair, true, "paired with its Agent call in the background half");
     work(started.job, env);
+    assert.equal(started.job.agent.task, "Find API endpoints", "no files of the subagent's: the oldest call of its type");
     // What it does goes to its own session.
     const edited = { ...fixtures.inSubagent.tool_input, file_path: join(dir, "src", "api", "routes.ts") };
     work(hook(at({ ...fixtures.inSubagent, tool_input: edited }), env).job, env);
@@ -462,6 +467,121 @@ describe("with a working copy", () => {
     assert.deepEqual(touched, { args: ["session", "touch", "--file=src/api/routes.ts"], session: "ses_sub_def456" });
     const ended = log.find((c) => c.args[1] === "end");
     assert.deepEqual(ended, { args: ["session", "end", "--reason", "done", "--result=Analysis complete. Found 3 potential issues..."], session: "ses_sub_def456" });
+  });
+
+  test("five subagents of one type started at once each get their own Agent call's task, whatever order they start in", () => {
+    // Claude Code's transcript and, beside it, each subagent's files.
+    const transcript = join(dir, "projects", "abc-123.jsonl");
+    const subagents = join(dir, "projects", "abc-123", "subagents");
+    mkdirSync(subagents, { recursive: true });
+    writeFileSync(transcript, "");
+    const at = (event) => ({ ...event, cwd: dir, transcript_path: transcript });
+    hook(at({ ...base, hook_event_name: "SessionStart" }), env);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
+    const n = [1, 2, 3, 4, 5];
+    // One message, five Agent calls of the same type.
+    for (const i of n) {
+      const tool_input = { description: `Task ${i}`, prompt: `Do thing ${i}, and only thing ${i}.`, subagent_type: "general-purpose" };
+      hook(at({ ...base, hook_event_name: "PreToolUse", tool_name: "Agent", tool_input, tool_use_id: `toolu_${i}` }), env);
+    }
+    const files = (i, { meta = true, first = true } = {}) => {
+      if (meta) writeFileSync(join(subagents, `agent-a${i}.meta.json`), JSON.stringify({ agentType: "general-purpose", description: `Task ${i}`, toolUseId: `toolu_${i}` }));
+      if (first) writeFileSync(join(subagents, `agent-a${i}.jsonl`), `${JSON.stringify({ type: "user", agentId: `a${i}`, message: { role: "user", content: `Do thing ${i}, and only thing ${i}.` } })}\n{"type":"attachment"}\n`);
+    };
+    // They start in another order: one with its meta file, one with only its transcript (by prompt), the rest with both.
+    files(4);
+    files(2, { meta: false });
+    files(5);
+    files(1);
+    files(3, { first: false });
+    for (const i of [4, 2, 5, 1, 3]) work(hook(at({ ...base, hook_event_name: "SubagentStart", agent_id: `a${i}`, agent_type: "general-purpose" }), env).job, env);
+    const starts = calls().filter((c) => c.args[1] === "start" && c.args.includes("--parent"));
+    assert.equal(starts.length, 5);
+    for (const i of n) {
+      const start = starts.find((c) => c.args.includes(`abc-123/agent/a${i}`)).args;
+      assert.ok(start.includes(`--task=Task ${i}`), `subagent ${i}: ${start.join(" ")}`);
+      assert.ok(start.includes(`--prompt=Do thing ${i}, and only thing ${i}.`), `subagent ${i}'s own prompt`);
+    }
+    assert.equal(readdirSync(join(env.CLAUDE_PLUGIN_DATA, "sessions")).filter((f) => f.includes(".task.")).length, 0, "every task taken once");
+  });
+
+  test("a pending task is never handed to two subagents, and an exact subagent never takes another's", () => {
+    const files = sessionFiles(base.session_id, env);
+    const input = (i) => ({ description: `Task ${i}`, prompt: `Prompt ${i}`, subagent_type: "general-purpose" });
+    for (const i of [1, 2, 3]) rememberTask(files, input(i), `toolu_${i}`);
+    assert.equal(takeTask(files, { type: "general-purpose", toolUseId: "toolu_2" }).task, "Task 2");
+    assert.equal(takeTask(files, { type: "general-purpose", toolUseId: "toolu_2" }), null, "taken once");
+    assert.equal(takeTask(files, { type: "general-purpose", prompt: "Prompt 2" }), null, "nor by its prompt");
+    assert.equal(takeTask(files, { type: "general-purpose", toolUseId: "toolu_9" }), null, "an unknown call takes nothing rather than a guess");
+    assert.equal(takeTask(files, { type: "general-purpose", prompt: "  Prompt 3\n" }).task, "Task 3", "the prompt as the transcript has it");
+    // With no files of the subagent's (an older Claude Code): the oldest of its type, as before.
+    assert.equal(takeTask(files, "general-purpose").task, "Task 1");
+    assert.equal(takeTask(files, "general-purpose"), null);
+    // An Agent call answered takes its own task back, so no later subagent guesses it.
+    rememberTask(files, input(4), "toolu_4");
+    work({ ...plan({ ...fixtures.agentLaunched, cwd: dir, tool_use_id: "toolu_4" }, env) }, env);
+    assert.equal(takeTask(files, "general-purpose"), null);
+  });
+
+  test("a subagent's files give its task even when its Agent call was not kept", () => {
+    const subagents = join(dir, "t", "subagents");
+    mkdirSync(subagents, { recursive: true });
+    writeFileSync(join(subagents, "agent-a7.meta.json"), JSON.stringify({ description: "Look around", toolUseId: "toolu_7" }));
+    writeFileSync(join(subagents, "agent-a7.jsonl"), `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "Look around the repo" }] } })}\n`);
+    const files = sessionFiles(base.session_id, env);
+    rememberTask(files, { description: "Someone else's", prompt: "not yours", subagent_type: "Explore" }, "toolu_8");
+    const agent = pairSubagent({ id: "agent-a7", type: "Explore" }, files, join(dir, "t.jsonl"), env);
+    assert.deepEqual(agent, { id: "agent-a7", type: "Explore", task: "Look around", prompt: "Look around the repo" });
+    assert.equal(takeTask(files, "Explore").task, "Someone else's", "left for its own subagent");
+    assert.equal(pairSubagent({ id: "a7", type: "Explore" }, files, join(dir, "t.jsonl"), { G1T_RECORD_PROMPTS: "0" }).prompt, undefined);
+  });
+
+  test("a session started with no g1t remote is recorded once a command adds one, titled by its first prompt", () => {
+    git("remote", "remove", "origin");
+    const at = (event) => ({ ...base, cwd: dir, ...event });
+    assert.deepEqual(hook(at({ hook_event_name: "SessionStart", source: "startup" }), env), { output: null, job: null });
+    assert.equal(hook(at({ hook_event_name: "UserPromptSubmit", prompt: "Build me a todo app. Use React." }), env).job, null);
+    assert.equal(hook(at({ hook_event_name: "UserPromptSubmit", prompt: "and make it blue" }), env).job, null);
+    const bash = (command) => at({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command } });
+    assert.equal(hook(at({ hook_event_name: "PostToolUse", tool_name: "Write", tool_input: { file_path: join(dir, "a.ts") } }), env).job, null);
+    assert.equal(hook(bash("npm init -y"), env).job, null);
+    assert.equal(hook(bash("git remote -v"), env).job, null, "looked, and there is none yet");
+    assert.deepEqual(calls(), [], "nothing recorded without a g1t remote");
+    // The agent makes the repository and adds it as the remote.
+    git("remote", "add", "origin", "https://g1t.sh/acme/app.git");
+    const { output, job } = hook(bash("g1t repo create acme/app --private && git remote add origin https://g1t.sh/acme/app.git"), env);
+    assert.equal(job.start, true);
+    assert.equal(output.hookSpecificOutput.hookEventName, "PostToolUse");
+    assert.match(output.hookSpecificOutput.additionalContext, /issue #42/, "told what SessionStart would have told it");
+    assert.deepEqual(job.steps.at(-1), { title: "Build me a todo app" });
+    work(job, env);
+    const recorded = calls().filter((c) => c.args[0] === "session");
+    assert.deepEqual(recorded[0].args, ["session", "start", "--harness", "claude_code", "--harness-session-id", "abc-123", "--json"]);
+    assert.ok(recorded.some((c) => c.args[1] === "log" && c.args.at(-1).startsWith("Bash: g1t repo create acme/app")));
+    assert.ok(recorded.some((c) => c.args.join(" ") === "session attach --title=Build me a todo app"));
+    // From here on it is recorded like any other, and titled once.
+    const next = hook(at({ hook_event_name: "UserPromptSubmit", prompt: "Now add tests" }), env).job;
+    assert.ok(next && !next.steps.some((s) => s.title) && !next.start);
+  });
+
+  test("a session given a g1t remote between prompts is recorded at the next one", () => {
+    git("remote", "set-url", "origin", "https://example.com/acme/app.git");
+    const at = (event) => ({ ...base, cwd: dir, ...event });
+    hook(at({ hook_event_name: "SessionStart" }), env);
+    assert.equal(hook(at({ hook_event_name: "UserPromptSubmit", prompt: "/clear" }), env).job, null);
+    git("remote", "set-url", "origin", "https://g1t.sh/acme/app.git");
+    const { job } = hook(at({ hook_event_name: "UserPromptSubmit", prompt: "fix the login" }), env);
+    assert.equal(job.start, true);
+    assert.deepEqual(job.steps.at(-1), { title: "Fix the login" }, "no earlier prompt said what it is for: this one does");
+    assert.ok(existsSync(sessionFiles(base.session_id, env).marker));
+    assert.ok(!existsSync(sessionFiles(base.session_id, env).unrecorded));
+  });
+
+  test("only commands that may add a remote look for one", () => {
+    for (const command of ["git remote add origin https://g1t.sh/a/b.git", "git -C app push -u origin main", "git init", "g1t repo create a/b", "cd x && git clone https://g1t.sh/a/b"]) {
+      assert.equal(mayAddRemote(command), true, command);
+    }
+    for (const command of ["git status", "npm install", "g1t work list", "echo push", undefined]) assert.equal(mayAddRemote(command), false, String(command));
   });
 
   test("a subagent whose stop arrives first is started, then ended", () => {
