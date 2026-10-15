@@ -70,8 +70,10 @@ already recorded on g1t.
 7. **Watch the checks.** `g1t pr checks --watch --fail-fast`. When one
    fails, `g1t run logs --failed` says why; fix it and push again.
 8. **Finish.** When the definition of done is met and the checks pass,
-   `g1t pr ready --summary "what changed and why"`, then `g1t pr merge`
-   when you are allowed to merge. With the merge queue on, merging adds the
+   `g1t pr ready --summary "what changed and why"` (add a screenshot with
+   `--attach shot.png`, or upload one with `g1t attach FILE` and paste the
+   Markdown it prints; never commit an image just to link it), then
+   `g1t pr merge` when you are allowed to merge. With the merge queue on, merging adds the
    pull request to the queue; if the queue reports an integration failure,
    use the `fix-integration` skill. The merge closes the issue the pull
    request was made for. Where you commit straight to the default branch
