@@ -7,6 +7,8 @@ import { Hint } from "../../components/ui/hint";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 import { GithubMark } from "../../components/github";
 import { githubSignIn } from "../../lib/github.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "GitHub · Settings · g1t" });
@@ -14,7 +16,8 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  return { github: await githubSignIn.account(user).catch(() => null) };
+  // Not read is not "not set up": the page says it could not be loaded.
+  return { github: await part(githubSignIn.account(user), "Your GitHub link") };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -30,6 +33,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function GithubSettings({ loaderData, actionData }: Route.ComponentProps) {
   const { github } = loaderData;
+  if (isFailed(github)) return <Unavailable what="Your GitHub link" />;
   if (!github?.enabled) {
     return <p className="text-sm text-muted">Signing in with GitHub is not set up here.</p>;
   }

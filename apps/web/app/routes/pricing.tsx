@@ -10,6 +10,8 @@ import { application, faqPage } from "../lib/structured-data";
 import { TimeAgo } from "../components/ui";
 import { Card } from "../components/ui/card";
 import { billing } from "../lib/services.server";
+import { Unavailable } from "../components/boundary";
+import { isFailed, orElse, part } from "../lib/partial";
 
 export function meta(args: Route.MetaArgs) {
   const plan = args.loaderData?.book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
@@ -25,8 +27,11 @@ export function meta(args: Route.MetaArgs) {
 }
 
 export async function loader() {
-  const [book, status] = await Promise.all([billing.prices().catch(() => null), billing.status().catch(() => null)]);
-  return { book, free: status?.free ?? false };
+  // The page reads without the price book: the plan and the rest are its
+  // defaults, and the usage table and price changes say they could not be
+  // loaded instead of looking empty.
+  const [book, status] = await Promise.all([part(billing.prices(), "The price book"), billing.status().catch(() => null)]);
+  return { book: orElse(book, null), unpriced: isFailed(book), free: status?.free ?? false };
 }
 
 /** A price, with the fraction of a cent it is set to: `$0.024`, `$0.25`. */
@@ -279,7 +284,7 @@ function rows(tier: Required<FreeTier>): Row[] {
 }
 
 export default function Pricing({ loaderData }: Route.ComponentProps) {
-  const { book, free } = loaderData;
+  const { book, unpriced, free } = loaderData;
   const checked = book?.prices.map((p) => p.checkedAt).filter((at): at is string => !!at).sort().at(-1);
   const given = Object.fromEntries(Object.entries(book?.free ?? {}).filter(([, value]) => value != null));
   const tier: Required<FreeTier> = { ...DEFAULT_FREE, ...given };
@@ -635,6 +640,13 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
               <td className="hidden px-4 py-3 tabular-nums sm:table-cell">—</td>
               <td className="px-4 py-3 text-muted">Not charged</td>
             </tr>
+            {unpriced && (
+              <tr>
+                <td colSpan={4} className="px-4 py-3">
+                  <Unavailable what="The metered prices" compact />
+                </td>
+              </tr>
+            )}
             {(book?.prices ?? []).filter((price) => !SHOWN_APART.has(price.meter)).map((price) => (
               <tr key={price.meter}>
                 <td className="px-4 py-3">
@@ -731,6 +743,10 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             })}
           </ul>
         </Card>
+      ) : unpriced ? (
+        <div className="mt-4">
+          <Unavailable what="Price changes" />
+        </div>
       ) : (
         <p className="mt-2 text-sm text-muted">None yet. When a price moves, it is listed here with why.</p>
       )}

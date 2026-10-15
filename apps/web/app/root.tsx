@@ -65,6 +65,7 @@ import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { addresses } from "./lib/addresses.server";
+import { orElse, part } from "./lib/partial";
 import {
   RELOADED_KEY,
   RELOAD_GIVE_UP_MS,
@@ -161,8 +162,10 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     shell,
     // For a page opened with an access token: the feed socket's ticket,
     // minted here so the feed opens without asking for one (lib/live-socket.ts).
+    // Without one the feed asks for its own ticket, so a ticket that could
+    // not be minted is no reason to lose the page.
     liveTicket: user?.token?.website
-      ? await socketTicketFor(context, request, "/-/live")
+      ? orElse(await part(socketTicketFor(context, request, "/-/live"), "The live feed's ticket"), null)
       : null,
     // Whether they folded the sidebar away, so the page is drawn that way from the start.
     sidebarClosed: sidebarClosed(readCookie(cookies, SIDEBAR_COOKIE)),
@@ -191,7 +194,8 @@ async function visitorShell(
     params.owner && params.repo
       ? { namespace: params.owner, name: params.repo }
       : null;
-  const counts = path ? await countsFor(context, params) : null;
+  // The counts are the sidebar's, never the page's: without them it shows none.
+  const counts = path ? orElse(await part(countsFor(context, params), "Open counts"), null) : null;
   return {
     workspace: null,
     repos: [],
@@ -288,8 +292,14 @@ async function shellFor(
   ] = await Promise.all([
     // Every project, for the palette and the count; the sidebar lists only
     // the person's pinned and recent ones (lib/pins.ts).
-    workspace ? workspaceProjects(workspace.slug, user) : Promise.resolve(null),
-    path ? countsFor(context, params) : Promise.resolve(null),
+    // Each of these is one part of the sidebar: one that fails leaves only
+    // itself out (logged by `part`), never the rest of the sidebar with it.
+    workspace
+      ? part(workspaceProjects(workspace.slug, user), "Projects").then((value) => orElse(value, null))
+      : Promise.resolve(null),
+    path
+      ? part(countsFor(context, params), "Open counts").then((value) => orElse(value, null))
+      : Promise.resolve(null),
     // Whether billing is on, without reading the account: that asks the
     // card processor about the workspace's cards, too slow for every page.
     kept("status", () => billing.status()).catch(() => null),
@@ -300,7 +310,7 @@ async function shellFor(
     kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(
       () => null,
     ),
-    sharedRepos(user),
+    part(sharedRepos(user), "Shared with you").then((value) => orElse(value, [])),
     // The bell's count: one query, never kept, so marking an item shows at once.
     inbox.counts(user.username).catch(() => null),
     // Never kept: opening a project moves it up Recent.
