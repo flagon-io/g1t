@@ -91,7 +91,7 @@ recorded as yours and is as visible as the repository it is in.
 | --- | --- | --- |
 | A session starts or resumes | `g1t session start --harness claude_code --harness-session-id ID` | A session for this Claude Code session. Starting the same session again, as a resume does, finds it rather than making another. |
 | You send a prompt | `g1t session log --kind prompt TEXT` | Your prompt's first 2,000 characters. |
-| You send the session's first prompt that is not a slash command | `g1t session heartbeat --json`, then, if the session has no title, `g1t session attach --title INTENT` | Its title: what the prompt is for, as its first line or sentence without code blocks or markdown, up to 80 characters, cut on a word with `…`. A title the session already has (one Claude, you or an earlier prompt set) is never replaced. Not sent with prompts kept back. |
+| You send a prompt that says what it is for, while the session has no title | `g1t session heartbeat --json`, then, if the session has no title, `g1t session attach --title INTENT` | Its title: what the prompt is for, as its first line or sentence without pasted text, image placeholders (`[Image #1]`), code blocks or markdown, up to 80 characters, cut on a word with `…`. A slash command, or a prompt that is only pasted text or images, gives no title, and the next prompt titles the session. A title the session already has (one Claude, you or an earlier prompt set) is never replaced. Not sent with prompts kept back. |
 | Claude uses a tool | `g1t session log --kind tool_call TEXT` | The tool's name and one line on what it was called with: the command, file, pattern or address, up to 200 characters, with anything that looks like a token or password replaced by `…`. |
 | Claude uses a skill, or you run one (`/g1t:work-on-issue 42`) | `g1t session log --kind skill NAME` | The skill's name, nothing more, once in a turn. A plugin's skill or command you type as `/plugin:name` is recorded even with prompts kept back. |
 | Claude writes a file, makes a branch or a commit, or claims an issue | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--issue`) | What it touched: the path from the repository's root, the branch, the commit, the issue. g1t ties the session to the pull requests and issues these lead to, and tells two sessions that touch the same file. |
@@ -156,8 +156,15 @@ Most sessions start from a question or a request, not an issue, and most
 never need one. The session is the record of that work:
 
 1. **It is titled with what it is for.** At the session's first prompt
-   that is not a slash command (`/clear` and `/g1t:status` are not), the
-   plugin gives the session a title from it, unless it has one. To name
+   that says what it is for, the plugin gives the session a title from
+   it, unless it has one. The title is what you typed: text you pasted
+   and image placeholders are left out, so a prompt that starts with a
+   paste is titled by the words around it. Slash commands (`/clear`,
+   `/g1t:status`) and a prompt that is only a paste give no title; the
+   next prompt titles the session. A session whose title is only a tag,
+   such as `<pasted_content id="5c50">` from a plugin older than 0.2.4,
+   shows on the site by its first prompt's intent instead, else
+   **Session on** its branch. To name
    it yourself, or have Claude name it, run
    `g1t session attach --title "Fix the preview builds"`; that replaces
    the title the prompt gave.
