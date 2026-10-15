@@ -2578,18 +2578,10 @@ impl<S: GitStore> Repos<S> {
         }
         for pushed in announced {
             // The store can refuse one ref and accept another, so each
-            // branch is checked against where it actually is. A tag the
-            // store cannot read back is taken as pushed.
-            let moved = match pushed.branch() {
-                Some(branch) => stored
-                    .log(branch, 1)
-                    .await?
-                    .first()
-                    .is_some_and(|commit| commit.hash == pushed.after),
-                None => stored.log(&pushed.git_ref, 1).await.map_or(true, |head| {
-                    head.first().is_none_or(|commit| commit.hash == pushed.after)
-                }),
-            };
+            // branch and tag is checked against where it actually is, and
+            // an annotated tag is announced at its commit (pushed.rs).
+            let at = pushed::pushed_to(&stored, pushed).await?;
+            let moved = at.is_some();
             // How many commits a branch push brought (push_commits.rs), for
             // the event and the person's contribution calendar. A log the
             // store cannot read leaves the event without a count and the
@@ -2611,12 +2603,12 @@ impl<S: GitStore> Repos<S> {
             {
                 worker::console_error!("commits pushed to {} not credited: {error}", repo.name);
             }
-            if moved {
+            if let Some(at) = &at {
                 self.publish_git_push(
                     &repo,
                     &pushed.git_ref,
                     pushed.before.as_deref(),
-                    &pushed.after,
+                    at,
                     actor.clone(),
                     unscanned,
                     caused_by_job.clone(),
