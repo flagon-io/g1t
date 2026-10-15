@@ -210,7 +210,7 @@ so their comments are there at once.
 
 A file whose diff is longer than 1,000 lines (a lockfile or generated
 code, usually) waits until you press **Load diff**. A link to a file
-(`#file-` and its path, such as `…/pull/12?tab=changes#file-src/app.ts`)
+(`#file-` and its path, such as `…/pull/12/files#file-src/app.ts`)
 opens it and loads its lines at once, however long.
 
 Some changes are too large to read in one go:

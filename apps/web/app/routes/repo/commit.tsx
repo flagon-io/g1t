@@ -175,7 +175,7 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
               </Badge>
             )}
             <Link
-              to={`${base}/pull/${pull.number}?tab=session`}
+              to={`${base}/pull/${pull.number}/session`}
               className="ml-auto flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
             >
               <MessagesSquare size={13} />

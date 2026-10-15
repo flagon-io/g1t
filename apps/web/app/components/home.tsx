@@ -660,14 +660,14 @@ export function AwayCard({ away, span, now }: { away: Away | null; span: Pick<Sp
   }
   const facts: { key: string; text: string; tone: BadgeTone; to: string | null }[] = [];
   const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-  facts.push({ key: "settled", text: `${plural(away.settled.length, "notification")} settled`, tone: away.settled.length > 0 ? "success" : "neutral", to: "/notifications?view=done" });
+  facts.push({ key: "settled", text: `${plural(away.settled.length, "notification")} settled`, tone: away.settled.length > 0 ? "success" : "neutral", to: "/notifications/done" });
   if (away.shipped > 0) facts.push({ key: "shipped", text: `${plural(away.shipped, "change")} live`, tone: "success", to: null });
   if (away.deploying > 0) facts.push({ key: "deploying", text: `${away.deploying.toLocaleString("en-US")} deploying`, tone: "info", to: null });
   if (away.waiting > 0) facts.push({ key: "waiting", text: `${away.waiting.toLocaleString("en-US")} waiting to deploy`, tone: "neutral", to: null });
   if (away.failed > 0) facts.push({ key: "failed", text: `${away.failed.toLocaleString("en-US")} deploy failed`, tone: "danger", to: null });
   facts.push({ key: "needs", text: away.needs > 0 ? `${plural(away.needs, "thing")} still ${away.needs === 1 ? "needs" : "need"} you` : "Nothing needs you", tone: away.needs > 0 ? "warn" : "neutral", to: "#needed" });
   return (
-    <Card title={title} hint="What finished by itself, and what is live" link={{ label: "Done", to: "/notifications?view=done" }}>
+    <Card title={title} hint="What finished by itself, and what is live" link={{ label: "Done", to: "/notifications/done" }}>
       <ul className="flex flex-wrap gap-1.5 px-5 pb-3" aria-label="In short">
         {facts.map((fact) => (
           <li key={fact.key}>

@@ -340,7 +340,7 @@ function WhyPanel({
                 </details>
               )}
               <Link
-                to={`${base}/pull/${current.pull.number}?tab=session`}
+                to={`${base}/pull/${current.pull.number}/session`}
                 className="mt-4 inline-flex items-center gap-1 text-xs text-accent hover:underline"
               >
                 The whole session

@@ -102,7 +102,7 @@ read and filtered, so **Older** may be needed to reach earlier changes.
 ### Stars
 
 Choose **Star** in the repository's header to keep it in your profile's
-**Stars** tab, at `g1t.sh/u/<you>?tab=stars`. The number beside it leads
+**Stars** tab, at `g1t.sh/u/<you>/stars`. The number beside it leads
 to who starred it. Anyone signed in who can read a repository can star it;
 stars on a private repository are seen only by people who can read it.
 

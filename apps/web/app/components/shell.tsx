@@ -69,7 +69,8 @@ import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/acc
 import { projectPages } from "../lib/chrome";
 import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accountSettingsPage } from "../lib/account-settings";
 import { type PinnableApp, sidebarCookie } from "../lib/apps";
-import { REASON_FILTERS, inboxReason, inboxView } from "../lib/inbox";
+import { REASON_FILTERS, inboxReason } from "../lib/inbox";
+import { notificationViewAt, notificationsAddress, profilePath } from "../lib/tab-paths";
 import { GithubMark } from "./github";
 import { STATUS_URL, statusTitle } from "../lib/status";
 import { G1T_INVITES, leftBadge } from "../lib/invites";
@@ -1172,11 +1173,12 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
   const query = new URLSearchParams((going ?? location).search);
   const atExplore = path === "/explore";
   const fresh = atExplore && query.get("sort") === "new";
-  const mine = `/u/${user.username}`;
-  const atMine = path.toLowerCase() === mine.toLowerCase();
-  const stars = atMine && query.get("tab") === "stars";
+  const mine = profilePath(user.username);
+  // A profile's tab is its third segment: `/u/ada/stars`.
+  const [, profileOf, profileTab] = path.toLowerCase().split("/").filter(Boolean);
+  const atMine = path.toLowerCase().startsWith("/u/") && profileOf === user.username.toLowerCase();
+  const stars = atMine && profileTab === "stars";
   const shown = useBrowsedOwner(owner);
-  const profileTab = query.get("tab");
   const workspace = useRouteLoaderData("routes/workspace/layout") as
     | { workspace: { slug: string }; projects?: { namespace: string; name: string; title: string }[] }
     | undefined;
@@ -1230,7 +1232,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
       </NavRows>
       <Rule />
       <NavRows>
-        <SidebarLink to={`${mine}?tab=stars`} icon={<Star size={15} />} current={stars}>
+        <SidebarLink to={profilePath(user.username, "stars")} icon={<Star size={15} />} current={stars}>
           Your stars
         </SidebarLink>
         <SidebarLink to={mine} icon={<CircleUserRound size={15} />} current={atMine && !stars}>
@@ -1250,7 +1252,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
                 >
                   {shown.name}
                 </SidebarLink>
-                <SidebarLink to={`/u/${owner.name}?tab=stars`} icon={<Star size={15} />} current={profileTab === "stars"}>
+                <SidebarLink to={profilePath(owner.name, "stars")} icon={<Star size={15} />} current={profileTab === "stars"}>
                   Stars
                 </SidebarLink>
               </>
@@ -1468,18 +1470,14 @@ function PeopleSidebar({ slug }: { slug: string }) {
  * and what is done; then why you were told, which narrows any of them.
  */
 function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
   const params = new URLSearchParams(search);
-  const view = inboxView(params.get("view"));
+  // Saved and Done are paths (`/notifications/saved`); the rest narrows them.
+  const view = notificationViewAt(pathname);
   const reason = inboxReason(params.get("reason"));
   const tab = params.get("tab");
-  const address = (changes: Record<string, string | null>) => {
-    const merged: Record<string, string | null> = { tab, view: view === "inbox" ? null : view, reason, ...changes };
-    const next = new URLSearchParams();
-    for (const [name, value] of Object.entries(merged)) if (value) next.set(name, value);
-    const query = next.toString();
-    return query ? `/notifications?${query}` : "/notifications";
-  };
+  const address = (changes: { view?: string | null; reason?: string | null; before?: string | null }) =>
+    notificationsAddress({ tab, view, reason, ...changes });
   const views = [
     { view: "inbox", label: "Everything", icon: <Bell size={15} />, count: counts?.unread },
     { view: "saved", label: "Saved", icon: <Bookmark size={15} /> },

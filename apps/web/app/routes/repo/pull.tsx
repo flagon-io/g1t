@@ -93,6 +93,7 @@ import { METHOD_INFO, type MergeChoicesView, choicesFromService, choicesFromSett
 import { ViolationList } from "../../components/rules";
 import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { notFound } from "../../lib/not-found.server";
+import { type PullTab, movedTab, pullPath, pullTab } from "../../lib/tab-paths";
 import { actions, deployments, identity, inbox, repos, securitySuite, work } from "../../lib/services.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { CommitChecksBadge } from "../../components/commit-checks";
@@ -105,8 +106,7 @@ import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 
 const EMPTY_COMPARISON: Comparison = { base: null, head: "", files: [], truncated: false };
-const TABS = ["conversation", "session", "changes"] as const;
-type Tab = (typeof TABS)[number];
+type Tab = PullTab;
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const pull = loaderData?.pull;
@@ -129,8 +129,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
-  const asked = new URL(request.url).searchParams.get("tab");
-  const tab: Tab = TABS.find((name) => name === asked) ?? "conversation";
+  // Its tabs are paths: `?tab=changes`, the address before, is `/pull/12/files`.
+  const url = new URL(request.url);
+  const moved = movedTab(url, (asked) => pullPath(`/${params.owner}/${params.repo}`, params.number, asked));
+  if (moved) throw redirect(moved, 301);
+  const tab: Tab | null = pullTab(params.tab);
+  if (!tab) throw notFound("page");
+  if (params.tab != null && params.tab !== params.tab.toLowerCase()) {
+    throw redirect(`${pullPath(`/${params.owner}/${params.repo}`, params.number, tab)}${url.search}`);
+  }
 
   // Members of the workspace pick reviewers and assignees from its people;
   // what the viewer may do here goes by their role on the repository.
@@ -857,7 +864,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const failure = active ? standingFailure(decisions, pull.number) : null;
   const answered = failure ? resolutionOf(decisions, failure).fix : null;
   const review = {
-    changesUrl: here + "?tab=changes",
+    changesUrl: pullPath(base, pull.number, "changes"),
     // Nobody reviews their own pull request, nor one g1t made for them.
     canJudge: active && viewer != null && viewer.id !== workOwner(pull).id,
   };
@@ -1003,11 +1010,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             Conversation
             <TabCount n={comments.length} />
           </TabLink>
-          <TabLink to={here + "?tab=session"} active={tab === "session"}>
+          <TabLink to={pullPath(base, pull.number, "session")} active={tab === "session"}>
             <MessagesSquare size={15} />
             Session
           </TabLink>
-          <TabLink to={here + "?tab=changes"} active={tab === "changes"}>
+          <TabLink to={pullPath(base, pull.number, "changes")} active={tab === "changes"}>
             <FileDiff size={15} />
             Files changed
             <TabCount n={pull.files.length} />
@@ -1357,7 +1364,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         owner={params.owner}
                         repo={params.repo}
                         defaultBranch={defaultBranch}
-                        changesUrl={here + "?tab=changes"}
+                        changesUrl={pullPath(base, pull.number, "changes")}
                         error={catchUp && "error" in catchUp ? catchUp.error : null}
                       />
                     ) : probing ? (
