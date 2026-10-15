@@ -148,7 +148,7 @@ impl Backend for Wsl {
         let version = || wsl().arg("--version").stderr(Stdio::null()).output().ok().filter(|o| o.status.success()).and_then(|o| needs::wsl_version(&String::from_utf8_lossy(&o.stdout)));
         let listed = || wsl().args(["--list", "--verbose"]).output().map(|o| has_wsl2(&String::from_utf8_lossy(&o.stdout))).unwrap_or(false);
         let facts = WslFacts { installed, version: if installed { version() } else { None }, has_wsl2: installed && listed() };
-        let windows = WindowsFacts::look();
+        let windows = WindowsFacts::look_in(&self.dir);
         Availability::needing(needs::wsl_needs(&windows, &facts, needs::restart_pending(&self.dir, &windows)), "linux")
     }
 

@@ -386,8 +386,9 @@ const VIEW_RUNNERS: Action = Action::now("view_runners", "View on g1t");
 /// What Windows can do itself for the sandbox, at once, behind its own
 /// administrator prompt (setup.rs): busy until the card says it is setting up.
 const SET_UP: Action = Action::waits("set_up", "Set up");
-const RESTART_WINDOWS: Action = Action::waits("restart_windows", "Restart now")
-    .confirming("Restart Windows now? Save your work first. g1t opens again after the restart and finishes setting up the runner.");
+/// Asked with Windows' own dialog (setup.rs), which no page can answer for
+/// the person, rather than a page's: done once the app has it.
+const RESTART_WINDOWS: Action = Action::now("restart_windows", "Restart now");
 const RESTART_LATER: Action = Action::waits("restart_later", "Later");
 const WINDOWS_UPDATE: Action = Action::now("windows_update", "Open Windows Update");
 const WINDOWS_ACTIVATION: Action = Action::now("windows_activation", "Open Activation");
@@ -1651,7 +1652,9 @@ mod tests {
         let linux = &restart.capabilities[0];
         assert_eq!((linux.title.as_str(), linux.tone), ("Restart needed", Tone::Warning));
         assert_eq!(ids(&linux.actions), ["restart_windows", "restart_later"]);
-        assert!(RESTART_WINDOWS.confirm.is_some_and(|q| q.starts_with("Restart Windows now?")));
+        // Windows' own dialog asks, not a page's, which a page could skip.
+        assert!(RESTART_WINDOWS.confirm.is_none() && !RESTART_WINDOWS.waits);
+        assert!(super::super::setup::RESTART_QUESTION.starts_with("Restart Windows now"));
         assert_eq!(linux.fix.as_deref(), Some("Restart now, or later: g1t opens again after the restart and carries on by itself."));
         let later = shown_for(needing(Some(&["restart"]), None), Facts { setup: SetUp { later: true, ..SetUp::default() }, ..facts() });
         screen("windows-restart-later", &later);
