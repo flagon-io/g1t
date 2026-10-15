@@ -97,8 +97,9 @@ const hasFiles = (read: { version?: unknown; files?: unknown }) => typeof read.v
 
 export function meta(args: Route.MetaArgs) {
   return page(args, {
-    title: "Download g1t for your desktop and phone",
-    description: "g1t in a window of its own, for Windows, macOS and Linux, and on your phone: notifications, a badge, g1t:// links, and updates that install themselves.",
+    title: "Download g1t for your desktop",
+    description:
+      "g1t in a window of its own, for Windows, macOS and Linux: notifications, a badge, g1t:// links, and updates that install themselves. An early, highly experimental Android app too.",
   });
 }
 
@@ -222,10 +223,11 @@ export default function DownloadPage() {
         <div className="relative mx-auto max-w-5xl px-4 pt-14 text-center sm:pt-20">
           <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">Download</p>
           <h1 className="mx-auto mt-4 max-w-3xl text-4xl leading-[1.05] font-semibold tracking-tight text-balance sm:text-6xl">
-            g1t on your computer and your phone
+            g1t in an app of its own
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-balance text-fg-soft/80">
-            Chat, artifacts and code in an app of their own, with notifications from your system and updates that install themselves.
+            Chat, artifacts and code in an app of their own, with notifications from your system and updates that install themselves. The phone app is
+            highly experimental.
           </p>
         </div>
 

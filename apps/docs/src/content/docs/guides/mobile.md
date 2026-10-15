@@ -1,12 +1,12 @@
 ---
 title: The phone app
-description: g1t on Android and iOS, built with Expo. Chat with your team, live, with notifications on your phone, and Code, signed in with g1t's own OAuth. Android first, downloaded from g1t.sh while it waits for Google Play.
+description: g1t on Android and iOS, built with Expo. Highly experimental and barely working yet. Android first, downloaded from g1t.sh while it waits for Google Play.
 ---
 
-The phone app is g1t on Android and iOS, with its own screens for what
-you do away from a desk: talking with your team in Chat, with
-notifications on your phone, and reviewing pull requests in Code.
-Everything else opens on the site, in your phone's browser.
+The phone app is meant to be g1t on Android and iOS, with its own
+screens for what you do away from a desk: talking with your team in
+Chat, with notifications on your phone, and reviewing pull requests in
+Code. Everything else opens on the site, in your phone's browser.
 
 :::caution[Highly experimental]
 The phone app is early and barely works yet: expect missing screens,
