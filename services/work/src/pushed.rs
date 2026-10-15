@@ -174,12 +174,14 @@ impl Work {
             merged.push(recorded.id);
         }
 
+        // A session g1t started pushed it: what it closes is g1t's, for the pusher.
+        let agent = event.data["agent"].as_str().is_some();
         if closes_issues {
             let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
             for (number, commit) in commit_closes(&pushed.commits, &path) {
                 let message = pushed.commits.iter().find(|pushed| pushed.hash == commit).map(|pushed| pushed.message.as_str());
                 let session = self.trailer_session(&repo.id, message.unwrap_or_default()).await?;
-                self.close_by_commit(&repo, number, &commit, &actor, session.as_deref()).await?;
+                self.close_by_commit(&repo, number, &commit, &actor, session.as_deref(), agent).await?;
             }
         }
         Ok(merged)
@@ -187,8 +189,9 @@ impl Work {
 
     /// Closes an open issue as completed by a commit pushed to the default
     /// branch: says so on the issue, with the session it was closed in when
-    /// one is known, and lets go of what waited on it. Whether it closed it:
-    /// not when it was closed already.
+    /// one is known, and lets go of what waited on it. `agent` when an agent
+    /// pushed it for `actor` (GitPush::agent): the note is then g1t's, for
+    /// them. Whether it closed it: not when it was closed already.
     pub(crate) async fn close_by_commit(
         &self,
         repo: &Repo,
@@ -196,6 +199,7 @@ impl Work {
         commit: &str,
         actor: &User,
         session: Option<&str>,
+        agent: bool,
     ) -> Result<bool> {
         let Some(issue) = self.issue(&repo.id, number).await?.filter(|issue| issue.state == State::Open) else {
             return Ok(false);
@@ -228,8 +232,15 @@ impl Work {
             },
         )
         .await?;
-        self.note(&repo.id, number, (&actor.id, &actor.username), &closed_note(&format!("closed this in {commit}"), session))
-            .await?;
+        let by = match crate::rows::By::from(actor) {
+            by if agent && by.acting_for.is_none() && by.id == actor.id => crate::rows::By {
+                id: g1t_contracts::identity::AGENT_ID,
+                name: g1t_contracts::identity::AGENT_NAME,
+                acting_for: Some((&actor.id, &actor.username)),
+            },
+            by => by,
+        };
+        self.note(&repo.id, number, by, &closed_note(&format!("closed this in {commit}"), session)).await?;
         self.issue_resolved(&repo.id, number, actor, true, None).await;
         Ok(true)
     }
