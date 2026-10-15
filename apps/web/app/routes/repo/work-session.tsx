@@ -5,7 +5,7 @@ import { Form, Link } from "react-router";
 import type { Pull, SessionLink, SessionTouch, State, TouchKind, WorkSession } from "@g1t/contracts";
 
 import type { Route } from "./+types/work-session";
-import { Actor, CoordinationFeed, HarnessBadge, SessionStateBadge } from "../../components/coordination";
+import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../components/coordination";
 import { SessionEntries } from "../../components/session-entries";
 import { EmptyState, SubmitButton, TimeAgo } from "../../components/ui";
 import { Alert } from "../../components/ui/alert";
@@ -17,7 +17,19 @@ import { Hint } from "../../components/ui/hint";
 import { PersonLink } from "../../components/work";
 import { IssueIcon, PullIcon } from "../../components/work-icons";
 import { requireRepo } from "../../lib/access.server";
-import { type SessionNode, TOUCH_KINDS, duration, harnessName, pendingLines, sessionTitle, sessionTree, touchedByKind, viaLabel } from "../../lib/coordination";
+import {
+  type SessionNode,
+  TOUCH_KINDS,
+  duration,
+  endReasonText,
+  harnessName,
+  mayEndSession,
+  pendingLines,
+  sessionTitle,
+  sessionTree,
+  touchedByKind,
+  viaLabel,
+} from "../../lib/coordination";
 import { page } from "../../lib/meta";
 import { notFound } from "../../lib/not-found.server";
 import { repoPages } from "../../lib/repo-live";
@@ -44,7 +56,7 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { viewer } = await requireRepo(context, params, "read");
+  const { viewer, access } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
   const read = () => work.getWorkSession(path, params.id, viewer);
   // The session is what the page is about: a service that fails fails the
@@ -77,6 +89,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     ...found.value,
     // Only whoever started it stops it, and only the top of the tree.
     canStop: viewer?.id === session.actor.id && session.harness === MANAGED && session.state !== "ended" && !session.parentId,
+    // One its harness left behind is ended by hand: by whoever runs it, or anyone with write access.
+    canEnd: mayEndSession(session, viewer?.id, access.can.push),
     consoleUrl,
   };
 }
@@ -86,8 +100,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   await requireRepo(context, params, "read");
   const form = await request.formData();
-  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop the session." };
-  const result = await agentSessions.stop(user, { namespace: params.owner, name: params.repo }, params.id).catch(() => null);
+  const path = { namespace: params.owner, name: params.repo };
+  // Ending it by hand (from here, or a list's menu by fetcher); the work service checks who may.
+  if (form.get("action") === "end") {
+    const ended = await work.endWorkSession(user, path, params.id).catch(() => null);
+    if (!ended) return { error: "The session could not be ended. Try again in a moment." };
+    return ended.ok ? { ended: true } : { error: ended.error.message };
+  }
+  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop or end the session." };
+  const result = await agentSessions.stop(user, path, params.id).catch(() => null);
   if (!result) return { error: "The session could not be stopped. Try again in a moment." };
   return result.ok ? null : { error: result.error.message };
 }
@@ -267,8 +288,9 @@ function SubagentTree({ nodes, base, touched, now }: { nodes: SessionNode[]; bas
 
 /** One harness session: who ran it, where, what it worked on, its subagents, what it touched and what it recorded. */
 export default function WorkSessionPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop, consoleUrl, limited } = loaderData;
+  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop, canEnd, consoleUrl, limited } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
+  const [ending, setEnding] = useState(false);
   const now = Date.now();
   // Any session, claim or overlap in the repository: a change names no session.
   useRepoLive({ match: repoPages.session() });
@@ -335,6 +357,15 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
             </SubmitButton>
           </Form>
         )}
+        {canEnd && (
+          <>
+            <Button variant="outline" size="xs" onClick={() => setEnding(true)}>
+              <Square size={12} />
+              End session
+            </Button>
+            <EndSessionDialog session={session} base={base} open={ending} onOpenChange={setEnding} />
+          </>
+        )}
         {consoleUrl && (
           <Button asChild variant="outline" size="xs">
             <a href={consoleUrl} target="_blank" rel="noreferrer">
@@ -355,7 +386,7 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
         </span>
         <span>
           · {session.state === "ended" ? "ended" : "last heard from"} <TimeAgo at={session.endedAt ?? session.lastSeenAt} />
-          {session.endReason && ` (${session.endReason === "timed_out" ? "timed out" : session.endReason})`}
+          {session.endReason && ` (${endReasonText(session.endReason)})`}
         </span>
         {session.branch && (
           <Link to={`${base}/tree/${session.branch}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">

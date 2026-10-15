@@ -45955,7 +45955,7 @@
           "Sessions"
         ],
         "summary": "End a session",
-        "description": "End one of your sessions, with an optional `reason` and `result` (what it reported when it finished: a subagent's final message, up to 8,000 characters, never a tool's output). A session.ended event. Ending one already ended returns it as it is, taking `result` if it had none. Its subagents still going end with it (`parent ended`). Its claims are not released: release them, hand the issue off, or let them expire.",
+        "description": "End one of your sessions, with an optional `reason` and `result` (what it reported when it finished: a subagent's final message, up to 8,000 characters, never a tool's output). A session.ended event. Ending one already ended returns it as it is, taking `result` if it had none. Its subagents still going end with it (`parent ended`). Its claims are not released: release them, hand the issue off, or let them expire. Anyone with write access to the repository may also end someone else's session, one left behind by a harness that was killed or never ended it: it ends as `ended by hand by @you`, without their `reason` or `result`.",
         "x-operation": "end_session",
         "x-mcp-tool": "session",
         "x-mcp-action": "end",

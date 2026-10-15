@@ -31,7 +31,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { viewer, repo } = await requireRepo(context, params, "read");
+  const { viewer, repo, access } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
   // One round: who is on what, the queue, what happened, what landed.
   // Each section is a part of its own (lib/partial.ts): one whose service
@@ -78,6 +78,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     pulls,
     landed,
     defaultBranch: repo.defaultBranch,
+    // Who may end a session by hand from Live now: its own runner, or anyone with write access.
+    ender: { viewerId: viewer?.id ?? null, canPush: access.can.push },
   };
 }
 
@@ -129,7 +131,7 @@ function LandedRow({ pull, base }: { pull: Pull; base: string }) {
 }
 
 export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
-  const { live, claims, sessions, feed, titles, pulls, landed, defaultBranch } = loaderData;
+  const { live, claims, sessions, feed, titles, pulls, landed, defaultBranch, ender } = loaderData;
   const queue = isFailed(loaderData.queue) ? null : loaderData.queue;
   const base = `/${params.owner}/${params.repo}`;
   const now = Date.now();
@@ -167,7 +169,7 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
         ) : !working ? (
           <StartHere title="Nobody is working on this repository right now" />
         ) : (
-          <LiveNowList claims={claims} sessions={sessions} titles={titles} pulls={pulls} defaultBranch={defaultBranch} base={base} now={now} />
+          <LiveNowList claims={claims} sessions={sessions} titles={titles} pulls={pulls} defaultBranch={defaultBranch} base={base} now={now} ender={ender} />
         )}
       </Section>
 

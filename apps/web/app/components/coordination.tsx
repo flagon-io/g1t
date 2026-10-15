@@ -20,6 +20,7 @@ import {
   Layers,
   Link2,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
   Play,
   Sparkles,
@@ -27,8 +28,8 @@ import {
   Timer,
   TriangleAlert,
 } from "lucide-react";
-import { Fragment, type ReactNode, useState } from "react";
-import { Form, Link } from "react-router";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { Form, Link, useFetcher } from "react-router";
 
 import {
   AGENT_MODES,
@@ -60,20 +61,32 @@ import {
   type LiveIssue,
   awakeAndIdle,
   liveByIssue,
+  mayEndSession,
   mergeSessions,
   numberedParts,
+  type SessionEnder,
   sessionTitle,
   sessionTree,
 } from "../lib/coordination";
 import { PLUGIN_INSTALL } from "../lib/agent-setup";
 import { CopyLine, EmptyState, Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Field, FieldError, FieldLabel, FieldLegend, FieldSet } from "./ui/field";
 import { Hint } from "./ui/hint";
 import { Label } from "./ui/label";
@@ -178,12 +191,91 @@ export function ClaimLine({ claim, now, showIssue, base }: { claim: Claim; now: 
   );
 }
 
+/**
+ * Asking before a session is ended by hand, for one its harness left
+ * behind (killed, or never told to end): posts `end` to the session's
+ * page, and closes once it has ended, with the page read again.
+ */
+export function EndSessionDialog({
+  session,
+  base,
+  open,
+  onOpenChange,
+}: {
+  session: WorkSession;
+  base: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const fetcher = useFetcher<{ error?: string; ended?: boolean } | null>();
+  const busy = fetcher.state !== "idle";
+  const error = !busy ? fetcher.data?.error : undefined;
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ended) onOpenChange(false);
+  }, [fetcher.state, fetcher.data, onOpenChange]);
+  const subagents = session.subagents ?? 0;
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <fetcher.Form method="post" action={`${base}/work/sessions/${session.id}`} className="grid gap-5">
+          <input type="hidden" name="action" value="end" />
+          <AlertDialogHeader>
+            <AlertDialogTitle>End {sessionTitle(session)}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              For a session its harness left behind: killed, or never told to end. It shows as ended by hand by you
+              {subagents > 0 ? `, and its ${subagents === 1 ? "subagent" : "subagents"} still going end with it` : ""}. Its claims stay until they are
+              released or expire. If its harness is in fact still running, it may show again when it is next heard from.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <Alert tone="danger">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+            <SubmitButton variant="destructive" fetcher={fetcher} pending="Ending…">
+              End session
+            </SubmitButton>
+          </AlertDialogFooter>
+        </fetcher.Form>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/** A session's ⋯ menu in a list, for whoever may end it: End session. */
+function SessionMenu({ session, base }: { session: WorkSession; base: string }) {
+  const [ending, setEnding] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <Hint label="More">
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-xs" aria-label={`More for ${sessionTitle(session)}`}>
+              <MoreHorizontal size={15} />
+            </Button>
+          </DropdownMenuTrigger>
+        </Hint>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem variant="destructive" onSelect={() => setEnding(true)}>
+            <Square />
+            End session
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <EndSessionDialog session={session} base={base} open={ending} onOpenChange={setEnding} />
+    </>
+  );
+}
+
 /** One harness session: who, which harness, where it stands, when it was last heard from, linked to its page. */
 export function SessionLine({
   session,
   base,
   showWhere = true,
   showBranch = true,
+  ender,
 }: {
   session: WorkSession;
   base: string;
@@ -191,7 +283,10 @@ export function SessionLine({
   showWhere?: boolean;
   /** Its branch; not in a narrow sidebar. */
   showBranch?: boolean;
+  /** Who is looking, for a menu to end it when they may. */
+  ender?: SessionEnder;
 }) {
+  const endable = ender != null && mayEndSession(session, ender.viewerId, ender.canPush);
   return (
     <div className="flex items-start gap-2.5">
       <Actor username={session.actor.username} harness={session.harness} />
@@ -224,6 +319,11 @@ export function SessionLine({
           )}
         </p>
       </div>
+      {endable && (
+        <span className="-my-0.5 shrink-0">
+          <SessionMenu session={session} base={base} />
+        </span>
+      )}
     </div>
   );
 }
@@ -353,18 +453,20 @@ export function SessionTreeList({
   showWhere,
   showBranch,
   className,
+  ender,
 }: {
   nodes: SessionNode[];
   base: string;
   showWhere?: boolean;
   showBranch?: boolean;
   className?: string;
+  ender?: SessionEnder;
 }) {
   return (
     <ul className={className ?? "space-y-3"}>
       {nodes.map((node) => (
         <li key={node.session.id}>
-          <SessionLine session={node.session} base={base} showWhere={showWhere} showBranch={showBranch} />
+          <SessionLine session={node.session} base={base} showWhere={showWhere} showBranch={showBranch} ender={ender} />
           {node.children.length > 0 && (
             <div className="pl-7.5">
               <SubagentBranch nodes={node.children} base={base} />
@@ -850,7 +952,19 @@ function BlockedByEditor({ current }: { current: number[] }) {
 }
 
 /** One issue being worked on: its title, then each claim and session on it. */
-export function LiveIssueCard({ group, title, base, now }: { group: LiveIssue; title: string | undefined; base: string; now: number }) {
+export function LiveIssueCard({
+  group,
+  title,
+  base,
+  now,
+  ender,
+}: {
+  group: LiveIssue;
+  title: string | undefined;
+  base: string;
+  now: number;
+  ender?: SessionEnder;
+}) {
   return (
     <Card asChild divided>
       <li>
@@ -870,7 +984,7 @@ export function LiveIssueCard({ group, title, base, now }: { group: LiveIssue; t
         ))}
         {group.sessions.map((session) => (
           <div key={session.id} className="px-4 py-3">
-            <SessionLine session={session} base={base} />
+            <SessionLine session={session} base={base} ender={ender} />
           </div>
         ))}
       </li>
@@ -944,11 +1058,13 @@ export function LiveGroupCard({
   pulls,
   base,
   defaultBranch,
+  ender,
 }: {
   group: LiveGroup;
   pulls: Record<number, LivePull>;
   base: string;
   defaultBranch?: string | null;
+  ender?: SessionEnder;
 }) {
   return (
     <Card asChild divided>
@@ -957,7 +1073,13 @@ export function LiveGroupCard({
         {group.sessions.map((session) => (
           <div key={session.id} className="px-4 py-3">
             {/* Its pull request and branch are the heading's, unless it has neither of its own. */}
-            <SessionLine session={session} base={base} showWhere={group.kind === "none"} showBranch={group.kind === "none" && session.branch !== defaultBranch} />
+            <SessionLine
+              session={session}
+              base={base}
+              showWhere={group.kind === "none"}
+              showBranch={group.kind === "none" && session.branch !== defaultBranch}
+              ender={ender}
+            />
           </div>
         ))}
       </li>
@@ -980,6 +1102,7 @@ export function LiveNowList({
   base,
   now,
   limit,
+  ender,
 }: {
   claims: Claim[];
   sessions: WorkSession[];
@@ -991,6 +1114,8 @@ export function LiveNowList({
   base: string;
   now: number;
   limit?: number;
+  /** Who is looking: each session they may end has a menu to end it by hand. */
+  ender?: SessionEnder;
 }) {
   const { awake, idle } = awakeAndIdle(sessions);
   const live = liveByIssue(claims, awake, defaultBranch);
@@ -998,7 +1123,7 @@ export function LiveNowList({
   return (
     <ol className="space-y-3">
       {issues.map((group) => (
-        <LiveIssueCard key={group.issue} group={group} title={titles[group.issue]} base={base} now={now} />
+        <LiveIssueCard key={group.issue} group={group} title={titles[group.issue]} base={base} now={now} ender={ender} />
       ))}
       {live.groups.map((group) => (
         <LiveGroupCard
@@ -1007,9 +1132,10 @@ export function LiveNowList({
           pulls={pulls}
           base={base}
           defaultBranch={defaultBranch}
+          ender={ender}
         />
       ))}
-      {idle.length > 0 && <IdleSessions sessions={idle} base={base} />}
+      {idle.length > 0 && <IdleSessions sessions={idle} base={base} ender={ender} />}
     </ol>
   );
 }
@@ -1019,7 +1145,7 @@ export function LiveNowList({
  * an open tab, not work going on. Each moves back up when it is heard from,
  * and drops off when it times out.
  */
-function IdleSessions({ sessions, base }: { sessions: WorkSession[]; base: string }) {
+function IdleSessions({ sessions, base, ender }: { sessions: WorkSession[]; base: string; ender?: SessionEnder }) {
   return (
     <Card asChild divided>
       <li>
@@ -1034,7 +1160,7 @@ function IdleSessions({ sessions, base }: { sessions: WorkSession[]; base: strin
           <CollapsibleContent className="divide-y divide-line border-t border-line">
             {sessions.map((session) => (
               <div key={session.id} className="px-4 py-3">
-                <SessionLine session={session} base={base} />
+                <SessionLine session={session} base={base} ender={ender} />
               </div>
             ))}
           </CollapsibleContent>

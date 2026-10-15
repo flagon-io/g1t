@@ -83,6 +83,36 @@ export const SESSION_STATES: Record<SessionState, { label: string; hint: string 
   ended: { label: "Ended", hint: "Ended, or not heard from for 30 minutes. One that went quiet comes back when it is heard from again." },
 };
 
+// ── Ending a session by hand ────────────────────────────────────────────
+
+/** How the reason of a session ended by hand starts (g1t_contracts::work::ENDED_BY_HAND). */
+export const ENDED_BY_HAND = "ended by hand by @";
+
+/**
+ * Whether the viewer may end a session by hand, for one its harness left
+ * behind: one not ended yet, their own, or anyone's when they have write
+ * access (`canPush`) to the repository. The work service checks the same.
+ * One g1t runs on the workspace's Anthropic account is stopped from its
+ * page instead, which stops the run too.
+ */
+export function mayEndSession(
+  session: Pick<WorkSession, "state" | "actor" | "harness">,
+  viewerId: string | null | undefined,
+  canPush: boolean,
+): boolean {
+  if (!viewerId || session.state === "ended" || session.harness === "claude_managed_agents") return false;
+  return session.actor.id === viewerId || canPush;
+}
+
+/** Who may end which session from a list: the viewer, and whether they may end anyone's. */
+export type SessionEnder = { viewerId: string | null; canPush: boolean };
+
+/** Why a session ended, in words: "timed out", "ended by hand by @ana", or what its harness said. */
+export function endReasonText(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return reason === "timed_out" ? "timed out" : reason;
+}
+
 // ── Session titles ──────────────────────────────────────────────────────
 
 /** The most of a prompt's intent that titles a session. */
@@ -414,6 +444,20 @@ export function feedLine(event: G1tEvent): FeedLine | null {
       const { session } = event.data;
       const on = session.issue != null ? ` on #${session.issue}` : session.pull != null ? ` on #${session.pull}` : "";
       const why = event.type === "session.ended" && session.endReason === "timed_out" ? " (timed out)" : "";
+      // Ended by hand: by whoever ran it, or by someone with write access for them.
+      const byHand = event.type === "session.ended" && session.endReason?.startsWith(ENDED_BY_HAND) ? session.endReason.slice(ENDED_BY_HAND.length) : null;
+      if (byHand) {
+        const own = byHand === session.actor.username;
+        return {
+          ...base,
+          type: event.type,
+          who: byHand,
+          harness: own ? session.harness : null,
+          text: own ? `ended a session${on} by hand` : `ended ${session.actor.username}'s session${on} by hand`,
+          number: session.issue ?? session.pull,
+          tone: "neutral",
+        };
+      }
       return {
         ...base,
         type: event.type,

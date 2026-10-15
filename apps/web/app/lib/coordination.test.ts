@@ -4,7 +4,9 @@ import { test } from "node:test";
 import type { Claim, Decision, G1tEvent, WorkSession } from "@g1t/contracts";
 
 import {
+  ENDED_BY_HAND,
   checkHref,
+  endReasonText,
   evidenceOf,
   expiresIn,
   feedLine,
@@ -14,6 +16,7 @@ import {
   liveByIssue,
   sessionTitle,
   duration,
+  mayEndSession,
   mergeSessions,
   numberedParts,
   parseBlockedBy,
@@ -257,6 +260,34 @@ test("coordination events read as lines of the feed", () => {
   const started = feedLine(event("session.started", { repoId: "rep_1", session: session("ses_a", { issue: 2 }) }))!;
   assert.equal(started.text, "started a session on #2");
   assert.equal(feedLine(event("session.appended", { repoId: "rep_1", number: 5, pullId: "p", count: 3 })), null);
+});
+
+test("a session is ended by hand by whoever runs it, or by anyone who can write", () => {
+  const live = session("ses_a");
+  assert.equal(mayEndSession(live, bo.id, false), true);
+  assert.equal(mayEndSession(live, ana.id, false), false);
+  assert.equal(mayEndSession(live, ana.id, true), true);
+  assert.equal(mayEndSession(session("ses_b", { state: "idle" }), ana.id, true), true);
+  // Ended already, or nobody signed in: nothing to offer.
+  assert.equal(mayEndSession(session("ses_c", { state: "ended" }), bo.id, true), false);
+  assert.equal(mayEndSession(live, null, true), false);
+  // One g1t runs is stopped from its page, which stops the run too.
+  assert.equal(mayEndSession(session("ses_d", { harness: "claude_managed_agents" }), bo.id, true), false);
+  assert.equal(endReasonText("timed_out"), "timed out");
+  assert.equal(endReasonText(`${ENDED_BY_HAND}ana`), "ended by hand by @ana");
+  assert.equal(endReasonText(null), null);
+});
+
+test("a session ended by hand says who ended it in the feed", () => {
+  const own = feedLine(event("session.ended", { repoId: "rep_1", session: session("ses_a", { issue: 2, state: "ended", endReason: `${ENDED_BY_HAND}bo` }) }))!;
+  assert.equal(own.who, "bo");
+  assert.equal(own.text, "ended a session on #2 by hand");
+  const theirs = feedLine(event("session.ended", { repoId: "rep_1", session: session("ses_a", { state: "ended", endReason: `${ENDED_BY_HAND}ana` }) }))!;
+  assert.equal(theirs.who, "ana");
+  assert.equal(theirs.harness, null);
+  assert.equal(theirs.text, "ended bo's session by hand");
+  const timedOut = feedLine(event("session.ended", { repoId: "rep_1", session: session("ses_a", { state: "ended", endReason: "timed_out" }) }))!;
+  assert.equal(timedOut.text, "ended a session (timed out)");
 });
 
 test("sessions become trees by their parents; one whose parent is missing is a root", () => {

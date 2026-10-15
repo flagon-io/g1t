@@ -1145,7 +1145,7 @@ impl Integrations {
             let _: Outcome<Session> = g1t_kit::call(
                 &self.work,
                 "end_session",
-                &EndSessionArgs { actor: actor.clone(), repo: repo.clone(), id: session.id.clone(), reason: Some("could not start".to_owned()), result: Some(problem.clone()) },
+                &EndSessionArgs { actor: actor.clone(), repo: repo.clone(), id: session.id.clone(), reason: Some("could not start".to_owned()), result: Some(problem.clone()), by_hand: false },
             )
             .await?;
             return Ok(Outcome::fail(FailureCode::Unavailable, problem));
@@ -1271,7 +1271,7 @@ impl Integrations {
         let _: Outcome<Session> = g1t_kit::call(
             &self.work,
             "end_session",
-            &EndSessionArgs { actor: run.actor(), repo, id: id.to_owned(), reason: Some(reason.to_owned()), result },
+            &EndSessionArgs { actor: run.actor(), repo, id: id.to_owned(), reason: Some(reason.to_owned()), result, by_hand: false },
         )
         .await?;
         Ok(())

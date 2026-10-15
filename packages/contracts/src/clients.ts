@@ -565,6 +565,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       }),
     getWorkSession: (repo, id, viewer, afterSeq = 0) =>
       call("get_work_session", { repo, id, viewer, after_seq: afterSeq }),
+    endWorkSession: (actor, repo, id) => call("end_session", { actor, repo, id, by_hand: true }),
     pullSessions: (repo, viewer, numbers) => call("pull_sessions", { repo, viewer, numbers }),
     listDecisions: (repo, number, viewer) => call("list_decisions", { repo, number, viewer }),
   };

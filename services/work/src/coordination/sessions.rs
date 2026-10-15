@@ -5,7 +5,8 @@
 //! back. Every update, and every batch of entries, is a heartbeat: it keeps
 //! the session active, brings back one that timed out, and renews the
 //! claims made from it. Only the person whose token started a session
-//! changes it.
+//! changes it; anyone with write access may also end it, for one left
+//! behind (recorded as ended by hand by them).
 //!
 //! A subagent is a session of its own with a parent (`parent_id`): a
 //! Claude Code subagent, a Managed Agents thread. It starts on what its
@@ -544,12 +545,29 @@ impl Work {
         self.resume(&repo, row, &a.actor, fields).await
     }
 
+    /// A session `actor` may end: their own, or anyone's when they have
+    /// write access to the repository (one left behind by a harness that
+    /// was killed or never said it ended).
+    async fn endable_session(&self, repo: &Repo, actor: &User, id: &str) -> Result<Outcome<SessionRow>> {
+        let Some(row) = self.session_row(&repo.id, id.trim()).await? else {
+            return Ok(not_found());
+        };
+        let can_push = matches!(crate::allowed(Some(actor), repo, g1t_contracts::access::Capability::Push), Outcome::Ok(()));
+        Ok(if may_end_session(&row.actor_id, &actor.id, can_push) {
+            Outcome::Ok(row)
+        } else {
+            Outcome::fail(FailureCode::Forbidden, "Only whoever runs this session, or someone with write access to the repository, can end it.")
+        })
+    }
+
     pub(crate) async fn end_session(&self, a: EndSessionArgs) -> Result<Outcome<Session>> {
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
-        let row = unwrap_or_fail!(self.own_session(&repo, &a.actor, &a.id).await?);
+        let row = unwrap_or_fail!(self.endable_session(&repo, &a.actor, &a.id).await?);
+        let own = row.actor_id == a.actor.id;
         let now = now_ms();
         let at = rfc3339(now);
-        let result = clip(a.result.as_deref(), MAX_RESULT_CHARS);
+        // What it reported is its own to say: someone else ending it says nothing for it.
+        let result = if own { clip(a.result.as_deref(), MAX_RESULT_CHARS) } else { None };
         if row.state == "ended" {
             // Ended already: it keeps what it reported, or takes it now.
             if row.result.is_none()
@@ -567,7 +585,7 @@ impl Work {
             }
             return Ok(Outcome::Ok(row.at(now)));
         }
-        let reason = tidy(a.reason.as_deref(), MAX_NOTE_CHARS).unwrap_or_else(|| "ended".to_owned());
+        let reason = session_end_reason(own, a.by_hand, &a.actor.username, tidy(a.reason.as_deref(), MAX_NOTE_CHARS).as_deref());
         let ended_event = |session: &Session| g1t_contracts::events::marked(SessionEvent::of(session), Some(&a.actor));
         // Its subagents still going end with it, all in one change with
         // their updates. (One started meanwhile ends with it too, and is
