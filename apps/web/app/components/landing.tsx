@@ -201,7 +201,7 @@ function Pillar({
   );
 }
 
-/** Facts under the opening, each one true today. */
+/** Facts under the opening. */
 const FACTS: [string, string][] = [
   [
     "$0",
@@ -454,7 +454,7 @@ export function Landing() {
         />
       </section>
 
-      {/* Facts, each one true today. */}
+      {/* Facts. */}
       <section className="relative z-10 mx-auto max-w-6xl px-4">
         <dl className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
           {FACTS.map(([figure, about]) => (
@@ -468,6 +468,63 @@ export function Landing() {
         </dl>
       </section>
 
+      {/* Home: where the day starts. */}
+      <section id="home" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-24">
+        <div className="max-w-3xl">
+          <Eyebrow>Home</Eyebrow>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
+            Start every day knowing where things stand.
+          </h2>
+          <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
+            Home is your daily update. g1t keeps track of everything your team
+            and its coding agents did, clears what resolved itself, tells you
+            in plain English what changed and what is live, and asks you only
+            for what is yours to decide: a merge, a review, a fix.
+          </p>
+        </div>
+
+        <div className="mt-6 divide-y divide-line">
+          <Pillar
+            eyebrow="Where you're needed"
+            title="Only what still needs you"
+            art={<NeedsYouArt />}
+            points={[
+              "Notifications that settle themselves",
+              "Why each one settled, and who did it",
+              "Pull requests ready for you to merge",
+              "Reviews asked of you, by name",
+              "Start here: the one to do first, and why",
+            ]}
+            more={["Home", `${DOCS}/guides/home/`]}
+          >
+            A notification is done once a later event resolves it: the next run
+            passes, the pull request merges, the fix deploys. g1t settles it
+            for you, and Home shows only what still waits on you. Start here
+            picks the one to do first and opens it.
+          </Pillar>
+
+          <Pillar
+            flip
+            eyebrow="What changed"
+            title="Come back to what changed, in plain English"
+            art={<WhatChangedArt />}
+            points={[
+              "A summary of what landed since you were last here",
+              "Whether each change is live, deploying or failed",
+              "Explain on any change that landed",
+              "Ask a follow-up, in your direct message with g1t",
+            ]}
+            more={["Ask g1t", `${DOCS}/guides/ask/`]}
+          >
+            Home asks &ldquo;What are we building today?&rdquo; Press
+            Summarize and What changed reads the commits, pull requests, deploys
+            and conversations since you were last here, then tells you what
+            changed, why, and what is live. Explain any one change, or ask a
+            follow-up. It runs on your workspace&apos;s own AI provider.
+          </Pillar>
+        </div>
+      </section>
+
       {/* What a workspace holds. */}
       <section className="mx-auto max-w-6xl px-4 pt-24">
         <div className="max-w-3xl">
@@ -476,8 +533,8 @@ export function Landing() {
             Talk, write it down, ship.
           </h2>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Code, Chat and Artifacts share one set of members, one sign-in and
-            one bill. The coding agents you connect work as you, through MCP,
+            Home, Code, Chat and Artifacts share one set of members, one
+            sign-in and one bill. The coding agents you connect work as you, through MCP,
             the g1t CLI and the API.
           </p>
         </div>
@@ -649,51 +706,10 @@ export function Landing() {
             Agents do the work. You make the calls.
           </h2>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
-            Your coding agents push the branches and open the pull requests.
-            g1t keeps track of all of it, clears what resolved itself, and asks
-            you only for what is yours to decide: a merge, a review, a fix.
+            Your coding agents push the branches and open the pull requests,
+            and their work lands through the same checks as everyone&apos;s.
+            You decide what they take on and what ships.
           </p>
-        </div>
-
-        <div className="mt-6 divide-y divide-line">
-          <Pillar
-            eyebrow="Where you're needed"
-            title="Only what still needs you"
-            art={<NeedsYouArt />}
-            points={[
-              "Notifications that settle themselves",
-              "Why each one settled, and who did it",
-              "Pull requests ready for you to merge",
-              "Reviews asked of you, by name",
-              "Start here: the one to do first, and why",
-            ]}
-            more={["Home", `${DOCS}/guides/home/`]}
-          >
-            A notification is done once a later event resolves it: the next run
-            passes, the pull request merges, the fix deploys. g1t settles it
-            for you, and Home shows only what still waits on you. Start here
-            picks the one to do first and opens it.
-          </Pillar>
-
-          <Pillar
-            flip
-            eyebrow="What changed"
-            title="Come back to what changed, in plain English"
-            art={<WhatChangedArt />}
-            points={[
-              "A summary of what landed since you were last here",
-              "Whether each change is live, deploying or failed",
-              "Explain on any change that landed",
-              "Ask a follow-up, in your direct message with g1t",
-            ]}
-            more={["Ask g1t", `${DOCS}/guides/ask/`]}
-          >
-            Home asks &ldquo;What are we building today?&rdquo; Press
-            Summarize and What changed reads the commits, pull requests, deploys
-            and conversations since you were last here, then tells you what
-            changed, why, and what is live. Explain any one change, or ask a
-            follow-up. It runs on your workspace&apos;s own AI provider.
-          </Pillar>
         </div>
 
         <div className="mt-10 grid gap-4 lg:grid-cols-2">
