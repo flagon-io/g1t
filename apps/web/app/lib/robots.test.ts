@@ -9,6 +9,7 @@ test("everything may be crawled but a file's blame", () => {
   assert.match(text, /^Disallow: \/\*\?blame=$/m);
   assert.match(text, /^Disallow: \/\*&blame=$/m);
   assert.match(text, /^Disallow: \/\*\/\*\/blame\/$/m);
+  assert.match(text, /^Disallow: \/\*\/\*\/ref\/$/m);
   assert.match(text, /^Sitemap: https:\/\/g1t\.example\/sitemap\.xml$/m);
   assert.doesNotMatch(text, /docs\.g1t\.sh/, "a self-hosted g1t has no docs site");
   assert.ok(text.endsWith("\n"));

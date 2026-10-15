@@ -221,6 +221,10 @@ pub fn shape(found: &Found) -> Value {
                 if let Some(pull) = data.get("resolvedBy").and_then(Value::as_u64) {
                     shown["resolved_by"] = json!(pull);
                 }
+                // Closed by a commit pushed to the default branch.
+                if let Some(commit) = text(data, "commit") {
+                    shown["resolved_commit"] = json!(commit);
+                }
                 shown["url"] = json!(format!("{page}/issues/{number}"));
             }
             "release.published" => {
@@ -932,5 +936,33 @@ The long why.", "2026-10-13T05:00:00Z"),
         );
         assert_eq!(listed[5]["resolved_by"], 7);
         assert_eq!(shown["complete"], true);
+    }
+
+    #[test]
+    fn an_issue_a_commit_closed_names_the_commit() {
+        let repos = [repo("rep_1", "web")];
+        let events = [event(
+            "issue.closed",
+            "rep_1",
+            "2026-10-12T10:00:00Z",
+            "usr_1",
+            json!({ "number": 3, "title": "Login fails", "reason": "completed", "commit": "0123456789abcdef0123456789abcdef01234567" }),
+        )];
+        let names = HashMap::from([("usr_1".to_owned(), "ana".to_owned())]);
+        let shown = shape(&Found {
+            workspace: "acme",
+            site: "https://g1t.sh/",
+            since: parse_rfc3339("2026-10-12T00:00:00Z").unwrap(),
+            until: parse_rfc3339("2026-10-12T18:00:00Z").unwrap(),
+            repos: &repos,
+            events: &events,
+            more: false,
+            pull_titles: &HashMap::new(),
+            usernames: &names,
+        });
+        let closed = &shown["events"][0];
+        assert_eq!(closed["resolved_commit"], "0123456789abcdef0123456789abcdef01234567");
+        assert!(closed.get("resolved_by").is_none());
+        assert_eq!(closed["actor"], "ana");
     }
 }

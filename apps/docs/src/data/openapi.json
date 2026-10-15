@@ -42563,7 +42563,7 @@
           "Issues"
         ],
         "summary": "Get an issue",
-        "description": "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set.",
+        "description": "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it, or resolved_commit the commit pushed to the default branch whose message closed it (with resolved_pushed_by, who pushed it). Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`.\n\nA closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it, or `resolved_commit` the commit pushed to the default branch whose message closed it (`Fixes #12`), with `resolved_pushed_by` saying who pushed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set.",
         "x-operation": "get_issue",
         "x-mcp-tool": "issue",
         "x-mcp-action": "get",
@@ -42624,6 +42624,8 @@
                     "state": "closed",
                     "reason": "completed",
                     "resolved_by": 14,
+                    "resolved_commit": null,
+                    "resolved_pushed_by": null,
                     "author": {
                       "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
                       "username": "syntaqx",

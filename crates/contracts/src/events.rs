@@ -133,6 +133,11 @@ pub struct GitPush {
     /// Home's digest (`activity_digest`) sums it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commits: Option<u32>,
+    /// Set when landing a pull request moved the branch (repos `land`): its
+    /// number, so that the pull requests the push merged are told apart
+    /// from the one whose merge is recorded by whoever landed it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub landed_pull: Option<u32>,
 }
 
 /// A branch or tag deleted by a push. `before` is the commit it pointed to.
@@ -174,6 +179,10 @@ pub struct IssueEvent {
     /// On close: the number of the pull request whose merge closed it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved_by: Option<u32>,
+    /// On close: the commit pushed to the default branch whose message
+    /// closed it (`Fixes #12`), when one did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
     /// On `issue.assigned`: the people it is now assigned to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignees: Option<Vec<String>>,
@@ -1375,6 +1384,7 @@ mod tests {
             unscanned: false,
             caused_by_job: job_run_of(&actor).map(str::to_owned),
             commits: Some(3),
+            landed_pull: None,
         };
         let push = serde_json::to_value(push).unwrap();
         assert_eq!(caused_by_job(&push), Some("run_9"));
@@ -1393,12 +1403,14 @@ mod tests {
             unscanned,
             caused_by_job: None,
             commits: None,
+            landed_pull: None,
         };
         let quiet = serde_json::to_value(push(false)).unwrap();
         assert!(quiet.get("unscanned").is_none());
         let flagged = serde_json::to_value(push(true)).unwrap();
         assert_eq!(flagged["unscanned"], true);
         assert_eq!(flagged["ref"], "refs/heads/import");
+        assert!(quiet.get("landedPull").is_none());
     }
 
     fn renamed(from: &str, to: &str) -> WorkspaceRenamed {

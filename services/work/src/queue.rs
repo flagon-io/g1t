@@ -1437,6 +1437,7 @@ impl Work {
                 message: None,
                 author: None,
                 sign_off: false,
+                pull: Some(pull.number),
             };
             let mut landed: Outcome<Landed> = g1t_kit::call(&self.repos, "land", &land).await?;
             if matches!(landed, Outcome::Fail(_)) {
@@ -1477,7 +1478,7 @@ impl Work {
             };
             // Record the merge before removing its recoverable queue intent.
             let head = row.head_commit.clone();
-            let merged = self.record_merge(&repo, pull, &actor, row.keep_issue_open != 0, landed)
+            let merged = self.record_merge(&repo, pull, &actor, row.keep_issue_open != 0, landed, None)
                 .await?;
             self.finish_landing(&row).await?;
             // Its branch, where the repository deletes branches on merge,
