@@ -2,8 +2,10 @@
  * The landing page's product tour: g1t browsing itself. A faithful app
  * frame (rail, sidebars, the real colours) plays one story on a loop, with
  * a soft cursor that moves and clicks: the pull request going green and
- * merging, the session its author's coding agent recorded onto it, the
- * people in #web hearing it shipped, and the docs page.
+ * merging, the session its author's coding agent recorded onto it, Home
+ * when its author comes back (what settled by itself, what still needs her,
+ * and What changed in plain English), and the people in #web hearing it
+ * shipped.
  *
  * The frame is a pure function of time (lib/tour.ts). One rAF loop drives
  * the clock and re-renders only when the frame changes; the step pills'
@@ -23,14 +25,16 @@
  */
 import {
   Activity,
+  ArrowRight,
+  ArrowUp,
   AtSign,
   BarChart3,
   Bell,
-  BookOpen,
   Bot,
   Box,
   Building2,
   Check,
+  CheckCheck,
   ChevronDown,
   ChevronLeft,
   CircleDot,
@@ -44,17 +48,20 @@ import {
   GitPullRequest,
   Hash,
   House,
+  Loader,
   MessageSquare,
   MessagesSquare,
   Paperclip,
   PlayCircle,
   Plus,
   Rocket,
+  RotateCcw,
   Search,
   SendHorizontal,
   Settings,
   ShieldCheck,
   Shapes,
+  Sparkles,
   SquarePen,
   User,
   Wrench,
@@ -64,10 +71,12 @@ import { type CSSProperties, Fragment, type ReactNode, useCallback, useEffect, u
 import { codingAgentById } from "@g1t/contracts/coding-agents";
 
 import { cn } from "../lib/cn";
-import { CHECKS, type CursorTarget, type Frame, LOOP_MS, PILLS, SESSION, type SessionEntry, STILLS, type Scene, frameAt, pillAt, pillProgress, sameFrame } from "../lib/tour";
+import { CHECKS, type CursorTarget, type Frame, LOOP_MS, PILLS, SESSION, SETTLED, SUMMARY_WORDS, type SessionEntry, STILLS, type Scene, frameAt, pillAt, pillProgress, sameFrame } from "../lib/tour";
 import { AgentBadge, AgentMark } from "./coding-agent";
+import { MarkGlyph } from "./logo";
 
 import { Avatar } from "./ui/avatar";
+import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 
 /** The frame's design size; it scales to fit, keeping its aspect. */
@@ -192,8 +201,8 @@ function pillOf(frame: Frame): number {
 const HONESTY: Record<Scene, string> = {
   code: "Works today",
   session: "Works today: recorded by your coding agent through MCP",
+  home: "Works today: summaries run on your workspace's own AI provider",
   chat: "Works today",
-  docs: "Works today",
 };
 
 /** The line under the frame. Not part of the app, so it sits outside it. */
@@ -288,11 +297,11 @@ function Message({ who, time, children, enter }: { who: string; time: string; ch
 
 /** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
 const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
-  { key: "home", icon: <House size={15} />, label: "Home" },
+  { key: "home", icon: <House size={15} />, label: "Home", target: "rail-home", scenes: ["home"] },
   { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scenes: ["chat"], badge: 3 },
   { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scenes: ["code", "session"] },
-  { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts", target: "rail-docs", scenes: ["docs"] },
-  { key: "inbox", icon: <Bell size={15} />, label: "Notifications", badge: 2 },
+  { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts" },
+  { key: "inbox", icon: <Bell size={15} />, label: "Notifications" },
 ];
 
 /** One rail item: the square behind its icon, filled for the mode you are in, and its name under it. */
@@ -303,7 +312,7 @@ function RailItem({ icon, label, on, target, badge }: { icon: ReactNode; label: 
         data-tour={target}
         className={cn(
           "relative flex size-7 items-center justify-center rounded-lg transition-colors duration-500",
-          on ? "bg-[#2c2c33] text-fg shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" : "text-muted",
+          on ? "bg-[#2c2c33] text-[#ededef] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]" : "text-muted",
         )}
       >
         {icon}
@@ -313,7 +322,7 @@ function RailItem({ icon, label, on, target, badge }: { icon: ReactNode; label: 
           </span>
         ) : null}
       </span>
-      <span className={cn("text-[9px] leading-none font-medium transition-colors duration-500", on ? "text-fg" : "text-faint")}>{label}</span>
+      <span className={cn("text-[9px] leading-none font-medium transition-colors duration-500", on ? "text-[#ededef]" : "text-faint")}>{label}</span>
     </span>
   );
 }
@@ -323,7 +332,10 @@ function RailItem({ icon, label, on, target, badge }: { icon: ReactNode; label: 
  * switcher), the modes with their names, then the workspace's own pages,
  * help, and you, with the dot that says how others see you.
  */
-function Rail({ scene }: { scene: Scene }) {
+function Rail({ frame }: { frame: Frame }) {
+  const scene = frame.scene;
+  // Notifications still unread: the two that settle on Home leave the count as they do.
+  const unread = SETTLED.length - frame.settled;
   return (
     <nav aria-hidden="true" className="flex w-16 shrink-0 flex-col items-center bg-[#0b0b0d] pb-2.5 shadow-[inset_-1px_0_0_var(--color-line)]">
       <div className="flex h-11 w-full shrink-0 items-center justify-center border-b border-line bg-bg shadow-[inset_-1px_0_0_var(--color-line)]">
@@ -331,7 +343,7 @@ function Rail({ scene }: { scene: Scene }) {
       </div>
       <div className="mt-2.5 flex w-full flex-col items-center gap-1.5 px-1">
         {RAIL.map((item) => (
-          <RailItem key={item.key} icon={item.icon} label={item.label} on={!!item.scenes?.includes(scene)} target={item.target} badge={item.badge} />
+          <RailItem key={item.key} icon={item.icon} label={item.label} on={!!item.scenes?.includes(scene)} target={item.target} badge={item.key === "inbox" ? unread : item.badge} />
         ))}
       </div>
       <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-1">
@@ -805,81 +817,302 @@ function SessionMain({ frame }: { frame: Frame }) {
   );
 }
 
-/* Docs ---------------------------------------------------------------- */
+/* Home ---------------------------------------------------------------- */
 
-/** Docs' sidebar: search, then each space's pages. */
-function DocsSide() {
+/** One of Home's cards (components/home.tsx Card): its title, a few words under it, then its rows. */
+function HomeCard({ title, hint, link, children, className }: { title: ReactNode; hint?: string; link?: string; children: ReactNode; className?: string }) {
   return (
-    <>
-      <SideHead action={<Plus size={14} />}>
-        Docs
-      </SideHead>
-      <div className="px-2 pt-2.5">
-        <SideSearch>Search docs</SideSearch>
-        <SideLabel>Product</SideLabel>
-        {["Getting started", "Billing", "Exporting data", "Integrations"].map((page) => (
-          <SideRow key={page} on={page === "Exporting data"}>
-            <FileText size={12} className="text-faint" />
-            {page}
-          </SideRow>
-        ))}
-        <SideLabel>Engineering</SideLabel>
-        {["Runbooks", "Decisions"].map((page) => (
-          <SideRow key={page}>
-            <FileText size={12} className="text-faint" />
-            {page}
-          </SideRow>
-        ))}
-      </div>
-    </>
+    <section className={cn("overflow-hidden rounded-2xl border border-line bg-surface", className)}>
+      <header className="flex items-start gap-2 px-4 pt-3 pb-2">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-semibold text-fg">{title}</p>
+          {hint && <p className="mt-0.5 truncate text-[10.5px] text-muted">{hint}</p>}
+        </div>
+        {link && (
+          <span className="ml-auto flex shrink-0 items-center gap-1 pt-0.5 text-[10.5px] text-muted">
+            {link}
+            <ArrowRight size={10} />
+          </span>
+        )}
+      </header>
+      {children}
+    </section>
   );
 }
 
-function DocsMain({ frame }: { frame: Frame }) {
+const HOME_ROW = "flex items-center gap-2.5 border-t border-line px-4 py-2";
+
+/** What still waits on Priya once the notifications above settle: her pull request ready to merge, and a review asked of her. */
+const STAYING = [
+  { icon: <GitMerge size={14} className="text-success" />, title: "Retry webhook deliveries with backoff", detail: "acme/web #433 · Ready to land when you merge it.", stake: "Ready to merge", action: "Open" },
+  { icon: <GitPullRequest size={14} className="text-info" />, title: "Add audit log export", detail: "acme/web #435 · Your review", stake: "+212 −40", action: "Review" },
+];
+
+/** A row of Where you're needed that settles while you look: it says why, then leaves the list. */
+function SettlingRow({ row, settled, cleared, index }: { row: (typeof SETTLED)[number]; settled: boolean; cleared: boolean; index: number }) {
   return (
-    <div className="relative h-full px-10 py-7">
-      <p className="text-[11px] text-faint">Product / Exporting data</p>
-      <h3 className="mt-2 text-[22px] font-semibold tracking-tight text-fg">Exporting data</h3>
-      <p className="mt-1.5 flex items-center gap-2 text-[11px] text-faint">
-        Owned by <span className="text-fg-soft">{PEOPLE.Dana}</span> ·{" "}
-        <span key={frame.docUpdated ? "now" : "then"} className="tour-fade">
-          {frame.docUpdated ? "updated just now from #431" : "updated 3 weeks ago"}
-        </span>
-      </p>
-      <div className="mt-5 max-w-xl space-y-3 text-[13px] leading-[1.7] text-fg-soft">
-        <p>Export any table as CSV from Settings, then Data. An export includes every row you can see, in the order shown.</p>
-        <p className="pt-2 text-[14px] font-semibold text-fg">Large accounts</p>
-        <div className="relative">
-          <p
-            className={cn(
-              "rounded-md px-3 py-2 transition-all duration-500",
-              frame.docUpdated ? "bg-danger/5 text-faint line-through decoration-danger/50" : "text-fg-soft",
-            )}
-          >
-            Exports over 50,000 rows can time out. Split them by date range.
-          </p>
-          <div
-            className={cn(
-              "mt-1.5 rounded-md border-l-2 border-success bg-success/10 px-3 py-2 text-fg transition-all duration-700",
-              frame.docUpdated ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
-            )}
-          >
-            Exports of any size stream in batches of 1,000 rows. A 200,000-row account finishes in about 3 seconds.
+    <div
+      className={cn(
+        "grid transition-[grid-template-rows,opacity] duration-500 ease-out motion-reduce:transition-none",
+        cleared ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
+      )}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div className={cn(HOME_ROW, index === 0 && "border-t-0", "transition-colors duration-500", settled && "bg-success/5")}>
+          <span key={settled ? "done" : "open"} className="tour-pop shrink-0">
+            {settled ? <CheckCheck size={14} className="text-success" /> : index === 0 ? <Rocket size={14} className="text-danger" /> : <PlayCircle size={14} className="text-warn" />}
+          </span>
+          <div className="min-w-0 grow">
+            <p className={cn("truncate text-[12px] font-semibold transition-colors duration-500", settled ? "text-muted line-through decoration-faint" : "text-fg")}>{row.title}</p>
+            <p key={settled ? "why" : "detail"} className={cn("tour-fade truncate text-[10.5px]", settled ? "text-success" : "text-muted")}>
+              {settled ? `Settled · ${row.why}` : row.detail}
+            </p>
           </div>
-        </div>
-        <div
-          className={cn(
-            "flex items-center gap-2 pt-1 text-[11px] text-muted transition-opacity delay-300 duration-500",
-            frame.docUpdated ? "opacity-100" : "opacity-0",
-          )}
-        >
-          <Face who="Dana" size={18} />
-          <span>
-            Updated by <span className="text-fg">{PEOPLE.Dana}</span> after <span className="text-accent">#431</span> merged
+          <span className={cn("shrink-0 rounded-md border border-line-strong px-2 py-1 text-[10.5px] text-fg transition-opacity duration-300", settled && "opacity-0")}>
+            {index === 0 ? "See the build" : "Look"}
           </span>
         </div>
-        <p className="pt-3 text-[14px] font-semibold text-fg">Scheduled exports</p>
-        <p>Owners can send an export to a storage bucket every day or week. Each run uses the same columns as the last.</p>
+      </div>
+    </div>
+  );
+}
+
+/** Where you're needed: the two notifications that settle themselves, then what is left for Priya. */
+function NeededCard({ frame, phone }: { frame: Frame; phone?: boolean }) {
+  return (
+    <HomeCard title="Where you're needed" hint={phone ? undefined : "Everything waiting on you, however long ago it started"} link="Notifications">
+      {SETTLED.map((row, index) => (
+        <SettlingRow key={row.title} row={row} index={index} settled={frame.settled > index} cleared={frame.cleared > index} />
+      ))}
+      {STAYING.map((row, index) => (
+        <div key={row.title} className={cn(HOME_ROW, index === 0 && frame.cleared >= SETTLED.length && "border-t-0")}>
+          <span className="shrink-0">{row.icon}</span>
+          <div className="min-w-0 grow">
+            <p className="truncate text-[12px] font-semibold text-fg">{row.title}</p>
+            <p className="truncate text-[10.5px] text-muted">{row.detail}</p>
+          </div>
+          {!phone && <span className="shrink-0 text-[10.5px] font-medium text-fg-soft">{row.stake}</span>}
+          <span className="shrink-0 rounded-md border border-line-strong px-2 py-1 text-[10.5px] text-fg">{row.action}</span>
+        </div>
+      ))}
+    </HomeCard>
+  );
+}
+
+/** Start here: the deploy failure while it is open (it comes before anything else), then the pull request ready to merge. */
+function StartCard({ frame }: { frame: Frame }) {
+  const deploy = frame.settled === 0;
+  const pick = deploy
+    ? { icon: <Rocket size={14} className="text-danger" />, title: SETTLED[0].title, next: "See the build", why: "Production is serving an older build until this is fixed, so it comes before anything else.", button: "See the build" }
+    : { icon: <GitMerge size={14} className="text-success" />, title: STAYING[0].title, next: "Merge", why: "Everything it needs is met; it lands when you merge it.", button: "Open pull request" };
+  return (
+    <HomeCard
+      title={
+        <>
+          Start here <span className="font-normal text-faint">· picked by g1t</span>
+        </>
+      }
+    >
+      <div key={deploy ? "deploy" : "ready"} className="tour-in px-4 pb-4">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 shrink-0">{pick.icon}</span>
+          <p className="text-[12.5px] leading-snug font-semibold text-fg">{pick.title}</p>
+        </div>
+        <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[10.5px]">
+          <dt className="text-muted">Next</dt>
+          <dd className="text-fg-soft">{pick.next}</dd>
+          <dt className="text-muted">At stake</dt>
+          <dd className={deploy ? "text-danger" : "text-fg-soft"}>{deploy ? "Production on an older build" : "Ready to merge"}</dd>
+        </dl>
+        <p className="mt-2.5 rounded-lg bg-raised/60 px-2.5 py-2 text-[10.5px] leading-relaxed text-fg-soft">
+          <span className="font-medium text-fg">Why this one: </span>
+          {pick.why}
+        </p>
+        <span className="mt-3 inline-flex h-7 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11.5px] font-medium text-bg">
+          {pick.button}
+          <ArrowRight size={12} />
+        </span>
+      </div>
+    </HomeCard>
+  );
+}
+
+/** What changed: Summarize, then g1t's answer streaming in, word by word, then Ask a follow-up. */
+function WhatChangedCardMock({ frame }: { frame: Frame }) {
+  const text = SUMMARY_WORDS.slice(0, frame.words).join(" ");
+  return (
+    <HomeCard title="What changed" hint="In plain English, since I was last here">
+      <div className="px-4 pb-3.5">
+        {!frame.summarizing ? (
+          <div className="flex items-center gap-3">
+            <p className="grow text-[11.5px] leading-relaxed text-muted">
+              g1t reads the commits, pull requests, deploys and conversations since I was last here and tells you what changed, why, and what is live.
+            </p>
+            <span className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 text-[11.5px] font-medium text-bg">
+              <Sparkles size={12} />
+              Summarize
+            </span>
+          </div>
+        ) : frame.words === 0 ? (
+          <div className="tour-fade space-y-2">
+            <p className="text-[11.5px] text-muted">Reading what happened…</p>
+            <span className="tour-shimmer block h-2.5 w-11/12 rounded bg-raised" />
+            <span className="tour-shimmer block h-2.5 w-3/4 rounded bg-raised" />
+          </div>
+        ) : (
+          <>
+            <p className="text-[12.5px] leading-[1.6] text-fg-soft">
+              <Rich text={text} />
+              {!frame.summarized && <span className="tour-caret ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 rounded-[1px] bg-accent" />}
+            </p>
+            <div className={cn("mt-3 flex items-center gap-1.5 border-t border-line pt-2.5 transition-opacity duration-500", frame.summarized ? "opacity-100" : "opacity-0")}>
+              <span className="inline-flex h-6 items-center gap-1.5 rounded-md bg-accent/10 px-2 text-[10.5px] font-medium text-fg ring-1 ring-accent/20 ring-inset">
+                <MarkGlyph className="h-2.5" />
+                Ask a follow-up
+              </span>
+              <span className="inline-flex h-6 items-center gap-1.5 px-2 text-[10.5px] text-muted">
+                <RotateCcw size={11} />
+                Summarize again
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </HomeCard>
+  );
+}
+
+/** Landed: each change with whether it is live, the agent's mark on the one it helped make, and Explain. */
+function LandedCardMock({ frame }: { frame: Frame }) {
+  const rows = [
+    {
+      title: "Stream CSV exports in batches",
+      detail: "web#431 · by priya",
+      agent: true,
+      explain: "home-explain" as const,
+      badge: frame.live ? (
+        <Badge key="live" tone="success" className="tour-pop">
+          <Rocket size={9} />
+          Live 9 min after merge
+        </Badge>
+      ) : (
+        <Badge key="deploying" tone="info">
+          <Loader size={9} className="tour-spin" />
+          Deploying
+        </Badge>
+      ),
+      at: "9:41 AM",
+    },
+    {
+      title: "Pin the build image's cache key",
+      detail: "web · 1 push by jordan",
+      agent: false,
+      explain: undefined,
+      badge: (
+        <Badge tone="success">
+          <Rocket size={9} />
+          Live 4 min after push
+        </Badge>
+      ),
+      at: "8:15 AM",
+    },
+  ];
+  return (
+    <HomeCard title="Landed" hint="1 pull request merged · 1 push">
+      {rows.map((row) => (
+        <div key={row.title} className={HOME_ROW}>
+          <span className="shrink-0">{row.agent ? <GitMerge size={14} className="text-merged" /> : <GitCommitHorizontal size={14} className="text-muted" />}</span>
+          <div className="min-w-0 grow">
+            <p className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg">
+              <span className="truncate">{row.title}</span>
+              {row.agent && <AgentMark agent={CLAUDE} size={12} />}
+            </p>
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="truncate text-[10.5px] text-muted">{row.detail}</span>
+              {row.badge}
+            </div>
+          </div>
+          <span data-tour={row.explain} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted">
+            <Sparkles size={12} />
+          </span>
+          <span className="shrink-0 text-[10.5px] text-faint tabular-nums">{row.at}</span>
+        </div>
+      ))}
+    </HomeCard>
+  );
+}
+
+/**
+ * Home, as Priya comes back to it (routes/workspace/home.tsx): "What are
+ * we building today?" over the box that asks g1t, Where you're needed
+ * beside Start here, then Since you were last here with What changed and
+ * Landed. Pressing the first starter brings What changed into view, as the
+ * real one does, and its answer streams in.
+ */
+function HomeMain({ frame, phone = false }: { frame: Frame; phone?: boolean }) {
+  const viewport = useRef<HTMLDivElement | null>(null);
+  const content = useRef<HTMLDivElement | null>(null);
+  const since = useRef<HTMLDivElement | null>(null);
+  const [offset, setOffset] = useState(0);
+  // Measured again as the answer grows, so the page follows it down as it streams in.
+  const grown = Math.floor(frame.words / 12);
+  useIsoLayoutEffect(() => {
+    if (!frame.summarizing) {
+      setOffset(0);
+      return;
+    }
+    const view = viewport.current;
+    const body = content.current;
+    const mark = since.current;
+    if (!view || !body || !mark) return;
+    setOffset(Math.max(0, Math.min(mark.offsetTop - 14, body.scrollHeight - view.clientHeight)));
+  }, [frame.summarizing, grown, frame.summarized]);
+  const starters = phone ? ["What needs me first?"] : ["What needs me first?", "What shipped today?", "Who's working on what?"];
+  return (
+    <div ref={viewport} className="h-full overflow-hidden">
+      <div
+        ref={content}
+        className={cn("relative transition-transform duration-1000 ease-[cubic-bezier(.45,.05,.2,1)] motion-reduce:transition-none", phone ? "space-y-3 px-3 pt-4 pb-4" : "space-y-4 px-6 pt-5 pb-6")}
+        style={{ transform: offset ? `translateY(${-offset}px)` : undefined }}
+      >
+        <div className={cn("mx-auto flex flex-col items-center", phone ? "gap-2.5" : "max-w-xl gap-3")}>
+          <p className={cn("text-center font-semibold tracking-tight text-fg", phone ? "text-[17px]" : "text-[21px]")}>What are we building today?</p>
+          <div className="flex w-full items-center gap-2 rounded-2xl border border-line bg-surface p-1.5 pl-3 shadow-sm">
+            <MarkGlyph className="h-3.5 shrink-0" />
+            <span className="min-w-0 grow truncate text-[12px] text-faint">Ask g1t what changed, what&apos;s blocked, or what to do next</span>
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-bg opacity-50">
+              <ArrowUp size={13} />
+            </span>
+          </div>
+          <div className="flex flex-wrap justify-center gap-1.5">
+            <span
+              data-tour="home-summarize"
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-[10.5px] text-fg transition-colors duration-300",
+                frame.summarizing ? "border-accent bg-accent/15" : "border-accent-dim",
+              )}
+            >
+              Summarize what changed since I was last here
+            </span>
+            {starters.map((label) => (
+              <span key={label} className="rounded-full border border-line px-2.5 py-1 text-[10.5px] text-fg-soft">
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className={cn("grid items-start gap-3", !phone && "grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4")}>
+          <NeededCard frame={frame} phone={phone} />
+          <StartCard frame={frame} />
+        </div>
+
+        <div ref={since} className="flex items-baseline gap-2.5 pt-1">
+          <p className={cn("font-semibold tracking-tight text-fg", phone ? "text-[14px]" : "text-[15px]")}>Since you were last here</p>
+          <p className="truncate text-[11px] text-muted">Yesterday at 6:12 PM · 15 hours</p>
+        </div>
+        <WhatChangedCardMock frame={frame} />
+        <LandedCardMock frame={frame} />
       </div>
     </div>
   );
@@ -928,11 +1161,11 @@ function Cursor({ frame, canvas, scale }: { frame: Frame; canvas: React.RefObjec
 
 /* Desktop ------------------------------------------------------------- */
 
-const SIDES: Record<Scene, (props: { frame: Frame }) => ReactNode> = {
+const SIDES: Record<Scene, ((props: { frame: Frame }) => ReactNode) | null> = {
   code: CodeSide,
   session: CodeSide,
+  home: null,
   chat: ChatSide,
-  docs: DocsSide,
 };
 
 /** Where each page is, as the top bar's trail says it; Chat has no top bar on a computer. */
@@ -940,7 +1173,7 @@ const CRUMBS: Record<Scene, { label: string; mono?: boolean }[] | null> = {
   chat: null,
   code: [{ label: "acme", mono: true }, { label: "web", mono: true }, { label: "Pull request #431" }],
   session: [{ label: "acme", mono: true }, { label: "web", mono: true }, { label: "Pull request #431" }],
-  docs: [{ label: "acme", mono: true }, { label: "Docs" }],
+  home: [{ label: "acme", mono: true }, { label: "Home" }],
 };
 
 /** The sidebar's colour, a shade lighter than the page (shell.tsx, SIDEBAR_BOX). */
@@ -960,12 +1193,12 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const scenes: Scene[] = ["code", "session", "chat", "docs"];
+  const scenes: Scene[] = ["code", "session", "home", "chat"];
   const mains: Record<Scene, ReactNode> = {
     chat: <ChatMain frame={frame} />,
     session: <SessionMain frame={frame} />,
     code: <CodeMain frame={frame} />,
-    docs: <DocsMain frame={frame} />,
+    home: <HomeMain frame={frame} />,
   };
   return (
     <div ref={outer} className="relative w-full overflow-hidden rounded-2xl text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark" style={{ aspectRatio: `${W} / ${H}` }}>
@@ -974,7 +1207,7 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
         className="absolute top-0 left-0 flex origin-top-left bg-bg text-left"
         style={{ width: W, height: H, transform: scale === 1 ? undefined : `scale(${scale})`, ["--tour-side" as string]: SIDE_BG } as CSSProperties}
       >
-        <Rail scene={frame.scene} />
+        <Rail frame={frame} />
         <div className="relative min-w-0 flex-1">
           {scenes.map((scene) => {
             const Side = SIDES[scene];
@@ -989,9 +1222,11 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
                   on ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0",
                 )}
               >
-                <div className="flex w-52 shrink-0 flex-col overflow-hidden border-r border-line" style={{ background: SIDE_BG }}>
-                  <Side frame={frame} />
-                </div>
+                {Side && (
+                  <div className="flex w-52 shrink-0 flex-col overflow-hidden border-r border-line" style={{ background: SIDE_BG }}>
+                    <Side frame={frame} />
+                  </div>
+                )}
                 <div className="flex min-w-0 flex-1 flex-col">
                   {crumbs && <TopBar crumbs={crumbs} />}
                   <div className="min-h-0 flex-1">{mains[scene]}</div>
@@ -1012,19 +1247,19 @@ const MODE: Record<Scene, { icon: ReactNode; label: string }> = {
   code: { icon: <GitPullRequest size={14} />, label: "Pull request #431" },
   session: { icon: <MessagesSquare size={14} />, label: "#431 · Session" },
   chat: { icon: <Hash size={14} />, label: "web" },
-  docs: { icon: <BookOpen size={14} />, label: "Exporting data" },
+  home: { icon: <House size={14} />, label: "Home" },
 };
 
 /** The phone's tab bar, as the app has it (components/mobile.tsx). */
 const TABS: { scenes: Scene[]; icon: ReactNode; label: string }[] = [
-  { scenes: [], icon: <House size={16} />, label: "Home" },
+  { scenes: ["home"], icon: <House size={16} />, label: "Home" },
   { scenes: ["chat"], icon: <MessagesSquare size={16} />, label: "Chat" },
   { scenes: [], icon: <Bell size={16} />, label: "Notifications" },
   { scenes: ["code", "session"], icon: <Code2 size={16} />, label: "Code" },
 ];
 
 function Phone({ frame }: { frame: Frame }) {
-  const scenes: Scene[] = ["code", "session", "chat", "docs"];
+  const scenes: Scene[] = ["code", "session", "home", "chat"];
   return (
     <div className="relative flex h-136 w-full flex-col overflow-hidden rounded-2xl bg-bg text-left text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
@@ -1046,11 +1281,7 @@ function Phone({ frame }: { frame: Frame }) {
               {scene === "code" && <PhoneCode frame={frame} />}
               {scene === "session" && <PhoneSession frame={frame} />}
               {scene === "chat" && <PhoneChat frame={frame} />}
-              {scene === "docs" && (
-                <div className="origin-top-left scale-[0.86]" style={{ width: "116%" }}>
-                  <DocsMain frame={frame} />
-                </div>
-              )}
+              {scene === "home" && <HomeMain frame={frame} phone />}
             </div>
           );
         })}
@@ -1062,8 +1293,8 @@ function Phone({ frame }: { frame: Frame }) {
             const on = tab.scenes.includes(frame.scene);
             return (
               <span key={tab.label} className="flex flex-col items-center justify-center gap-0.5">
-                <span className={cn("flex h-6 w-10 items-center justify-center rounded-full", on ? "bg-[#2c2c33] text-fg" : "text-muted")}>{tab.icon}</span>
-                <span className={cn("text-[9.5px] font-medium", on ? "text-fg" : "text-faint")}>{tab.label}</span>
+                <span className={cn("flex h-6 w-10 items-center justify-center rounded-full", on ? "bg-[#2c2c33] text-[#ededef]" : "text-muted")}>{tab.icon}</span>
+                <span className={cn("text-[9.5px] font-medium", on ? "text-[#ededef]" : "text-faint")}>{tab.label}</span>
               </span>
             );
           })}
@@ -1189,8 +1420,12 @@ const STYLES = `
 @keyframes tour-fade { from { opacity: 0; } to { opacity: 1; } }
 .tour-spin { animation: tour-spin .9s linear infinite; }
 @keyframes tour-spin { to { transform: rotate(360deg); } }
+.tour-caret { animation: tour-caret 1s steps(1) infinite; }
+@keyframes tour-caret { 50% { opacity: 0; } }
+.tour-shimmer { animation: tour-shimmer 1.2s ease-in-out infinite; }
+@keyframes tour-shimmer { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) {
-  .tour-in, .tour-pop, .tour-fade, .tour-spin { animation: none; }
+  .tour-in, .tour-pop, .tour-fade, .tour-spin, .tour-caret, .tour-shimmer { animation: none; }
 }
 `;
 
@@ -1206,7 +1441,7 @@ export function ProductTour({ className }: { className?: string }) {
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div
         role="img"
-        aria-label="A tour of g1t: a pull request passes its checks, is approved and is merged by the merge queue, its session from the coding agent that helped write it is replayed, the team hears it shipped in a channel, and the docs page is updated."
+        aria-label="A tour of g1t: a pull request passes its checks, is approved and is merged by the merge queue, and its session from the coding agent that helped write it is replayed. Back on Home, notifications that settled themselves leave Where you're needed, Start here picks the pull request ready to merge, and What changed sums up in plain English what landed and that it is live. Then the team hears it shipped in a channel."
         onMouseEnter={() => clock.hover(true)}
         onMouseLeave={() => clock.hover(false)}
       >
@@ -1252,7 +1487,8 @@ export function ProductTour({ className }: { className?: string }) {
       </div>
       <p className="mx-auto mt-3 max-w-xl text-center text-xs leading-5 text-faint text-balance">
         Everything here works today. Priya wrote the fix with Claude Code, connected to g1t through its MCP server: the
-        commits carry its mark, and the session it recorded stays on the pull request.
+        commits carry its mark, and the session it recorded stays on the pull request. Home&apos;s summary runs on the
+        workspace&apos;s own AI provider.
       </p>
     </div>
   );

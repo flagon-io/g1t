@@ -21,6 +21,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router";
 
 import { DeployArt, Live, QueueArt, WhyArt } from "./art";
+import { NeedsYouArt, WhatChangedArt } from "./landing-home";
 import { ProductTour } from "./product-tour";
 import { ButtonLink, CopyLine } from "./ui";
 
@@ -243,18 +244,18 @@ const MODES: {
     to: `${DOCS}/guides/chat/`,
   },
   {
-    icon: <BookOpen size={18} />,
-    name: "Artifacts",
-    about:
-      "Docs now, and slides, designs and dashboards next, made together live.",
-    to: `${DOCS}/guides/artifacts/`,
-  },
-  {
     icon: <Bot size={18} />,
     name: "Your coding agents",
     about:
       "Claude Code, Codex, Cursor or any MCP client, working as you through MCP, the g1t CLI or the API, with only the access you give them.",
     to: `${DOCS}/guides/bring-your-own-agent/`,
+  },
+  {
+    icon: <BookOpen size={18} />,
+    name: "Artifacts",
+    about:
+      "Docs now, and slides, designs and dashboards next, made together live.",
+    to: `${DOCS}/guides/artifacts/`,
   },
 ];
 
@@ -403,10 +404,11 @@ export function Landing() {
         <div className="relative mx-auto max-w-6xl px-4 pt-20 text-center sm:pt-24">
           <Link
             to={`${DOCS}/guides/bring-your-own-agent/`}
-            className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs text-fg-soft ring-1 ring-line backdrop-blur transition-colors hover:bg-bg/70"
+            className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs whitespace-nowrap text-fg-soft ring-1 ring-line backdrop-blur transition-colors hover:bg-bg/70"
           >
             <span className="size-1.5 shrink-0 rounded-full bg-accent" />
-            Works with Claude Code, Codex, Cursor and any MCP client
+            <span className="sm:hidden">Works with Claude Code, Codex and Cursor</span>
+            <span className="hidden sm:inline">Works with Claude Code, Codex, Cursor and any MCP client</span>
             <ArrowRight size={12} className="shrink-0" />
           </Link>
           <h1 className="mx-auto mt-7 max-w-4xl animate-fade-up text-[2.75rem] leading-[1.04] font-semibold tracking-tight text-balance sm:text-7xl">
@@ -607,56 +609,228 @@ export function Landing() {
             a thread. Messages arrive the moment they are sent, and everyone in
             the company can join for free.
           </p>
+          <More to={`${DOCS}/guides/chat/`}>How Chat works</More>
+        </div>
+        <div className="rounded-3xl bg-surface p-7 ring-1 ring-line">
+          <p className="text-sm font-medium">Free on every plan</p>
           <Points
+            columns={false}
             points={[
-              "Public and private channels",
+              "Private, workspace and public channels",
               "Direct messages",
               "Threads on any message",
               "@mentions",
               "Live delivery, typing and read state",
               "A desktop app for Windows, macOS and Linux",
               {
+                text: "An Android app with notifications: scan the QR code on",
+                link: { to: "/download", label: "Download" },
+              },
+              {
                 text: "Pull requests, checks and deploys as cards in the channel",
                 soon: true,
               },
               { text: "Chat mentions in Notifications", soon: true },
-              {
-                text: "An Android app with notifications: scan the QR code on",
-                link: { to: "/download", label: "Download" },
-              },
               { text: "The phone app on iPhone", soon: true },
             ]}
           />
-          <More to={`${DOCS}/guides/chat/`}>How Chat works</More>
         </div>
-        <div className="rounded-3xl bg-surface p-7 ring-1 ring-line">
-          <Eyebrow>Issues</Eyebrow>
-          <h3 className="mt-3 text-xl font-semibold tracking-tight">
-            Point your coding agent at an issue
-          </h3>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            Your coding agent connects to g1t through MCP and works as you. It
-            reads the issue, pushes a branch, opens the pull request and
-            records its session onto it, and the pull request goes through the
-            same checks and reviews as anyone&apos;s.
+      </section>
+
+      {/* Agents: they do the work, you make the calls. */}
+      <section id="agents" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-24">
+        <div className="max-w-3xl">
+          <Eyebrow>Agents</Eyebrow>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
+            Agents do the work. You make the calls.
+          </h2>
+          <p className="mt-5 max-w-2xl text-lg leading-8 text-muted">
+            Your coding agents push the branches and open the pull requests.
+            g1t keeps track of all of it, clears what resolved itself, and asks
+            you only for what is yours to decide: a merge, a review, a fix.
           </p>
-          <ol className="mt-6 space-y-3 text-sm">
-            {[
-              "Open an issue: what should change, and what done looks like",
-              "Work it yourself, or hand it to your coding agent",
-              "The pull request runs your checks and lands through the queue",
-            ].map((step, index) => (
-              <li key={step} className="flex items-start gap-3 text-fg-soft">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-bg font-mono text-xs text-faint ring-1 ring-line">
-                  {index + 1}
-                </span>
-                {step}
-              </li>
-            ))}
-          </ol>
-          <More to={`${DOCS}/guides/bring-your-own-agent/`}>
-            Connect a coding agent
-          </More>
+        </div>
+
+        <div className="mt-6 divide-y divide-line">
+          <Pillar
+            eyebrow="Where you're needed"
+            title="Only what still needs you"
+            art={<NeedsYouArt />}
+            points={[
+              "Notifications that settle themselves",
+              "Why each one settled, and who did it",
+              "Pull requests ready for you to merge",
+              "Reviews asked of you, by name",
+              "Start here: the one to do first, and why",
+            ]}
+            more={["Home", `${DOCS}/guides/home/`]}
+          >
+            A notification is done once a later event resolves it: the next run
+            passes, the pull request merges, the fix deploys. g1t settles it
+            for you, and Home shows only what still waits on you. Start here
+            picks the one to do first and opens it.
+          </Pillar>
+
+          <Pillar
+            flip
+            eyebrow="What changed"
+            title="Come back to what changed, in plain English"
+            art={<WhatChangedArt />}
+            points={[
+              "A summary of what landed since you were last here",
+              "Whether each change is live, deploying or failed",
+              "Explain on any change that landed",
+              "Ask a follow-up, in your direct message with g1t",
+            ]}
+            more={["Ask g1t", `${DOCS}/guides/ask/`]}
+          >
+            Home asks &ldquo;What are we building today?&rdquo; Press
+            Summarize and What changed reads the commits, pull requests, deploys
+            and conversations since you were last here, then tells you what
+            changed, why, and what is live. Explain any one change, or ask a
+            follow-up. It runs on your workspace&apos;s own AI provider.
+          </Pillar>
+        </div>
+
+        <div className="mt-10 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-3xl bg-surface p-7 ring-1 ring-line sm:p-8">
+            <Eyebrow>Issues</Eyebrow>
+            <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">
+              Point your coding agent at an issue
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-muted">
+              Your coding agent connects to g1t through MCP and works as you. It
+              reads the issue, pushes a branch, opens the pull request and
+              records its session onto it, and the pull request goes through
+              the same checks and reviews as anyone&apos;s.
+            </p>
+            <ol className="mt-6 space-y-3 text-sm">
+              {[
+                "Open an issue: what should change, and what done looks like",
+                "Work it yourself, or hand it to your coding agent",
+                "The pull request runs your checks and lands through the queue",
+              ].map((step, index) => (
+                <li key={step} className="flex items-start gap-3 text-fg-soft">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-bg font-mono text-xs text-faint ring-1 ring-line">
+                    {index + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <More to={`${DOCS}/guides/bring-your-own-agent/`}>
+              Connect a coding agent
+            </More>
+          </div>
+          <div className="rounded-3xl bg-surface p-7 ring-1 ring-line sm:p-8">
+            <Eyebrow>Coordination</Eyebrow>
+            <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">
+              Many agents, no collisions
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-muted">
+              Run as many coding agents as you like. Each change is a pull
+              request, pull requests that touch the same files are flagged to
+              each other, conflicts are found on every push, and the merge queue
+              tests changes together with what lands ahead of them. Five agents
+              can open pull requests the same afternoon and main still only
+              moves to what passed.
+            </p>
+            <More to={`${DOCS}/guides/merge-queue/`}>The merge queue</More>
+          </div>
+        </div>
+      </section>
+
+      {/* Connect */}
+      <section className="mt-24 border-y border-line bg-surface/40">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 lg:grid-cols-2">
+          <div>
+            <Eyebrow>Bring your own agent</Eyebrow>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
+              Any agent that speaks MCP works on g1t
+            </h2>
+            <p className="mt-4 max-w-md leading-7 text-muted">
+              Connect Claude Code, Codex, Cursor or any other MCP client and
+              sign in once. It works as you: it reads issues, pushes branches,
+              opens pull requests, and records its session and its decisions
+              onto them.
+            </p>
+            <p className="mt-4 max-w-md leading-7 text-muted">
+              Every action is a REST route and an MCP tool, with an OpenAPI
+              document, OAuth apps, access tokens and signed webhooks for every
+              event. The g1t CLI does the same from a terminal or a script:
+              open a pull request, wait on its checks, read a failed run&apos;s
+              logs.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <ButtonLink
+                to={`${DOCS}/guides/bring-your-own-agent/`}
+                variant="outline"
+              >
+                Connect an agent
+                <ArrowRight size={14} />
+              </ButtonLink>
+              <ButtonLink to={`${DOCS}/guides/cli/`} variant="outline">
+                The g1t CLI
+              </ButtonLink>
+              <ButtonLink to={`${DOCS}/reference/api/`} variant="outline">
+                API reference
+              </ButtonLink>
+            </div>
+          </div>
+          <div className="min-w-0 space-y-3">
+            <p className="text-sm text-muted">
+              Add g1t as a remote MCP server, then sign in through your browser:
+            </p>
+            <CopyLine text="https://mcp.g1t.sh" />
+            <p className="pt-3 text-sm text-muted">
+              Install the CLI, then sign in with{" "}
+              <code className="font-mono text-fg-soft">g1t auth login</code>:
+            </p>
+            <CopyLine prompt text="curl -fsSL https://g1t.sh/install | sh" />
+            <p className="pt-3 text-sm text-muted">
+              Underneath, it is plain git and HTTP:
+            </p>
+            <CopyLine
+              prompt
+              breakAtSlashes
+              text="git clone https://g1t.sh/flagon-io/g1t.git"
+            />
+            <CopyLine
+              prompt
+              breakAtSlashes
+              text="curl https://api.g1t.sh/repos/flagon-io/g1t/queue"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Artifacts: the docs the work cites. */}
+      <section className="mx-auto max-w-6xl px-4 pt-24">
+        <div className="grid gap-10 rounded-3xl bg-surface p-8 ring-1 ring-line sm:p-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
+          <div>
+            <Eyebrow>Artifacts</Eyebrow>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
+              A knowledge base that keeps itself true
+            </h2>
+            <p className="mt-4 max-w-xl leading-7 text-muted">
+              Docs, private until you share them or kept in spaces, edited
+              together live, with history, comments and backlinks. When a merged
+              change touches something a doc cites, the doc is flagged for its
+              owner to update.
+            </p>
+            <More to={`${DOCS}/guides/artifacts/`}>How Artifacts work</More>
+          </div>
+          <div>
+          <Points
+            columns={false}
+            points={[
+              "Docs edited together live",
+              "History, comments and backlinks",
+              "Flagged when a merged change touches what they cite",
+              { text: "Slides, designs and dashboards", soon: true },
+            ]}
+          />
+          </div>
         </div>
       </section>
 
@@ -673,6 +847,73 @@ export function Landing() {
         </p>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {RAILS.map((item) => (
+            <Link
+              key={item.title}
+              to={item.to}
+              className="group rounded-2xl bg-surface p-6 ring-1 ring-line transition-colors hover:ring-line-strong"
+            >
+              <span className="flex size-9 items-center justify-center rounded-lg bg-bg text-accent ring-1 ring-line">
+                {item.icon}
+              </span>
+              <h3 className="mt-5 font-semibold">{item.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted">{item.about}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* How it flows */}
+      <section
+        id="how"
+        className="scroll-mt-20 border-y border-line bg-surface/40"
+      >
+        <div className="mx-auto max-w-6xl px-4 py-24">
+          <Eyebrow>How it flows</Eyebrow>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+            From an issue to main
+          </h2>
+          <Live>
+            <ol className="relative mt-12 grid gap-6 md:grid-cols-5">
+              {/* From the first step's dot to the last one's, and no further: five
+                  columns with 1.5rem gaps put the last dot 1rem into the last
+                  column, so the line stops one column, less that, from the end. */}
+              <span
+                aria-hidden="true"
+                className="absolute top-4 right-[calc((100%-6rem)/5-1rem)] left-4 hidden h-px bg-linear-to-r from-accent/50 via-warn/50 to-success/70 md:block"
+              >
+                <span className="flow-runner absolute inset-0">
+                  <span className="absolute -top-0.75 left-[-3.5px] size-1.75 rounded-full bg-accent shadow-[0_0_12px_2px_rgb(182_168_255/0.6)]" />
+                </span>
+              </span>
+              {FLOW.map(([step, about], index) => (
+                <li key={step} className="relative">
+                  <span
+                    className={`flow-step relative flex size-8 items-center justify-center rounded-full font-mono text-xs ring-1 ${
+                      index === FLOW.length - 1
+                        ? "bg-success text-bg ring-success"
+                        : "bg-bg text-fg-soft ring-line-strong"
+                    }`}
+                    style={{ "--delay": `${index * 2}s` } as CSSProperties}
+                  >
+                    {index + 1}
+                  </span>
+                  <h3 className="mt-4 font-semibold">{step}</h3>
+                  <p className="mt-1.5 text-sm leading-6 text-muted">{about}</p>
+                </li>
+              ))}
+            </ol>
+          </Live>
+        </div>
+      </section>
+
+      {/* Secure by default */}
+      <section className="mx-auto max-w-6xl px-4 py-24">
+        <Eyebrow>Secure by default</Eyebrow>
+        <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
+          Safe to hand the work to, and healthy without anyone watching
+        </h2>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {SECURE.map((item) => (
             <Link
               key={item.title}
               to={item.to}
@@ -745,169 +986,6 @@ export function Landing() {
                 </Link>
               </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Coordination, as it works today; and Docs, coming next. */}
-      <section className="mx-auto grid max-w-6xl gap-4 px-4 pb-24 lg:grid-cols-2">
-        <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
-          <Eyebrow>Coordination</Eyebrow>
-          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">
-            Many agents, no collisions
-          </h3>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            Run as many coding agents as you like. Each change is a pull
-            request, pull requests that touch the same files are flagged to
-            each other, conflicts are found on every push, and the merge queue
-            tests changes together with what lands ahead of them. Five agents
-            can open pull requests the same afternoon and main still only
-            moves to what passed.
-          </p>
-          <More to={`${DOCS}/guides/merge-queue/`}>The merge queue</More>
-        </div>
-        <div className="rounded-3xl bg-surface p-8 ring-1 ring-line">
-          <Eyebrow>Artifacts</Eyebrow>
-          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">
-            A knowledge base that keeps itself true
-          </h3>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            Docs, private until you share them or kept in spaces, edited
-            together live, with history, comments and backlinks. When a merged
-            change touches something a doc cites, the doc is flagged for its
-            owner to update.
-          </p>
-          <More to={`${DOCS}/guides/artifacts/`}>How Artifacts work</More>
-        </div>
-      </section>
-
-      {/* How it flows */}
-      <section
-        id="how"
-        className="scroll-mt-20 border-y border-line bg-surface/40"
-      >
-        <div className="mx-auto max-w-6xl px-4 py-24">
-          <Eyebrow>How it flows</Eyebrow>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-            From an issue to main
-          </h2>
-          <Live>
-            <ol className="relative mt-12 grid gap-6 md:grid-cols-5">
-              {/* From the first step's dot to the last one's, and no further: five
-                  columns with 1.5rem gaps put the last dot 1rem into the last
-                  column, so the line stops one column, less that, from the end. */}
-              <span
-                aria-hidden="true"
-                className="absolute top-4 right-[calc((100%-6rem)/5-1rem)] left-4 hidden h-px bg-linear-to-r from-accent/50 via-warn/50 to-success/70 md:block"
-              >
-                <span className="flow-runner absolute inset-0">
-                  <span className="absolute -top-0.75 left-[-3.5px] size-1.75 rounded-full bg-accent shadow-[0_0_12px_2px_rgb(182_168_255/0.6)]" />
-                </span>
-              </span>
-              {FLOW.map(([step, about], index) => (
-                <li key={step} className="relative">
-                  <span
-                    className={`flow-step relative flex size-8 items-center justify-center rounded-full font-mono text-xs ring-1 ${
-                      index === FLOW.length - 1
-                        ? "bg-success text-bg ring-success"
-                        : "bg-bg text-fg-soft ring-line-strong"
-                    }`}
-                    style={{ "--delay": `${index * 2}s` } as CSSProperties}
-                  >
-                    {index + 1}
-                  </span>
-                  <h3 className="mt-4 font-semibold">{step}</h3>
-                  <p className="mt-1.5 text-sm leading-6 text-muted">{about}</p>
-                </li>
-              ))}
-            </ol>
-          </Live>
-        </div>
-      </section>
-
-      {/* Secure by default */}
-      <section className="mx-auto max-w-6xl px-4 py-24">
-        <Eyebrow>Secure by default</Eyebrow>
-        <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
-          Safe to hand the work to, and healthy without anyone watching
-        </h2>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {SECURE.map((item) => (
-            <Link
-              key={item.title}
-              to={item.to}
-              className="group rounded-2xl bg-surface p-6 ring-1 ring-line transition-colors hover:ring-line-strong"
-            >
-              <span className="flex size-9 items-center justify-center rounded-lg bg-bg text-accent ring-1 ring-line">
-                {item.icon}
-              </span>
-              <h3 className="mt-5 font-semibold">{item.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted">{item.about}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* Connect */}
-      <section className="border-y border-line bg-surface/40">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 lg:grid-cols-2">
-          <div>
-            <Eyebrow>Bring your own agent</Eyebrow>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
-              Any agent that speaks MCP works on g1t
-            </h2>
-            <p className="mt-4 max-w-md leading-7 text-muted">
-              Connect Claude Code, Codex, Cursor or any other MCP client and
-              sign in once. It works as you: it reads issues, pushes branches,
-              opens pull requests, and records its session and its decisions
-              onto them.
-            </p>
-            <p className="mt-4 max-w-md leading-7 text-muted">
-              Every action is a REST route and an MCP tool, with an OpenAPI
-              document, OAuth apps, access tokens and signed webhooks for every
-              event. The g1t CLI does the same from a terminal or a script:
-              open a pull request, wait on its checks, read a failed run&apos;s
-              logs.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <ButtonLink
-                to={`${DOCS}/guides/bring-your-own-agent/`}
-                variant="outline"
-              >
-                Connect an agent
-                <ArrowRight size={14} />
-              </ButtonLink>
-              <ButtonLink to={`${DOCS}/guides/cli/`} variant="outline">
-                The g1t CLI
-              </ButtonLink>
-              <ButtonLink to={`${DOCS}/reference/api/`} variant="outline">
-                API reference
-              </ButtonLink>
-            </div>
-          </div>
-          <div className="min-w-0 space-y-3">
-            <p className="text-sm text-muted">
-              Add g1t as a remote MCP server, then sign in through your browser:
-            </p>
-            <CopyLine text="https://mcp.g1t.sh" />
-            <p className="pt-3 text-sm text-muted">
-              Install the CLI, then sign in with{" "}
-              <code className="font-mono text-fg-soft">g1t auth login</code>:
-            </p>
-            <CopyLine prompt text="curl -fsSL https://g1t.sh/install | sh" />
-            <p className="pt-3 text-sm text-muted">
-              Underneath, it is plain git and HTTP:
-            </p>
-            <CopyLine
-              prompt
-              breakAtSlashes
-              text="git clone https://g1t.sh/flagon-io/g1t.git"
-            />
-            <CopyLine
-              prompt
-              breakAtSlashes
-              text="curl https://api.g1t.sh/repos/flagon-io/g1t/queue"
-            />
           </div>
         </div>
       </section>
