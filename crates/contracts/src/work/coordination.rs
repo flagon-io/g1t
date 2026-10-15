@@ -766,6 +766,11 @@ pub struct SessionDetail {
     /// For a subagent: the session at the top of its tree.
     #[serde(default)]
     pub root: Option<Session>,
+    /// The viewer is not a member of the repository's workspace: they see
+    /// that the session runs, who runs it and what it is tied to, and
+    /// nothing of what it recorded, touched or was asked.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub limited: bool,
 }
 
 /// `pull_sessions`: the harness sessions tied to some of a repository's

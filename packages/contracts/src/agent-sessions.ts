@@ -2,7 +2,7 @@
  * Starting work on an issue in a session on the person's own Claude.
  * Mirrors `crates/contracts/src/agent_sessions.rs` (the integrations
  * service's `start_agent_session`, `agent_sessions_setup`,
- * `sync_agent_session` and `stop_agent_session`).
+ * `sync_agent_session`, `agent_session_link` and `stop_agent_session`).
  */
 import type { ServiceBinding } from "./clients";
 import type { User, Viewer } from "./identity";
@@ -59,6 +59,8 @@ export interface AgentSessionsApi {
   start(actor: User, repo: RepoPath, input: StartAgentSessionInput): Promise<Result<AgentSessionStarted>>;
   /** Reads the session now (it is otherwise followed every minute). Whether it is still going. */
   sync(repo: RepoPath, id: string, viewer: Viewer): Promise<Result<boolean>>;
+  /** Where it opens on the Claude Console. Only whoever started it is told. */
+  link(actor: User, repo: RepoPath, id: string): Promise<Result<string>>;
   /** Interrupts it and ends its record. Only whoever started it. */
   stop(actor: User, repo: RepoPath, id: string): Promise<Result<boolean>>;
 }
@@ -91,6 +93,7 @@ export function agentSessionsClient(service: ServiceBinding): AgentSessionsApi {
         handoff: input.handoff ?? null,
       }),
     sync: (repo, id, viewer) => call("sync_agent_session", { repo, id, viewer }),
+    link: (actor, repo, id) => call("agent_session_link", { actor, repo, id }),
     stop: (actor, repo, id) => call("stop_agent_session", { actor, repo, id }),
   };
 }

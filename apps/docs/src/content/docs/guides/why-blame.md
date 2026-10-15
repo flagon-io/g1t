@@ -27,8 +27,12 @@ commit rather than only the commit.
 
 Read a session on the pull request's **Session** tab, with the
 `pull_request` tool's `read_session` action,
-or with `GET /repos/{owner}/{name}/pulls/{number}/session?after=`. A
-session is as visible as the repository, so do not put secrets in one.
+or with `GET /repos/{owner}/{name}/pulls/{number}/session?after=`.
+Outside the workspace only g1t's notes show there, and members see a
+prompt or a tool's output only when it is their own; what looks like a
+credential is taken out of all of it
+([Who sees what](/guides/sessions/#who-sees-what)). Still, do not put
+secrets in one.
 
 ### Recording a session
 

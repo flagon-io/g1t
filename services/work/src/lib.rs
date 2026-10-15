@@ -2771,7 +2771,7 @@ impl Work {
         let mut statements = Vec::with_capacity(a.entries.len() + 1);
         for entry in a.entries {
             let kind = serde_json::to_value(entry.kind)?;
-            let text: String = entry.text.chars().take(MAX_ENTRY_CHARS).collect();
+            let text = coordination::shown::clean(&entry.text.chars().take(MAX_ENTRY_CHARS).collect::<String>());
             // Each insert takes the next sequence number itself, so two
             // writers appending at once cannot collide.
             statements.push(

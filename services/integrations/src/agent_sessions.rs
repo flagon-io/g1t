@@ -89,7 +89,7 @@ const G1T_SKILLS: [(&str, &str); 3] = [
 ];
 
 /// The methods this module answers.
-pub const METHODS: [&str; 5] = ["start_agent_session", "agent_sessions_setup", "sync_agent_session", "stop_agent_session", "sync_agent_sessions"];
+pub const METHODS: [&str; 6] = ["start_agent_session", "agent_sessions_setup", "sync_agent_session", "agent_session_link", "stop_agent_session", "sync_agent_sessions"];
 
 // --- Requests, built without calling anything ------------------------------
 
@@ -1470,6 +1470,22 @@ impl Integrations {
         Ok(Outcome::Ok(self.sync_run(run).await?))
     }
 
+    /// `agent_session_link`: the session on the Claude Console, for
+    /// whoever started it and no one else. Anyone else, or another
+    /// repository, is told there is no such session, not that it is theirs.
+    pub(crate) async fn agent_session_link(&self, a: AgentSessionLinkArgs) -> Result<Outcome<String>> {
+        let missing = || Outcome::fail(FailureCode::NotFound, "No session g1t started has that id.");
+        let Some(run) = self.run_row(a.id.trim()).await? else {
+            return Ok(missing());
+        };
+        let repo = format!("{}/{}", a.repo.namespace, a.repo.name).to_lowercase();
+        if run.repo.to_lowercase() != repo || run.actor().id != a.actor.id || a.actor.id.is_empty() {
+            return Ok(missing());
+        }
+        let console_workspace = self.ai_row(&run.connection_id).await?.and_then(|row| row.config().console_workspace);
+        Ok(Outcome::Ok(console_url(console_workspace.as_deref(), &run.provider_session_id)))
+    }
+
     /// `stop_agent_session`: interrupts the session and ends its record.
     pub(crate) async fn stop_agent_session(&self, a: StopAgentSessionArgs) -> Result<Outcome<bool>> {
         let Some(run) = self.run_row(a.id.trim()).await? else {
@@ -1544,6 +1560,7 @@ pub async fn route(service: &Integrations, method: &str, body: Value) -> Result<
         "start_agent_session" => reply(&service.start_agent_session(args(body)?).await?),
         "agent_sessions_setup" => reply(&service.agent_sessions_setup(args(body)?).await?),
         "sync_agent_session" => reply(&service.sync_agent_session(args(body)?).await?),
+        "agent_session_link" => reply(&service.agent_session_link(args(body)?).await?),
         "stop_agent_session" => reply(&service.stop_agent_session(args(body)?).await?),
         "sync_agent_sessions" => reply(&service.sync_running().await?),
         _ => worker::Response::error("Unknown method", 404),

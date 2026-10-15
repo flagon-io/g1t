@@ -1646,6 +1646,7 @@ dependencies = [
  "g1t-contracts",
  "g1t-kit",
  "g1t-rules",
+ "g1t-scan",
  "getrandom 0.2.17",
  "hex",
  "rusqlite",

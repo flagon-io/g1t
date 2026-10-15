@@ -160,8 +160,9 @@ request's [session](/guides/why-blame/#sessions), beside what was recorded
 on it with `record_session`, so reviewers and why-blame see them. Entries
 recorded before the session named its pull request move onto it when it
 does. A session never records tool output unless you send it as a
-`tool_result` entry; a session is as visible as the repository, so keep
-secrets out of it.
+`tool_result` entry. What looks like a credential is taken out of
+everything a session records, and only the workspace's members see inside
+a session: see [Who sees what](#who-sees-what).
 
 List a repository's sessions with `session` `list`, or
 [`GET /repos/{owner}/{name}/sessions`](/reference/api/sessions/list-sessions/)
@@ -346,7 +347,10 @@ it read, what it touched, and each thread as a subagent with its task and
 report. g1t follows it every minute, and at once while its page is open. A
 call that waits for someone's approval is declined, since nobody is
 watching. When it finishes, its session ends with its last message as its
-result. Whoever started it can stop it from its page. It runs on your
+result. Whoever started it can stop it from its page, and open it on the
+Claude Console from there (**Open in Claude Console**); nobody else is
+given that link, since the Console shows everything the session was asked
+and every tool's output. It runs on your
 workspace's key and Anthropic bills the account for it; g1t bills nothing.
 
 ## Assign g1t, or ask it in the thread
@@ -503,11 +507,33 @@ A session or claim that went quiet is announced as ended or expired when
 the repository's sessions or claims are next read or changed, not at the
 minute it lapsed.
 
+## Who sees what
+
+A session records someone's own work as it happens, so g1t shows it by who
+is looking, on the site, the API, MCP and the CLI alike.
+
+| Who | Sees |
+| --- | --- |
+| Whoever ran it | All of it: its prompts, tool calls, what it touched and reported, its pending updates. |
+| A member of the repository's workspace | What it did: its title, tool calls, messages, notes, skills, what it touched, its subagents' tasks, prompts and reports, its pending updates. Not the prompts someone else typed, nor a tool's output (`tool_result`): those entries show as kept back. A title shows without swearing. |
+| Anyone else who may read the repository | That it runs: who runs it, in which harness, since when, its state and the issues and pull requests it is tied to. Nothing it recorded, touched, was asked or reported, nor its title, branch or model. On a pull request's session, only g1t's own notes. |
+
+Before anything is kept, g1t takes out what looks like a credential
+(`[redacted]`): every token format [secret protection](/guides/security/secret-protection/)
+knows, any key or token by its issuer's prefix, `NAME_TOKEN=value`,
+`password: value` and the like, `--token`/`--password` flags, `Bearer` and
+`Authorization` headers, a URL's user and password and its signed query
+parameters, JWTs, private keys, and long random-looking strings. What was
+recorded before this is hidden the same way as it is read. The
+[Claude Code plugin](/guides/claude-code-plugin/) does the same before
+anything leaves your machine. It is a safety net, not a vault: keep
+secrets out of prompts and command lines.
+
 ## Who may do what
 
 | To | You need |
 | --- | --- |
-| Read sessions, claims and an issue's context | To be able to read the repository. Public repositories need no token. |
+| Read sessions, claims and an issue's context | To be able to read the repository. Public repositories need no token. What a session shows depends on who you are: see [Who sees what](#who-sees-what). |
 | Start a session, claim an issue, open one by claiming it | A confirmed email address and a role that may open issues; the repository must not be archived. |
 | Update, record in or end a session | To be the person whose token started it. |
 | Release a claim or hand it off | To be the person who made it. |

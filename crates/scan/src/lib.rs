@@ -13,6 +13,7 @@ pub mod lockfiles;
 pub mod osv;
 pub mod pack;
 pub mod protection;
+pub mod redact;
 pub mod review;
 pub mod sarif;
 pub mod sbom;
