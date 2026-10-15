@@ -187,6 +187,18 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
           <p className="px-2 py-3 text-xs leading-relaxed text-faint">Chat didn&apos;t answer. Your conversations will show here once it does.</p>
         ) : (
           <>
+            {/* Open to anyone on g1t, apart from the workspace's own, and first: only when there are some, or for a guest, to find them. */}
+            {(publicChannels.length > 0 || (sidebar.guest && filter === "all" && !query)) && (
+              <Section id="public" title="Public channels" folded={folded} onFold={fold} keep={publicChannels.filter(keepShown).map(conversation)}>
+                {publicChannels.map(conversation)}
+                {sidebar.guest && filter === "all" && !query && (
+                  <>
+                    {publicChannels.length === 0 && <Empty>You&apos;re in none of its public channels yet.</Empty>}
+                    <BrowseRow slug={slug} count={sidebar.browsable} guest />
+                  </>
+                )}
+              </Section>
+            )}
             {pinned.length > 0 && (
               <Section id="pinned" title="Pinned" folded={folded} onFold={fold} keep={pinned.filter(keepShown).map(conversation)}>
                 {pinned.map(conversation)}
@@ -205,18 +217,6 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
                 {channels.map(conversation)}
                 {channels.length === 0 && filter === "all" && !query && <Empty>No channels yet.</Empty>}
                 {!sidebar.guest && filter === "all" && !query && <BrowseRow slug={slug} count={sidebar.browsable} />}
-              </Section>
-            )}
-            {/* Open to anyone on g1t, apart from the workspace's own: only when there are some, or for a guest, to find them. */}
-            {(publicChannels.length > 0 || (sidebar.guest && filter === "all" && !query)) && (
-              <Section id="public" title="Public channels" folded={folded} onFold={fold} keep={publicChannels.filter(keepShown).map(conversation)}>
-                {publicChannels.map(conversation)}
-                {sidebar.guest && filter === "all" && !query && (
-                  <>
-                    {publicChannels.length === 0 && <Empty>You&apos;re in none of its public channels yet.</Empty>}
-                    <BrowseRow slug={slug} count={sidebar.browsable} guest />
-                  </>
-                )}
               </Section>
             )}
             {(sidebar.invitations?.length ?? 0) > 0 && filter === "all" && !query && (
