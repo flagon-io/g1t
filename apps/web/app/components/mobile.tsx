@@ -545,9 +545,13 @@ const SOON_UNDER: Partial<Record<RoadmapItem["section"], ProjectPage>> = {
   Security: "security",
   Insights: "insights",
 };
-const SOON_PAGES: Record<string, ProjectPage> = Object.fromEntries(
-  ROADMAP.flatMap((item) => (SOON_UNDER[item.section] ? [[item.key, SOON_UNDER[item.section]!] as const] : [])),
-);
+// Read from the roadmap on first use, not as the module loads: a bundle can
+// load this before the roadmap's chunk (lib/project-nav.ts says more).
+let soonPages: Record<string, ProjectPage> | null = null;
+const soonPagesOf = (): Record<string, ProjectPage> =>
+  (soonPages ??= Object.fromEntries(
+    ROADMAP.flatMap((item) => (SOON_UNDER[item.section] ? [[item.key, SOON_UNDER[item.section]!] as const] : [])),
+  ));
 
 /**
  * A project's pages along the bottom of its header: the sidebar's own list
@@ -579,7 +583,7 @@ export function ProjectStrip({
 }) {
   const { pathname } = useLocation();
   const rest = pathname.toLowerCase().startsWith(base.toLowerCase()) ? pathname.slice(base.length) : "";
-  const at = projectPageAt(rest, SOON_PAGES);
+  const at = projectPageAt(rest, soonPagesOf());
   const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings" && (issues || page !== "issues")),
     ...(settings ?? member ? (["settings"] as const) : []),
   ];

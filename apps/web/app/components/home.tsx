@@ -18,6 +18,7 @@ import {
   Package,
   Rocket,
   Server,
+  Sparkles,
   Tag,
   User,
   Users,
@@ -43,6 +44,7 @@ import {
   type Stake,
   WINDOWS,
   agentLabel,
+  explainQuestion,
   landedByDay,
   listOf,
   shippedLabel,
@@ -50,10 +52,12 @@ import {
   waited,
   whenShort,
 } from "../lib/home";
+import { askG1t } from "../lib/ask";
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
 import { CommitText } from "./commit-message";
-import { ExplainButton } from "./home-ask";
+import { Button } from "./ui/button";
+import { Hint } from "./ui/hint";
 import { ButtonLink } from "./ui";
 import { AgentMarker, Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
@@ -541,6 +545,17 @@ function Agent({ change }: { change: LandedChange }) {
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/** Explain one change that landed: what it did and why, in plain English, in the top bar's Ask (components/home-ask). */
+function ExplainButton({ change }: { change: LandedChange }) {
+  return (
+    <Hint label="Explain this change in plain English">
+      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Explain ${change.title}`} onClick={() => askG1t(explainQuestion(change))} className="shrink-0 text-muted hover:text-accent">
+        <Sparkles size={13} />
+      </Button>
+    </Hint>
   );
 }
 

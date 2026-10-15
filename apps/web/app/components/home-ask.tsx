@@ -2,16 +2,17 @@
  * Home's way into Ask (components/ask-composer): the box at the top of the
  * page, What changed (g1t's plain-English summary of the span, streamed
  * onto the page by components/home-summary), and Explain on each change
- * that landed. The box and Explain hand their question to the top bar's Ask
- * panel (lib/ask.ts askG1t). Every question goes to the viewer's direct
- * message with @g1t, so the answers stay in Chat and Ask carries on from them.
+ * that landed (components/home.tsx). The box and Explain hand their
+ * question to the top bar's Ask panel (lib/ask.ts askG1t). Every question
+ * goes to the viewer's direct message with @g1t, so the answers stay in
+ * Chat and Ask carries on from them.
  */
 import { ArrowUp, MessageSquare, RotateCcw, Sparkles } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { askG1t, openAsk } from "../lib/ask";
-import { HOME_STARTERS, type LandedChange, type Span, explainQuestion, summarizeQuestion } from "../lib/home";
+import { HOME_STARTERS, type Span, summarizeQuestion } from "../lib/home";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
 import { Card } from "./home";
 import { MarkGlyph } from "./logo";
@@ -172,16 +173,5 @@ export function WhatChangedCard({ slug, span, tz }: { slug: string; span: AskSpa
         </div>
       </Card>
     </div>
-  );
-}
-
-/** Explain one change that landed: what it did and why, in plain English. */
-export function ExplainButton({ change }: { change: Pick<LandedChange, "kind" | "title" | "to"> }) {
-  return (
-    <Hint label="Explain this change in plain English">
-      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Explain ${change.title}`} onClick={() => askG1t(explainQuestion(change))} className="shrink-0 text-muted hover:text-accent">
-        <Sparkles size={13} />
-      </Button>
-    </Hint>
   );
 }
