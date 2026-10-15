@@ -726,13 +726,16 @@ fn host_runner_folders() -> Vec<PathBuf> {
     if let Some(home) = &home {
         folders.push(home.join(".g1t-runner"));
     }
-    // The desktop app's data folder (its `app_data_dir`): runner/host.
-    let data = match std::env::consts::OS {
-        "windows" => std::env::var_os("APPDATA").map(PathBuf::from),
-        "macos" => home.as_ref().map(|h| h.join("Library").join("Application Support")),
-        _ => std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()).map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".local").join("share"))),
+    // The desktop app's data folders: runner/host. On Windows it keeps its
+    // runner in local data (%LOCALAPPDATA%), and in roaming data
+    // (%APPDATA%) on a computer that set it up there before; elsewhere the
+    // two are one folder.
+    let data: Vec<PathBuf> = match std::env::consts::OS {
+        "windows" => ["LOCALAPPDATA", "APPDATA"].iter().filter_map(|var| std::env::var_os(var)).map(PathBuf::from).collect(),
+        "macos" => home.iter().map(|h| h.join("Library").join("Application Support")).collect(),
+        _ => std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()).map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".local").join("share"))).into_iter().collect(),
     };
-    if let Some(data) = data {
+    for data in data {
         folders.push(data.join("sh.g1t.desktop").join("runner").join("host"));
     }
     folders.dedup();
@@ -1348,6 +1351,17 @@ mod tests {
         assert!(said.contains("as you") && said.contains("g1t-runner remove --dir"), "{said}");
         // The desktop app's folder for running jobs directly is looked at.
         assert!(host_runner_folders().iter().any(|f| f.ends_with(Path::new("sh.g1t.desktop").join("runner").join("host"))));
+        // On Windows, both where it keeps it now (local data) and where it
+        // kept it before (roaming data).
+        if cfg!(windows) {
+            let folders = host_runner_folders();
+            for var in ["LOCALAPPDATA", "APPDATA"] {
+                if let Some(data) = std::env::var_os(var) {
+                    let expected = PathBuf::from(data).join("sh.g1t.desktop").join("runner").join("host");
+                    assert!(folders.contains(&expected), "{var}: {folders:?}");
+                }
+            }
+        }
         // An older status, without warnings, still reads.
         let old: Status = serde_json::from_str(r#"{"schema":1,"state":"absent","backend":null,"runner_version":null,"launcher_version":"0.3.0","image_version":null,"isolation":null,"job":null,"error":null,"resources":{"cpus":0,"memory_mib":0,"disk_gib":0},"capabilities":[],"state_dir":"x"}"#).unwrap();
         assert!(old.warnings.is_empty());
