@@ -460,11 +460,13 @@ fn native_capability(dir: &Path) -> Option<(&'static str, Availability)> {
         "windows" => {
             let found = WsbFound::look();
             let available = found.availability();
+            // What exactly is missing, from what Windows says of itself (kept until it restarts).
+            let windows = WindowsFacts::look_in(dir);
             if available.available {
-                return Some(("windows", available));
+                // Windows Sandbox is on, but with virtualization off in the firmware no
+                // hypervisor runs, and it would fail only as a job starts.
+                return Some(("windows", if windows.firmware_off() { Availability::needing(vec![Need::Virtualization], "windows") } else { available }));
             }
-            // What exactly is missing: asked of Windows only now, as it takes a second.
-            let windows = WindowsFacts::look();
             let needs = needs::windows_sandbox_needs(&windows, found.feature, found.cli, needs::restart_pending(dir, &windows));
             Some(("windows", if needs.is_empty() { available } else { Availability::needing(needs, "windows") }))
         }
@@ -634,7 +636,7 @@ pub fn status(dir: &Path) -> Status {
         && state == "error"
         && let Some(said) = error.as_deref().filter(|e| needs::about_virtualization(e))
     {
-        let need = WindowsFacts::look().no_virtualization();
+        let need = WindowsFacts::look_in(dir).no_virtualization();
         let (words, to_do) = need.said("linux");
         needs = vec![need];
         cause = Some(format!("{words} ({said})"));

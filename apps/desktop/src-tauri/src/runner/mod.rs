@@ -699,7 +699,7 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
         "firmware_help" => browse("https://docs.g1t.sh/guides/desktop/#turning-on-virtualization")?,
         "nested_help" => browse("https://docs.g1t.sh/guides/desktop/#in-a-virtual-machine")?,
         "set_up" => set_up(app)?,
-        "restart_windows" => setup::restart_windows(&std::env::current_exe().map_err(|e| e.to_string())?)?,
+        "restart_windows" => setup::ask_and_restart(std::env::current_exe().map_err(|e| e.to_string())?)?,
         "restart_later" => {
             if let Ok(exe) = std::env::current_exe() {
                 setup::open_after_restart(&exe);

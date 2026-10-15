@@ -137,6 +137,9 @@ function Install-Wsl {{
   throw 'WSL could not be installed or updated.'
 }}
 $restart = $false
+function Restart-Pending {{
+  Set-Content -LiteralPath {marker} -Value (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
+}}
 try {{
   foreach ($name in @({features})) {{
     $feature = Get-WindowsOptionalFeature -Online -FeatureName $name
@@ -148,7 +151,7 @@ try {{
   }}
   {wsl}
   if ($restart) {{
-    Set-Content -LiteralPath {marker} -Value (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
+    Restart-Pending
     Say 'Done; Windows needs a restart to finish.'
     exit {NEEDS_RESTART}
   }}
@@ -156,6 +159,12 @@ try {{
   exit 0
 }} catch {{
   Say ('Failed: ' + $_.Exception.Message)
+  # What was turned on still takes the restart; after it, Set up offers what is left.
+  if ($restart) {{
+    Restart-Pending
+    Say 'Windows needs a restart for what was turned on; Set up does the rest after it.'
+    exit {NEEDS_RESTART}
+  }}
   exit 1
 }}
 "#,
@@ -276,12 +285,57 @@ pub fn run_elevated(_script: &str, _window: isize) -> Outcome {
     Outcome::Failed("Set up is for Windows; the runner's card says what to do here.".into())
 }
 
-/// Restarts Windows now. g1t opens again after, once (RunOnce), and
-/// carries on setting up.
-pub fn restart_windows(app_exe: &Path) -> Result<(), String> {
+/// What Windows' own dialog asks before g1t restarts it.
+pub const RESTART_QUESTION: &str = "Restart Windows now to finish setting up the runner?\n\nSave your work first. g1t opens again after the restart and carries on by itself.";
+
+/// Asks with Windows' own dialog, which no page can answer for the
+/// person, and restarts Windows on Yes: on a thread of its own, as the
+/// dialog waits for them. Restarting is asked this way wherever the button
+/// is, the site's pages included.
+pub fn ask_and_restart(app_exe: std::path::PathBuf) -> Result<(), String> {
     if !cfg!(windows) {
         return Err("Only Windows is restarted from g1t.".into());
     }
+    std::thread::Builder::new()
+        .name("g1t-restart-windows".into())
+        .spawn(move || {
+            if asked_yes(RESTART_QUESTION) {
+                let _ = restart_windows(&app_exe);
+            }
+        })
+        .map(|_| ())
+        .map_err(|e| format!("Windows couldn't be asked: {e}"))
+}
+
+#[cfg(windows)]
+fn asked_yes(question: &str) -> bool {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(window: isize, text: *const u16, caption: *const u16, kind: u32) -> i32;
+    }
+    const MB_YESNO: u32 = 0x4;
+    const MB_ICONQUESTION: u32 = 0x20;
+    const MB_DEFBUTTON2: u32 = 0x100;
+    const MB_SETFOREGROUND: u32 = 0x1_0000;
+    const MB_TOPMOST: u32 = 0x4_0000;
+    const IDYES: i32 = 6;
+    let wide = |text: &str| OsStr::new(text).encode_wide().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (text, caption) = (wide(question), wide("g1t"));
+    // SAFETY: both strings live until the call returns. No owner window: this
+    // isn't the window's thread, and the dialog stays on top by itself.
+    unsafe { MessageBoxW(0, text.as_ptr(), caption.as_ptr(), MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST) == IDYES }
+}
+
+#[cfg(not(windows))]
+fn asked_yes(_question: &str) -> bool {
+    false
+}
+
+/// Restarts Windows now. g1t opens again after, once (RunOnce), and
+/// carries on setting up.
+fn restart_windows(app_exe: &Path) -> Result<(), String> {
     open_after_restart(app_exe);
     let status = super::backend::quiet("shutdown.exe")
         .args(["/r", "/t", "0", "/c", "g1t is restarting Windows to finish setting up the runner."])
@@ -351,6 +405,30 @@ mod tests {
         assert!(matches!(outcome(1), Outcome::Failed(_)));
         // UTF-16LE in base64, as PowerShell reads it: "a" is 61 00.
         assert_eq!(encoded("a"), "YQA=");
+    }
+
+    /// Runs the script's WSL step as this user with `--version`, which
+    /// changes nothing: wsl.exe started hidden, what it said logged line by
+    /// line, and its exit code read. `cargo test -- --ignored the_wsl_step --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_wsl_step_runs_wsl_and_logs_what_it_said() {
+        let dir = std::env::temp_dir().join(format!("g1t-setup-wsl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (log, marker) = (dir.join("setup.log"), dir.join(RESTART_FILE));
+        let script = script(&Plan { features: vec![], wsl: Some(Wsl::Update) }, &log, &marker).replace("Install-Wsl '--update'", "Install-Wsl '--version'");
+        let code = super::super::backend::quiet("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &encoded(&script)])
+            .status()
+            .unwrap()
+            .code()
+            .unwrap();
+        let said = std::fs::read_to_string(&log).unwrap();
+        println!("exit {code}\n{said}");
+        assert_eq!(outcome(code as u32), Outcome::Done, "{said}");
+        assert!(said.contains("g1t setup: wsl: "), "{said}");
+        assert!(said.trim_end().ends_with("g1t setup: Done."), "{said}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Runs the script as this user, not as administrator, so it changes

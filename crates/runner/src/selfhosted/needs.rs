@@ -141,7 +141,7 @@ impl Need {
 
 /// What Windows says of itself, read without an administrator. Each is
 /// None (or empty) when it couldn't be read, and nothing is concluded from it.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowsFacts {
     /// `EditionID`: `Core` (Home), `Professional`, `Enterprise`, …
@@ -206,6 +206,27 @@ impl WindowsFacts {
             .clone()
     }
 
+    /// [`look`](Self::look), kept in the launcher's state folder until
+    /// Windows restarts: what it says (the edition, the processor, a
+    /// hypervisor running, a feature turned on) changes only across a
+    /// restart, and asking takes a second or two, which a status every
+    /// few seconds shouldn't.
+    pub fn look_in(dir: &Path) -> WindowsFacts {
+        let path = dir.join(FACTS_FILE);
+        let Some(boot) = booted_at() else { return WindowsFacts::look() };
+        let kept: Option<Kept> = std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        if let Some(kept) = kept.filter(|kept| same_boot(kept.boot, boot)) {
+            return kept.facts;
+        }
+        let facts = WindowsFacts::look();
+        // Kept only when Windows answered.
+        if facts.booted.is_some() {
+            let _ = std::fs::create_dir_all(dir);
+            let _ = std::fs::write(&path, serde_json::to_vec(&Kept { boot, facts: facts.clone() }).unwrap_or_default());
+        }
+        facts
+    }
+
     /// Windows Home (`Core`, `CoreN`, `CoreSingleLanguage`, `CoreCountrySpecific`).
     pub fn home(&self) -> bool {
         self.edition.as_deref().is_some_and(|e| e.starts_with("Core"))
@@ -233,6 +254,38 @@ impl WindowsFacts {
     pub fn no_virtualization(&self) -> Need {
         if self.virtual_machine() { Need::NestedVirtualization } else { Need::Virtualization }
     }
+}
+
+/// The file [`WindowsFacts::look_in`] keeps them in.
+pub const FACTS_FILE: &str = "windows-facts.json";
+
+#[derive(Serialize, Deserialize)]
+struct Kept {
+    /// When Windows started, in seconds since 1970.
+    boot: u64,
+    facts: WindowsFacts,
+}
+
+/// Two readings of when Windows started are the same boot: they are
+/// worked out from the time now and the time since, so differ by a second or so.
+fn same_boot(a: u64, b: u64) -> bool {
+    a.abs_diff(b) <= 30
+}
+
+/// When Windows started, in seconds since 1970: now, less how long it has been running.
+fn booted_at() -> Option<u64> {
+    #[cfg(windows)]
+    {
+        unsafe extern "system" {
+            fn GetTickCount64() -> u64;
+        }
+        // SAFETY: GetTickCount64 takes nothing and only reads a counter.
+        let up = unsafe { GetTickCount64() } / 1000;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        Some(now.saturating_sub(up))
+    }
+    #[cfg(not(windows))]
+    None
 }
 
 /// Whether setup left a restart to do, this boot: the file setup wrote
@@ -507,6 +560,27 @@ mod tests {
         println!("{facts:#?}");
         assert!(facts.edition.is_some() && facts.build.is_some() && facts.booted.is_some(), "{facts:?}");
         assert!(facts.features.contains_key(VM_PLATFORM), "{facts:?}");
+        // Kept until Windows restarts: asked once, then read back at once.
+        let dir = std::env::temp_dir().join(format!("g1t-facts-{}", std::process::id()));
+        let first = WindowsFacts::look_in(&dir);
+        let started = std::time::Instant::now();
+        assert_eq!(WindowsFacts::look_in(&dir), first);
+        println!("read back in {:?}", started.elapsed());
+        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn what_windows_says_is_kept_until_it_restarts() {
+        assert!(same_boot(1_760_000_000, 1_760_000_002));
+        assert!(!same_boot(1_760_000_000, 1_760_003_600));
+        let dir = std::env::temp_dir().join(format!("g1t-facts-kept-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let Some(boot) = booted_at() else { return };
+        let kept = Kept { boot, facts: clean_home() };
+        std::fs::write(dir.join(FACTS_FILE), serde_json::to_vec(&kept).unwrap()).unwrap();
+        assert_eq!(WindowsFacts::look_in(&dir), clean_home());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
