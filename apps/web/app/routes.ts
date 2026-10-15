@@ -49,8 +49,9 @@ export default [
   ]),
   // The account menu's header: name, primary email and invites left.
   route("settings/menu.json", "routes/settings-menu-json.ts"),
-  // People, apart from workspaces: `u` is a reserved name.
-  route("u/:username", "routes/user.tsx"),
+  // People, apart from workspaces: `u` is a reserved name. Their profile's
+  // tabs are paths (`/u/ada/pulls`); `?tab=` is sent on (lib/tab-paths.ts).
+  route("u/:username/:tab?", "routes/user.tsx"),
   // The card that opens over a person's name or avatar (lib/hovercard.ts).
   // `-` is no workspace's name, so nothing else is ever found here.
   route("-/hovercard/user/:username", "routes/hovercard-user.ts"),
@@ -67,8 +68,9 @@ export default [
   route("pricing", "routes/pricing.tsx"),
   route("search", "routes/search.tsx"),
   // Each person's notifications, what the panel in the top bar fetches,
-  // and the address the page once had.
-  route("notifications", "routes/notifications.tsx"),
+  // and the address the page once had. Saved and Done are
+  // `/notifications/saved` and `/notifications/done`.
+  route("notifications/:view?", "routes/notifications.tsx"),
   route("inbox", "routes/inbox-moved.ts"),
   route("inbox.json", "routes/inbox-json.ts"),
   // What the command palette shows as someone types.
@@ -220,6 +222,7 @@ export default [
     route("-/audit/export", "routes/workspace/audit-export.ts"),
     route("-/guardrails", "routes/workspace/guardrails.tsx"),
     route("-/rules", "routes/workspace/rules.tsx"),
+    route("-/rules/insights", "routes/workspace/rules.tsx", { id: "routes/workspace/rules-insights" }),
     route("-/rules/:id", "routes/workspace/ruleset.tsx"),
     // What the workspace will have across its projects.
     route("-/soon/:feature", "routes/workspace/soon.tsx"),
@@ -262,7 +265,8 @@ export default [
     route("blob/:ref/*", "routes/repo/blob.tsx"),
     route("archive/*", "routes/repo/archive.ts"),
     route("commits", "routes/repo/commits.tsx"),
-    route("branches", "routes/repo/branches.tsx"),
+    // Its tabs are paths: `branches/yours`, `branches/stale`, ….
+    route("branches/:tab?", "routes/repo/branches.tsx"),
     route("tags", "routes/repo/tags.tsx"),
     route("releases", "routes/repo/releases.tsx"),
     route("releases/new", "routes/repo/release-new.tsx"),
@@ -286,7 +290,8 @@ export default [
     route("issues/:number", "routes/repo/issue.tsx"),
     route("pulls", "routes/repo/pulls.tsx"),
     route("pulls/new", "routes/repo/pull-new.tsx"),
-    route("pull/:number", "routes/repo/pull.tsx"),
+    // Its tabs are paths: `pull/12/session`, `pull/12/files`.
+    route("pull/:number/:tab?", "routes/repo/pull.tsx"),
     route("queue", "routes/repo/queue.tsx"),
     // Who is working on what, live: claims, harness sessions, the queue, coordination events.
     route("work", "routes/repo/work.tsx"),
@@ -344,6 +349,7 @@ export default [
     route("settings/keys", "routes/repo/settings-deploy-keys.tsx"),
     route("settings/branches", "routes/repo/settings-branches.tsx"),
     route("settings/rules", "routes/repo/settings-rules.tsx"),
+    route("settings/rules/insights", "routes/repo/settings-rules.tsx", { id: "routes/repo/settings-rules-insights" }),
     route("settings/rules/:id", "routes/repo/settings-ruleset.tsx"),
     route("settings/webhooks", "routes/repo/webhooks.tsx"),
     route("settings/secrets", "routes/repo/secrets.tsx"),

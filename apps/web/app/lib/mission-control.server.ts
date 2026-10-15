@@ -223,7 +223,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       ref: `#${pull.number}`,
       by: who(workOwner(pull).username),
       facts: pullFacts({ checkStatus: pull.checkStatus, files: pull.files }),
-      open: pull.issue != null ? `${base}/issues/${pull.issue}` : `${base}/pull/${pull.number}?tab=changes`,
+      open: pull.issue != null ? `${base}/issues/${pull.issue}` : `${base}/pull/${pull.number}/files`,
     };
   };
   const pullAction = (repo: Repo, pull: Pull, quick: Omit<QuickAction, "to">): QuickAction => ({

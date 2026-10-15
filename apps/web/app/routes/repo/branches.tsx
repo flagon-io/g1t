@@ -1,6 +1,6 @@
 import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Form, Link, useNavigate } from "react-router";
+import { Form, Link, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/branches";
 import type { ActiveBranch } from "../../components/branches";
@@ -18,7 +18,9 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { refusal, requireRepo } from "../../lib/access.server";
-import { type BranchTab, branchSections, branchTab, driftScale } from "../../lib/branches";
+import { type BranchTab, branchSections, driftScale } from "../../lib/branches";
+import { notFound } from "../../lib/not-found.server";
+import { branchSegment, branchesPath, movedTab } from "../../lib/tab-paths";
 import { readBranches } from "../../lib/branches.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
@@ -37,10 +39,15 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  // Its tabs are paths: `?tab=stale`, the address before, is `/branches/stale`.
+  const moved = movedTab(url, (asked) => branchesPath(`/${params.owner}/${params.repo}`, asked));
+  if (moved) throw redirect(moved, 301);
+  const tab: BranchTab | null = branchSegment(params.tab);
+  if (!tab) throw notFound("page");
+  if (params.tab != null && params.tab !== tab) throw redirect(`${branchesPath(`/${params.owner}/${params.repo}`, tab)}${url.search}`);
   const { viewer, repo, access } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
-  const url = new URL(request.url);
-  const tab = branchTab(url.searchParams.get("tab"));
   const query = url.searchParams.get("q")?.trim().toLowerCase() || null;
   const soft = <T,>(promise: Promise<T>): Promise<T | null> => promise.catch(() => null);
   // Admins are told when the default branch has no rules at all.
@@ -171,10 +178,9 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
 
   const tabTo = (next: string, keepQuery = true) => {
     const search = new URLSearchParams();
-    if (next !== "overview") search.set("tab", next);
     if (query && keepQuery) search.set("q", query);
     const qs = search.toString();
-    return `${base}/branches${qs ? `?${qs}` : ""}`;
+    return `${branchesPath(base, next)}${qs ? `?${qs}` : ""}`;
   };
 
   return (
@@ -200,8 +206,7 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
             </TabsList>
           </Tabs>
         </div>
-        <Form method="get" role="search" className="relative w-full sm:w-72">
-          {tab !== "overview" && <input type="hidden" name="tab" value={tab} />}
+        <Form method="get" action={branchesPath(base, tab)} role="search" className="relative w-full sm:w-72">
           <Search size={14} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
           <Input name="q" defaultValue={query ?? ""} placeholder="Search branches" aria-label="Search branches" className="h-8 pl-8" />
         </Form>

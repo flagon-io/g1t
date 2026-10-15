@@ -1,5 +1,5 @@
 import { ChartColumn, Plus, ShieldCheck } from "lucide-react";
-import { Link, data, useSearchParams } from "react-router";
+import { Link, data, redirect, useSearchParams } from "react-router";
 
 import type { Route } from "./+types/rules";
 import { page } from "../../lib/meta";
@@ -7,6 +7,7 @@ import { InsightsView, RulesetList } from "../../components/rules";
 import { ButtonLink } from "../../components/ui";
 import { work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { movedTab, rulesAt, rulesPath } from "../../lib/tab-paths";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Rules · ${params.owner} · g1t` });
@@ -17,7 +18,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
   const url = new URL(request.url);
-  const tab = url.searchParams.get("tab") === "insights" ? "insights" : "rulesets";
+  // Insights is a path: `?tab=insights`, the address before, is `/-/rules/insights`.
+  const moved = movedTab(url, (asked) => rulesPath(`/${params.owner}/-/rules`, asked));
+  if (moved) throw redirect(moved, 301);
+  const tab = rulesAt(url.pathname);
   const owner = { workspace: params.owner };
   const [rulesets, evaluations] = await Promise.all([
     work.listRulesets(owner, viewer),
@@ -38,10 +42,8 @@ export default function WorkspaceRules({ loaderData, params }: Route.ComponentPr
   const tabLink = (name: "rulesets" | "insights") => {
     const next = new URLSearchParams(search);
     next.delete("before");
-    if (name === "rulesets") next.delete("tab");
-    else next.set("tab", name);
     const query = next.toString();
-    return `${base}${query ? `?${query}` : ""}`;
+    return `${rulesPath(base, name)}${query ? `?${query}` : ""}`;
   };
   return (
     <div className="mx-auto max-w-4xl">
@@ -83,7 +85,7 @@ export default function WorkspaceRules({ loaderData, params }: Route.ComponentPr
           />
         </section>
       ) : evaluations ? (
-        <InsightsView page={evaluations} showRepository olderHref={evaluations.next ? `${base}?tab=insights&before=${encodeURIComponent(evaluations.next)}` : null} />
+        <InsightsView page={evaluations} showRepository olderHref={evaluations.next ? `${rulesPath(base, "insights")}?before=${encodeURIComponent(evaluations.next)}` : null} />
       ) : (
         <p className="text-sm text-muted">Insights could not be read just now.</p>
       )}
