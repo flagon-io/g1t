@@ -2,8 +2,8 @@
  * Moving workspaces off Stripe's test mode before the live key, history
  * kept: one workspace on its page, every workspace on the Stripe page. A
  * preview (dry run) lists what will change; the change itself needs the
- * slug, or "detach", typed. sudo ships no JavaScript: the apply buttons say
- * they are running with app.css's run-button rules.
+ * slug, or "detach", typed. Plain forms: the apply buttons say they are
+ * running with app.css's run-button rules.
  */
 import { Eye, Unplug } from "lucide-react";
 

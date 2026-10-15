@@ -1,7 +1,7 @@
 /**
  * Times in the staff member's own zone, on every page (components/ui.tsx
- * `When`) and in the forms that take a time. sudo ships no script, so the
- * zone comes from the request: the `sudo_tz` cookie when someone chose one
+ * `When`) and in the forms that take a time. Pages are drawn on the
+ * server first, so the zone comes from the request: the `sudo_tz` cookie when someone chose one
  * (/timezone), else Cloudflare's guess (`request.cf.timezone`), else UTC.
  * Every time shown says its zone's abbreviation, and `<time datetime>`
  * plus the hover title keep the UTC instant. No Workers or React imports,

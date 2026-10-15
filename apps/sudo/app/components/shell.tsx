@@ -2,9 +2,10 @@
  * sudo's frame. On wide screens, a sidebar: Overview and Reach out as
  * links, then sections that fold open to their pages, as GitLab and
  * Vercel do theirs (apps/web's project sidebar is the same pattern). On a
- * phone, a top bar whose menu holds the same. sudo ships no JavaScript,
- * so every fold is a <details>, drawn open on the server for the section
- * holding the current page. All of it comes from lib/nav.ts.
+ * phone, a top bar whose menu holds the same. Every fold is a <details>,
+ * which opens and closes before the page's script has loaded, drawn open
+ * for the section holding the current page. All of it comes from
+ * lib/nav.ts.
  */
 import {
   Activity,
@@ -279,9 +280,9 @@ export function MobileBar({ email, counts = {} }: { email: string | null | undef
         <Link to="/" aria-label="sudo overview" className="flex">
           <Logo />
         </Link>
-        {/* A details element: it opens and closes with no script. A link
-            loads a new page, which arrives with the menu closed. */}
-        <details className="group/menu">
+        {/* A details element: it opens and closes with no script. Keyed
+            by the page, so the next page arrives with the menu closed. */}
+        <details key={pathname} className="group/menu">
           <summary
             aria-label="Menu"
             className="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line px-2.5 text-sm text-muted transition-colors select-none hover:border-line-strong hover:text-fg group-open/menu:border-line-strong group-open/menu:text-fg [&::-webkit-details-marker]:hidden"

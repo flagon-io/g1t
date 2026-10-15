@@ -4,9 +4,9 @@
  */
 
 /**
- * The pages ship no JavaScript, so no script may run at all; styles and
- * images and fonts come only from sudo itself, and forms post only back
- * to sudo.
+ * The policy of every answer that is not a page (data, redirects, files):
+ * no script may run at all; styles, images and fonts come only from sudo
+ * itself, and forms post only back to sudo.
  */
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
@@ -19,6 +19,36 @@ export const CONTENT_SECURITY_POLICY = [
   "base-uri 'none'",
   "upgrade-insecure-requests",
 ].join("; ");
+
+/** A fresh nonce for one page: 128 random bits, base64. */
+export function makeNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes));
+}
+
+/**
+ * The policy of a page rendered with `nonce` (entry.server.tsx): as strict
+ * as every other answer's, except that the page runs sudo's own scripts,
+ * its files from /assets and the inline scripts React Router writes, each
+ * carrying the page's nonce, and nothing else, no other site's and no
+ * other inline script. Those scripts fetch the next page's data from sudo
+ * itself and nowhere else. Still no inline style: React sets a style
+ * through the DOM, which the policy allows.
+ */
+export function pagePolicy(nonce: string): string {
+  return [
+    "default-src 'none'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "style-src 'self'",
+    "font-src 'self'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
 
 const HEADERS: Record<string, string> = {
   "cache-control": "no-store",
@@ -33,7 +63,10 @@ const HEADERS: Record<string, string> = {
   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
 };
 
-/** The response with sudo's headers; a policy it already set is kept. */
+/**
+ * The response with sudo's headers. A policy it already set is kept: a
+ * page's, with its nonce, or a refusal's.
+ */
 export function secure(response: Response): Response {
   const secured = new Response(response.body, response);
   for (const [name, value] of Object.entries(HEADERS)) secured.headers.set(name, value);

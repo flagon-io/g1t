@@ -121,8 +121,8 @@ export function CostsHeader({
 }
 
 /**
- * The button that runs the nightly analysis now. sudo runs no JavaScript,
- * so app.css's run-button rules say it is running while the page waits.
+ * The button that runs the nightly analysis now. A plain form: app.css's
+ * run-button rules say it is running while the page waits.
  */
 function RunButton() {
   return (

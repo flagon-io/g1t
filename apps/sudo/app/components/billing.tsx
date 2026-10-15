@@ -1,7 +1,7 @@
 /**
  * The billing sections shared by a workspace's page and an enterprise's:
  * confirmations, terms, plan, pools and caps, credit, bank transfers, the
- * Stripe billing link, the ledger and the audit log. Plain forms; sudo ships no JavaScript.
+ * Stripe billing link, the ledger and the audit log. Plain forms, which work before any script has loaded.
  */
 import { CreditCard, Gift, Landmark, RotateCcw, ScrollText, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
