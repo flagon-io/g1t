@@ -123,7 +123,7 @@ test("message blocks: fenced code, lists, quotes and paragraphs", () => {
   assert.deepEqual(parsed[2], { t: "code", lang: "ts", v: "const a = 1;" });
 });
 
-function entry(id: string, over: Partial<ChatSidebarEntry> & { kind?: "channel" | "dm"; last?: string } = {}): ChatSidebarEntry {
+function entry(id: string, over: Partial<ChatSidebarEntry> & { kind?: "channel" | "dm"; last?: string; visibility?: "private" | "workspace" | "public" } = {}): ChatSidebarEntry {
   return {
     channel: {
       id,
@@ -131,7 +131,8 @@ function entry(id: string, over: Partial<ChatSidebarEntry> & { kind?: "channel" 
       kind: over.kind ?? "channel",
       name: over.kind === "dm" ? null : id,
       topic: null,
-      private: false,
+      private: over.visibility === "private",
+      visibility: over.visibility ?? (over.kind === "dm" ? "private" : "workspace"),
       created_by: { kind: "user", id: "u1" },
       created_at: "2026-10-01T00:00:00Z",
       archived_at: null,
@@ -156,15 +157,36 @@ test("the sidebar: sections, filters and the rail's count", () => {
     entry("d3", { kind: "dm", title: "ana, reviewer", others: [ana, bot], last: "2026-10-03T00:00:00Z" }),
     entry("d4", { kind: "dm", title: "notes", others: [], last: "2026-10-01T00:00:00Z" }),
   ];
-  const { pinned, channels, dms } = sections(all);
+  const { pinned, channels, publicChannels, dms } = sections(all);
   assert.deepEqual(pinned.map((e) => e.title), ["general"]);
   assert.deepEqual(channels.map((e) => e.title), ["noisy", "random"]);
+  assert.deepEqual(publicChannels, []);
   assert.deepEqual(dms.map((e) => e.title), ["ana", "ana, reviewer", "reviewer", "notes"]);
   // An old conversation with an agent alone is left out until searched for or open.
   assert.deepEqual(filterEntries(all, "unread", "").map((e) => e.title), ["general", "noisy"]);
   assert.deepEqual(filterEntries(all, "unread", "", "d1").map((e) => e.title), ["general", "reviewer", "noisy"]);
   assert.deepEqual(filterEntries(all, "all", "@Review").map((e) => e.title), ["reviewer", "ana, reviewer"]);
   assert.deepEqual(unreadTotals(all), { unread: 3, mentions: 1 });
+});
+
+test("the sidebar keeps public channels apart from the workspace's own", () => {
+  const all = [
+    entry("general"),
+    entry("leads", { visibility: "private", unread: 1 }),
+    entry("support", { visibility: "public", mentions: 2, unread: 2 }),
+    entry("announcements", { visibility: "public" }),
+    entry("launch", { visibility: "public", starred: true }),
+    entry("d1", { kind: "dm", title: "ana", others: [ana] }),
+  ];
+  const { pinned, channels, publicChannels, dms } = sections(all);
+  // Pinned keeps a public channel you pinned; the rest are by name in their own group.
+  assert.deepEqual(pinned.map((e) => e.title), ["launch"]);
+  assert.deepEqual(channels.map((e) => e.title), ["general", "leads"]);
+  assert.deepEqual(publicChannels.map((e) => e.title), ["announcements", "support"]);
+  assert.deepEqual(dms.map((e) => e.title), ["ana"]);
+  // Filters reach both groups.
+  assert.deepEqual(sections(filterEntries(all, "unread", "")).publicChannels.map((e) => e.title), ["support"]);
+  assert.deepEqual(sections(filterEntries(all, "mentions", "")).channels, []);
 });
 
 test("an old conversation with an agent alone opens read-only, under the name the agent had", () => {

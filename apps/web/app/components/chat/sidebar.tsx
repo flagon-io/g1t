@@ -43,8 +43,9 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
 }
 
 /**
- * Chat mode's sidebar: what you pinned, the channels (and a way to browse
- * the rest), then direct messages, the latest first. Sections fold, and
+ * Chat mode's sidebar: what you pinned, the workspace's own channels (and a
+ * way to browse the rest), its public channels, then direct messages, the
+ * latest first. Sections fold, and
  * stay folded on this device. All, Unread and Mentions filter every section. It refreshes
  * itself while the tab is shown, so unread counts move without a reload.
  */
@@ -84,7 +85,7 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
   // The open conversation stays listed even when it is an old one with an agent alone, which Jump to otherwise finds.
   const currentId = entries.find((e) => pathname === channelPath(slug, e.channel) || pathname.startsWith(`${channelPath(slug, e.channel)}/`))?.channel.id ?? null;
   const shown = filterEntries(entries, filter, query, currentId);
-  const { pinned, channels, dms } = sections(shown);
+  const { pinned, channels, publicChannels, dms } = sections(shown);
   const loading = !data;
 
   // Folded sections, remembered per workspace on this device. A folded
@@ -141,7 +142,7 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  const first = [...pinned, ...channels, ...dms][0];
+                  const first = [...pinned, ...channels, ...publicChannels, ...dms][0];
                   if (first) {
                     navigate(channelPath(slug, first.channel));
                     setQuery("");
@@ -191,22 +192,33 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
                 {pinned.map(conversation)}
               </Section>
             )}
-            <Section
-              id="channels"
-              title="Channels"
-              folded={folded}
-              onFold={fold}
-              action={sidebar.guest ? undefined : <CreateChannelButton slug={slug} />}
-              keep={channels.filter(keepShown).map(conversation)}
-            >
-              {channels.map(conversation)}
-              {channels.length === 0 && filter === "all" && !query && <Empty>{sidebar.guest ? "You're in none of its channels yet." : "No channels yet."}</Empty>}
-              {filter === "all" && !query && (
-                <ExtraRow to={`/${slug}/-/chat/browse`} icon={<Compass size={15} />} count={sidebar.browsable > 0 ? sidebar.browsable : undefined} countLabel="to join">
-                  {sidebar.guest ? "Public channels" : "Browse channels"}
-                </ExtraRow>
-              )}
-            </Section>
+            {/* A guest has only the channels they were asked into here; with none, the public ones are all there is. */}
+            {(!sidebar.guest || channels.length > 0) && (
+              <Section
+                id="channels"
+                title="Channels"
+                folded={folded}
+                onFold={fold}
+                action={sidebar.guest ? undefined : <CreateChannelButton slug={slug} />}
+                keep={channels.filter(keepShown).map(conversation)}
+              >
+                {channels.map(conversation)}
+                {channels.length === 0 && filter === "all" && !query && <Empty>No channels yet.</Empty>}
+                {!sidebar.guest && filter === "all" && !query && <BrowseRow slug={slug} count={sidebar.browsable} />}
+              </Section>
+            )}
+            {/* Open to anyone on g1t, apart from the workspace's own: only when there are some, or for a guest, to find them. */}
+            {(publicChannels.length > 0 || (sidebar.guest && filter === "all" && !query)) && (
+              <Section id="public" title="Public channels" folded={folded} onFold={fold} keep={publicChannels.filter(keepShown).map(conversation)}>
+                {publicChannels.map(conversation)}
+                {sidebar.guest && filter === "all" && !query && (
+                  <>
+                    {publicChannels.length === 0 && <Empty>You&apos;re in none of its public channels yet.</Empty>}
+                    <BrowseRow slug={slug} count={sidebar.browsable} guest />
+                  </>
+                )}
+              </Section>
+            )}
             {(sidebar.invitations?.length ?? 0) > 0 && filter === "all" && !query && (
               <Section id="invitations" title="Invitations" folded={folded} onFold={fold}>
                 {sidebar.invitations!.map((invitation) => (
@@ -338,6 +350,15 @@ function ExtraRow({ to, icon, count, countLabel, children }: { to: string; icon:
         )}
       </NavLink>
     </li>
+  );
+}
+
+/** Browse channels, with how many more there are to join; a guest browses the public ones. */
+function BrowseRow({ slug, count, guest = false }: { slug: string; count: number; guest?: boolean }) {
+  return (
+    <ExtraRow to={`/${slug}/-/chat/browse`} icon={<Compass size={15} />} count={count > 0 ? count : undefined} countLabel="to join">
+      {guest ? "Browse public channels" : "Browse channels"}
+    </ExtraRow>
   );
 }
 
