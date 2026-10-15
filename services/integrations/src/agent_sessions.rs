@@ -137,11 +137,9 @@ pub fn agent_body(model: &str, mcp_url: &str, skills: &[Value]) -> Value {
         "tools": [
             {
                 "type": "agent_toolset_20260401",
+                // Every tool, web_search and web_fetch too: work often needs a
+                // fact from outside g1t (a date, an API's docs).
                 "default_config": { "permission_policy": { "type": "auto" } },
-                "configs": [
-                    { "name": "web_fetch", "enabled": false },
-                    { "name": "web_search", "enabled": false },
-                ],
             },
             { "type": "mcp_toolset", "mcp_server_name": "g1t", "default_config": { "permission_policy": { "type": "always_allow" } } },
         ],
@@ -1551,7 +1549,7 @@ mod tests {
         assert_eq!(body["mcp_servers"][0], json!({ "type": "url", "name": "g1t", "url": "https://mcp.g1t.sh" }));
         let tools = body["tools"].as_array().unwrap();
         assert_eq!(tools[0]["type"], "agent_toolset_20260401");
-        assert!(tools[0]["configs"].as_array().unwrap().iter().all(|config| config["enabled"] == false));
+        assert!(tools[0].get("configs").is_none(), "web_search and web_fetch are on, as every tool is");
         assert_eq!(tools[1], json!({ "type": "mcp_toolset", "mcp_server_name": "g1t", "default_config": { "permission_policy": { "type": "always_allow" } } }));
         assert_eq!(body["skills"], json!(skills));
         assert_eq!(body["multiagent"]["agents"][0]["type"], "self");
