@@ -183,8 +183,11 @@ Only an owner or a billing manager can start or end the plan.
    once. Otherwise, pay on the card page you are sent to.
 
 Back on Billing, the plan's card says **On the g1t plan** (**first month**
-in the first billing cycle), with the billing period, a meter for the
-month's included usage, and the **Upcoming invoice**: the plan and add-ons
+in the first billing cycle), with the usage month and the day the plan
+renews: **Usage month Oct 1 – Oct 31, 2026; the plan renews Nov 15, 2026**.
+Usage is counted by calendar month (UTC), but the plan renews on the day
+of the month it started, so a plan started mid-month renews mid-month.
+Then come a meter for the month's included usage, and the **Upcoming invoice**: the plan and add-ons
 at their monthly price plus usage still owed after included usage, credit
 and any discount, from g1t's own ledger (**View upcoming invoice** splits
 it). **Usage** goes to usage by product and project. App traffic, custom
@@ -434,6 +437,11 @@ hour are answered `429` with when to try again.
 
 Charging starts on 2026-10-14: operations before then are never charged.
 **Billing** shows this month's count under **Git operations & storage**.
+
+A month's operations are charged in full, up to its last minute: its
+final count is taken once the month has ended (from an hour after
+midnight UTC on the 1st), and the month is charged and closed only after
+that, at the plan the workspace had that month.
 
 ## Storage, search embeddings and scans
 
@@ -687,7 +695,8 @@ with its PDF and emailed as a receipt:
   [deleting a workspace](/guides/workspaces/#what-billing-needs).
 
 Each is charged to the card on file, with [tax](#tax) as a line of its
-own and no card fee. Every invoice and receipt, with its PDF, is on
+own and no card fee. On Stripe's payment page and on receipts, the plan is
+named **g1t plan for *workspace***, such as **g1t plan for acme**. Every invoice and receipt, with its PDF, is on
 Stripe's billing page: choose **Manage billing** under **Billing on
 Stripe**.
 
@@ -861,8 +870,9 @@ choose each one. An enrollment gives:
 - **A monthly fee of its own**, often none. When there is one, Stripe
   invoices it each month, apart from the allowance.
 
-**Billing** shows the allowance, what is used, what is metered but not
-billed yet, what is left, and when it starts again. Usage that is measured
+**Billing** has a **Complimentary allowance** card: the allowance a month
+(or **Unlimited**), the monthly fee or **No monthly fee**, and **Used**,
+**Metered, not billed yet**, **Remaining** and **Starts again**. Usage that is measured
 at the end of the month, such as storage and git operations, and work
 running now count against what is left.
 
@@ -878,15 +888,15 @@ which:
   set amount of an employee's or a friend's usage. Past the allowance,
   usage is charged at the same prices as on the plan, up to your
   [spend limit](#limits) and the [ceiling](#the-ceiling), and invoiced
-  when the month closes. Add a card on **Billing** first: without one,
-  work stops at the allowance until you do.
+  when the month closes. Add a card first, with **Add a card** on the
+  allowance card: without one, work stops at the allowance until you do.
 
 If g1t changes the amount, what the month already used still counts:
 raising it adds only the difference, and lowering it below what was used
 leaves nothing more this month, never a bill.
 
-An owner or billing manager can **start the g1t plan instead** from the
-allowance card on **Billing**. The plan uses the same Stripe customer and
+An owner or billing manager can choose **Start the g1t plan instead** on
+the allowance card. The plan uses the same Stripe customer and
 subscription, and nothing changes until its first payment goes through:
 if the card is declined, the bank asks to confirm the payment, or the page
 is closed, the complimentary terms stay as they were. Usage the allowance
