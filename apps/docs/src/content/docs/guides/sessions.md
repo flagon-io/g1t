@@ -303,7 +303,10 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   g1t's MCP server is attached too, for anything the CLI has no command
   for. Its sandbox reaches the internet as a CI runner does, and it can
   search and read the web (web search and web fetch), for a fact the work
-  needs from outside g1t or to open its own deploy. Both reach g1t with one token: g1t
+  needs from outside g1t or to open its own deploy. Before a headless
+  browser (Playwright, Puppeteer) opens an https page, it copies the
+  certificates the sandbox trusts into Chromium's own store, so pages load
+  with certificate checks on. Both reach g1t with one token: g1t
   acting on your behalf, in that repository only, which lasts the session
   and is revoked when it ends. What the session does on g1t shows as
   **g1t, on behalf of @you**: its comments and reviews, what it closes or

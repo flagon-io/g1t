@@ -95,7 +95,8 @@ pub const METHODS: [&str; 5] = ["start_agent_session", "agent_sessions_setup", "
 
 /// What g1t tells the agent, for every session.
 pub fn system_prompt() -> String {
-    "You work on issues in a g1t repository (g1t is a git forge), for the person who started you, with their own Claude. \
+    format!(
+        "You work on issues in a g1t repository (g1t is a git forge), for the person who started you, with their own Claude. \
      Each session's first message says which repository and issue, what kind of work, and how to reach them.\n\n\
      - Run the setup in your first message before anything else: it installs the g1t CLI, has git send your token to g1t, \
      clones the repository and ties the clone to this g1t session.\n\
@@ -118,11 +119,22 @@ pub fn system_prompt() -> String {
      `g1t deploy list` until it is live or failed; if it failed, read why, fix it and push again. Say where it is live in your report.\n\
      - To show a screenshot in a pull request or a comment, upload it with `g1t attach FILE` and paste the Markdown it prints \
      (or pass `--attach FILE` to `g1t pr create`, `g1t pr ready` or `g1t pr comment`). Never commit an image to the repository just to link it.\n\
+     - The sandbox reaches the web through a proxy whose certificate the system store trusts; curl, git and the g1t CLI read that store, \
+     but Chromium (Playwright, Puppeteer) reads its own. Before a headless browser opens an https page, run once: `{BROWSER_TRUST}`. \
+     Never turn certificate checks off (ignore_https_errors, --ignore-certificate-errors) instead.\n\
      - Never write `@g1t` in what you post on g1t: that asks g1t for another session.\n\
      - When you finish, say in a few sentences what you did, what is left, and the pull request, if any. That is your report on g1t: it shows on the issue as this session's card, so never post it, \
      or anything else, as a comment."
-        .to_owned()
+    )
 }
+
+/// Copies the certificates the system store trusts (the sandbox proxy's
+/// among them) into Chromium's NSS store, which it reads instead of the
+/// system's. Safe to run again: each certificate keeps its nickname.
+pub const BROWSER_TRUST: &str = "command -v certutil >/dev/null || { apt-get update -qq && apt-get install -y -qq libnss3-tools; } >/dev/null 2>&1; \
+mkdir -p ~/.pki/nssdb && { [ -f ~/.pki/nssdb/cert9.db ] || certutil -d sql:$HOME/.pki/nssdb -N --empty-password; } \
+&& d=$(mktemp -d) && awk -v d=\"$d\" '/BEGIN CERT/{n++; f=d \"/\" n \".pem\"} n{print > f} /END CERT/{close(f)}' /etc/ssl/certs/ca-certificates.crt \
+&& for f in \"$d\"/*.pem; do certutil -d sql:$HOME/.pki/nssdb -A -t C,, -n \"system-$(basename \"$f\" .pem)\" -i \"$f\"; done && rm -rf \"$d\"";
 
 /// The agent g1t keeps on an Anthropic account.
 pub fn agent_body(model: &str, mcp_url: &str, skills: &[Value]) -> Value {
@@ -1572,6 +1584,7 @@ mod tests {
         assert!(system_prompt().contains("never in a URL"));
         assert!(system_prompt().contains("g1t pr checks --watch --fail-fast"));
         assert!(system_prompt().contains("g1t attach FILE"), "screenshots are attached, never committed");
+        assert!(system_prompt().contains(BROWSER_TRUST), "the browser trusts the proxy instead of skipping certificate checks");
     }
 
     #[test]
