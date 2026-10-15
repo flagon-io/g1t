@@ -62,11 +62,12 @@
 //!   "resources": { "cpus": 4, "memory_mib": 8192, "disk_gib": 64 },
 //!   "capabilities": [
 //!     { "id": "linux", "available": true, "state": "running", "isolation": "nested-container",
-//!       "runner_version": "0.3.0", "job": null, "cause": null, "fix": null, "turned_off": false },
+//!       "runner_version": "0.3.0", "job": null, "cause": null, "fix": null, "turned_off": false, "needs": [] },
 //!     { "id": "windows", "available": false, "state": "absent", "isolation": "vm",
 //!       "runner_version": null, "job": null, "turned_off": false,
-//!       "cause": "Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).",
-//!       "fix": "On Windows 11 Pro, Enterprise or Education, turn on Windows Sandbox under Settings, …" }
+//!       "cause": "Windows Sandbox is not turned on, and Windows jobs each run in one.",
+//!       "fix": "Turn on Windows Sandbox under Settings, System, Optional features, …",
+//!       "needs": ["windows_sandbox"] }
 //!   ],
 //!   "state_dir": "C:\\Users\\a\\.g1t-runner\\sandbox",
 //!   "warnings": []
@@ -84,7 +85,12 @@
 //! empty when nothing does, and left out by launchers before it.
 //! `turned_off` is true for a capability someone stopped (`down --only`,
 //! `--no-native`), whose state is then `stopped`: stopped by a person, not
-//! failing. `job` is what the runner is running now, or null. Fields
+//! failing. `needs` names what the computer still lacks for a capability,
+//! first what must come first (`wsl`, `vm_platform`, `virtualization`,
+//! `windows_edition`, `restart`, …; needs.rs lists them all), found before
+//! anything is downloaded; `cause` and `fix` say the first. It is empty
+//! when nothing is missing, and left out by launchers before it. `job` is
+//! what the runner is running now, or null. Fields
 //! are only ever added; `schema` changes if one changes meaning. `up`,
 //! `down` and `update` print the same object with `--json` when they are
 //! done, and exit 1 with `error` set when they fail.
@@ -107,6 +113,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 
 use super::native::{Availability, MacVm, WsbFound};
+use super::needs::{self, Need, WindowsFacts};
 use super::private::{self, write_private};
 use super::{JobStatus, Options, RunnerStatus, VERSION, config, log};
 use guest::{GuestStatus, Settings};
@@ -276,6 +283,11 @@ pub struct Capability {
     /// Someone stopped it (`down --only`, `--no-native`): `stopped` until
     /// `up --only` turns it on again. Older launchers leave it out.
     pub turned_off: bool,
+    /// What the computer still lacks for it, by name, first what must
+    /// come first (needs.rs): `cause` and `fix` say the first. Empty when
+    /// nothing is missing; older launchers leave it out.
+    #[serde(default)]
+    pub needs: Vec<Need>,
 }
 
 // --- The computer -------------------------------------------------------------
@@ -443,9 +455,19 @@ fn native_id() -> Option<&'static str> {
 }
 
 /// What this OS's native sandbox is called, and whether it is here.
-fn native_capability() -> Option<(&'static str, Availability)> {
+fn native_capability(dir: &Path) -> Option<(&'static str, Availability)> {
     match native_id()? {
-        "windows" => Some(("windows", WsbFound::look().availability())),
+        "windows" => {
+            let found = WsbFound::look();
+            let available = found.availability();
+            if available.available {
+                return Some(("windows", available));
+            }
+            // What exactly is missing: asked of Windows only now, as it takes a second.
+            let windows = WindowsFacts::look();
+            let needs = needs::windows_sandbox_needs(&windows, found.feature, found.cli, needs::restart_pending(dir, &windows));
+            Some(("windows", if needs.is_empty() { available } else { Availability::needing(needs, "windows") }))
+        }
         os => Some((os, MacVm::availability())),
     }
 }
@@ -604,6 +626,20 @@ pub fn status(dir: &Path) -> Status {
     if state == "running" || (linux_off && state == "stopped") {
         error = None;
     }
+    let (mut needs, mut cause, mut fix) = (available.needs.clone(), available.cause.clone(), available.fix.clone());
+    // What can't be known before a VM starts, its error says: on Windows,
+    // virtualization off in the firmware, or not passed through to this VM.
+    if needs.is_empty()
+        && cfg!(windows)
+        && state == "error"
+        && let Some(said) = error.as_deref().filter(|e| needs::about_virtualization(e))
+    {
+        let need = WindowsFacts::look().no_virtualization();
+        let (words, to_do) = need.said("linux");
+        needs = vec![need];
+        cause = Some(format!("{words} ({said})"));
+        fix = Some(to_do);
+    }
     let linux = Capability {
         id: "linux".into(),
         available: available.available,
@@ -611,12 +647,13 @@ pub fn status(dir: &Path) -> Status {
         isolation: Some(runner.as_ref().map(|r| r.isolation.clone()).unwrap_or_else(|| "nested-container".into())),
         runner_version: runner.as_ref().map(|r| r.version.clone()),
         job: runner.as_ref().and_then(|r| r.job.clone()),
-        cause: available.cause.clone(),
-        fix: available.fix.clone(),
+        cause,
+        fix,
         turned_off: linux_off,
+        needs,
     };
     let mut capabilities = vec![linux.clone()];
-    if let Some((os, found)) = native_capability() {
+    if let Some((os, found)) = native_capability(dir) {
         let folder = native_dir(dir);
         let native_status: Option<RunnerStatus> = std::fs::read(super::status_path(&folder)).ok().and_then(|b| serde_json::from_slice(&b).ok());
         let registered = config::load(&folder).is_ok();
@@ -638,6 +675,7 @@ pub fn status(dir: &Path) -> Status {
             cause,
             fix,
             turned_off: off,
+            needs: if found.available { vec![] } else { found.needs },
         });
     }
     Status {
@@ -919,7 +957,7 @@ fn up(options: &Options, dir: &Path) -> Result<()> {
         Some(only) => only.contains(&kind),
         None => !saved.is_off(kind),
     };
-    let (want_linux, native) = (wanted("linux"), native_capability().filter(|(os, _)| wanted(os)));
+    let (want_linux, native) = (wanted("linux"), native_capability(dir).filter(|(os, _)| wanted(os)));
     if let Some(image) = options.value("runner-image") {
         saved.runner_image = Some(image.to_owned());
     }
@@ -1225,7 +1263,7 @@ mod tests {
         for field in ["schema", "state", "backend", "runner_version", "launcher_version", "image_version", "isolation", "job", "error", "resources", "capabilities", "state_dir", "warnings"] {
             assert!(value.get(field).is_some(), "{field}");
         }
-        for field in ["id", "available", "state", "isolation", "runner_version", "job", "cause", "fix", "turned_off"] {
+        for field in ["id", "available", "state", "isolation", "runner_version", "job", "cause", "fix", "turned_off", "needs"] {
             assert!(value["capabilities"][0].get(field).is_some(), "{field}");
         }
         assert_eq!(value["resources"]["memory_mib"], 0);

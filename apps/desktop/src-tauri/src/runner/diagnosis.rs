@@ -60,6 +60,10 @@ pub enum Code {
     NoVfkit,
     /// Linux, with neither Sysbox in Docker nor KVM.
     NoSysbox,
+    /// This computer lacks something the sandbox needs, by name (the
+    /// launcher's `needs`): each kind of job's card says what, and Set up
+    /// does what Windows can do itself.
+    NeedsSetup,
     /// The newest release is published without the sandbox's images yet.
     WaitingForImage,
     /// The sandbox's image couldn't be downloaded, or isn't the release's.
@@ -270,6 +274,25 @@ pub struct Facts {
     /// The person stopped the whole runner, or turned it off.
     pub held: bool,
     pub update: Update,
+    /// How Set up stands (setup.rs).
+    pub setup: SetUp,
+    /// What installs QEMU here: `sudo apt install qemu-system-x86`.
+    pub qemu_install: Option<String>,
+}
+
+/// How Set up stands: what Windows can do itself for the sandbox, done
+/// behind one administrator prompt (setup.rs).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SetUp {
+    /// Under way, and what it does: `turns on Virtual Machine Platform and installs WSL`.
+    pub running: Option<String>,
+    /// Why the last one didn't finish, until it is tried again.
+    pub failed: Option<String>,
+    /// The person chose Later over restarting now.
+    pub later: bool,
+    /// Every kind of job's needs, of those that are on: one press of Set
+    /// up meets them all, so each card says all it does.
+    pub needs: Vec<String>,
 }
 
 /// How the runner's updates stand.
@@ -360,6 +383,23 @@ const LEARN_MORE: Action = Action::now("learn_more", "Learn more");
 const VIEW_LOG: Action = Action::now("view_log", "View log");
 const REPORT: Action = Action::now("report", "Report");
 const VIEW_RUNNERS: Action = Action::now("view_runners", "View on g1t");
+/// What Windows can do itself for the sandbox, at once, behind its own
+/// administrator prompt (setup.rs): busy until the card says it is setting up.
+const SET_UP: Action = Action::waits("set_up", "Set up");
+const RESTART_WINDOWS: Action = Action::waits("restart_windows", "Restart now")
+    .confirming("Restart Windows now? Save your work first. g1t opens again after the restart and finishes setting up the runner.");
+const RESTART_LATER: Action = Action::waits("restart_later", "Later");
+const WINDOWS_UPDATE: Action = Action::now("windows_update", "Open Windows Update");
+const WINDOWS_ACTIVATION: Action = Action::now("windows_activation", "Open Activation");
+const FIRMWARE_HELP: Action = Action::now("firmware_help", "How to turn it on");
+const NESTED_HELP: Action = Action::now("nested_help", "How to turn it on");
+const SETUP_HELP: Action = Action::now("setup_help", "Learn more");
+const COPY_KVM_LOAD: Action = Action::now("copy_kvm_load", "Copy command");
+const COPY_KVM_GROUP: Action = Action::now("copy_kvm_group", "Copy command");
+const COPY_QEMU_INSTALL: Action = Action::now("copy_qemu_install", "Copy command");
+const GET_HOMEBREW: Action = Action::now("get_homebrew", "Get Homebrew");
+const SOFTWARE_UPDATE: Action = Action::now("software_update", "Open Software Update");
+const OPEN_RUNNER: Action = Action::now("open_runner", "See what's missing");
 
 fn some(text: impl Into<String>) -> Option<String> {
     Some(text.into())
@@ -378,6 +418,7 @@ fn said_wait(seconds: u64) -> String {
 pub fn diagnose(code: Code, facts: &Facts) -> Diagnosis {
     let workspace = facts.workspace.as_deref().unwrap_or("your workspace");
     let detail = facts.detail.clone();
+    let capabilities = facts.sandbox.as_ref().map(|status| capabilities(status, facts)).unwrap_or_default();
     let (tone, title, cause, fix, actions): (Tone, String, Option<String>, Option<String>, Vec<Action>) = match code {
         Code::Off => (
             Tone::Off,
@@ -509,6 +550,26 @@ pub fn diagnose(code: Code, facts: &Facts) -> Diagnosis {
             some("Install Sysbox 0.7 or later, or turn on virtualization and install QEMU so /dev/kvm exists. The runner starts by itself once one is there."),
             vec![INSTALL_SYSBOX, CHOOSE_BACKEND],
         ),
+        Code::NeedsSetup => {
+            // The first kind of job that waits on something, in its card's words.
+            let first = capabilities.iter().find(|kind| kind.enabled && kind.headline.is_some() && matches!(kind.tone, Tone::Warning | Tone::Problem | Tone::Working));
+            match first {
+                Some(kind) => (
+                    if kind.state == KindState::Starting { Tone::Working } else { Tone::Warning },
+                    format!("Not running: {}", lowered(kind.headline.as_deref().unwrap_or_default())),
+                    kind.cause.clone(),
+                    kind.fix.clone(),
+                    if kind.actions.is_empty() { vec![OPEN_RUNNER] } else { kind.actions.clone() },
+                ),
+                None => (
+                    Tone::Warning,
+                    "Not running: this computer needs setting up".into(),
+                    some("The sandbox needs something this computer doesn't have yet."),
+                    some("Each kind of job's card says what, and sets up what it can."),
+                    vec![OPEN_RUNNER],
+                ),
+            }
+        }
         Code::WaitingForImage => {
             let (release, image) = detail.as_deref().and_then(launcher::missing_images).map_or((None, None), |(release, image)| (Some(release), image));
             let release = release.map_or_else(|| "The newest g1t-runner".to_owned(), |release| format!("g1t-runner {release}"));
@@ -630,10 +691,9 @@ pub fn diagnose(code: Code, facts: &Facts) -> Diagnosis {
             vec![RESTART, VIEW_LOG],
         ),
     };
-    let capabilities = facts.sandbox.as_ref().map(|status| capabilities(status, facts)).unwrap_or_default();
     let in_capabilities = !capabilities.is_empty()
         && match code {
-            Code::Idle | Code::Busy | Code::KindsStopped => true,
+            Code::Idle | Code::Busy | Code::KindsStopped | Code::NeedsSetup => true,
             Code::Starting | Code::Updating => facts.live,
             // Said by a card, for its kind of job, word for word.
             Code::NoWsl
@@ -704,6 +764,191 @@ fn about(id: &str, backend: Option<&str>) -> String {
     }
 }
 
+/// A headline inside a sentence: `WSL isn't installed` stays, `Virtualization is off` is `virtualization is off`.
+fn lowered(headline: &str) -> String {
+    let mut letters = headline.chars();
+    let Some(first) = letters.next() else { return String::new() };
+    // An initialism (WSL, KVM, QEMU) keeps its capitals.
+    if headline.chars().nth(1).is_some_and(char::is_uppercase) {
+        return headline.to_owned();
+    }
+    first.to_lowercase().chain(letters).collect()
+}
+
+/// What a kind of job's card says of what this computer lacks for it.
+struct NeedWords {
+    state: KindState,
+    tone: Tone,
+    title: &'static str,
+    headline: String,
+    cause: String,
+    fix: Option<String>,
+    actions: Vec<Action>,
+}
+
+/// The card's words for what this computer lacks (the launcher's `needs`,
+/// first what must come first): what Set up does when Windows can do all
+/// of it, else the first, with exact steps. None for a need this app
+/// doesn't know, from a newer launcher: its own words say it then.
+fn need_words(needs: &[String], id: &str, facts: &Facts) -> Option<NeedWords> {
+    let label = kind_label(id);
+    let first = needs.first()?.as_str();
+    let words = |headline: &str, cause: String, fix: String, actions: Vec<Action>| NeedWords {
+        state: KindState::Unavailable,
+        tone: Tone::Warning,
+        title: "Needs setting up",
+        headline: headline.into(),
+        cause,
+        fix: Some(fix),
+        actions,
+    };
+    if super::setup::fixable(needs) {
+        // What one press does: for every kind of job that is on, this one's included.
+        let all = if facts.setup.needs.is_empty() { needs } else { &facts.setup.needs[..] };
+        let plan = super::setup::plan_of(all);
+        if let Some(doing) = &facts.setup.running {
+            return Some(NeedWords {
+                state: KindState::Starting,
+                tone: Tone::Working,
+                title: "Setting up",
+                headline: "Setting up".into(),
+                cause: format!("g1t {doing}. Windows asks you to allow it first, and it takes a few minutes."),
+                fix: None,
+                actions: vec![],
+            });
+        }
+        let has = |need: &str| needs.iter().any(|n| n == need);
+        let headline = if has("wsl") {
+            "WSL isn't installed"
+        } else if has("vm_platform") {
+            "Virtual Machine Platform is off"
+        } else if has("wsl_update") {
+            "WSL needs an update"
+        } else {
+            "Windows Sandbox is off"
+        };
+        let cause = if id == "linux" {
+            let mut lacks = Vec::new();
+            if has("vm_platform") {
+                lacks.push("Virtual Machine Platform turned on");
+            }
+            if has("wsl") {
+                lacks.push("WSL installed");
+            } else if has("wsl_update") {
+                lacks.push("a newer WSL");
+            }
+            format!("Linux jobs run in a small Linux VM of their own under WSL 2, which needs {}.", lacks.join(" and "))
+        } else {
+            "Windows jobs each run in a Windows Sandbox of their own, which is turned off.".to_owned()
+        };
+        let restart = if plan.features.is_empty() { "" } else { ", and to restart after" };
+        let fix = format!("Set up {} in one go. Windows asks you to allow it{restart}.", plan.said());
+        return Some(match &facts.setup.failed {
+            Some(why) => NeedWords {
+                cause: format!("Set up didn't finish: {why}"),
+                fix: Some(format!("{fix} Its log says what happened.")),
+                actions: vec![SET_UP, VIEW_LOG],
+                ..words(headline, String::new(), String::new(), vec![])
+            },
+            None => words(headline, cause, fix, vec![SET_UP, SETUP_HELP]),
+        });
+    }
+    let linux_host = facts.platform == "linux";
+    Some(match first {
+        "restart" => NeedWords {
+            title: "Restart needed",
+            ..words(
+                "Restart to finish setting up",
+                format!("Windows has turned on what {label} need, and it takes effect once Windows restarts."),
+                if facts.setup.later {
+                    "Restart when it suits you: g1t opens again after, and carries on by itself.".into()
+                } else {
+                    "Restart now, or later: g1t opens again after the restart and carries on by itself.".into()
+                },
+                if facts.setup.later { vec![RESTART_WINDOWS] } else { vec![RESTART_WINDOWS, RESTART_LATER] },
+            )
+        },
+        "windows_update" if id == "windows" => words(
+            "Windows needs an update",
+            "Windows jobs use Windows Sandbox's command line, which came with Windows 11 24H2, and this Windows is older.".into(),
+            "Update Windows to 24H2 or later in Windows Update, and restart. g1t carries on after.".into(),
+            vec![WINDOWS_UPDATE, CHECK_NOW],
+        ),
+        "windows_update" => words(
+            "Windows needs an update",
+            "Linux jobs run in a small Linux VM under WSL 2, and this Windows is older than the first with it, Windows 10 version 2004.".into(),
+            "Update Windows in Windows Update, and restart. g1t sets up the rest after.".into(),
+            vec![WINDOWS_UPDATE, CHECK_NOW],
+        ),
+        "virtualization" => words(
+            "Virtualization is off",
+            if linux_host {
+                "The sandbox is a small virtual machine, and this computer's processor has virtualization (Intel VT-x or AMD-V) turned off in its firmware, or has none.".into()
+            } else {
+                "The sandbox is a small virtual machine, and this computer has virtualization (Intel VT-x or AMD-V) turned off in its firmware, where only you can turn it on.".into()
+            },
+            "Restart into the firmware settings (BIOS or UEFI: a key such as F2, F10, Del or Esc as the computer starts), turn on Intel Virtualization Technology or SVM Mode, then save and restart. g1t carries on after.".into(),
+            vec![FIRMWARE_HELP, CHECK_NOW],
+        ),
+        "nested_virtualization" => words(
+            "This VM can't run the sandbox",
+            "g1t is running in a virtual machine whose host doesn't pass virtualization through to it, and the sandbox is a virtual machine inside it.".into(),
+            "On the host, turn on nested virtualization for this VM, then start it again. On Hyper-V, with the VM off: Set-VMProcessor -VMName <name> -ExposeVirtualizationExtensions $true.".into(),
+            vec![NESTED_HELP, CHECK_NOW],
+        ),
+        "windows_edition" => NeedWords {
+            tone: Tone::Off,
+            title: "Not available",
+            ..words(
+                "Not in Windows Home",
+                "Windows jobs each run in a Windows Sandbox, and Windows Home doesn't have it.".into(),
+                "Linux jobs run here all the same. Windows jobs need Windows 11 Pro, Enterprise or Education.".into(),
+                vec![WINDOWS_ACTIVATION],
+            )
+        },
+        "kvm_module" => words(
+            "KVM isn't loaded",
+            "Linux jobs run in a small VM under QEMU with KVM, and /dev/kvm isn't there, though this processor can run virtual machines.".into(),
+            format!("Load it with `{}` (Copy command), then Check now. If it says the firmware disabled it, turn on VT-x or AMD-V there.", super::launcher::KVM_LOAD),
+            vec![COPY_KVM_LOAD, CHECK_NOW],
+        ),
+        "kvm_group" => words(
+            "No access to KVM",
+            "/dev/kvm is here, but your account isn't allowed to use it.".into(),
+            format!("Run `{}` (Copy command), then log out and back in.", super::launcher::KVM_GROUP),
+            vec![COPY_KVM_GROUP, CHECK_NOW],
+        ),
+        "qemu" => words(
+            "QEMU isn't installed",
+            "Linux jobs run in a small VM under QEMU, which isn't installed.".into(),
+            match &facts.qemu_install {
+                Some(command) => format!("Install it with `{command}` (Copy command), then Check now. Or install Sysbox 0.7 or later instead."),
+                None => "Install QEMU with your package manager, then Check now. Or install Sysbox 0.7 or later instead.".into(),
+            },
+            if facts.qemu_install.is_some() { vec![COPY_QEMU_INSTALL, CHECK_NOW] } else { vec![CHECK_NOW, INSTALL_SYSBOX] },
+        ),
+        "macos_update" => words(
+            "macOS needs an update",
+            "Linux jobs run in a small VM with Apple's Virtualization framework, through vfkit, which needs macOS 13 or later.".into(),
+            "Update macOS in Software Update, then open g1t again.".into(),
+            vec![SOFTWARE_UPDATE],
+        ),
+        "homebrew" => words(
+            "vfkit isn't installed",
+            "Linux jobs run in a small VM under vfkit, which installs with Homebrew, and neither is on this Mac.".into(),
+            format!("Install Homebrew from brew.sh (Get Homebrew), then run `{}` in Terminal (Copy command). The runner starts by itself once vfkit is there.", launcher::VFKIT_INSTALL),
+            vec![GET_HOMEBREW, COPY_VFKIT_INSTALL],
+        ),
+        "vfkit" => words(
+            "vfkit isn't installed",
+            "Linux jobs run in a small VM that vfkit runs with Apple's Virtualization framework, and vfkit isn't installed.".into(),
+            format!("Run `{}` in Terminal (Copy command). The runner starts by itself once it's there.", launcher::VFKIT_INSTALL),
+            vec![COPY_VFKIT_INSTALL, CHECK_NOW],
+        ),
+        _ => return None,
+    })
+}
+
 /// A catalogue title as a card's headline: `Not running: virtualization is off` is `Virtualization is off`.
 fn headline(title: &str) -> String {
     let said = title.strip_prefix("Not running: ").unwrap_or(title);
@@ -764,6 +1009,14 @@ fn capability_line(status: &Status, capability: &launcher::Capability, facts: &F
     // Stopped by the person: nothing is wrong with it.
     if capability.off() || (!enabled && per_kind) {
         said(&mut line, KindState::Stopped, Tone::Off, some(format!("You stopped {label} on this computer. They stay stopped until you start them.")), None, vec![]);
+        return line;
+    }
+    // What this computer lacks for it, by name: said plainly, with Set up
+    // for what Windows can do itself, and exact steps for the rest.
+    if let Some(words) = need_words(&capability.needs, id, facts) {
+        said(&mut line, words.state, words.tone, Some(words.cause), words.fix, words.actions);
+        line.title = words.title.into();
+        line.headline = Some(words.headline);
         return line;
     }
     // This computer can't run it, and why.
@@ -889,6 +1142,7 @@ pub fn chip(diagnosis: &Diagnosis) -> Chip {
         Code::Off => (Tone::Off, "Runner off".to_owned()),
         Code::Stopped | Code::KindsStopped => (Tone::Off, "Runner stopped".to_owned()),
         Code::Offline => (Tone::Warning, "Runner offline".to_owned()),
+        Code::NeedsSetup if diagnosis.tone == Tone::Working => (Tone::Working, "Runner setting up".to_owned()),
         _ => (diagnosis.tone, "Runner needs you".to_owned()),
     };
     Chip { tone, label }
@@ -1271,5 +1525,214 @@ mod tests {
         // What affects everything is said once, above the cards.
         let signed_out = diagnose(Code::SignedOut, &Facts { sandbox: Some(status(NO_WSL_PRO)), ..facts() });
         assert!(!signed_out.in_capabilities);
+    }
+
+    // --- What this computer lacks, by name (the launcher's `needs`) ------------------
+
+    /// A launcher's status with each kind of job's needs: `None` for a kind
+    /// that is running, waiting for jobs.
+    fn needing(linux: Option<&[&str]>, native: Option<(&str, Option<&[&str]>)>) -> Status {
+        let kind = |id: &str, needs: Option<&[&str]>| match needs {
+            None => format!(r#"{{"id":"{id}","available":true,"state":"running","runner_version":"0.3.5","turned_off":false,"needs":[]}}"#),
+            // What the launcher says of macOS jobs, which need nothing: they aren't released.
+            Some([]) => format!(r#"{{"id":"{id}","available":false,"state":"absent","turned_off":false,"cause":"Sandboxed macOS jobs are not released yet.","fix":"Run macOS jobs on a runner registered with --no-docker for now.","needs":[]}}"#),
+            Some(needs) => format!(
+                r#"{{"id":"{id}","available":false,"state":"{}","turned_off":false,"cause":"In the launcher's words.","fix":"Its fix.","needs":{}}}"#,
+                if id == "linux" { "error" } else { "absent" },
+                serde_json::to_string(needs).unwrap()
+            ),
+        };
+        let mut kinds = vec![kind("linux", linux)];
+        if let Some((id, needs)) = native {
+            kinds.push(kind(id, needs));
+        }
+        let state = if linux.is_none() { "running" } else { "error" };
+        status(&format!(r#"{{"schema":1,"state":"{state}","backend":"wsl2","launcher_version":"0.3.5","capabilities":[{}]}}"#, kinds.join(",")))
+    }
+
+    /// What the whole runner and each card say, as the app would show it: the code `shown` picks.
+    fn shown_for(status: Status, facts: Facts) -> Diagnosis {
+        let code = if status.running() { Code::Idle } else if status.linux_needs().is_empty() { Code::SandboxFailed } else { Code::NeedsSetup };
+        // As the app fills it in: the needs of each kind that is on.
+        let setup = SetUp { needs: super::super::setup::needs(&status, |kind| !facts.off.iter().any(|off| off == kind)), ..facts.setup.clone() };
+        diagnose(code, &Facts { sandbox: Some(status), live: true, setup, ..facts })
+    }
+
+    fn ids(actions: &[Action]) -> Vec<&'static str> {
+        actions.iter().map(|a| a.id).collect()
+    }
+
+    /// Writes each scenario's diagnosis to `G1T_SCREENS_OUT`, when it is set, for the screens.
+    fn screen(name: &str, diagnosis: &Diagnosis) {
+        if let Some(dir) = std::env::var_os("G1T_SCREENS_OUT") {
+            let dir = std::path::PathBuf::from(dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let shown = serde_json::json!({ "diagnosis": diagnosis, "chip": chip(diagnosis) });
+            std::fs::write(dir.join(format!("{name}.json")), serde_json::to_vec_pretty(&shown).unwrap()).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_clean_windows_home_is_set_up_with_one_button_and_says_windows_jobs_plainly() {
+        let home = shown_for(needing(Some(&["vm_platform", "wsl"]), Some(("windows", Some(&["windows_edition"])))), facts());
+        screen("windows-home-clean", &home);
+        assert_eq!(home.code, Code::NeedsSetup);
+        assert_eq!(home.title, "Not running: WSL isn't installed");
+        assert!(home.in_capabilities);
+        let [linux, windows] = &home.capabilities[..] else { panic!() };
+        assert_eq!((linux.title.as_str(), linux.tone, linux.state), ("Needs setting up", Tone::Warning, KindState::Unavailable));
+        assert_eq!(linux.headline.as_deref(), Some("WSL isn't installed"));
+        assert_eq!(linux.cause.as_deref(), Some("Linux jobs run in a small Linux VM of their own under WSL 2, which needs Virtual Machine Platform turned on and WSL installed."));
+        assert_eq!(linux.fix.as_deref(), Some("Set up turns on Virtual Machine Platform and installs WSL in one go. Windows asks you to allow it, and to restart after."));
+        assert_eq!(ids(&linux.actions), ["set_up", "setup_help"]);
+        assert!(SET_UP.waits && SET_UP.confirm.is_none(), "Windows' own prompt asks");
+        // Home: no dead end, and no button that can't work.
+        assert_eq!((windows.title.as_str(), windows.tone), ("Not available", Tone::Off));
+        assert_eq!(windows.headline.as_deref(), Some("Not in Windows Home"));
+        assert_eq!(windows.fix.as_deref(), Some("Linux jobs run here all the same. Windows jobs need Windows 11 Pro, Enterprise or Education."));
+        assert_eq!(ids(&windows.actions), ["windows_activation"]);
+        // The chip asks for the person.
+        assert_eq!(chip(&home).label, "Runner needs you");
+    }
+
+    #[test]
+    fn pro_sets_up_both_kinds_and_each_says_its_own() {
+        let pro = shown_for(needing(Some(&["vm_platform", "wsl"]), Some(("windows", Some(&["windows_sandbox"])))), facts());
+        screen("windows-pro-clean", &pro);
+        let [linux, windows] = &pro.capabilities[..] else { panic!() };
+        assert_eq!(ids(&linux.actions), ["set_up", "setup_help"]);
+        assert_eq!(windows.headline.as_deref(), Some("Windows Sandbox is off"));
+        // One press sets up both kinds, and each card says all it does.
+        let both = "Set up turns on Virtual Machine Platform and Windows Sandbox and installs WSL in one go. Windows asks you to allow it, and to restart after.";
+        assert_eq!((linux.fix.as_deref(), windows.fix.as_deref()), (Some(both), Some(both)));
+        // Windows jobs stopped by the person: Set up leaves their feature alone, and says so.
+        let linux_only = shown_for(
+            needing(Some(&["vm_platform", "wsl"]), Some(("windows", Some(&["windows_sandbox"])))),
+            Facts { setup: SetUp { needs: vec!["vm_platform".into(), "wsl".into()], ..SetUp::default() }, off: vec!["windows".into()], ..facts() },
+        );
+        assert_eq!(linux_only.capabilities[0].fix.as_deref(), Some("Set up turns on Virtual Machine Platform and installs WSL in one go. Windows asks you to allow it, and to restart after."));
+        // Linux jobs run while Windows Sandbox is off: waiting for jobs, and one card wants a look.
+        let linux_runs = shown_for(needing(None, Some(("windows", Some(&["windows_sandbox"])))), facts());
+        screen("windows-pro-sandbox-off", &linux_runs);
+        assert_eq!(linux_runs.title, "Waiting for jobs");
+        assert_eq!(linux_runs.capabilities[0].title, "Waiting for jobs");
+        assert_eq!(ids(&linux_runs.capabilities[1].actions), ["set_up", "setup_help"]);
+        assert_eq!(chip(&linux_runs), Chip { tone: Tone::Warning, label: "Runner running".into() });
+        // Windows jobs run while Linux jobs need WSL: each kind on its own.
+        let windows_runs = shown_for(needing(Some(&["wsl"]), Some(("windows", None))), facts());
+        screen("windows-pro-wsl-missing", &windows_runs);
+        assert_eq!(windows_runs.code, Code::Idle);
+        assert_eq!(chip(&windows_runs), Chip { tone: Tone::Warning, label: "Runner running".into() });
+        assert_eq!(windows_runs.capabilities[1].title, "Waiting for jobs");
+        assert_eq!(windows_runs.capabilities[0].fix.as_deref(), Some("Set up installs WSL in one go. Windows asks you to allow it."));
+        // An older WSL is updated, not installed again.
+        let old = shown_for(needing(Some(&["wsl_update"]), None), facts());
+        assert_eq!(old.capabilities[0].headline.as_deref(), Some("WSL needs an update"));
+        assert_eq!(old.capabilities[0].fix.as_deref(), Some("Set up updates WSL in one go. Windows asks you to allow it."));
+    }
+
+    #[test]
+    fn set_up_shows_while_it_works_then_a_restart_now_or_later() {
+        let clean = needing(Some(&["vm_platform", "wsl"]), Some(("windows", Some(&["windows_sandbox"]))));
+        let working = SetUp { running: Some("turns on Virtual Machine Platform and Windows Sandbox and installs WSL".into()), ..SetUp::default() };
+        let setting_up = shown_for(clean.clone(), Facts { setup: working, ..facts() });
+        screen("windows-setting-up", &setting_up);
+        assert_eq!(setting_up.title, "Not running: setting up");
+        assert_eq!(setting_up.tone, Tone::Working);
+        assert_eq!(chip(&setting_up), Chip { tone: Tone::Working, label: "Runner setting up".into() });
+        for kind in &setting_up.capabilities {
+            assert_eq!((kind.title.as_str(), kind.state, kind.tone), ("Setting up", KindState::Starting, Tone::Working));
+            assert!(kind.actions.is_empty());
+            assert_eq!(kind.cause.as_deref(), Some("g1t turns on Virtual Machine Platform and Windows Sandbox and installs WSL. Windows asks you to allow it first, and it takes a few minutes."));
+        }
+        let restart = shown_for(needing(Some(&["restart"]), Some(("windows", Some(&["restart"])))), facts());
+        screen("windows-restart", &restart);
+        assert_eq!(restart.title, "Not running: restart to finish setting up");
+        let linux = &restart.capabilities[0];
+        assert_eq!((linux.title.as_str(), linux.tone), ("Restart needed", Tone::Warning));
+        assert_eq!(ids(&linux.actions), ["restart_windows", "restart_later"]);
+        assert!(RESTART_WINDOWS.confirm.is_some_and(|q| q.starts_with("Restart Windows now?")));
+        assert_eq!(linux.fix.as_deref(), Some("Restart now, or later: g1t opens again after the restart and carries on by itself."));
+        let later = shown_for(needing(Some(&["restart"]), None), Facts { setup: SetUp { later: true, ..SetUp::default() }, ..facts() });
+        screen("windows-restart-later", &later);
+        assert_eq!(ids(&later.capabilities[0].actions), ["restart_windows"]);
+        // Said No to Windows' prompt: nothing changed, and Set up again.
+        let declined = SetUp { failed: Some("you said No to Windows' prompt, so nothing changed.".into()), ..SetUp::default() };
+        let again = shown_for(clean, Facts { setup: declined, ..facts() });
+        screen("windows-set-up-declined", &again);
+        assert_eq!(again.capabilities[0].cause.as_deref(), Some("Set up didn't finish: you said No to Windows' prompt, so nothing changed."));
+        assert_eq!(ids(&again.capabilities[0].actions), ["set_up", "view_log"]);
+    }
+
+    #[test]
+    fn what_only_the_person_can_do_is_said_step_by_step() {
+        let firmware = shown_for(needing(Some(&["virtualization"]), Some(("windows", Some(&["virtualization"])))), facts());
+        screen("windows-virtualization-off", &firmware);
+        assert_eq!(firmware.title, "Not running: virtualization is off");
+        for kind in &firmware.capabilities {
+            assert_eq!(kind.headline.as_deref(), Some("Virtualization is off"));
+            assert!(kind.fix.as_deref().is_some_and(|fix| fix.contains("BIOS or UEFI") && fix.contains("SVM Mode")));
+            assert_eq!(ids(&kind.actions), ["firmware_help", "retry"]);
+        }
+        let nested = shown_for(needing(Some(&["nested_virtualization"]), Some(("windows", None))), facts());
+        screen("windows-in-a-vm", &nested);
+        assert_eq!(nested.capabilities[0].headline.as_deref(), Some("This VM can't run the sandbox"));
+        assert!(nested.capabilities[0].fix.as_deref().is_some_and(|fix| fix.contains("ExposeVirtualizationExtensions")));
+        let old = shown_for(needing(Some(&["windows_update"]), Some(("windows", Some(&["windows_update"])))), facts());
+        screen("windows-too-old", &old);
+        assert_eq!(ids(&old.capabilities[0].actions), ["windows_update", "retry"]);
+        assert!(old.capabilities[0].cause.as_deref().is_some_and(|c| c.contains("version 2004")));
+        assert!(old.capabilities[1].cause.as_deref().is_some_and(|c| c.contains("24H2")));
+    }
+
+    #[test]
+    fn linux_and_macos_say_the_command_that_fixes_it() {
+        let linux = Facts { platform: "linux".into(), qemu_install: Some("sudo apt install qemu-system-x86".into()), ..facts() };
+        let group = shown_for(needing(Some(&["kvm_group"]), None), linux.clone());
+        screen("linux-kvm-group", &group);
+        assert_eq!(group.title, "Not running: no access to KVM");
+        assert_eq!(group.capabilities[0].fix.as_deref(), Some("Run `sudo usermod -aG kvm $USER` (Copy command), then log out and back in."));
+        assert_eq!(ids(&group.capabilities[0].actions), ["copy_kvm_group", "retry"]);
+        let bare = shown_for(needing(Some(&["kvm_module", "qemu"]), None), linux.clone());
+        screen("linux-no-kvm", &bare);
+        assert_eq!(bare.title, "Not running: KVM isn't loaded");
+        assert_eq!(ids(&bare.capabilities[0].actions), ["copy_kvm_load", "retry"]);
+        let qemu = shown_for(needing(Some(&["qemu"]), None), linux.clone());
+        assert_eq!(qemu.capabilities[0].fix.as_deref(), Some("Install it with `sudo apt install qemu-system-x86` (Copy command), then Check now. Or install Sysbox 0.7 or later instead."));
+        let unknown_distro = shown_for(needing(Some(&["qemu"]), None), Facts { qemu_install: None, ..linux.clone() });
+        assert_eq!(ids(&unknown_distro.capabilities[0].actions), ["retry", "install_sysbox"]);
+        let firmware = shown_for(needing(Some(&["virtualization"]), None), linux);
+        assert!(firmware.capabilities[0].cause.as_deref().is_some_and(|c| c.contains("or has none")));
+        let mac = Facts { platform: "macos".into(), ..facts() };
+        let no_brew = shown_for(needing(Some(&["homebrew"]), Some(("macos", Some(&[])))), mac.clone());
+        screen("macos-no-homebrew", &no_brew);
+        assert_eq!(no_brew.title, "Not running: vfkit isn't installed");
+        assert_eq!(ids(&no_brew.capabilities[0].actions), ["get_homebrew", "copy_vfkit_install"]);
+        let old = shown_for(needing(Some(&["macos_update"]), None), mac);
+        assert_eq!(ids(&old.capabilities[0].actions), ["software_update"]);
+    }
+
+    #[test]
+    fn every_need_has_a_way_forward() {
+        let needs = [
+            "restart", "windows_update", "virtualization", "nested_virtualization", "vm_platform", "wsl", "wsl_update", "windows_edition", "windows_sandbox", "kvm_module", "kvm_group", "qemu", "macos_update", "homebrew",
+            "vfkit",
+        ];
+        for need in needs {
+            for kind in ["linux", "windows"] {
+                let words = need_words(&[need.to_owned()], kind, &facts()).unwrap_or_else(|| panic!("{need} has no words"));
+                assert!(!words.actions.is_empty(), "{need} on {kind} is a dead end");
+                assert!(words.fix.is_some_and(|fix| fix.ends_with('.')), "{need}");
+                assert!(words.cause.ends_with('.'), "{need}");
+            }
+        }
+        // A need from a newer launcher this app doesn't know: the launcher's own words.
+        let newer = shown_for(needing(Some(&["something_new"]), None), facts());
+        assert_eq!(newer.capabilities[0].cause.as_deref(), Some("In the launcher's words."));
+        // From a launcher before needs: as before, by its words.
+        let before = diagnose(Code::NoWsl, &Facts { sandbox: Some(status(NO_WSL_PRO)), ..facts() });
+        assert_eq!(ids(&before.capabilities[0].actions), ["copy_wsl_install", "learn_more"]);
+        assert_eq!(lowered("WSL isn't installed"), "WSL isn't installed");
+        assert_eq!(lowered("No access to KVM"), "no access to KVM");
     }
 }

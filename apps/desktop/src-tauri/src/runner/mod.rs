@@ -60,6 +60,7 @@ pub mod diagnosis;
 mod launcher;
 mod log;
 mod native;
+mod setup;
 
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
@@ -77,7 +78,7 @@ use url::Url;
 
 pub use backend::Backend;
 use backend::{Engine, Missing};
-use diagnosis::{Code, Diagnosis, Facts};
+use diagnosis::{Code, Diagnosis, Facts, SetUp};
 use launcher::{Down, State, Status};
 use native::Fault;
 
@@ -207,6 +208,7 @@ pub struct Shared {
     tail: Mutex<VecDeque<String>>,
     tx: Mutex<Option<Sender<Ask>>>,
     updates: Mutex<Updates>,
+    setup: Mutex<SetUp>,
 }
 
 /// What settings, the tray and the site are shown.
@@ -258,6 +260,8 @@ enum Ask {
     Exited(u64),
     /// What `sandbox status` said.
     Sandbox(u64, Result<Box<Status>, String>),
+    /// Set up is done (setup.rs): how it went, and what it logged.
+    SetUp(setup::Outcome, Vec<String>),
     Quit(Sender<()>),
 }
 
@@ -383,6 +387,11 @@ fn facts(app: &AppHandle, now: &Now) -> Facts {
         download: now.download.clone(),
         held: !settings.runner || *app.state::<Shared>().paused.held(),
         update: update_facts(app, now, backend),
+        setup: SetUp {
+            needs: now.sandbox.as_ref().map(|status| setup::needs(status, |kind| settings.runner_capabilities.on(kind))).unwrap_or_default(),
+            ..app.state::<Shared>().setup.held().clone()
+        },
+        qemu_install: qemu_install(),
     }
 }
 
@@ -686,6 +695,25 @@ pub fn act(app: &AppHandle, action: &str, kind: Option<&str>) -> Result<(), Stri
         "get_docker" => browse("https://docs.docker.com/get-started/get-docker/")?,
         "install_sysbox" => browse("https://github.com/nestybox/sysbox#installation")?,
         "learn_more" => browse("https://docs.g1t.sh/guides/desktop/#how-jobs-run")?,
+        "setup_help" => browse("https://docs.g1t.sh/guides/desktop/#getting-the-runner-running")?,
+        "firmware_help" => browse("https://docs.g1t.sh/guides/desktop/#turning-on-virtualization")?,
+        "nested_help" => browse("https://docs.g1t.sh/guides/desktop/#in-a-virtual-machine")?,
+        "set_up" => set_up(app)?,
+        "restart_windows" => setup::restart_windows(&std::env::current_exe().map_err(|e| e.to_string())?)?,
+        "restart_later" => {
+            if let Ok(exe) = std::env::current_exe() {
+                setup::open_after_restart(&exe);
+            }
+            app.state::<Shared>().setup.held().later = true;
+            publish(app);
+        }
+        "windows_update" => open_system("ms-settings:windowsupdate")?,
+        "windows_activation" => open_system("ms-settings:activation")?,
+        "software_update" => open_system("x-apple.systempreferences:com.apple.Software-Update-Settings.extension")?,
+        "copy_kvm_load" => copy(launcher::KVM_LOAD)?,
+        "copy_kvm_group" => copy(launcher::KVM_GROUP)?,
+        "copy_qemu_install" => copy(&qemu_install().ok_or("This Linux's package manager isn't one g1t knows: install QEMU with it.")?)?,
+        "get_homebrew" => browse("https://brew.sh")?,
         "report" => browse(config::server(app).join("support").map_err(|e| e.to_string())?.as_str())?,
         other => return Err(format!("the runner has no action called {other}")),
     }
@@ -728,6 +756,67 @@ fn copy(text: &str) -> Result<(), String> {
         }
     }
     Err(format!("It couldn't be copied. The command is: {text}"))
+}
+
+/// What installs QEMU on this Linux, if it is one g1t knows.
+fn qemu_install() -> Option<String> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    launcher::qemu_install(&std::fs::read_to_string("/etc/os-release").unwrap_or_default(), std::env::consts::ARCH)
+}
+
+/// Opens one of the system's own settings pages: `ms-settings:windowsupdate`.
+fn open_system(page: &str) -> Result<(), String> {
+    let opener = if cfg!(windows) { "explorer.exe" } else { "open" };
+    backend::quiet(opener).arg(page).spawn().map(|_| ()).map_err(|e| format!("It couldn't be opened: {e}"))
+}
+
+/// Set up: what the sandbox still needs that Windows can do itself, done
+/// at once behind Windows' own administrator prompt, on a thread of its
+/// own (setup.rs). The cards say it is setting up until it is done; then
+/// the runner looks again, at once.
+fn set_up(app: &AppHandle) -> Result<(), String> {
+    let shared = app.state::<Shared>();
+    let status = shared.now.held().sandbox.clone().ok_or("g1t hasn't heard from the sandbox yet: try again in a moment.")?;
+    let kinds = config::settings(app).runner_capabilities;
+    let plan = setup::plan(&status, |kind| kinds.on(kind));
+    if plan.is_empty() {
+        return Err("There's nothing here for Set up to do.".into());
+    }
+    {
+        let mut setup = shared.setup.held();
+        if setup.running.is_some() {
+            return Ok(());
+        }
+        *setup = SetUp { running: Some(plan.said()), ..SetUp::default() };
+    }
+    publish(app);
+    // Windows' prompt in front of g1t's window, not behind it: asked here,
+    // on the main thread, whose window it is.
+    #[cfg(windows)]
+    let window = app.get_window(crate::WINDOW).and_then(|w| w.hwnd().ok()).map_or(0, |hwnd| hwnd.0 as isize);
+    #[cfg(not(windows))]
+    let window = 0;
+    let log = folder(app).join("setup.log");
+    let marker = native_dir(app, Backend::Sandboxed).join(setup::RESTART_FILE);
+    let _ = std::fs::create_dir_all(folder(app));
+    let _ = std::fs::remove_file(&log);
+    let script = setup::script(&plan, &log, &marker);
+    let tx = shared.tx.held().clone();
+    let spawned = std::thread::Builder::new().name("g1t-runner-setup".into()).spawn(move || {
+        let outcome = setup::run_elevated(&script, window);
+        let lines = std::fs::read_to_string(&log).map(|text| text.lines().map(str::to_owned).collect()).unwrap_or_default();
+        let _ = std::fs::remove_file(&log);
+        if let Some(tx) = tx {
+            let _ = tx.send(Ask::SetUp(outcome, lines));
+        }
+    });
+    if let Err(error) = spawned {
+        *shared.setup.held() = SetUp { failed: Some(format!("it couldn't start ({error}).")), ..SetUp::default() };
+        publish(app);
+    }
+    Ok(())
 }
 
 /// Windows' "Turn Windows features on or off", where Windows Sandbox and
@@ -1081,7 +1170,28 @@ impl Keeper {
             Ask::Line(generation, line, out) => self.line(generation, &line, out),
             Ask::Exited(generation) => self.exited(generation),
             Ask::Sandbox(generation, status) => self.polled(generation, status),
+            Ask::SetUp(outcome, lines) => self.set_up_done(outcome, lines),
         }
+    }
+
+    /// Set up is done: what it logged goes in the runner's log, and the
+    /// runner looks again at once, so the cards say what is left (a
+    /// restart, or nothing) and what can run now starts.
+    fn set_up_done(&mut self, outcome: setup::Outcome, lines: Vec<String>) {
+        for line in &lines {
+            self.write_log(line);
+        }
+        let failed = match outcome {
+            setup::Outcome::Done | setup::Outcome::Restart => None,
+            setup::Outcome::Declined => Some("you said No to Windows' prompt, so nothing changed.".to_owned()),
+            setup::Outcome::Failed(why) => Some(lines.iter().rev().find_map(|l| l.strip_prefix("g1t setup: Failed: ")).map_or(why, str::to_owned)),
+        };
+        if let Some(why) = &failed {
+            self.write_log(&format!("g1t: Set up didn't finish: {why}"));
+        }
+        *self.app.state::<Shared>().setup.held() = SetUp { failed, ..SetUp::default() };
+        self.handle(Ask::Retry);
+        publish(&self.app);
     }
 
     fn line(&mut self, generation: u64, line: &str, out: bool) {
@@ -2204,6 +2314,10 @@ fn shown(status: &Status) -> (Code, Extra) {
     }
     if status.running() {
         return (Code::Idle, Extra::default());
+    }
+    // Something this computer lacks, by name: the cards say what.
+    if !status.linux_needs().is_empty() {
+        return (Code::NeedsSetup, Extra::default());
     }
     if let Some((code, cause, fix)) = diagnosis::sandbox_trouble(status) {
         return (code, Extra { detail: Some(cause), fix, ..Extra::default() });

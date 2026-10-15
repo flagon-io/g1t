@@ -51,6 +51,32 @@ pub const STATUS_EVERY: Duration = Duration::from_secs(8);
 pub const WSL_INSTALL: &str = "wsl --install --no-distribution";
 /// What installs vfkit on a Mac.
 pub const VFKIT_INSTALL: &str = "brew install vfkit";
+/// What loads KVM on Linux, Intel's or AMD's.
+pub const KVM_LOAD: &str = "sudo modprobe kvm_intel || sudo modprobe kvm_amd";
+/// What lets this account use /dev/kvm, after logging in again.
+pub const KVM_GROUP: &str = "sudo usermod -aG kvm $USER";
+
+/// What installs QEMU on this Linux, from `/etc/os-release` and the
+/// machine (`x86_64`, `aarch64`): None where it isn't known.
+pub fn qemu_install(os_release: &str, arch: &str) -> Option<String> {
+    let field = |name: &str| {
+        os_release.lines().find_map(|line| line.strip_prefix(name).and_then(|rest| rest.strip_prefix('='))).map(|value| value.trim_matches('"').to_ascii_lowercase()).unwrap_or_default()
+    };
+    let family = format!("{} {}", field("ID"), field("ID_LIKE"));
+    let is = |name: &str| family.split_whitespace().any(|id| id == name);
+    let system = if arch == "aarch64" { "qemu-system-arm" } else { "qemu-system-x86" };
+    if is("debian") || is("ubuntu") {
+        Some(format!("sudo apt install {system}"))
+    } else if is("fedora") || is("rhel") || is("centos") {
+        Some("sudo dnf install qemu-kvm".into())
+    } else if is("arch") {
+        Some("sudo pacman -S qemu-base".into())
+    } else if is("opensuse") || is("suse") {
+        Some("sudo zypper install qemu-kvm".into())
+    } else {
+        None
+    }
+}
 /// How often the app looks again for a release with the sandbox's images,
 /// while the newest is published without them.
 pub const IMAGES_AGAIN: Duration = Duration::from_secs(5 * 60);
@@ -107,6 +133,11 @@ pub struct Capability {
     /// The person stopped it (`down --only`): stopped, not failing. None
     /// from a launcher before it could stop one kind of job on its own.
     pub turned_off: Option<bool>,
+    /// What this computer still lacks for it, by name, first what must
+    /// come first: `wsl`, `vm_platform`, `virtualization`, `restart`, …
+    /// (the launcher's needs.rs). diagnosis.rs says each. Empty from a
+    /// launcher before them, whose causes are read by their words (`why`).
+    pub needs: Vec<String>,
 }
 
 impl Capability {
@@ -192,6 +223,13 @@ impl Status {
             .clone()
             .or_else(|| self.capabilities.iter().find_map(|c| c.runner_version.clone()))
             .or_else(|| self.launcher_version.clone())
+    }
+
+    /// What this computer lacks for Linux jobs, by name: none when the
+    /// person stopped them.
+    pub fn linux_needs(&self) -> Vec<String> {
+        let linux = self.linux();
+        if linux.off() { vec![] } else { linux.needs }
     }
 
     /// What is wrong with Linux jobs, in the launcher's words: its error,

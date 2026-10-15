@@ -30,6 +30,7 @@ mod engine;
 mod exec;
 mod launcher;
 mod native;
+mod needs;
 mod private;
 mod sandbox;
 mod service;
