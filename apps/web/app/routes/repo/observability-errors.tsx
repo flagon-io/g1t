@@ -8,6 +8,7 @@ import { FilterBar, ObservabilityHeader, useLoadingView } from "../../components
 import { EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
+import { NavTab, NavTabs } from "../../components/ui/nav-tabs";
 import { refusal } from "../../lib/access.server";
 import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
@@ -76,19 +77,20 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
         about="Exceptions, grouped: the same error thrown a thousand times is one row. Each can become an issue, carrying the stack and the request it came from."
       />
       <FilterBar path={path} view={view} environments={facets?.environments ?? []} services={facets?.services ?? []}>
-        <nav className="flex rounded-md border border-line p-0.5 text-sm" aria-label="State">
+        <NavTabs label="State" variant="pill">
           {STATES.map((s) => (
-            <Link
+            <NavTab
               key={s}
               to={viewHref(path, view, { state: s === "open" ? null : s })}
               preventScrollReset
-              aria-current={s === state ? "true" : undefined}
-              className={cn("rounded px-2 py-0.5 text-xs capitalize", s === state ? "bg-raised text-fg" : "text-muted hover:text-fg")}
+              current={s === state}
+              variant="pill"
+              className="capitalize"
             >
               {s}
-            </Link>
+            </NavTab>
           ))}
-        </nav>
+        </NavTabs>
       </FilterBar>
       <div className="mt-3 min-h-5">
         {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}
