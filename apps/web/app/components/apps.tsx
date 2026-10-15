@@ -1,4 +1,4 @@
-import { Bell, Building2, Code2, House, LayoutGrid, Lock, MessagesSquare, Pin, Plug, Search, Shapes, Users } from "lucide-react";
+import { Bell, Building2, Code2, House, LayoutGrid, Lock, MessagesSquare, Pin, Plug, Repeat, Search, Shapes, Users } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useFetchers } from "react-router";
 
@@ -17,6 +17,7 @@ export function appIcon(key: BuiltinApp, size = 18): ReactNode {
     notifications: <Bell size={size} />,
     code: <Code2 size={size} />,
     artifacts: <Shapes size={size} />,
+    routines: <Repeat size={size} />,
     people: <Users size={size} />,
     workspace: <Building2 size={size} />,
   };

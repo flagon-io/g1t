@@ -305,6 +305,7 @@ function MoreSheet({
                 <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
               ))}
               <MoreTile to={appOf("artifacts").path(slug)} icon={appIcon("artifacts", 20)} label="Artifacts" />
+              <MoreTile to={appOf("routines").path(slug)} icon={appIcon("routines", 20)} label="Routines" />
               <MoreTile to={appOf("people").path(slug)} icon={appIcon("people", 20)} label="People" />
               <MoreTile to={appOf("workspace").path(slug)} icon={appIcon("workspace", 20)} label="Workspace" />
               {onExplore ? (

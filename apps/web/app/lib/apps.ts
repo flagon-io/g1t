@@ -2,8 +2,8 @@
  * The rail's built-in apps, the apps a workspace added, and the ones each
  * person pins to their rail.
  *
- * Built-in apps (Home, Chat, Notifications, Code, Artifacts, People and
- * Workspace) are always in the rail; their own pages (Projects, Usage,
+ * Built-in apps (Home, Chat, Notifications, Code, Artifacts, Routines,
+ * People and Workspace) are always in the rail; their own pages (Projects, Usage,
  * Teams and the rest) are in their sidebars. Apps are the integrations
  * the workspace connected, each opening where it is looked after. Each
  * person pins the ones they want.
@@ -26,7 +26,7 @@
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
 
 /** The apps that are always in the rail. */
-export type BuiltinApp = "home" | "chat" | "notifications" | "code" | "artifacts" | "people" | "workspace";
+export type BuiltinApp = "home" | "chat" | "notifications" | "code" | "artifacts" | "routines" | "people" | "workspace";
 
 export type BuiltinInfo = {
   key: BuiltinApp;
@@ -46,6 +46,7 @@ export const BUILTINS: BuiltinInfo[] = [
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
   { key: "code", name: "Code", path: under("overview"), code: true },
   { key: "artifacts", name: "Artifacts", path: under("artifacts") },
+  { key: "routines", name: "Routines", path: under("routines") },
   { key: "people", name: "People", path: under("people") },
   { key: "workspace", name: "Workspace", path: under("workspace") },
 ];

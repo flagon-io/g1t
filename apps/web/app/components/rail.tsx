@@ -240,6 +240,7 @@ export function Rail({
     },
     ...(code ? [{ key: "code" as const, label: "Code" }] : []),
     { key: "artifacts", label: "Artifacts" },
+    { key: "routines", label: "Routines" },
   ];
   const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);
   // A pinned app is current on its own page and the pages under it.
