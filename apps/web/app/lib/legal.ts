@@ -9,9 +9,7 @@ import { type SimpleIcon, siX } from "simple-icons";
 export const COMPANY = {
   name: "Flagon, Inc.",
   url: "https://www.flagon.io",
-  /** How the footer describes it. */
-  about: "a small, independent software company",
-  /** Who founded it, named wherever the company is described. */
+  /** Who founded it, for search engines' structured data only (structured-data.ts). */
   founder: "Chase Pierce",
 };
 

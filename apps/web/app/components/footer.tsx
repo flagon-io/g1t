@@ -220,7 +220,7 @@ export function MakerLine() {
         <FlagonMark className="mr-1 inline-block size-[0.95em] -translate-y-px align-middle" />
         {COMPANY.name}
       </a>
-      {products.length > 0 ? `, the people behind ${listed(products)}.` : `, ${COMPANY.about} founded by ${COMPANY.founder}.`}
+      {products.length > 0 ? `, the people behind ${listed(products)}.` : "."}
     </p>
   );
 }

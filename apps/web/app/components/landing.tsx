@@ -1081,8 +1081,7 @@ export function Landing() {
               ))}
             </ul>
             <p className="text-sm leading-6 text-muted">
-              g1t is made by Flagon, Inc., a small, independent software company
-              founded by Chase Pierce.
+              g1t is made by Flagon, Inc.
             </p>
           </div>
         </div>
