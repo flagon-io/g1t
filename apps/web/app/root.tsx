@@ -92,7 +92,7 @@ import {
   readDeveloperMode,
   useDeveloperMode,
 } from "./lib/developer-mode";
-import { DebugDetails } from "./components/debug-details";
+import { RouteError } from "./components/route-error";
 import { ConnectionToast } from "./components/connection-toast";
 import { isNetworkFailure } from "./lib/resilient-fetch";
 import { useReconnect } from "./lib/reconnect";
@@ -641,120 +641,5 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  const location = useLocation();
-  const matches = useMatches();
-  const href = location.pathname + location.search + location.hash;
-  // A tab left open across a deploy: load the address again as a whole
-  // page, once, rather than show an error the reload fixes. A document load
-  // never reloads, so the server and the hydrating client render the same.
-  const reloadable = reloadFixes({
-    error,
-    status: isRouteErrorResponse(error) ? error.status : undefined,
-    clientNavigation: clientNavigated(location.key),
-    caughtByCatchAll: matches.at(-1)?.id === "routes/not-found",
-  });
-  // Already loaded again once, or the reload never started: show the page.
-  const tried = useMemo(
-    () => reloadable && reloadedBefore(href),
-    [reloadable, href],
-  );
-  // The error in full, for reporting it (lib/developer-mode.ts).
-  const developer =
-    useDeveloperMode(useRouteLoaderData<typeof loader>("root")?.developer) ||
-    import.meta.env.DEV;
-  const [gaveUp, setGaveUp] = useState<string | null>(null);
-  const reload = reloadable && !tried && gaveUp !== href;
-  // No answer from g1t at all: keep trying, and the page comes back by itself.
-  const offline = !reload && isNetworkFailure(error);
-  useReconnect(offline);
-  useEffect(() => {
-    if (!reload) return;
-    try {
-      sessionStorage.setItem(RELOADED_KEY, href);
-    } catch {
-      // No session storage: reload anyway; a document load never asks again.
-    }
-    window.location.assign(href);
-    const timer = window.setTimeout(() => setGaveUp(href), RELOAD_GIVE_UP_MS);
-    return () => window.clearTimeout(timer);
-  }, [reload, href]);
-  if (reload) {
-    return (
-      <PageMain
-        className="mx-auto max-w-xl px-4 py-32 text-center text-sm text-muted"
-        aria-busy="true"
-      >
-        <title>Loading · g1t</title>
-        Loading the latest version of g1t…
-      </PageMain>
-    );
-  }
-
-  if (offline) {
-    return (
-      <PageMain
-        className="mx-auto max-w-xl px-4 py-32 text-center"
-        aria-busy="true"
-      >
-        <title>Reconnecting · g1t</title>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Can't reach g1t
-        </h1>
-        <p className="mt-3 text-muted">
-          Check your connection. This page loads by itself once g1t answers.
-        </p>
-      </PageMain>
-    );
-  }
-
-  let title = "Something went wrong";
-  let details = "An unexpected error occurred. Try again in a moment.";
-
-  if (isRouteErrorResponse(error)) {
-    // The same page for something private and something missing.
-    if (error.status === 404) {
-      return (
-        <>
-          <title>Not found · g1t</title>
-          <NotFound data={error.data} />
-        </>
-      );
-    }
-    if (typeof error.data === "string" && error.data) {
-      details = error.data;
-    }
-    // A token asked for what needs a real sign-in (lib/website-token.ts).
-    if (isNeedsSignIn(error.data)) {
-      title = "This needs you to sign in";
-      details = error.data.message;
-    }
-  }
-
-  return (
-    <PageMain
-      className={`mx-auto px-4 text-center ${developer ? "max-w-3xl py-16" : "max-w-xl py-32"}`}
-    >
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="mt-3 text-muted">{details}</p>
-      <div className="mt-8">
-        <ButtonLink to="/" variant="outline">
-          Back to home
-        </ButtonLink>
-      </div>
-      {developer ? (
-        <DebugDetails error={error} />
-      ) : (
-        <p className="mt-6 text-xs text-faint">
-          Turn on developer mode in{" "}
-          <Link
-            to="/settings/account#developer"
-            className="underline underline-offset-4 hover:text-fg"
-          >
-            Settings
-          </Link>{" "}
-          to see what went wrong.
-        </p>
-      )}
-    </PageMain>
-  );
+  return <RouteError error={error} />;
 }
