@@ -79,7 +79,7 @@ const BUTTON_BASE =
   "inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-50";
 
 const BUTTON_VARIANTS: Record<Variant, string> = {
-  primary: "bg-fg text-bg hover:bg-white",
+  primary: "bg-fg text-bg hover:bg-fg-hover",
   lavender: "bg-accent text-bg hover:bg-accent-hover",
   quiet: "border border-line text-fg/80 hover:border-line-strong hover:bg-surface hover:text-fg",
   danger: "border border-danger/40 text-danger hover:border-danger/70 hover:bg-danger/10",
@@ -213,9 +213,9 @@ export function PageHeader({ title, description, actions }: { title: ReactNode; 
 }
 
 const STATE = {
-  ok: { label: "OK", fill: "var(--g1t-success)", text: "text-success" },
-  warning: { label: "Warning", fill: "var(--g1t-warn)", text: "text-warn" },
-  stopped: { label: "Stopped", fill: "var(--g1t-danger)", text: "text-danger" },
+  ok: { label: "OK", fill: "var(--color-success)", text: "text-success" },
+  warning: { label: "Warning", fill: "var(--color-warn)", text: "text-warn" },
+  stopped: { label: "Stopped", fill: "var(--color-danger)", text: "text-danger" },
 } as const;
 
 export function StateBadge({ state }: { state: Limit["state"] }) {
@@ -241,7 +241,7 @@ export function ExposureBar({ limit, wide = false }: { limit: Limit; wide?: bool
         {percent != null && <span className={`tabular ${STATE[state].text}`}>{percent}%</span>}
       </div>
       <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="mt-1.5 block h-1.5 w-full" role="img" aria-label={`${STATE[state].label}: ${percent ?? 0}% of the limit`}>
-        <rect x="0" y="0" width="100" height="4" rx="2" fill="var(--g1t-raised)" />
+        <rect x="0" y="0" width="100" height="4" rx="2" fill="var(--color-raised)" />
         {ceilingMicros != null && share > 0 && (
           <rect x="0" y="0" width={Math.max(2, share * 100)} height="4" rx="2" fill={STATE[state].fill} />
         )}

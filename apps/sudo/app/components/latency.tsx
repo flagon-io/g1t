@@ -21,7 +21,7 @@ function Chart({ history, name }: { history: CheckHistory; name: string }) {
     <svg viewBox={`0 0 ${p.width} ${p.height}`} className="block h-auto w-full" role="img" aria-label={`${name}: how long each check took, ${summaryWords(latencySummary(history.samples))}`}>
       {p.ticks.map((t) => (
         <g key={t.label}>
-          <line x1={p.plot.x} x2={p.plot.x + p.plot.width} y1={t.y} y2={t.y} stroke="var(--g1t-line)" strokeWidth="1" strokeDasharray={t.label === "0" ? undefined : "2 4"} />
+          <line x1={p.plot.x} x2={p.plot.x + p.plot.width} y1={t.y} y2={t.y} stroke="var(--color-line)" strokeWidth="1" strokeDasharray={t.label === "0" ? undefined : "2 4"} />
           <text x={p.plot.x - 6} y={t.y + 3.5} textAnchor="end" fontSize="10" className="fill-faint tabular">
             {t.label}
           </text>
@@ -29,7 +29,7 @@ function Chart({ history, name }: { history: CheckHistory; name: string }) {
       ))}
       {p.slowY != null && (
         <g>
-          <line x1={p.plot.x} x2={p.plot.x + p.plot.width} y1={p.slowY} y2={p.slowY} stroke="var(--g1t-warn)" strokeWidth="1" strokeDasharray="4 3" />
+          <line x1={p.plot.x} x2={p.plot.x + p.plot.width} y1={p.slowY} y2={p.slowY} stroke="var(--color-warn)" strokeWidth="1" strokeDasharray="4 3" />
           <text x={p.plot.x + p.plot.width} y={p.slowY - 3} textAnchor="end" fontSize="10" className="fill-warn">
             slow over {msWords(history.slow_ms!)}
           </text>
@@ -38,7 +38,7 @@ function Chart({ history, name }: { history: CheckHistory; name: string }) {
       {p.down.map((d, i) => (
         <rect key={`d${i}`} x={d.x - 1} y={p.plot.y} width="2" height={p.plot.height} className="fill-danger/35" />
       ))}
-      <path d={p.line} fill="none" stroke="var(--g1t-accent)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={p.line} fill="none" stroke="var(--color-accent)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
       {p.slow.map((s, i) => (
         <circle key={`s${i}`} cx={s.x} cy={s.y} r="2.5" className="fill-warn" />
       ))}

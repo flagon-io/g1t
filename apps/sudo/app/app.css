@@ -8,31 +8,49 @@
   --font-display: var(--g1t-font-display);
   --font-mono: var(--g1t-font-mono);
 
-  --color-bg: var(--g1t-bg);
-  --color-surface: var(--g1t-surface);
-  --color-raised: var(--g1t-raised);
-  --color-line: var(--g1t-line);
-  --color-line-strong: var(--g1t-line-strong);
+  /*
+   * Every colour is a pair: light-dark() picks the light palette or the
+   * dark one by the page's color-scheme, which follows the Appearance
+   * switch (lib/theme.ts), as on g1t.sh.
+   */
+  --color-bg: light-dark(var(--g1t-light-bg), var(--g1t-bg));
+  --color-surface: light-dark(var(--g1t-light-surface), var(--g1t-surface));
+  --color-raised: light-dark(var(--g1t-light-raised), var(--g1t-raised));
+  --color-line: light-dark(var(--g1t-light-line), var(--g1t-line));
+  --color-line-strong: light-dark(var(--g1t-light-line-strong), var(--g1t-line-strong));
 
-  --color-fg: var(--g1t-fg);
-  --color-fg-soft: var(--g1t-fg-soft);
-  --color-muted: var(--g1t-muted);
-  --color-faint: var(--g1t-faint);
+  --color-fg: light-dark(var(--g1t-light-fg), var(--g1t-fg));
+  --color-fg-soft: light-dark(var(--g1t-light-fg-soft), var(--g1t-fg-soft));
+  /* A primary button's hover: brighter than fg on dark, softer on light. */
+  --color-fg-hover: light-dark(#3a3a41, #ffffff);
+  --color-muted: light-dark(var(--g1t-light-muted), var(--g1t-muted));
+  --color-faint: light-dark(var(--g1t-light-faint), var(--g1t-faint));
 
-  --color-accent: var(--g1t-accent);
-  --color-accent-hover: var(--g1t-accent-hover);
-  --color-accent-dim: var(--g1t-accent-dim);
+  --color-accent: light-dark(var(--g1t-light-accent), var(--g1t-accent));
+  --color-accent-hover: light-dark(var(--g1t-light-accent-hover), var(--g1t-accent-hover));
+  --color-accent-dim: light-dark(var(--g1t-light-accent-dim), var(--g1t-accent-dim));
 
-  --color-success: var(--g1t-success);
-  --color-success-dim: var(--g1t-success-dim);
+  --color-success: light-dark(var(--g1t-light-success), var(--g1t-success));
+  --color-success-dim: light-dark(var(--g1t-light-success-dim), var(--g1t-success-dim));
 
-  --color-info: var(--g1t-info);
-  --color-merged: var(--g1t-merged);
-  --color-warn: var(--g1t-warn);
-  --color-danger: var(--g1t-danger);
+  --color-info: light-dark(var(--g1t-light-info), var(--g1t-info));
+  --color-merged: light-dark(var(--g1t-light-merged), var(--g1t-merged));
+  --color-warn: light-dark(var(--g1t-light-warn), var(--g1t-warn));
+  --color-danger: light-dark(var(--g1t-light-danger), var(--g1t-danger));
 }
 
+/*
+ * Appearance (lib/theme.ts): with no choice, or Auto, the page follows
+ * the system; a choice of Light or Dark is data-theme on <html>, drawn by
+ * the server, so a page never shows the other theme first.
+ */
 html {
+  color-scheme: light dark;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+html[data-theme="dark"] {
   color-scheme: dark;
 }
 

@@ -27,11 +27,14 @@ import {
   type LucideIcon,
   Megaphone,
   Menu,
+  Monitor,
+  Moon,
   ScrollText,
   Server,
   ShieldAlert,
   ShieldCheck,
   Signpost,
+  Sun,
   Siren,
   Tags,
   Ticket,
@@ -42,11 +45,12 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useRouteLoaderData } from "react-router";
 
 import { Logo } from "~/components/logo";
 import { useZone } from "~/components/ui";
 import { NAV, type NavCounts, type NavGroup, type NavIcon, type NavItem, countFor, holdsCurrent, isCurrent } from "~/lib/nav";
+import { THEME_CHOICES, THEME_LABEL, type ThemeChoice, setTheme, useThemeChoice } from "~/lib/theme";
 import { zoneAbbr } from "~/lib/time";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
@@ -235,6 +239,37 @@ function TimesIn() {
   );
 }
 
+const THEME_ICON: Record<ThemeChoice, LucideIcon> = { auto: Monitor, light: Sun, dark: Moon };
+
+/** Appearance: Auto, Light or Dark, switched at once and kept in a cookie (lib/theme.ts). */
+function ThemeSwitch() {
+  const root = useRouteLoaderData<{ theme?: ThemeChoice }>("root");
+  const current = useThemeChoice(root?.theme);
+  return (
+    <div role="radiogroup" aria-label="Appearance" className="mt-3 flex rounded-md border border-line p-0.5">
+      {THEME_CHOICES.map((choice) => {
+        const Icon = THEME_ICON[choice];
+        const on = choice === current;
+        return (
+          <button
+            key={choice}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => setTheme(choice)}
+            className={`flex h-7 flex-1 items-center justify-center gap-1.5 rounded text-xs transition-colors ${
+              on ? "bg-raised font-medium text-fg" : "text-muted hover:text-fg"
+            }`}
+          >
+            <Icon size={13} aria-hidden />
+            {THEME_LABEL[choice]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Who is signed in: a panel of its own at the foot of the menu. */
 function SignedIn({ email }: { email: string | null | undefined }) {
   return (
@@ -247,6 +282,7 @@ function SignedIn({ email }: { email: string | null | undefined }) {
       )}
       <p className="mt-1.5 text-[0.6875rem] leading-snug text-faint">g1t staff only. Every change is recorded with who made it.</p>
       <TimesIn />
+      <ThemeSwitch />
     </div>
   );
 }
