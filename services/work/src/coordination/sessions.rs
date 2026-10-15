@@ -209,7 +209,7 @@ pub(crate) fn renewal(now: u64, minutes: u32, expires_at: &str) -> Option<String
 
 /// Whether a session is a subagent that ended on purpose: it stays ended.
 fn finished_subagent(row: &SessionRow) -> bool {
-    row.parent_id.is_some() && row.state == "ended" && row.end_reason.as_deref() != Some("timed_out")
+    row.parent_id.is_some() && row.state == "ended" && !revives(row.end_reason.as_deref())
 }
 
 impl Work {
@@ -526,7 +526,7 @@ impl Work {
     pub(crate) async fn update_session(&self, a: UpdateSessionArgs) -> Result<Outcome<Session>> {
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
         let row = unwrap_or_fail!(self.own_session(&repo, &a.actor, &a.id).await?);
-        if row.state == "ended" && row.end_reason.as_deref() != Some("timed_out") && !finished_subagent(&row) {
+        if row.state == "ended" && !revives(row.end_reason.as_deref()) && !finished_subagent(&row) {
             return Ok(Outcome::fail(FailureCode::Conflict, "This session has ended. Start a new one."));
         }
         let (issue, pull) = unwrap_or_fail!(self.session_subjects(&repo, a.issue, a.pull).await?);
@@ -891,7 +891,7 @@ impl Work {
         }
         let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
         let row = unwrap_or_fail!(self.own_session(&repo, &a.actor, &a.id).await?);
-        if row.state == "ended" && row.end_reason.as_deref() != Some("timed_out") {
+        if row.state == "ended" && !revives(row.end_reason.as_deref()) {
             return Ok(Outcome::fail(FailureCode::Conflict, "This session has ended. Start a new one."));
         }
         // Recording is a heartbeat too.

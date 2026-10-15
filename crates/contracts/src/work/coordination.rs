@@ -739,6 +739,14 @@ pub fn ended_by_hand(username: &str) -> String {
     format!("{ENDED_BY_HAND}{username}")
 }
 
+/// Whether a session that ended for `end_reason` comes back when its
+/// harness is heard from again (an update, a record, a start): one that
+/// timed out, or one a person ended by hand, which is a soft close for a
+/// session left behind. One its harness ended itself stays ended.
+pub fn revives(end_reason: Option<&str>) -> bool {
+    end_reason.is_some_and(|reason| reason == "timed_out" || reason.starts_with(ENDED_BY_HAND))
+}
+
 /// Whether `actor` may end a session `owner` runs: their own, or anyone's
 /// when they have write access (`can_push`) to the repository.
 pub fn may_end_session(owner: &str, actor: &str, can_push: bool) -> bool {
@@ -1288,6 +1296,15 @@ mod tests {
         // Someone else's: never in its harness's words.
         assert_eq!(session_end_reason(false, false, "bo", Some("done")), "ended by hand by @bo");
         assert!(ended_by_hand("bo").starts_with(ENDED_BY_HAND));
+    }
+
+    #[test]
+    fn a_session_ended_by_hand_or_timed_out_comes_back_when_heard_from() {
+        assert!(revives(Some("timed_out")));
+        assert!(revives(Some(&ended_by_hand("bo"))));
+        assert!(!revives(Some("done")));
+        assert!(!revives(Some("ended")));
+        assert!(!revives(None));
     }
 
     #[test]
