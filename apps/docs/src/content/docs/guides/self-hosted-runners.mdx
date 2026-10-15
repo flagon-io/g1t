@@ -1,6 +1,6 @@
 ---
 title: Self-hosted runners
-description: Run your workflow jobs, and if you choose g1t's checks and merge queue, on your own machines. Their time costs nothing.
+description: Run your workflow jobs, and if you choose g1t's own checks, on your own machines. Their time costs nothing.
 ---
 
 import { TabItem, Tabs } from '@astrojs/starlight/components';
@@ -721,8 +721,7 @@ with `--group`. Deleting a group moves its runners to the default group.
 ## g1t's work on your runners
 
 **Runners → Where work runs** can send g1t's own work to your runners
-too: the checks g1t runs on pull requests, merge checks and the merge
-queue's test runs. Switch on **Run g1t's work on self-hosted runners** and
+too: the checks g1t runs on pull requests and merge checks. Switch on **Run g1t's work on self-hosted runners** and
 give the labels a runner needs to take it (`self-hosted` is always one).
 
 - The work runs exactly as in g1t's sandbox: the same harness, with a
