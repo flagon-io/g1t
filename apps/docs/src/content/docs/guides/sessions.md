@@ -282,9 +282,13 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   session on that account, with its key, on the model Ask is set to use
   (or `claude-opus-5-5`). It runs in a sandbox on Anthropic's side. Its
   first step installs the [g1t CLI](/guides/cli/) from g1t, sets git up to
-  send the token, clones the repository and ties the clone to the session,
+  send the token and to commit as you (your username and noreply address),
+  clones the repository and ties the clone to the session,
   so it works the way the work-on-issue skill describes: `g1t work
   context`, `g1t work claim`, `g1t pr create`, `g1t pr checks --watch`.
+  It works on a branch and a pull request, except in a repository with no
+  commits yet, where there is nothing to open one against: it pushes the
+  first version straight to the default branch.
   g1t's MCP server is attached too, for anything the CLI has no command
   for. Both reach g1t with a token made for you
   and that repository only, which lasts the session and is revoked when it
