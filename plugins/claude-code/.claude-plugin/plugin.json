@@ -1,6 +1,6 @@
 {
   "name": "g1t",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Work on g1t issues from Claude Code: records your sessions on g1t, loads an issue's work context, claims and hands off work, and connects g1t's MCP server.",
   "author": { "name": "Flagon, Inc.", "url": "https://g1t.sh" },
   "homepage": "https://docs.g1t.sh/guides/claude-code-plugin/",

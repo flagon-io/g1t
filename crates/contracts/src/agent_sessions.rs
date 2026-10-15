@@ -162,6 +162,19 @@ pub struct SyncAgentSessionArgs {
     pub id: String,
 }
 
+/// `agent_session_link`: where whoever started a Managed Agents session
+/// opens it on the Anthropic account it runs on (the Claude Console).
+/// Nobody else is given it: the session's events hold what it was asked
+/// and every tool's output, which g1t shows no one but them. Returns
+/// `Outcome<String>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AgentSessionLinkArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    /// The g1t session (`ses_…`) at the top of its tree.
+    pub id: String,
+}
+
 /// `stop_agent_session`: interrupts a Managed Agents session and ends its
 /// record. Only whoever started it. Returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]

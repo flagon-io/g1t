@@ -180,7 +180,10 @@ An agent can record its own session with the `pull_request` tool's
 (`prompt`, `message`, `tool_call`, `tool_result` or `note`) and `text`,
 and tool entries also carry the `tool` name. Record before each push: an
 entry is tied to the commit that was the head when it was recorded. Do not
-put secrets in a session; sessions are as visible as the repository.
+put secrets in a session: g1t takes out what looks like a credential, and
+shows what a session recorded only to the workspace's members (a prompt
+only to whoever typed it), but that is a safety net. See
+[Who sees what](/guides/sessions/#who-sees-what).
 
 ### Recording sessions automatically
 

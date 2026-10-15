@@ -406,6 +406,11 @@ export type SessionEntry = {
   commit: string | null;
   /** RFC 3339. */
   at: string;
+  /**
+   * Its text is not shown to this viewer (`text` is empty): a prompt shows
+   * only to whoever typed it, and a tool's output to whoever ran it.
+   */
+  withheld?: boolean;
 };
 
 export type NewSessionEntry = Pick<SessionEntry, "kind" | "text"> &
@@ -1551,6 +1556,11 @@ export type WorkSessionDetail = {
   skills?: SessionSkill[];
   /** For a subagent: the session at the top of its tree. */
   root?: WorkSession | null;
+  /**
+   * The viewer is not a member of the repository's workspace: the session
+   * shows that it runs, who runs it and what it is tied to, nothing more.
+   */
+  limited?: boolean;
 };
 
 /** Reading coordination: work service methods (services/work/src/coordination, decisions.rs). */

@@ -13,7 +13,8 @@
 use g1t_contracts::agents::*;
 use g1t_contracts::repos::{Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{PullStatus, SessionEntry};
+use g1t_contracts::work::{PullStatus, SessionEntry, SessionEntryKind};
+use g1t_scan::redact::soften;
 use g1t_contracts::{FailureCode, Membership, Outcome, User, Viewer, new_id};
 use g1t_kit::now_ms;
 use serde::Deserialize;
@@ -21,6 +22,7 @@ use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
 use crate::checks::{hash, new_token};
+use crate::coordination::shown::{self, Sight};
 use crate::rows::SessionRow;
 use crate::{Work, optional};
 
@@ -531,7 +533,9 @@ impl Work {
                         agent: row.agent,
                         entries: row.entries,
                         tools: row.tools,
-                        prompt: row.prompt.map(|prompt| one_line(&prompt, 200)),
+                        // Someone's words to their agent: not for outsiders,
+                        // and to members without credentials or swearing.
+                        prompt: row.prompt.filter(|_| member).map(|prompt| soften(&one_line(&prompt, 200))).filter(|prompt| !prompt.is_empty()),
                         runs: mine.len() as u32,
                         cost_usd: (member && mine.iter().any(|run| run.cost_usd.is_some())).then_some(spent),
                         active: mine
@@ -552,18 +556,34 @@ impl Work {
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
         let member = is_member(&a.viewer, &repo.namespace);
+        // Each entry as the viewer may see it: a prompt or a tool's output
+        // only by whoever's session recorded it, nothing to an outsider
+        // but g1t's own notes (coordination/shown.rs).
         let entries: Vec<SessionEntry> = self
             .db
             .prepare(
-                "SELECT seq, kind, text, tool, \"commit\", at FROM session_entries
-                 WHERE pull_id = ? ORDER BY seq LIMIT ?",
+                "SELECT e.seq, e.kind, e.text, e.tool, e.\"commit\", e.at, s.actor_id FROM session_entries e
+                 LEFT JOIN sessions s ON s.id = e.session_id
+                 WHERE e.pull_id = ? ORDER BY e.seq LIMIT ?",
             )
             .bind(&[pull.id.as_str().into(), SESSION_ENTRIES.into()])?
             .all()
             .await?
             .results::<SessionRow>()?
             .into_iter()
-            .map(SessionEntry::from)
+            .filter_map(|row| {
+                let note = row.kind == SessionEntryKind::Note && row.actor_id.is_none();
+                let sight = match &row.actor_id {
+                    Some(actor) => Sight::of(&a.viewer, &repo.namespace, actor),
+                    None if member => Sight::Member,
+                    None => Sight::Outside,
+                };
+                let entry = SessionEntry::from(row);
+                if note && sight == Sight::Outside {
+                    return Some(SessionEntry { text: shown::clean(&entry.text), ..entry });
+                }
+                shown::entry(entry, sight)
+            })
             .collect();
         let runs: Vec<AgentRun> = self
             .db

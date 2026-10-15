@@ -87,7 +87,12 @@ go to [flagon-io/g1t](https://g1t.sh/flagon-io/g1t).
 ## What it records
 
 The plugin's hooks call the `g1t` CLI, signed in as you, so a session is
-recorded as yours and is as visible as the repository it is in.
+recorded as yours. Before anything is sent, the plugin takes out what
+looks like a credential (`[redacted]`) from command lines, prompts,
+titles, and what subagents were asked and reported; g1t does it again as
+it records. Your prompts show only to you; the workspace's members see the
+rest, and anyone else who can read the repository sees only that the
+session runs ([Who sees what](/guides/sessions/#who-sees-what)).
 
 | When | The hook runs | What g1t receives |
 | --- | --- | --- |

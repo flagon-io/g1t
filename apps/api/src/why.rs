@@ -301,7 +301,7 @@ mod tests {
     }
 
     fn entry(seq: u32, kind: SessionEntryKind, text: &str, commit: Option<&str>) -> SessionEntry {
-        SessionEntry { seq, kind, text: text.into(), tool: None, commit: commit.map(String::from), at: String::new() }
+        SessionEntry { seq, kind, text: text.into(), tool: None, commit: commit.map(String::from), at: String::new(), withheld: false }
     }
 
     #[test]

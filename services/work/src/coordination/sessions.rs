@@ -30,7 +30,7 @@ use super::links::{PULL_SESSIONS, PullSessionRow, count_subagents, end_tree_sql,
 /// The most pull requests one `pull_sessions` asks about.
 const MAX_PULL_SESSIONS: usize = 100;
 use super::updates::push_delivery;
-use super::{SESSION_COLUMNS, SessionRow, after_minutes, tidy, unwrap_or_fail};
+use super::{SESSION_COLUMNS, SessionRow, after_minutes, shown, tidy, unwrap_or_fail};
 use crate::Work;
 use crate::rows::NumberRow;
 
@@ -268,10 +268,10 @@ impl Work {
             pull,
             branch: tidy(a.branch.as_deref(), MAX_BRANCH_CHARS),
             head_commit: tidy(a.head_commit.as_deref(), MAX_COMMIT_CHARS),
-            title: tidy(a.title.as_deref(), MAX_TITLE_CHARS),
+            title: tidy(a.title.as_deref().map(shown::clean).as_deref(), MAX_TITLE_CHARS),
             agent_type: tidy(a.agent_type.as_deref(), MAX_AGENT_CHARS),
-            task: clip(a.task.as_deref(), MAX_TASK_CHARS),
-            prompt: clip(a.prompt.as_deref(), MAX_PROMPT_CHARS),
+            task: clip(a.task.as_deref().map(shown::clean).as_deref(), MAX_TASK_CHARS),
+            prompt: clip(a.prompt.as_deref().map(shown::clean).as_deref(), MAX_PROMPT_CHARS),
             model: tidy(a.model.as_deref(), MAX_MODEL_CHARS),
             result: None,
         };
@@ -534,12 +534,12 @@ impl Work {
             pull,
             branch: tidy(a.branch.as_deref(), MAX_BRANCH_CHARS),
             head_commit: tidy(a.head_commit.as_deref(), MAX_COMMIT_CHARS),
-            title: tidy(a.title.as_deref(), MAX_TITLE_CHARS),
+            title: tidy(a.title.as_deref().map(shown::clean).as_deref(), MAX_TITLE_CHARS),
             agent_type: tidy(a.agent_type.as_deref(), MAX_AGENT_CHARS),
-            task: clip(a.task.as_deref(), MAX_TASK_CHARS),
-            prompt: clip(a.prompt.as_deref(), MAX_PROMPT_CHARS),
+            task: clip(a.task.as_deref().map(shown::clean).as_deref(), MAX_TASK_CHARS),
+            prompt: clip(a.prompt.as_deref().map(shown::clean).as_deref(), MAX_PROMPT_CHARS),
             model: tidy(a.model.as_deref(), MAX_MODEL_CHARS),
-            result: clip(a.result.as_deref(), MAX_RESULT_CHARS),
+            result: clip(a.result.as_deref().map(shown::clean).as_deref(), MAX_RESULT_CHARS),
         };
         self.resume(&repo, row, &a.actor, fields).await
     }
@@ -706,7 +706,8 @@ impl Work {
         ids.extend(children.iter().map(|child| child.id.clone()));
         let (touched, links, skills) = self.tree_facts(&repo.id, &ids).await?;
         let updates = self.pending_updates(&session.id).await?;
-        Ok(Outcome::Ok(SessionDetail { session, entries, children, touched, links, skills, root, updates }))
+        let detail = SessionDetail { session, entries, children, touched, links, skills, root, updates, limited: false };
+        Ok(Outcome::Ok(shown::detail(detail, &a.viewer, &repo.namespace)))
     }
 
     /// The sessions tied to some pull requests, for Home (`PullSessionsArgs`).
@@ -812,6 +813,7 @@ impl Work {
             self.fill_subagents(&mut sessions).await?;
         }
         self.fill_first_prompts(&mut sessions).await?;
+        shown::sessions(&mut sessions, &a.viewer, &repo.namespace);
         Ok(Outcome::Ok(sessions))
     }
 
@@ -896,7 +898,9 @@ impl Work {
         for keyed in a.entries {
             let entry = keyed.entry;
             let kind = serde_json::to_value(entry.kind)?;
-            let mut text: String = entry.text.chars().take(crate::MAX_ENTRY_CHARS).collect();
+            // Kept without credentials: a session's page may show it to a
+            // whole team, and its prompts to its author on any device.
+            let mut text: String = shown::clean(&entry.text.chars().take(crate::MAX_ENTRY_CHARS).collect::<String>());
             if entry.kind == SessionEntryKind::Skill {
                 // A skill is its name, nothing more.
                 text = text.trim().chars().take(MAX_AGENT_CHARS).collect();

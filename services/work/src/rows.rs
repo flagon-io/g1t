@@ -396,6 +396,9 @@ pub struct SessionRow {
     pub tool: Option<String>,
     pub commit: Option<String>,
     pub at: String,
+    /// Whose harness session recorded it, where the query says.
+    #[serde(default)]
+    pub actor_id: Option<String>,
 }
 
 impl From<SessionRow> for SessionEntry {
@@ -407,6 +410,7 @@ impl From<SessionRow> for SessionEntry {
             tool: row.tool,
             commit: row.commit,
             at: row.at,
+            withheld: false,
         }
     }
 }

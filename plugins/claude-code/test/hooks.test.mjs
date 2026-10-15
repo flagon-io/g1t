@@ -315,6 +315,26 @@ describe("summaries", () => {
     assert.ok(!line.includes("--token abc"));
   });
 
+  test("hide credentials wherever text is sent, and leave references alone", () => {
+    for (const [text, secret] of [
+      ["$env:G1T_TOKEN='abc123def456'; g1t whoami", "abc123def456"],
+      ["G1T_TOKEN=abc123def456 g1t whoami", "abc123def456"],
+      ['{"password": "hunter2!"}', "hunter2"],
+      ["curl -u admin:pa55word https://x", "pa55word"],
+      ["open https://x.com/cb?state=1&token=t0k3n", "t0k3n"],
+      ["jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N", "dozjgNryP4J3"],
+      ["-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5v\n-----END OPENSSH PRIVATE KEY-----", "b3BlbnNzaC1"],
+      ["here is my key: sk-ant-api03-abcDEF123456ghiJKL, use it", "abcDEF123456ghiJKL"],
+    ]) {
+      const out = redact(text);
+      assert.ok(!out.includes(secret), `${secret} in ${out}`);
+      assert.ok(out.includes("[redacted]"), out);
+    }
+    for (const kept of ["TOKEN=$G1T_TOKEN", "token: ${{ secrets.DEPLOY }}", "fn f(token: String)", "npm_config_user_agent", "git show 58def4040e93a1dcda5f388f55360f3cd46cd97e"]) {
+      assert.equal(redact(kept), kept);
+    }
+  });
+
   test("find the issue in a branch name", () => {
     assert.equal(issueFromBranch("42-fix-login"), 42);
     assert.equal(issueFromBranch("issue-7"), 7);

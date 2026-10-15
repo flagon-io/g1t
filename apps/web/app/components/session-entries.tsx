@@ -32,6 +32,18 @@ function At({ at }: { at: string }) {
   );
 }
 
+/** A prompt someone else typed: that there was one, not what it said. */
+function KeptPrompt({ entry }: { entry: SessionEntry }) {
+  return (
+    <li className="flex items-center gap-2 px-4 py-3">
+      <Terminal size={14} className="shrink-0 text-faint" />
+      <span className="shrink-0 font-medium text-fg-soft">Prompt</span>
+      <span className="min-w-0 grow truncate text-xs text-faint">Shows only to whoever typed it.</span>
+      <At at={entry.at} />
+    </li>
+  );
+}
+
 /** The prompt, folded under its first line. */
 function Prompt({ entry, base }: { entry: SessionEntry; base?: string }) {
   const [open, setOpen] = useState(false);
@@ -119,9 +131,15 @@ function ToolRow({ step }: { step: ToolStep }) {
           </CollapsibleTrigger>
           <CollapsibleContent>
             {long && call && <Block>{call.detail}</Block>}
-            {step.results.map((result) => (
-              <Block key={result.seq}>{result.text}</Block>
-            ))}
+            {step.results.map((result) =>
+              result.withheld ? (
+                <p key={result.seq} className="text-xs text-faint">
+                  Its output shows only to whoever ran it.
+                </p>
+              ) : (
+                <Block key={result.seq}>{result.text}</Block>
+              ),
+            )}
           </CollapsibleContent>
         </Collapsible>
       ) : (
@@ -176,7 +194,7 @@ function ToolRun({ steps }: { steps: ToolStep[] }) {
 }
 
 function Entry({ entry, base }: { entry: SessionEntry; base?: string }) {
-  if (entry.kind === "prompt") return <Prompt entry={entry} base={base} />;
+  if (entry.kind === "prompt") return entry.withheld ? <KeptPrompt entry={entry} /> : <Prompt entry={entry} base={base} />;
   if (entry.kind === "message") {
     return (
       <li className="flex gap-2.5 px-4 py-3 text-sm">

@@ -16,6 +16,7 @@ mod dependencies;
 mod links;
 mod overlaps;
 mod sessions;
+pub(crate) mod shown;
 #[cfg(test)]
 mod tests;
 

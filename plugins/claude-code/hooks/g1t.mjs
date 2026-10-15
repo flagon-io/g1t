@@ -36,6 +36,9 @@
 // that is not a tool's output: an Agent call's answer, which is its
 // subagent's final message (as SubagentStop gives it) and its id. Prompts
 // are not sent when G1T_RECORD_PROMPTS=0, and nothing is when G1T_RECORD=0.
+// Whatever is sent has what looks like a credential taken out first
+// (redact): command lines, prompts, titles, subagents' prompts and results.
+// On g1t a prompt shows only to whoever typed it.
 //
 // A session that starts where there is no g1t remote is recorded from the
 // prompt, or the git or g1t command, after which there is one (lateStart).
@@ -108,14 +111,51 @@ export function clip(text, limit) {
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
 }
 
-/** Hides what looks like a secret in a command line before it is sent. */
+/** What a credential is replaced with, as g1t itself does (crates/scan/src/redact.rs). */
+export const REDACTED = "[redacted]";
+
+/** A value that names a secret rather than holding one: `$TOKEN`, `${{ secrets.X }}`, `process.env.X`. */
+function reference(value) {
+  const v = String(value).replace(/^["'`]|["'`]$/g, "");
+  return !v || /^[$%<]/.test(v) || v.includes("secrets.") || v.includes("env.") || v.includes("[redacted") || v === "…";
+}
+
+/** `token: string` in code is a type, not a token. */
+const TYPES = new Set(["string", "String", "str", "&str", "number", "bool", "boolean", "null", "None", "undefined", "true", "false"]);
+
+const PREFIXED =
+  /\b(g1t|ghp|gho|ghu|ghs|ghr|github_pat|glpat|gloas|glrt|glptt|gldt|xox[abeprs]|sk-ant|sk-proj|sk-svcacct|sk-admin|sk|rk|whsec|npm|hf|pypi|dop_v1|shpat|shpss|sntrys|lin_api|figd)([-_])([A-Za-z0-9_-]{12,})/g;
+const ASSIGNED =
+  /([A-Za-z0-9_.-]*(?:token|secret|passw(?:or)?d|pwd|api[_-]?key|apikey|private[_-]?key|access[_-]?key|auth[_-]?key|signing[_-]?key|session[_-]?key|credentials?|webhook[_-]?url|dsn|connection[_-]?string)["']?\s*(?:=|:)\s*)("[^"\n]*"|'[^'\n]*'|`[^`\n]*`|[^\s,;&)}\]]+)/gi;
+const QUERY =
+  /([?&](?:access_token|refresh_token|id_token|token|key|api_key|apikey|secret|client_secret|sig|signature|password|code|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&\s#"'`]+/gi;
+const FLAG = /(--(?:token|password|passwd|secret|api-key|apikey|access-token|auth-token|client-secret|private-key)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi;
+
+/**
+ * Hides what looks like a credential before it is sent: in a command
+ * line, a prompt, a title, or what a subagent was asked and reported.
+ * g1t hides them again as it records and shows them; this keeps them from
+ * leaving the machine at all.
+ */
 export function redact(text) {
+  const keep = (whole, head, value) => (reference(value) ? whole : `${head}${REDACTED}`);
   return String(text)
-    .replace(/\b(g1t|ghp|gho|ghs|github_pat|glpat|xox[abpr]|sk-ant|sk|rk)[-_][A-Za-z0-9_-]{8,}/g, "$1_…")
-    .replace(/(authorization:\s*(?:bearer|basic|token)\s+)[^\s"']+/gi, "$1…")
-    .replace(/(\b[A-Za-z_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY)[A-Za-z_]*=)("[^"]*"|'[^']*'|\S+)/gi, "$1…")
-    .replace(/(--(?:token|password|secret)[= ])\S+/gi, "$1…")
-    .replace(/(https?:\/\/)[^\s/:@]+:[^\s/@]+@/g, "$1…@");
+    .replace(/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g, REDACTED)
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, REDACTED)
+    .replace(PREFIXED, (whole, prefix, sep, body) => (/[A-Za-z]/.test(body) && /\d/.test(body) ? `${prefix}${sep}${REDACTED}` : whole))
+    .replace(/\b(?:(?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,})\b/g, REDACTED)
+    .replace(/\b((?:proxy-)?authorization\s*[:=]\s*(?:(?:bearer|basic|token|bot|digest)\s+)?)([^\s"'`,;]+)/gi, keep)
+    .replace(/\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})/gi, keep)
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi, `$1${REDACTED}@`)
+    .replace(QUERY, `$1${REDACTED}`)
+    .replace(FLAG, keep)
+    .replace(/((?:^|\s)(?:-u|--user)\s+[^\s:]+:)\S+/g, `$1${REDACTED}`)
+    .replace(ASSIGNED, (whole, head, value) => (TYPES.has(value) ? whole : keep(whole, head, value)));
+}
+
+/** Text a person or an agent wrote, as it is sent: credentials out, cut to `limit`. */
+export function scrub(text, limit) {
+  return clip(redact(text), limit);
 }
 
 /** A path as the repository names it: relative to its root, with forward slashes; null outside it. */
@@ -319,12 +359,12 @@ export function plan(event, env = process.env) {
       // A turn Claude Code starts itself for a background task carries that
       // task's output, which is never sent: it is not a prompt of yours.
       if (!prompt.trim() || /^\s*<task-notification>/.test(prompt)) return null;
-      if (env.G1T_RECORD_PROMPTS !== "0") job.steps.push({ args: ["session", "log", "--kind", "prompt", "--", clip(prompt, PROMPT_LIMIT)] });
+      if (env.G1T_RECORD_PROMPTS !== "0") job.steps.push({ args: ["session", "log", "--kind", "prompt", "--", scrub(prompt, PROMPT_LIMIT)] });
       // A skill typed as /plugin:name is a skill used (its name), whether or not prompts are sent.
       const skill = typedSkill(prompt);
       if (skill) job.steps.push(skillStep(skill));
       // What it is for titles the session, until it has a title (see hook and work).
-      const intent = env.G1T_RECORD_PROMPTS === "0" ? null : intentTitle(prompt);
+      const intent = env.G1T_RECORD_PROMPTS === "0" ? null : intentTitle(redact(prompt));
       if (intent) job.steps.push({ title: intent });
       return job.steps.length ? job : null;
     }
@@ -337,7 +377,7 @@ export function plan(event, env = process.env) {
       const args = ["session", "end", "--reason", "done"];
       const result = typeof event.last_assistant_message === "string" ? event.last_assistant_message.trim() : "";
       // --flag=VALUE throughout for text: one that starts with a dash ("- Found …") is still a value.
-      if (result) args.push(`--result=${clip(result, RESULT_LIMIT)}`);
+      if (result) args.push(`--result=${scrub(result, RESULT_LIMIT)}`);
       job.steps.push({ args });
       return job;
     }
@@ -365,10 +405,10 @@ export function plan(event, env = process.env) {
           job.subagent = {
             id: String(agentId),
             type: input.subagent_type || null,
-            task: input.description ? clip(input.description, TASK_LIMIT) : null,
-            prompt: env.G1T_RECORD_PROMPTS === "0" || !input.prompt ? null : clip(input.prompt, AGENT_PROMPT_LIMIT),
+            task: input.description ? scrub(input.description, TASK_LIMIT) : null,
+            prompt: env.G1T_RECORD_PROMPTS === "0" || !input.prompt ? null : scrub(input.prompt, AGENT_PROMPT_LIMIT),
             model: response.resolvedModel || null,
-            result: response.status === "completed" ? clip(agentResult(response), RESULT_LIMIT) || null : null,
+            result: response.status === "completed" ? scrub(agentResult(response), RESULT_LIMIT) || null : null,
           };
           // Its task, kept for its subagent, is no other subagent's (see work).
           if (event.tool_use_id) job.toolUseId = String(event.tool_use_id);
@@ -606,8 +646,8 @@ export function rememberTask(files, input, toolUseId = null) {
   write(files.task(toolUseId || `${now}-${randomUUID()}`), JSON.stringify({
     tool_use_id: toolUseId || null,
     type: input?.subagent_type || null,
-    task: input?.description ? clip(input.description, TASK_LIMIT) : null,
-    prompt: input?.prompt ? clip(input.prompt, AGENT_PROMPT_LIMIT) : null,
+    task: input?.description ? scrub(input.description, TASK_LIMIT) : null,
+    prompt: input?.prompt ? scrub(input.prompt, AGENT_PROMPT_LIMIT) : null,
     key: input?.prompt ? promptKey(input.prompt) : null,
     at: now,
   }));
@@ -715,8 +755,8 @@ export function pairSubagent(agent, files, transcriptPath, env = process.env) {
     evidence = subagentEvidence(paths);
   }
   const task = takeTask(files, { type: agent.type, toolUseId: evidence.toolUseId, prompt: evidence.prompt });
-  const what = task?.task ?? (evidence.description ? clip(evidence.description, TASK_LIMIT) : null);
-  const prompt = task?.prompt ?? (evidence.prompt ? clip(evidence.prompt, AGENT_PROMPT_LIMIT) : null);
+  const what = task?.task ?? (evidence.description ? scrub(evidence.description, TASK_LIMIT) : null);
+  const prompt = task?.prompt ?? (evidence.prompt ? scrub(evidence.prompt, AGENT_PROMPT_LIMIT) : null);
   if (what) agent.task = what;
   if (prompt && env.G1T_RECORD_PROMPTS !== "0") agent.prompt = prompt;
   return agent;
@@ -1121,7 +1161,7 @@ export function lateStart(event, env, files) {
   const kept = readJson(files.unrecorded, {}) ?? {};
   const output = sessionStart(event, env, findCli(env));
   if (!output) {
-    const intent = name === "UserPromptSubmit" && !kept.title && env.G1T_RECORD_PROMPTS !== "0" ? intentTitle(event.prompt) : null;
+    const intent = name === "UserPromptSubmit" && !kept.title && env.G1T_RECORD_PROMPTS !== "0" ? intentTitle(redact(event.prompt)) : null;
     if (intent) write(files.unrecorded, JSON.stringify({ ...kept, title: intent }));
     return null;
   }

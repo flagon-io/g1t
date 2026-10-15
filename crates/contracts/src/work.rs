@@ -1007,6 +1007,10 @@ pub struct SessionEntry {
     pub commit: Option<String>,
     /// RFC 3339.
     pub at: String,
+    /// Its text is not shown to this viewer: a prompt is its author's own,
+    /// and a tool's output stays with whoever ran it. `text` is empty.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub withheld: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
