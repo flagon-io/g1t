@@ -1843,7 +1843,7 @@ impl Op {
                 "A workspace's runner groups: which of its repositories may use the runners in each. The default group (every repository) is where runners go when no group is named. Owners only."
             }
             Op::GetRunnerSettings => {
-                "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends checks and the merge queue to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`)."
+                "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`)."
             }
             Op::CreateRunnerRegistrationToken => {
                 "A registration token for `g1t-runner register`, shown once. It lasts an hour and registers any number of runners until then, into `group` (the default group if none) for a workspace, or as a repository's own runners. It can do nothing else. Owners of the workspace, or admins of the repository, signed in or with a person's token; workspace tokens, G1T_TOKEN included, are refused."
@@ -1857,7 +1857,7 @@ impl Op {
             Op::UpdateRunnerGroup => "Rename a runner group, or change which repositories may use it. Owners only.",
             Op::DeleteRunnerGroup => "Delete a runner group. Its runners join the default group, which cannot be deleted. Owners only.",
             Op::UpdateRunnerSettings => {
-                "Change where g1t's own jobs (checks and the merge queue) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository."
+                "Change where g1t's own jobs (pull request checks and merge checks) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository."
             }
             Op::ImportIssue => {
                 "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made."
@@ -3186,11 +3186,11 @@ impl Op {
             ),
             Op::UpdateRunnerSettings => object(
                 runners_owner(json!({
-                    "agents_on_self_hosted": { "type": "boolean", "description": "Run checks and the merge queue on self-hosted runners." },
+                    "agents_on_self_hosted": { "type": "boolean", "description": "Run pull request checks and merge checks on self-hosted runners." },
                     "agent_labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "The labels a runner needs to take checks and merge queue work. self-hosted is always one.",
+                        "description": "The labels a runner needs to take pull request checks and merge checks. self-hosted is always one.",
                     },
                     "fork_pull_requests": { "type": "boolean", "description": "Let jobs of pull requests from forks run on self-hosted runners." },
                     "inherit": { "type": "boolean", "description": "For a repository: drop its own settings and follow its workspace's." },

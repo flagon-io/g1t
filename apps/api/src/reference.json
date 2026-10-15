@@ -1086,7 +1086,7 @@
       "updated_by": "syntaqx",
       "updated_at": "2026-10-04T16:20:37.508Z"
     },
-    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_issues` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings)."
+    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [Required checks](/guides/checks/#required-checks). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_issues` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings)."
   },
   "list_check_names": {
     "response": [
@@ -4768,7 +4768,7 @@
       "fork_pull_requests": false,
       "inherited": false
     },
-    "notes": "`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (checks, merge checks and the merge queue) to your runners with those labels."
+    "notes": "`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (pull request checks and merge checks) to your runners with those labels."
   },
   "list_runner_groups": {
     "params": {

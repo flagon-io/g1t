@@ -30329,7 +30329,7 @@
           "Repositories"
         ],
         "summary": "Update repository settings",
-        "description": "Change how a repository handles pull requests, commits and issues. Only the fields given are changed; required_checks replaces the whole list. At least one merge method must stay allowed, and default_merge_method must be one of them. A custom commit message (merge_commit_message or squash_commit_message custom) uses its template, whose {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in; pull_title_and_commits is for squash commits only. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [what a repository can ask for](/guides/working-with-g1t/#what-a-repository-can-ask-for). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_issues` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings).",
+        "description": "Change how a repository handles pull requests, commits and issues. Only the fields given are changed; required_checks replaces the whole list. At least one merge method must stay allowed, and default_merge_method must be one of them. A custom commit message (merge_commit_message or squash_commit_message custom) uses its template, whose {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in; pull_title_and_commits is for squash commits only. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field.\n\n`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [Required checks](/guides/checks/#required-checks). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_issues` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings).",
         "x-operation": "update_repo_settings",
         "x-mcp-tool": "repository",
         "x-mcp-action": "update_settings",
@@ -59209,7 +59209,7 @@
           "Runners"
         ],
         "summary": "Get runner settings",
-        "description": "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends checks and the merge queue to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
+        "description": "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
         "x-operation": "get_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "get_runner_settings",
@@ -59307,7 +59307,7 @@
           "Runners"
         ],
         "summary": "Change runner settings",
-        "description": "Change where g1t's own jobs (checks and the merge queue) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.",
+        "description": "Change where g1t's own jobs (pull request checks and merge checks) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.",
         "x-operation": "update_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "update_runner_settings",
@@ -59417,14 +59417,14 @@
                 "properties": {
                   "agents_on_self_hosted": {
                     "type": "boolean",
-                    "description": "Run checks and the merge queue on self-hosted runners."
+                    "description": "Run pull request checks and merge checks on self-hosted runners."
                   },
                   "agent_labels": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "The labels a runner needs to take checks and merge queue work. self-hosted is always one."
+                    "description": "The labels a runner needs to take pull request checks and merge checks. self-hosted is always one."
                   },
                   "fork_pull_requests": {
                     "type": "boolean",
@@ -59822,7 +59822,7 @@
           "Runners"
         ],
         "summary": "Get runner settings for a workspace",
-        "description": "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends checks and the merge queue to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
+        "description": "Where a workspace's (or a repository's) own g1t jobs run, and whether pull requests from forks may use its self-hosted runners. `agents_on_self_hosted` sends pull request checks and merge checks to runners with `agent_labels` instead of g1t's sandboxes. A repository's are its workspace's unless it has its own (`inherited`).",
         "x-operation": "get_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "get_runner_settings",
@@ -59914,7 +59914,7 @@
           "Runners"
         ],
         "summary": "Change runner settings for a workspace",
-        "description": "Change where g1t's own jobs (checks and the merge queue) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.\n\n`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (checks, merge checks and the merge queue) to your runners with those labels.",
+        "description": "Change where g1t's own jobs (pull request checks and merge checks) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository.\n\n`agents_on_self_hosted` and `agent_labels` keep their names from before g1t ran agents of its own: they now send g1t's own work (pull request checks and merge checks) to your runners with those labels.",
         "x-operation": "update_runner_settings",
         "x-mcp-tool": "workflow",
         "x-mcp-action": "update_runner_settings",
@@ -60015,14 +60015,14 @@
                 "properties": {
                   "agents_on_self_hosted": {
                     "type": "boolean",
-                    "description": "Run checks and the merge queue on self-hosted runners."
+                    "description": "Run pull request checks and merge checks on self-hosted runners."
                   },
                   "agent_labels": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "The labels a runner needs to take checks and merge queue work. self-hosted is always one."
+                    "description": "The labels a runner needs to take pull request checks and merge checks. self-hosted is always one."
                   },
                   "fork_pull_requests": {
                     "type": "boolean",
