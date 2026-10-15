@@ -6,7 +6,7 @@
  * conversation shows them (components/chat/text.tsx for people's messages,
  * components/ai-elements/response.tsx for g1t's answers).
  */
-import { CircleDot, GitCommitHorizontal, GitPullRequest, Link2 } from "lucide-react";
+import { Bot, CircleDot, GitCommitHorizontal, GitPullRequest, Link2 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router";
 
@@ -105,6 +105,16 @@ export function CommitChip({ href, sha }: { href: string; sha: string }) {
     <Link to={href} className={cn(CHIP, "font-mono")} data-ref="commit">
       <GitCommitHorizontal size={12} className="text-faint" />
       {sha.slice(0, 7)}
+    </Link>
+  );
+}
+
+/** A session, by the end of its id, which is what tells sessions started together apart. */
+export function SessionChip({ href, id }: { href: string; id: string }) {
+  return (
+    <Link to={href} className={cn(CHIP, "font-mono")} data-ref="session">
+      <Bot size={12} className="text-faint" />
+      {id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-6)}` : id}
     </Link>
   );
 }

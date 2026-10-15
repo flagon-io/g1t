@@ -41,15 +41,18 @@ export function parseCommitMessage(message: string): CommitMessage {
 /**
  * A run of a commit message, or of a note on an issue's timeline: plain
  * text, a reference to an issue or pull request (`#12` in the repository
- * it is in, `acme/web#12` in another), or a commit by its full hash.
+ * it is in, `acme/web#12` in another), a commit by its full hash, or a
+ * session by its id (`ses_…`, as in "closed this in … via session ses_…").
  */
 export type MessagePart =
   | { kind: "text"; text: string }
   | { kind: "ref"; text: string; repo: string | null; number: number }
-  | { kind: "commit"; text: string; sha: string };
+  | { kind: "commit"; text: string; sha: string }
+  | { kind: "session"; text: string; id: string };
 
-// `#12` and `acme/web#12`, but not `a#12` or a link's `/page#12`; a full hash on its own.
-const REFERENCE = /(?<![\w/#.-])(?:([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+))?#(\d+)\b|\b([0-9a-f]{40})\b/g;
+// `#12` and `acme/web#12`, but not `a#12` or a link's `/page#12`; a full hash on its own; a session's id.
+const REFERENCE =
+  /(?<![\w/#.-])(?:([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+))?#(\d+)\b|\b([0-9a-f]{40})\b|\b(ses_[0-9a-z]{10,60})\b/g;
 
 /** Splits text into its references and the text between them; `Closes #12` keeps `Closes ` as text. */
 export function messageParts(text: string): MessagePart[] {
@@ -59,6 +62,7 @@ export function messageParts(text: string): MessagePart[] {
     const start = match.index;
     if (start > at) parts.push({ kind: "text", text: text.slice(at, start) });
     if (match[3]) parts.push({ kind: "commit", text: match[0], sha: match[3] });
+    else if (match[4]) parts.push({ kind: "session", text: match[0], id: match[4] });
     else parts.push({ kind: "ref", text: match[0], repo: match[1] ?? null, number: Number(match[2]) });
     at = start + match[0].length;
   }

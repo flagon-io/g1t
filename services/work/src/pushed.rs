@@ -13,11 +13,11 @@
 //! who pushed it.
 
 use g1t_contracts::events::{Event, IssueEvent};
-use g1t_contracts::repos::{GetByIdArgs, Landed, Pushed, PushedArgs, Repo, RepoPath};
+use g1t_contracts::repos::{BranchDriftArgs, BranchDrifts, Commit, GetByIdArgs, Landed, LogArgs, Pushed, PushedArgs, Repo, RepoPath};
 use g1t_contracts::rules::MergeMethod;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use g1t_contracts::{Outcome, User, Viewer};
+use g1t_contracts::{FailureCode, Outcome, User, Viewer};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
@@ -50,6 +50,26 @@ const CLOSE_BY_COMMIT: &str = "UPDATE issues
      SET state = 'closed', reason = 'completed', resolved_by = NULL, resolved_commit = ?1,
          resolved_pushed_by = ?2, closed_at = ?3, updated_at = ?4
      WHERE id = ?5 AND state = 'open' RETURNING id AS value";
+
+/// A session (`?1`) of a repository (`?2`).
+const SESSION_IN_REPO: &str = "SELECT id AS value FROM sessions WHERE id = ?1 AND repo_id = ?2";
+
+/// The session, still going, of the caller (`?3`, or the person it acts
+/// for, `?4`) that works on issue `?2` of a repository (`?1`): attached to
+/// it or tied to it since; the one seen last.
+const CALLER_SESSION: &str = "SELECT id AS value FROM sessions
+     WHERE repo_id = ?1 AND state = 'active' AND actor_id IN (?3, ?4)
+       AND (issue = ?2 OR EXISTS (SELECT 1 FROM session_links l
+         WHERE l.session_id = sessions.id AND l.kind = 'issue' AND l.number = ?2))
+     ORDER BY last_seen_at DESC LIMIT 1";
+
+/// A note of what closed an issue, and the session it was closed in.
+pub(crate) fn closed_note(note: &str, session: Option<&str>) -> String {
+    match session {
+        Some(session) => format!("{note} via session {session}"),
+        None => note.to_owned(),
+    }
+}
 
 /// The issues of a repository a commit closed.
 const CLOSED_BY_COMMIT: &str = "SELECT number, title FROM issues WHERE repo_id = ?1 AND resolved_commit = ?2
@@ -157,17 +177,28 @@ impl Work {
         if closes_issues {
             let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
             for (number, commit) in commit_closes(&pushed.commits, &path) {
-                self.close_by_commit(&repo, number, &commit, &actor).await?;
+                let message = pushed.commits.iter().find(|pushed| pushed.hash == commit).map(|pushed| pushed.message.as_str());
+                let session = self.trailer_session(&repo.id, message.unwrap_or_default()).await?;
+                self.close_by_commit(&repo, number, &commit, &actor, session.as_deref()).await?;
             }
         }
         Ok(merged)
     }
 
     /// Closes an open issue as completed by a commit pushed to the default
-    /// branch: says so on the issue, and lets go of what waited on it.
-    async fn close_by_commit(&self, repo: &Repo, number: u32, commit: &str, actor: &User) -> Result<()> {
+    /// branch: says so on the issue, with the session it was closed in when
+    /// one is known, and lets go of what waited on it. Whether it closed it:
+    /// not when it was closed already.
+    pub(crate) async fn close_by_commit(
+        &self,
+        repo: &Repo,
+        number: u32,
+        commit: &str,
+        actor: &User,
+        session: Option<&str>,
+    ) -> Result<bool> {
         let Some(issue) = self.issue(&repo.id, number).await?.filter(|issue| issue.state == State::Open) else {
-            return Ok(());
+            return Ok(false);
         };
         let now = rfc3339(now_ms());
         let closed = self
@@ -183,7 +214,7 @@ impl Work {
             .first::<crate::rows::ValueRow>(None)
             .await?;
         if closed.is_none() {
-            return Ok(());
+            return Ok(false);
         }
         self.publish(
             "issue.closed",
@@ -192,13 +223,123 @@ impl Work {
             IssueEvent {
                 reason: Some(IssueReason::Completed.as_str()),
                 commit: Some(commit.to_owned()),
+                session: session.map(str::to_owned),
                 ..Self::issue_event(&issue)
             },
         )
         .await?;
-        self.note(&repo.id, number, (&actor.id, &actor.username), &format!("closed this in {commit}")).await?;
+        self.note(&repo.id, number, (&actor.id, &actor.username), &closed_note(&format!("closed this in {commit}"), session))
+            .await?;
         self.issue_resolved(&repo.id, number, actor, true, None).await;
-        Ok(())
+        Ok(true)
+    }
+
+    /// `close_issue` with a commit: the commit, on the default branch of
+    /// `repo`, whose message names issue `number` after a closing keyword,
+    /// with the session it names, if it names one of this repository's.
+    /// Anything else is refused, saying why.
+    pub(crate) async fn closing_commit(
+        &self,
+        repo: &Repo,
+        number: u32,
+        commit: &str,
+        actor: &User,
+    ) -> Result<Outcome<(String, Option<String>)>> {
+        let commit = commit.trim().to_lowercase();
+        if !(4..=64).contains(&commit.len()) || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Ok(Outcome::fail(FailureCode::Invalid, "commit is a commit's hash."));
+        }
+        let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
+        let log = |at: Option<String>| LogArgs { path: path.clone(), viewer: Some(actor.clone()), git_ref: at, limit: 1 };
+        let (named, tip) = (log(Some(commit.clone())), log(None));
+        let (found, head) = futures_util::future::join(
+            g1t_kit::call::<_, Outcome<Vec<Commit>>>(&self.repos, "log", &named),
+            g1t_kit::call::<_, Outcome<Vec<Commit>>>(&self.repos, "log", &tip),
+        )
+        .await;
+        let found = match found? {
+            Outcome::Ok(commits) => commits.into_iter().next().filter(|found| found.hash.starts_with(&commit)),
+            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+        };
+        let Some(found) = found else {
+            return Ok(Outcome::fail(
+                FailureCode::NotFound,
+                format!("There is no commit {commit} in {}/{}; give its full hash.", repo.namespace, repo.name),
+            ));
+        };
+        let short = &found.hash[..7.min(found.hash.len())];
+        if !closing::references(&found.message, &path).contains(&number) {
+            return Ok(Outcome::fail(
+                FailureCode::Invalid,
+                format!("Commit {short} does not close #{number}: its message names it after no closing keyword (Fixes #{number})."),
+            ));
+        }
+        let head = match head? {
+            Outcome::Ok(commits) => commits.into_iter().next(),
+            Outcome::Fail(_) => None,
+        };
+        let Some(head) = head else {
+            return Ok(Outcome::fail(FailureCode::Invalid, format!("Commit {short} is not on {}.", repo.default_branch)));
+        };
+        if head.hash != found.hash {
+            let drifts: Outcome<BranchDrifts> = g1t_kit::call(
+                &self.repos,
+                "branch_drift",
+                &BranchDriftArgs { path: path.clone(), viewer: Some(actor.clone()), base: head.hash, heads: vec![found.hash.clone()] },
+            )
+            .await?;
+            let drift = match drifts {
+                Outcome::Ok(drifts) => drifts.branches.into_iter().next().and_then(|branch| branch.drift),
+                Outcome::Fail(_) => None,
+            };
+            match drift {
+                Some(drift) if drift.ahead == 0 => {}
+                Some(_) => {
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("Commit {short} is not on {}, the default branch: only a commit there closes an issue.", repo.default_branch),
+                    ));
+                }
+                None => {
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        format!("Could not tell whether commit {short} is on {}: it is too far back.", repo.default_branch),
+                    ));
+                }
+            }
+        }
+        let session = self.trailer_session(&repo.id, &found.message).await?;
+        Ok(Outcome::Ok((found.hash, session)))
+    }
+
+    /// The session a commit message names in a `G1t-Session` trailer, when
+    /// it is one of this repository's.
+    pub(crate) async fn trailer_session(&self, repo_id: &str, message: &str) -> Result<Option<String>> {
+        let Some(id) = session_trailers(message).into_iter().next() else { return Ok(None) };
+        Ok(self
+            .db
+            .prepare(SESSION_IN_REPO)
+            .bind(&[id.as_str().into(), repo_id.into()])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?
+            .map(|row| row.value))
+    }
+
+    /// The session closing an issue with a token: the caller's own session
+    /// on the issue that is still going, the one seen last. A person
+    /// signed in on the site closes it in none.
+    pub(crate) async fn caller_session(&self, repo_id: &str, number: u32, actor: &User) -> Result<Option<String>> {
+        if actor.token.is_none() && actor.acting.is_none() {
+            return Ok(None);
+        }
+        let person = actor.acting.as_ref().map_or(actor.id.as_str(), |acting| acting.on_behalf_of.id.as_str());
+        Ok(self
+            .db
+            .prepare(CALLER_SESSION)
+            .bind(&[repo_id.into(), number.into(), actor.id.as_str().into(), person.into()])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?
+            .map(|row| row.value))
     }
 
     /// `closed_by_commit`: the issues a commit closed (`close_by_commit`),
@@ -349,5 +490,49 @@ mod tests {
         let repo = RepoPath { namespace: "acme".into(), name: "web".into() };
         let message: String = (1..=80).map(|n| format!("Fixes #{n}\n")).collect();
         assert_eq!(commit_closes(&[commit("a", &message)], &repo).len(), closing::MAX_CLOSES);
+    }
+
+    #[test]
+    fn a_close_names_the_session_it_was_made_in() {
+        assert_eq!(closed_note("closed this in abc", Some("ses_1")), "closed this in abc via session ses_1");
+        assert_eq!(closed_note("closed this as completed", None), "closed this as completed");
+    }
+
+    #[test]
+    fn the_callers_session_on_the_issue_is_the_one_still_going_seen_last() {
+        let db = database();
+        let session = |id: &str, actor: &str, issue: Option<u32>, state: &str, seen: &str| {
+            db.execute(
+                "INSERT INTO sessions (id, repo_id, issue, actor_id, actor_name, harness, state, started_at, last_seen_at)
+                 VALUES (?1, 'repo', ?2, ?3, ?3, 'claude_code', ?4, 'then', ?5)",
+                params![id, issue, actor, state, seen],
+            )
+            .unwrap();
+        };
+        session("ses_old", "ana", Some(7), "active", "1");
+        session("ses_new", "ana", Some(7), "active", "2");
+        session("ses_ended", "ana", Some(7), "ended", "3");
+        session("ses_other", "bo", Some(7), "active", "4");
+        session("ses_elsewhere", "ana", Some(8), "active", "5");
+        // Tied to issue 9 since it started, by a claim.
+        session("ses_claimed", "ana", None, "active", "6");
+        db.execute(
+            "INSERT INTO session_links (session_id, repo_id, kind, number, via, at) VALUES ('ses_claimed', 'repo', 'issue', 9, 'claim', 'now')",
+            [],
+        )
+        .unwrap();
+        let caller = |number: u32, actor: &str, person: &str| -> Option<String> {
+            db.query_row(CALLER_SESSION, params!["repo", number, actor, person], |row| row.get(0)).optional().unwrap()
+        };
+        assert_eq!(caller(7, "ana", "ana").as_deref(), Some("ses_new"));
+        // g1t acting for ana: ana's session.
+        assert_eq!(caller(7, "g1t", "ana").as_deref(), Some("ses_new"));
+        assert_eq!(caller(9, "ana", "ana").as_deref(), Some("ses_claimed"));
+        assert_eq!(caller(7, "cy", "cy"), None);
+        let in_repo = |id: &str| -> Option<String> {
+            db.query_row(SESSION_IN_REPO, params![id, "repo"], |row| row.get(0)).optional().unwrap()
+        };
+        assert_eq!(in_repo("ses_old").as_deref(), Some("ses_old"));
+        assert_eq!(in_repo("ses_nowhere"), None);
     }
 }

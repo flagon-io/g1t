@@ -2183,6 +2183,7 @@ pub static OPERATIONS: &[Operation] = &[
             Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
         ],
         body: &[
+            Field { name: "commit", kind: "string", required: false, values: &[] },
             Field { name: "reason", kind: "string", required: false, values: &["completed", "not_planned"] },
         ],
     },

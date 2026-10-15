@@ -525,6 +525,26 @@ the first version of a new repository closes #1. Commits pushed to other
 branches close nothing until they reach the default branch, and
 `auto_close_issues` turns this off as well.
 
+A commit that is already on the default branch can close an issue later,
+say one pushed before the issue was open or while `auto_close_issues` was
+off: [`close_issue`](/reference/api/issues/close-issue/) with `commit` (its
+full hash), `g1t issue close 12 --commit <hash>`, or the `issue` tool's
+`close` with `commit`. The commit's message must name the issue after a
+closing keyword. The issue then closes as completed in that commit, the way
+a push of it would have, by whoever closed it: **closed this in** the
+commit, `resolved_commit`, and `issue.closed` with `commit`. A commit that is
+not on the default branch, or whose message does not name the issue, is
+refused, and so is an issue that is already closed.
+
+An issue's timeline links whatever closed it: **closed this in** a commit
+links the commit, **closed this by merging #14** links the pull request,
+and when it was closed in a [session](/guides/sessions/) the line ends
+**via session**, linking that session. That session is the one the closing
+commit names in a `G1t-Session: ses_…` trailer, or, for an issue closed
+with a token (from an agent, the CLI or the MCP server), the closer's own
+session on the issue that is still going. `issue.closed` carries it as
+`session`. An issue closed on the site says only who closed it.
+
 Wherever a commit's message shows, `#12` links to that issue or pull
 request, with its title and state when you hover over it.
 

@@ -330,6 +330,7 @@ g1t issue close [OPTIONS] <NUMBER>
 | `<NUMBER>` |  |
 | `-r, --reason <REASON>` | One of `completed`, `not_planned`. |
 | `-c, --comment <COMMENT>` | Leave a comment as it closes. |
+| `--commit <COMMIT>` | The commit on the default branch that closed it: its message names the issue after a closing keyword (Fixes #12). Its full hash. |
 
 Calls [`close_issue`](/reference/api/issues/close-issue/), [`add_comment`](/reference/api/issues/add-comment/).
 

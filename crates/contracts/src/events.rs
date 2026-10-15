@@ -183,6 +183,11 @@ pub struct IssueEvent {
     /// closed it (`Fixes #12`), when one did.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
+    /// On close: the session it was closed in, when it was: the one the
+    /// closing commit names (`G1t-Session: ses_…`), or the caller's own
+    /// session on the issue when it closed it with a token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     /// On `issue.assigned`: the people it is now assigned to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignees: Option<Vec<String>>,

@@ -1489,7 +1489,8 @@
       "blocked_by": [],
       "agent": null,
       "milestone": null
-    }
+    },
+    "notes": "With `commit`, a commit already on the default branch whose message names the issue after a closing keyword (`Fixes #12`), the issue closes as completed in that commit, as pushing it would have: `resolved_commit` is set, the event is `issue.closed` with `data.commit`, and the timeline says \"closed this in\" the commit, linked. Give `commit` as its full hash. A commit not on the default branch, or one whose message does not name the issue, is refused (`422`); an issue already closed is `409`, saying what closed it. See [Closing issues](/guides/pull-requests/#closing-issues)."
   },
   "reopen_issue": {
     "response": {

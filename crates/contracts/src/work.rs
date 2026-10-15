@@ -1840,6 +1840,7 @@ pub struct UpdateIssueArgs {
 }
 
 /// `close_issue` and `reopen_issue`. Each returns `Outcome<Issue>`.
+/// `close_issue` takes [`CloseIssueArgs`], which these are a part of.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IssueActionArgs {
     pub actor: User,
@@ -1848,6 +1849,20 @@ pub struct IssueActionArgs {
     /// For `close_issue`; `completed` if left out.
     #[serde(default)]
     pub reason: Option<IssueReason>,
+}
+
+/// `close_issue`: an [`IssueActionArgs`], and the commit that did it, if
+/// one did. With `commit`, a commit on the default branch whose message
+/// names the issue after a closing keyword (`Fixes #12`), it closes as the
+/// push of that commit would have: completed, in that commit, by the
+/// caller; a commit that is not on the default branch, or does not name
+/// the issue, is refused. Returns `Outcome<Issue>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloseIssueArgs {
+    #[serde(flatten)]
+    pub issue: IssueActionArgs,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
 }
 
 /// `add_comment`, on an issue or a pull request. On a pull request it may

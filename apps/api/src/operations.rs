@@ -1614,7 +1614,7 @@ impl Op {
                 "Change an issue's title, body, labels, milestone, the people it is assigned to, or what it is blocked by. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, and milestone null or 0 takes it out of its milestone. blocked_by lists the numbers of the issues of the same repository that have to land first: one that is not an issue there, the issue itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event (as is a blocker closing, or its pull request merging, later). Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher, and so does the milestone. Each label added or removed is an issue.labeled or issue.unlabeled event."
             }
             Op::CloseIssue => {
-                "Close an issue without a pull request. Merging a pull request made for an issue closes it for you. Its author may close their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
+                "Close an issue without a pull request. Merging a pull request made for an issue closes it for you, as does pushing a commit whose message names it after a closing keyword (Fixes #12) to the default branch. When a commit already on the default branch did the work, give it as commit: the issue closes as completed in that commit, as its push would have, and its timeline links the commit. A commit that is not on the default branch, or whose message does not name the issue after a closing keyword, is refused with `422`; an issue already closed, with `409`. Closed with a token from a session working on the issue (or by a commit with a `G1t-Session` trailer), its timeline links that session too. Its author may close their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
             }
             Op::ReopenIssue => "Reopen a closed issue. Its author may reopen their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher.",
             Op::ListLabels => {
@@ -2690,6 +2690,10 @@ impl Op {
                         "type": "string",
                         "enum": ["completed", "not_planned"],
                         "description": "Defaults to completed.",
+                    },
+                    "commit": {
+                        "type": "string",
+                        "description": "The commit that closed it: one on the default branch whose message names this issue after a closing keyword (Fixes #12). It closes as completed in that commit, as pushing it would have.",
                     },
                 })),
                 &["repo", "number"],
@@ -4985,17 +4989,17 @@ impl Op {
                 } else {
                     "reopen_issue"
                 };
-                pass(
-                    work,
-                    method,
-                    &IssueActionArgs {
-                        actor: actor(),
-                        repo,
-                        number,
-                        reason: Some(reason),
-                    },
-                )
-                .await
+                let issue = IssueActionArgs {
+                    actor: actor(),
+                    repo,
+                    number,
+                    reason: Some(reason),
+                };
+                if self == Op::CloseIssue {
+                    let commit = optional_text(input, "commit");
+                    return pass(work, method, &CloseIssueArgs { issue, commit }).await;
+                }
+                pass(work, method, &issue).await
             }
             Op::ListLabels => pass(work, "list_labels", &view()).await,
             Op::CreateLabel | Op::UpdateLabel => {
