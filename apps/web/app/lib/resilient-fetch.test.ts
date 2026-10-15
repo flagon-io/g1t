@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isNetworkFailure, refreshesCurrent, retriable, retryDelay } from "./resilient-fetch.ts";
+import { PATIENCE_MS, REFRESH_PATIENCE_MS, isNetworkFailure, keepTrying, refreshesCurrent, retriable, retryDelay } from "./resilient-fetch.ts";
 import { reconnectDelay } from "./reconnect.ts";
 
 const ORIGIN = "https://g1t.sh";
@@ -40,4 +40,18 @@ test("a read for the page already showing is a refresh; one for another page is 
 test("retries come quickly at first, then settle", () => {
   assert.deepEqual([1, 2, 3, 4, 5, 9].map(retryDelay), [250, 500, 1000, 2000, 4000, 5000]);
   assert.deepEqual([1, 2, 3, 4, 8].map(reconnectDelay), [3000, 6000, 12000, 24000, 30000]);
+});
+
+test("a refresh waits out the browser being offline, however long", () => {
+  assert.equal(keepTrying({ refresh: true, elapsedMs: 60 * 60_000, onlineMs: 0, erroring: false }, 5000), true);
+});
+
+test("a network that is up and never answers is no blip: a refresh gives up, and so does a click", () => {
+  assert.equal(keepTrying({ refresh: true, elapsedMs: 0, onlineMs: REFRESH_PATIENCE_MS - 5000, erroring: false }, 5000), true);
+  assert.equal(keepTrying({ refresh: true, elapsedMs: 0, onlineMs: REFRESH_PATIENCE_MS - 4000, erroring: false }, 5000), false);
+  assert.equal(keepTrying({ refresh: false, elapsedMs: PATIENCE_MS - 4000, onlineMs: 0, erroring: false }, 5000), false);
+});
+
+test("while the error page tries on its own, a read is tried once", () => {
+  assert.equal(keepTrying({ refresh: true, elapsedMs: 0, onlineMs: 0, erroring: true }, 250), false);
 });
