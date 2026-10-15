@@ -319,6 +319,8 @@ impl Answering {
                         };
                         match ran {
                             Ok((text, false)) => (text, false, AskToolStatus::Done),
+                            // Nothing there is an answer (a name checked free), not a read that failed.
+                            Ok((text, true)) if ask_tools::is_not_found(&text) => (text, true, AskToolStatus::Done),
                             Ok((text, true)) => (text, true, AskToolStatus::Failed),
                             Err(problem) => (problem, true, AskToolStatus::Failed),
                         }

@@ -414,6 +414,13 @@ pub fn link(site: &str, tool: &str, arguments: &Value) -> Option<String> {
     arguments["workspace"].as_str().filter(|slug| !slug.is_empty() && !slug.contains('/')).map(|slug| format!("{site}/{slug}"))
 }
 
+/// Whether a tool's error says only that what it looked for isn't there:
+/// a finding, such as a new repository's name being free, not a failed read.
+pub fn is_not_found(text: &str) -> bool {
+    let first = text.lines().find(|line| !line.trim().is_empty()).unwrap_or_default().to_ascii_lowercase();
+    first.contains("not found") || first.starts_with("there is no ") || first.starts_with("no such ")
+}
+
 /// One line saying what a call found, for the person watching.
 pub fn summary(text: &str, failed: bool) -> String {
     if failed {
@@ -812,6 +819,10 @@ mod tests {
         assert_eq!(summary("{\"title\":\"Fix login\",\"number\":7}", false), "Fix login");
         assert_eq!(summary("Not allowed: needs pull_requests:write\nmore", true), "Not allowed: needs pull_requests:write");
         assert_eq!(summary("plain", false), "Done");
+        assert!(is_not_found("Repository not found."));
+        assert!(is_not_found("There is no such project."));
+        assert!(!is_not_found("Not allowed: needs pull_requests:write"));
+        assert!(!is_not_found("g1t answered 500."));
     }
 
     #[test]

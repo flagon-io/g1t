@@ -80,6 +80,7 @@ import { shownCard } from "./cards.ts";
 import {
   G1T_PROFILE,
   type MessageMeta,
+  type ProposalState,
   type SaidRow,
   conversation,
   g1tDmPerson,
@@ -90,6 +91,7 @@ import {
   parseMeta,
   shownAnswer,
   startsAnswer,
+  withProposalState,
 } from "./g1t.ts";
 import { clearConversation, mayClear } from "./clear.ts";
 import { internalAnswer } from "./internal.ts";
@@ -1792,6 +1794,29 @@ class Chat {
     return ok(null);
   }
 
+  /**
+   * Keeps what a proposal's card did (components/ask-steps on the site) on
+   * the answer that proposed it, step by step, so the card shows it again
+   * wherever the answer is read, and a second click carries on rather than
+   * starting over. Only in the viewer's own direct message with g1t. With
+   * no change but the id, says what was kept.
+   */
+  async g1tProposal(a: { workspace: string; channel_id: string; viewer: Viewer; message_id: string; state: ProposalState }): Promise<Result<ProposalState>> {
+    const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
+    if (!found.ok) return found;
+    const place = found.value;
+    const row = await this.messageRow(place.channel.id, String(a.message_id ?? ""));
+    if (!row || row.deleted_at || row.author !== G1T_KEY) return fail("not_found", "No such answer from g1t.");
+    const meta = parseMeta(row.meta);
+    const merged = meta.answer && a.state && typeof a.state.id === "string" ? withProposalState(meta.answer, a.state) : null;
+    if (!merged) return fail("not_found", "That answer proposed no such session.");
+    const column = metaColumn({ ...meta, answer: merged.answer });
+    await this.db.prepare("UPDATE messages SET meta = ? WHERE id = ?").bind(column, row.id).run();
+    const [message] = await this.toMessages(place.slug, place.workspace, [{ ...row, meta: column }]);
+    this.broadcast(place.channel.id, { type: "message.updated", message });
+    return ok(merged.state);
+  }
+
   async g1tStop(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<null>> {
     const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
     if (!found.ok) return found;
@@ -2264,6 +2289,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.g1tReset(args));
     case "g1t_retry":
       return Response.json(await service.g1tRetry(args));
+    case "g1t_proposal":
+      return Response.json(await service.g1tProposal(args));
     case "g1t_stop":
       return Response.json(await service.g1tStop(args));
     case "g1t_clear":

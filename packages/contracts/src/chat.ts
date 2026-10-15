@@ -234,6 +234,28 @@ export type ChatMessage = {
  */
 export type ChatAnswerState = "thinking" | "streaming" | "done" | "stopped" | "error";
 
+/**
+ * What a proposal's card (Ask's `proposal` step) has done so far, kept on
+ * the answer as a `proposal_state` step with the same `id`, so the card
+ * shows it wherever the answer is read and a second click carries on.
+ */
+export type AskProposalState = {
+  id: string;
+  /** When a click began starting it (ms); another click waits on it. */
+  starting_at?: number;
+  /** A new repository's: where it is, its default branch, where it deploys or why it can't. */
+  repo_url?: string;
+  default_branch?: string;
+  production_url?: string | null;
+  deploy_error?: string | null;
+  /** The issue it opened or worked on. */
+  issue?: number;
+  /** The session it started on the workspace's Anthropic account. */
+  started?: boolean;
+  session_url?: string | null;
+  provider_session_url?: string | null;
+};
+
 export type ChatAnswer = {
   state: ChatAnswerState;
   /** The provider's name and the model, once the provider said. */
@@ -660,6 +682,12 @@ export type ChatApi = {
   /** Stops @g1t's answer still coming; what came stays. */
   g1tStop(workspace: string, channelId: string, viewer: User): Promise<Result<null>>;
   /**
+   * Keeps what a proposal's card did on the @g1t answer that proposed it
+   * (merged into its `proposal_state` step), and says what is kept; with
+   * only `id`, just says. The viewer's own direct message with g1t only.
+   */
+  g1tProposal(workspace: string, channelId: string, viewer: User, messageId: string, state: AskProposalState): Promise<Result<AskProposalState>>;
+  /**
    * Clears the viewer's own direct message with @g1t: every message in
    * it, g1t's answers and their steps, reactions and the notifications
    * from it are deleted for good, and an answer still coming is thrown
@@ -763,6 +791,8 @@ export function chatClient(service: ServiceBinding): ChatApi {
     g1tReset: (workspace, channelId, viewer) => call("g1t_reset", { workspace, channel_id: channelId, viewer }),
     g1tRetry: (workspace, channelId, viewer) => call("g1t_retry", { workspace, channel_id: channelId, viewer }),
     g1tStop: (workspace, channelId, viewer) => call("g1t_stop", { workspace, channel_id: channelId, viewer }),
+    g1tProposal: (workspace, channelId, viewer, messageId, state) =>
+      call("g1t_proposal", { workspace, channel_id: channelId, viewer, message_id: messageId, state }),
     g1tClear: (workspace, channelId, viewer) => call("g1t_clear", { workspace, channel_id: channelId, viewer }),
   };
 }

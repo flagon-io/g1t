@@ -4,7 +4,7 @@
  * is told the page and reads the issue or pull request on it. Pure, so it
  * is tested on its own.
  */
-import type { AskEvent, AskPage, AskSource, AskToolStatus } from "@g1t/contracts";
+import type { AskEvent, AskPage, AskProposalState, AskSource, AskToolStatus } from "@g1t/contracts";
 
 /** First path segments that are g1t's own pages, never a workspace. */
 const RESERVED = new Set([
@@ -92,14 +92,23 @@ export function proposalTitle(proposal: Proposal): string {
  * An answer's steps and sources from the raw events kept with it (a chat
  * message keeps the `tool` and `sources` lines it was streamed with):
  * each step once, as it last was, in the order they started; the last
- * `sources`; each proposal once. Anything else, or anything malformed, is skipped.
+ * `sources`; each proposal once, and what its card did (`kept`, by its id).
+ * Anything else, or anything malformed, is skipped.
  */
-export function foldAnswer(events: unknown): { steps: Step[]; sources: AskSource[]; proposals: Proposal[] } {
+export function foldAnswer(events: unknown): { steps: Step[]; sources: AskSource[]; proposals: Proposal[]; kept: Record<string, AskProposalState> } {
   let steps: Step[] = [];
   let sources: AskSource[] = [];
   const proposals: Proposal[] = [];
+  const kept: Record<string, AskProposalState> = {};
   for (const event of Array.isArray(events) ? events : []) {
     if (!event || typeof event !== "object") continue;
+    // What a proposal's card did, kept on the answer by chat's g1t_proposal.
+    const state = event as AskProposalState & { type?: string };
+    if (state.type === "proposal_state" && typeof state.id === "string") {
+      const { type: _, ...rest } = state;
+      kept[state.id] = rest;
+      continue;
+    }
     const line = event as AskEvent;
     if (line.type === "tool" && typeof line.id === "string" && typeof line.label === "string") steps = withStep(steps, line);
     if (line.type === "sources" && Array.isArray(line.sources)) {
@@ -109,7 +118,7 @@ export function foldAnswer(events: unknown): { steps: Step[]; sources: AskSource
       if (!proposals.some((known) => known.id === line.id)) proposals.push(line);
     }
   }
-  return { steps, sources, proposals };
+  return { steps, sources, proposals, kept };
 }
 
 /** The steps with this one in its place: a new one at the end, a known one updated. */

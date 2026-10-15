@@ -1,7 +1,7 @@
 import { Ban, Check, ChevronRight, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, Rocket, SquareTerminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { AskSource } from "@g1t/contracts";
+import type { AskProposalState, AskSource } from "@g1t/contracts";
 
 import { type Proposal, type Step, foldAnswer, proposalSteps, proposalTitle } from "../lib/ask";
 import { Badge } from "./ui/badge";
@@ -102,15 +102,28 @@ function StepRow({ step }: { step: Step }) {
  * with it (a chat message's `meta.answer.steps`): steps above the answer's
  * text, sources below. Mount each half where it goes with `part`.
  */
-export function AskTrail({ events, working, part, slug }: { events: unknown; working: boolean; part: "steps" | "sources" | "proposals"; slug?: string }) {
-  const { steps, sources, proposals } = foldAnswer(events);
+export function AskTrail({
+  events,
+  working,
+  part,
+  slug,
+  message,
+}: {
+  events: unknown;
+  working: boolean;
+  part: "steps" | "sources" | "proposals";
+  slug?: string;
+  /** The answer they came in, where what each card did is kept. */
+  message?: { id: string; channel_id: string };
+}) {
+  const { steps, sources, proposals, kept } = foldAnswer(events);
   if (part === "steps") return <AskSteps steps={steps} working={working} />;
   if (part === "sources") return <AskSources sources={sources} />;
   if (!slug || proposals.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
       {proposals.map((proposal) => (
-        <SessionProposal key={proposal.id} proposal={proposal} slug={slug} />
+        <SessionProposal key={proposal.id} proposal={proposal} slug={slug} message={message} kept={kept[proposal.id]} />
       ))}
     </div>
   );
@@ -134,13 +147,35 @@ type Started = {
  * one is connected), Copy command gives the Claude Code command to run it
  * with the g1t plugin. Either way the session is tied to the issue.
  */
-export function SessionProposal({ proposal, slug }: { proposal: Proposal; slug: string }) {
+export function SessionProposal({
+  proposal,
+  slug,
+  message,
+  kept,
+}: {
+  proposal: Proposal;
+  slug: string;
+  message?: { id: string; channel_id: string };
+  /** What a click on this card already did, kept on its answer. */
+  kept?: AskProposalState;
+}) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<"start" | "copy" | null>(null);
-  const [started, setStarted] = useState<Started | null>(null);
+  const [started, setStarted] = useState<Started | null>(
+    kept?.started ? { session_url: kept.session_url ?? null, provider_session_url: kept.provider_session_url ?? null, handoff: false, command: null, prompt: "" } : null,
+  );
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [made, setMade] = useState<Pick<Started, "repo_url" | "production_url" | "deploy_error"> | null>(null);
+  const [made, setMade] = useState<Pick<Started, "repo_url" | "production_url" | "deploy_error"> | null>(
+    kept?.repo_url ? { repo_url: kept.repo_url, production_url: kept.production_url ?? null, deploy_error: kept.deploy_error ?? null } : null,
+  );
+  // What another tab, or a click elsewhere, did shows here as it is kept.
+  useEffect(() => {
+    if (kept?.repo_url) setMade({ repo_url: kept.repo_url, production_url: kept.production_url ?? null, deploy_error: kept.deploy_error ?? null });
+    if (kept?.started) {
+      setStarted((now) => now ?? { session_url: kept.session_url ?? null, provider_session_url: kept.provider_session_url ?? null, handoff: false, command: null, prompt: "" });
+    }
+  }, [kept?.repo_url, kept?.production_url, kept?.deploy_error, kept?.started, kept?.session_url, kept?.provider_session_url]);
 
   useEffect(() => {
     let live = true;
@@ -160,7 +195,7 @@ export function SessionProposal({ proposal, slug }: { proposal: Proposal; slug: 
       const response = await fetch(`/${slug}/-/ask`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ ...proposal, handoff }),
+        body: JSON.stringify({ ...proposal, handoff, message_id: message?.id, channel_id: message?.channel_id }),
       });
       const body = (await response.json().catch(() => null)) as (Started & { error?: string }) | null;
       // The repository may be made even when the session is not: keep where it is.
