@@ -1,14 +1,12 @@
-import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/login-two-factor";
 import { AuthCard } from "../components/auth-card";
-import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
-import { Button } from "../components/ui/button";
+import { TwoFactorCodeField } from "../components/one-time-code";
+import { ErrorText, SubmitButton } from "../components/ui";
 import { PENDING_COOKIE, TWO_FACTOR_COOKIE, cookie, readCookie } from "../lib/github";
 import { githubSignIn } from "../lib/github.server";
 import { page } from "../lib/meta";
-import { otpInputProps } from "../lib/otp";
 import { identity } from "../lib/services.server";
 import { assertSameOrigin, clientOf, getViewer, nextPath, startSession } from "../lib/session.server";
 
@@ -49,7 +47,6 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function LoginTwoFactor({ actionData }: Route.ComponentProps) {
-  const [recovery, setRecovery] = useState(false);
   return (
     <AuthCard
       title="Two-factor authentication"
@@ -61,14 +58,8 @@ export default function LoginTwoFactor({ actionData }: Route.ComponentProps) {
       }
     >
       <Form id="two-factor-sign-in" method="post" className="space-y-4">
-        <Field label={recovery ? "Recovery code" : "Authentication code"} htmlFor="totp-code">
-          {/* Either kind is accepted whichever is chosen, so a pasted recovery code is never cut; the choice sets the keyboard. */}
-          <Input {...otpInputProps({ id: "totp-code", recovery: true })} inputMode={recovery ? "text" : "numeric"} placeholder={recovery ? "k7m2q-9xw4d" : "123 456"} required autoFocus />
-        </Field>
-        {/* A phone shows digits for an app's code; a recovery code needs letters. */}
-        <Button type="button" variant="link" onClick={() => setRecovery(!recovery)}>
-          {recovery ? "Use an authenticator code" : "Use a recovery code"}
-        </Button>
+        {/* Sent as soon as the sixth digit is in; a recovery code pasted into the boxes moves to its own field. */}
+        <TwoFactorCodeField recovery autoFocus submit invalid={Boolean(actionData?.error)} />
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">
           <SubmitButton pending="Checking…">Verify</SubmitButton>

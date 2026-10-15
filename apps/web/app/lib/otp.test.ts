@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { otpInputProps } from "./otp.ts";
+import { codeDigits, looksLikeRecoveryCode, otpInputProps } from "./otp.ts";
 
 test("one-time-code fields are findable by password managers and carry no ignore attributes", () => {
   for (const recovery of [false, true]) {
@@ -29,4 +29,11 @@ test("a field that takes recovery codes neither cuts nor refuses one", () => {
   assert.equal(props.inputMode, "text");
   assert.equal(props.pattern, undefined);
   for (const code of ["k7m2q-9xw4d", "K7M2Q 9XW4D", "123456"]) assert.ok(code.length <= props.maxLength);
+});
+
+test("a code pasted into the boxes loses its spaces and dashes; a recovery code is told apart", () => {
+  assert.equal(codeDigits("123 456"), "123456");
+  assert.equal(codeDigits(" 123-456 "), "123456");
+  for (const code of ["k7m2q-9xw4d", "K7M2Q 9XW4D", " k7m2q9xw4d\n"]) assert.ok(looksLikeRecoveryCode(code), code);
+  for (const text of ["123456", "123 456", "", "hello there, this is far too long to be a code"]) assert.ok(!looksLikeRecoveryCode(text), text);
 });

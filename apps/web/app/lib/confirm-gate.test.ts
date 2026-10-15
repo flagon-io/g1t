@@ -75,10 +75,15 @@ test("confirming an account whose invite names a workspace goes on to accept or 
 
 test("the code field is a one-time code typed with a number pad", () => {
   const page = readFileSync(new URL("../routes/confirm-email.tsx", import.meta.url), "utf8");
-  const input = /<Input[\s\S]*?name="code"[\s\S]*?\/>/.exec(page)?.[0] ?? "";
+  assert.match(page, /<CodeSlots id="email-verification-code"/);
+  // The boxes are one real input that posts `code` and that autofill finds.
+  const slots = readFileSync(new URL("../components/one-time-code.tsx", import.meta.url), "utf8");
+  const input = /<InputOTP\b[\s\S]*?<\/InputOTP>/.exec(slots)?.[0] ?? "";
+  assert.match(input, /name=\{name\}/);
+  assert.match(slots, /name = "code"/);
   assert.match(input, /autoComplete="one-time-code"/);
   assert.match(input, /inputMode="numeric"/);
-  assert.match(input, /pattern="\[0-9 -\]\*"/);
+  assert.match(input, /pattern=\{REGEXP_ONLY_DIGITS\}/);
   // Either route: the page says the link in the email works too.
   assert.match(page, /link in the email/);
 });
