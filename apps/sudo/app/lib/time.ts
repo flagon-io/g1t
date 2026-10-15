@@ -117,3 +117,21 @@ export function toLocalInput(at: Date | string, tz = "UTC"): string {
   const zone = validZone(tz) ? tz : "UTC";
   return new Date(ms + offsetMinutes(ms, zone) * 60_000).toISOString().slice(0, 16);
 }
+
+/**
+ * How long before `now` something happened, briefly: "just now", "12 min
+ * ago", "3 h ago", "2 days ago"; past a month, the day. `now` comes from
+ * the loader, so the server and the browser say the same.
+ */
+export function ago(at: string, now: number): string {
+  const then = new Date(at).getTime();
+  if (Number.isNaN(then)) return at;
+  const minutes = Math.max(0, Math.floor((now - then) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 31) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return new Date(then).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}

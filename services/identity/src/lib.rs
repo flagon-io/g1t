@@ -1123,6 +1123,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "resolve_owners" => reply(&identity.resolve_owners(args(body)?).await?),
         // Staff only: sudo.g1t.sh, over its service binding. See admin.rs.
         "notify_owners" => reply(&identity.notify_owners(args(body)?).await?),
+        "admin_growth" => reply(&identity.admin_growth().await?),
         "admin_workspaces" => reply(&identity.admin_workspaces(args(body)?).await?),
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
         "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),

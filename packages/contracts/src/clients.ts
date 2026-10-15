@@ -335,6 +335,7 @@ export function staleMovedPaths(move: RepoMove, current: string): string[] {
 export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
+    growth: () => call("admin_growth", {}),
     workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
     workspace: (slug) => call("admin_workspace", { slug }),
     invites: (query, options = {}) => call("admin_invites", { query: query ?? null, to_g1t: options.toG1t ?? false }),
