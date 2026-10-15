@@ -64,6 +64,13 @@ pub(crate) fn next_through(previous: i64, now: i64, first_failed: Option<i64>, c
     }
 }
 
+/// A value to bind, or SQL NULL. `Option::into` gives JavaScript
+/// `undefined` for None, which D1 refuses ("Type 'undefined' not
+/// supported"): a customer without a card, or a replay that finished.
+fn or_null<T: Into<worker::wasm_bindgen::JsValue>>(value: Option<T>) -> worker::wasm_bindgen::JsValue {
+    value.map_or(worker::wasm_bindgen::JsValue::NULL, Into::into)
+}
+
 impl Billing {
     /// The workspace's saved card as last synced. Stripe is asked only when
     /// it never was, or g1t changed the card since; a Stripe that does not
@@ -130,10 +137,10 @@ impl Billing {
             )
             .bind(&[
                 customer.into(),
-                card.as_ref().map(|c| c.brand.clone()).into(),
-                card.as_ref().map(|c| c.last4.clone()).into(),
-                card.as_ref().map(|c| c.exp_month as f64).into(),
-                card.as_ref().map(|c| c.exp_year as f64).into(),
+                or_null(card.as_ref().map(|c| c.brand.clone())),
+                or_null(card.as_ref().map(|c| c.last4.clone())),
+                or_null(card.as_ref().map(|c| c.exp_month as f64)),
+                or_null(card.as_ref().map(|c| c.exp_year as f64)),
                 rfc3339(now_ms()).into(),
             ])?
             .run()
@@ -249,9 +256,9 @@ impl Billing {
             .bind(&[
                 mode.into(), (through as f64).into(), rfc3339(now_ms()).into(),
                 crate::optional(if complete { None } else { after.as_deref() }),
-                (!complete).then_some(since as f64).into(),
-                (!complete).then_some(until as f64).into(),
-                if complete { None } else { first_failed.map(|v| v as f64) }.into(),
+                or_null((!complete).then_some(since as f64)),
+                or_null((!complete).then_some(until as f64)),
+                or_null(if complete { None } else { first_failed.map(|v| v as f64) }),
             ])?
             .run()
             .await?;
@@ -354,6 +361,17 @@ fn card_of(row: &CardRow) -> Option<Card> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn no_binding_turns_none_into_undefined() {
+        // D1 refuses `undefined`; every optional value goes through or_null.
+        let source = include_str!("stripe_sync.rs");
+        let body = source.split("#[cfg(test)]").next().unwrap();
+        for line in body.lines().filter(|l| l.trim_end().ends_with(".into(),")) {
+            assert!(!line.contains("then_some(") && !line.contains(".map(|"), "{line}");
+        }
+    }
+
     use super::*;
 
     #[test]
