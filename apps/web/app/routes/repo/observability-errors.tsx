@@ -14,6 +14,7 @@ import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
 import { count, errorIssue, viewHref } from "../../lib/observability";
 import { observed, soft } from "../../lib/observability.server";
+import { Unavailable } from "../../components/boundary";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
@@ -98,7 +99,7 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
 
       <div className={cn("mt-2 transition-opacity", loading && "opacity-60")}>
         {!groups ? (
-          <Card className="p-6 text-sm text-muted">Errors could not be loaded just now. Reload the page to try again.</Card>
+          <Unavailable what="Errors" />
         ) : groups.length === 0 ? (
           <EmptyState title={state === "open" ? "No open errors in this period" : `No ${state} errors in this period`}>
             Exceptions thrown by apps on g1t.page show here on their own; others arrive as OpenTelemetry exception events and log records.

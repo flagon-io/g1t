@@ -26,6 +26,8 @@ import {
   requireUser,
 } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Repository settings · ${params.owner}/${params.repo} · g1t` });
@@ -36,10 +38,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Maintain and up; to anyone without a role here the page does not exist.
   const { repo, access } = await requireInsider(context, params, "manage_settings");
   const path = { namespace: params.owner, name: params.repo };
+  // Each of these is one section's: when one cannot be read, that section
+  // says so and has no form to save over what it could not show.
   const [branches, retention, settings] = await Promise.all([
-    repos.branches(path, viewer),
-    actions.artifactRetention(path, viewer),
-    work.getSettings(path, viewer).catch(() => null),
+    part(repos.branches(path, viewer), "Its branches"),
+    part(actions.artifactRetention(path, viewer), "How long artifacts are kept"),
+    part(work.getSettings(path, viewer), "These settings"),
   ]);
   // Renaming and the default branch are for Admins; visibility, for owners
   // of the workspace unless its member privileges let its members with
@@ -48,21 +52,27 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     repo,
     // An empty repository has no branches yet; the page still works.
-    branches: branches.ok ? branches.value.map((b) => b.name) : [],
+    branches: isFailed(branches) ? branches : branches.ok ? branches.value.map((b) => b.name) : [],
     owner,
     visibility: access.can.change_visibility,
     // How long workflow runs' artifacts are kept.
-    retention: retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
-    // Whether issues can be opened in it; null when that could not be read.
-    issues: settings?.ok ? { on: settings.value.issuesEnabled ?? true, chosen: settings.value.hasIssues != null } : null,
-    // How commits and issues are handled; null when that could not be read.
-    pullSettings: settings?.ok
-      ? {
-          autoCloseIssues: settings.value.autoCloseIssues,
-          requireWebCommitSignOff: settings.value.requireWebCommitSignOff,
-          allowCommitComments: settings.value.allowCommitComments,
-        }
-      : null,
+    retention: isFailed(retention) ? retention : retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
+    // Whether issues can be opened in it; null when it was not answered.
+    issues: isFailed(settings)
+      ? settings
+      : settings.ok
+        ? { on: settings.value.issuesEnabled ?? true, chosen: settings.value.hasIssues != null }
+        : null,
+    // How commits and issues are handled; null when it was not answered.
+    pullSettings: isFailed(settings)
+      ? settings
+      : settings.ok
+        ? {
+            autoCloseIssues: settings.value.autoCloseIssues,
+            requireWebCommitSignOff: settings.value.requireWebCommitSignOff,
+            allowCommitComments: settings.value.allowCommitComments,
+          }
+        : null,
   };
 }
 
@@ -167,7 +177,10 @@ function Status({ intent, data: result, saved = "Saved." }: { intent: string; da
 }
 
 export default function RepoSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, branches, owner, visibility, retention, issues, pullSettings } = loaderData;
+  const { repo, branches, owner, visibility, retention, issues: features, pullSettings: commits } = loaderData;
+  // Settings that could not be read are said to be, in their sections.
+  const issues = isFailed(features) ? null : features;
+  const pullSettings = isFailed(commits) ? null : commits;
   const navigation = useNavigation();
   const posting = (intent: string) => navigation.state !== "idle" && navigation.formData?.get("intent") === intent;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -221,17 +234,23 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           title="Branches"
           about="The branch everything lands on, and renaming branches."
         >
-          <DefaultBranchForm repo={repo} branches={branches} archived={archived || !owner} busy={posting("default-branch")} result={actionData} />
-          {/* Keyed to the branches, so after a rename it starts over on the branches there are now. */}
-          <RenameBranchForm
-            key={branches.join(" ")}
-            repo={repo}
-            branches={branches}
-            owner={owner}
-            archived={archived}
-            busy={posting("rename-branch")}
-            result={actionData}
-          />
+          {isFailed(branches) ? (
+            <Unavailable what={branches.what} />
+          ) : (
+            <>
+              <DefaultBranchForm repo={repo} branches={branches} archived={archived || !owner} busy={posting("default-branch")} result={actionData} />
+              {/* Keyed to the branches, so after a rename it starts over on the branches there are now. */}
+              <RenameBranchForm
+                key={branches.join(" ")}
+                repo={repo}
+                branches={branches}
+                owner={owner}
+                archived={archived}
+                busy={posting("rename-branch")}
+                result={actionData}
+              />
+            </>
+          )}
           <Link
             to={`${base}/settings/branches`}
             className="group flex items-center gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"
@@ -248,6 +267,11 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           </Link>
         </Section>
 
+        {isFailed(features) && (
+          <Section title="Features" about="What the repository has besides its code.">
+            <Unavailable what="Its features" />
+          </Section>
+        )}
         {issues && (
           <Section title="Features" about="What the repository has besides its code.">
             <Form method="post" key={`${issues.on}|${pullSettings?.autoCloseIssues}`} className="space-y-3">
@@ -282,6 +306,11 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           </Section>
         )}
 
+        {isFailed(commits) && (
+          <Section id="commits" title="Commits" about="Commits made on g1t, and talking about commits.">
+            <Unavailable what="Its commit settings" />
+          </Section>
+        )}
         {pullSettings && (
           <Section id="commits" title="Commits" about="Commits made on g1t, and talking about commits.">
             <Form method="post" key={`${pullSettings.requireWebCommitSignOff}|${pullSettings.allowCommitComments}`} className="space-y-3">
@@ -347,29 +376,33 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
         </Section>
 
         <Section title="Artifacts" about="How long the files workflow runs upload are kept.">
-          <Form method="post" key={retention.days} className="space-y-3">
-            <input type="hidden" name="intent" value="artifacts" />
-            <Field
-              label="Days to keep artifacts"
-              hint={`1 to ${retention.maximum_allowed_days}. A workflow's retention-days can ask for fewer, never more. Artifacts already uploaded keep their expiry.`}
-            >
-              <Input
-                name="days"
-                type="number"
-                min={1}
-                max={retention.maximum_allowed_days}
-                required
-                defaultValue={retention.days}
-                className="w-28"
-              />
-            </Field>
-            <div className="flex flex-wrap items-center gap-4 pt-1">
-              <SubmitButton match={{ intent: "artifacts" }} pending="Saving…">
-                Save
-              </SubmitButton>
-              <Status intent="artifacts" data={actionData} />
-            </div>
-          </Form>
+          {isFailed(retention) ? (
+            <Unavailable what={retention.what} />
+          ) : (
+            <Form method="post" key={retention.days} className="space-y-3">
+              <input type="hidden" name="intent" value="artifacts" />
+              <Field
+                label="Days to keep artifacts"
+                hint={`1 to ${retention.maximum_allowed_days}. A workflow's retention-days can ask for fewer, never more. Artifacts already uploaded keep their expiry.`}
+              >
+                <Input
+                  name="days"
+                  type="number"
+                  min={1}
+                  max={retention.maximum_allowed_days}
+                  required
+                  defaultValue={retention.days}
+                  className="w-28"
+                />
+              </Field>
+              <div className="flex flex-wrap items-center gap-4 pt-1">
+                <SubmitButton match={{ intent: "artifacts" }} pending="Saving…">
+                  Save
+                </SubmitButton>
+                <Status intent="artifacts" data={actionData} />
+              </div>
+            </Form>
+          )}
         </Section>
 
         {repo.isPrivate && (

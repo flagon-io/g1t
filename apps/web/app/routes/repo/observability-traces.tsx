@@ -10,6 +10,7 @@ import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
 import { clock, duration, viewHref } from "../../lib/observability";
 import { observed, soft } from "../../lib/observability.server";
+import { Unavailable } from "../../components/boundary";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Traces · ${params.owner}/${params.repo} · g1t` });
@@ -77,7 +78,7 @@ export default function Traces({ loaderData, params }: Route.ComponentProps) {
 
       <div className={cn("mt-4 transition-opacity", loading && "opacity-60")}>
         {!list ? (
-          <Card className="p-6 text-sm text-muted">Traces could not be loaded just now. Reload the page to try again.</Card>
+          <Unavailable what="Traces" />
         ) : list.items.length === 0 ? (
           <EmptyState title={cursor ? "No older traces" : "No traces in this period"}>
             Traces come from OpenTelemetry spans. An app on g1t.page sends them as soon as it uses an OpenTelemetry SDK: its endpoint and token

@@ -9,6 +9,8 @@ import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
 import { duration, viewHref } from "../../lib/observability";
 import { observed, soft } from "../../lib/observability.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 import { PRODUCT_STYLE } from "../../lib/usage";
 
 const AGGREGATES = ["avg", "sum", "min", "max", "p50", "p95", "p99"] as const;
@@ -26,7 +28,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const info = metrics?.find((m) => m.name === name) ?? null;
   const aggregate = AGGREGATES.find((a) => a === search.get("agg")) ?? (info?.kind === "sum" ? "sum" : "avg");
   const groupBy = search.get("by") || null;
-  const series = name ? await soft(service.metric({ project_id: projectId, ...filter, name, aggregate, group_by: groupBy }), "metric") : null;
+  // The chosen metric's chart says so in its place when it could not be read.
+  const series = name ? await part(service.metric({ project_id: projectId, ...filter, name, aggregate, group_by: groupBy }), `${name}'s points`) : null;
   return { view, metrics, facets, name, info, aggregate, groupBy, series };
 }
 
@@ -55,7 +58,7 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
 
       <div className={cn("mt-4 transition-opacity", loading && "opacity-60")}>
         {!metrics ? (
-          <Card className="p-6 text-sm text-muted">Metrics could not be loaded just now. Reload the page to try again.</Card>
+          <Unavailable what="Metrics" />
         ) : metrics.length === 0 ? (
           <EmptyState title="No metrics yet">
             Request counts, errors and latency are on the Overview already. Metrics of your own arrive from an OpenTelemetry SDK's metric exporter,
@@ -114,7 +117,8 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
                   />
                 </div>
               )}
-              {series && (
+              {isFailed(series) && <Unavailable what={series.what} />}
+              {series && !isFailed(series) && (
                 <TimeChart
                   title={`${series.name} (${aggregate})`}
                   kind="lines"
@@ -130,7 +134,7 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
                   empty="No points in this period."
                 />
               )}
-              {series && series.series.length > PRODUCT_STYLE.length && (
+              {series && !isFailed(series) && series.series.length > PRODUCT_STYLE.length && (
                 <p className="mt-2 text-xs text-faint">Showing the first {PRODUCT_STYLE.length} of {series.series.length} groups.</p>
               )}
             </div>

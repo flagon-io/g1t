@@ -13,6 +13,8 @@ import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
 import { SERIES, count, duration, percent, shortId, viewHref } from "../../lib/observability";
 import { observed, soft } from "../../lib/observability.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Observability · ${params.owner}/${params.repo} · g1t` });
@@ -20,12 +22,15 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { projectId, service, view, filter, access } = await observed(context, params, request);
+  // The overview and its open errors each say so in their place when they
+  // could not be read. The filter's choices quietly go without (soft): a
+  // filter in the address still applies.
   const [overview, facets, errors] = await Promise.all([
-    soft(service.overview({ project_id: projectId, ...filter }), "overview"),
+    part(service.overview({ project_id: projectId, ...filter }), "Observability"),
     soft(service.facets({ project_id: projectId }), "facets"),
-    soft(service.errors({ project_id: projectId, ...filter, state: "open" }), "errors"),
+    part(service.errors({ project_id: projectId, ...filter, state: "open" }), "Open errors"),
   ]);
-  return { view, overview, facets, errors: errors?.slice(0, 5) ?? null, canManage: access.can.manage_integrations };
+  return { view, overview, facets, errors: isFailed(errors) ? errors : errors.slice(0, 5), canManage: access.can.manage_integrations };
 }
 
 export default function Observability({ loaderData, params }: Route.ComponentProps) {
@@ -33,7 +38,7 @@ export default function Observability({ loaderData, params }: Route.ComponentPro
   const base = `/${params.owner}/${params.repo}`;
   const path = `${base}/observability`;
   const loading = useLoadingView();
-  const nothing = overview && overview.totals.requests === 0 && overview.services.length === 0 && (facets?.services.length ?? 0) === 0;
+  const nothing = !isFailed(overview) && overview.totals.requests === 0 && overview.services.length === 0 && (facets?.services.length ?? 0) === 0;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -44,8 +49,8 @@ export default function Observability({ loaderData, params }: Route.ComponentPro
       <FilterBar path={path} view={view} environments={facets?.environments ?? []} services={facets?.services ?? []} />
 
       <div className={cn("mt-6 transition-opacity", loading && "opacity-60")}>
-        {!overview ? (
-          <Card className="p-6 text-sm text-muted">Observability could not be loaded just now. Reload the page to try again.</Card>
+        {isFailed(overview) ? (
+          <Unavailable what={overview.what} />
         ) : nothing ? (
           <NothingYet base={base} canManage={canManage} />
         ) : (
@@ -187,7 +192,11 @@ function Loaded({
                 All <ArrowRight size={12} className="inline" />
               </Link>
             </div>
-            {!errors || errors.length === 0 ? (
+            {isFailed(errors) ? (
+              <div className="px-4 py-4">
+                <Unavailable what={errors.what} compact />
+              </div>
+            ) : errors.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted">No open errors in this period.</p>
             ) : (
               <ul className="divide-y divide-line">

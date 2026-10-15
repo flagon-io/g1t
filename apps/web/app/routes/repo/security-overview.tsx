@@ -31,15 +31,29 @@ import { type OverviewRow, POLICY_PATHS, STATUS_LABEL, STATUS_TONE, overviewRows
 import { SEVERITY_LABEL } from "../../lib/advisories";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
+import { Unavailable } from "../../components/boundary";
+import { type Failed, isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Security · ${params.owner}/${params.repo} · g1t` });
 }
 
-/** The security policy on the default branch, if any: the first of the places it may be. */
-async function policyPath(path: { namespace: string; name: string }, viewer: ReturnType<typeof getViewer>, defaultBranch: string): Promise<string | null> {
-  const found = await Promise.all(POLICY_PATHS.map((file) => repos.blob(path, viewer, defaultBranch, file).catch(() => null)));
-  return POLICY_PATHS.find((_, at) => found[at]?.ok) ?? null;
+/**
+ * The security policy on the default branch, if any: the first of the
+ * places it may be. When none was found but a place could not be read, it
+ * is not known to be missing: Failed, so the row does not say "None yet".
+ */
+async function policyPath(
+  path: { namespace: string; name: string },
+  viewer: ReturnType<typeof getViewer>,
+  defaultBranch: string,
+): Promise<string | null | Failed> {
+  const found = await Promise.all(POLICY_PATHS.map((file) => part(repos.blob(path, viewer, defaultBranch, file), "The security policy")));
+  const at = POLICY_PATHS.find((_, index) => {
+    const one = found[index];
+    return !isFailed(one) && one.ok;
+  });
+  return at ?? found.find(isFailed) ?? null;
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -52,44 +66,60 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   if (!access.insider || !access.can.security_alerts) {
     // The public face: for anyone who can see the repository.
+    // Each is a row or a section of its own, which says so when it could not be read.
     const [policy, published, reporting] = await Promise.all([
       policyPath(path, viewer, repo.defaultBranch),
-      advisories.list(path, viewer, "published"),
-      advisories.reportSettings(path, viewer),
+      part(advisories.list(path, viewer, "published"), "Published advisories"),
+      part(advisories.reportSettings(path, viewer), "Private vulnerability reporting"),
     ]);
     return {
       kind: "public" as const,
       policy,
-      advisories: published.ok ? published.value : [],
-      reporting: reporting.ok && reporting.value.privateVulnerabilityReporting,
+      advisories: isFailed(published) ? published : published.ok ? published.value : [],
+      reporting: isFailed(reporting) ? reporting : reporting.ok && reporting.value.privateVulnerabilityReporting,
       signedIn: Boolean(viewer),
     };
   }
+  // The alerts and the settings are what the overview is about; code
+  // scanning, the policy, the advisories and the reports are a row or a
+  // count each, which says so in its place when it could not be read.
   const [overview, code, view, policy, published, reports] = await Promise.all([
     security.overview(path, viewer),
-    securitySuite.codeScanning(path, viewer),
+    part(securitySuite.codeScanning(path, viewer), "Code scanning"),
     securitySuite.settings(path, viewer),
     policyPath(path, viewer, repo.defaultBranch),
-    advisories.list(path, viewer, "published"),
-    advisories.reports(path, viewer, "new"),
+    part(advisories.list(path, viewer, "published"), "Security advisories"),
+    part(advisories.reports(path, viewer, "new"), "New vulnerability reports"),
   ]);
   const settings = unwrap(view);
+  const scanning = isFailed(code) ? null : code;
+  // Rows whose facts could not be read, by key, and what they are.
+  const unavailable: Record<string, string> = {};
+  if (isFailed(code)) unavailable.code_scanning = code.what;
+  if (isFailed(policy)) unavailable.policy = policy.what;
+  if (isFailed(published)) unavailable.advisories = published.what;
   return {
     kind: "insider" as const,
     overview: unwrap(overview),
-    code: code.ok ? code.value : null,
+    code: scanning?.ok ? scanning.value : null,
+    codeFailed: isFailed(code),
     rows: overviewRows({
       base,
-      policyPath: policy,
+      policyPath: isFailed(policy) ? null : policy,
       reporting: settings.settings.privateVulnerabilityReporting,
-      advisories: published.ok ? published.value.length : 0,
+      advisories: !isFailed(published) && published.ok ? published.value.length : 0,
       upkeep: settings.upkeep,
-      codeScanning: { configured: code.ok ? code.value.configured : false, analyses: code.ok ? code.value.analyses.length : 0, entitled: settings.entitled },
+      codeScanning: {
+        configured: scanning?.ok ? scanning.value.configured : false,
+        analyses: scanning?.ok ? scanning.value.analyses.length : 0,
+        entitled: settings.entitled,
+      },
       historyAlerts: settings.settings.historyAlerts,
       canManage: Boolean(access.can.manage_settings),
       canPush: Boolean(access.can.push),
     }),
-    newReports: reports.ok ? reports.value.length : 0,
+    unavailable,
+    newReports: isFailed(reports) ? reports : reports.ok ? reports.value.length : 0,
     can: access.can,
   };
 }
@@ -157,7 +187,20 @@ function RowAction({ row, action, canManage }: { row: OverviewRow; action: strin
   );
 }
 
-function FeatureRows({ title, rows, action, canManage }: { title: string; rows: OverviewRow[]; action: string; canManage: boolean }) {
+function FeatureRows({
+  title,
+  rows,
+  action,
+  canManage,
+  unavailable,
+}: {
+  title: string;
+  rows: OverviewRow[];
+  action: string;
+  canManage: boolean;
+  /** Rows whose facts could not be read: each says so in place of its status. */
+  unavailable: Record<string, string>;
+}) {
   return (
     <section aria-labelledby={`rows-${title}`} className="space-y-2">
       <h3 id={`rows-${title}`} className="text-sm font-semibold">
@@ -165,25 +208,39 @@ function FeatureRows({ title, rows, action, canManage }: { title: string; rows: 
       </h3>
       <Card asChild divided>
         <ul>
-          {rows.map((row) => (
-            <li key={row.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6">
-              <div className="min-w-0 grow">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">{row.title}</span>
-                  <Hint label={row.hint}>
-                    <Badge tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
-                  </Hint>
+          {rows.map((row) =>
+            unavailable[row.key] ? (
+              <UnavailableRow key={row.key} title={row.title} what={unavailable[row.key]} />
+            ) : (
+              <li key={row.key} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6">
+                <div className="min-w-0 grow">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{row.title}</span>
+                    <Hint label={row.hint}>
+                      <Badge tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
+                    </Hint>
+                  </div>
+                  <p className="mt-1 text-sm text-muted">{row.about}</p>
                 </div>
-                <p className="mt-1 text-sm text-muted">{row.about}</p>
-              </div>
-              <div className="shrink-0 sm:text-right">
-                <RowAction row={row} action={action} canManage={canManage} />
-              </div>
-            </li>
-          ))}
+                <div className="shrink-0 sm:text-right">
+                  <RowAction row={row} action={action} canManage={canManage} />
+                </div>
+              </li>
+            ),
+          )}
         </ul>
       </Card>
     </section>
+  );
+}
+
+/** A row whose status could not be read: its title, and that, in place of a status that would be a guess. */
+function UnavailableRow({ title, what }: { title: string; what: string }) {
+  return (
+    <li className="space-y-1 p-4">
+      <span className="text-sm font-medium">{title}</span>
+      <Unavailable what={what} compact />
+    </li>
   );
 }
 
@@ -216,7 +273,7 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
           title="Security"
           about="How to report a vulnerability in this repository, and what its maintainers have published about vulnerabilities in what it ships."
           actions={
-            reporting ? (
+            reporting === true ? (
               <ButtonLink to={`${base}/security/report`} prefetch="intent">
                 Report a vulnerability
               </ButtonLink>
@@ -225,37 +282,45 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
         />
         <Card asChild divided>
           <ul>
-            <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6">
-              <div className="min-w-0 grow">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">Security policy</span>
-                  <Badge tone={policy ? "success" : "neutral"}>{policy ? "Published" : "None yet"}</Badge>
+            {isFailed(policy) ? (
+              <UnavailableRow title="Security policy" what={policy.what} />
+            ) : (
+              <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6">
+                <div className="min-w-0 grow">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">Security policy</span>
+                    <Badge tone={policy ? "success" : "neutral"}>{policy ? "Published" : "None yet"}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-muted">
+                    {policy ? `${policy} says how to report a vulnerability and which versions are supported.` : "This repository has not published a security policy."}
+                  </p>
                 </div>
-                <p className="mt-1 text-sm text-muted">
-                  {policy ? `${policy} says how to report a vulnerability and which versions are supported.` : "This repository has not published a security policy."}
-                </p>
-              </div>
-              {policy && (
-                <ButtonLink to={`${base}/blob/HEAD/${policy}`} variant="outline" size="sm">
-                  View policy
-                </ButtonLink>
-              )}
-            </li>
-            <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6">
-              <div className="min-w-0 grow">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">Private vulnerability reporting</span>
-                  <Badge tone={reporting ? "success" : "neutral"}>{reporting ? "Enabled" : "Disabled"}</Badge>
+                {policy && (
+                  <ButtonLink to={`${base}/blob/HEAD/${policy}`} variant="outline" size="sm">
+                    View policy
+                  </ButtonLink>
+                )}
+              </li>
+            )}
+            {isFailed(reporting) ? (
+              <UnavailableRow title="Private vulnerability reporting" what={reporting.what} />
+            ) : (
+              <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6">
+                <div className="min-w-0 grow">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">Private vulnerability reporting</span>
+                    <Badge tone={reporting ? "success" : "neutral"}>{reporting ? "Enabled" : "Disabled"}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-muted">
+                    {reporting
+                      ? signedIn
+                        ? "Tell the maintainers privately, under your name. Only they see the report."
+                        : "Tell the maintainers privately. You can report without an account; leave an email so they can answer you."
+                      : "This repository does not take private reports here. Its security policy, if any, says how to reach the maintainers."}
+                  </p>
                 </div>
-                <p className="mt-1 text-sm text-muted">
-                  {reporting
-                    ? signedIn
-                      ? "Tell the maintainers privately, under your name. Only they see the report."
-                      : "Tell the maintainers privately. You can report without an account; leave an email so they can answer you."
-                    : "This repository does not take private reports here. Its security policy, if any, says how to reach the maintainers."}
-                </p>
-              </div>
-            </li>
+              </li>
+            )}
           </ul>
         </Card>
         <section aria-labelledby="public-advisories" className="space-y-2">
@@ -263,13 +328,15 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
             <h3 id="public-advisories" className="text-sm font-semibold">
               Security advisories
             </h3>
-            {published.length > 0 && (
+            {!isFailed(published) && published.length > 0 && (
               <Link to={`${base}/security/advisories`} className="text-sm text-muted underline underline-offset-2 hover:text-fg">
                 All advisories
               </Link>
             )}
           </div>
-          {published.length === 0 ? (
+          {isFailed(published) ? (
+            <Unavailable what={published.what} />
+          ) : published.length === 0 ? (
             <EmptyState title="No published advisories">The maintainers have not published any security advisories for this repository.</EmptyState>
           ) : (
             <Card asChild divided>
@@ -284,7 +351,7 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
       </div>
     );
   }
-  const { overview, code, rows, newReports, can } = loaderData;
+  const { overview, code, codeFailed, rows, unavailable, newReports, can } = loaderData;
   const codeOpen = code ? severityCounts(code.alerts) : null;
   // Open alerts of every kind, by severity.
   const counts = { ...overview.counts };
@@ -297,22 +364,26 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
         title="Security"
         about="What keeps this repository safe, and where each part stands. Pushes that add a secret are refused before they land, every package the lockfiles resolve is checked for known vulnerabilities, code scanning reads your tools' results, and the maintainers publish advisories and take private reports."
         actions={
-          newReports > 0 ? (
+          isFailed(newReports) ? (
+            <Unavailable what={newReports.what} compact />
+          ) : newReports > 0 ? (
             <ButtonLink to={`${base}/security/reports`} variant="outline" size="sm" prefetch="intent">
               {newReports === 1 ? "1 new vulnerability report" : `${newReports} new vulnerability reports`}
             </ButtonLink>
           ) : null
         }
       />
-      <FeatureRows title="Policy" rows={rowsIn(rows, "policy")} action={action} canManage={canManage} />
-      <FeatureRows title="Findings" rows={rowsIn(rows, "findings")} action={action} canManage={canManage} />
-      <FeatureRows title="Reporting" rows={rowsIn(rows, "reporting")} action={action} canManage={canManage} />
+      <FeatureRows title="Policy" rows={rowsIn(rows, "policy")} action={action} canManage={canManage} unavailable={unavailable} />
+      <FeatureRows title="Findings" rows={rowsIn(rows, "findings")} action={action} canManage={canManage} unavailable={unavailable} />
+      <FeatureRows title="Reporting" rows={rowsIn(rows, "reporting")} action={action} canManage={canManage} unavailable={unavailable} />
       <section aria-labelledby="open-alerts" className="space-y-3">
         <h3 id="open-alerts" className="flex items-center gap-2 text-sm font-semibold">
           <ShieldCheck size={15} className="text-accent" />
           Open alerts
         </h3>
         <SeverityCountsGrid counts={counts} />
+        {/* Without code scanning's alerts, the counts above are of the rest. */}
+        {codeFailed && <Unavailable what="Code scanning alerts" compact />}
         <p className="text-xs text-faint">
           Open alerts of every kind by severity ({SEVERITY_LABEL.critical.toLowerCase()} to {SEVERITY_LABEL.low.toLowerCase()}). A secret in the history
           that looks real counts as critical; blocked pushes and likely test values do not.

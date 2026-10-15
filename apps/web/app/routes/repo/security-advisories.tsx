@@ -19,6 +19,7 @@ import { Card } from "../../components/ui/card";
 import { advisories } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { requireRepo } from "../../lib/access.server";
+import { orElse, part } from "../../lib/partial";
 import { ADVISORY_STATES, STATE_LABEL, STATE_TONE, advisoryStanding, parseAdvisoryState } from "../../lib/advisories";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -30,9 +31,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { access } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
   const insider = Boolean(access.insider && access.can.security_alerts);
+  // How many reports are new is only a count on the Reports link, which
+  // goes without it when it cannot be read: the Reports page has them all.
   const [list, reports] = await Promise.all([
     advisories.list(path, viewer),
-    insider ? advisories.reports(path, viewer, "new") : Promise.resolve(null),
+    insider ? part(advisories.reports(path, viewer, "new"), "New reports").then((found) => orElse(found, null)) : Promise.resolve(null),
   ]);
   return {
     advisories: unwrap(list),

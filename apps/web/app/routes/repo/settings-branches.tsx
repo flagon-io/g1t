@@ -19,6 +19,8 @@ import { ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { actions, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 const COMMIT_MESSAGE_DEFAULTS: CommitMessageDefault[] = [
   "default",
@@ -40,12 +42,15 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const [repo, settings, seen, workflows] = await Promise.all([
     repos.get(path, viewer),
     work.getSettings(path, viewer),
-    work.seenChecks(path, viewer),
-    actions.workflows(path, viewer),
+    // Only for offering to add CI: when either cannot be read, it is not offered.
+    part(work.seenChecks(path, viewer), "Checks seen"),
+    part(actions.workflows(path, viewer), "Workflows"),
   ]);
   const found = unwrap(repo);
-  // What holds for the default branch: shown here, changed in Rules.
-  const effective = await work.effectiveRules(path, found.defaultBranch, viewer).catch(() => null);
+  // What holds for the default branch: shown here, changed in Rules. A
+  // failure says so in its place: read as no rules, it would say the
+  // branch is unprotected.
+  const effective = await part(work.effectiveRules(path, found.defaultBranch, viewer), `The rules for ${found.defaultBranch}`);
   // Streamed: the CODEOWNERS file is read and checked on its own time.
   const codeowners = work
     .codeownersErrors(path, viewer)
@@ -55,9 +60,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     codeowners,
     repo: found,
     settings: unwrap(settings),
-    effective: effective?.ok ? effective.value : null,
+    effective: isFailed(effective) ? effective : effective.ok ? effective.value : null,
     // Nothing to require until something runs: the page offers to add CI.
-    noChecks: workflows.ok && workflows.value.length === 0 && seen.ok && seen.value.length === 0,
+    noChecks: !isFailed(workflows) && workflows.ok && workflows.value.length === 0 && !isFailed(seen) && seen.ok && seen.value.length === 0,
     canPush: access.can.push,
   };
 }
@@ -111,7 +116,8 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
   const branch = repo.defaultBranch;
   const base = `/${repo.namespace}/${repo.name}`;
   const archived = Boolean(repo.archivedAt);
-  const active = effective?.rules.filter((rule) => rule.enforcement === "active") ?? [];
+  const rules = isFailed(effective) ? null : effective;
+  const active = rules?.rules.filter((rule) => rule.enforcement === "active") ?? [];
   const labels = [...new Set(active.map((rule) => ruleInfo(rule.type)?.label ?? rule.type))];
   return (
     <>
@@ -134,12 +140,14 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
             <Scale size={16} className="mt-0.5 shrink-0 text-accent" />
             <span className="min-w-0 grow">
               <span className="block text-sm font-medium">Rules for {branch}</span>
-              <span className="mt-1 block text-sm text-muted">
-                {labels.length > 0 ? labels.join(" · ") : `No active rules hold for ${branch}: anyone who may push can change it.`}
-              </span>
-              {effective && effective.rulesets.length > 0 && (
+              {!isFailed(effective) && (
+                <span className="mt-1 block text-sm text-muted">
+                  {labels.length > 0 ? labels.join(" · ") : `No active rules hold for ${branch}: anyone who may push can change it.`}
+                </span>
+              )}
+              {rules && rules.rulesets.length > 0 && (
                 <span className="mt-2 flex flex-wrap gap-2">
-                  {effective.rulesets.map((ruleset) => (
+                  {rules.rulesets.map((ruleset) => (
                     <span key={ruleset.id} className="inline-flex items-center gap-1.5 text-xs text-muted">
                       {ruleset.name} <EnforcementBadge enforcement={ruleset.enforcement} />
                     </span>
@@ -149,6 +157,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
             </span>
             <ChevronRight size={16} className="mt-0.5 shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
           </Link>
+          {isFailed(effective) && <Unavailable what={effective.what} compact />}
           <Link
             to={`${base}/settings/guardrails`}
             className="group flex items-center gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"

@@ -22,6 +22,7 @@ import { Input } from "../../components/ui/input";
 import { advisories } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
+import { isFailed, part } from "../../lib/partial";
 import { whyNot } from "../../lib/access";
 import { REPORT_STATES, REPORT_STATE_LABEL, REPORT_STATE_TONE, parseReportState } from "../../lib/advisories";
 
@@ -33,8 +34,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
   const { access } = await requireInsider(context, params, "security_alerts");
   const path = { namespace: params.owner, name: params.repo };
-  const [reports, settings] = await Promise.all([advisories.reports(path, viewer), advisories.reportSettings(path, viewer)]);
-  return { reports: unwrap(reports), reporting: settings.ok && settings.value.privateVulnerabilityReporting, can: access.can };
+  // The reports are what the page is about. Whether reporting is on only
+  // changes a line: unknown (null) when it cannot be read, so the page
+  // does not say it is off.
+  const [reports, settings] = await Promise.all([advisories.reports(path, viewer), part(advisories.reportSettings(path, viewer), "Private vulnerability reporting")]);
+  return {
+    reports: unwrap(reports),
+    reporting: isFailed(settings) ? null : settings.ok && settings.value.privateVulnerabilityReporting,
+    can: access.can,
+  };
 }
 
 export async function action({ params, context, request }: Route.ActionArgs) {
@@ -111,7 +119,7 @@ export default function SecurityReports({ loaderData, params }: Route.ComponentP
       <SectionHeader
         title="Vulnerability reports"
         about={
-          reporting
+          reporting !== false
             ? "What people told this repository's maintainers privately. Accept a report to draft an advisory from it, in the reporter's words and crediting them; decline what is not a vulnerability. Reporters never see this list."
             : "Private vulnerability reporting is off for this repository: nobody can send a new report. Turn it on from the Security overview. Reports already sent are here."
         }
@@ -136,7 +144,7 @@ export default function SecurityReports({ loaderData, params }: Route.ComponentP
       </div>
       {shown.length === 0 ? (
         <EmptyState title={state ? `No ${REPORT_STATE_LABEL[state].toLowerCase()} reports` : "No reports"}>
-          {reporting ? "Nobody has reported a vulnerability privately yet." : "Nothing was reported while private reporting was on."}
+          {reporting !== false ? "Nobody has reported a vulnerability privately yet." : "Nothing was reported while private reporting was on."}
         </EmptyState>
       ) : (
         <div className="space-y-3">
