@@ -7,7 +7,7 @@
  * Message bodies are never HTML: they are parsed here into a small tree
  * that React renders as text, so nothing anyone writes can run.
  */
-import type { ChatMessage, ChatSidebarEntry, MemberProfile, Principal } from "@g1t/contracts";
+import type { Channel, ChatMessage, ChatSidebarEntry, MemberProfile, Principal } from "@g1t/contracts";
 
 /** Two messages from the same author this close together share one header. */
 export const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -182,12 +182,14 @@ export function formerAgentDm<M extends Pick<MemberProfile, "kind">>(entry: { ch
 
 /**
  * The sidebar's sections, in the order they show: what is pinned (the
- * `starred` preference), channels by name, then direct messages, the
- * latest first.
+ * `starred` preference), the workspace's own channels (workspace and
+ * private) by name, its public channels by name, then direct messages, the
+ * latest first. A pinned channel stays under Pinned, whatever it is.
  */
 export function sections(entries: ChatSidebarEntry[]): {
   pinned: ChatSidebarEntry[];
   channels: ChatSidebarEntry[];
+  publicChannels: ChatSidebarEntry[];
   dms: ChatSidebarEntry[];
 } {
   const byName = (a: ChatSidebarEntry, b: ChatSidebarEntry) => a.title.localeCompare(b.title);
@@ -196,10 +198,16 @@ export function sections(entries: ChatSidebarEntry[]): {
     (b.channel.last_message_at ?? b.channel.created_at).localeCompare(a.channel.last_message_at ?? a.channel.created_at);
   return {
     pinned: entries.filter((e) => e.starred).sort(byName),
-    channels: entries.filter((e) => !e.starred && e.channel.kind === "channel").sort(byName),
+    channels: entries.filter((e) => !e.starred && e.channel.kind === "channel" && !isPublic(e.channel)).sort(byName),
+    publicChannels: entries.filter((e) => !e.starred && e.channel.kind === "channel" && isPublic(e.channel)).sort(byName),
     // Your direct message with @g1t heads the list, whenever you last talked.
     dms: entries.filter((e) => !e.starred && e.channel.kind === "dm").sort((a, b) => Number(g1tEntry(b)) - Number(g1tEntry(a)) || byRecent(a, b)),
   };
+}
+
+/** Open to anyone on g1t, not only the workspace's members. */
+function isPublic(channel: Pick<Channel, "private" | "visibility">): boolean {
+  return !channel.private && channel.visibility === "public";
 }
 
 /** Whether a sidebar entry is the viewer's direct message with @g1t. */
