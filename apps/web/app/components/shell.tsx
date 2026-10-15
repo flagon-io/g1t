@@ -1181,7 +1181,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
   const stars = atMine && profileTab === "stars";
   const shown = useBrowsedOwner(owner);
   const workspace = useRouteLoaderData("routes/workspace/layout") as
-    | { workspace: { slug: string }; projects?: { namespace: string; name: string; title: string }[] }
+    | { workspace: { slug: string }; projects?: (ShortcutProject & { title: string })[] }
     | undefined;
   if (owner?.kind === "workspace" && shown) {
     const base = `/${owner.name}`;
