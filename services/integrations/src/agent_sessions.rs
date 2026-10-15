@@ -115,7 +115,11 @@ pub fn system_prompt() -> String {
      - Follow the work-on-issue skill. Check the work context and the sessions on the issue before you start, and claim only what you take. \
      When work splits into independent parts, you may give a part to a copy of yourself; each is recorded on g1t as a subagent and sees the others.\n\
      - Put the trailer `G1t-Session: <the session id in your first message>` on every commit, so g1t ties the commits to this session.\n\
-     - Work on a branch whose name starts with the issue number, and open a draft pull request early. Never push to the default branch.\n\
+     - Work on a branch whose name starts with the issue number, and open a draft pull request early. Never push to the default branch, \
+     except a repository's first commit when it has none yet: there is nothing to open a pull request against, so the first version goes \
+     straight to it.\n\
+     - A push to the default branch of a project with deployments on deploys production. When you push there, watch it with \
+     `g1t deploy list` until it is live or failed; if it failed, read why, fix it and push again. Say where it is live in your report.\n\
      - Never write `@g1t` in what you post on g1t: that asks g1t for another session.\n\
      - When you finish, say in a few sentences what you did, what is left, and the pull request, if any. That is your report on g1t."
         .to_owned()
