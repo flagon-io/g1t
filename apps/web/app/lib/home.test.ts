@@ -7,6 +7,7 @@ import {
   type AttentionRow,
   type CodeNeed,
   type CodePull,
+  type DeployRow,
   type LandedChange,
   actorKind,
   agentLabel,
@@ -514,12 +515,26 @@ test("what landed, besides merges: direct pushes, releases, packages and product
     { key: "deploy:site:d2", project: "site", kind: "preview", outcome: "live", commit: "abcdef2", branch: "fix", at: NOW - HOUR, to: "/acme/site/deployments/d2", by: "bo" },
     { key: "deploy:site:d3", project: "site", kind: "production", outcome: "failed", commit: "abcdef3", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d3", by: "bo" },
   ]);
-  assert.deepEqual(builds.map((change) => [change.kind, change.title]), [["deploy", "Production of site went live"]]);
-  const all = landed([fromActivity, builds]);
+  assert.deepEqual(
+    builds.map((change) => [change.kind, change.title, change.failed ?? false]),
+    [
+      ["deploy", "Production of site went live", false],
+      ["deploy", "Production of site failed to deploy", true],
+    ],
+  );
+  const all = landed([fromActivity, builds.slice(0, 1)]);
   assert.deepEqual(
     all.map((change) => change.key),
     ["push:rep_cli", "landed:deploy:site:d1", "package:rep_api:container:api:1.4.0", "push:rep_web", "release:rep_web:v1.4.0", "push:rep_api"],
   );
+});
+
+test("a production build is its own row only where no merge or push on the list says it", () => {
+  const row = (key: string, commit: string): DeployRow => ({ key, project: "site", kind: "production", outcome: "live", commit, branch: null, at: NOW - HOUR, to: `/acme/site/deployments/${key}`, by: "bo" });
+  const merge: LandedChange = { key: "merge:1", kind: "merge", title: "Fix", detail: "", to: "/acme/site/pull/1", at: NOW - 2 * HOUR, sha: "aaaaaaa111", repoId: "r" };
+  const push: LandedChange = { key: "push:1", kind: "push", title: "Push", detail: "", to: "/acme/site/activity", at: NOW - 2 * HOUR, sha: "bbbbbbb222", repoId: "r", shipped: { state: "live", at: NOW - HOUR, to: "/acme/site/deployments/d2" } };
+  const builds = landedDeploys([row("d1", "aaaaaaa"), row("d2", "ccccccc"), row("d3", "ddddddd")], [merge, push]);
+  assert.deepEqual(builds.map((change) => change.key), ["landed:d3"]);
 });
 
 const deploy = (over: Partial<Deployment>): Deployment => ({

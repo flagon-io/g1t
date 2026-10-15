@@ -14,7 +14,6 @@ import { Link } from "react-router";
 import { askG1t, openAsk } from "../lib/ask";
 import { HOME_STARTERS, type Span, summarizeQuestion } from "../lib/home";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
-import { Card } from "./home";
 import { MarkGlyph } from "./logo";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
@@ -96,9 +95,10 @@ export function HomeAsk({ span }: { span: AskSpan }) {
 }
 
 /**
- * What changed: g1t's summary of the span in plain English, on the page.
- * Asked only when the viewer presses Summarize (each answer is a call to
- * the workspace's own AI provider); asked again for another span.
+ * What changed: g1t's summary of the span in plain English, on the page,
+ * a strip in the span's card. Asked only when the viewer presses
+ * Summarize (each answer is a call to the workspace's own AI provider);
+ * asked again for another span.
  */
 export function WhatChangedCard({ slug, span, tz }: { slug: string; span: AskSpan; tz: string | null }) {
   // Each ask is its own: Summarize again asks anew.
@@ -125,12 +125,14 @@ export function WhatChangedCard({ slug, span, tz }: { slug: string; span: AskSpa
   const onDone = useCallback((channelId: string | null) => setDone({ channelId }), []);
 
   return (
-    <div ref={card} className="scroll-mt-4">
-      <Card title="What changed" hint={`In plain English, ${label}`}>
-        <div className="px-5 pb-5">
+    <div ref={card} className="scroll-mt-4 border-t border-line">
+        <div className="px-5 py-3.5">
           {!asked ? (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <p className="grow text-sm text-muted">g1t reads the commits, pull requests, deploys and conversations {label} and tells you what changed, why, and what is live.</p>
+              <p className="grow text-sm text-muted">
+                <span className="font-medium text-fg">What changed, in plain English.</span> g1t reads the commits, pull requests, deploys and conversations {label} and
+                tells you what changed, why, and what is live.
+              </p>
               <Button type="button" variant="accent" size="sm" onClick={summarize} onPointerEnter={() => void loadSummary()} className="shrink-0 self-start sm:self-auto">
                 <Sparkles size={14} />
                 Summarize
@@ -171,7 +173,6 @@ export function WhatChangedCard({ slug, span, tz }: { slug: string; span: AskSpa
             </>
           )}
         </div>
-      </Card>
     </div>
   );
 }

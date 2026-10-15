@@ -122,7 +122,7 @@ A thread that settled by itself says why under its title in **Done**, in
 a few words, and who did it when someone did: **CI passed in run 330**,
 **Merged by @ana**, **Production of site deployed at 8e30fb4**,
 **Review no longer asked of you**. A thread you marked done yourself says
-nothing there. [Home](/guides/home/#while-you-were-away) lists what
+nothing there. [Home](/guides/home/#settled-for-you) lists what
 settled for you since your last visit.
 
 A notification that settled is no longer shown again: tabs you open later

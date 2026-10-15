@@ -5,17 +5,24 @@ description: Your workspace's front page. Ask g1t what to do, where you're neede
 
 **Home** is the first page of your workspace, at `/<workspace>/-/home`.
 It opens with **What are we building today?** and a box that
-[asks g1t](#ask-from-home), then answers three questions, in this order:
+[asks g1t](#ask-from-home). Under it, the main column is read top to
+bottom:
 
 1. **Where you're needed**: everything waiting on you, however long ago
-   it started, with the action beside each item.
-2. **What happened while you were away**: what changed, in plain
-   English when you ask for it; what settled by itself and what went
-   live; what people did; what landed; deploys and spend, since you were
-   last here.
-3. **What is running now**: workflow runs and builds still going.
+   it started, with the action beside each item. Its first row is
+   [Start here](#start-here), the one item to do first, and why.
+2. **Since you were last here**: one card for the span. It shows what people
+   did, what changed in plain English when you ask for it, and what landed,
+   each change with whether it is live yet.
 
-**Start here** picks the one item to do first.
+The side column stays in view as you scroll:
+
+- **[Running now](#running-now)**: workflow runs and builds still going.
+- **[Spent](#spent)**: what the span cost, and the month so far.
+- **[Settled for you](#settled-for-you)**: what finished by itself.
+
+On a phone it is one column: Where you're needed, Running now, the span,
+then Spent and Settled for you.
 
 For a workspace's owners, Home also opens
 [Getting started](/guides/workspaces/#getting-started), the setup guide,
@@ -88,17 +95,16 @@ sentence under the page's heading starts with how many things need you.
 
 ## Start here
 
-**Start here** is the first row of Where you're needed: the most pressing
-tier, and within it the row that has waited longest. g1t picks it with
-that rule, so the same rows always give the same pick.
-The card shows who is on it (**Owner**), the step it waits for (**Next**,
-such as **Merge** or **Review**), how long it has waited (**Waiting**),
-what is at stake (**At stake**), and **Why this one**, such as
-"Everything it needs is met; it lands when you merge it." When others in
-its tier are waiting too, it adds that this one has waited longest.
+**Start here** is the first row of Where you're needed, set apart at the
+top: the most pressing tier, and within it the row that has waited
+longest. g1t picks it with that rule, so the same rows always give the
+same pick. It says why, such as "Everything it needs is met; it lands when
+you merge it." When others in its tier are waiting too, it adds that this
+one has waited longest. Beside its button are what is at stake, how long
+it has waited, and who is on it.
 
 Its title links to what it picked: the pull request, issue or build. The
-button under it opens the same place. For a pull request (one ready to
+button opens the same place. For a pull request (one ready to
 merge, a review asked of you, or yours that is stuck) it says **Open pull
 request**; you merge or review there. For anything else it names the
 action, such as **See the build** or **Respond**.
@@ -106,8 +112,8 @@ action, such as **See the build** or **Respond**.
 ## Since you were last here
 
 Home remembers when you were last on it, for each workspace, with your
-account, so it is the same on your laptop and your phone. The second half
-of the page covers what happened since then, and its heading says the span
+account, so it is the same on your laptop and your phone. The span's card
+covers what happened since then, and its heading says the span
 in words, such as **Since Tuesday evening · 2 days** or **Since 40
 minutes ago**.
 
@@ -149,7 +155,7 @@ people did couldn't be read" rather than reading as quiet.
 
 ### What changed
 
-The first card, **What changed**, has g1t tell you what happened in the
+**What changed**, under People in the span's card, has g1t tell you what happened in the
 span in plain English: what changed, why, and what is live. It is not
 written until you ask, since each summary is a call to your workspace's
 AI provider:
@@ -169,30 +175,14 @@ AI provider:
 
 The question g1t is sent reads as you would ask it, with the span's start
 in your time zone: "Summarize what changed since I was last here (2:12
-PM) in plain English." Choosing another span with the switch starts the
-card over. When Ask is not set up, the card says so: owners get a link to
+PM) in plain English." Choosing another span with the switch starts it
+over. When Ask is not set up, the card says so: owners get a link to
 connect a provider and choose it for Ask, and members are told to ask an
 owner.
 
-### While you were away
-
-The next card says what finished by itself in the span, and what is
-live. (Over **Last 24 hours** and **Last 7 days** it is called **Settled
-for you**.) Its first line counts:
-
-| Count | What it is |
-| --- | --- |
-| *4 notifications settled* | Your notifications in this workspace that [settled themselves](/guides/notifications/#threads-that-settle-themselves) in the span: a later run passed, the pull request merged, the deployment went out. One you marked done yourself is not counted |
-| *3 changes live*, *1 deploying*, *1 waiting to deploy*, *1 deploy failed* | The merges and pushes under [Landed](#landed), by whether each is [live](#live-after-merge) |
-| *2 things still need you* | The rows of [Where you're needed](#where-youre-needed); it takes you there |
-
-Under it, each notification that settled, newest first, with why it
-settled and who did it, such as **CI passed in run 330** or **Merged by
-@ana**. **Done** opens the notifications that are done.
-
 ### People
 
-The second card, **People**, lists what people did in the span, one line
+The span's card opens with **People**: what people did in the span, one line
 per kind of thing with its count, and each line opens the place that lists
 them: a project's Activity tab for pushes, its pull requests or issues,
 Artifacts, Chat. Beside the heading are the faces of the five most active,
@@ -212,23 +202,25 @@ and how many more there were.
 
 A push an import made names nobody, so it is counted without a face.
 
-The card says when it has nothing to show, and names the part that didn't
-answer (Code or Chat) so an empty card never reads as a quiet day.
+It says when it has nothing to show, and names the part that didn't
+answer (Code or Chat) so an empty list never reads as a quiet day.
 
 ### Landed
 
-Everything that landed in the span, newest first:
+The rest of the span's card is everything that landed in the span,
+newest first:
 
 | Row | What it is |
 | --- | --- |
 | A pull request merged | With who wrote it, and who merged it when that was someone else |
 | A push to a default branch | One row per push a person made straight to a default branch: its commit's first line when it brought one, else how many commits, and who pushed. For the ten projects pushed to most in the span; past those, one row per project with how many commits and pushes |
-| A production build that went live | A project's production build that built and was served (previews stay under Deploys) |
+| A production build | Only one that no merge or push on the list already speaks for: a redeploy, a rollback, a build of a project whose pushes weren't read, or one that failed. A build that shipped a merge is that merge's [live label](#live-after-merge), not a row of its own. Previews stay on the project's Deployments |
 | A release published | Its tag and name, and who released it |
 | A package version published | Its name and version, and who published it |
 
-The card's line counts them by kind. The first
-five show; **Show more** opens the rest. Over **Last 7 days** the rows are
+Its line counts them by kind, and how many of the merges and pushes are
+live, deploying, waiting to deploy, or failed to deploy. The first five
+show; **Show more** opens the rest. Over **Last 7 days** the rows are
 grouped by day (**Today**, **Yesterday**, **Sun, Oct 11**), five of each
 day showing.
 
@@ -281,16 +273,19 @@ trailer. The change is still yours, and stays in the same list. When one of its 
 requests, pushes and releases, deployments) didn't answer, the card says
 so under the list.
 
-### Deploys
+## Running now
 
-Every build that finished in the span, production and previews: **Went
-live** when it built and was served (it may have been replaced since), or
-**Failed**. Skipped builds are left out. A workspace whose projects did not
-build in the span has no Deploys card.
+At the top of the side column, what is going right now, longest-going
+first, each with its state and how long it has gone:
 
-### Spent
+| Kind | What it is |
+| --- | --- |
+| Workflow run | A [workflow](/guides/actions/) run that is queued, waiting, running, or waiting for approval, in the ten projects pushed to most in the span (their newest 20 runs each) |
+| Build | A project's newest build, queued or building |
 
-What the workspace spent over the span, from its
+## Spent
+
+In the side column: what the workspace spent over the span, from its
 [statement](/guides/usage-and-billing/), with each line at its price: what
 was charged plus what your plan's included usage, a trial, a pool or a
 discount paid of it. The lines are the statement's kinds of charge, such
@@ -305,14 +300,14 @@ yesterday counts all of yesterday. Usage that g1t measures through the
 month, such as hosting requests and storage, shows on the day it is added
 to the statement.
 
-## Running now
+## Settled for you
 
-What is going right now, longest-going first:
-
-| Kind | What it is |
-| --- | --- |
-| Workflow run | A [workflow](/guides/actions/) run that is queued, waiting, running, or waiting for approval, in the ten projects pushed to most in the span (their newest 20 runs each) |
-| Build | A project's newest build, queued or building |
+At the bottom of the side column: your notifications in this workspace
+that [settled themselves](/guides/notifications/#threads-that-settle-themselves)
+in the span, newest first, each with why, such as **CI passed in run 330**
+or **Merged by @ana**: a later run passed, the pull request merged, the
+deployment went out. One you marked done yourself is not counted. **Done**
+opens the notifications that are done.
 
 ## While the page is open
 
@@ -349,7 +344,7 @@ from Code:
   repositories.
 - Where you're needed has no rows from Code, and no notifications about a
   repository.
-- Landed, Deploys and Running now are not shown.
+- Landed and Running now are not shown.
 - Spent is the same for every member.
 
 ## When something doesn't answer
@@ -362,10 +357,10 @@ When one does not answer:
 - People counts what could be read, and names the part that is missing
   (Code or Chat). If nothing could be read, the card says so, and the
   sentence under the heading says what people did couldn't be read.
-- Landed, Deploys and Spent each say their part didn't answer. When
+- Landed and Spent each say their part didn't answer. When
   deployments or sessions can't be read, Landed shows its rows without
   their live labels or agent markers.
-- While you were away says when your notifications can't be read.
+- Settled for you says when your notifications can't be read.
 - What changed says when Ask can't be reached or isn't set up, or when
   the question could not be sent.
 - If your last visit can't be read, the span is the last 24 hours and the

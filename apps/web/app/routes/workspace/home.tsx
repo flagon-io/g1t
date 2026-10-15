@@ -5,18 +5,16 @@ import { hasCodeAccess } from "@g1t/contracts";
 
 import type { Route } from "./+types/home";
 import {
-  AwayCard,
   Card,
-  DeploysCard,
-  LandedCard,
+  LandedFeed,
   NeedsList,
-  PeopleCard,
+  PeopleSummary,
   RowsSkeleton,
   RunningList,
+  SettledCard,
   SpanSkeleton,
   SpendCard,
   SpendSkeleton,
-  StartHere,
   WindowSwitch,
 } from "../../components/home";
 import { HomeAsk, WhatChangedCard } from "../../components/home-ask";
@@ -154,7 +152,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       const named = (key: string) => (key ? (names[key] ?? "someone") : "an import");
       const each = pushes ? pushRows(pushes.pushes.map((push) => ({ ...push, by: named(push.actorKey) })), pushes.history, span) : [];
       const fromActivity = landedFromActivity(activity, repoRefs(owned), names, slug).filter((row) => !(row.kind === "push" && pushes?.history[row.key.slice("push:".length)]));
-      const all = merges == null && activity == null ? null : landed([merges ?? [], each, fromActivity, landedDeploys(deployRows ?? [])]);
+      const all = merges == null && activity == null ? null : landed([merges ?? [], each, fromActivity]);
       // Whether each merge and push is live, and which pull requests a harness session made: read together.
       const [shipped, sessions] = all
         ? await Promise.all([
@@ -162,16 +160,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
             codeWork && codeWork !== "no_access" ? loadPullSessions(viewer, codeWork.pulls.filter((pull) => pull.status === "merged" && within(pull.mergedAt, span))).catch(() => null) : null,
           ])
         : [null, null];
+      // Production builds only where no merge or push already says it went live (or failed).
+      const told = all ? withSessions(withShipped(all, shipped), sessions) : null;
       return {
         // What landed: merges, direct pushes, releases and packages, production builds; null when nothing of Code could be read.
-        landed: all ? withSessions(withShipped(all, shipped), sessions) : null,
+        landed: told ? landed([told, landedDeploys(deployRows ?? [], told)]) : null,
         landedMissing: [
           ...(code && merges == null ? ["Pull requests"] : []),
           ...(code && activity == null ? ["Pushes and releases"] : []),
           ...(code && deployRows == null ? ["Deployments"] : []),
         ],
-        deploys: deployRows,
-        deploysComplete: deploys?.complete ?? true,
       };
     })
     .catch(() => null);
@@ -291,9 +289,16 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </p>
       </header>
 
-      {/* 1. Where you're needed now: no window, first and biggest. Start here beside it on wide screens, under it on phones. */}
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <div id="needed" className="scroll-mt-4 lg:col-start-1 lg:row-start-1">
+      {/*
+        Two columns on wide screens: what to do and what happened on the
+        left, read top to bottom; what is going on now and what it costs on
+        the right, kept in view. On a phone it is one column: Where you're
+        needed, Running now, what happened, then Spent and Settled (the side
+        column's cards join it, `contents`, each in its place by `order`).
+      */}
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        {/* 1. Where you're needed now, with the one to start with on top: no window. */}
+        <div id="needed" className="order-1 scroll-mt-4 lg:col-start-1 lg:row-start-1">
           <Card
             title="Where you're needed"
             hint="Everything waiting on you, however long ago it started"
@@ -304,67 +309,15 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </Suspense>
           </Card>
         </div>
-        <div className="lg:col-start-2 lg:row-start-1">
-          <Suspense
-            fallback={
-              <Card title="Start here">
-                <RowsSkeleton rows={1} />
-              </Card>
-            }
-          >
-            <Await resolve={waiting}>{(att) => <StartHere attention={att} now={now} />}</Await>
-          </Suspense>
-        </div>
-      </div>
 
-      {/* 2. What happened in the span. */}
-      <section aria-labelledby="since" className="space-y-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-2">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 id="since" className="text-lg font-semibold tracking-tight text-fg">
-              {span.key === "last" && span.note == null ? "Since you were last here" : span.words}
-            </h2>
-            <p className="text-sm text-muted">
-              {span.key === "last" && span.note == null ? `${span.words} · ${span.length}` : spanNote(span.note)}
-            </p>
-          </div>
-          <div className="sm:ml-auto">
-            <WindowSwitch span={span} />
-          </div>
-        </div>
-        <WhatChangedCard key={span.key} slug={slug} span={span} tz={tz} />
-        <Suspense
-          fallback={
-            <Card title={span.key === "last" && span.note == null ? "While you were away" : "Settled for you"}>
-              <RowsSkeleton rows={2} />
-            </Card>
-          }
-        >
-          <Await resolve={away}>{(value) => <AwayCard away={value} span={span} now={now} />}</Await>
-        </Suspense>
-        <Suspense fallback={<SpanSkeleton />}>
-          <Await resolve={digest}>{(value) => <PeopleCard digest={value} span={span} code={loaderData.code} />}</Await>
-        </Suspense>
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <div className="space-y-5">
-            <Suspense
-              fallback={
-                <Card title="Landed">
-                  <RowsSkeleton rows={3} />
-                </Card>
-              }
-            >
-              <Await resolve={happened}>
-                {(value) => <LandedCard landed={value?.landed ?? null} missing={value?.landedMissing ?? []} code={loaderData.code} now={now} tz={tz} byDay={span.key === "7d"} scope={span.key} />}
-              </Await>
+        {/* 2. Now: what is running, what it cost, what settled by itself. */}
+        <aside aria-label="Now" className="contents lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:block lg:space-y-5">
+          <Card title="Running now" className="order-2">
+            <Suspense fallback={<RowsSkeleton rows={2} />}>
+              <Await resolve={runningNow}>{(value) => <RunningList rows={value.rows} missing={value.missing} now={now} />}</Await>
             </Suspense>
-            <Suspense fallback={null}>
-              <Await resolve={happened}>
-                {(value) => <DeploysCard deploys={value?.deploys ?? null} complete={value?.deploysComplete ?? true} code={loaderData.code} now={now} tz={tz} scope={span.key} />}
-              </Await>
-            </Suspense>
-          </div>
-          <div className="space-y-5">
+          </Card>
+          <div className="order-4">
             <Suspense
               fallback={
                 <Card title="Spent">
@@ -375,15 +328,59 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <Await resolve={spend}>{(value) => <SpendCard spend={value} slug={slug} span={span} />}</Await>
             </Suspense>
           </div>
-        </div>
-      </section>
+          <div className="order-5">
+            <Suspense
+              fallback={
+                <Card title="Settled for you">
+                  <RowsSkeleton rows={1} />
+                </Card>
+              }
+            >
+              <Await resolve={away}>{(value) => <SettledCard away={value} now={now} />}</Await>
+            </Suspense>
+          </div>
+        </aside>
 
-      {/* 3. Running now. */}
-      <Card title="Running now">
-        <Suspense fallback={<RowsSkeleton rows={2} />}>
-          <Await resolve={runningNow}>{(value) => <RunningList rows={value.rows} missing={value.missing} now={now} />}</Await>
-        </Suspense>
-      </Card>
+        {/* 3. What happened in the span: who did what, what changed in plain English, what landed. */}
+        <section aria-labelledby="since" className="order-3 rounded-2xl border border-line bg-surface lg:col-start-1 lg:row-start-2">
+          <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-4">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 id="since" className="text-base font-semibold tracking-tight text-fg">
+                {span.key === "last" && span.note == null ? "Since you were last here" : span.words}
+              </h2>
+              <p className="text-xs text-muted">{span.key === "last" && span.note == null ? `${span.words} · ${span.length}` : spanNote(span.note)}</p>
+            </div>
+            <div className="sm:ml-auto">
+              <WindowSwitch span={span} />
+            </div>
+          </header>
+          <Suspense fallback={<SpanSkeleton />}>
+            <Await resolve={digest}>{(value) => <PeopleSummary digest={value} span={span} code={loaderData.code} />}</Await>
+          </Suspense>
+          <WhatChangedCard key={span.key} slug={slug} span={span} tz={tz} />
+          <Suspense
+            fallback={
+              <div className="border-t border-line pt-4">
+                <RowsSkeleton rows={3} />
+              </div>
+            }
+          >
+            <Await resolve={happened}>
+              {(value) => (
+                <LandedFeed
+                  landed={value?.landed ?? null}
+                  missing={value?.landedMissing ?? []}
+                  code={loaderData.code}
+                  now={now}
+                  tz={tz}
+                  byDay={span.key === "7d"}
+                  scope={span.key}
+                />
+              )}
+            </Await>
+          </Suspense>
+        </section>
+      </div>
     </div>
   );
 }

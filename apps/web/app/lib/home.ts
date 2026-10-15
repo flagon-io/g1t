@@ -525,6 +525,8 @@ export type LandedChange = {
   agent?: AgentMark | null;
   /** A title that is a commit's subject: its repository (`owner/name`), whose issues its `#12`s are. */
   refsIn?: string;
+  /** A production build that failed (`landedDeploys`). */
+  failed?: boolean;
 };
 
 /** Whether a change is live: shipped by a production deployment, on its way, waiting, or the deployment after it failed. */
@@ -617,17 +619,28 @@ export function landedFromActivity(activity: ActivityDigest | null, repos: Recor
   return rows;
 }
 
-/** Production builds that went live in the span, as landed changes; previews stay in Deploys. */
-export function landedDeploys(deploys: DeployRow[]): LandedChange[] {
+/**
+ * Production builds of the span as landed changes, only where nothing on
+ * the list already says so: a merge or push whose live label links to the
+ * build (`shipped.to`), or whose commit it built. So a build that shipped
+ * a merge is that merge's "Live" label, not a row of its own; a redeploy,
+ * a rollback or a build of a project whose pushes weren't read is a row,
+ * and so is one that failed (`failed`). Previews stay on their project's
+ * Deployments.
+ */
+export function landedDeploys(deploys: DeployRow[], shown: readonly LandedChange[] = []): LandedChange[] {
+  const said = (row: DeployRow) =>
+    shown.some((change) => (change.shipped?.to != null && change.shipped.to === row.to) || (!!change.sha && !!row.commit && change.sha.startsWith(row.commit)));
   return deploys
-    .filter((row) => row.kind === "production" && row.outcome === "live")
+    .filter((row) => row.kind === "production" && !said(row))
     .map((row) => ({
       key: `landed:${row.key}`,
       kind: "deploy" as const,
-      title: `Production of ${row.project} went live`,
+      title: row.outcome === "failed" ? `Production of ${row.project} failed to deploy` : `Production of ${row.project} went live`,
       detail: `${row.commit} · by ${row.by ?? "someone"}`,
       to: row.to,
       at: row.at,
+      ...(row.outcome === "failed" ? { failed: true } : {}),
     }));
 }
 
