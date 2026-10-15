@@ -35,6 +35,7 @@ import { type AiConnection, type AiProvider, type OnboardingStep, AI_PROVIDERS }
 
 import { AI_PROVIDER_GROUPS, AI_PROVIDER_LOOKS, aiProvidersIn } from "../lib/ai-providers";
 import { autoOffered, defaultModel, modelOptions } from "../lib/ask-model";
+import { cn } from "../lib/cn";
 import {
   type OnboardingStepView,
   type OnboardingView,
@@ -154,7 +155,17 @@ export function OnboardingDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <DialogContent size="split" aria-describedby="onboarding-about">
+      <DialogContent
+        size="split"
+        aria-describedby="onboarding-about"
+        onOpenAutoFocus={(event) => {
+          // On a phone the sheet itself takes focus, not the first step's
+          // segment (a ring for no reason) or a field (the keyboard).
+          if (!matchMedia("(max-width: 639px)").matches) return;
+          event.preventDefault();
+          (event.currentTarget as HTMLElement).focus();
+        }}
+      >
         {view ? (
           <Guide view={view} step={current} onStep={setStep} onFinish={close} />
         ) : (
@@ -240,15 +251,12 @@ function Guide({
         </p>
       </aside>
 
-      {/* The step at hand. */}
-      <section className="flex min-h-0 flex-col">
-        <div className="space-y-3 px-4 pt-5 sm:hidden">
-          <p className="text-xs text-muted tabular-nums">
-            Getting started · Step {index + 1} of {steps.length}
-          </p>
-          <Progress value={progress.percent} aria-label="Setup progress" indicatorClassName={done ? "bg-success" : undefined} />
-        </div>
-        <div className="min-h-0 grow overflow-y-auto overscroll-contain p-6 max-sm:px-4 max-sm:pt-4">
+      {/* The step at hand. On a touch screen its buttons are a finger's
+          size (`h-8` and `h-7` ones grow to 40 and 36 pixels). */}
+      <section className="flex min-h-0 flex-col pointer-coarse:[&_[data-slot=button].h-7]:h-9 pointer-coarse:[&_[data-slot=button].h-8]:h-10 pointer-coarse:**:[[role=tab]]:py-2">
+        <StepStrip view={view} index={index} onStep={onStep} done={done} />
+        {/* Keyed by step, so each one starts at its top. */}
+        <div key={step} className="min-h-0 grow overflow-y-auto overscroll-contain p-6 max-sm:px-4 max-sm:pt-5">
           {steps.map((s) => (
             <TabsContent key={s.key} value={s.key} className="mt-0 space-y-5">
               <header className="space-y-2 pr-8">
@@ -281,6 +289,59 @@ function Guide({
         <Footer view={view} here={here} index={index} onStep={onStep} onFinish={onFinish} />
       </section>
     </Tabs>
+  );
+}
+
+/**
+ * A phone's rail: where the guide stands, as one segment per step to tap
+ * to go to it (green done, lavender here, dimmed skipped), under the
+ * workspace's name and the step's place.
+ */
+function StepStrip({
+  view,
+  index,
+  onStep,
+  done,
+}: {
+  view: OnboardingView;
+  index: number;
+  onStep: (step: OnboardingStep) => void;
+  done: boolean;
+}) {
+  const { steps } = view;
+  const progress = progressOf(steps);
+  return (
+    <nav aria-label="Steps" className="border-b border-line px-4 pt-4 pr-14 sm:hidden">
+      <p className="flex min-w-0 items-baseline gap-1.5 text-xs text-muted tabular-nums">
+        <span className="truncate font-medium text-fg">{view.name}</span>
+        <span aria-hidden="true">·</span>
+        <span className="shrink-0">
+          {done ? "All set" : `Step ${index + 1} of ${steps.length} · ${progress.settled} done`}
+        </span>
+      </p>
+      <ol className="-mx-0.5 flex">
+        {steps.map((s, i) => (
+          <li key={s.key} className="min-w-0 grow">
+            <button
+              type="button"
+              onClick={() => onStep(s.key)}
+              aria-current={i === index ? "step" : undefined}
+              aria-label={`${s.title}: ${s.done ? "done" : s.skipped ? "skipped" : "to do"}`}
+              className="group flex h-10 w-full items-center px-0.5 outline-none"
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-full rounded-full transition-[background-color,height] group-focus-visible:ring-2 group-focus-visible:ring-accent/50",
+                  s.done ? "bg-success" : s.skipped ? "bg-line" : "bg-line-strong",
+                  i === index && (s.done ? "h-2" : "h-2 bg-accent"),
+                  i !== index && s.done && "opacity-60",
+                )}
+              />
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }
 
@@ -334,6 +395,13 @@ function Footer({
           <Button variant="ghost" size="sm" onClick={() => onStep(steps[index - 1]!.key)}>
             <ArrowLeft size={14} />
             Back
+          </Button>
+        )}
+        {/* All done, the steps are still there to look back over. */}
+        {done && !last && (
+          <Button variant="outline" size="sm" onClick={next}>
+            Next
+            <ArrowRight size={14} />
           </Button>
         )}
         {done || last ? (
@@ -425,7 +493,7 @@ function ProviderRow({ slug, connection }: { slug: string; connection: AiConnect
         <AiProviderMark provider={connection.provider} size={28} />
         <div className="min-w-0 grow">
           <p className="truncate text-sm font-medium">{connection.name}</p>
-          <p className="truncate text-xs text-muted">
+          <p className="text-xs text-muted sm:truncate">
             {[AI_PROVIDERS[connection.provider].label, connection.models.length > 0 && `${connection.models.length} models`, connection.secretHint && `key ${connection.secretHint}`]
               .filter(Boolean)
               .join(" · ")}
@@ -697,7 +765,7 @@ function Numbered({ n, title, children }: { n: number; title: string; children: 
     <li className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-3 gap-y-2">
       <Badge shape="mark" className="tabular-nums">{n}</Badge>
       <p className="self-center text-sm font-medium">{title}</p>
-      <div className="col-start-2 space-y-2">{children}</div>
+      <div className="col-start-2 space-y-2 max-sm:col-span-2 max-sm:col-start-1">{children}</div>
     </li>
   );
 }

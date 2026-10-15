@@ -289,7 +289,7 @@ export function CopyLine({
         disabled={disabled}
         variant="ghost"
         size="inline"
-        className="p-1.5 text-faint"
+        className="p-1.5 text-faint pointer-coarse:p-2.5"
         onClick={() => {
           void navigator.clipboard.writeText(text);
           setCopied(true);
