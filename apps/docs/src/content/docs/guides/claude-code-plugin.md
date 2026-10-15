@@ -60,7 +60,9 @@ commands; add `-s -- --cli` to have it install the CLI too.
 
 The plugin works in any working copy whose git remote is on g1t.sh, or on
 the host in `G1T_HOST` for a self-hosted g1t. Everywhere else its hooks do
-nothing.
+nothing. A session that starts in a folder with no g1t remote is recorded
+once it has one: from the next prompt, or the `git remote`, `git push` or
+`g1t repo create` command that added it, titled by its first prompt.
 
 ### Update
 
@@ -198,7 +200,8 @@ twelve subagents, g1t shows twelve sessions and they see each other.
   the parent's session as `--parent`, its kind (`Explore`, your own
   subagents' names) and the task Claude gave it: the description and
   prompt of the Agent call, kept from the moment Claude made it
-  (`PreToolUse`). The subagent is told it has a session of its own, to
+  (`PreToolUse`) and matched to the subagent by the call's id or its
+  prompt, so subagents started together each get their own. The subagent is told it has a session of its own, to
   look at its siblings with `g1t session list --issue N --subagents`
   before changing anything, and to claim only what it takes.
 - **While it works**, what it does is recorded in its own session, not its
@@ -269,7 +272,7 @@ which you have. A CLI that refuses a command the hooks send is taken as
 out of date, and said the same way.
 
 A CLI older than 0.3.3 records sessions but cannot acknowledge
-[coordination updates](#working-on-g1t). The hooks then show
+[coordination updates](/guides/sessions/#pending-coordination-updates). The hooks then show
 pending updates only when they change, not before every prompt, and ask
 Claude to tell you once to update the CLI.
 

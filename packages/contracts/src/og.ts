@@ -9,7 +9,7 @@
  * site that has already fetched a card. Without a bump, a redeployed og
  * keeps serving the cards it drew before.
  */
-export const OG_RENDER_VERSION = "2";
+export const OG_RENDER_VERSION = "3";
 
 /**
  * A card's `v` parameter: the render version, then, when the page has one,

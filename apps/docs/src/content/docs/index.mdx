@@ -1,6 +1,6 @@
 ---
 title: What is g1t?
-description: g1t is the code platform your team and your own coding agents work on. Repositories, pull requests, Actions and Deployments, with Chat, Artifacts and a front page for the day, and an MCP server, API and webhooks for the agents you bring. In alpha, with every feature marked Live, Preview or Coming.
+description: g1t is the code platform for your team and the coding agents you bring. Repositories, pull requests, checks, the merge queue, Actions and Deployments; Chat for your team; and an MCP server, CLI, API and webhooks for your agents. In alpha, with every feature marked Live, Preview or Coming.
 tableOfContents: false
 prev: false
 ---
@@ -11,23 +11,28 @@ import Card from '../../components/Card.astro';
 import LinkCard from '../../components/LinkCard.astro';
 import Status from '../../components/Status.astro';
 
-g1t is the code platform your team and your own coding agents work on.
 **Code** holds your repositories, issues and pull requests, with required
-checks, the merge queue and Actions; **Deployments** puts every pull request
-live on a preview and ships production on merge. Your team talks in
-**Chat**, writes docs together in **Artifacts**, and **Home** tells you
-where you're needed and what happened while you were away.
+checks, the merge queue and Actions. **Deployments** puts every pull
+request live on a preview and ships production on merge.
 
-Bring the coding agents you already use, such as Claude Code, Codex,
-Cursor or OpenCode. They connect over [MCP](/guides/bring-your-own-agent/)
-and work as you: they pick up issues, open pull requests, run your checks,
-and record their sessions and the decisions behind each change.
+**Chat** is where your team talks: channels, direct messages and threads,
+free on every plan. **Home** shows where you're needed and what happened
+while you were away, and **Artifacts** holds the docs you write together.
 
-g1t is MIT-licensed. You can use it on g1t.sh, or run it yourself.
+**Your coding agents** work here as you. Claude Code, Codex, Cursor,
+OpenCode or any MCP client connects once, then picks up issues, opens pull
+requests, waits on your checks and records how it made each change. g1t
+runs no agents of its own: the work runs in your harness, on your account.
+With an Anthropic key in the workspace, assigning an issue to `g1t` starts
+a session on that account for you.
+
+g1t is MIT-licensed, and its source is at
+[g1t.sh/flagon-io/g1t](https://g1t.sh/flagon-io/g1t). Use it on g1t.sh,
+or run it yourself.
 
 <Aside type="note" title="g1t is in alpha">
-Accounts are by invite while the alpha runs. Every feature on these pages
-is marked with where it stands:
+Anyone can sign up. Every feature on these pages is marked with where it
+stands:
 
 - <Status is="live" /> works on g1t.sh for every workspace.
 - <Status is="preview" /> works on g1t.sh, but is limited to some workspaces
@@ -42,7 +47,7 @@ is marked with where it stands:
 	<LinkCard
 		title="Quickstart"
 		icon="rocket"
-		description="Create a workspace, push a repository and connect your coding agent in a few minutes."
+		description="Sign up, push a repository, and have your coding agent open a pull request you merge, in a few minutes."
 		href="/quickstart/"
 	/>
 	<LinkCard
@@ -53,7 +58,7 @@ is marked with where it stands:
 	/>
 	<LinkCard
 		title="Build and ship an app with an agent"
-		icon="rocket"
+		icon="ship"
 		description="Your agent creates the repository, pushes the app and merges its pull requests. You turn deployments on once, and every merge ships."
 		href="/guides/build-and-ship/"
 	/>
@@ -65,64 +70,74 @@ is marked with where it stands:
 	/>
 </CardGrid>
 
-## The workspace
-
-Everything happens in a workspace: your company, or one team in it. The
-rail down the left holds Home, Chat, Notifications, Code and Artifacts, the apps you pin, and People, Workspace and your account at its
-foot. On a phone it is a bar along the bottom.
-
-| Feature | What it does | Status |
-| --- | --- | --- |
-| [Home](/guides/home/) | The front page: where you're needed now, what happened since you were last here, what is running, and where to start. | <Status is="preview" /> |
-| [Chat](/guides/chat/) | Channels, direct messages and threads, live. No seats and no history limit. | <Status is="live" /> |
-| [Notifications](/guides/notifications/) | Everything waiting on you: mentions, reviews, approvals and alerts, with browser push. | <Status is="live" /> |
-| [People and teams](/guides/people-and-teams/) | Everyone in the workspace in one search, with profiles and teams. Members, roles, nested teams and invites. | <Status is="live" /> |
-| [Artifacts](/guides/artifacts/) | Documents written together, live, by your team and the coding agents you connect. Private until you share them. | <Status is="live" /> |
-| More kinds of artifact | Slides, designs and dashboards that keep the query behind every number. | <Status is="coming" /> |
-| Scratchpads | Tools and reports anyone can build on a copy of the data, used in production only after review. | <Status is="coming" /> |
-| [The desktop app](/guides/desktop/) | g1t in a window of its own for Windows, macOS and Linux, with notifications from your system. | <Status is="preview" /> |
-| [The phone app](/guides/mobile/) | Chat with your team, live, with notifications on the phone; review pull requests. Android first, for g1t.sh or your own g1t; not in the stores yet. | <Status is="preview" /> |
-| [A runner in the desktop app](/guides/desktop/#the-runner) | Your workspace's self-hosted jobs on your computer while g1t is open, registered and kept up to date by the app, sandboxed by default: Linux jobs in a sandbox of the runner's own on Windows, macOS and Linux, and Windows jobs in Windows Sandbox on Windows 11 Pro and up. | <Status is="preview" /> |
-
 ## Code and Deployments
 
 | Feature | What it does | Status |
 | --- | --- | --- |
-| [Repositories](/guides/managing-repositories/) and [git](/guides/git/) | Public and private repositories over HTTPS, with creating one by pushing to it. | <Status is="live" /> |
-| [Issues and pull requests](/guides/pull-requests/) | Issues, pull requests, line comments and reviews. | <Status is="live" /> |
+| [Repositories](/guides/managing-repositories/) and [git](/guides/git/) | Public and private repositories over HTTPS. Pushing to a repository that does not exist creates it, private. | <Status is="live" /> |
+| [Issues and pull requests](/guides/pull-requests/) | Issues, pull requests, line comments, reviews, merge methods and auto-merge. | <Status is="live" /> |
 | [Checks](/guides/checks/), [rules](/guides/rules/) and the [merge queue](/guides/merge-queue/) | Required checks, protected branches, code owners, and changes tested together before they land. | <Status is="live" /> |
 | [Workflows](/guides/actions/) | Workflows from `.g1t/workflows`, most unchanged, on g1t's runners or [your own](/guides/self-hosted-runners/). | <Status is="live" /> |
-| [Connect a coding agent](/guides/bring-your-own-agent/) | Any coding agent or MCP client works on g1t as you and records its session onto its pull requests. | <Status is="live" /> |
+| [Forks](/guides/forking-repositories/) | Fork a repository into your workspace, keep it in sync, and propose changes back. | <Status is="live" /> |
 | [Packages](/guides/packages/) | npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules and container images. | <Status is="live" /> |
 | [Security](/guides/security/) | Secret push protection, history scanning and pull requests that upgrade vulnerable dependencies. | <Status is="live" /> |
 | [Deployments](/guides/deployments/) | A live preview of every pull request on g1t.page, production on merge, and custom domains. | <Status is="live" /> |
-| Preview data | Each preview gets its own copy of the database and bucket, deleted when the pull request closes. | <Status is="coming" /> |
 | [Docker deployments](/guides/deployments/#docker-deployments) | Any app with a Dockerfile, or a Node.js, Python, Go, Ruby or PHP server, runs as a container that sleeps when no one visits. | <Status is="live" /> |
 | [Observability](/guides/observability/) | Requests, logs, traces, metrics and grouped errors, by deployment: from apps on g1t.page with nothing to set up, and from anywhere else over OpenTelemetry. | <Status is="live" /> |
-| Rollback and always on | One click back to any deploy, and container apps kept warm. | <Status is="coming" /> |
 | [GitHub](/guides/github/) | Import repositories with every branch and tag, and their issues. | <Status is="live" /> |
+| Preview data | Each preview gets its own copy of the database and bucket, deleted when the pull request closes. | <Status is="coming" /> |
+| Rollback and always on | One click back to any deploy, and container apps kept warm. | <Status is="coming" /> |
 | Git over SSH | `git@g1t.sh` remotes. Use HTTPS until then. | <Status is="coming" /> |
+
+## Coding agents
+
+| Feature | What it does | Status |
+| --- | --- | --- |
+| [Connect a coding agent](/guides/bring-your-own-agent/) | Claude Code, Codex, Cursor, OpenCode or any MCP client signs in once and works on g1t as you, with the access you give it. | <Status is="live" /> |
+| [The Claude Code plugin](/guides/claude-code-plugin/) | Records every Claude Code session in a g1t repository, gives Claude the issue's context, and adds g1t's MCP server, skills and commands. | <Status is="live" /> |
+| [The g1t CLI](/guides/cli/) | Issues, pull requests, checks, runs, workflows, secrets and logs from a terminal, a script or an agent's shell. | <Status is="live" /> |
+| [Sessions and claims](/guides/sessions/) | Who is working on what, right now: each agent's session, the issue it claimed, and the files it shares with others. | <Status is="live" /> |
+| [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread) | Assign an issue to `g1t`, or mention `@g1t` in a thread, to start a session on the workspace's own Anthropic account. | <Status is="live" /> |
+| [Why-blame](/guides/why-blame/) | Any line traced to its commit, pull request, issue, and the agent's own account of why it changed. | <Status is="live" /> |
+
+## The workspace
+
+Everything happens in a workspace: your company, or one team in it. The
+rail down the left holds Home, Chat, Notifications, Code and Artifacts,
+the apps you pin, and People, Workspace and your account at its foot. On
+a phone it is a bar along the bottom.
+
+| Feature | What it does | Status |
+| --- | --- | --- |
+| [Chat](/guides/chat/) | Channels, direct messages and threads, live, and public channels anyone signed in to g1t can join. No seats and no history limit. | <Status is="live" /> |
+| [Home](/guides/home/) | The front page: where you're needed now, what happened since you were last here, what is running, and where to start. | <Status is="live" /> |
+| [Ask g1t](/guides/ask/) | Questions about your workspace, answered on the workspace's own AI provider, from Home, the Ask panel or a direct message to `@g1t`. | <Status is="live" /> |
+| [Notifications](/guides/notifications/) | Everything waiting on you: mentions, reviews, approvals and alerts, with browser push. | <Status is="live" /> |
+| [People and teams](/guides/people-and-teams/) | Everyone in the workspace in one search, with profiles and teams. Members, roles, nested teams and invites. | <Status is="live" /> |
+| [Artifacts](/guides/artifacts/) | Documents written together, live, by your team and the coding agents you connect. Private until you share them. | <Status is="live" /> |
+| [The desktop app](/guides/desktop/) | g1t in a window of its own for Windows, macOS and Linux, with notifications from your system. Unsigned during the alpha. | <Status is="preview" /> |
+| [A runner in the desktop app](/guides/desktop/#the-runner) | Your workspace's self-hosted jobs on your computer while g1t is open, sandboxed by default. Checked end to end on Windows; built the same way, not yet run, on macOS and Linux. | <Status is="preview" /> |
+| [The phone app](/guides/mobile/) | Chat with your team, live, with notifications on the phone; review pull requests. Android first, not in the stores yet. | <Status is="preview" /> |
+| More kinds of artifact | Slides, designs and dashboards that keep the query behind every number. | <Status is="coming" /> |
 
 ## Extend and connect
 
 | Feature | What it does | Status |
 | --- | --- | --- |
-| [Integrations](/guides/integrations/) | The GitHub App, Sentry, Datadog, Jira, Linear and alerts. | <Status is="live" /> |
 | [API](/reference/api/), [MCP](/reference/mcp/) and [webhooks](/guides/webhooks/) | Everything as a REST endpoint and an MCP tool, and a webhook for every event. | <Status is="live" /> |
+| [Integrations](/guides/integrations/) | The GitHub App, Sentry, Datadog, Jira, Linear and alerts. | <Status is="live" /> |
 | More integrations | Drive, Gmail, Calendar, Slack and Microsoft 365. | <Status is="coming" /> |
-| Mail | Email on your own domain, with shared inboxes. | <Status is="coming" /> |
 
-## Your workspace
+## Your account and workspace
 
 | Feature | What it does | Status |
 | --- | --- | --- |
-| [Accounts and sign-in](/guides/authentication/) | Invites, two-factor authentication, access tokens and OAuth apps. | <Status is="live" /> |
-| Single sign-on | SAML or OIDC and SCIM, set up by each workspace for itself. | <Status is="coming" /> |
-| [Usage and billing](/guides/usage-and-billing/) | No seats. Usage at what it costs, a spend limit, and itemised invoices. | <Status is="live" /> |
-| Storage | Databases and buckets your teams can create, at a level each team is given, with copies of production data for anything not yet reviewed. | <Status is="coming" /> |
+| [Accounts and sign-in](/guides/authentication/) | Open sign-up with an email address or GitHub, two-factor authentication, access tokens and OAuth apps. | <Status is="live" /> |
+| [Usage and billing](/guides/usage-and-billing/) | No seats. The forge and Chat are free; compute at what it costs, a spend limit, and itemised invoices. | <Status is="live" /> |
 | [Audit log](/guides/audit-log/) | Every change to the workspace, with export. | <Status is="live" /> |
-| [Run g1t yourself](/guides/self-hosting/) | The core forge in Docker. Deployments are off in this version. | <Status is="preview" /> |
+| [Run g1t yourself](/guides/self-hosting/) | The core forge in Docker. Hosted runners, deployments and billing are off in this version. | <Status is="preview" /> |
 | [Architecture](/architecture/overview/) | How g1t is built, service by service, for developers building on it, contributing to it or running it. | <Status is="live" /> |
+| Single sign-on | SAML or OIDC and SCIM, set up by each workspace for itself. | <Status is="coming" /> |
 
 ## Bring a repository
 

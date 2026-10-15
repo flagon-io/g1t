@@ -207,6 +207,7 @@ and comments appear as they happen.
 | An **issue** | Someone comments on it or changes it, or a pull request linked to it moves. |
 | **Actions** and a **run** | A run starts, one of its jobs starts or finishes, or the run finishes. A running job's log streams on its own. |
 | **Security** | An alert is opened, fixed, dismissed or reopened. |
+| Your workspace's **Home** | Something lands, runs, deploys or comes to need you in its projects (the first 25). See [Home](/guides/home/#while-the-page-is-open). |
 
 A page refreshes a second after the last change it shows, so a burst of
 them is one refresh. It never refreshes while you are typing in it or have

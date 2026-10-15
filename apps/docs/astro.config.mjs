@@ -41,7 +41,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'g1t docs',
-			description: 'Guides and reference for g1t, where a team and its coding agents talk, build and ship.',
+			description: 'Guides and reference for g1t, the code platform for your team and its coding agents.',
 			components: {
 				Footer: './src/components/Footer.astro',
 				Head: './src/components/Head.astro',

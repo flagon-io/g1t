@@ -434,6 +434,11 @@ pub enum AskEvent {
     /// on an issue, or on a new one with `title` and `body`. Nothing has
     /// started; the person starts it, or copies the command, from the card
     /// the answer shows. `mode` is `plan`, `implement` or `review`.
+    ///
+    /// With `new_repository`, `repo` does not exist yet: the card creates
+    /// it (`private` or public), turns on its deployments when `deploy`,
+    /// then opens the issue and starts the session, which pushes the first
+    /// version to the default branch, and so deploys it.
     Proposal {
         id: String,
         repo: String,
@@ -442,6 +447,12 @@ pub enum AskEvent {
         body: Option<String>,
         mode: String,
         instruction: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        new_repository: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        private: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        deploy: bool,
     },
     /// The answer is complete. `stop_reason` as the provider said it, such
     /// as `end_turn`, `stop` or `max_tokens`.

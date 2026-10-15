@@ -18,7 +18,8 @@ export function meta(args: Route.MetaArgs) {
     ...page(args, {
       title: "g1t · Where your team's code lands",
       description:
-        "Repositories, pull requests, required checks, a merge queue and deployments, with chat for your team. Connect the coding agents you already use through MCP and the API. Chat is free on every plan, never per seat.",
+        // At most 200 characters, or a preview cuts it short (lib/meta.ts).
+        "Repositories, pull requests, required checks, a merge queue and deployments, for your team and the coding agents you bring over MCP and the API. Chat is free on every plan. Never per seat.",
     }),
     organization(),
     application(20),

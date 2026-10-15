@@ -45,6 +45,19 @@ const tabs = NAV.get(Astro.locals.starlightRoute)?.tabs ?? [];
 	if (current && tabs && current.offsetLeft + current.offsetWidth > tabs.clientWidth) {
 		tabs.scrollLeft = current.offsetLeft - (tabs.clientWidth - current.offsetWidth) / 2;
 	}
+	// The row fades out at an edge with more tabs past it, so a cut-off
+	// tab reads as "scroll for more" rather than as a clipped word.
+	const bar = document.querySelector<HTMLElement>('.g1t-tabs');
+	if (bar) {
+		const edges = () => {
+			const end = bar.scrollWidth - bar.clientWidth;
+			bar.toggleAttribute('data-more-start', bar.scrollLeft > 1);
+			bar.toggleAttribute('data-more-end', bar.scrollLeft < end - 1);
+		};
+		edges();
+		bar.addEventListener('scroll', edges, { passive: true });
+		addEventListener('resize', edges);
+	}
 </script>
 
 <style>
@@ -143,6 +156,23 @@ const tabs = NAV.get(Astro.locals.starlightRoute)?.tabs ?? [];
 	}
 	.g1t-tabs::-webkit-scrollbar {
 		display: none;
+	}
+	.g1t-tabs[data-more-start],
+	.g1t-tabs[data-more-end] {
+		--fade: 2.5rem;
+		mask-image: linear-gradient(
+			to right,
+			transparent,
+			#000 var(--fade-start, 0px),
+			#000 calc(100% - var(--fade-end, 0px)),
+			transparent
+		);
+	}
+	.g1t-tabs[data-more-start] {
+		--fade-start: var(--fade);
+	}
+	.g1t-tabs[data-more-end] {
+		--fade-end: var(--fade);
 	}
 	.g1t-tabs a {
 		display: flex;

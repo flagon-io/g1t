@@ -6,7 +6,16 @@ import type { Route } from "./+types/sitemap-xml";
 import { search } from "../lib/services.server";
 
 /** Pages anyone can read, signed in or not. */
-const PAGES = ["/", "/pricing", "/explore", "/support", "/security", "/policies", "/policies/privacy"];
+const PAGES = [
+  "/",
+  "/pricing",
+  "/download",
+  "/explore",
+  "/support",
+  "/security",
+  "/policies",
+  ...["terms", "privacy", "acceptable-use", "refunds", "subprocessors"].map((policy) => `/policies/${policy}`),
+];
 
 /** How many of Explore's pages to list; each holds one page of projects. */
 const EXPLORE_PAGES = 10;

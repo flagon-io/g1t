@@ -66,7 +66,7 @@
 		// 45 minutes, then every 6 hours). Empty sends none.
 		"STATUS_ALERT_EMAIL": "hey@flagon.io",
 		"STATUS_FROM": "g1t status <noreply@g1t.sh>",
-		"OG_IMAGE": "https://og.g1t.sh/image?path=%2Fstatus&v=2"
+		"OG_IMAGE": "https://og.g1t.sh/image?path=%2Fstatus&v=3"
 	},
 	// Asking for a subscription sends an email: limited per client address
 	// and per email address (src/index.ts). Ids and limits: RATE_LIMITS in
