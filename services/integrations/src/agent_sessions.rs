@@ -151,14 +151,14 @@ pub fn agent_body(model: &str, mcp_url: &str, skills: &[Value]) -> Value {
 }
 
 /// The environment g1t keeps on an Anthropic account: a cloud sandbox that
-/// reaches package registries, g1t's MCP server, and g1t itself.
-pub fn environment_body(name: &str, hosts: &[String]) -> Value {
+/// reaches the web as a CI runner does. Limited networking also limited
+/// web_search and web_fetch to its hosts, so a session could look nothing
+/// up and couldn't open its own deploy on g1t.page. The token still goes to
+/// g1t's hosts only (`token_credential`).
+pub fn environment_body(name: &str) -> Value {
     json!({
         "name": name,
-        "config": {
-            "type": "cloud",
-            "networking": { "type": "limited", "allow_package_managers": true, "allow_mcp_servers": true, "allowed_hosts": hosts },
-        },
+        "config": { "type": "cloud", "networking": { "type": "unrestricted" } },
     })
 }
 
@@ -866,17 +866,23 @@ impl Integrations {
         let known = stored.as_ref().map(|stored| own_skills(&stored.skills)).unwrap_or_default();
         let (skills, ours) = self.agent_skills(key, &known).await?;
         let body = agent_body(model, &self.mcp_url(), &skills);
-        let hash = g1t_secrets::sha256_hex(&body.to_string());
-        let hosts = self.g1t_hosts();
+        let environment = environment_body(&format!("g1t-{}-{}", row.workspace, row.id));
+        // Both: a change to either reaches accounts at their next session.
+        let hash = g1t_secrets::sha256_hex(&format!("{body}{environment}"));
         let (agent_id, version, environment_id) = match stored {
             Some(stored) if stored.config_hash == hash => return Ok(Ok((stored.agent_id, stored.agent_version, stored.environment_id))),
-            Some(stored) => match self.call_anthropic(key, Method::Post, &format!("/v1/agents/{}", stored.agent_id), Some(body)).await? {
-                Ok(agent) => (stored.agent_id, agent["version"].as_u64().unwrap_or(1) as u32, stored.environment_id),
-                Err(problem) => return Ok(Err(problem)),
-            },
+            Some(stored) => {
+                if let Err(problem) = self.call_anthropic(key, Method::Post, &format!("/v1/environments/{}", stored.environment_id), Some(environment)).await? {
+                    return Ok(Err(problem));
+                }
+                match self.call_anthropic(key, Method::Post, &format!("/v1/agents/{}", stored.agent_id), Some(body)).await? {
+                    Ok(agent) => (stored.agent_id, agent["version"].as_u64().unwrap_or(1) as u32, stored.environment_id),
+                    Err(problem) => return Ok(Err(problem)),
+                }
+            }
             None => {
                 let environment = match self
-                    .call_anthropic(key, Method::Post, "/v1/environments", Some(environment_body(&format!("g1t-{}-{}", row.workspace, row.id), &hosts)))
+                    .call_anthropic(key, Method::Post, "/v1/environments", Some(environment))
                     .await?
                 {
                     Ok(environment) => environment["id"].as_str().unwrap_or_default().to_owned(),
@@ -1610,9 +1616,9 @@ mod tests {
         assert!(prompt.contains("commit the first version straight to the default branch and push it there"), "an empty repository's first push is asked for");
         assert!(prompt.contains("echo ses_1 > /workspace/web/.git/g1t/session"));
         assert!(prompt.contains("G1t-Session: ses_1"));
-        let environment = environment_body("g1t-acme-con_1", &hosts);
-        assert_eq!(environment["config"]["networking"]["allowed_hosts"], json!(hosts));
-        assert_eq!(environment["config"]["networking"]["allow_mcp_servers"], true);
+        // The sandbox reaches the web; the token, only g1t's hosts.
+        let environment = environment_body("g1t-acme-con_1");
+        assert_eq!(environment["config"]["networking"], json!({ "type": "unrestricted" }));
     }
 
     #[test]
@@ -1751,7 +1757,7 @@ mod tests {
         let hosts = vec!["g1t.sh".to_owned(), "api.g1t.sh".to_owned(), "mcp.g1t.sh".to_owned()];
         let bodies = json!({
             "agent": agent_body(DEFAULT_MODEL, "https://mcp.g1t.sh", &[]),
-            "environment": environment_body("g1t-smoke-check", &hosts),
+            "environment": environment_body("g1t-smoke-check"),
             "vault": vault_body("smoke"),
             "mcp_credential": mcp_credential("https://mcp.g1t.sh", "g1t_placeholder_not_a_token"),
             "token_credential": token_credential("g1t_placeholder_not_a_token", &hosts),
