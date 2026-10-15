@@ -71,8 +71,12 @@ Everything here shows on g1t.sh as it happens, without reloading.
   you open one at a time (each with its kind, the task it was given, what
   it touched and what it reported), the skills used, what was touched
   (files, commits, branches, pull requests), and everything it recorded,
-  as it records it. A subagent's own page links back to the session that
-  started it.
+  as it records it: its prompt folded, its messages formatted as they were
+  written, and the tool calls between them a line each (a command as code,
+  a file by its path, a g1t tool by what it did, such as *issue · claim*),
+  more than three in a row folded into one line that opens to them; a
+  long command and what a tool gave back open under its line. A
+  subagent's own page links back to the session that started it.
 - **An issue's and a pull request's sessions**: every session tied to it
   in any way, with its subagents under it.
 - **Start a session** on an issue, for members of a workspace with an
