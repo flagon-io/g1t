@@ -39,6 +39,7 @@ mod pack_limits;
 mod push_checks;
 mod push_feedback;
 mod push_commits;
+mod pushed;
 mod refs;
 mod refs_cache;
 mod registry;
@@ -1767,15 +1768,7 @@ impl<S: GitStore> Repos<S> {
                 format!("{branch} could not be updated: {reason}"),
             ));
         }
-        self.publish_push(
-            &target,
-            &format!("refs/heads/{branch}"),
-            old.as_deref(),
-            &new,
-            Some(&a.actor),
-            None,
-        )
-            .await?;
+        self.publish_landing(&target, branch, old.as_deref(), &new, &a, None).await?;
         Ok(Outcome::Ok(Landed {
             commit: new,
             previous: old,
@@ -1908,8 +1901,34 @@ impl<S: GitStore> Repos<S> {
         commits: Option<u32>,
     ) -> Result<()> {
         let caused_by_job = actor.and_then(g1t_contracts::events::job_run_of).map(str::to_owned);
-        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, commits)
+        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, commits, None)
             .await
+    }
+
+    /// [`Repos::publish_push`] for a branch moved by landing a pull
+    /// request, naming the one landed (`LandArgs::pull`).
+    pub(crate) async fn publish_landing(
+        &self,
+        repo: &Repo,
+        branch: &str,
+        before: Option<&str>,
+        after: &str,
+        a: &LandArgs,
+        commits: Option<u32>,
+    ) -> Result<()> {
+        let caused_by_job = g1t_contracts::events::job_run_of(&a.actor).map(str::to_owned);
+        self.publish_git_push(
+            repo,
+            &format!("refs/heads/{branch}"),
+            before,
+            after,
+            Some(a.actor.id.clone()),
+            false,
+            caused_by_job,
+            commits,
+            a.pull,
+        )
+        .await
     }
 
     /// `publish_push`, saying whether the push reached the store without
@@ -1925,6 +1944,7 @@ impl<S: GitStore> Repos<S> {
         unscanned: bool,
         caused_by_job: Option<String>,
         commits: Option<u32>,
+        landed_pull: Option<u32>,
     ) -> Result<()> {
         self.publish(NewEvent {
             kind: "git.push",
@@ -1941,6 +1961,7 @@ impl<S: GitStore> Repos<S> {
                 unscanned,
                 caused_by_job,
                 commits,
+                landed_pull,
             },
         })
         .await
@@ -2594,6 +2615,7 @@ impl<S: GitStore> Repos<S> {
                     unscanned,
                     caused_by_job.clone(),
                     commits,
+                    None,
                 )
                 .await?;
             }
@@ -2952,6 +2974,8 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
         "behind" => reply(&repos.behind(args(body)?).await?),
         "divergence" => reply(&repos.divergence(args(body)?).await?),
         "land" => reply(&repos.land(args(body)?).await?),
+        // Services only: what a push brought into a branch (pushed.rs).
+        "pushed" => reply(&repos.pushed(args(body)?).await?),
         "build_queue_step" => reply(&repos.build_queue_step(args(body)?).await?),
         "update_pull_branch" => reply(&repos.update_pull_branch(args(body)?).await?),
         // Services only: a pull request's test merge commit (test_merge.rs).

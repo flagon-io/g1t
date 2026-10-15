@@ -889,7 +889,7 @@ impl<S: GitStore> Repos<S> {
             self.refs_moved(&target.id).await;
             match pushed {
                 Ok(()) => {
-                    self.publish_push(target, &format!("refs/heads/{branch}"), Some(&base.hash), &made.commit, Some(&a.actor), made.commits)
+                    self.publish_landing(target, branch, Some(&base.hash), &made.commit, a, made.commits)
                         .await?;
                     return Ok(Outcome::Ok(Landed {
                         commit: made.commit,

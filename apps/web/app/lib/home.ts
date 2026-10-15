@@ -523,6 +523,8 @@ export type LandedChange = {
   shipped?: ShipInfo | null;
   /** Made in a harness session (`withSessions`, or a `G1t-Session:` trailer): the agent marker, and the session. */
   agent?: AgentMark | null;
+  /** A title that is a commit's subject: its repository (`owner/name`), whose issues its `#12`s are. */
+  refsIn?: string;
 };
 
 /** Whether a change is live: shipped by a production deployment, on its way, waiting, or the deployment after it failed. */
@@ -690,6 +692,7 @@ export function pushRows(
       sha: push.data.after,
       repoId,
       agent: session ? { harness: null, to: `/${repo.namespace}/${repo.name}/work/sessions/${session}` } : null,
+      ...(brought.length === 1 && subject(newest.message) ? { refsIn: `${repo.namespace}/${repo.name}` } : {}),
     });
   }
   return rows;

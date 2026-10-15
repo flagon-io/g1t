@@ -4,6 +4,7 @@ import { Form, Link } from "react-router";
 import type { Route } from "./+types/compare";
 import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
+import { CommitText } from "../../components/commit-message";
 import { ButtonLink, EmptyState, TimeAgo } from "../../components/ui";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -148,9 +149,9 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
                     <GitCommitHorizontal size={15} className="shrink-0 text-faint" />
                     <CommitAvatars commit={commit} size={16} max={2} />
                     <Hint label={commit.message}>
-                      <Link to={`${repoBase}/commit/${commit.hash}`} className="min-w-0 grow truncate hover:text-accent">
-                        {commit.message}
-                      </Link>
+                      <span className="min-w-0 grow truncate">
+                        <CommitText text={commit.message} base={repoBase} to={`${repoBase}/commit/${commit.hash}`} linkClassName="hover:text-accent" />
+                      </span>
                     </Hint>
                     <span className="hidden shrink-0 text-xs text-muted sm:inline">
                       <CommitNames commit={commit} className="hover:text-fg" />

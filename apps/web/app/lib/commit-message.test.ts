@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseCommitMessage } from "./commit-message.ts";
+import { messageParts, parseCommitMessage } from "./commit-message.ts";
 
 test("co-authors leave the body and keep only their names", () => {
   const parsed = parseCommitMessage(
@@ -29,4 +29,29 @@ test("prose that happens to contain a colon stays prose", () => {
   const parsed = parseCommitMessage("Fix it\n\nNote: this also renames a function.\nAnd tidies the tests.");
   assert.equal(parsed.body, "Note: this also renames a function.\nAnd tidies the tests.");
   assert.deepEqual(parsed.coAuthors, []);
+});
+
+test("references split from the text around them", () => {
+  assert.deepEqual(messageParts("Fix the login form. Closes #12"), [
+    { kind: "text", text: "Fix the login form. Closes " },
+    { kind: "ref", text: "#12", repo: null, number: 12 },
+  ]);
+  assert.deepEqual(messageParts("#3 and acme/web#4."), [
+    { kind: "ref", text: "#3", repo: null, number: 3 },
+    { kind: "text", text: " and " },
+    { kind: "ref", text: "acme/web#4", repo: "acme/web", number: 4 },
+    { kind: "text", text: "." },
+  ]);
+});
+
+test("a full hash is a commit; a short one, a link's fragment or a word's # are text", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  assert.deepEqual(messageParts(`closed this in ${sha}`), [
+    { kind: "text", text: "closed this in " },
+    { kind: "commit", text: sha, sha },
+  ]);
+  for (const text of ["see 0123abc", "https://example.com/page#12", "C#12 support", "issue#12", "##12"]) {
+    assert.deepEqual(messageParts(text), [{ kind: "text", text }], text);
+  }
+  assert.deepEqual(messageParts(""), []);
 });

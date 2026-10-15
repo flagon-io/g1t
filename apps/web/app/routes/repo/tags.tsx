@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import type { Route } from "./+types/tags";
 import { CommitChecksBadge } from "../../components/commit-checks";
+import { CommitText } from "../../components/commit-message";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { EmptyState, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
@@ -66,9 +67,9 @@ export default function Tags({ loaderData, params }: Route.ComponentProps) {
                       </span>
                       <span className="text-faint">·</span>
                       <Hint label={tag.commit.message}>
-                        <Link to={`${base}/commit/${tag.commit.hash}`} className="min-w-0 truncate hover:text-fg">
-                          {tag.commit.message.split("\n")[0]}
-                        </Link>
+                        <span className="min-w-0 truncate">
+                          <CommitText text={tag.commit.message.split("\n")[0] ?? ""} base={base} to={`${base}/commit/${tag.commit.hash}`} linkClassName="hover:text-fg" />
+                        </span>
                       </Hint>
                       <CommitChecksBadge checks={checks} sha={tag.commit.hash} className="size-5" />
                       <span className="shrink-0 text-faint">

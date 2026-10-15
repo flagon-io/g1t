@@ -601,6 +601,51 @@ pub struct LandArgs {
     /// Add a `Signed-off-by:` trailer for `actor` to every commit made.
     #[serde(default)]
     pub sign_off: bool,
+    /// The pull request being landed, by number: named in the push it
+    /// makes (`GitPush::landed_pull`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull: Option<u32>,
+}
+
+/// `pushed`: what a push to a branch of a repository brought into it, the
+/// commits reachable from `after` and not from `before` (every parent
+/// followed, as far as `MAX_ANCESTRY` commits on either side). Services
+/// only. Returns `Pushed`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushedArgs {
+    pub repo_id: String,
+    /// Where the branch pointed before; none for a new branch.
+    #[serde(default)]
+    pub before: Option<String>,
+    pub after: String,
+    /// Commits to look for among those brought in: pull requests' heads.
+    #[serde(default)]
+    pub heads: Vec<String>,
+    /// Whether to list the commits brought in, with their messages.
+    #[serde(default)]
+    pub messages: bool,
+}
+
+/// What `pushed` found.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pushed {
+    /// Those of `heads` the push brought in.
+    pub landed: Vec<String>,
+    /// With `messages`: the commits brought in, oldest first, at most
+    /// `MAX_PUSHED`.
+    pub commits: Vec<PushedCommit>,
+}
+
+/// The most commits `pushed` lists.
+pub const MAX_PUSHED: usize = 250;
+
+/// A commit a push brought in.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PushedCommit {
+    pub hash: String,
+    pub message: String,
 }
 
 /// `build_queue_step`: one entry of a merge queue landed, by its method,

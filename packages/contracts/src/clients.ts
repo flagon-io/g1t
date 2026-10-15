@@ -459,6 +459,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     openIssue: (actor, repo, input) => call("open_issue", { actor, repo, ...input }),
     listIssues: (repo, viewer, filter = {}) => call("list_issues", { repo, viewer, ...filter }),
     getIssue: (repo, number, viewer) => call("get_issue", { repo, number, viewer }),
+    closedByCommit: (repo, commit, viewer) => call("closed_by_commit", { repo, commit, viewer }),
     updateIssue: (actor, repo, number, input) =>
       call("update_issue", { actor, repo, number, ...input }),
     closeIssue: (actor, repo, number, reason) =>

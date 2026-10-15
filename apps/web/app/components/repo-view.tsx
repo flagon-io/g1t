@@ -6,6 +6,7 @@ import type { BlobView as Blob, Branch, TreeView as RawTree } from "@g1t/contrac
 
 import type { FileCommits, ShownBlame, ShownCommit } from "../lib/commit-people";
 import { CommitAvatars, CommitNames } from "./commit-person";
+import { CommitText } from "./commit-message";
 
 import type { DeploymentEnvironments } from "@g1t/contracts";
 
@@ -101,9 +102,9 @@ function CommitBar({ commit, base, checks }: { commit: ShownCommit; base: string
       <span className="shrink-0 font-medium">
         <CommitNames commit={commit} />
       </span>
-      <Link to={`${base}/commit/${commit.hash}`} className="truncate text-muted hover:text-fg hover:underline">
-        {commit.message.split("\n")[0]}
-      </Link>
+      <span className="min-w-0 truncate text-muted">
+        <CommitText text={commit.message.split("\n")[0] ?? ""} base={base} to={`${base}/commit/${commit.hash}`} linkClassName="hover:text-fg hover:underline" />
+      </span>
       <CommitChecksBadge checks={checks} sha={commit.hash} className="-ml-1.5" />
       <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-faint sm:gap-4">
         <Link to={`${base}/commit/${commit.hash}`} className="hidden font-mono hover:text-fg sm:inline">
@@ -309,9 +310,9 @@ function FileRows({
             <span className="hidden min-w-0 sm:block">
               {commit ? (
                 <Hint label={commit.message.split("\n")[0]}>
-                  <Link to={`${base}/commit/${commit.hash}`} className="block animate-fade-in truncate text-muted hover:text-fg hover:underline">
-                    {commit.message.split("\n")[0]}
-                  </Link>
+                  <span className="block animate-fade-in truncate text-muted">
+                    <CommitText text={commit.message.split("\n")[0] ?? ""} base={base} to={`${base}/commit/${commit.hash}`} linkClassName="hover:text-fg hover:underline" />
+                  </span>
                 </Hint>
               ) : last === undefined ? (
                 <SkeletonLine width="10rem" barClassName="max-w-full" />
