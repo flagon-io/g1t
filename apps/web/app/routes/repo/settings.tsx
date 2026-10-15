@@ -1,8 +1,12 @@
 import { Box, Code2, GitBranch, Image as ImageIcon, Link2, Rocket } from "lucide-react";
 import { useState } from "react";
-import { Form, Link } from "react-router";
+import { Form, Link, redirect } from "react-router";
+
+import { DEFAULT_MEMBER_PRIVILEGES } from "@g1t/contracts";
 
 import type { Route } from "./+types/settings";
+import { LIFECYCLE_INTENTS, type LifecycleIntent, ProjectDangerZone } from "../../components/project-lifecycle";
+import { confirmsName } from "../../lib/repo-lifecycle";
 import { page } from "../../lib/meta";
 import { useAddresses } from "../../lib/addresses";
 import { productionImageUrl, readProductionImageUpload } from "../../lib/production-image";
@@ -12,9 +16,9 @@ import { RepoSettingsHeading } from "../../components/repo-settings-heading";
 import { ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { KIND_CHOICE_SETS, type KindChoice, choiceOf, linksFromForm, neverDeploys } from "../../lib/project-kind";
-import { deployments, identity, projects } from "../../lib/services.server";
+import { deployments, identity, projects, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
-import { requireCapability, requireInsider } from "../../lib/access.server";
+import { refusal, requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Settings · ${params.owner}/${params.repo} · g1t` });
@@ -23,7 +27,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   // Maintain and up; to anyone without a role here the page does not exist.
-  await requireInsider(context, params, "manage_settings");
+  const { repo, access } = await requireInsider(context, params, "manage_settings");
   const [project, deploys] = await Promise.all([
     projects.get(params.owner, params.repo, viewer),
     // Whether Deployments are on: needs Admin, so unknown (null) below it.
@@ -37,16 +41,73 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     deploymentsOn: deploys?.ok ? deploys.value.enabled : null,
     mine: viewer?.id === found.createdBy,
     creator: names[found.createdBy] ?? null,
+    // Archiving is for Admins; transferring and deleting, for owners of the
+    // workspace unless its member privileges let its members with Admin.
+    lifecycle: access.can.administer
+      ? { archived: Boolean(repo.archivedAt), remove: access.can.delete, destinations: destinations(viewer, params.owner, repo.isPrivate, access.can.delete) }
+      : null,
   };
+}
+
+/** Where it can be transferred: a workspace where the person can create a repository like it. */
+function destinations(
+  viewer: ReturnType<typeof getViewer>,
+  from: string,
+  isPrivate: boolean,
+  allowed: boolean,
+): { slug: string; name: string }[] {
+  if (!allowed) return [];
+  return (viewer?.workspaces ?? [])
+    .filter((m) => m.slug !== from.toLowerCase())
+    .filter((m) => {
+      if (m.role === "owner") return true;
+      const privileges = { ...DEFAULT_MEMBER_PRIVILEGES, ...(m.privileges ?? {}) };
+      return isPrivate ? privileges.members_can_create_private_repositories : privileges.members_can_create_public_repositories;
+    })
+    .map((m) => ({ slug: m.slug, name: m.name ?? m.slug }));
+}
+
+/** Archiving, transferring and deleting: the repository goes with the project. */
+async function lifecycle(intent: LifecycleIntent, form: FormData, request: Request, params: Route.ActionArgs["params"], context: Route.ActionArgs["context"]) {
+  const user = requireUser(context, request);
+  const refused = await refusal(context, params, intent === "archive" ? "administer" : "delete");
+  if (refused) return { lifecycle: intent, error: refused };
+  const path = { namespace: params.owner, name: params.repo };
+  const full = `${params.owner}/${params.repo}`;
+  const typed = String(form.get("confirm") ?? "").trim();
+  const failed = (result: { ok: false; error: { message: string } }) => ({ lifecycle: intent, error: result.error.message });
+  switch (intent) {
+    case "archive": {
+      const done = await repos.archive(user, path, form.get("archived") === "true");
+      return done.ok ? { lifecycle: intent, error: null } : failed(done);
+    }
+    case "transfer": {
+      // repos checks both workspaces' owners, the name and storage, and
+      // keeps the old address as a redirect.
+      if (!confirmsName(typed, full)) return { lifecycle: intent, error: `Type ${full} to confirm.` };
+      const moved = await repos.transfer(user, path, String(form.get("to") ?? "").trim().toLowerCase());
+      if (!moved.ok) return failed(moved);
+      throw redirect(`/${moved.value.namespace}/${moved.value.name}/settings`);
+    }
+    case "delete": {
+      if (!confirmsName(typed, full)) return { lifecycle: intent, error: `Type ${full} to confirm.` };
+      const deleted = await repos.delete(user, path, typed);
+      if (!deleted.ok) return failed(deleted);
+      throw redirect(`/${params.owner}/-/repositories?deleted=${encodeURIComponent(deleted.value.name)}`);
+    }
+  }
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireCapability(context, params, "manage_settings");
   const form = await request.formData();
-  // Production's picture on the overview: whoever may change its address may change it.
   const intent = form.get("intent");
+  if (LIFECYCLE_INTENTS.includes(intent as LifecycleIntent)) {
+    return lifecycle(intent as LifecycleIntent, form, request, params, context);
+  }
+  await requireCapability(context, params, "manage_settings");
+  // Production's picture on the overview: whoever may change its address may change it.
   if (intent === "production-image" || intent === "remove-production-image" || intent === "prefer-production-image") {
     let change: { image?: string | null; preferred?: boolean };
     if (intent === "production-image") {
@@ -77,7 +138,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function ProjectSettings({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { project, deploymentsOn, mine, creator } = loaderData;
+  const { project, deploymentsOn, mine, creator, lifecycle } = loaderData;
   const [choice, setChoice] = useState<KindChoice | null>(choiceOf(project.setting));
   // Something that never deploys, while Deployments are on, is refused: they are turned off first.
   const stops = choice === "library" || choice === "tool" || choice === "other";
@@ -198,7 +259,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
             <TimeAgo at={project.createdAt} />
           </span>
         </div>
-        <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
+        <ErrorText>{actionData && "error" in actionData && !("lifecycle" in actionData) ? actionData.error : null}</ErrorText>
       </Form>
 
       {/* Its own forms, sent as soon as an image is picked: outside the settings form. */}
@@ -218,6 +279,16 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           screenshots={project.runs === "g1t" || (project.runs === "elsewhere" && !!project.productionUrl)}
         />
       </section>
+
+      {lifecycle && (
+        <ProjectDangerZone
+          full={`${params.owner}/${params.repo}`}
+          archived={lifecycle.archived}
+          remove={lifecycle.remove}
+          destinations={lifecycle.destinations}
+          error={(intent) => (actionData && "lifecycle" in actionData && actionData.lifecycle === intent ? actionData.error : null)}
+        />
+      )}
     </div>
   );
 }

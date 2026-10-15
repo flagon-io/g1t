@@ -3,6 +3,7 @@ import { Form, Link, useNavigation } from "react-router";
 
 import { ACCOUNT_RESTORE_DAYS, type AccountDeletion } from "@g1t/contracts";
 
+import { ConfirmName } from "./confirm-name";
 import { DangerAction } from "./danger-zone";
 import { ErrorText } from "./ui";
 import {
@@ -139,21 +140,7 @@ export function DeleteAccountAction({
                 The username <span className="font-mono text-fg">{username}</span> is never given to anyone else.
               </li>
             </ul>
-            <FormField>
-              <FieldLabel htmlFor="confirm-account">
-                Type <span className="font-mono text-fg">{username}</span> to confirm
-              </FieldLabel>
-              <TextInput
-                id="confirm-account"
-                name="confirm"
-                value={confirm}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoComplete="off"
-                onChange={(event) => setConfirm(event.target.value)}
-                className="font-mono"
-              />
-            </FormField>
+            <ConfirmName confirm={username} id="confirm-account" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
             {hasPassword ? (
               <FormField>
                 <FieldLabel htmlFor="confirm-password">Your password</FieldLabel>

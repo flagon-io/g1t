@@ -121,7 +121,7 @@ stars on a private repository are seen only by people who can read it.
 | **Pushes** | How many branches and tags one push may update. See [pushes](#pushes). |
 | **Archives** | Whether downloads hold Git LFS objects. Coming soon. |
 | **Forking** | For a private repository, whether people who can read it may [fork it](/guides/forking-repositories/#allow-forking-a-private-repository). Public repositories can always be forked. |
-| **Danger zone** | Change visibility, archive, [transfer](/guides/transferring-repositories/), [detach a fork](/guides/forking-repositories/#detach-a-fork) and delete. Shown to people with the Admin role. |
+| **Danger zone** | Change visibility and [detach a fork](/guides/forking-repositories/#detach-a-fork). Shown to people with the Admin role. Archiving, [transferring](/guides/transferring-repositories/) and deleting are the project's, in the danger zone of **Settings → General**. |
 
 While a repository is [archived](#archive-a-repository), the settings that
 change it are turned off until it is unarchived.
@@ -429,7 +429,7 @@ makes the same change without the confirmation, for people with Admin.
 Archiving makes a repository read-only. Use it for work that is finished
 but should stay readable.
 
-1. Open the repository's **Settings → Repository**.
+1. Open the project's **Settings → General**.
 2. Under **Danger zone**, choose **Archive**.
 3. Read what changes and choose **Archive** again.
 
@@ -471,10 +471,11 @@ when it is not.
 Deleting takes a repository away at once, but an owner can restore it for
 30 days. After that it is purged: removed for good, its git data with it.
 
-1. Open the repository's **Settings → Repository**.
-2. Under **Danger zone**, choose **Delete**.
-3. Read what happens, type the repository's full name
-   (`<workspace>/<repo>`) to confirm, and choose **Delete repository**.
+1. Open the project's **Settings → General**.
+2. Under **Danger zone**, choose **Delete**. The project goes with its
+   repository.
+3. Read what happens, type the full name (`<workspace>/<repo>`) to
+   confirm, and choose **Delete project**.
 
 | | While it is deleted | When it is purged |
 | --- | --- | --- |

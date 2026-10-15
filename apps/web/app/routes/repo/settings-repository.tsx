@@ -2,7 +2,7 @@ import { ChevronRight, GitBranch } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, redirect, useNavigation } from "react-router";
 
-import { DEFAULT_MEMBER_PRIVILEGES, RESTORE_DAYS, type Result, needs } from "@g1t/contracts";
+import { type Result, needs } from "@g1t/contracts";
 
 import { DangerAction, DangerZone } from "../../components/danger-zone";
 import { ConfirmDialog } from "../../components/repo-lifecycle";
@@ -14,15 +14,6 @@ import { page } from "../../lib/meta";
 import { confirmsName, tidyName } from "../../lib/repo-lifecycle";
 import { ErrorText, Field, Input, SubmitButton } from "../../components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
@@ -50,29 +41,16 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     actions.artifactRetention(path, viewer),
     work.getSettings(path, viewer).catch(() => null),
   ]);
-  // Renaming, archiving and the default branch are for Admins; visibility,
-  // moving and deleting, for owners of the workspace unless its member
-  // privileges let its members with Admin do them.
+  // Renaming and the default branch are for Admins; visibility, for owners
+  // of the workspace unless its member privileges let its members with
+  // Admin. Archiving, moving and deleting are the project's, on General.
   const owner = access.can.administer;
-  // Where it can go: a workspace where the person can create a repository like it.
-  const destinations = access.can.delete
-    ? (viewer?.workspaces ?? [])
-        .filter((m) => m.slug !== params.owner.toLowerCase())
-        .filter((m) => {
-          if (m.role === "owner") return true;
-          const privileges = { ...DEFAULT_MEMBER_PRIVILEGES, ...(m.privileges ?? {}) };
-          return repo.isPrivate ? privileges.members_can_create_private_repositories : privileges.members_can_create_public_repositories;
-        })
-        .map((m) => ({ slug: m.slug, name: m.name ?? m.slug }))
-    : [];
   return {
     repo,
     // An empty repository has no branches yet; the page still works.
     branches: branches.ok ? branches.value.map((b) => b.name) : [],
     owner,
-    remove: access.can.delete,
     visibility: access.can.change_visibility,
-    destinations,
     // How long workflow runs' artifacts are kept.
     retention: retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
     // Whether issues can be opened in it; null when that could not be read.
@@ -105,15 +83,13 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
   const text = (name: string) => String(form.get(name) ?? "").trim();
   const typed = text("confirm");
   // What each form needs: the details are settings, renaming a branch other
-  // than the default is pushing, transfer and delete are for owners.
+  // than the default is pushing.
   const capability =
     intent === "details" || intent === "artifacts" || intent === "features" || intent === "commits"
       ? "manage_settings"
       : intent === "rename-branch"
         ? "push"
-        : intent === "transfer" || intent === "delete"
-          ? "delete"
-          : "administer";
+        : "administer";
   const refused = await refusal(context, params, capability);
   if (refused) return { intent, saved: false, error: refused };
 
@@ -132,8 +108,6 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
       if (!confirmsName(typed, full)) return { intent, saved: false, error: `Type ${full} to confirm.` };
       return outcome(intent, await repos.setVisibility(user, path, text("visibility") === "private", typed));
     }
-    case "archive":
-      return outcome(intent, await repos.archive(user, path, text("archived") === "true"));
     case "features": {
       // The other settings are sent back as they are: only issues change here.
       const current = await work.getSettings(path, user);
@@ -174,21 +148,6 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
       return outcome(intent, await repos.detachFork(user, path));
     case "artifacts":
       return outcome(intent, await actions.artifactRetention(path, user, Number(text("days"))));
-    case "transfer": {
-      // repos checks both workspaces' owners, the name and storage, and
-      // keeps the old address as a redirect.
-      const to = text("to").toLowerCase();
-      if (!confirmsName(typed, full)) return { intent, saved: false, error: `Type ${full} to confirm.` };
-      const moved = await repos.transfer(user, path, to);
-      if (!moved.ok) return outcome(intent, moved);
-      throw redirect(`/${moved.value.namespace}/${moved.value.name}/settings/repository`);
-    }
-    case "delete": {
-      if (!confirmsName(typed, full)) return { intent, saved: false, error: `Type ${full} to confirm.` };
-      const deleted = await repos.delete(user, path, typed);
-      if (!deleted.ok) return outcome(intent, deleted);
-      throw redirect(`/${params.owner}/-/repositories?deleted=${encodeURIComponent(deleted.value.name)}`);
-    }
     default:
       return outcome(
         "details",
@@ -208,7 +167,7 @@ function Status({ intent, data: result, saved = "Saved." }: { intent: string; da
 }
 
 export default function RepoSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { repo, branches, owner, remove, visibility, destinations, retention, issues, pullSettings } = loaderData;
+  const { repo, branches, owner, visibility, retention, issues, pullSettings } = loaderData;
   const navigation = useNavigation();
   const posting = (intent: string) => navigation.state !== "idle" && navigation.formData?.get("intent") === intent;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -433,31 +392,42 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           </Section>
         )}
 
-        {owner ? (
+        {owner && (visibility || repo.parentId) ? (
           <div id="danger-zone" className="scroll-mt-20 border-t border-line pt-8">
             <DangerZone>
               {visibility && <VisibilityAction full={full} isPrivate={repo.isPrivate} fork={Boolean(repo.parentId)} error={errorFor("visibility")} />}
               {repo.parentId && <DetachAction full={full} parent={repo.parent ?? null} error={errorFor("detach")} />}
-              <ArchiveAction full={full} archived={archived} error={errorFor("archive")} />
-              {remove && <TransferAction repo={full} destinations={destinations} error={errorFor("transfer") ?? undefined} />}
-              {remove && <DeleteAction full={full} error={errorFor("delete")} />}
             </DangerZone>
-            {(!remove || !visibility) && (
-              <p className="mt-4 text-sm text-muted">
-                Only an owner of the workspace can{" "}
-                {[!visibility && "change who can see it", !remove && "transfer or delete it"].filter(Boolean).join(", or ")}:
-                its member privileges keep that to owners.
-              </p>
-            )}
+            <LifecycleNote base={base} />
           </div>
         ) : (
-          <p className="border-t border-line pt-8 text-sm text-muted">
-            Renaming it, changing who can see it and archiving it need the Admin role. Transferring and deleting it need an
-            owner of the workspace, unless its member privileges let repository admins.
-          </p>
+          <div className="border-t border-line pt-8 text-sm text-muted">
+            {owner ? (
+              <p>Only an owner of the workspace can change who can see it: its member privileges keep that to owners.</p>
+            ) : (
+              <p>
+                Renaming it needs the Admin role, and changing who can see it an owner of the workspace, unless its member
+                privileges let repository admins.
+              </p>
+            )}
+            <LifecycleNote base={base} />
+          </div>
         )}
       </div>
     </>
+  );
+}
+
+/** Where archiving, transferring and deleting went: they are the project's. */
+function LifecycleNote({ base }: { base: string }) {
+  return (
+    <p className="mt-4 text-sm text-muted">
+      Archiving, transferring and deleting it are the project's, at the end of{" "}
+      <Link to={`${base}/settings#danger-zone`} className="text-accent hover:underline">
+        General
+      </Link>
+      .
+    </p>
   );
 }
 
@@ -808,192 +778,5 @@ function DetachAction({
       <li>Its visibility can then be changed on its own.</li>
       <li>It can't be attached again.</li>
     </ConfirmDialog>
-  );
-}
-
-/** Read-only, or back to normal. */
-function ArchiveAction({ full, archived, error }: { full: string; archived: boolean; error: string | null }) {
-  return (
-    <ConfirmDialog
-      intent="archive"
-      fields={{ archived: archived ? "false" : "true" }}
-      title={archived ? `Unarchive ${full}?` : `Archive ${full}?`}
-      description={archived ? "It goes back to working as before." : "It becomes read-only. You can unarchive it at any time."}
-      submit={archived ? "Unarchive" : "Archive"}
-      busy={archived ? "Unarchiving…" : "Archiving…"}
-      danger={!archived}
-      error={error}
-      trigger={(open) => (
-        <DangerAction
-          title={archived ? "Unarchive this repository" : "Archive this repository"}
-          action={
-            <Button type="button" variant="destructive" onClick={open}>
-              {archived ? "Unarchive" : "Archive"}
-            </Button>
-          }
-        >
-          {archived
-            ? "It is archived and read-only. Unarchiving lets pushes, merges and workflows work again."
-            : "Make it read-only: everything stays where it is and can be read, and nothing changes it."}
-        </DangerAction>
-      )}
-    >
-      {archived ? (
-        <>
-          <li>Pushes and merges are accepted again.</li>
-          <li>Issues and pull requests unlock.</li>
-          <li>Workflows run again.</li>
-        </>
-      ) : (
-        <>
-          <li>Pushes and merges are refused, for everyone.</li>
-          <li>Issues and pull requests are locked. They stay readable.</li>
-          <li>Workflows do not run.</li>
-          <li>Its deployments keep serving, and anyone who could see it still can.</li>
-        </>
-      )}
-    </ConfirmDialog>
-  );
-}
-
-/** Deleting: hidden at once, restorable for a while, then gone. */
-function DeleteAction({ full, error }: { full: string; error: string | null }) {
-  const namespace = full.split("/")[0];
-  return (
-    <ConfirmDialog
-      intent="delete"
-      title={`Delete ${full}?`}
-      description={`You can restore it for ${RESTORE_DAYS} days.`}
-      confirm={full}
-      submit="Delete repository"
-      busy="Deleting…"
-      error={error}
-      trigger={(open) => (
-        <DangerAction
-          title="Delete this repository"
-          action={
-            <Button type="button" variant="destructive" onClick={open}>
-              Delete
-            </Button>
-          }
-        >
-          It can be restored from the workspace's repositories for {RESTORE_DAYS} days, then it is removed for good.
-        </DangerAction>
-      )}
-    >
-      <li>It disappears at once: its pages, git remote and API stop answering, for everyone.</li>
-      <li>
-        Owners can restore it, as it was, from <span className="font-mono text-fg">{namespace}</span>'s Recently deleted
-        repositories for {RESTORE_DAYS} days. After that it is removed for good, its git data with it.
-      </li>
-      <li>Its name stays taken until then, so no other repository can be made at its address.</li>
-    </ConfirmDialog>
-  );
-}
-
-/**
- * Moving the repository to another workspace the owner also owns. The
- * dialog says what moves and what changes, and asks for the full name.
- */
-function TransferAction({
-  repo,
-  destinations,
-  error,
-}: {
-  repo: string;
-  destinations: { slug: string; name: string }[];
-  error?: string;
-}) {
-  const [open, setOpen] = useState(Boolean(error));
-  const [to, setTo] = useState(destinations[0]?.slug ?? "");
-  const [confirm, setConfirm] = useState("");
-  const navigation = useNavigation();
-  const moving = navigation.state !== "idle" && navigation.formData?.get("intent") === "transfer";
-  const name = repo.split("/")[1];
-  return (
-    <DangerAction
-      title="Transfer this repository"
-      action={
-        <Button type="button" variant="destructive" disabled={destinations.length === 0} onClick={() => setOpen(true)}>
-          Transfer
-        </Button>
-      }
-    >
-      {destinations.length === 0 ? (
-        <>Move it to another workspace you own. You own no other workspace yet.</>
-      ) : (
-        <>Move it to another workspace you own. Its old address keeps redirecting.</>
-      )}
-      <AlertDialog
-        open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          setConfirm("");
-        }}
-      >
-        <AlertDialogContent>
-          <Form method="post" className="grid gap-4">
-            <input type="hidden" name="intent" value="transfer" />
-            <AlertDialogHeader>
-              <AlertDialogTitle>Transfer {repo}</AlertDialogTitle>
-              <AlertDialogDescription>
-                It keeps its name and moves with everything in it: code, issues, pull requests, workflow runs,
-                deployments, its project, and its own secrets, variables and webhooks.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <FormField>
-              <FieldLabel htmlFor="transfer-to">New workspace</FieldLabel>
-              <Select name="to" value={to} onValueChange={setTo}>
-                <SelectTrigger id="transfer-to" aria-label="New workspace">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {destinations.map((d) => (
-                    <SelectItem key={d.slug} value={d.slug}>
-                      {d.name === d.slug ? d.slug : `${d.name} (${d.slug})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-            <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
-              <li>
-                It moves to <span className="font-mono text-fg">g1t.sh/{to}/{name}</span>. Links, git remotes and API
-                calls to <span className="font-mono">g1t.sh/{repo}</span> redirect there until a repository is made at
-                the old address.
-              </li>
-              <li>
-                Apps it deploys move to <span className="font-mono">*.g1t.page</span> names with the new workspace; the
-                old ones redirect for 90 days. Custom domains follow.
-              </li>
-              <li>The old workspace's secrets, webhooks and integrations stop reaching it; the new one's start.</li>
-              <li>Usage from now on is charged to {to}. What it used before stays on the old workspace's bill.</li>
-            </ul>
-            <FormField>
-              <FieldLabel htmlFor="transfer-confirm">
-                Type <span className="font-mono text-fg">{repo}</span> to confirm
-              </FieldLabel>
-              <TextInput
-                id="transfer-confirm"
-                name="confirm"
-                value={confirm}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoComplete="off"
-                onChange={(event) => setConfirm(event.target.value)}
-                className="font-mono"
-              />
-            </FormField>
-            <ErrorText>{error}</ErrorText>
-            <AlertDialogFooter>
-              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-              <Button type="submit" variant="destructive" disabled={!to || !confirmsName(confirm, repo) || moving}>
-                {moving ? "Transferring…" : "Transfer"}
-              </Button>
-            </AlertDialogFooter>
-          </Form>
-        </AlertDialogContent>
-      </AlertDialog>
-    </DangerAction>
   );
 }
