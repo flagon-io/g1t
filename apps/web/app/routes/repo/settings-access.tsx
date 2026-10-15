@@ -39,6 +39,8 @@ import { refusal, requireInsider } from "../../lib/access.server";
 import { billing, identity } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { UserCard } from "../../components/user-card";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Access · ${params.owner}/${params.repo} · g1t` });
@@ -50,17 +52,17 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer, access } = await requireInsider(context, params, "push");
   const manage = access.can.manage_access;
   // The workspace's teams, for Add team: only Admins add one, and a
-  // failure there leaves the rest of the page as it is.
+  // failure there says so in Add team's place, not as "no other team".
   const [found, teams, free] = await Promise.all([
     identity.repoAccess(params.owner, params.repo, viewer),
-    manage ? identity.listTeams(viewer, params.owner).catch(() => null) : Promise.resolve(null),
+    manage ? part(identity.listTeams(viewer, params.owner), "Teams to add") : Promise.resolve(null),
     // A free workspace invites no one from outside; identity refuses it
     // either way, so a failure here only hides the note.
     manage ? billing.freeWorkspaces([params.owner]).catch(() => [] as string[]) : Promise.resolve([] as string[]),
   ]);
   return {
     access: unwrap(found),
-    teams: teams?.ok ? teams.value : ([] as Team[]),
+    teams: isFailed(teams) ? teams : teams?.ok ? teams.value : ([] as Team[]),
     manage,
     free: free.includes(params.owner.toLowerCase()),
     // Owners change the base permission, on the workspace's People page.
@@ -165,7 +167,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
     (a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.name.localeCompare(b.name),
   );
   const listed = new Set(repoTeams.map((team) => team.slug));
-  const addable = teams.filter((team) => !listed.has(team.slug));
+  const addable = isFailed(teams) ? null : teams.filter((team) => !listed.has(team.slug));
   // Roles are changed and people removed from their own rows, which say
   // what went wrong; what went right is said once, under the list.
   const [notice, setNotice] = useState<string | null>(null);
@@ -262,7 +264,8 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
               </ul>
             </Card>
           )}
-          {manage && <AddTeamForm teams={addable} result={teamResult} workspace={params.owner} />}
+          {manage && addable && <AddTeamForm teams={addable} result={teamResult} workspace={params.owner} />}
+          {manage && isFailed(teams) && <Unavailable what={teams.what} compact />}
         </Section>
 
         {manage && (

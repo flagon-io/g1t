@@ -13,6 +13,8 @@ import { Button } from "../../components/ui/button";
 import { security, securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Secret alert · ${params.owner}/${params.repo} · g1t` });
@@ -23,8 +25,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
   const { access } = await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
-  const [detail, settings] = await Promise.all([securitySuite.secretAlert(repo, params.id, viewer), securitySuite.settings(repo, viewer)]);
-  return { detail: unwrap(detail), settings: settings.ok ? settings.value : null, can: access.can };
+  // The settings only say whether its validity can be asked: when they
+  // cannot be read, that says so, rather than that checks are off.
+  const [detail, settings] = await Promise.all([
+    securitySuite.secretAlert(repo, params.id, viewer),
+    part(securitySuite.settings(repo, viewer), "Whether validity checks are on"),
+  ]);
+  return { detail: unwrap(detail), settings: isFailed(settings) ? settings : settings.ok ? settings.value : null, can: access.can };
 }
 
 const REASONS = new Set(["false_positive", "used_in_tests", "revoked", "wont_fix"]);
@@ -159,7 +166,11 @@ export default function SecretAlert({ loaderData, params }: Route.ComponentProps
           </p>
           <p className="mt-1 text-xs text-muted">{validity.about}</p>
           <div className="mt-2">
-            <ValidityCheck action={action} checkable={detail.checkable && landed} enabled={Boolean(settings?.workspace.validityChecks && settings.entitled)} />
+            {isFailed(settings) ? (
+              <Unavailable what={settings.what} compact />
+            ) : (
+              <ValidityCheck action={action} checkable={detail.checkable && landed} enabled={Boolean(settings?.workspace.validityChecks && settings.entitled)} />
+            )}
           </div>
         </div>
         <div>

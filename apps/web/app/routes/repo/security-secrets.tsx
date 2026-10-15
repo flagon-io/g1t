@@ -12,6 +12,8 @@ import { Card } from "../../components/ui/card";
 import { security, securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesSecurity, requireUser, unwrap } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 import { planPrice } from "../../lib/security-suite.server";
 import { countStates, keepSecret, secretFilters, secretTypes } from "../../lib/security-suite";
 import { repoPages } from "../../lib/repo-live";
@@ -25,14 +27,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context) ?? requireUser(context, request);
   const { access } = await requireInsider(context, params, "push");
   const repo = { namespace: params.owner, name: params.repo };
+  // The alerts are what the page is about. Custom patterns are a section
+  // of their own: when they cannot be read it says so, rather than offer
+  // to turn on what may well be on.
   const [overview, patterns, price] = await Promise.all([
     security.overview(repo, viewer),
-    securitySuite.patterns(params.owner, repo, viewer),
+    part(securitySuite.patterns(params.owner, repo, viewer), "Custom patterns"),
     planPrice(params.owner, viewer),
   ]);
   return {
     overview: unwrap(overview),
-    patterns: patterns.ok ? patterns.value : { patterns: [], entitled: false },
+    patterns: isFailed(patterns) ? patterns : patterns.ok ? patterns.value : { patterns: [], entitled: false },
     price,
     can: access.can,
     owner: managesSecurity(viewer, params.owner),
@@ -79,8 +84,9 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
     else next.delete(key);
     setSearch(next, { replace: true, preventScrollReset: true });
   };
-  const own = patterns.patterns.filter((pattern) => pattern.scope === "repository");
-  const inherited = patterns.patterns.filter((pattern) => pattern.scope === "workspace");
+  const listed = isFailed(patterns) ? [] : patterns.patterns;
+  const own = listed.filter((pattern) => pattern.scope === "repository");
+  const inherited = listed.filter((pattern) => pattern.scope === "workspace");
   return (
     <div className="max-w-5xl space-y-8">
       <SectionHeader
@@ -130,13 +136,15 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
             </h3>
             <p className="mt-1 text-sm text-muted">Formats of your own, found by push protection and history scans with the built-in ones.</p>
           </div>
-          {patterns.entitled && can.manage_integrations && (
+          {!isFailed(patterns) && patterns.entitled && can.manage_integrations && (
             <Link to={`${base}/security/secret-scanning/patterns`} className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong">
               <Plus size={14} /> New pattern
             </Link>
           )}
         </div>
-        {!patterns.entitled ? (
+        {isFailed(patterns) ? (
+          <Unavailable what={patterns.what} />
+        ) : !patterns.entitled ? (
           <ActivationPrompt workspace={params.owner} feature="Custom patterns" monthlyCents={price} isOwner={owner} />
         ) : own.length + inherited.length === 0 ? (
           <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">

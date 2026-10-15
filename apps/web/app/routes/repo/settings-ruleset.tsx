@@ -11,6 +11,7 @@ import { TimeAgo } from "../../components/ui";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
+import { orElse, part } from "../../lib/partial";
 
 export function meta({ params, loaderData, ...args }: Route.MetaArgs) {
   const name = loaderData?.existing?.name ?? "New ruleset";
@@ -21,7 +22,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const { repo, access } = await requireInsider(context, params, "manage_protection");
   const path = { namespace: params.owner, name: params.repo };
-  const seen = await work.seenChecks(path, viewer).catch(() => null);
+  // Only suggestions for required checks, deep in a rule; any name can be
+  // typed without them, so the form quietly does without.
+  const seen = orElse(await part(work.seenChecks(path, viewer), "Checks seen"), null);
   const base = {
     seen: seen?.ok ? seen.value : [],
     editable: access.can.manage_protection && !repo.archivedAt,

@@ -12,6 +12,8 @@ import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { requireInsider } from "../../lib/access.server";
 import { movedTab, rulesAt, rulesPath } from "../../lib/tab-paths";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Rules · ${params.owner}/${params.repo} · g1t` });
@@ -29,14 +31,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const tagged = url.searchParams.get("tag");
   const branch = (tagged ?? url.searchParams.get("branch") ?? repo.defaultBranch).trim() || repo.defaultBranch;
+  // What holds for a branch, and Insights, each say in their place when
+  // they could not be read; the rulesets are what the page is about.
   const [rulesets, effective, evaluations] = await Promise.all([
     work.listRulesets({ repo: path }, viewer, true),
-    tab === "rulesets" ? work.effectiveRules(path, branch, viewer, tagged ? "tag" : "branch") : Promise.resolve(null),
+    tab === "rulesets" ? part(work.effectiveRules(path, branch, viewer, tagged ? "tag" : "branch"), `The rules for ${branch}`) : Promise.resolve(null),
     tab === "insights"
-      ? work.ruleEvaluations({ repo: path }, viewer, {
-          before: url.searchParams.get("before") ?? undefined,
-          problems_only: url.searchParams.get("problems") === "1",
-        })
+      ? part(
+          work.ruleEvaluations({ repo: path }, viewer, {
+            before: url.searchParams.get("before") ?? undefined,
+            problems_only: url.searchParams.get("problems") === "1",
+          }),
+          "Insights",
+        )
       : Promise.resolve(null),
   ]);
   return {
@@ -45,8 +52,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     target: tagged ? ("tag" as const) : ("branch" as const),
     defaultBranch: repo.defaultBranch,
     rulesets: unwrap(rulesets),
-    effective: effective?.ok ? effective.value : null,
-    evaluations: evaluations?.ok ? evaluations.value : null,
+    effective: isFailed(effective) ? effective : effective?.ok ? effective.value : null,
+    evaluations: isFailed(evaluations) ? evaluations : evaluations?.ok ? evaluations.value : null,
     editable: access.can.manage_protection && !repo.archivedAt,
   };
 }
@@ -134,13 +141,17 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
                 Show rules
               </Button>
             </Form>
-            {effective ? (
+            {isFailed(effective) ? (
+              <Unavailable what={effective.what} />
+            ) : effective ? (
               <EffectiveRulesView effective={effective} hrefFor={hrefFor} />
             ) : (
               <p className="text-sm text-muted">The rules for that name could not be read.</p>
             )}
           </section>
         </div>
+      ) : isFailed(evaluations) ? (
+        <Unavailable what={evaluations.what} />
       ) : evaluations ? (
         <InsightsView page={evaluations} olderHref={evaluations.next ? `${base}/settings/rules/insights?before=${encodeURIComponent(evaluations.next)}` : null} />
       ) : (

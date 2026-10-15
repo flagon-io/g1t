@@ -30,7 +30,9 @@ import { SwitchCard } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
 import { page } from "../../lib/meta";
 import { bytes, count, otelEnv } from "../../lib/observability";
-import { observed, soft } from "../../lib/observability.server";
+import { observed } from "../../lib/observability.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -41,11 +43,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { projectId, service, project } = await observed(context, params, request, "manage_integrations");
   // The workspace goes along, so the project's store knows whose free cap applies.
   const ref = { project_id: projectId, workspace: (params.owner ?? "").toLowerCase() };
+  // Each is a section of its own, which says so in its place when it could
+  // not be read; a form whose values could not be read is not shown, so
+  // nothing is saved over them.
   const [settings, tokens, exports, usage] = await Promise.all([
-    soft(service.settings(ref), "settings"),
-    soft(service.tokens(ref), "tokens"),
-    soft(service.exports(ref), "exports"),
-    soft(service.usage(ref), "usage"),
+    part(service.settings(ref), "These settings"),
+    part(service.tokens(ref), "Ingest tokens"),
+    part(service.exports(ref), "Exports"),
+    part(service.usage(ref), "This month's usage"),
   ]);
   return { settings, tokens, exports, usage, slug: project.slug };
 }
@@ -132,7 +137,11 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           <CopyLine text={TELEMETRY_OTLP_ENDPOINT} />
           <pre className="overflow-x-auto rounded-lg border border-line bg-surface p-3 font-mono text-xs">{otelEnv(TELEMETRY_OTLP_ENDPOINT, slug, "g1to_…")}</pre>
         </div>
-        {settings && (
+        {isFailed(settings) ? (
+          <div className="mt-4">
+            <Unavailable what="Whether apps on g1t.page report here" compact />
+          </div>
+        ) : (
           <Form method="post" className="mt-4">
             <SwitchCard
               title="Apps on g1t.page report here"
@@ -157,8 +166,10 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           For software running anywhere other than g1t.page: a token lets it send to this project and do nothing else. Each is shown once, when
           it is made. Apps on g1t.page need none; g1t gives them their own.
         </p>
-        {!tokens ? (
-          <Card className="mt-3 p-4 text-sm text-muted">Tokens could not be loaded just now.</Card>
+        {isFailed(tokens) ? (
+          <div className="mt-3">
+            <Unavailable what={tokens.what} />
+          </div>
         ) : tokens.length === 0 ? (
           <Card className="mt-3 p-4 text-sm text-muted">None yet.</Card>
         ) : (
@@ -222,7 +233,12 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           Send everything that arrives on to any OTLP/HTTP endpoint as well: a collector of your own, or any tool that takes OpenTelemetry.
           Requests on g1t.page go as server spans, their logs as log records.
         </p>
-        {exports && exports.length > 0 && (
+        {isFailed(exports) && (
+          <div className="mt-3">
+            <Unavailable what={exports.what} />
+          </div>
+        )}
+        {!isFailed(exports) && exports.length > 0 && (
           <Card className="mt-3 divide-y divide-line">
             {exports.map((e) => (
               <div key={e.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -277,14 +293,18 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
         )}
       </section>
 
-      {settings && (
-        <section className="mt-10" aria-labelledby="retention-title">
-          <h2 id="retention-title" className="text-sm font-semibold">
-            Retention
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            How long requests, logs, spans and metric points are kept. The Overview's per-minute numbers are kept for 90 days whatever this is.
-          </p>
+      <section className="mt-10" aria-labelledby="retention-title">
+        <h2 id="retention-title" className="text-sm font-semibold">
+          Retention
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          How long requests, logs, spans and metric points are kept. The Overview's per-minute numbers are kept for 90 days whatever this is.
+        </p>
+        {isFailed(settings) ? (
+          <div className="mt-3">
+            <Unavailable what="The retention" />
+          </div>
+        ) : (
           <Form method="post" className="mt-3 flex items-center gap-2">
             <input type="hidden" name="intent" value="retention" />
             <SelectField
@@ -298,14 +318,18 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
               Save
             </SubmitButton>
           </Form>
-        </section>
-      )}
+        )}
+      </section>
 
-      {usage && (
-        <section className="mt-10" aria-labelledby="usage-title">
-          <h2 id="usage-title" className="text-sm font-semibold">
-            This month
-          </h2>
+      <section className="mt-10" aria-labelledby="usage-title">
+        <h2 id="usage-title" className="text-sm font-semibold">
+          This month
+        </h2>
+        {isFailed(usage) ? (
+          <div className="mt-3">
+            <Unavailable what={usage.what} />
+          </div>
+        ) : (
           <Card className="mt-3 grid grid-cols-2 gap-4 p-4 sm:grid-cols-3">
             {(
               [
@@ -324,8 +348,8 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
               </div>
             ))}
           </Card>
-        </section>
-      )}
+        )}
+      </section>
     </div>
   );
 }

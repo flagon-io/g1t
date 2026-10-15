@@ -10,6 +10,7 @@ import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
 import { clock, duration, shortId, viewHref } from "../../lib/observability";
 import { observed, soft } from "../../lib/observability.server";
+import { Unavailable } from "../../components/boundary";
 
 const STATUSES = ["2xx", "3xx", "4xx", "5xx"] as const;
 
@@ -94,7 +95,7 @@ export default function Requests({ loaderData, params }: Route.ComponentProps) {
 
       <div className={cn("mt-4 transition-opacity", loading && "opacity-60")}>
         {!list ? (
-          <Card className="p-6 text-sm text-muted">Requests could not be loaded just now. Reload the page to try again.</Card>
+          <Unavailable what="Requests" />
         ) : list.items.length === 0 ? (
           <EmptyState title={cursor ? "No older requests" : "No requests match"}>
             Requests of apps on g1t.page arrive within seconds of being answered; others arrive with their server spans.

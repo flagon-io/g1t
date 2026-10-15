@@ -15,6 +15,7 @@ import { page } from "../../lib/meta";
 import { matchesLog, viewHref } from "../../lib/observability";
 import { useTelemetryLive } from "../../lib/observability-live";
 import { observed, soft } from "../../lib/observability.server";
+import { Unavailable } from "../../components/boundary";
 
 /** The levels offered as toggles: trace and debug go with debug, fatal with error. */
 const LEVELS: LogSeverity[] = ["debug", "info", "warn", "error"];
@@ -125,7 +126,7 @@ export default function Logs({ loaderData, params }: Route.ComponentProps) {
 
       <div className={cn("mt-4 transition-opacity", loading && "opacity-60")}>
         {!list ? (
-          <Card className="p-6 text-sm text-muted">Logs could not be loaded just now. Reload the page to try again.</Card>
+          <Unavailable what="Logs" />
         ) : shown.length === 0 ? (
           <EmptyState title={view.q || levels.length ? "No lines match" : "No logs in this period"}>
             {live ? "Following: new lines show here as they are written." : "Apps on g1t.page send what they write with console.log; anything else sends OpenTelemetry logs."}
