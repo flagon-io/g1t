@@ -33,68 +33,77 @@ function soon(section: RoadmapItem["section"]): Tab[] {
   return roadmapIn(section).map((item) => ({ label: item.title, path: `soon/${item.key}`, soon: true, about: item.summary }));
 }
 
-export const SECTIONS: Section[] = [
-  {
-    key: "Code",
-    tabs: [
-      { label: "Files", path: "code", also: ["tree", "blob"] },
-      { label: "Commits", path: "commits", also: ["commit"] },
-      { label: "Branches", path: "branches" },
-      { label: "Tags", path: "tags" },
-      { label: "Releases", path: "releases" },
-      { label: "Compare", path: "compare" },
-      // No Docs tab: code is not docs. Docs is a workspace mode, filtered by project there.
-    ],
-  },
-  {
-    key: "Issues",
-    tabs: [
-      { label: "Issues", path: "issues" },
-      { label: "Milestones", path: "milestones" },
-      ...soon("Issues"),
-    ],
-  },
-  {
-    key: "Deployments",
-    tabs: [{ label: "Deployments", path: "deployments" }, ...soon("Deployments")],
-  },
-  {
-    key: "Observability",
-    tabs: [
-      { label: "Overview", path: "observability", exact: true, members: true },
-      { label: "Requests", path: "observability/requests", members: true },
-      { label: "Logs", path: "observability/logs", members: true },
-      { label: "Traces", path: "observability/traces", members: true },
-      { label: "Errors", path: "observability/errors", members: true },
-      { label: "Metrics", path: "observability/metrics", members: true },
-      { label: "Settings", path: "observability/settings", members: true, needs: "manage_integrations" },
-      ...soon("Observability"),
-    ],
-  },
-  {
-    key: "Security",
-    tabs: [
-      { label: "Overview", path: "security", members: true, needs: "security_alerts", exact: true },
-      { label: "Secret scanning", path: "security/secret-scanning", members: true, needs: "security_alerts" },
-      { label: "Code scanning", path: "security/code-scanning", members: true, needs: "security_alerts", also: ["security/pulls"] },
-      { label: "Vulnerabilities", path: "security/vulnerabilities", members: true, needs: "security_alerts" },
-      { label: "Dependency graph", path: "security/dependency-graph", members: true, needs: "security_alerts" },
-      { label: "Dependency updates", path: "security/dependency-updates", members: true, needs: "security_alerts" },
-      { label: "Advisories", path: "security/advisories", members: true, needs: "security_alerts", also: ["security/reports"] },
-      { label: "Settings", path: "security/settings", members: true, needs: "security_alerts" },
-      ...soon("Security"),
-    ],
-  },
-  {
-    key: "Insights",
-    tabs: [
-      { label: "Contributors", path: "contributors" },
-      { label: "Activity", path: "activity" },
-      { label: "Stargazers", path: "stargazers" },
-      ...soon("Insights"),
-    ],
-  },
-];
+/**
+ * The project's pages, built on first use rather than when the module
+ * loads: the soon tabs read the roadmap, and a bundle that splits the two
+ * into chunks that import each other could otherwise read it before it is
+ * there (a page that throws as it loads, so nothing on it works).
+ */
+let built: Section[] | null = null;
+export function sections(): Section[] {
+  return (built ??= [
+    {
+      key: "Code",
+      tabs: [
+        { label: "Files", path: "code", also: ["tree", "blob"] },
+        { label: "Commits", path: "commits", also: ["commit"] },
+        { label: "Branches", path: "branches" },
+        { label: "Tags", path: "tags" },
+        { label: "Releases", path: "releases" },
+        { label: "Compare", path: "compare" },
+        // No Docs tab: code is not docs. Docs is a workspace mode, filtered by project there.
+      ],
+    },
+    {
+      key: "Issues",
+      tabs: [
+        { label: "Issues", path: "issues" },
+        { label: "Milestones", path: "milestones" },
+        ...soon("Issues"),
+      ],
+    },
+    {
+      key: "Deployments",
+      tabs: [{ label: "Deployments", path: "deployments" }, ...soon("Deployments")],
+    },
+    {
+      key: "Observability",
+      tabs: [
+        { label: "Overview", path: "observability", exact: true, members: true },
+        { label: "Requests", path: "observability/requests", members: true },
+        { label: "Logs", path: "observability/logs", members: true },
+        { label: "Traces", path: "observability/traces", members: true },
+        { label: "Errors", path: "observability/errors", members: true },
+        { label: "Metrics", path: "observability/metrics", members: true },
+        { label: "Settings", path: "observability/settings", members: true, needs: "manage_integrations" },
+        ...soon("Observability"),
+      ],
+    },
+    {
+      key: "Security",
+      tabs: [
+        { label: "Overview", path: "security", members: true, needs: "security_alerts", exact: true },
+        { label: "Secret scanning", path: "security/secret-scanning", members: true, needs: "security_alerts" },
+        { label: "Code scanning", path: "security/code-scanning", members: true, needs: "security_alerts", also: ["security/pulls"] },
+        { label: "Vulnerabilities", path: "security/vulnerabilities", members: true, needs: "security_alerts" },
+        { label: "Dependency graph", path: "security/dependency-graph", members: true, needs: "security_alerts" },
+        { label: "Dependency updates", path: "security/dependency-updates", members: true, needs: "security_alerts" },
+        { label: "Advisories", path: "security/advisories", members: true, needs: "security_alerts", also: ["security/reports"] },
+        { label: "Settings", path: "security/settings", members: true, needs: "security_alerts" },
+        ...soon("Security"),
+      ],
+    },
+    {
+      key: "Insights",
+      tabs: [
+        { label: "Contributors", path: "contributors" },
+        { label: "Activity", path: "activity" },
+        { label: "Stargazers", path: "stargazers" },
+        ...soon("Insights"),
+      ],
+    },
+  ]);
+}
 
 /** Pull requests, the work on them, the merge queue and sessions share a page's tabs too. */
 export const PULLS: Section = {
@@ -116,7 +125,7 @@ function matches(rest: string, tab: Tab): boolean {
  * belongs to a page with more than one view.
  */
 export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>, features?: { issues?: boolean }): Tab[] | null {
-  for (const section of [...SECTIONS, PULLS]) {
+  for (const section of [...sections(), PULLS]) {
     // Issues turned off (a fork's default): no Issues tabs, though what was opened stays readable.
     if (section.key === "Issues" && features?.issues === false) continue;
     const visible = section.tabs.filter(
@@ -129,5 +138,5 @@ export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>,
 
 /** The first page of a section, for its sidebar link: a built one if any. */
 export function entryOf(key: Section["key"]): Tab | undefined {
-  return SECTIONS.find((section) => section.key === key)?.tabs[0];
+  return sections().find((section) => section.key === key)?.tabs[0];
 }
