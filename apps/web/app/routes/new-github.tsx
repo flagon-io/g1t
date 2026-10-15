@@ -13,6 +13,8 @@ import { githubApp } from "../lib/github.server";
 import { page } from "../lib/meta";
 import { assertSameOrigin, requireUser, roleIn } from "../lib/session.server";
 import { currentWorkspace } from "../lib/current-workspace.server";
+import { Unavailable } from "../components/boundary";
+import { isFailed, part } from "../lib/partial";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Import from GitHub · g1t" });
@@ -29,13 +31,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // an installation made there directly is offered here to be added.
   const [status, visible] = await Promise.all([
     githubApp.status(user, workspace),
-    githubApp.visibleInstallations(user).catch(() => null),
+    part(githubApp.visibleInstallations(user), "Accounts the app is already installed on"),
   ]);
   if (!status.ok || !status.value.configured) throw redirect("/new");
   const { installations, linked } = status.value;
   const recorded = new Set(installations.map((item) => item.id));
   const claimable =
-    linked && visible?.ok
+    linked && !isFailed(visible) && visible.ok
       ? notYetAdded(visible.value, workspace)
           .filter((item) => !recorded.has(item.id))
           .map((item) => ({ ...item, summary: installationSummary(item) }))
@@ -57,6 +59,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     linked,
     installations,
     claimable,
+    // Not asked is not "none": the page says so where they would be offered.
+    claimableUnknown: linked && isFailed(visible),
     installation,
     repositories,
     error,
@@ -155,6 +159,11 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
               <p className="mt-3 text-sm text-muted">
                 Your request went to the organization's owners on GitHub. Once one approves it, add the account here again.
               </p>
+            )}
+            {loaderData.claimableUnknown && (
+              <div className="mt-3">
+                <Unavailable what="Accounts the app is already installed on" compact />
+              </div>
             )}
             {claimable.length > 0 && (
               <div className="mt-3 rounded-lg border border-accent/30 bg-accent/5 p-4">

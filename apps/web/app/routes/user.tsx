@@ -41,6 +41,8 @@ import { notFound } from "../lib/not-found.server";
 import { type ProfileTab, movedTab, profilePath, profileTab } from "../lib/tab-paths";
 import { identity, projects, repos, work } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
+import { Unavailable } from "../components/boundary";
+import { type Failed, isFailed, part } from "../lib/partial";
 
 type Tab = ProfileTab;
 
@@ -106,35 +108,39 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     .then((person) => (person ? repos.publicNamespaces(person.id) : []))
     .catch(() => [] as string[])
     .then((publicIn) => identity.profileWorkspaces(username, viewer, publicIn));
+  // The person is what the page is about; each of these is one part of it,
+  // and one that fails says so in its own place.
   // The card is drawn for no one in particular, so its version uses what
   // everyone sees; for a signed-out viewer that is these counts already.
   const [authored, shown, starred, year] = await Promise.all([
-    work.byAuthor(username, viewer, filter),
-    workspaces,
+    part(work.byAuthor(username, viewer, filter), "Activity"),
+    part(workspaces, "Workspaces"),
     // What they starred that the viewer can see, on its own tab.
-    tab === "stars" ? repos.starred(username, viewer).catch(() => [] as StarredRepo[]) : ([] as StarredRepo[]),
+    tab === "stars" ? part(repos.starred(username, viewer), "Stars") : ([] as StarredRepo[]),
     // Their year, on the overview: counted only where the viewer can see.
     tab === "overview"
-      ? work
-          .contributions(username, viewer)
-          .then((result) => (result.ok ? result.value : null))
-          .catch(() => null as Contributions | null)
-      : null,
+      ? part(
+          work.contributions(username, viewer).then((result) => (result.ok ? result.value : null)),
+          "Contributions",
+        )
+      : (null as Contributions | null),
   ]);
-  const activity = authored.ok ? authored.value : EMPTY;
-  // A repository has no description: its project's is shown.
-  const about = await projects.descriptions(starred.map(({ repo }) => repo.id)).catch(() => ({}) as Record<string, string>);
+  const activity = !isFailed(authored) && authored.ok ? authored.value : EMPTY;
+  // A repository has no description: its project's is shown, and without it none.
+  const about = isFailed(starred)
+    ? ({} as Record<string, string>)
+    : await projects.descriptions(starred.map(({ repo }) => repo.id)).catch(() => ({}) as Record<string, string>);
   // The calendar ends today, as the work service counted it (UTC).
-  const today = (year && lastDay(year.from)) || new Date().toISOString().slice(0, 10);
+  const today = (year && !isFailed(year) && lastDay(year.from)) || new Date().toISOString().slice(0, 10);
   return {
     profile,
     tab,
     filter: { state: state ?? null, repo: repo ?? null, sort: sort ?? "created", before: before ?? null },
     activity,
-    failed: !authored.ok,
+    failed: isFailed(authored) || !authored.ok,
     workspaces: shown,
-    starred: starred.map((star) => ({ ...star, description: about[star.repo.id] ?? null })),
-    contributions: year ? { ...year, today } : null,
+    starred: isFailed(starred) ? starred : starred.map((star) => ({ ...star, description: about[star.repo.id] ?? null })),
+    contributions: year && !isFailed(year) ? { ...year, today } : year,
     isSelf: viewer?.username === profile.username,
     publicCounts: viewer ? null : activity.counts,
   };
@@ -176,7 +182,7 @@ function PersonColumn({
   isSelf,
 }: {
   profile: Profile;
-  workspaces: { slug: string; name: string; avatar: string | null }[];
+  workspaces: { slug: string; name: string; avatar: string | null }[] | Failed;
   isSelf: boolean;
 }) {
   return (
@@ -239,7 +245,14 @@ function PersonColumn({
         <Detail icon={<CalendarDays size={15} />}>Joined {joined(profile.createdAt)}</Detail>
       </ul>
 
-      {workspaces.length > 0 && (
+      {isFailed(workspaces) ? (
+        <div className="mt-6 border-t border-line pt-5">
+          <h2 className="text-sm font-medium">Workspaces</h2>
+          <div className="mt-3">
+            <Unavailable what="Workspaces" compact />
+          </div>
+        </div>
+      ) : workspaces.length > 0 && (
         <div className="mt-6 border-t border-line pt-5">
           <h2 className="text-sm font-medium">Workspaces</h2>
           <ul className="mt-3 space-y-1">
@@ -312,7 +325,8 @@ function ProfileTabs({
 
 // --- Stars -------------------------------------------------------------------------
 
-function StarredList({ starred, isSelf }: { starred: (StarredRepo & { description: string | null })[]; isSelf: boolean }) {
+function StarredList({ starred, isSelf }: { starred: (StarredRepo & { description: string | null })[] | Failed; isSelf: boolean }) {
+  if (isFailed(starred)) return <Unavailable what="Stars" />;
   if (starred.length === 0) {
     return (
       <EmptyState title={isSelf ? "You have not starred anything yet" : "No stars yet"}>
@@ -355,7 +369,9 @@ function Overview({ profile, activity, failed, contributions }: Data) {
   const who = profile.name ?? shownUsername(profile);
   return (
     <div className="space-y-8">
-      {contributions && (
+      {isFailed(contributions) ? (
+        <Unavailable what="Contributions" />
+      ) : contributions && (
         <ContributionCalendar
           days={contributions.days}
           total={contributions.total}

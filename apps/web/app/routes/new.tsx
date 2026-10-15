@@ -13,6 +13,8 @@ import { GithubMark } from "../components/github";
 import { githubApp } from "../lib/github.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 import { currentWorkspace } from "../lib/current-workspace.server";
+import { Unavailable } from "../components/boundary";
+import { isFailed, part } from "../lib/partial";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "New project · g1t" });
@@ -26,8 +28,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (!current) throw redirect("/workspaces/new");
   const selected = current.slug;
   // With g1t's GitHub App configured, repositories can come from GitHub.
-  const github = await githubApp.status(user, selected).catch(() => null);
-  return { selected, name: current.name?.trim() || current.slug, github: Boolean(github?.ok && github.value.configured) };
+  // Not asked is not "not set up": the other sources stay, and the picker
+  // says that importing from GitHub could not be checked.
+  const github = await part(githubApp.status(user, selected), "Importing from GitHub");
+  return {
+    selected,
+    name: current.name?.trim() || current.slug,
+    github: !isFailed(github) && github.ok && github.value.configured,
+    githubUnknown: isFailed(github),
+  };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -116,6 +125,7 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
               />
             ))}
           </RadioGroup>
+          {loaderData.githubUnknown && <Unavailable what="Importing from GitHub" compact />}
         </FieldSet>
 
         {source === "import" && (

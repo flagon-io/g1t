@@ -27,6 +27,7 @@ import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.serv
 import { accessFor, countsFor, projectFor, repoFor } from "../../lib/access.server";
 import { inbox, projects, repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
+import { isFailed, orElse, part } from "../../lib/partial";
 
 /** How many forks the header counts before it says "100+". */
 const FORKS_COUNTED = 100;
@@ -42,7 +43,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const member = viewer ? roleIn(viewer, params.owner) != null : false;
   const [repo, counts, found, watching, shortcuts, stars, forks, issues] = await Promise.all([
     repoFor(context, params),
-    countsFor(context, params),
+    // The repository is what the frame is about; its open counts are only
+    // the tabs' badges, which do without them.
+    part(countsFor(context, params), "Open counts"),
     projectFor(context, params),
     // How the person watches it, for the header's Watch menu, as soon as
     // the repository is known.
@@ -69,7 +72,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   let project: Project | null = found.ok ? found.value : null;
   // A repository made a moment ago, before its project: make it now.
   if (!project && repo.ok && !repo.value.forkOf) {
-    const own = await projects.byRepo(repo.value.id);
+    // The repository still has its page when its project cannot be read: drawn by its own name.
+    const own = orElse(await part(projects.byRepo(repo.value.id), "Its project"), []);
     project = own.find((p) => p.slug === params.repo.toLowerCase()) ?? own[0] ?? null;
   }
   // Opened just now: it leads their Recent, recorded after the page is sent.
@@ -92,7 +96,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     welcome,
     repo: value,
     project,
-    open: counts.ok ? counts.value : { issues: 0, pulls: 0 },
+    open: !isFailed(counts) && counts.ok ? counts.value : { issues: 0, pulls: 0 },
     access,
     member: access.insider,
     watching,

@@ -21,6 +21,8 @@ import { EMAIL_REASONS, SECURITY_DIGEST_CHOICES, WATCH_CHOICES, WATCH_EVENT_LABE
 import { page } from "../../lib/meta";
 import { identity, inbox } from "../../lib/services.server";
 import { assertSameOrigin, requireUser } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 // Live notifications: pop-ups and browser notifications (services/notify).
 import { LiveNotificationSettings } from "../../components/notifications/settings";
 // Sounds, Do not disturb and desktop notifications (identity, notify).
@@ -32,9 +34,13 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
+  // Each section stands on its own read: one that could not be read says so
+  // in its place, and its form is not offered over values not known. The
+  // sounds save one change at a time, so without them the section starts
+  // from what the page already has (the root's read) and loses nothing.
   const [settings, watched, sounds] = await Promise.all([
-    inbox.settings(user.username).catch(() => null),
-    inbox.watched(user.username).catch(() => null),
+    part(inbox.settings(user.username), "Notification settings"),
+    part(inbox.watched(user.username), "Repositories you watch"),
     identity.soundSettings(user).catch(() => null),
   ]);
   return { settings, watched, sounds, workspaces: user.workspaces ?? [] };
@@ -84,12 +90,10 @@ const LEVEL_LABEL: Record<WatchLevel, string> = Object.fromEntries(WATCH_CHOICES
 >;
 
 export default function NotificationSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { settings, watched, sounds, workspaces } = loaderData;
+  const { watched, sounds, workspaces } = loaderData;
+  const settings = isFailed(loaderData.settings) ? null : loaderData.settings;
   const navigation = useNavigation();
   const said = (intent: string) => (actionData?.intent === intent && navigation.state === "idle" ? actionData : null);
-  if (!settings) {
-    return <p className="rounded-lg border border-line px-4 py-6 text-sm text-muted">Your notification settings could not be loaded. Try again in a moment.</p>;
-  }
   return (
     <div className="space-y-10">
       <SoundSettingsSection initial={sounds} />
@@ -101,26 +105,32 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
         <p className="mt-1 text-sm text-muted">
           Besides your <Link to="/notifications" className="text-fg underline underline-offset-4">notifications</Link>, email me at my primary address when:
         </p>
-        <Form method="post" className="mt-4 space-y-3">
-          <input type="hidden" name="intent" value="email" />
-          {EMAIL_REASONS.map((entry) => (
-            <CheckboxOption
-              key={entry.reason}
-              name="email"
-              value={entry.reason}
-              defaultChecked={settings.email.includes(entry.reason)}
-              label={entry.label}
-              description={entry.detail}
-            />
-          ))}
-          <div className="flex items-center gap-3 pt-2">
-            <SubmitButton variant="outline" match={{ intent: "email" }} pending="Saving…">
-              Save email settings
-            </SubmitButton>
-            {said("email")?.saved && <p className="text-xs text-success">{said("email")?.saved}</p>}
+        {settings ? (
+          <Form method="post" className="mt-4 space-y-3">
+            <input type="hidden" name="intent" value="email" />
+            {EMAIL_REASONS.map((entry) => (
+              <CheckboxOption
+                key={entry.reason}
+                name="email"
+                value={entry.reason}
+                defaultChecked={settings.email.includes(entry.reason)}
+                label={entry.label}
+                description={entry.detail}
+              />
+            ))}
+            <div className="flex items-center gap-3 pt-2">
+              <SubmitButton variant="outline" match={{ intent: "email" }} pending="Saving…">
+                Save email settings
+              </SubmitButton>
+              {said("email")?.saved && <p className="text-xs text-success">{said("email")?.saved}</p>}
+            </div>
+            <ErrorText>{said("email")?.error}</ErrorText>
+          </Form>
+        ) : (
+          <div className="mt-4">
+            <Unavailable what="Your email settings" />
           </div>
-          <ErrorText>{said("email")?.error}</ErrorText>
-        </Form>
+        )}
         <p className="mt-3 text-xs text-faint">Email goes only to a confirmed address, and only about repositories you can still read.</p>
       </section>
 
@@ -133,27 +143,33 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           and a vulnerability report reach you at once; the rest, as you choose here. The workspaces you own, or manage security for, tell you of their
           urgent alerts whatever you choose.
         </p>
-        <Form method="post" className="mt-4 space-y-4">
-          <input type="hidden" name="intent" value="security" />
-          <SwitchCard name="security_alerts" title="Critical and high alerts at once" defaultChecked={settings.securityAlerts}>
-            On repositories you watch for security alerts. Off, you hear of them only in the repositories you own or manage security for.
-          </SwitchCard>
-          <div>
-            <p className="mb-2 text-sm font-medium">Medium and low alerts</p>
-            <RadioGroup name="security_digest" defaultValue={settings.securityDigest}>
-              {SECURITY_DIGEST_CHOICES.map((choice) => (
-                <RadioOption key={choice.cadence} value={choice.cadence} label={choice.label} description={choice.detail} />
-              ))}
-            </RadioGroup>
+        {settings ? (
+          <Form method="post" className="mt-4 space-y-4">
+            <input type="hidden" name="intent" value="security" />
+            <SwitchCard name="security_alerts" title="Critical and high alerts at once" defaultChecked={settings.securityAlerts}>
+              On repositories you watch for security alerts. Off, you hear of them only in the repositories you own or manage security for.
+            </SwitchCard>
+            <div>
+              <p className="mb-2 text-sm font-medium">Medium and low alerts</p>
+              <RadioGroup name="security_digest" defaultValue={settings.securityDigest}>
+                {SECURITY_DIGEST_CHOICES.map((choice) => (
+                  <RadioOption key={choice.cadence} value={choice.cadence} label={choice.label} description={choice.detail} />
+                ))}
+              </RadioGroup>
+            </div>
+            <div className="flex items-center gap-3">
+              <SubmitButton variant="outline" match={{ intent: "security" }} pending="Saving…">
+                Save security settings
+              </SubmitButton>
+              {said("security")?.saved && <p className="text-xs text-success">{said("security")?.saved}</p>}
+            </div>
+            <ErrorText>{said("security")?.error}</ErrorText>
+          </Form>
+        ) : (
+          <div className="mt-4">
+            <Unavailable what="Your security notification settings" />
           </div>
-          <div className="flex items-center gap-3">
-            <SubmitButton variant="outline" match={{ intent: "security" }} pending="Saving…">
-              Save security settings
-            </SubmitButton>
-            {said("security")?.saved && <p className="text-xs text-success">{said("security")?.saved}</p>}
-          </div>
-          <ErrorText>{said("security")?.error}</ErrorText>
-        </Form>
+        )}
         <p className="mt-3 text-xs text-faint">Email for security alerts follows the Email section above: on by default.</p>
       </section>
 
@@ -162,21 +178,27 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           Repositories you create
         </h2>
         <p className="mt-1 text-sm text-muted">How you watch a repository when you make it. Change any one from its Watch menu.</p>
-        <Form method="post" className="mt-4">
-          <input type="hidden" name="intent" value="default_watch" />
-          <RadioGroup name="default_watch" defaultValue={settings.defaultWatch === "participating" ? "participating" : "all"}>
-            {WATCH_CHOICES.filter((choice) => choice.level === "all" || choice.level === "participating").map((choice) => (
-              <RadioOption key={choice.level} value={choice.level} label={choice.label} description={choice.detail} />
-            ))}
-          </RadioGroup>
-          <div className="mt-4 flex items-center gap-3">
-            <SubmitButton variant="outline" match={{ intent: "default_watch" }} pending="Saving…">
-              Save
-            </SubmitButton>
-            {said("default_watch")?.saved && <p className="text-xs text-success">{said("default_watch")?.saved}</p>}
+        {settings ? (
+          <Form method="post" className="mt-4">
+            <input type="hidden" name="intent" value="default_watch" />
+            <RadioGroup name="default_watch" defaultValue={settings.defaultWatch === "participating" ? "participating" : "all"}>
+              {WATCH_CHOICES.filter((choice) => choice.level === "all" || choice.level === "participating").map((choice) => (
+                <RadioOption key={choice.level} value={choice.level} label={choice.label} description={choice.detail} />
+              ))}
+            </RadioGroup>
+            <div className="mt-4 flex items-center gap-3">
+              <SubmitButton variant="outline" match={{ intent: "default_watch" }} pending="Saving…">
+                Save
+              </SubmitButton>
+              {said("default_watch")?.saved && <p className="text-xs text-success">{said("default_watch")?.saved}</p>}
+            </div>
+            <ErrorText>{said("default_watch")?.error}</ErrorText>
+          </Form>
+        ) : (
+          <div className="mt-4">
+            <Unavailable what="How you watch what you create" />
           </div>
-          <ErrorText>{said("default_watch")?.error}</ErrorText>
-        </Form>
+        )}
       </section>
 
       <section aria-labelledby="watched-heading">
@@ -184,8 +206,10 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           Repositories you watch
         </h2>
         <p className="mt-1 text-sm text-muted">Those you watch other than the default way, which is only what you take part in.</p>
-        {watched == null ? (
-          <p className="mt-4 text-sm text-muted">This list could not be loaded. Try again in a moment.</p>
+        {isFailed(watched) ? (
+          <div className="mt-4">
+            <Unavailable what="Repositories you watch" />
+          </div>
         ) : watched.length === 0 ? (
           <Card asChild tone="plain" radius="lg" className="mt-4 border-dashed px-4 py-6 text-center text-sm text-muted">
             <p>

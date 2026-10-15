@@ -10,7 +10,6 @@ import { Link, data, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/notifications";
 import { InboxCard, InboxEmpty, InboxTabs, MarkAllRead } from "../components/inbox";
-import { Card } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/cn";
 import { REASON_FILTERS, inboxReason, inboxTab, markFromForm, severityOf, tabCount } from "../lib/inbox";
@@ -18,6 +17,8 @@ import { movedView, notificationView, notificationsAddress } from "../lib/tab-pa
 import { notFound } from "../lib/not-found.server";
 import { page } from "../lib/meta";
 import { inbox } from "../lib/services.server";
+import { Unavailable } from "../components/boundary";
+import { isFailed, part } from "../lib/partial";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
 
 const PAGE_ITEMS = 50;
@@ -39,10 +40,19 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const reason = inboxReason(url.searchParams.get("reason"));
   const before = url.searchParams.get("before");
   const [list, counts] = await Promise.all([
-    inbox.list(user, { view, severity: severityOf(tab), reason, before, limit: PAGE_ITEMS }).catch(() => null),
+    part(inbox.list(user, { view, severity: severityOf(tab), reason, before, limit: PAGE_ITEMS }), "Notifications"),
+    // Only the tabs' numbers: without them the tabs show none.
     inbox.counts(user.username).catch(() => null),
   ]);
-  return { tab, view, reason, before, items: list?.items ?? null, next: list?.next ?? null, counts };
+  return {
+    tab,
+    view,
+    reason,
+    before,
+    items: isFailed(list) ? list : list.items,
+    next: isFailed(list) ? null : list.next,
+    counts,
+  };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -117,10 +127,8 @@ export default function NotificationsPage({ loaderData }: Route.ComponentProps) 
       </div>
 
       <div className="mt-4">
-        {items == null ? (
-          <Card asChild tone="plain" radius="lg" className="px-4 py-6 text-sm text-muted">
-            <p>Notifications could not be loaded. Try again in a moment.</p>
-          </Card>
+        {isFailed(items) ? (
+          <Unavailable what="Notifications" />
         ) : items.length === 0 ? (
           <InboxEmpty tab={tab} view={view} />
         ) : (

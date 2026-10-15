@@ -9,6 +9,8 @@ import { ErrorText, SubmitButton } from "../../components/ui";
 import { githubSignIn } from "../../lib/github.server";
 import { page } from "../../lib/meta";
 import { accounts, privacy } from "../../lib/services.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 import { assertSameOrigin, clientOf, endSession, requireUser, sessionTokenOf } from "../../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
@@ -19,15 +21,19 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   // What deleting it would take, and anything in the way, shown before
   // anyone types: workspaces you own alone, each with what billing needs.
+  // Each section reads its own: one that could not be read says so in its
+  // place, and its form is not offered on what is not known. Whether they
+  // have a password only says whether deleting asks for one, and identity
+  // checks that anyway: asking for it is the safe guess.
   const [deletion, github, erasure] = await Promise.all([
-    accounts.checkAccountDeletion(user).catch(() => null),
+    part(accounts.checkAccountDeletion(user), "What deleting your account would take"),
     githubSignIn.account(user).catch(() => null),
-    privacy.mine(user).catch(() => undefined),
+    part(privacy.mine(user), "Your erasure request"),
   ]);
   return {
     erasure,
     username: user.username,
-    deletion: deletion?.ok ? deletion.value : null,
+    deletion: isFailed(deletion) ? deletion : deletion.ok ? deletion.value : null,
     hasPassword: github?.hasPassword ?? true,
   };
 }
@@ -95,21 +101,25 @@ export default function AccountSettings({ loaderData, actionData }: Route.Compon
       <section aria-labelledby="erasure-heading" className="space-y-3">
         <h2 id="erasure-heading" className="font-medium">Erase my personal data</h2>
         <p className="text-sm text-muted">Request erasure even if workspace ownership or billing prevents account closure. We review shared content and any records we must retain, then explain the outcome. This request does not immediately delete your account.</p>
-        {loaderData.erasure ? <p className="text-sm">Request {loaderData.erasure.id}: {loaderData.erasure.status}. Response due {loaderData.erasure.due_at.slice(0, 10)}.</p> : loaderData.erasure === undefined ? <p className="text-sm">Request status is unavailable. Try again or email <a href="mailto:support@g1t.sh" className="underline">support@g1t.sh</a>.</p> : null}
+        {isFailed(loaderData.erasure) ? <Unavailable what="Your erasure request" /> : loaderData.erasure ? <p className="text-sm">Request {loaderData.erasure.id}: {loaderData.erasure.status}. Response due {loaderData.erasure.due_at.slice(0, 10)}.</p> : null}
         {actionData?.erasureNotice && <p role="status" className="text-sm">{actionData.erasureNotice}</p>}
         <ErrorText>{actionData?.erasureError}</ErrorText>
-        {(!loaderData.erasure || ["completed", "refused"].includes(loaderData.erasure.status)) && <Form method="post">
+        {!isFailed(loaderData.erasure) && (!loaderData.erasure || ["completed", "refused"].includes(loaderData.erasure.status)) && <Form method="post">
           <SubmitButton name="intent" value="request-erasure" pending="Recording request...">Request erasure</SubmitButton>
         </Form>}
         <p className="text-sm text-muted">For specific content, a request without signing in, or a question about an existing request, email <a href="mailto:support@g1t.sh" className="underline">support@g1t.sh</a>.</p>
       </section>
       <DangerZone>
-        <DeleteAccountAction
-          username={username}
-          deletion={deletion}
-          hasPassword={hasPassword}
-          error={actionData?.deleteError}
-        />
+        {isFailed(deletion) ? (
+          <Unavailable what="What deleting your account would take" />
+        ) : (
+          <DeleteAccountAction
+            username={username}
+            deletion={deletion}
+            hasPassword={hasPassword}
+            error={actionData?.deleteError}
+          />
+        )}
       </DangerZone>
     </div>
   );

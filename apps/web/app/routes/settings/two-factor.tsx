@@ -9,6 +9,7 @@ import { CopyLine, ErrorText, Field, Input, SubmitButton, TimeAgo } from "../../
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { Unavailable } from "../../components/boundary";
 import { githubSignIn } from "../../lib/github.server";
 import { page } from "../../lib/meta";
 import { otpInputProps } from "../../lib/otp";
@@ -89,7 +90,7 @@ export default function TwoFactorSettings({ loaderData, actionData }: Route.Comp
   const { status, hasPassword } = loaderData;
   const setup = actionData?.setup;
   if (!status) {
-    return <p className="text-sm text-muted">Two-factor authentication could not be loaded just now. Try again in a moment.</p>;
+    return <Unavailable what="Two-factor authentication" />;
   }
   return (
     <div className="space-y-6">

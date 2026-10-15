@@ -2,11 +2,14 @@ import { Link } from "react-router";
 
 import type { Route } from "./+types/invitations";
 import { InvitationList } from "../components/invitation-list";
-import { answerInvitation, loadInvitations } from "../lib/invitations.server";
+import { answerInvitation } from "../lib/invitations.server";
 import { declinedLine } from "../lib/invitations";
 import { page } from "../lib/meta";
 import { assertSameOrigin, nextPath, requireUser } from "../lib/session.server";
 import { Card } from "../components/ui/card";
+import { identity } from "../lib/services.server";
+import { Unavailable } from "../components/boundary";
+import { isFailed, part } from "../lib/partial";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Invitations · g1t" });
@@ -21,7 +24,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const next = nextPath(request);
   return {
-    invitations: await loadInvitations(user),
+    // Read here rather than with loadInvitations, which reads a failure as
+    // none: on this page that would say "No invitations waiting" when some
+    // may be. An account still to confirm its address is shown none, as there.
+    invitations: user.verified ? await part(identity.listInvitations(user), "Your invitations") : [],
     hasWorkspace: (user.workspaces ?? []).length > 0,
     next: next === "/" ? null : next,
   };
@@ -47,7 +53,9 @@ export default function Invitations({ loaderData, actionData }: Route.ComponentP
         </p>
       )}
       <div className="mt-6">
-        {invitations.length > 0 ? (
+        {isFailed(invitations) ? (
+          <Unavailable what="Your invitations" />
+        ) : invitations.length > 0 ? (
           <InvitationList
             invitations={invitations}
             error={actionData?.invitationError}
