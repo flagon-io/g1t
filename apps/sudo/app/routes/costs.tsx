@@ -187,7 +187,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
 
 function CapMeter({ label, used, cap, hint }: { label: string; used: number; cap: number; hint: ReactNode }) {
   const percent = capPercent(used, cap);
-  const tone = cap > 0 && used >= cap ? "bg-danger" : percent >= 75 ? "bg-warn" : "bg-accent";
+  const tone = cap > 0 && used >= cap ? "fill-danger" : percent >= 75 ? "fill-warn" : "fill-accent";
   return (
     <div className="rounded-md border border-line px-4 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -196,9 +196,11 @@ function CapMeter({ label, used, cap, hint }: { label: string; used: number; cap
           {usd(used)} <span className="text-faint">of {cap > 0 ? usd(cap) : "no cap"}</span>
         </span>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={label}>
-        <div className={`h-full ${tone}`} style={{ width: `${percent}%` }} />
-      </div>
+      {/* Drawn as SVG, its width an attribute: the page's style policy blocks a style attribute. */}
+      <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="mt-2 block h-1.5 w-full" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={label}>
+        <rect x="0" y="0" width="100" height="4" rx="2" className="fill-line" />
+        {percent > 0 && <rect x="0" y="0" width={Math.max(2, percent)} height="4" rx="2" className={tone} />}
+      </svg>
       <p className="mt-1.5 text-xs text-muted">{hint}</p>
     </div>
   );
