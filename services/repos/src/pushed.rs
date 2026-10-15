@@ -42,10 +42,28 @@ impl<S: GitStore> Repos<S> {
 /// whose commit differs is taken as pushed unless what the push named is a
 /// commit itself, and is announced at that commit, as `git.push` says its
 /// `after` is. A tag the store cannot read back is taken as pushed.
-pub(crate) async fn pushed_to<R: GitRepo>(git: &R, pushed: &crate::git_http::Pushed) -> Result<Option<String>> {
+///
+/// Artifacts does not read an annotated tag's ref back at all, so the push
+/// of `cli-v0.3.7` was announced at its tag object (a41bb238) and Actions
+/// found no workflows there. With the store's ref advertisement
+/// (`advertised`, refs.rs `all`), a tag is where the advertisement has it
+/// and is announced at its peeled line (`refs/tags/v1^{}`), the commit.
+pub(crate) async fn pushed_to<R: GitRepo>(
+    git: &R,
+    pushed: &crate::git_http::Pushed,
+    advertised: Option<&[(String, String)]>,
+) -> Result<Option<String>> {
     if let Some(branch) = pushed.branch() {
         let head = git.log(branch, 1).await?;
         return Ok(head.first().filter(|commit| commit.hash == pushed.after).map(|_| pushed.after.clone()));
+    }
+    if let Some(refs) = advertised {
+        let at = |name: &str| refs.iter().find(|(advertised, _)| advertised == name).map(|(_, hash)| hash.clone());
+        return Ok(match at(&pushed.git_ref) {
+            Some(hash) if hash == pushed.after => Some(at(&format!("{}^{{}}", pushed.git_ref)).unwrap_or(hash)),
+            // Not there, or left elsewhere: the store refused it.
+            _ => None,
+        });
     }
     let Ok(head) = git.log(&pushed.git_ref, 1).await else {
         return Ok(Some(pushed.after.clone()));
@@ -327,27 +345,47 @@ mod tests {
         // store reads the tag back as the commit it leads to, main's head.
         let git = with_refs(&[("main", "m2"), ("refs/tags/cli-v0.3.6", "m2")]);
         let tag = push("refs/tags/cli-v0.3.6", None, "accae3e8");
-        assert_eq!(run(pushed_to(&git, &tag)).unwrap().as_deref(), Some("m2"));
+        assert_eq!(run(pushed_to(&git, &tag, None)).unwrap().as_deref(), Some("m2"));
         // Moved by a new tag object.
         let moved = push("refs/tags/cli-v0.3.6", Some("accae3e8"), "b0b0b0b0");
-        assert_eq!(run(pushed_to(&git, &moved)).unwrap().as_deref(), Some("m2"));
+        assert_eq!(run(pushed_to(&git, &moved, None)).unwrap().as_deref(), Some("m2"));
+    }
+
+    fn advertised(refs: &[(&str, &str)]) -> Vec<(String, String)> {
+        refs.iter().map(|&(name, hash)| (name.to_owned(), hash.to_owned())).collect()
+    }
+
+    #[test]
+    fn an_annotated_tag_the_store_cannot_log_is_announced_at_its_peeled_commit() {
+        // `git push g1t cli-v0.3.7`: Artifacts logs nothing for the tag's
+        // ref, and its advertisement has the tag object and the peeled commit.
+        let git = with_refs(&[("main", "m2")]);
+        let refs = advertised(&[("refs/heads/main", "m2"), ("refs/tags/cli-v0.3.7", "a41bb238"), ("refs/tags/cli-v0.3.7^{}", "m1")]);
+        let tag = push("refs/tags/cli-v0.3.7", None, "a41bb238");
+        assert_eq!(run(pushed_to(&git, &tag, Some(&refs))).unwrap().as_deref(), Some("m1"));
+        // A lightweight tag has no peeled line: it is its commit.
+        let refs = advertised(&[("refs/tags/v1", "f2")]);
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", None, "f2"), Some(&refs))).unwrap().as_deref(), Some("f2"));
+        // Left elsewhere, or not there at all: refused.
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", Some("f2"), "m1"), Some(&refs))).unwrap(), None);
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v2", None, "m1"), Some(&refs))).unwrap(), None);
     }
 
     #[test]
     fn a_lightweight_tag_is_announced_where_the_store_has_it() {
         let git = with_refs(&[("refs/tags/v1", "f2")]);
-        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", None, "f2"))).unwrap().as_deref(), Some("f2"));
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", None, "f2"), None)).unwrap().as_deref(), Some("f2"));
         // The push named a commit the store did not move the tag to.
-        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", Some("f2"), "m1"))).unwrap(), None);
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", Some("f2"), "m1"), None)).unwrap(), None);
         // A tag the store cannot read back is taken as pushed.
-        assert_eq!(run(pushed_to(&git, &push("refs/tags/v2", None, "m1"))).unwrap().as_deref(), Some("m1"));
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v2", None, "m1"), None)).unwrap().as_deref(), Some("m1"));
     }
 
     #[test]
     fn a_branch_is_announced_only_at_the_commit_pushed() {
         let git = with_refs(&[("main", "m2")]);
-        assert_eq!(run(pushed_to(&git, &push("refs/heads/main", Some("m1"), "m2"))).unwrap().as_deref(), Some("m2"));
-        assert_eq!(run(pushed_to(&git, &push("refs/heads/main", Some("m2"), "f2"))).unwrap(), None);
-        assert_eq!(run(pushed_to(&git, &push("refs/heads/gone", None, "f2"))).unwrap(), None);
+        assert_eq!(run(pushed_to(&git, &push("refs/heads/main", Some("m1"), "m2"), None)).unwrap().as_deref(), Some("m2"));
+        assert_eq!(run(pushed_to(&git, &push("refs/heads/main", Some("m2"), "f2"), None)).unwrap(), None);
+        assert_eq!(run(pushed_to(&git, &push("refs/heads/gone", None, "f2"), None)).unwrap(), None);
     }
 }

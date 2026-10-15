@@ -2576,11 +2576,20 @@ impl<S: GitStore> Repos<S> {
                 pushed.len()
             );
         }
+        // Where the store has the pushed tags, and an annotated tag's commit,
+        // from its ref advertisement: Artifacts logs nothing for an annotated
+        // tag's ref. Unread, each tag is checked by its log as before.
+        let advertised = if announced.iter().any(|pushed| pushed.branch().is_none()) {
+            let refs = async { refs::all(&stored.access(Scope::Read).await?).await }.await;
+            refs.inspect_err(|error| worker::console_error!("tags pushed to {} not read back: {error}", repo.name)).ok()
+        } else {
+            None
+        };
         for pushed in announced {
             // The store can refuse one ref and accept another, so each
             // branch and tag is checked against where it actually is, and
             // an annotated tag is announced at its commit (pushed.rs).
-            let at = pushed::pushed_to(&stored, pushed).await?;
+            let at = pushed::pushed_to(&stored, pushed, advertised.as_deref()).await?;
             let moved = at.is_some();
             // How many commits a branch push brought (push_commits.rs), for
             // the event and the person's contribution calendar. A log the
