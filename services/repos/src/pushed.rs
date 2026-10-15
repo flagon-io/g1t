@@ -59,11 +59,22 @@ pub(crate) async fn pushed_to<R: GitRepo>(
     }
     if let Some(refs) = advertised {
         let at = |name: &str| refs.iter().find(|(advertised, _)| advertised == name).map(|(_, hash)| hash.clone());
-        return Ok(match at(&pushed.git_ref) {
-            Some(hash) if hash == pushed.after => Some(at(&format!("{}^{{}}", pushed.git_ref)).unwrap_or(hash)),
-            // Not there, or left elsewhere: the store refused it.
-            _ => None,
-        });
+        match at(&pushed.git_ref) {
+            Some(hash) if hash == pushed.after => {
+                return Ok(Some(at(&format!("{}^{{}}", pushed.git_ref)).or_else(|| pushed.peeled.clone()).unwrap_or(hash)));
+            }
+            // Left elsewhere: the store refused it.
+            Some(_) => return Ok(None),
+            // Not advertised yet, right after the push (v0.0.0-tagtest2):
+            // the pack's own tag object says where it leads.
+            None => {
+                if let Some(commit) = &pushed.peeled {
+                    return Ok(Some(commit.clone()));
+                }
+            }
+        }
+    } else if let Some(commit) = &pushed.peeled {
+        return Ok(Some(commit.clone()));
     }
     let Ok(head) = git.log(&pushed.git_ref, 1).await else {
         return Ok(Some(pushed.after.clone()));
@@ -332,7 +343,18 @@ mod tests {
     }
 
     fn push(git_ref: &str, before: Option<&str>, after: &str) -> crate::git_http::Pushed {
-        crate::git_http::Pushed { git_ref: git_ref.into(), before: before.map(str::to_owned), after: after.into() }
+        crate::git_http::Pushed { git_ref: git_ref.into(), before: before.map(str::to_owned), after: after.into(), peeled: None }
+    }
+
+    #[test]
+    fn an_annotated_tag_not_yet_advertised_is_announced_at_the_commit_its_pack_names() {
+        // `git push origin v0.0.0-tagtest2`: the store neither logs nor
+        // advertises the new tag yet; its object in the pack names main.
+        let git = with_refs(&[("main", "m2")]);
+        let refs = advertised(&[("refs/heads/main", "m2")]);
+        let tag = crate::git_http::Pushed { peeled: Some("m2".into()), ..push("refs/tags/v0.0.0-tagtest2", None, "430024c2") };
+        assert_eq!(run(pushed_to(&git, &tag, Some(&refs))).unwrap().as_deref(), Some("m2"));
+        assert_eq!(run(pushed_to(&git, &tag, None)).unwrap().as_deref(), Some("m2"));
     }
 
     fn with_refs(refs: &[(&str, &str)]) -> Fake {
@@ -366,9 +388,10 @@ mod tests {
         // A lightweight tag has no peeled line: it is its commit.
         let refs = advertised(&[("refs/tags/v1", "f2")]);
         assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", None, "f2"), Some(&refs))).unwrap().as_deref(), Some("f2"));
-        // Left elsewhere, or not there at all: refused.
+        // Left elsewhere: refused.
         assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", Some("f2"), "m1"), Some(&refs))).unwrap(), None);
-        assert_eq!(run(pushed_to(&git, &push("refs/tags/v2", None, "m1"), Some(&refs))).unwrap(), None);
+        // Not advertised yet, with nothing peeled: the log decides, as before.
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v2", None, "m1"), Some(&refs))).unwrap().as_deref(), Some("m1"));
     }
 
     #[test]

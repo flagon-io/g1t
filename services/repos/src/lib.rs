@@ -3399,7 +3399,7 @@ mod announced_refs_tests {
     use super::*;
 
     fn pushed(git_ref: String) -> git_http::Pushed {
-        git_http::Pushed { git_ref, before: None, after: "abc".into() }
+        git_http::Pushed { git_ref, before: None, after: "abc".into(), peeled: None }
     }
 
     fn refs(announced: Vec<&git_http::Pushed>) -> Vec<&str> {
@@ -3439,7 +3439,7 @@ mod push_about_tests {
         .unwrap();
         PushDone {
             repo,
-            pushed: refs.iter().map(|git_ref| git_http::Pushed { git_ref: (*git_ref).into(), before: None, after: "abc".into() }).collect(),
+            pushed: refs.iter().map(|git_ref| git_http::Pushed { git_ref: (*git_ref).into(), before: None, after: "abc".into(), peeled: None }).collect(),
             deleted: Vec::new(),
             pack_bytes: 0,
             actor: None,

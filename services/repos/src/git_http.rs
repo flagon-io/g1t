@@ -485,11 +485,44 @@ pub struct Pushed {
     /// Where it pointed before; `None` for a new ref.
     pub before: Option<String>,
     pub after: String,
+    /// For an annotated tag: the commit its tag object (`after`) leads to,
+    /// read from the pushed pack ([`peel_tags`]).
+    pub peeled: Option<String>,
 }
 
 impl Pushed {
     pub fn branch(&self) -> Option<&str> {
         self.git_ref.strip_prefix(HEADS)
+    }
+}
+
+/// The commit each pushed annotated tag leads to, read from the tag objects
+/// in the push's own pack: right after a push, the store does not yet read
+/// a new tag's ref back, so `cli-v0.3.7` and a test tag were announced at
+/// the tag object or not at all. A tag whose object the pack lacks (one
+/// already stored) is left unpeeled.
+fn peel_tags(body: &[u8], pushed: &mut [Pushed]) {
+    if pushed.iter().all(|pushed| pushed.branch().is_some()) {
+        return;
+    }
+    let Some(pack) = g1t_scan::pack::pack_start(body).and_then(|start| g1t_scan::pack::Pack::parse(&body[start..]).ok()) else {
+        return;
+    };
+    for tag in pushed.iter_mut().filter(|pushed| pushed.branch().is_none()) {
+        let mut id = tag.after.clone();
+        // A tag of a tag: a few steps at most.
+        for _ in 0..4 {
+            let Some((g1t_scan::pack::ObjectKind::Tag, data)) = pack.get(&id) else { break };
+            let header = |name: &str| {
+                std::str::from_utf8(data).ok()?.lines().take_while(|line| !line.is_empty()).find_map(|line| line.strip_prefix(name)).map(str::to_owned)
+            };
+            let (Some(object), Some(kind)) = (header("object "), header("type ")) else { break };
+            if kind == "commit" {
+                tag.peeled = Some(object);
+                break;
+            }
+            id = object;
+        }
     }
 }
 
@@ -505,6 +538,7 @@ fn pushed_branches(body: &[u8]) -> Vec<Pushed> {
             git_ref: name,
             before: (old != ZERO_ID).then_some(old),
             after: new,
+            peeled: None,
         })
         .collect()
 }
@@ -1179,7 +1213,11 @@ async fn push(
         let (reason, messages) = size_refusal(&violation);
         return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
     }
-    let pushed = pushed_branches(&head);
+    let mut pushed = pushed_branches(&head);
+    // The whole push is at hand only when it ended within what is read.
+    if ended {
+        peel_tags(&head, &mut pushed);
+    }
     let deleted = deleted_refs(&head);
     // The commands as sent, for framing the refusals of hidden refs.
     let reported_head: Vec<u8> = if hidden.is_empty() { Vec::new() } else { head.iter().take(64 * 1024).copied().collect() };
@@ -1278,7 +1316,24 @@ async fn push(
 
 #[cfg(test)]
 mod tests {
-    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, credentials, deleted_refs, framed, negotiating, pack_bytes, parse, pushed_branches, refusal, server_timing, too_many_ref_updates, transferred, with_head, with_namespace, with_no_thin};
+    use super::{Acknowledged, GitService, Pushed, RepoPath, Url, ZERO_ID, acknowledged, credentials, deleted_refs, framed, negotiating, pack_bytes, parse, peel_tags, pushed_branches, refusal, server_timing, too_many_ref_updates, transferred, with_head, with_namespace, with_no_thin};
+
+    #[test]
+    fn a_pushed_annotated_tag_is_peeled_from_its_pack() {
+        use g1t_scan::pack::{ObjectKind, object_id, write_pack};
+        let commit = "059b2e5e7823bc21256824ec18e7a619d340a306";
+        let tag = format!("object {commit}\ntype commit\ntag v1\ntagger a <a@example.com> 0 +0000\n\nv1\n").into_bytes();
+        let tag_id = object_id(ObjectKind::Tag, &tag);
+        // A tag of that tag.
+        let outer = format!("object {tag_id}\ntype tag\ntag v2\ntagger a <a@example.com> 0 +0000\n\nv2\n").into_bytes();
+        let outer_id = object_id(ObjectKind::Tag, &outer);
+        let body = [b"0000".as_slice(), &write_pack(&[(ObjectKind::Tag, tag), (ObjectKind::Tag, outer)])].concat();
+        let pushed = |git_ref: &str, after: &str| Pushed { git_ref: git_ref.into(), before: None, after: after.into(), peeled: None };
+        let mut refs = [pushed("refs/tags/v1", &tag_id), pushed("refs/tags/v2", &outer_id), pushed("refs/tags/light", commit), pushed("refs/heads/main", commit)];
+        peel_tags(&body, &mut refs);
+        let peeled: Vec<_> = refs.iter().map(|pushed| pushed.peeled.as_deref()).collect();
+        assert_eq!(peeled, [Some(commit), Some(commit), None, None]);
+    }
 
     #[test]
     fn a_token_comes_as_basic_or_bearer() {
@@ -1605,17 +1660,20 @@ mod tests {
                 Pushed {
                     git_ref: "refs/heads/main".to_owned(),
                     before: Some(old.to_owned()),
-                    after: new.to_owned()
+                    after: new.to_owned(),
+                    peeled: None
                 },
                 Pushed {
                     git_ref: "refs/heads/feature/x".to_owned(),
                     before: None,
-                    after: new.to_owned()
+                    after: new.to_owned(),
+                    peeled: None
                 },
                 Pushed {
                     git_ref: "refs/tags/v1".to_owned(),
                     before: None,
-                    after: new.to_owned()
+                    after: new.to_owned(),
+                    peeled: None
                 },
             ]
         );
