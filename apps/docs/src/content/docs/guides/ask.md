@@ -167,6 +167,25 @@ repository's Work page and on its own session page, with its subagents, and
 Ask can tell you where it stands. If a session already holds the issue, Ask
 links it rather than proposing another.
 
+## Ask from Home
+
+[Home](/guides/home/#ask-from-home) asks g1t for you in three places, all
+in the same conversation as the panel:
+
+- **The box at the top**, under **What are we building today?**, and its
+  starters (**What needs me first?**, **What shipped today?**, **Who's
+  working on what?**). What you send there opens the Ask panel and is
+  sent as if you had typed it in the panel.
+- **Explain**, on each row of **Landed**, asks what that one change did,
+  why, and whether it is live, in the panel.
+- **Summarize**, on **What changed**, writes g1t's plain-English summary
+  of the span on Home itself, rather than in the panel. **Ask a
+  follow-up** under it opens the panel on the same conversation.
+
+When Ask is not set up yet, or g1t is still answering an earlier
+question, the panel opens with the question in its box instead of
+sending it; send it once it can be answered.
+
 ## One conversation, in Ask and in Chat
 
 Ask is your **direct message with @g1t** in [Chat](/guides/chat/#talk-with-g1t).
