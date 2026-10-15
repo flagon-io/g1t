@@ -80,7 +80,7 @@ export const CLAIM_ENDED: Record<Exclude<ClaimState, "active">, string> = {
 export const SESSION_STATES: Record<SessionState, { label: string; hint: string }> = {
   active: { label: "Active", hint: "Heard from in the last 15 minutes." },
   idle: { label: "Idle", hint: "Not heard from for 15 minutes. It may still come back." },
-  ended: { label: "Ended", hint: "Ended, or not heard from for 2 hours." },
+  ended: { label: "Ended", hint: "Ended, or not heard from for 30 minutes. One that went quiet comes back when it is heard from again." },
 };
 
 // ── Session titles ──────────────────────────────────────────────────────
@@ -90,6 +90,9 @@ export const TITLE_LIMIT = 80;
 
 /** A turn the harness starts itself, as a tag: `<command-name>`, `<task-notification>`, one with attributes. */
 const HARNESS_TAG = /^\s*<[a-z][\w-]*(?:\s[^>]*)?>/i;
+
+/** What an editor adds ahead of a prompt, a whole block at a time: `<ide_opened_file>…</ide_opened_file>`. */
+const IDE_CONTEXT = /^\s*<(ide_[a-z_]+|system-reminder)\b[^>]*>[\s\S]*?<\/\1>/i;
 
 /**
  * What a prompt is for, as a session's title: its first line or sentence,
@@ -106,6 +109,9 @@ export function intentTitle(prompt: string | null | undefined): string | null {
   text = text
     .replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)/gi, "\n")
     .replace(/\[Image(?: #\d+)?(?::[^\]\n]*)?\]/g, " ");
+  // Context an editor puts before what was typed (VS Code's
+  // <ide_opened_file>, <ide_selection>) is not a turn the harness started.
+  while (IDE_CONTEXT.test(text)) text = text.replace(IDE_CONTEXT, "");
   if (/^\s*\//.test(text) || HARNESS_TAG.test(text)) return null;
   text = text
     .replace(/```[\s\S]*?(```|$)/g, "\n")
@@ -157,6 +163,31 @@ export type LiveGroup =
   | { kind: "pull"; pull: number; sessions: WorkSession[] }
   | { kind: "branch"; branch: string; sessions: WorkSession[] }
   | { kind: "none"; sessions: WorkSession[] };
+
+/**
+ * Whether a session has done nothing since it started: no title, no issue
+ * or pull request, never heard from again. Opening a Claude Code tab starts
+ * one before anything is typed in it, and it is nothing to show yet.
+ */
+export function startedOnly(session: WorkSession): boolean {
+  return !session.title && session.issue == null && session.pull == null && session.lastSeenAt === session.startedAt;
+}
+
+/**
+ * The sessions Live now lists, and those it folds away: one not heard from
+ * for 15 minutes (idle) is someone's open tab more often than work going
+ * on, so it waits under the list until it is heard from or times out. One
+ * that has done nothing since it started is in neither.
+ */
+export function awakeAndIdle(sessions: WorkSession[]): { awake: WorkSession[]; idle: WorkSession[] } {
+  const awake: WorkSession[] = [];
+  const idle: WorkSession[] = [];
+  for (const session of sessions) {
+    if (!startedOnly(session)) (session.state === "idle" ? idle : awake).push(session);
+  }
+  idle.sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+  return { awake, idle };
+}
 
 const latestSeen = (sessions: WorkSession[]) => Math.max(0, ...sessions.map((session) => Date.parse(session.lastSeenAt)));
 

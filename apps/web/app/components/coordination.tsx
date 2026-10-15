@@ -9,6 +9,7 @@ import {
   Activity,
   ArrowRightLeft,
   Bot,
+  ChevronRight,
   CircleCheck,
   CircleDot,
   CircleX,
@@ -57,6 +58,7 @@ import {
   harnessName,
   type LiveGroup,
   type LiveIssue,
+  awakeAndIdle,
   liveByIssue,
   mergeSessions,
   numberedParts,
@@ -70,6 +72,7 @@ import { Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Field, FieldError, FieldLabel, FieldLegend, FieldSet } from "./ui/field";
 import { Hint } from "./ui/hint";
@@ -879,7 +882,17 @@ export function LiveIssueCard({ group, title, base, now }: { group: LiveIssue; t
 export type LivePull = { title: string; status: Pull["status"] };
 
 /** What a group of sessions on no issue is on, as its card's heading: the pull request, the branch, or neither. */
-function LiveGroupHeading({ group, pulls, base }: { group: LiveGroup; pulls: Record<number, LivePull>; base: string }) {
+function LiveGroupHeading({
+  group,
+  pulls,
+  base,
+  defaultBranch,
+}: {
+  group: LiveGroup;
+  pulls: Record<number, LivePull>;
+  base: string;
+  defaultBranch?: string | null;
+}) {
   if (group.kind === "pull") {
     const pull = pulls[group.pull];
     return (
@@ -905,26 +918,46 @@ function LiveGroupHeading({ group, pulls, base }: { group: LiveGroup; pulls: Rec
       </div>
     );
   }
+  // Working on the default branch itself, or somewhere git has not said yet.
+  const onDefault = defaultBranch != null && group.sessions.some((session) => session.branch === defaultBranch);
   return (
     <div className="flex items-center gap-2.5 px-4 py-3">
-      <Activity size={16} className="shrink-0 text-faint" />
-      <Hint label="Sessions on no issue, pull request or branch of their own yet, each titled with what it is for. One opens or claims an issue when its work becomes a change.">
-        <span className="text-sm text-muted">No branch yet</span>
+      {onDefault ? <GitBranch size={16} className="shrink-0 text-faint" /> : <Activity size={16} className="shrink-0 text-faint" />}
+      <Hint label="Sessions on no issue, pull request or branch of their own, each titled with what it is for. One opens or claims an issue when its work becomes a change.">
+        <span className="text-sm text-muted">
+          {onDefault ? (
+            <>
+              On <span className="font-mono">{defaultBranch}</span>
+            </>
+          ) : (
+            "No branch yet"
+          )}
+        </span>
       </Hint>
     </div>
   );
 }
 
 /** Sessions on no issue yet that share a pull request or a branch, or share neither: a heading, then each session. */
-export function LiveGroupCard({ group, pulls, base }: { group: LiveGroup; pulls: Record<number, LivePull>; base: string }) {
+export function LiveGroupCard({
+  group,
+  pulls,
+  base,
+  defaultBranch,
+}: {
+  group: LiveGroup;
+  pulls: Record<number, LivePull>;
+  base: string;
+  defaultBranch?: string | null;
+}) {
   return (
     <Card asChild divided>
       <li>
-        <LiveGroupHeading group={group} pulls={pulls} base={base} />
+        <LiveGroupHeading group={group} pulls={pulls} base={base} defaultBranch={defaultBranch} />
         {group.sessions.map((session) => (
           <div key={session.id} className="px-4 py-3">
             {/* Its pull request and branch are the heading's, unless it has neither of its own. */}
-            <SessionLine session={session} base={base} showWhere={group.kind === "none"} />
+            <SessionLine session={session} base={base} showWhere={group.kind === "none"} showBranch={group.kind === "none" && session.branch !== defaultBranch} />
           </div>
         ))}
       </li>
@@ -959,7 +992,8 @@ export function LiveNowList({
   now: number;
   limit?: number;
 }) {
-  const live = liveByIssue(claims, sessions, defaultBranch);
+  const { awake, idle } = awakeAndIdle(sessions);
+  const live = liveByIssue(claims, awake, defaultBranch);
   const issues = limit == null ? live.issues : live.issues.slice(0, limit);
   return (
     <ol className="space-y-3">
@@ -972,9 +1006,41 @@ export function LiveNowList({
           group={group}
           pulls={pulls}
           base={base}
+          defaultBranch={defaultBranch}
         />
       ))}
+      {idle.length > 0 && <IdleSessions sessions={idle} base={base} />}
     </ol>
+  );
+}
+
+/**
+ * Sessions not heard from for 15 minutes, folded under Live now: usually
+ * an open tab, not work going on. Each moves back up when it is heard from,
+ * and drops off when it times out.
+ */
+function IdleSessions({ sessions, base }: { sessions: WorkSession[]; base: string }) {
+  return (
+    <Card asChild divided>
+      <li>
+        <Collapsible>
+          <CollapsibleTrigger className="w-full px-4 py-2.5">
+            <ChevronRight size={14} className="shrink-0" />
+            {sessions.length === 1 ? "1 idle session" : `${sessions.length} idle sessions`}
+            <span className="ml-auto text-xs text-faint">
+              last seen <TimeAgo at={sessions[0].lastSeenAt} />
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="divide-y divide-line border-t border-line">
+            {sessions.map((session) => (
+              <div key={session.id} className="px-4 py-3">
+                <SessionLine session={session} base={base} />
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      </li>
+    </Card>
   );
 }
 
