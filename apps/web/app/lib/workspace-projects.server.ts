@@ -17,6 +17,6 @@ export function workspaceProjects(slug: string, viewer: Viewer): Promise<Result<
 }
 
 /** What a project is in the sidebar and the command palette. */
-export function shortcutOf(project: Project): { namespace: string; name: string; title: string; isPrivate: boolean } {
-  return { namespace: project.workspace, name: project.slug, title: project.name, isPrivate: project.private };
+export function shortcutOf(project: Project): { namespace: string; name: string; title: string; isPrivate: boolean; kind: Project["kind"] } {
+  return { namespace: project.workspace, name: project.slug, title: project.name, isPrivate: project.private, kind: project.kind };
 }
