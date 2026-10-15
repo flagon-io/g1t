@@ -107,13 +107,13 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
             />
             <Stat
               label="Margin on what was sold"
-              value={usd(money.marginMicros)}
+              value={money.revenueMicros > 0 ? usd(money.marginMicros) : "—"}
               hint={
                 money.marginPercent == null
                   ? "Nothing sold yet"
                   : `${money.marginPercent}% of revenue, after ${usd(money.soldCostMicros)} of cost`
               }
-              tone={money.marginMicros < 0 ? "danger" : undefined}
+              tone={money.revenueMicros > 0 && money.marginMicros < 0 ? "danger" : undefined}
             />
             <Stat
               label="Given by g1t"
@@ -141,7 +141,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               <Stat
                 label="Trials given"
                 value={`${usd(overview.pools.trialGrantedMicros)} of ${usd(overview.pools.trialPoolMicros)}`}
-                hint={`${overview.pools.trialGrants} new workspace${overview.pools.trialGrants === 1 ? "" : "s"} this month; new trials wait when it is given out`}
+                hint={`${overview.pools.trialGrants} trial${overview.pools.trialGrants === 1 ? "" : "s"} given this month; new trials wait when the pool is given out`}
                 tone={overview.pools.trialGrantedMicros >= overview.pools.trialPoolMicros ? "warn" : undefined}
               />
             </div>
