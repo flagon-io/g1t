@@ -156,6 +156,7 @@ export default defineConfig({
 					label: 'Coding agents',
 					items: [
 						{ label: 'Connect a coding agent', slug: 'guides/bring-your-own-agent' },
+						{ label: 'Build and ship an app with an agent', slug: 'guides/build-and-ship' },
 						{ label: 'Claude Code plugin', slug: 'guides/claude-code-plugin' },
 						{ label: 'Sessions, claims and dependencies', slug: 'guides/sessions' },
 						{ label: 'Sessions and why-blame', slug: 'guides/why-blame' },
