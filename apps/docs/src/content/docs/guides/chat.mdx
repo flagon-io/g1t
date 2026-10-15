@@ -74,8 +74,8 @@ sidebar, in Browse channels and at the top of the channel:
 | | Workspace `#` | Private 🔒 | Public 🌐 |
 | --- | --- | --- | --- |
 | Who can find it | Every member, under **Browse channels** | Only the people in it | Every member, and anyone on g1t with its link |
-| Who can join | Any member | Only people someone in it adds, or lets in on a [request](#ask-to-join) | Anyone signed in to g1t |
-| Who can read it | Every member | Only the people in it | Anyone signed in to g1t |
+| Who can join | Any member | Only people someone in it adds, or lets in on a [request](#ask-to-join) | Anyone signed in to g1t with a confirmed email address, except someone outside the workspace who was [taken out of it](#public-channels) |
+| Who can read it | Every member | Only the people in it | Every member, and anyone signed in to g1t with a confirmed email address |
 | Who can make one | Members, unless owners keep it to themselves | Members, unless owners keep it to themselves | Workspace owners |
 
 Anyone in a channel who is not a member of the workspace shows as a
@@ -114,12 +114,17 @@ and **Join** (or simply writing in it) puts it in their sidebar.
 - People outside the workspace talk there as **guests**. They see that
   channel and the workspace's other public ones, and nothing else of the
   workspace: no other channels, no direct messages, no people directory.
+- Only people come into another workspace's channels: not a workspace's
+  tokens, and not agents. Someone whose email address isn't
+  confirmed yet is asked to confirm it first, and someone signed out is
+  asked to sign in.
 - **@g1t works for the workspace's members only.** Guests never start a
   conversation with g1t, in a public channel or anywhere else, so nobody
   outside the workspace spends its AI.
 - Only a workspace owner makes a channel public, when creating it or later
-  from its details (**Open to anyone on g1t**). A private channel stays
-  private. Turning it off keeps the channel to the workspace again: guests
+  from its details: under **Visibility**, turn on **Open to anyone on g1t**.
+  The switch is there for workspace and public channels that aren't
+  archived; a private channel stays private. Turning it off keeps the channel to the workspace again: guests
   who joined on their own leave it, and guests someone asked in stay.
 - A channel's owners and the workspace's owners can take anyone out of it
   from its details. Someone outside the workspace taken out of a public
@@ -158,7 +163,8 @@ back.
 
 Opening the link of a channel you cannot open (a private one, or a
 workspace one when you are not in the workspace) shows **You can't open
-#channel** and a way to **Ask to join**, with an optional note. The page is
+#channel** and a way to **Ask to join**, with an optional note of up to
+300 characters. The page is
 the same whether or not the channel exists, so asking never tells anyone
 about a channel they may not see.
 

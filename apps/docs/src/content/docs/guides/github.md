@@ -120,6 +120,7 @@ import page.
 | | |
 | --- | --- |
 | Every branch and tag | Yes, with full history |
+| Its description | Yes, as its [project's](/guides/projects/) description, since a repository on g1t has none of its own. Change it later in the project's **Settings → General**. |
 | Issues | When **Copy issues too** is ticked: up to 200, oldest first, open or closed as on GitHub, with their labels (up to 10 each) |
 | Who opened an issue | Named in the issue: by their g1t username if they have linked GitHub, otherwise by their GitHub login. The issue itself is opened by you. |
 | Milestones | Named in each issue; g1t has no milestones |
