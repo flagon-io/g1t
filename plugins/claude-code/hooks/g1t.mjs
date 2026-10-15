@@ -1023,6 +1023,20 @@ export function work(job, env = process.env) {
 const TRAILER = "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session. A commit pushed straight to the default branch that finishes an issue says `Closes #N` in its message: a bare `(#N)` only links it, and the issue stays open.";
 
 /**
+ * How the agent keeps its session's title true: it starts as the first
+ * prompt's intent, which often stops being what the session is about.
+ */
+export const RETITLE = 'Its title starts as your first prompt; once what you are actually doing is clear, and whenever it changes, retitle it in a few words with `g1t session attach --title "…"`.';
+
+/**
+ * At which prompts the agent is reminded to retitle: the second (what the
+ * work is has usually shown by then) and every fifth after.
+ */
+export function retitleNudge(turn) {
+  return turn === 2 || (turn > 2 && turn % 5 === 0) ? `g1t: if this session's title no longer says what it is doing, retitle it: \`g1t session attach --title "…"\`.` : null;
+}
+
+/**
  * SessionStart: marks the session as one in a g1t working copy, and
  * returns what to print: context for Claude, and a notice for you, once.
  * Null outside a g1t working copy, where nothing is recorded.
@@ -1063,7 +1077,7 @@ export function sessionStart(event, env = process.env, bin = findCli(env)) {
       context = `g1t: ${where} points at issue #${issue}. Load what is known about it with \`g1t work context ${issue}\`, and claim it with \`g1t work claim ${issue}\` before you start. ${TRAILER}`;
     }
   } else {
-    context = `g1t: this session is recorded on g1t and shows to the team, titled with what you are asked to do. Just work. If it turns into a change others should know about (a branch to push, a pull request), first look for its issue (\`g1t work list\`, \`g1t issue list\`) and claim it with \`g1t work claim N\`; if there is none, open and claim one with \`g1t work claim --title "…"\`. Never open issues for questions, exploration or trivial fixes. ${TRAILER}`;
+    context = `g1t: this session is recorded on g1t and shows to the team, titled with what you are asked to do. Just work. If it turns into a change others should know about (a branch to push, a pull request), first look for its issue (\`g1t work list\`, \`g1t issue list\`) and claim it with \`g1t work claim N\`; if there is none, open and claim one with \`g1t work claim --title "…"\`. Never open issues for questions, exploration or trivial fixes. ${RETITLE} ${TRAILER}`;
   }
   if (context) output.hookSpecificOutput = { hookEventName: "SessionStart", additionalContext: context };
   return output;
@@ -1236,7 +1250,12 @@ export function hook(event, env = process.env) {
     return { output: { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: subagentContext(issue) } }, job };
   }
   const notice = late?.output.systemMessage ?? (name === "UserPromptSubmit" ? takeNotice(env) : null);
-  const context = [late?.output.hookSpecificOutput?.additionalContext, name === "UserPromptSubmit" ? updateContext(event, env) : null]
+  const context = [
+    late?.output.hookSpecificOutput?.additionalContext,
+    name === "UserPromptSubmit" ? updateContext(event, env) : null,
+    // Only while it is being recorded: not with the CLI signed out or too old.
+    name === "UserPromptSubmit" && !readJson(join(dataDir(env), "notice.json"), {}).problem ? retitleNudge(turn) : null,
+  ]
     .filter(Boolean)
     .join("\n\n");
   return { output: context || notice ? {

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  retitleNudge,
   updateContext,
   UPDATES_REPEAT_MS,
   howToUpdate,
@@ -832,8 +833,17 @@ describe("with a working copy", () => {
     assert.match(context, /Just work/);
     assert.match(context, /`g1t work claim --title "…"`/);
     assert.match(context, /Never open issues for questions, exploration or trivial fixes/);
-    assert.ok(context.length < 900, `injected every session, so short: ${context.length}`);
+    assert.match(context, /retitle it in a few words with `g1t session attach --title "…"`/);
+    assert.ok(context.length < 1100, `injected every session, so short: ${context.length}`);
     assert.ok(!calls().some((c) => c.args[0] === "work"), "no issue's context is asked for");
+  });
+
+  test("Claude is reminded to retitle the session at its second prompt and every fifth after, no more", () => {
+    assert.deepEqual(
+      Array.from({ length: 16 }, (_, i) => i + 1).filter((turn) => retitleNudge(turn)),
+      [2, 5, 10, 15],
+    );
+    assert.match(retitleNudge(2), /g1t session attach --title/);
   });
 
   test("the session's first prompt with an intent titles it, once, and never over a title it has", () => {

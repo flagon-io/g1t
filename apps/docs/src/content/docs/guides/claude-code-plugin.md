@@ -177,7 +177,10 @@ never need one. The session is the record of that work:
    **Session on** its branch. To name
    it yourself, or have Claude name it, run
    `g1t session attach --title "Fix the preview builds"`; that replaces
-   the title the prompt gave.
+   the title the prompt gave. Claude keeps it true as the work turns
+   out to be something else: the plugin tells it at the start that it
+   can retitle the session, and reminds it at the second prompt and every
+   fifth after (not while the CLI is signed out or too old).
 2. **It shows to the team.** The project's overview and its **Work** page
    list it in **Live now** under its pull request, else its branch, else
    under **No branch yet**, with who it is for, Claude Code, its state,
