@@ -5,7 +5,7 @@
  * and margin kept apart from what g1t gives. Money is in micros. No
  * Workers or React imports, so it can be tested under Node.
  */
-import type { GivenFigures, MonthFigures } from "@g1t/contracts";
+import type { GivenFigures, MonthFigures, OverallMargin } from "@g1t/contracts";
 
 // --- Requests -------------------------------------------------------------------
 
@@ -229,5 +229,23 @@ export function moneyApart(
     marginMicros,
     marginPercent: revenueMicros > 0 ? Math.round((marginMicros / revenueMicros) * 100) : null,
     netMicros: revenueMicros - month.costMicros,
+  };
+}
+
+/**
+ * The same parts as `moneyApart`, from the Costs page's model (billing's
+ * `OverallMargin`), where what was given is already its cost and credits
+ * spent are among it.
+ */
+export function marginApart(
+  o: Pick<OverallMargin, "usageMicros" | "plansMicros" | "costMicros" | "givenMicros" | "soldMarginMicros" | "soldMarginPercent" | "marginMicros">,
+): { revenueMicros: number; soldCostMicros: number; marginMicros: number; marginPercent: number | null; netMicros: number } {
+  const revenueMicros = o.usageMicros + o.plansMicros;
+  return {
+    revenueMicros,
+    soldCostMicros: Math.max(0, o.costMicros - (o.givenMicros ?? 0)),
+    marginMicros: o.soldMarginMicros ?? revenueMicros - Math.max(0, o.costMicros - (o.givenMicros ?? 0)),
+    marginPercent: o.soldMarginPercent == null ? null : Math.round(o.soldMarginPercent),
+    netMicros: o.marginMicros,
   };
 }

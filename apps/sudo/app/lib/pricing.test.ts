@@ -6,6 +6,7 @@ import {
   age,
   answerDueAt,
   givenLabel,
+  marginApart,
   givenParts,
   givenTotal,
   goodwillLine,
@@ -148,4 +149,11 @@ test("margin on what was sold leaves out the cost of what g1t gave", () => {
     marginPercent: null,
     netMicros: -5_000_000,
   });
+});
+
+test("the month by the Costs model: given is cost already, and the margin is on what was sold", () => {
+  const parts = marginApart({ usageMicros: 720_000, plansMicros: 0, costMicros: 1_300_000, givenMicros: 700_000, soldMarginMicros: 120_000, soldMarginPercent: 16.67, marginMicros: -580_000 });
+  assert.deepEqual(parts, { revenueMicros: 720_000, soldCostMicros: 600_000, marginMicros: 120_000, marginPercent: 17, netMicros: -580_000 });
+  // Nothing sold: no percent.
+  assert.equal(marginApart({ usageMicros: 0, plansMicros: 0, costMicros: 30_080_000, givenMicros: 30_080_000, soldMarginMicros: 0, soldMarginPercent: null, marginMicros: -30_080_000 }).marginPercent, null);
 });

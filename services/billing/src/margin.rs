@@ -488,6 +488,52 @@ pub(crate) fn gifted_meter(mut u: UsageRow) -> UsageRow {
     u
 }
 
+/**
+ * All of g1t over some rolled-up days: money in, every cost, what was
+ * given by why, and the margins on everything and on what was sold. The
+ * Costs page and the Overview both add up the days with this, so they
+ * cannot disagree.
+ */
+pub(crate) fn overall_of(days: &[ProductDay]) -> OverallMargin {
+    let mut overall = OverallMargin::default();
+    for d in days {
+        overall.cost_micros += d.cost();
+        overall.given_micros += d.given.total();
+        if NOT_CLOUDFLARE.contains(&d.bucket.as_str()) {
+            overall.models_cost_micros += d.cost();
+        } else {
+            overall.cloudflare_cost_micros += d.cost();
+        }
+        overall.given_comped_micros += d.given.comped;
+        overall.given_free_micros += d.given.free;
+        overall.given_trial_micros += d.given.trial;
+        overall.given_pool_micros += d.given.pool;
+        overall.given_discount_micros += d.given.discount;
+        overall.given_credit_promotional_micros += d.given.credit_promotional;
+        overall.given_credit_goodwill_micros += d.given.credit_goodwill;
+        overall.given_reset_micros += d.given.reset;
+        overall.given_unpaid_micros += d.given.unpaid;
+        let sold = (d.cost() - d.given.total()).max(0);
+        if OVERHEAD.contains(&d.bucket.as_str()) {
+            overall.plans_micros += d.cash_micros;
+            overall.running_cost_micros += sold;
+        } else if d.bucket == UNMAPPED {
+            overall.usage_micros += d.cash_micros;
+            overall.unmapped_cost_micros += sold;
+        } else {
+            overall.usage_micros += d.cash_micros;
+            overall.usage_cost_micros += sold;
+        }
+    }
+    let revenue = overall.usage_micros + overall.plans_micros;
+    overall.margin_micros = revenue - overall.cost_micros;
+    overall.margin_percent = margin_percent(revenue, overall.cost_micros);
+    let sold = (overall.cost_micros - overall.given_micros).max(0);
+    overall.sold_margin_micros = revenue - sold;
+    overall.sold_margin_percent = margin_percent(revenue, sold);
+    overall
+}
+
 /// Margin as a share of what was charged, in percent; None when nothing was.
 pub(crate) fn margin_percent(revenue_micros: i64, cost_micros: i64) -> Option<f64> {
     (revenue_micros > 0).then(|| (revenue_micros - cost_micros) as f64 * 100.0 / revenue_micros as f64)
@@ -1814,6 +1860,18 @@ impl Billing {
         }))
     }
 
+    /// The month starting `month_start` (YYYY-MM-01) so far, as rolled up:
+    /// its figures and the last day they hold; None before its first day
+    /// is rolled up.
+    pub(crate) async fn month_margin(&self, month_start: &str) -> Result<Option<(OverallMargin, String)>> {
+        let until = rfc3339(now_ms())[..10].to_owned();
+        let days = self.margin_days(month_start, &until).await?;
+        let Some(last) = days.iter().map(|d| d.day.clone()).max() else {
+            return Ok(None);
+        };
+        Ok(Some((overall_of(&days), last)))
+    }
+
     /// `admin_costs`: the Costs & margin page.
     pub(crate) async fn admin_costs(&self, a: AdminCostsArgs, configured: bool) -> Result<CostsReport> {
         let until = rfc3339(now_ms())[..10].to_owned();
@@ -1823,7 +1881,6 @@ impl Billing {
         let rules = self.rules().await?;
 
         let mut products: BTreeMap<String, ProductMargin> = BTreeMap::new();
-        let mut overall = OverallMargin::default();
         for d in &days {
             let p = products.entry(d.bucket.clone()).or_insert_with(|| ProductMargin {
                 bucket: d.bucket.clone(),
@@ -1836,44 +1893,12 @@ impl Billing {
             p.own_cost_micros += d.own_cost_micros;
             p.value_micros += d.value_micros;
             p.cost_micros += d.cost();
-            overall.cost_micros += d.cost();
-            overall.given_micros += d.given.total();
-            if NOT_CLOUDFLARE.contains(&d.bucket.as_str()) {
-                overall.models_cost_micros += d.cost();
-            } else {
-                overall.cloudflare_cost_micros += d.cost();
-            }
-            overall.given_comped_micros += d.given.comped;
-            overall.given_free_micros += d.given.free;
-            overall.given_trial_micros += d.given.trial;
-            overall.given_pool_micros += d.given.pool;
-            overall.given_discount_micros += d.given.discount;
-            overall.given_credit_promotional_micros += d.given.credit_promotional;
-            overall.given_credit_goodwill_micros += d.given.credit_goodwill;
-            overall.given_reset_micros += d.given.reset;
-            overall.given_unpaid_micros += d.given.unpaid;
-            let sold = (d.cost() - d.given.total()).max(0);
-            if OVERHEAD.contains(&d.bucket.as_str()) {
-                overall.plans_micros += d.cash_micros;
-                overall.running_cost_micros += sold;
-            } else if d.bucket == UNMAPPED {
-                overall.usage_micros += d.cash_micros;
-                overall.unmapped_cost_micros += sold;
-            } else {
-                overall.usage_micros += d.cash_micros;
-                overall.usage_cost_micros += sold;
-            }
         }
         for p in products.values_mut() {
             p.margin_micros = p.value_micros - p.cost_micros;
             p.margin_percent = margin_percent(p.value_micros, p.cost_micros);
         }
-        let revenue = overall.usage_micros + overall.plans_micros;
-        overall.margin_micros = revenue - overall.cost_micros;
-        overall.margin_percent = margin_percent(revenue, overall.cost_micros);
-        let sold = (overall.cost_micros - overall.given_micros).max(0);
-        overall.sold_margin_micros = revenue - sold;
-        overall.sold_margin_percent = margin_percent(revenue, sold);
+        let mut overall = overall_of(&days);
         // The plan's included usage was paid for by the plan's price: it is
         // money in for the usage it covered, and out of what the plans
         // leave for running g1t.
@@ -2572,6 +2597,36 @@ mod tests {
     fn draw(kind: CreditKind, reference: &str, task: Option<&str>, at: &str, micros: i64) -> (String, crate::grants::Draw) {
         let draw = crate::grants::Draw { grant: "crd_a".into(), kind, reference: reference.into(), task: task.map(Into::into), at: at.into(), micros };
         ("acme".to_owned(), draw)
+    }
+
+    #[test]
+    fn the_overview_and_the_costs_page_add_up_the_same_days() {
+        // Models: $1 of cost, $0.40 of it on promotional credit (given), $0.60 sold for $0.72.
+        let models = ProductDay {
+            day: "2026-10-14".into(),
+            bucket: "models".into(),
+            own_cost_micros: 1_000_000,
+            value_micros: 1_200_000,
+            cash_micros: 720_000,
+            given: Given { credit_promotional: 400_000, ..Given::default() },
+            ..ProductDay::default()
+        };
+        // A comped workspace's Cloudflare share: all of it given.
+        let comped = ProductDay {
+            day: "2026-10-15".into(),
+            bucket: "workers".into(),
+            cf_cost_micros: 300_000,
+            given: Given { comped: 300_000, ..Given::default() },
+            ..ProductDay::default()
+        };
+        let overall = overall_of(&[models, comped]);
+        assert_eq!((overall.cost_micros, overall.given_micros), (1_300_000, 700_000));
+        assert_eq!((overall.given_credit_promotional_micros, overall.given_comped_micros), (400_000, 300_000));
+        assert_eq!(overall.usage_micros, 720_000);
+        // Margin on what was sold: $0.72 in against the $0.60 not given.
+        assert_eq!(overall.sold_margin_micros, 120_000);
+        assert_eq!(overall.margin_micros, 720_000 - 1_300_000);
+        assert_eq!(overall_of(&[]).sold_margin_percent, None);
     }
 
     #[test]

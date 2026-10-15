@@ -2219,6 +2219,16 @@ pub struct Overview {
     /// What g1t gave this month, by source, apart from its margin.
     #[serde(default)]
     pub given: Vec<GivenFigures>,
+    /// This month so far by the Costs & margin model (`margin_days`), the
+    /// same figures the Costs page adds up: money in, every cost
+    /// (Cloudflare's bill included), and what was given by why, credits
+    /// spent among it. Through `margin_through`, the last day rolled up.
+    /// None before the first day of the month is rolled up.
+    #[serde(default)]
+    pub month_margin: Option<OverallMargin>,
+    /// The last day `month_margin` holds. YYYY-MM-DD.
+    #[serde(default)]
+    pub margin_through: Option<String>,
     /// g1t's own and Flagon's workspaces this month: what their use cost,
     /// and why they are not charged.
     #[serde(default)]

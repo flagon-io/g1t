@@ -7,8 +7,9 @@ import type { Route } from "./+types/overview";
 import { KindBreakdown, MonthsChart } from "~/components/charts";
 import { SignalBadge, StaffName, StageBadge } from "~/components/sales";
 import { Avatar, Badge, Notice, PageHeader, Section, Stat } from "~/components/ui";
-import { change, monthLong } from "~/lib/chart";
-import { givenLabel, givenTotal, moneyApart } from "~/lib/pricing";
+import { change, dayShort, monthLong } from "~/lib/chart";
+import { givenLabel, givenTotal, marginApart, moneyApart } from "~/lib/pricing";
+import { givenParts } from "~/lib/costs";
 import { usd } from "~/lib/money";
 import { admin, identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
@@ -48,14 +49,31 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
   const plans = current?.plansMicros ?? 0;
   const given = overview?.given ?? [];
   const givenSum = givenTotal(given);
-  const money = moneyApart({ chargedMicros: charged, plansMicros: plans, costMicros: cost }, givenSum.costMicros);
+  // The Costs page's model when billing has rolled up a day of this month:
+  // the same figures, so the two pages never disagree. Before that, the
+  // ledger's month so far.
+  const mm = overview?.monthMargin ?? null;
+  const money = mm ? marginApart(mm) : moneyApart({ chargedMicros: charged, plansMicros: plans, costMicros: cost }, givenSum.costMicros);
+  const usage = mm ? mm.usageMicros : charged;
+  const plansIn = mm ? mm.plansMicros : plans;
+  const allCost = mm ? mm.costMicros : cost;
+  const givenRows = mm ? givenParts(mm) : [];
   const growth = previous ? change(previous.chargedMicros + (previous.plansMicros ?? 0), money.revenueMicros) : null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Overview"
-        description={overview ? <>The business in {monthLong(overview.month)}, so far, and who needs a word.</> : "The business at a glance."}
+        description={
+          overview ? (
+            <>
+              The business in {monthLong(overview.month)}
+              {overview.marginThrough ? <>, through {dayShort(overview.marginThrough)}</> : ", so far"}, and who needs a word.
+            </>
+          ) : (
+            "The business at a glance."
+          )
+        }
       />
 
       {growthError ? (
@@ -99,7 +117,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               value={usd(money.revenueMicros)}
               hint={
                 <>
-                  {usd(charged)} usage, {usd(plans)} plans
+                  {usd(usage)} usage, {usd(plansIn)} plans
                   {growth == null ? "" : ` · ${growth >= 0 ? "+" : "−"}${Math.abs(growth)}% on last month`}
                 </>
               }
@@ -115,11 +133,19 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               }
               tone={money.revenueMicros > 0 && money.marginMicros < 0 ? "danger" : undefined}
             />
-            <Stat
-              label="Given by g1t"
-              value={usd(givenSum.micros)}
-              hint={`At price; it cost g1t ${usd(givenSum.costMicros)}. Not a loss on sales.`}
-            />
+            {mm ? (
+              <Stat
+                label="Given by g1t"
+                value={usd(mm.givenMicros)}
+                hint={`What it cost g1t, ${givenRows.length === 0 ? "nothing yet" : "by why below"}. Not a loss on sales.`}
+              />
+            ) : (
+              <Stat
+                label="Given by g1t"
+                value={usd(givenSum.micros)}
+                hint={`At price; it cost g1t ${usd(givenSum.costMicros)}. Not a loss on sales.`}
+              />
+            )}
             <Stat
               label="Plans"
               value={String(overview.activePlans ?? 0)}
@@ -127,7 +153,12 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
             />
           </div>
           <p className="mt-2 text-xs text-faint">
-            Cost to g1t in all {usd(cost)}; revenue less all of it, given included: {usd(money.netMicros)}.
+            Cost to g1t in all {usd(allCost)}
+            {mm ? ` (Cloudflare ${usd(mm.cloudflareCostMicros ?? 0)}, models ${usd(mm.modelsCostMicros ?? 0)})` : ""}; revenue less all of it, given included:{" "}
+            {usd(money.netMicros)}.{" "}
+            <Link to="/costs" className="text-accent hover:underline">
+              Costs &amp; margin
+            </Link>
           </p>
 
           {overview.pools && (
@@ -158,10 +189,37 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
 
           <Section
             title="Given this month, apart from margin"
-            description="Internal use, trials, the open-source pool, goodwill and what g1t covered: at price, and what it cost."
+            description={
+              mm
+                ? "What g1t's gifts cost it, by why: comped workspaces, free use, trials, the open-source pool, discounts, and credits from g1t as they are spent."
+                : "Internal use, trials, the open-source pool, goodwill and what g1t covered: at price, and what it cost."
+            }
             className="mt-6"
           >
-            {given.length === 0 ? (
+            {mm ? (
+              givenRows.length === 0 ? (
+                <p className="text-sm text-muted">Nothing given yet this month.</p>
+              ) : (
+                <div className="-mx-4 -my-4 overflow-x-auto sm:-mx-5 sm:-my-5">
+                  <table className="w-full min-w-80 text-sm">
+                    <thead>
+                      <tr className="border-b border-line text-left text-xs text-muted">
+                        <th className="px-4 py-2 font-medium sm:pl-5">Why</th>
+                        <th className="px-4 py-2 text-right font-medium sm:pr-5">Cost to g1t</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {givenRows.map(([why, micros]) => (
+                        <tr key={why} className="border-b border-line last:border-0">
+                          <td className="px-4 py-2 first-letter:uppercase sm:pl-5">{why}</td>
+                          <td className="tabular px-4 py-2 text-right sm:pr-5">{usd(micros)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : given.length === 0 ? (
               <p className="text-sm text-muted">Nothing given yet this month.</p>
             ) : (
               <div className="-mx-4 -my-4 overflow-x-auto sm:-mx-5 sm:-my-5">
