@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "react-router build",
+    "build": "react-router build && node scripts/load-check.mjs",
     "test": "node --test app/**/*.test.ts",
     "dev": "react-router dev",
     "typecheck": "wrangler types --include-env=false && react-router typegen && tsc -b --force",
