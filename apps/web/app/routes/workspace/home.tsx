@@ -19,7 +19,7 @@ import {
   StartHere,
   WindowSwitch,
 } from "../../components/home";
-import { HomeAsk, SummarizeButton } from "../../components/home-ask";
+import { HomeAsk, WhatChangedCard } from "../../components/home-ask";
 import { Skeleton } from "../../components/ui/skeleton";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
@@ -83,8 +83,8 @@ const NOTIFICATIONS_READ = 50;
 
 /**
  * Home: the workspace's front page. First a box that asks g1t
- * (components/home-ask: Summarize on the span and Explain on each change
- * that landed ask it too); then where you're needed now, with no time
+ * (components/home-ask; What changed summarizes the span on the page, and
+ * Explain on each change that landed asks too); then where you're needed now, with no time
  * window; what happened since you were last here (or over the last 24
  * hours or 7 days, `?window=`): what people did, from the events
  * service's digest of the span and chat's, then what landed; what is
@@ -247,7 +247,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
       {/* 0. Ask g1t anything: the answer opens in the top bar's Ask panel. */}
       <header className="space-y-3">
-        <HomeAsk span={span} tz={tz} />
+        <HomeAsk span={span} />
         <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">
           <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
             <Await resolve={head}>
@@ -298,11 +298,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               {span.key === "last" && span.note == null ? `${span.words} · ${span.length}` : spanNote(span.note)}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-            <SummarizeButton span={span} tz={tz} />
+          <div className="sm:ml-auto">
             <WindowSwitch span={span} />
           </div>
         </div>
+        <WhatChangedCard key={span.key} slug={slug} span={span} tz={tz} />
         <Suspense
           fallback={
             <Card title={span.key === "last" && span.note == null ? "While you were away" : "Settled for you"}>

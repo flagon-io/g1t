@@ -31,8 +31,7 @@ export function AskButton({ slug }: { slug: string }) {
   useEffect(() => {
     const onAsk = (event: Event) => {
       const text = (event as CustomEvent<{ text?: string }>).detail?.text?.trim();
-      if (!text) return;
-      setQueued({ text, at: Date.now() });
+      if (text) setQueued({ text, at: Date.now() });
       setWanted(true);
       setOpen(true);
     };

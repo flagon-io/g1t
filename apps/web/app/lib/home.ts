@@ -1355,37 +1355,42 @@ export function whenShort(at: number, now: number, timeZone: string | null): str
 
 // --- Asking g1t from Home ------------------------------------------------------------
 
-type AskedSpan = Pick<Span, "key" | "note" | "words" | "from">;
+type AskedSpan = Pick<Span, "key" | "note" | "words" | "from" | "now">;
 
-/** The span as part of a question, with its start in the viewer's zone (g1t is told the zone): "since I was last here (Oct 14, 2:10 PM)". */
-function spanAsked(span: AskedSpan, timeZone: string | null): string {
-  const since = formatIn(span.from, timeZone, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  if (span.key === "last" && span.note == null) return `since I was last here (${since})`;
-  return `${span.words.charAt(0).toLowerCase()}${span.words.slice(1)} (since ${since})`;
+/** The span as a person would say it: "since I was last here (2:12 PM)", "in the last 24 hours". */
+function spanSaid(span: AskedSpan, timeZone: string | null): string {
+  if (span.key === "last" && span.note == null) return `since I was last here (${whenShort(span.from, span.now, timeZone)})`;
+  return `${span.words.charAt(0).toLowerCase()}${span.words.slice(1)}`;
 }
 
 /**
- * Home's Summarize: what changed in the span, in plain English, asked of
- * g1t with the span's start, so the answer covers what the page shows.
+ * Home's Summarize: what changed in the span, in plain English, as a person
+ * would ask it. g1t is told the page and the viewer's zone, and its prompt
+ * says how to read what shipped (services/integrations ask.rs).
  */
 export function summarizeQuestion(span: AskedSpan, timeZone: string | null): string {
-  return `Summarize what changed ${spanAsked(span, timeZone)} in plain English: what shipped, what's still deploying or failed, what's in flight, and what needs me.`;
+  return `Summarize what changed ${spanSaid(span, timeZone)} in plain English.`;
+}
+
+/** What a change's page is, in words: "pull request #47 in acme/web", "commit f2c1aa0 in acme/web"; else its path. */
+export function changeRef(to: string): string {
+  const pull = to.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+  if (pull) return `pull request #${pull[3]} in ${pull[1]}/${pull[2]}`;
+  const commit = to.match(/^\/([^/]+)\/([^/]+)\/commit\/([0-9a-f]{7,40})/i);
+  if (commit) return `commit ${commit[3]!.slice(0, 7)} in ${commit[1]}/${commit[2]}`;
+  return to;
 }
 
 /** A Landed row's Explain: what one change did and why, in plain English. */
 export function explainQuestion(change: Pick<LandedChange, "kind" | "title" | "to">): string {
   if (change.kind === "deploy") return `What went out in this deployment (${change.to}), in plain English?`;
   if (change.kind === "release" || change.kind === "package") return `What's new in ${change.title} (${change.to}), in plain English?`;
-  return `Explain "${change.title}" (${change.to}) in plain English: what changed, why, and is it live?`;
+  return `Explain ${changeRef(change.to)} in plain English: what changed, why, and is it live?`;
 }
 
-/** What Home's Ask box offers to ask first: a label, and the question it asks. */
-export function homeStarters(span: AskedSpan, timeZone: string | null): { label: string; question: string }[] {
-  const changed = span.key === "last" && span.note == null ? "since I was last here" : `${span.words.charAt(0).toLowerCase()}${span.words.slice(1)}`;
-  return [
-    { label: `What changed ${changed}?`, question: summarizeQuestion(span, timeZone) },
-    { label: "What needs me first?", question: "What needs me first? Most urgent first, one line each on what to do." },
-    { label: "What shipped today?", question: "What shipped today? What's live, what's still deploying, and what failed." },
-    { label: "Who's working on what?", question: "Who's working on what right now, and is anything stuck?" },
-  ];
-}
+/** What Home's Ask box offers to ask first, after Summarize: a label, and the question it asks. */
+export const HOME_STARTERS: { label: string; question: string }[] = [
+  { label: "What needs me first?", question: "What needs me first? Most urgent first, one line each on what to do." },
+  { label: "What shipped today?", question: "What shipped today? What's live, what's still deploying, and what failed." },
+  { label: "Who's working on what?", question: "Who's working on what right now, and is anything stuck?" },
+];

@@ -40,6 +40,11 @@ export function askG1t(text: string) {
   window.dispatchEvent(new CustomEvent<{ text: string }>(ASK_EVENT, { detail: { text: question } }));
 }
 
+/** Opens the top bar's Ask panel on the conversation as it is: a follow-up to an answer shown on a page. */
+export function openAsk() {
+  window.dispatchEvent(new CustomEvent<{ text: string }>(ASK_EVENT, { detail: { text: "" } }));
+}
+
 /** What the composer says about where the question is asked from. */
 export function askWhere(page: AskPage): string | null {
   if (page.issue) return `On issue #${page.issue}`;

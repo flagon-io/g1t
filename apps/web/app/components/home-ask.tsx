@@ -1,25 +1,40 @@
 /**
  * Home's way into Ask (components/ask-composer): the box at the top of the
- * page, Summarize on what happened in the span, and Explain on each change
- * that landed. Each hands its question to the top bar's Ask panel
- * (lib/ask.ts askG1t), which asks g1t in the viewer's direct message with
- * it, so the answer streams there and stays in Chat.
+ * page, What changed (g1t's plain-English summary of the span, streamed
+ * onto the page by components/home-summary), and Explain on each change
+ * that landed. The box and Explain hand their question to the top bar's Ask
+ * panel (lib/ask.ts askG1t). Every question goes to the viewer's direct
+ * message with @g1t, so the answers stay in Chat and Ask carries on from them.
  */
-import { ArrowUp, Sparkles } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useState } from "react";
+import { ArrowUp, MessageSquare, RotateCcw, Sparkles } from "lucide-react";
+import { type FormEvent, type KeyboardEvent, Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 
-import { askG1t } from "../lib/ask";
-import { type LandedChange, type Span, explainQuestion, homeStarters, summarizeQuestion } from "../lib/home";
+import { askG1t, openAsk } from "../lib/ask";
+import { HOME_STARTERS, type LandedChange, type Span, explainQuestion, summarizeQuestion } from "../lib/home";
 import { Suggestion, Suggestions } from "./ai-elements/suggestion";
+import { Card } from "./home";
 import { MarkGlyph } from "./logo";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
+import { Skeleton } from "./ui/skeleton";
 import { Textarea } from "./ui/textarea";
 
-type AskSpan = Pick<Span, "key" | "note" | "words" | "from">;
+const loadSummary = () => import("./home-summary");
+const HomeSummary = lazy(loadSummary);
+
+type AskSpan = Pick<Span, "key" | "note" | "words" | "from" | "now">;
+
+/** The window event Home's box sends to have What changed summarize the span. */
+const SUMMARIZE_EVENT = "g1t:home-summarize";
+
+/** What the span is called on a button: "since I was last here", "in the last 24 hours". */
+function spanLabel(span: AskSpan): string {
+  return span.key === "last" && span.note == null ? "since I was last here" : `${span.words.charAt(0).toLowerCase()}${span.words.slice(1)}`;
+}
 
 /** The top of Home: what are we building today, a box that asks g1t, and a few things to ask first. */
-export function HomeAsk({ span, tz }: { span: AskSpan; tz: string | null }) {
+export function HomeAsk({ span }: { span: AskSpan }) {
   const [draft, setDraft] = useState("");
   const send = () => {
     if (!draft.trim()) return;
@@ -65,7 +80,13 @@ export function HomeAsk({ span, tz }: { span: AskSpan; tz: string | null }) {
         </div>
       </form>
       <Suggestions className="justify-center">
-        {homeStarters(span, tz).map((starter) => (
+        <Suggestion
+          suggestion={`Summarize what changed ${spanLabel(span)}`}
+          onPick={() => window.dispatchEvent(new CustomEvent(SUMMARIZE_EVENT))}
+          onPointerEnter={() => void loadSummary()}
+          className="border-accent-dim text-fg"
+        />
+        {HOME_STARTERS.map((starter) => (
           <Suggestion key={starter.label} suggestion={starter.label} onPick={() => askG1t(starter.question)} />
         ))}
       </Suggestions>
@@ -73,30 +94,92 @@ export function HomeAsk({ span, tz }: { span: AskSpan; tz: string | null }) {
   );
 }
 
-/** Summarize what happened in the span, in plain English. */
-export function SummarizeButton({ span, tz }: { span: AskSpan; tz: string | null }) {
+/**
+ * What changed: g1t's summary of the span in plain English, on the page.
+ * Asked only when the viewer presses Summarize (each answer is a call to
+ * the workspace's own AI provider); asked again for another span.
+ */
+export function WhatChangedCard({ slug, span, tz }: { slug: string; span: AskSpan; tz: string | null }) {
+  // Each ask is its own: Summarize again asks anew.
+  const [asked, setAsked] = useState<{ question: string; at: number } | null>(null);
+  const [done, setDone] = useState<{ channelId: string | null } | null>(null);
+  const card = useRef<HTMLDivElement>(null);
+  const label = spanLabel(span);
+
+  const summarize = useCallback(() => {
+    setDone(null);
+    setAsked({ question: summarizeQuestion(span, tz), at: Date.now() });
+  }, [span, tz]);
+
+  // Home's box asks for it: bring the card into view and start.
+  useEffect(() => {
+    const onAsk = () => {
+      card.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      summarize();
+    };
+    window.addEventListener(SUMMARIZE_EVENT, onAsk);
+    return () => window.removeEventListener(SUMMARIZE_EVENT, onAsk);
+  }, [summarize]);
+
+  const onDone = useCallback((channelId: string | null) => setDone({ channelId }), []);
+
   return (
-    <Hint label="g1t reads everything that happened in this span and tells you what changed">
-      <Button type="button" variant="soft" size="sm" onClick={() => askG1t(summarizeQuestion(span, tz))}>
-        <Sparkles size={14} />
-        Summarize
-      </Button>
-    </Hint>
+    <div ref={card} className="scroll-mt-4">
+      <Card title="What changed" hint={`In plain English, ${label}`}>
+        <div className="px-5 pb-5">
+          {!asked ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <p className="grow text-sm text-muted">g1t reads the commits, pull requests, deploys and conversations {label} and tells you what changed, why, and what is live.</p>
+              <Button type="button" variant="accent" size="sm" onClick={summarize} onPointerEnter={() => void loadSummary()} className="shrink-0 self-start sm:self-auto">
+                <Sparkles size={14} />
+                Summarize
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Suspense
+                fallback={
+                  <div className="space-y-2.5">
+                    <Skeleton className="h-3.5 w-11/12" />
+                    <Skeleton className="h-3.5 w-3/4" />
+                  </div>
+                }
+              >
+                <HomeSummary key={asked.at} slug={slug} question={asked.question} onDone={onDone} />
+              </Suspense>
+              {done && (
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                  <Button type="button" variant="soft" size="sm" onClick={openAsk}>
+                    <MarkGlyph className="h-3" />
+                    Ask a follow-up
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={summarize}>
+                    <RotateCcw size={13} />
+                    Summarize again
+                  </Button>
+                  {done.channelId && (
+                    <Button asChild variant="ghost" size="sm" className="sm:ml-auto">
+                      <Link to={`/${slug}/-/chat/dm/${done.channelId}`}>
+                        <MessageSquare size={13} />
+                        In your direct message with g1t
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </Card>
+    </div>
   );
 }
 
 /** Explain one change that landed: what it did and why, in plain English. */
 export function ExplainButton({ change }: { change: Pick<LandedChange, "kind" | "title" | "to"> }) {
   return (
-    <Hint label="Explain this change">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Explain ${change.title}`}
-        onClick={() => askG1t(explainQuestion(change))}
-        className="shrink-0 text-muted hover:text-fg sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-      >
+    <Hint label="Explain this change in plain English">
+      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Explain ${change.title}`} onClick={() => askG1t(explainQuestion(change))} className="shrink-0 text-muted hover:text-accent">
         <Sparkles size={13} />
       </Button>
     </Hint>

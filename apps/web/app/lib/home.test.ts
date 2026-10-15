@@ -19,7 +19,6 @@ import {
   digestOf,
   duration,
   explainQuestion,
-  homeStarters,
   landed,
   landedByDay,
   landedDeploys,
@@ -784,24 +783,20 @@ test("while you were away: what settled by itself, what shipped, and what still 
   assert.deepEqual({ ...away, settled: away.settled.length }, { settled: 2, shipped: 1, waiting: 1, deploying: 0, failed: 0, needs: 3 });
 });
 
-test("Summarize asks about the span the page shows, from its start in the viewer's zone", () => {
-  const from = Date.UTC(2026, 9, 13, 18, 0);
-  const last = summarizeQuestion({ key: "last", note: null, words: "Since yesterday evening", from }, "UTC");
-  assert.equal(last, "Summarize what changed since I was last here (Oct 13, 6:00 PM) in plain English: what shipped, what's still deploying or failed, what's in flight, and what needs me.");
-  assert.match(summarizeQuestion({ key: "24h", note: null, words: "In the last 24 hours", from }, "America/Chicago"), /in the last 24 hours \(since Oct 13, 1:00 PM\)/);
+test("Summarize asks about the span the page shows, as a person would", () => {
+  const now = Date.UTC(2026, 9, 14, 22, 0);
+  assert.equal(
+    summarizeQuestion({ key: "last", note: null, words: "Since this afternoon", from: Date.UTC(2026, 9, 14, 18, 0), now }, "UTC"),
+    "Summarize what changed since I was last here (6:00 PM) in plain English.",
+  );
+  assert.equal(summarizeQuestion({ key: "24h", note: null, words: "In the last 24 hours", from: now - DAY, now }, "UTC"), "Summarize what changed in the last 24 hours in plain English.");
   // A first visit shows the last 24 hours, so it is not asked as "since I was last here".
-  assert.doesNotMatch(summarizeQuestion({ key: "last", note: "first", words: "In the last 24 hours", from }, "UTC"), /last here/);
+  assert.doesNotMatch(summarizeQuestion({ key: "last", note: "first", words: "In the last 24 hours", from: now - DAY, now }, "UTC"), /last here/);
 });
 
 test("Explain asks about the one change, by what it is", () => {
-  assert.equal(explainQuestion({ kind: "merge", title: "Faster pushes", to: "/acme/web/pull/12" }), 'Explain "Faster pushes" (/acme/web/pull/12) in plain English: what changed, why, and is it live?');
+  assert.equal(explainQuestion({ kind: "merge", title: "Faster pushes", to: "/acme/web/pull/12" }), "Explain pull request #12 in acme/web in plain English: what changed, why, and is it live?");
+  assert.equal(explainQuestion({ kind: "push", title: "Fix login", to: "/acme/web/commit/abc1234def" }), "Explain commit abc1234 in acme/web in plain English: what changed, why, and is it live?");
   assert.match(explainQuestion({ kind: "deploy", title: "web", to: "/acme/web/deployments/1" }), /went out in this deployment/);
   assert.match(explainQuestion({ kind: "release", title: "v1.2.0", to: "/acme/web/releases/v1.2.0" }), /What's new in v1\.2\.0/);
-});
-
-test("Home's starters lead with what changed in the span", () => {
-  const starters = homeStarters({ key: "7d", note: null, words: "In the last 7 days", from: 0 }, "UTC");
-  assert.equal(starters.length, 4);
-  assert.equal(starters[0]!.label, "What changed in the last 7 days?");
-  assert.equal(homeStarters({ key: "last", note: null, words: "Since Tuesday", from: 0 }, "UTC")[0]!.label, "What changed since I was last here?");
 });
