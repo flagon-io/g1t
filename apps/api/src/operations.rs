@@ -1533,7 +1533,7 @@ impl Op {
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
             Op::UpdateRepo => {
-                "Change a repository's website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork). A repository has no description: its project has, changed with update_project."
+                "Change a repository's website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork). A repository has no description of its own: description changes its project's, as update_project does, and needs the Maintain role or higher."
             }
             Op::RenameRepo => {
                 "Give a repository a new name in its workspace. Needs the Admin role. Everything stays with it: git data, issues, pull requests, workflow runs, deployments, secrets and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. The new name must be free in the workspace, including names held by recently deleted repositories."
@@ -2370,7 +2370,7 @@ impl Op {
             Op::UpdateRepo => object(
                 json!({
                     "repo": repo_schema(),
-                    "description": { "type": "string", "description": "An empty string clears it." },
+                    "description": { "type": "string", "description": "What it is, in a line: the description of its project, as update_project sets it. A repository has none of its own. An empty string clears it." },
                     "private": { "type": "boolean" },
                     "protected": {
                         "type": "boolean",
@@ -4588,7 +4588,6 @@ impl Op {
                     &json!({
                         "actor": actor(),
                         "path": repo,
-                        "description": input["description"].as_str(),
                         "isPrivate": input["private"].as_bool(),
                         "protected": input["protected"].as_bool(),
                         "topics": strings(input, "topics"),
@@ -4599,6 +4598,23 @@ impl Op {
                     }),
                 )
                 .await?;
+                // A repository has no description: the one given is its
+                // project's, changed as update_project changes it ("" clears it).
+                let updated = match (updated, input["description"].as_str()) {
+                    (Outcome::Ok(changed), Some(description)) => {
+                        let described: Outcome<Value> = call(
+                            &services.projects,
+                            "describe",
+                            &json!({ "actor": actor(), "repoId": changed["id"], "description": description }),
+                        )
+                        .await?;
+                        match described {
+                            Outcome::Ok(_) => Outcome::Ok(changed),
+                            Outcome::Fail(failure) => Outcome::Fail(failure),
+                        }
+                    }
+                    (updated, _) => updated,
+                };
                 // A new default branch, once the rest has been changed.
                 match (&updated, optional_text(input, "default_branch")) {
                     (Outcome::Ok(_), Some(branch)) => {
