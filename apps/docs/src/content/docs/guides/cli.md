@@ -97,6 +97,14 @@ cargo install --path g1t/crates/g1t
 
 `g1t --version` prints the version you have.
 
+### Behind a TLS proxy
+
+From 0.3.5 on, g1t trusts the certificates in your system's store, as
+curl and git do. A sandbox or corporate network that inspects HTTPS (a
+Claude Managed Agents sandbox, a guarded runner) adds its proxy's
+certificate there, so g1t works through it with nothing to set. Earlier
+versions trusted only a list built into the CLI and refused such a proxy.
+
 ## Sign in
 
 ```sh
