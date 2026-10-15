@@ -85,7 +85,7 @@ export function givenParts(o: OverallMargin): [string, number][] {
       ["trial", o.givenTrialMicros ?? 0],
       ["open-source pool", o.givenPoolMicros ?? 0],
       ["partial discounts", o.givenDiscountMicros ?? 0],
-      ["promotional credit", o.givenCreditPromotionalMicros ?? 0],
+      ["promotional credit and complimentary allowances", o.givenCreditPromotionalMicros ?? 0],
       ["goodwill credit", o.givenCreditGoodwillMicros ?? 0],
       ["testing resets", o.givenResetMicros ?? 0],
       ["charged without real money", o.givenUnpaidMicros ?? 0],
