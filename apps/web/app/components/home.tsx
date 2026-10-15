@@ -192,7 +192,8 @@ function NeedItem({ row, now }: { row: AttentionRow; now: number }) {
         )}
       </div>
       <ButtonLink to={row.action.to} variant="outline" size="xs" className="border-line-strong px-2.5 text-fg hover:border-accent/50 hover:bg-raised">
-        {row.action.label}
+        {/* It opens the pull request, where it merges: "Merge" here would read as merging on the spot. */}
+        {row.kind === "ready" ? "Open" : row.action.label}
       </ButtonLink>
     </li>
   );
