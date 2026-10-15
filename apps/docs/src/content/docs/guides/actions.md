@@ -469,7 +469,8 @@ its job's token, start no workflows, so a workflow cannot set itself off.
 
 Jobs run in a fresh sandbox each: Debian with Node 24, Python 3, Go, Rust,
 Java 21, .NET 8, Ruby 3.3, `build-essential`, `git`, `curl`, `jq`, Docker
-(with Buildx and Compose) and passwordless `sudo`, in GitHub's layout
+(with Buildx and Compose), the [command-line tools](#command-line-tools)
+GitHub's Ubuntu runners have, and passwordless `sudo`, in GitHub's layout
 (`/home/runner/work`, `RUNNER_WORKSPACE`, `RUNNER_TEMP`, `RUNNER_TOOL_CACHE`).
 `runner.os` is `Linux`. Each step's `GITHUB_ACTION` is its `id`, or
 GitHub's name for it: `__run`, `__run_2` and on for `run:` steps,
@@ -514,6 +515,22 @@ in a `container:` with the Ruby you need, such as `ruby:3.4`.
 
 The headers that gems and .NET need to build native code (`libyaml`,
 `libffi`, `zlib`, OpenSSL, ICU) are installed too.
+
+### Command-line tools
+
+Installed in every sandbox, so a step can use them without installing
+anything first:
+
+| For | Tools |
+| --- | --- |
+| Processes and the system | `free`, `ps`, `top`, `kill`, `killall`, `pgrep`, `lsof`, `time`, `less`, `setfacl` |
+| The network | `curl`, `wget`, `ip`, `ping`, `dig`, `nslookup`, `nc`, `netstat`, `rsync`, `ssh`, `scp` |
+| Archives | `tar`, `gzip`, `pigz`, `bzip2`, `xz`, `zstd`, `lz4`, `brotli`, `zip`, `unzip`, `7z` |
+| Building | `make`, `gcc`, `g++`, `musl-gcc`, `pkg-config`, `autoconf`, `automake`, `libtool`, `bison`, `flex`, `cmake`, `ninja`, `patchelf` |
+| Everything else | `git`, Git LFS, `jq`, `ripgrep` (`rg`), `shellcheck`, `sqlite3`, `parallel`, `tree`, `file`, `gpg`, `python` (Python 3) |
+
+Anything else is an `apt-get` away: run `sudo apt-get update` first, as on
+GitHub.
 
 ### Calling g1t's API from a job
 
