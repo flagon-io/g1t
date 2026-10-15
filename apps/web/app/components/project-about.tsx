@@ -250,7 +250,7 @@ export function KindMenu({ project, label, canChange }: { project: Pick<Project,
  * The About editor: a project's description and links, from its overview.
  * Posts `intent=about` to the page's action, and closes once saved.
  */
-export function AboutEditor({ project }: { project: Pick<Project, "description" | "descriptionInherited" | "links" | "name"> }) {
+export function AboutEditor({ project }: { project: Pick<Project, "description" | "links" | "name"> }) {
   const fetcher = useFetcher<{ error?: string; notice?: string }>();
   const [open, setOpen] = useState(false);
   const saved = fetcher.state === "idle" && fetcher.data != null && !fetcher.data.error;
@@ -275,11 +275,10 @@ export function AboutEditor({ project }: { project: Pick<Project, "description" 
             <span className="mb-1.5 block text-sm font-medium text-muted">Description</span>
             <Input
               name="description"
-              defaultValue={project.descriptionInherited ? "" : (project.description ?? "")}
-              placeholder={(project.descriptionInherited && project.description) || "What it is, in a line"}
+              defaultValue={project.description ?? ""}
+              placeholder="What it is, in a line"
               maxLength={200}
             />
-            {project.descriptionInherited && <span className="mt-1.5 block text-xs text-faint">Follows the repository's description while empty.</span>}
           </label>
           <LinkFields links={project.links} compact />
           {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}

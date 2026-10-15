@@ -395,7 +395,6 @@ struct DeletedRow {
     id: String,
     namespace: String,
     name: String,
-    description: Option<String>,
     is_private: u8,
     deleted_at: String,
     #[serde(default)]
@@ -411,7 +410,6 @@ impl From<DeletedRow> for DeletedRepo {
             id: row.id,
             namespace: row.namespace,
             name: row.name,
-            description: row.description,
             is_private: row.is_private != 0,
             deleted_at: row.deleted_at,
             deleted_by: row.deleted_by.unwrap_or_default(),
@@ -421,7 +419,7 @@ impl From<DeletedRow> for DeletedRepo {
 }
 
 const DELETED_COLUMNS: &str =
-    "id, namespace, name, description, is_private, deleted_at, deleted_by, purge_after, deleted_with";
+    "id, namespace, name, is_private, deleted_at, deleted_by, purge_after, deleted_with";
 
 impl Registry {
     /// Deletes a repository and its pull requests' working copies, softly.
@@ -859,7 +857,6 @@ impl<S: GitStore> Repos<S> {
             id: repo.id,
             namespace: repo.namespace,
             name: repo.name,
-            description: repo.description,
             is_private: repo.is_private,
             deleted_at: at,
             deleted_by: a.actor.username,
@@ -1864,7 +1861,6 @@ mod tests {
             id: "rep_1".into(),
             namespace: "acme".into(),
             name: "rocket".into(),
-            description: None,
             is_private: false,
             owner_id: "usr_1".into(),
             default_branch: "main".into(),

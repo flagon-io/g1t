@@ -198,8 +198,8 @@ function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const { repo, project, member, access, welcome, watching, pinned, stars, forking, signedIn } = loaderData;
   const base = `/${repo.namespace}/${repo.name}`;
-  // The project's own description, else the repository's as it is now.
-  const description = (project && !project.descriptionInherited ? project.description : null) ?? repo.description;
+  // A repository has no description: its project's is shown.
+  const description = project?.description ?? null;
   // Its homepage, else the repository's website.
   const site = projectHomepage(project) ?? repo.website ?? null;
   const { pathname } = useLocation();

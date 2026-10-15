@@ -49,7 +49,7 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "repo view",
-        ops: &["get_repo"],
+        ops: &["get_repo", "list_projects"],
     },
     Mapping {
         command: "repo clone",
@@ -61,7 +61,7 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "repo list",
-        ops: &["list_repos"],
+        ops: &["list_repos", "list_projects"],
     },
     Mapping {
         command: "repo fork",
@@ -69,7 +69,7 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "repo forks",
-        ops: &["list_forks"],
+        ops: &["list_forks", "list_projects"],
     },
     Mapping {
         command: "repo sync",

@@ -46,7 +46,6 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     source: {
       namespace: repo.namespace,
       name: repo.name,
-      description: repo.description ?? "",
       isPrivate: repo.isPrivate,
       defaultBranch: repo.defaultBranch,
       forkable: !repo.isPrivate || Boolean(repo.allowForking),
@@ -64,7 +63,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const result = await repos.fork(user, { namespace: params.owner, name: params.repo }, {
     namespace: text("workspace"),
     name: tidyName(text("name")) || undefined,
-    description: String(form.get("description") ?? ""),
     defaultBranchOnly: form.get("defaultBranchOnly") != null,
   });
   if (!result.ok) return { error: result.error.message };
@@ -149,13 +147,6 @@ export default function Fork({ loaderData, actionData }: Route.ComponentProps) {
                 </>
               )}
             </FieldDescription>
-          </Field>
-
-          <Field>
-            <FieldLabel htmlFor="fork-description">
-              Description <span className="font-normal text-faint">(optional)</span>
-            </FieldLabel>
-            <Input id="fork-description" name="description" maxLength={200} defaultValue={source.description} placeholder="What it is, in a line" />
           </Field>
 
           <CheckboxOption

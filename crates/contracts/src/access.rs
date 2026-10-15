@@ -184,7 +184,7 @@ pub enum Capability {
     /// Assign agents, start runs, plans and workflows: anything that
     /// spends compute.
     Run,
-    /// Change the description, topics, website, and how pull requests and
+    /// Change the topics, website, and how pull requests and
     /// agents work.
     ManageSettings,
     /// Change branch protection, rulesets and guardrails.
@@ -253,7 +253,7 @@ pub const CAPABILITIES: [CapabilityRow; 16] = [
     CapabilityRow { capability: Capability::ManageLabels, role: RepoRole::Write, about: "Create, edit and delete labels and milestones" },
     CapabilityRow { capability: Capability::SecurityAlerts, role: RepoRole::Write, about: "See and dismiss security alerts" },
     CapabilityRow { capability: Capability::Run, role: RepoRole::Write, about: "Assign agents and start runs, plans and workflows" },
-    CapabilityRow { capability: Capability::ManageSettings, role: RepoRole::Maintain, about: "Change the description, topics, and pull request and agent settings" },
+    CapabilityRow { capability: Capability::ManageSettings, role: RepoRole::Maintain, about: "Change the topics, website, and pull request and agent settings" },
     CapabilityRow { capability: Capability::ManageProtection, role: RepoRole::Admin, about: "Change branch protection, rulesets and guardrails" },
     CapabilityRow { capability: Capability::ManageSecurity, role: RepoRole::Admin, about: "Change security settings, custom patterns and bypass reviews" },
     CapabilityRow { capability: Capability::ManageIntegrations, role: RepoRole::Admin, about: "Manage webhooks, secrets, variables, deployments and domains" },

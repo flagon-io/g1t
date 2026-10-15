@@ -389,7 +389,7 @@ impl Actions {
                     "ref": name,
                     "ref_type": ref_type,
                     "master_branch": repo.default_branch,
-                    "description": repo.description,
+                    "description": Value::Null,
                     "pusher_type": "user",
                     "repository": payload::repository(repo),
                     "sender": payload::user(sender),
@@ -1575,7 +1575,7 @@ mod tests {
 
     fn repo() -> Repo {
         serde_json::from_value(json!({
-            "id": "rep_1", "namespace": "acme", "name": "web", "description": null, "isPrivate": true,
+            "id": "rep_1", "namespace": "acme", "name": "web", "isPrivate": true,
             "ownerId": "ws_1", "defaultBranch": "main", "forkOf": null, "createdAt": ""
         }))
         .unwrap()

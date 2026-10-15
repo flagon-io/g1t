@@ -2513,7 +2513,6 @@ pub static OPERATIONS: &[Operation] = &[
         ],
         body: &[
             Field { name: "color", kind: "string", required: false, values: &[] },
-            Field { name: "description", kind: "string", required: false, values: &[] },
             Field { name: "new_name", kind: "string", required: false, values: &[] },
         ],
     },
@@ -4258,7 +4257,6 @@ pub static OPERATIONS: &[Operation] = &[
         ],
         body: &[
             Field { name: "default_branch_only", kind: "boolean", required: false, values: &[] },
-            Field { name: "description", kind: "string", required: false, values: &[] },
             Field { name: "name", kind: "string", required: false, values: &[] },
             Field { name: "workspace", kind: "string", required: false, values: &[] },
         ],

@@ -23,7 +23,9 @@
 		{ "binding": "IDENTITY", "service": "g1t-identity" },
 		{ "binding": "WORK", "service": "g1t-work" },
 		// Where a transferred repository is now, for moving its links.
-		{ "binding": "REPOS", "service": "g1t-repos" }
+		{ "binding": "REPOS", "service": "g1t-repos" },
+		// An imported repository's project takes GitHub's description.
+		{ "binding": "PROJECTS", "service": "g1t-projects" }
 	],
 	// Work starting on, and finishing, what an outside system is waiting on.
 	// Every minute: sessions started on workspaces' Anthropic accounts are

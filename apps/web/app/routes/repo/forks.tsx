@@ -7,7 +7,7 @@ import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
-import { repos } from "../../lib/services.server";
+import { projects, repos } from "../../lib/services.server";
 import { unwrap } from "../../lib/session.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -19,12 +19,14 @@ const LISTED = 100;
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer, repo } = await requireRepo(context, params, "read");
-  const found = await repos.forks({ namespace: params.owner, name: params.repo }, viewer, LISTED);
+  const found = unwrap(await repos.forks({ namespace: params.owner, name: params.repo }, viewer, LISTED));
+  // A repository has no description: its project's is shown.
+  const about = await projects.descriptions(found.map((fork) => fork.id));
   return {
-    forks: unwrap(found).map((fork) => ({
+    forks: found.map((fork) => ({
       namespace: fork.namespace,
       name: fork.name,
-      description: fork.description,
+      description: about[fork.id] ?? null,
       isPrivate: fork.isPrivate,
       createdAt: fork.createdAt,
       archived: Boolean(fork.archivedAt),

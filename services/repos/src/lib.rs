@@ -111,7 +111,6 @@ fn urlencoding_segment(segment: &str) -> String {
         .map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
         .collect()
 }
-const MAX_DESCRIPTION_CHARS: usize = 200;
 pub(crate) const SOURCE: &str = "repos";
 pub(crate) const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
 
@@ -342,7 +341,7 @@ impl<S: GitStore> Repos<S> {
             None => repo.max_ref_updates,
         };
         let limit_changes = max_ref_updates != repo.max_ref_updates;
-        let details_change = a.description.is_some() || a.website.is_some() || a.topics.is_some();
+        let details_change = a.website.is_some() || a.topics.is_some();
         let mut needed = Vec::new();
         if details_change || !(protection_changes || forking_changes || limit_changes) {
             needed.push(Capability::ManageSettings);
@@ -368,16 +367,6 @@ impl<S: GitStore> Repos<S> {
         if let Some((code, message)) = lifecycle::archived_refusal(&repo) {
             return Ok(Outcome::fail(code, message));
         }
-        let description = match a.description {
-            Some(text) => Some(
-                text.trim()
-                    .chars()
-                    .take(MAX_DESCRIPTION_CHARS)
-                    .collect::<String>(),
-            )
-            .filter(|text| !text.is_empty()),
-            None => repo.description.clone(),
-        };
         let website = match a.website.as_deref() {
             Some(text) => match clean_website(text) {
                 Ok(website) => website,
@@ -414,10 +403,9 @@ impl<S: GitStore> Repos<S> {
         };
         let allow_forking = a.allow_forking.unwrap_or(repo.allow_forking);
         self.registry
-            .update(&repo.id, description.as_deref(), protected, &topics, website.as_deref(), allow_forking, max_ref_updates)
+            .update(&repo.id, protected, &topics, website.as_deref(), allow_forking, max_ref_updates)
             .await?;
         let updated = Repo {
-            description,
             is_private,
             protected,
             topics,
@@ -665,10 +653,6 @@ impl<S: GitStore> Repos<S> {
             id: new_id("rep", now),
             namespace: path.namespace,
             name: path.name,
-            description: a
-                .description
-                .map(|text| text.trim().to_owned())
-                .filter(|text| !text.is_empty()),
             is_private: a.is_private,
             owner_id: a.owner.id.clone(),
             default_branch: imported
@@ -696,11 +680,7 @@ impl<S: GitStore> Repos<S> {
             .claim_store_key(&repo, namespace.as_deref(), &self.store.default_namespace())
             .await?;
         self.store
-            .create(
-                &store_key(&repo),
-                repo.description.as_deref(),
-                &repo.default_branch,
-            )
+            .create(&store_key(&repo), None, &repo.default_branch)
             .await?;
         self.registry.insert(&repo).await?;
         // A repository that was transferred away from this path stops
@@ -1462,7 +1442,6 @@ impl<S: GitStore> Repos<S> {
             id: new_id("rep", now),
             namespace: PULLS_NAMESPACE.to_owned(),
             name: a.pull_id.clone(),
-            description: None,
             // A fork is exactly as visible as the repo it came from.
             is_private: source.is_private,
             owner_id: a.actor.id.clone(),
@@ -3309,7 +3288,6 @@ fn push_to_create(owner: &User, path: &RepoPath) -> CreateArgs {
         owner: owner.clone(),
         namespace: path.namespace.clone(),
         name: path.name.clone(),
-        description: None,
         is_private: true,
         import_url: None,
         import_token: None,
@@ -3376,7 +3354,7 @@ mod push_about_tests {
 
     fn push(refs: &[&str], fork_of: Option<&str>) -> PushDone {
         let repo: Repo = serde_json::from_value(serde_json::json!({
-            "id": "rep_1", "namespace": "acme", "name": "web", "description": null, "isPrivate": false,
+            "id": "rep_1", "namespace": "acme", "name": "web", "isPrivate": false,
             "ownerId": "usr_1", "defaultBranch": "main", "forkOf": fork_of, "createdAt": ""
         }))
         .unwrap();
@@ -3472,7 +3450,6 @@ mod deploy_key_git_tests {
             "id": "rep_rocket",
             "namespace": "acme",
             "name": "rocket",
-            "description": null,
             "isPrivate": private,
             "ownerId": "usr_owner",
             "defaultBranch": "main",

@@ -25,7 +25,7 @@ The search page has a tab for each kind of result, each with its count:
 
 | Tab | Searches |
 | --- | --- |
-| **Repositories** | Each repository's name, workspace, description, topics and the opening of its README |
+| **Repositories** | Each repository's name, workspace, its project's description, topics and the opening of its README |
 | **Code** | The file names and contents of every repository's default branch |
 | **Issues** | Issue titles and descriptions |
 | **Pull requests** | Pull request titles and descriptions |
@@ -93,7 +93,8 @@ Search is kept current as things change:
 
 | What | When it is indexed |
 | --- | --- |
-| A repository's name, description, topics and README | When it is created or its settings change, and on every push to its default branch |
+| A repository's name, topics and README | When it is created or its settings change, and on every push to its default branch |
+| A repository's description, which is its project's | When the project's name or description changes |
 | Code | On every push to the default branch: only the files the push changed |
 | Issues and pull requests | When they are opened, edited, assigned, closed, reopened, marked ready or merged |
 | People and workspaces | When an account or a workspace is made, or its name, description or avatar changes |

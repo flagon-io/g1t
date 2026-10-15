@@ -955,6 +955,8 @@ export function projectsClient(service: ServiceBinding): ProjectsApi {
     list: (workspace, viewer) => call("list", { workspace, viewer }),
     get: (workspace, slug, viewer) => call("get", { workspace, slug, viewer }),
     byRepo: (repoId) => call("by_repo", { repoId }),
+    describe: (actor, repoId, description) => call("describe", { actor, repoId, description }),
+    descriptions: (repoIds) => (repoIds.length ? call("descriptions", { repoIds }) : Promise.resolve({})),
     create: (actor, workspace, input) => call("create", { actor, workspace, input }),
     update: (actor, workspace, slug, changes) => call("update", { actor, workspace, slug, changes }),
     setProductionImage: (actor, workspace, slug, change) => call("set_production_image", { actor, workspace, slug, change }),

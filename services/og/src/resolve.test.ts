@@ -15,7 +15,6 @@ function repo(namespace: string, name: string, isPrivate = false): Repo {
     id: `${namespace}/${name}`,
     namespace,
     name,
-    description: `About ${name}`,
     isPrivate,
     ownerId: "w",
     defaultBranch: "main",
@@ -195,7 +194,7 @@ test("a private project on a public repository keeps its name to itself", async 
   });
   const card = await resolve("/acme/web", s);
   assert.equal(card.kind === "project" && card.name, "web");
-  assert.equal(card.kind === "project" && card.description, "About web");
+  assert.equal(card.kind === "project" && card.description, null);
 });
 
 test("every lookup is made with no viewer", async () => {

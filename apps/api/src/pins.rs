@@ -135,14 +135,13 @@ mod tests {
         let project = json!({
             "id": "prj_1", "workspace": "acme", "slug": "web", "name": "Web", "description": null,
             "private": true, "archived": false, "kind": "app", "pushedAt": "2026-10-07T10:00:00.000Z",
-            "updatedAt": "2026-10-01T10:00:00.000Z", "descriptionInherited": false,
+            "updatedAt": "2026-10-01T10:00:00.000Z",
         });
         let pin = pin_json(&project, 2, "https://g1t.sh/");
         assert_eq!(pin["position"], 2);
         assert_eq!(pin["url"], "https://g1t.sh/acme/web");
         assert_eq!(pin["pushed_at"], "2026-10-07T10:00:00.000Z");
         assert!(pin.get("pushedAt").is_none());
-        assert!(pin.get("descriptionInherited").is_none());
     }
 
     #[test]

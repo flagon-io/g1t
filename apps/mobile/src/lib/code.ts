@@ -16,7 +16,6 @@ export type ApiRepo = {
   id: string;
   namespace: string;
   name: string;
-  description: string | null;
   is_private: boolean;
   default_branch: string;
   created_at: string;
@@ -100,9 +99,26 @@ export function useRepos(search: string) {
   });
 }
 
-export function useRepo(owner: string, name: string) {
+/** A workspace's project as the API answers; only what descriptions need. */
+type ApiProject = { repository: string | null; primary: boolean; description: string | null };
+
+/**
+ * The descriptions of a workspace's repositories, by lowercase
+ * `owner/name`. A repository has none of its own: its project's is shown.
+ */
+export function useDescriptions(workspace: string | null | undefined) {
   const { client } = useSignedIn();
-  return useQuery({ queryKey: ["code", "repo", owner, name], queryFn: () => client.api<ApiRepo>(repoPath(owner, name)) });
+  return useQuery({
+    queryKey: ["code", "descriptions", workspace?.toLowerCase()],
+    enabled: Boolean(workspace),
+    queryFn: () => client.api<ApiProject[]>(`/workspaces/${encodeURIComponent(workspace!)}/projects`),
+    select: (projects) =>
+      Object.fromEntries(
+        projects
+          .filter((project) => project.primary && project.repository && project.description)
+          .map((project) => [project.repository!.toLowerCase(), project.description!]),
+      ) as Record<string, string>,
+  });
 }
 
 export function usePulls(owner: string, name: string, state: "open" | "closed" | "all") {

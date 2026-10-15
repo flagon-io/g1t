@@ -14,7 +14,7 @@
 
 
 import { NEEDS, repoRef } from "./access";
-import { effectiveDescription, ownDescription } from "./description";
+import { ownDescription } from "./description";
 import {
   type KindFacts,
   type RootFiles,
@@ -50,6 +50,7 @@ import {
   packagesClient,
   permission,
   repoMove,
+  eventsClient,
   reposClient,
   staleMovedPaths,
   type Ecosystem,
@@ -82,6 +83,8 @@ type Env = {
    * a production deployment is reported. Absent: none is asked for.
    */
   SCREENSHOTS?: { captureExternal(input: { url: string; commit: string }): Promise<boolean> };
+  /** Where `project.updated` goes. Absent (in tests): nothing is published. */
+  EVENTS?: ServiceBinding;
 };
 
 type Row = {
@@ -89,10 +92,8 @@ type Row = {
   workspace: string;
   slug: string;
   name: string;
-  /** The project's own description; null while it follows its repository's. */
+  /** What it is, in a line; null for none. */
   description: string | null;
-  /** Its repository's description, kept from repos. */
-  repo_description?: string | null;
   source_kind: string;
   repo_id: string;
   repo_namespace: string;
@@ -156,7 +157,6 @@ const DETECT_PER_LIST = 10;
 const now = () => new Date().toISOString();
 
 function toProject(row: Row): Project {
-  const { description, inherited } = effectiveDescription(row);
   const setting = { kind: kindSetting(row.kind_setting), runs: runsSetting(row.runs_setting) };
   const facts: Omit<KindFacts, "setting"> = {
     deploymentsOn: row.deployments_on == null ? null : !!row.deployments_on,
@@ -170,8 +170,7 @@ function toProject(row: Row): Project {
     workspace: row.workspace,
     slug: row.slug,
     name: row.name,
-    description,
-    descriptionInherited: inherited,
+    description: row.description,
     source: {
       kind: "hosted",
       repoId: row.repo_id,
@@ -247,19 +246,25 @@ class Projects {
     if (existing) {
       await this.db
         .prepare(
-          "UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ?, repo_description = ?, repo_website = ? WHERE repo_id = ?",
+          "UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ?, repo_website = ? WHERE repo_id = ?",
         )
-        .bind(repo.isPrivate ? 1 : 0, repo.defaultBranch, repo.name, repo.archivedAt ?? null, repo.description ?? null, repo.website ?? null, repo.id)
+        .bind(repo.isPrivate ? 1 : 0, repo.defaultBranch, repo.name, repo.archivedAt ?? null, repo.website ?? null, repo.id)
         .run();
       return;
     }
     const at = now();
+    // A fork starts with its source project's description; anything else with none.
+    const source = repo.parentId
+      ? await this.db
+          .prepare("SELECT description FROM projects WHERE repo_id = ? AND is_primary = 1")
+          .bind(repo.parentId)
+          .first<{ description: string | null }>()
+      : null;
     await this.db
       .prepare(
-        // No description of its own: it shows the repository's, as that changes.
-        `INSERT INTO projects (id, workspace, slug, name, description, repo_description, repo_website, repo_id, repo_namespace, repo_name, repo_private,
+        `INSERT INTO projects (id, workspace, slug, name, description, repo_website, repo_id, repo_namespace, repo_name, repo_private,
            default_branch, root_dir, is_primary, created_by, created_at, updated_at, repo_archived_at)
-         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 1, ?, ?, ?, ?)
          ON CONFLICT (workspace, slug) DO NOTHING`,
       )
       .bind(
@@ -267,7 +272,7 @@ class Projects {
         repo.namespace.toLowerCase(),
         await this.freeSlug(repo.namespace.toLowerCase(), repo.name),
         repo.name,
-        repo.description ?? null,
+        source?.description ?? null,
         repo.website ?? null,
         repo.id,
         repo.namespace,
@@ -368,6 +373,64 @@ class Projects {
     return repo?.ok ? repo.value : null;
   }
 
+  /**
+   * The descriptions of repositories' own projects, by repository id, for
+   * lists of repositories. A repository without a project, or whose
+   * project has none, is left out.
+   */
+  async descriptions(a: { repoIds: string[] }): Promise<Record<string, string>> {
+    const ids = [...new Set(a.repoIds ?? [])].slice(0, 500);
+    const found: Record<string, string> = {};
+    // D1 takes up to 100 bound parameters in a statement.
+    for (let at = 0; at < ids.length; at += 100) {
+      const chunk = ids.slice(at, at + 100);
+      const rows = await this.db
+        .prepare(
+          `SELECT repo_id, description FROM projects
+           WHERE is_primary = 1 AND repo_deleted_at IS NULL AND description IS NOT NULL
+             AND repo_id IN (${chunk.map(() => "?").join(", ")})`,
+        )
+        .bind(...chunk)
+        .all<{ repo_id: string; description: string }>();
+      for (const row of rows.results) found[row.repo_id] = row.description;
+    }
+    return found;
+  }
+
+  /** Tells the rest of g1t a project's name or description changed: search keeps its repository's. */
+  private async updated(row: Row, actor: User): Promise<void> {
+    if (!this.env.EVENTS) return;
+    await eventsClient(this.env.EVENTS)
+      .publish([
+        {
+          type: "project.updated",
+          source: "projects",
+          repoId: row.repo_id,
+          actor: actor.username,
+          data: {
+            projectId: row.id,
+            workspace: row.workspace,
+            slug: row.slug,
+            repoId: row.repo_id,
+            primary: row.is_primary === 1,
+            description: row.description,
+          },
+        },
+      ])
+      .catch((error: unknown) => console.error("project.updated not published", row.id, String(error)));
+  }
+
+  /**
+   * Sets the description of a repository's own project, making the project
+   * first if it is not there yet: for whatever makes a repository with a
+   * description, such as creating one through the API or importing one.
+   */
+  async describe(a: { actor: User; repoId: string; description: string | null }): Promise<Result<Project>> {
+    const primary = (await this.byRepo({ repoId: a.repoId })).find((project) => project.primary) ?? null;
+    if (!primary) return fail("not_found", "That repository has no project.");
+    return this.update({ actor: a.actor, workspace: primary.workspace, slug: primary.slug, changes: { description: a.description } });
+  }
+
   async byRepo(a: { repoId: string }): Promise<Project[]> {
     const rows = await this.db
       .prepare("SELECT * FROM projects WHERE repo_id = ? ORDER BY is_primary DESC, created_at")
@@ -409,9 +472,9 @@ class Projects {
     const id = newId("prj");
     await this.db
       .prepare(
-        `INSERT INTO projects (id, workspace, slug, name, description, repo_description, repo_id, repo_namespace, repo_name, repo_private,
+        `INSERT INTO projects (id, workspace, slug, name, description, repo_id, repo_namespace, repo_name, repo_private,
            default_branch, root_dir, is_primary, created_by, created_at, updated_at, repo_archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -419,7 +482,6 @@ class Projects {
         slug,
         name,
         ownDescription(null, a.input.description ?? null),
-        repo.value.description ?? null,
         repo.value.id,
         repo.value.namespace,
         repo.value.name,
@@ -452,7 +514,7 @@ class Projects {
     const allowed = this.changeable(row, a.actor, NEEDS.update);
     if (!allowed.ok) return allowed;
     const name = changes.name?.trim() || row.name;
-    // Blank or null goes back to following the repository's description.
+    // Blank or null clears it.
     const description = ownDescription(row.description, changes.description);
     const rootDir = changes.rootDir === undefined ? row.root_dir : String(changes.rootDir).trim().replace(/^\/+|\/+$/g, "");
     if (rootDir.split("/").some((part) => part === "..")) return fail("invalid", "The root directory is inside the repository.");
@@ -506,6 +568,7 @@ class Projects {
     // Another root has other files: read them again.
     if (rootDir !== row.root_dir) saved = (await this.detect({ ...saved, detected_commit: null }).catch(() => null)) ?? saved;
     const project = toProject(saved);
+    if (saved.name !== row.name || saved.description !== row.description) await this.updated(saved, a.actor);
     // Production elsewhere given an address, or a new one: its screenshot, now.
     const was = toProject(row);
     if (wantsScreenshot(project) && (project.productionUrl !== was.productionUrl || was.runs !== "elsewhere")) {
@@ -967,13 +1030,13 @@ class Projects {
         .bind(event.data.isPrivate ? 1 : 0, event.data.repoId)
         .run();
       if (event.type === "repo.updated") {
-        // Projects without a description of their own show the repository's.
+        // Projects without a homepage of their own show the repository's website.
         // Asked of repos, so changes delivered out of order end the same.
         const repo = await this.repoById(event.data.repoId);
         if (repo) {
           await this.db
-            .prepare("UPDATE projects SET repo_description = ?, repo_website = ? WHERE repo_id = ?")
-            .bind(repo.description ?? null, repo.website ?? null, event.data.repoId)
+            .prepare("UPDATE projects SET repo_website = ? WHERE repo_id = ?")
+            .bind(repo.website ?? null, event.data.repoId)
             .run();
         }
       }
@@ -1067,6 +1130,10 @@ async function answer(service: Projects, method: string, args: any): Promise<Res
       return Response.json(await service.get(args));
     case "by_repo":
       return Response.json(await service.byRepo(args));
+    case "descriptions":
+      return Response.json(await service.descriptions(args));
+    case "describe":
+      return Response.json(await service.describe(args));
     case "count":
       return Response.json(await service.count(args));
     case "create":

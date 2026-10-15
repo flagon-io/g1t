@@ -244,6 +244,8 @@ pub struct GithubApp {
     identity: Fetcher,
     work: Fetcher,
     repos: Fetcher,
+    /// Projects, where an imported repository's description goes.
+    projects: Fetcher,
     config: AppConfig,
 }
 
@@ -300,6 +302,7 @@ impl GithubApp {
             identity: env.service("IDENTITY")?,
             work: env.service("WORK")?,
             repos: env.service("REPOS")?,
+            projects: env.service("PROJECTS")?,
             config: AppConfig::from_env(env),
         })
     }
@@ -695,7 +698,6 @@ impl GithubApp {
                 owner: a.actor.clone(),
                 namespace: workspace.clone(),
                 name,
-                description: github["description"].as_str().map(|text| text.chars().take(200).collect()),
                 is_private: a.private.unwrap_or_else(|| github["private"].as_bool().unwrap_or(true)),
                 import_url: Some(clone_url.to_owned()),
                 import_token: Some(token),
@@ -706,6 +708,20 @@ impl GithubApp {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok((Outcome::Fail(failure), None)),
         };
+        // Its project takes GitHub's description; the import stands without it.
+        if let Some(description) = github["description"].as_str().map(str::trim).filter(|text| !text.is_empty()) {
+            let described: Result<Outcome<serde_json::Value>> = g1t_kit::call(
+                &self.projects,
+                "describe",
+                &serde_json::json!({ "actor": a.actor, "repoId": repo.id, "description": description }),
+            )
+            .await;
+            match described {
+                Ok(Outcome::Ok(_)) => {}
+                Ok(Outcome::Fail(failure)) => worker::console_error!("imported {} without its description: {}", repo.id, failure.message),
+                Err(error) => worker::console_error!("imported {} without its description: {error}", repo.id),
+            }
+        }
         let path = format!("{}/{}", repo.namespace, repo.name);
         let now = rfc3339(now_ms());
         self.db

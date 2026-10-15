@@ -229,7 +229,6 @@ mod tests {
             id: "rep_1".into(),
             namespace: "acme".into(),
             name: "web".into(),
-            description: None,
             is_private: false,
             owner_id: "usr_1".into(),
             default_branch: "main".into(),

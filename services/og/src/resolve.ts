@@ -384,8 +384,8 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
     owner: namespace,
     repo: name,
     name: shown?.name ?? name,
-    // Its own description, else the repository's as it is now.
-    description: (shown && !shown.descriptionInherited ? shown.description : null) ?? found.value.description,
+    // Only projects have descriptions; a private project keeps its own to itself.
+    description: shown?.description ?? null,
     issues: counts?.ok ? counts.value.issues : 0,
     pulls: counts?.ok ? counts.value.pulls : 0,
   };

@@ -706,7 +706,7 @@ mod tests {
 
     fn repo(id: &str, name: &str) -> Repo {
         serde_json::from_value(json!({
-            "id": id, "namespace": "acme", "name": name, "description": null, "isPrivate": false,
+            "id": id, "namespace": "acme", "name": name, "isPrivate": false,
             "ownerId": "wsp_1", "defaultBranch": "main", "forkOf": null, "createdAt": "2026-01-01T00:00:00Z",
         }))
         .unwrap()

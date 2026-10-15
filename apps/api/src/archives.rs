@@ -104,7 +104,7 @@ mod tests {
 
     fn link() -> ArchiveLink {
         let repo: g1t_contracts::repos::Repo = serde_json::from_value(json!({
-            "id": "repo_1", "namespace": "acme", "name": "web", "description": null, "isPrivate": true,
+            "id": "repo_1", "namespace": "acme", "name": "web", "isPrivate": true,
             "ownerId": "ws_1", "defaultBranch": "main", "forkOf": null, "createdAt": "2026-10-01T00:00:00.000Z",
         }))
         .unwrap();

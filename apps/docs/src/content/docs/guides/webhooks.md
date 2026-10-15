@@ -70,7 +70,7 @@ With these headers:
 | `repo.created` | A repository was made. A [fork](/concepts/forks/) has `data.parent_id`, the repository it was forked from. |
 | `repo.forked` | Someone forked this repository, or a pull request's working copy was made of it. `data.repo_id` is the new repository, `data.source_repo_id` this one, and `data.pull_id` the pull request, for a working copy only. |
 | `repo.detached` | A fork left its parent: an admin detached it, or its parent was made public or private. `data.repo_id` and `data.parent_id`. Its workflows stay off unless someone had turned them on. |
-| `repo.updated` | Its description, website, topics, protection or visibility changed. |
+| `repo.updated` | Its website, topics, protection or visibility changed. |
 | `repo.visibility_changed` | It was made public or private. |
 | `repo.renamed` | It was given a new name. Its old address redirects. |
 | `repo.transferred` | It moved to another workspace. |

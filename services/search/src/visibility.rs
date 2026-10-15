@@ -190,7 +190,6 @@ mod tests {
             id: id.into(),
             namespace: namespace.into(),
             name: "web".into(),
-            description: None,
             is_private: private,
             owner_id: "usr_0".into(),
             default_branch: "main".into(),

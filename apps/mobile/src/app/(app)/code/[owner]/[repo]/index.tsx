@@ -6,7 +6,7 @@ import { FlatList, RefreshControl, View } from "react-native";
 import { Checks, IssueIcon, PullIcon } from "@/components/code";
 import { Segments } from "@/components/segments";
 import { Empty, ErrorView, Loading, Row, Screen, Text } from "@/components/ui";
-import { type ApiIssue, type ApiPull, useIssues, usePulls, useRepo } from "@/lib/code";
+import { type ApiIssue, type ApiPull, useDescriptions, useIssues, usePulls } from "@/lib/code";
 import { ago } from "@/lib/time";
 import { space, useColors } from "@/theme";
 
@@ -18,7 +18,7 @@ export default function Repository() {
   const { owner, repo } = useLocalSearchParams<{ owner: string; repo: string }>();
   const [tab, setTab] = useState<Tab>("pulls");
   const [state, setState] = useState<State>("open");
-  const details = useRepo(owner, repo);
+  const description = useDescriptions(owner).data?.[`${owner}/${repo}`.toLowerCase()];
   const pulls = usePulls(owner, repo, state);
   const issues = useIssues(owner, repo, state);
   const list = tab === "pulls" ? pulls : issues;
@@ -30,7 +30,7 @@ export default function Repository() {
       <View style={{ padding: space.lg, gap: space.md }}>
         <Text size="small" tone="muted">
           {owner}/{repo}
-          {details.data?.description ? ` · ${details.data.description}` : ""}
+          {description ? ` · ${description}` : ""}
         </Text>
         <Segments
           value={tab}

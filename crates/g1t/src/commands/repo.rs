@@ -1,5 +1,7 @@
 //! `g1t repo`.
 
+use std::collections::{HashMap, HashSet};
+
 use serde_json::Value;
 
 use crate::cli::{
@@ -62,7 +64,7 @@ fn view(ctx: &Ctx, args: RepoViewArgs) -> Result<()> {
     let out = &ctx.out;
     let name = format!("{}/{}", s(&found, "namespace"), s(&found, "name"));
     println!("{}", out.bold(&name));
-    if let Some(d) = found["description"].as_str().filter(|d| !d.is_empty()) {
+    if let Some(d) = descriptions(&client, [s(&found, "namespace")]).remove(&name.to_lowercase()) {
         println!("{d}");
     }
     if let Some(parent) = parent_of(&found) {
@@ -176,6 +178,7 @@ fn list(ctx: &Ctx, args: RepoListArgs) -> Result<()> {
         return Ok(());
     }
     let out = &ctx.out;
+    let about = descriptions(&client, repos.iter().map(|r| s(r, "namespace")));
     let rows: Vec<Vec<Cell>> = repos
         .iter()
         .map(|r| {
@@ -189,7 +192,7 @@ fn list(ctx: &Ctx, args: RepoListArgs) -> Result<()> {
                     format!("{}/{}", s(r, "namespace"), s(r, "name")),
                     out.bold(&format!("{}/{}", s(r, "namespace"), s(r, "name"))),
                 ),
-                Cell::new(s(r, "description")),
+                Cell::new(about.get(&full_name(r)).map_or("", String::as_str)),
                 Cell::styled(visibility, out.dim(visibility)),
             ]
         })
@@ -207,7 +210,6 @@ fn fork(ctx: &Ctx, args: RepoForkArgs) -> Result<()> {
         .repo(&source)
         .field_opt("workspace", args.workspace)
         .field_opt("name", args.name)
-        .field_opt("description", args.description)
         .field("default_branch_only", !args.all_branches)
         .send()?;
     let fork = Repo {
@@ -251,6 +253,7 @@ fn forks(ctx: &Ctx, args: RepoForksArgs) -> Result<()> {
         return Ok(());
     }
     let out = &ctx.out;
+    let about = descriptions(&client, list.iter().map(|r| s(r, "namespace")));
     let rows: Vec<Vec<Cell>> = list
         .iter()
         .map(|r| {
@@ -259,7 +262,7 @@ fn forks(ctx: &Ctx, args: RepoForksArgs) -> Result<()> {
             let made = made.get(..10).unwrap_or(made);
             vec![
                 Cell::styled(name.clone(), out.bold(&name)),
-                Cell::new(s(r, "description")),
+                Cell::new(about.get(&full_name(r)).map_or("", String::as_str)),
                 Cell::styled(made, out.dim(made)),
             ]
         })
@@ -343,4 +346,32 @@ pub fn default_branch(client: &crate::client::Client, repo: &Repo) -> Result<Str
         .as_str()
         .map(str::to_owned)
         .ok_or_else(|| Error::failed(format!("{repo} has no default branch yet.")))
+}
+
+/// A repository as `owner/name`, lowercase, to look its description up by.
+fn full_name(repo: &Value) -> String {
+    format!("{}/{}", s(repo, "namespace"), s(repo, "name")).to_lowercase()
+}
+
+/// The descriptions of these workspaces' repositories, by lowercase
+/// `owner/name`. A repository has none of its own: its project's is shown.
+/// A workspace whose projects cannot be read adds none.
+fn descriptions<'a>(client: &Client, namespaces: impl IntoIterator<Item = &'a str>) -> HashMap<String, String> {
+    let mut seen = HashSet::new();
+    let mut found = HashMap::new();
+    for namespace in namespaces {
+        if namespace.is_empty() || !seen.insert(namespace.to_lowercase()) {
+            continue;
+        }
+        let Ok(projects) = client.op("list_projects").arg("workspace", namespace).send() else {
+            continue;
+        };
+        for project in super::items(projects, "projects") {
+            let description = s(&project, "description");
+            if project["primary"] == true && !description.is_empty() {
+                found.insert(s(&project, "repository").to_lowercase(), description.to_owned());
+            }
+        }
+    }
+    found
 }

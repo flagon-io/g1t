@@ -47,7 +47,9 @@ pub fn repository(repo: &Repo) -> Value {
         "html_url": format!("{SITE}/{full_name}"),
         "url": format!("{API}/repos/{full_name}"),
         "clone_url": format!("{SITE}/{full_name}.git"),
-        "description": repo.description,
+        // GitHub's field: a repository has no description of its own (its
+        // project does), so it is always null.
+        "description": Value::Null,
         "homepage": repo.website,
         "topics": repo.topics,
         "default_branch": repo.default_branch,
@@ -760,7 +762,7 @@ mod github_shapes {
 
     fn repo() -> Repo {
         serde_json::from_value(json!({
-            "id": "rep_01kpw0aaaaaaaaaaaaaaaaaaaa", "namespace": "acme", "name": "web", "description": null, "isPrivate": false,
+            "id": "rep_01kpw0aaaaaaaaaaaaaaaaaaaa", "namespace": "acme", "name": "web", "isPrivate": false,
             "ownerId": "wsp_1", "defaultBranch": "main", "forkOf": null, "createdAt": "2026-05-15T15:19:25Z"
         }))
         .unwrap()

@@ -14,7 +14,6 @@ pub struct Repo {
     /// The slug of the workspace that owns it: the first URL segment.
     pub namespace: String,
     pub name: String,
-    pub description: Option<String>,
     pub is_private: bool,
     pub owner_id: String,
     pub default_branch: String,
@@ -55,7 +54,7 @@ pub struct Repo {
     /// letters, digits and hyphens. See [`clean_topics`].
     #[serde(default)]
     pub topics: Vec<String>,
-    /// Its home page, an http(s) address, shown beside its description.
+    /// Its home page, an http(s) address, shown beside its project's description.
     /// See [`clean_website`].
     #[serde(default)]
     pub website: Option<String>,
@@ -98,7 +97,6 @@ pub struct DeletedRepo {
     pub id: String,
     pub namespace: String,
     pub name: String,
-    pub description: Option<String>,
     pub is_private: bool,
     /// RFC 3339.
     pub deleted_at: String,
@@ -358,8 +356,6 @@ pub struct CreateArgs {
     pub namespace: String,
     pub name: String,
     #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
     pub is_private: bool,
     /// The https address of a public git repository to copy the default
     /// branch of, such as `https://github.com/owner/repo`.
@@ -379,9 +375,6 @@ pub struct CreateArgs {
 pub struct UpdateArgs {
     pub actor: User,
     pub path: RepoPath,
-    /// An empty description clears it.
-    #[serde(default)]
-    pub description: Option<String>,
     #[serde(default)]
     pub is_private: Option<bool>,
     #[serde(default)]
@@ -408,10 +401,10 @@ pub struct UpdateArgs {
 /// repositories in, as a new repository whose `parent_id` is the source.
 /// Anyone who can read a public repository may fork it; a private one only
 /// when its admins allow forking, and its fork stays private. The fork
-/// gets the source's code and description, nothing else: no settings,
-/// secrets, rules, webhooks or deployments, and Actions off until turned
-/// on. Its stored size counts toward the workspace it goes in. Returns
-/// `Outcome<Repo>`.
+/// gets the source's code, nothing else: no settings, secrets, rules,
+/// webhooks or deployments, and Actions off until turned on. Its project
+/// starts with the source project's description. Its stored size counts
+/// toward the workspace it goes in. Returns `Outcome<Repo>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForkRepoArgs {
@@ -423,10 +416,6 @@ pub struct ForkRepoArgs {
     /// The fork's name; the source's when absent.
     #[serde(default)]
     pub name: Option<String>,
-    /// The fork's description; the source's when absent, cleared when
-    /// empty.
-    #[serde(default)]
-    pub description: Option<String>,
     /// Copy only the default branch (the default), or every branch and
     /// tag.
     #[serde(default = "yes")]

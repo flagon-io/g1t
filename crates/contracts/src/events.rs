@@ -685,7 +685,7 @@ impl WorkspaceRenamed {
     }
 }
 
-/// `repo.updated`: a repository's description, topics or visibility
+/// `repo.updated`: a repository's website, topics or visibility
 /// changed. `visibility_changed` says whether it went public or private,
 /// which `repo.visibility_changed` also announces on its own.
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -697,6 +697,22 @@ pub struct RepoUpdated {
     pub is_private: bool,
     #[serde(default)]
     pub visibility_changed: bool,
+}
+
+/// `project.updated`: a project's name or description changed. `primary`
+/// says whether it is its repository's own project, whose description
+/// search and lists of repositories show.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectUpdated {
+    pub project_id: String,
+    pub workspace: String,
+    pub slug: String,
+    pub repo_id: String,
+    #[serde(default)]
+    pub primary: bool,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// `repo.visibility_changed`: a repository went public or private.

@@ -1533,7 +1533,7 @@ impl Op {
             Op::ListRepos => "Repositories you can see, optionally filtered by a search query.",
             Op::GetRepo => "One repository's details.",
             Op::UpdateRepo => {
-                "Change a repository's description, website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its description, website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork)."
+                "Change a repository's website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork). A repository has no description: its project has, changed with update_project."
             }
             Op::RenameRepo => {
                 "Give a repository a new name in its workspace. Needs the Admin role. Everything stays with it: git data, issues, pull requests, workflow runs, deployments, secrets and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. The new name must be free in the workspace, including names held by recently deleted repositories."
@@ -1572,7 +1572,7 @@ impl Op {
                 "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, issues, pull requests, comments, labels, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
             }
             Op::ForkRepo => {
-                "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code and description come with it: the default branch, or every branch and tag with default_branch_only false. Its issues, pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; issues are off in the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from."
+                "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code comes with it: the default branch, or every branch and tag with default_branch_only false. Its project starts with the parent project's description. Its issues, pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; issues are off in the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from."
             }
             Op::ListForks => {
                 "A repository's forks that you can see, newest first, each with parent naming the repository. limit is at most 100, 30 when left out. Forks of its forks are listed on them."
@@ -1593,13 +1593,13 @@ impl Op {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
             }
             Op::Search => {
-                "Search all of g1t: repositories (name, description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind."
+                "Search all of g1t: repositories (name, their project's description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind."
             }
             Op::GetMergeQueue => {
                 "A repository's merge queue: the pull requests waiting to land, in order, each with the state it is being tested in (the default branch with the pull requests ahead of it landed in turn, each by its merge method) and how that went; then those that recently landed or left. With the queue on, merging a pull request adds it here."
             }
             Op::CreateRepo => {
-                "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere."
+                "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's."
             }
             Op::ListIssues => {
                 "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it. Filter by state, by a label's name, or by a milestone's number."
@@ -2281,7 +2281,6 @@ impl Op {
                         "description": "The slug of the workspace to fork it into, e.g. \"flagon-io\". Your personal workspace when left out.",
                     },
                     "name": { "type": "string", "description": "The fork's name; the repository's own when left out." },
-                    "description": { "type": "string", "description": "The fork's description; the repository's own when left out, none when empty." },
                     "default_branch_only": {
                         "type": "boolean",
                         "description": "Copy only the default branch (the default). false copies every branch and tag.",
@@ -2320,7 +2319,6 @@ impl Op {
                     "label": label_schema(),
                     "new_name": { "type": "string", "description": "Rename it, on everything that carries it." },
                     "color": { "type": "string", "description": "Six hex digits." },
-                    "description": { "type": "string", "description": "An empty string clears it." },
                 }),
                 &["repo", "label"],
             ),
@@ -2385,7 +2383,7 @@ impl Op {
                     },
                     "website": {
                         "type": "string",
-                        "description": "Its home page, an http or https address shown beside its description; https:// is added when no scheme is given. An empty string clears it.",
+                        "description": "Its home page, an http or https address shown beside its project's description; https:// is added when no scheme is given. An empty string clears it.",
                     },
                     "default_branch": {
                         "type": "string",
@@ -2603,7 +2601,7 @@ impl Op {
                         "description": "The workspace to create it in. May be left out if you belong to exactly one.",
                     },
                     "name": { "type": "string" },
-                    "description": { "type": "string" },
+                    "description": { "type": "string", "description": "What it is, in a line: the description of its project. A repository has none of its own." },
                     "private": { "type": "boolean" },
                     "import_url": {
                         "type": "string",
@@ -4511,7 +4509,6 @@ impl Op {
                         path: repo,
                         namespace,
                         name: optional_text(input, "name"),
-                        description: input["description"].as_str().map(str::to_owned),
                         default_branch_only: input["default_branch_only"].as_bool() != Some(false),
                         surface: Some(services.audit.surface),
                     },
@@ -4876,20 +4873,36 @@ impl Op {
                         _ => String::new(),
                     }
                 });
-                pass(
+                let created = pass(
                     repos,
                     "create",
                     &CreateArgs {
-                        owner,
+                        owner: owner.clone(),
                         namespace,
                         name: text(input, "name"),
-                        description: optional_text(input, "description"),
                         is_private: input["private"].as_bool() == Some(true),
                         import_url: optional_text(input, "import_url"),
                         import_token: None,
                     },
                 )
-                .await
+                .await?;
+                // A repository has no description: the one given is its project's.
+                if let (Outcome::Ok(repo), Some(description)) = (&created, optional_text(input, "description")) {
+                    let described: Result<Outcome<Value>> = call(
+                        &services.projects,
+                        "describe",
+                        &json!({ "actor": owner, "repoId": repo["id"], "description": description }),
+                    )
+                    .await;
+                    match described {
+                        Ok(Outcome::Ok(_)) => {}
+                        Ok(Outcome::Fail(failure)) => {
+                            worker::console_error!("created {} without its description: {}", repo["id"], failure.message);
+                        }
+                        Err(error) => worker::console_error!("created {} without its description: {error}", repo["id"]),
+                    }
+                }
+                Ok(created)
             }
             Op::ListIssues => {
                 pass(

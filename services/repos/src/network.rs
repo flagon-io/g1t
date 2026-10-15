@@ -8,8 +8,9 @@
 //! which is hidden, belongs to one pull request and goes with its source.
 //!
 //! What a fork gets is what a fork gets elsewhere: the code (the default
-//! branch, or every branch and tag) and the description. Settings, secrets
-//! and variables, rules, webhooks, environments, domains and deployments
+//! branch, or every branch and tag), and its project starts with the source
+//! project's description. Settings, secrets and variables, rules, webhooks,
+//! environments, domains and deployments
 //! stay behind, and the actions service keeps a fork's workflows off until
 //! someone turns them on.
 //!
@@ -192,10 +193,6 @@ impl<S: GitStore> Repos<S> {
             id: new_id("rep", now),
             namespace: path.namespace,
             name: path.name,
-            description: match a.description {
-                Some(text) => Some(text.trim().to_owned()).filter(|text| !text.is_empty()),
-                None => source.description.clone(),
-            },
             is_private: source.is_private,
             owner_id: a.actor.id.clone(),
             default_branch: source.default_branch.clone(),
@@ -224,7 +221,7 @@ impl<S: GitStore> Repos<S> {
                 Err(unplaced) => return Ok(Outcome::fail(FailureCode::Conflict, unplaced.message())),
             };
             self.registry.claim_store_key(&fork, placed.as_deref(), &default).await?;
-            self.store.create(&store_key(&fork), fork.description.as_deref(), &fork.default_branch).await?;
+            self.store.create(&store_key(&fork), None, &fork.default_branch).await?;
             let from = self.store.open(&store_key(&source)).await?.access(Scope::Read).await?;
             let to = self.store.open(&store_key(&fork)).await?.access(Scope::Write).await?;
             let copied = if a.default_branch_only {
@@ -572,7 +569,6 @@ mod tests {
             id: "rep_1".into(),
             namespace: "acme".into(),
             name: "rocket".into(),
-            description: None,
             is_private: private,
             owner_id: "usr_1".into(),
             default_branch: "main".into(),

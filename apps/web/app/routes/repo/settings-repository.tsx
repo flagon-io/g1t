@@ -193,7 +193,6 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
       return outcome(
         "details",
         await repos.update(user, path, {
-          description: text("description"),
           website: text("website"),
           // Typed with commas or spaces between them; the service tidies the rest.
           topics: text("topics").split(/[\s,]+/).filter(Boolean),
@@ -224,14 +223,22 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           <RenameForm repo={repo} owner={owner} archived={archived} busy={posting("rename")} result={actionData} />
         </Section>
 
-        <Section title="Details" about="What the repository is, for its page, search and Explore.">
+        <Section
+          title="Details"
+          about={
+            <>
+              Its website and topics, for its page, search and Explore. Its description is its project's, on{" "}
+              <Link to={`${base}/settings`} className="text-accent hover:underline">
+                General
+              </Link>
+              .
+            </>
+          }
+        >
           {/* Keyed to what is saved, so the fields show the topics as the service tidied them. */}
-          <Form method="post" key={`${repo.description ?? ""}|${repo.website ?? ""}|${(repo.topics ?? []).join(",")}`}>
+          <Form method="post" key={`${repo.website ?? ""}|${(repo.topics ?? []).join(",")}`}>
             <fieldset disabled={archived} className="min-w-0 space-y-3 disabled:cursor-not-allowed disabled:opacity-60">
               <input type="hidden" name="intent" value="details" />
-              <Field label="Description">
-                <Input name="description" maxLength={200} defaultValue={repo.description ?? ""} />
-              </Field>
               <Field label="Website" hint="Its home page, shown on its page. An http or https address.">
                 <Input name="website" type="url" maxLength={300} defaultValue={repo.website ?? ""} placeholder="https://" />
               </Field>
@@ -749,7 +756,7 @@ function VisibilityAction({ full, isPrivate, fork, error }: { full: string; isPr
         <>
           <li>Anyone can see its code, issues and pull requests, and clone it, without signing in.</li>
           <li>It shows in search and on Explore.</li>
-          <li>Links to it show a preview card with its name and description where they are shared.</li>
+          <li>Links to it show a preview card with its name and its project's description where they are shared.</li>
         </>
       ) : (
         <>

@@ -63,8 +63,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const set = choice && choice in KIND_CHOICE_SETS ? KIND_CHOICE_SETS[choice] : null;
   const saved = await projects.update(user, params.owner, params.repo, {
     name: String(form.get("name") ?? ""),
-    // Blank, or the reset, and it follows the repository's description again.
-    description: form.get("inherit") === "description" ? null : String(form.get("description") ?? ""),
+    // Blank clears it.
+    description: String(form.get("description") ?? ""),
     rootDir: String(form.get("rootDir") ?? ""),
     ...(set ?? {}),
     // Production's address is asked for beside Deploys itself, and kept otherwise.
@@ -101,36 +101,15 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
             <Field label="Name" hint={`Its address stays g1t.sh/${project.workspace}/${project.slug}.`}>
               <Input name="name" defaultValue={project.name} required maxLength={100} />
             </Field>
-            <div>
-              <Field
-                label="Description"
-                hint={
-                  project.descriptionInherited
-                    ? "Follows the repository's description. Write one to give the project its own."
-                    : "The project's own. Empty follows the repository's description."
-                }
-              >
-                <Input
-                  key={`${project.descriptionInherited}:${project.description ?? ""}`}
-                  name="description"
-                  defaultValue={project.descriptionInherited ? "" : (project.description ?? "")}
-                  maxLength={200}
-                  placeholder={(project.descriptionInherited && project.description) || "What it is, in a line"}
-                />
-              </Field>
-              {!project.descriptionInherited && (
-                <SubmitButton
-                  name="inherit"
-                  value="description"
-                  pending="Resetting…"
-                  variant="link"
-                  size="inline"
-                  className="mt-1.5 text-xs text-muted hover:text-fg"
-                >
-                  Use the repository's description
-                </SubmitButton>
-              )}
-            </div>
+            <Field label="Description" hint="What it is, in a line. Search, link previews and lists of repositories show it.">
+              <Input
+                key={project.description ?? ""}
+                name="description"
+                defaultValue={project.description ?? ""}
+                maxLength={200}
+                placeholder="What it is, in a line"
+              />
+            </Field>
           </div>
         </section>
 

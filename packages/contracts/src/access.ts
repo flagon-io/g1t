@@ -88,7 +88,7 @@ export const CAPABILITIES = [
   { capability: "manage_labels", role: "write", about: "Create, edit and delete labels and milestones" },
   { capability: "security_alerts", role: "write", about: "See and dismiss security alerts" },
   { capability: "run", role: "write", about: "Assign agents and start runs, plans and workflows" },
-  { capability: "manage_settings", role: "maintain", about: "Change the description, topics, and pull request and agent settings" },
+  { capability: "manage_settings", role: "maintain", about: "Change the topics, website, and pull request and agent settings" },
   { capability: "manage_protection", role: "admin", about: "Change branch protection, rulesets and guardrails" },
   { capability: "manage_security", role: "admin", about: "Change security settings, custom patterns and bypass reviews" },
   { capability: "manage_integrations", role: "admin", about: "Manage webhooks, secrets, variables, deployments and domains" },

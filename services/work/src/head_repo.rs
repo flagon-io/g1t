@@ -204,7 +204,7 @@ mod tests {
 
     fn repo(id: &str, namespace: &str) -> Repo {
         serde_json::from_value(serde_json::json!({
-            "id": id, "namespace": namespace, "name": "g1t", "description": null, "isPrivate": false,
+            "id": id, "namespace": namespace, "name": "g1t", "isPrivate": false,
             "ownerId": "usr_1", "defaultBranch": "main", "forkOf": null, "protected": false,
             "createdAt": "", "updatedAt": ""
         }))
