@@ -42,7 +42,8 @@ Everything here shows on g1t.sh as it happens, without reloading.
     title, who it acts for, its harness, its state, when it was last heard
     from and its branch. A session with no title is named by what its
     first prompt was for, else **Session on** its branch, else **Untitled
-    session**.
+    session**. A title that is only a tag, such as
+    `<pasted_content id="5c50">`, counts as no title.
   - **Merge queue**: what is waiting to land and what is being tested,
     as on the [Merge queue](/guides/merge-queue/#the-merge-queue-page) page.
   - **What happened**: the latest 30 coordination events, from claims to
@@ -177,8 +178,11 @@ goes:
 1. **It says what it is for.** Give it a `title` when you start it, or
    later with `session` `update`. The
    [Claude Code plugin](/guides/claude-code-plugin/#work-with-no-issue-yet)
-   titles each session from its first prompt that is not a slash command,
-   and never replaces a title the session already has.
+   titles each session from its first prompt that says what it is for,
+   from the words you typed: pasted text and image placeholders are left
+   out, and a slash command or a prompt that is only a paste leaves the
+   title to the next prompt. It never replaces a title the session
+   already has.
 2. **It shows where it works.** Attach its `branch` and, once there is
    one, its `pull`: **Live now** groups sessions on no issue by pull
    request, then by branch.
