@@ -191,6 +191,7 @@ pub enum Op {
     EditComment,
     DeleteComment,
     React,
+    UploadAttachment,
     ReviewPullRequest,
     ListPullRequests,
     GetPullRequest,
@@ -385,6 +386,21 @@ async fn call<A: Serialize, T: DeserializeOwned>(
 /// Calls a method that returns an `Outcome`, passing its value through.
 async fn pass<A: Serialize>(service: &Fetcher, method: &str, args: &A) -> Result<Outcome<Value>> {
     call(service, method, args).await
+}
+
+/// What `upload_attachment` answers: the attachment as the work service
+/// kept it, with its address on the usercontent origin and the Markdown
+/// that shows it.
+pub(crate) fn attachment_answer(usercontent: &str, attachment: &g1t_contracts::attachments::Attachment) -> Value {
+    let url = format!("{usercontent}{}", attachment.path);
+    json!({
+        "id": attachment.id,
+        "name": attachment.name,
+        "url": url,
+        "markdown": g1t_contracts::attachments::attachment_markdown(&attachment.name, &url),
+        "content_type": attachment.content_type,
+        "size": attachment.size,
+    })
 }
 
 /// Commands given the deprecated way, as `checks` or `acceptance_checks`.
@@ -812,7 +828,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 408] = [
+    pub const ALL: [Op; 409] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -887,6 +903,7 @@ impl Op {
         Op::EditComment,
         Op::DeleteComment,
         Op::React,
+        Op::UploadAttachment,
         Op::ReviewPullRequest,
         Op::ListPullRequests,
         Op::GetPullRequest,
@@ -1304,6 +1321,7 @@ impl Op {
             Op::EditComment => "edit_comment",
             Op::DeleteComment => "delete_comment",
             Op::React => "react",
+            Op::UploadAttachment => "upload_attachment",
             Op::ReviewPullRequest => "review_pull_request",
             Op::ListPullRequests => "list_pull_requests",
             Op::GetPullRequest => "get_pull_request",
@@ -1670,6 +1688,9 @@ impl Op {
             }
             Op::React => {
                 "React to an issue or a pull request with an emoji: to its description, or with comment_id to one of its comments. content is one of +1, -1, laugh, hooray, confused, heart, rocket and eyes; remove true takes your reaction back. Anyone who can read the repository may. Answers with the reactions it has now, each with its count and the usernames of who reacted (`g1t` for g1t, which reacts eyes to what it was asked to take on). get_issue and get_pull_request give each comment's reactions, and the description's as reactions."
+            }
+            Op::UploadAttachment => {
+                "Upload an image to show in an issue's or a pull request's description or in a comment: a screenshot of a preview, say, instead of committing it to the repository. data is the file base64-encoded, name its file name (the image's alt text), content_type optional (checked against the bytes). PNG, JPEG, GIF and WebP of at most 10 MB; a larger file is refused with 413 too_large, another type (SVG, PDF, anything its bytes do not show to be one of those) with 415 unsupported_type. Anyone who may comment on the repository may. Returns its id, url (on the usercontent origin, g1tusercontent.com on g1t.sh), name, size, content_type, and markdown (`![name](url)`) to paste into the body or summary of create_issue, update_issue, add_comment, create_pull_request or mark_pull_request_ready. Its address is its permission: anyone given it can see the image, even one from a private repository. Over MCP the file travels in the tool call, so keep it small (a few hundred KB); `g1t attach FILE` uploads one from disk and prints the markdown."
             }
             Op::ReviewPullRequest => {
                 "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened, or one g1t made for you (you are its requested_by)."
@@ -2743,6 +2764,26 @@ impl Op {
                     "remove": { "type": "boolean", "description": "Take your reaction back." },
                 })),
                 &["repo", "number", "content"],
+            ),
+            Op::UploadAttachment => object(
+                json!({
+                    "repo": repo_schema(),
+                    "name": {
+                        "type": "string",
+                        "description": "The file's name, such as preview.png: the image's alt text in the markdown.",
+                    },
+                    "content_type": {
+                        "type": "string",
+                        "enum": g1t_contracts::attachments::ATTACHMENT_TYPES,
+                        "description": "What the file is. Optional: it is read from the bytes, and refused when it says otherwise.",
+                    },
+                    "data": {
+                        "type": "string",
+                        "contentEncoding": "base64",
+                        "description": "The file, base64-encoded: PNG, JPEG, GIF or WebP of at most 10 MB.",
+                    },
+                }),
+                &["repo", "name", "data"],
             ),
             Op::ReviewPullRequest => object(
                 numbered(json!({
@@ -5329,6 +5370,23 @@ impl Op {
                     remove: input["remove"].as_bool().unwrap_or(false),
                 };
                 pass(work, "react", &asked).await
+            }
+            Op::UploadAttachment => {
+                let asked = g1t_contracts::attachments::UploadAttachmentArgs {
+                    actor: actor(),
+                    repo,
+                    name: text(input, "name"),
+                    content_type: optional_text(input, "content_type"),
+                    data: text(input, "data"),
+                };
+                if asked.data.trim().is_empty() {
+                    return failed(FailureCode::Invalid, "Give data: the file, base64-encoded.");
+                }
+                let kept: Outcome<g1t_contracts::attachments::Attachment> = call(work, "upload_attachment", &asked).await?;
+                match kept {
+                    Outcome::Ok(attachment) => ok(&attachment_answer(&services.addresses.usercontent, &attachment)),
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
             }
             Op::EditComment | Op::DeleteComment => {
                 let asked = CommentActionArgs {

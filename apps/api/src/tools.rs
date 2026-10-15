@@ -149,7 +149,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "issue",
         title: "Issues",
-        description: "Issues: what should change. Before working on one, `work` gives everything about it (definition of done, who is on it, its pull requests, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `update` with blocked_by sets the issues that must land first. Issues and pull requests share numbers; `comment` works on either.",
+        description: "Issues: what should change. Before working on one, `work` gives everything about it (definition of done, who is on it, its pull requests, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `update` with blocked_by sets the issues that must land first. Issues and pull requests share numbers; `comment` works on either, and `attach` uploads an image (a screenshot) whose markdown goes in either's body or a comment.",
         default_action: None,
         actions: &[
             a("list", Op::ListIssues, "Issues on a repository, newest first"),
@@ -166,6 +166,7 @@ pub const TOOLS: &[Tool] = &[
             a("edit_comment", Op::EditComment, "Change a comment's text: your own, or any with the Maintain role"),
             a("delete_comment", Op::DeleteComment, "Delete a comment: your own, or any with the Maintain role"),
             a("react", Op::React, "React with an emoji to it, or with comment_id to one of its comments; remove takes it back"),
+            a("attach", Op::UploadAttachment, "Upload an image (base64, PNG/JPEG/GIF/WebP, at most 10 MB; keep it small over MCP) for its markdown, to paste into a body, summary or comment"),
             a("import", Op::ImportIssue, "Open an issue from a Jira, Linear or Sentry item"),
             a("work", Op::Coordination(CoordinationOp::GetWork), "Everything to pick it up: done means, claims, sessions, pull requests, blockers, decisions, recent events"),
             a("claim", Op::Coordination(CoordinationOp::ClaimIssue), "Say you are working on it; lists who else is, and what it is blocked by"),

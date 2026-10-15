@@ -1150,6 +1150,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("close_issue", Scope::IssuesWrite),
     ("reopen_issue", Scope::IssuesWrite),
     ("add_comment", Scope::IssuesWrite),
+    // An image for a description or a comment: whoever may comment.
+    ("upload_attachment", Scope::IssuesWrite),
     ("edit_comment", Scope::IssuesWrite),
     ("delete_comment", Scope::IssuesWrite),
     ("react", Scope::IssuesWrite),

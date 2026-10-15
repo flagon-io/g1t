@@ -250,8 +250,9 @@ fn create(ctx: &Ctx, args: IssueCreateArgs) -> Result<()> {
     let body = prompt::body(
         args.body.body,
         args.body.body_file.as_deref(),
-        args.body.body_file.is_none() && prompt::interactive() && !ctx.out.structured(),
+        args.body.body_file.is_none() && args.attach.is_empty() && prompt::interactive() && !ctx.out.structured(),
     )?;
+    let body = super::attach::with_attachments(&client, &repo, body, &args.attach)?;
     let labels: Vec<Value> = args
         .label
         .iter()
@@ -310,9 +311,11 @@ pub fn comment_on(
     args: CommentArgs,
     url: &str,
 ) -> Result<()> {
-    let body = prompt::body(args.body.body, args.body.body_file.as_deref(), true)?
+    // Images alone make a comment; without any, the text is asked for.
+    let body = prompt::body(args.body.body, args.body.body_file.as_deref(), args.attach.is_empty())?;
+    let body = super::attach::with_attachments(client, repo, body, &args.attach)?
         .filter(|b| !b.trim().is_empty())
-        .ok_or_else(|| prompt::needed("The comment", "--body or --body-file"))?;
+        .ok_or_else(|| prompt::needed("The comment", "--body, --body-file or --attach"))?;
     let made = client
         .op("add_comment")
         .repo(repo)

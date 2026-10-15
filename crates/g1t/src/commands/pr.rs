@@ -344,12 +344,13 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
                 head.unwrap_or(default)
             )));
         };
+        let body = super::attach::with_attachments(&client, &repo, body_given, &args.attach)?;
         let made = client
             .op("create_pull_request")
             .repo(&repo)
             .field("issue", issue)
             .field_opt("title", args.title.clone())
-            .field_opt("body", body_given)
+            .field_opt("body", body)
             .field_opt("base", args.base.clone())
             .send()?;
         let pull = pull_of(&made);
@@ -410,9 +411,10 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         Some(t) => t,
         None => prompt::input("Title:", Some(&humanize(&head)))?,
     };
-    if body.is_none() && prompt::interactive() && !ctx.out.structured() {
+    if body.is_none() && args.attach.is_empty() && prompt::interactive() && !ctx.out.structured() {
         body = prompt::body(None, None, true)?;
     }
+    let body = super::attach::with_attachments(&client, &repo, body, &args.attach)?;
     let made = client
         .op("create_pull_request")
         .repo(&repo)
@@ -1009,6 +1011,8 @@ fn ready(ctx: &Ctx, args: PrReadyArgs) -> Result<()> {
             }
         }
     };
+    // The images go after the summary, whether given or the current description.
+    let summary = super::attach::with_attachments(&client, &repo, Some(summary), &args.attach)?.unwrap_or_default();
     let pull = client
         .op("mark_pull_request_ready")
         .repo(&repo)

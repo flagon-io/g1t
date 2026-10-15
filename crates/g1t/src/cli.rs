@@ -116,6 +116,8 @@ pub enum Command {
     Work(WorkCommand),
     /// Why a file or line is as it is: its commit, pull request, issue, decisions and sessions.
     Why(WhyArgs),
+    /// Upload images, such as a screenshot, to show in an issue, a pull request or a comment; prints their Markdown.
+    Attach(AttachArgs),
     /// Call any API operation or path, with your token.
     Api(ApiArgs),
     /// Open the repository, an issue or a pull request in the browser.
@@ -409,6 +411,9 @@ pub struct IssueCreateArgs {
     pub title: Option<String>,
     #[command(flatten)]
     pub body: BodyArgs,
+    /// An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
+    #[arg(long, value_name = "FILE")]
+    pub attach: Vec<PathBuf>,
     /// A label; repeat for more.
     #[arg(short, long)]
     pub label: Vec<String>,
@@ -429,6 +434,9 @@ pub struct CommentArgs {
     pub number: Option<u64>,
     #[command(flatten)]
     pub body: BodyArgs,
+    /// An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
+    #[arg(long, value_name = "FILE")]
+    pub attach: Vec<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -565,6 +573,9 @@ pub struct PrCreateArgs {
     pub title: Option<String>,
     #[command(flatten)]
     pub body: BodyArgs,
+    /// An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
+    #[arg(long, value_name = "FILE")]
+    pub attach: Vec<PathBuf>,
     /// The branch to merge into; the default branch when left out.
     #[arg(short = 'B', long)]
     pub base: Option<String>,
@@ -700,6 +711,10 @@ pub struct PrReadyArgs {
     /// What changed and why; it becomes the description. The current one when left out.
     #[arg(short, long)]
     pub summary: Option<String>,
+    /// An image to show after the summary (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
+    #[arg(long, value_name = "FILE")]
+    pub attach: Vec<PathBuf>,
+
     /// Turn it back into a draft.
     #[arg(long)]
     pub undo: bool,
@@ -1491,6 +1506,23 @@ pub fn parse_ttl(text: &str) -> Result<u64, String> {
         return Err("a claim lasts from 1 minute to 4 hours".to_owned());
     }
     Ok(minutes)
+}
+
+// --- attach -----------------------------------------------------------
+
+#[derive(Debug, Args)]
+#[command(after_help = "\
+Prints each image's Markdown, ![name](url), to paste into a description or a comment; --json prints
+{ id, name, url, markdown, content_type, size } (a list for several files). The image is served from
+g1t's usercontent address, and anyone given that address can see it, even from a private repository.
+--attach FILE on g1t issue create, g1t issue comment, g1t pr create, g1t pr comment and g1t pr ready
+uploads and adds the Markdown for you:
+  g1t attach preview.png
+  g1t pr comment --body 'The preview, after the fix:' --attach preview.png")]
+pub struct AttachArgs {
+    /// The files: PNG, JPEG, GIF or WebP, at most 10 MB each.
+    #[arg(required = true, value_name = "FILE")]
+    pub files: Vec<PathBuf>,
 }
 
 // --- why --------------------------------------------------------------

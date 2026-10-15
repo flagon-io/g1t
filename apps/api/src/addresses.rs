@@ -13,6 +13,7 @@ use worker::{Env, Url};
 pub const HOSTED_SITE: &str = "https://g1t.sh";
 pub const HOSTED_API: &str = "https://api.g1t.sh";
 pub const HOSTED_MCP: &str = "https://mcp.g1t.sh";
+pub const HOSTED_USERCONTENT: &str = "https://g1tusercontent.com";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Addresses {
@@ -22,6 +23,10 @@ pub struct Addresses {
     pub api: String,
     /// MCP_URL: the MCP server, and the OAuth protected resource.
     pub mcp: String,
+    /// USERCONTENT_URL: where attachments are served (apps/web/workers/usercontent.ts),
+    /// as the site reads it (apps/web/app/lib/addresses.ts): unset, g1tusercontent.com
+    /// for g1t.sh, and a path on the site (`SITE_URL/-/usercontent`) for any other.
+    pub usercontent: String,
 }
 
 impl Default for Addresses {
@@ -30,6 +35,7 @@ impl Default for Addresses {
             site: HOSTED_SITE.to_owned(),
             api: HOSTED_API.to_owned(),
             mcp: HOSTED_MCP.to_owned(),
+            usercontent: HOSTED_USERCONTENT.to_owned(),
         }
     }
 }
@@ -42,16 +48,29 @@ fn setting(value: Option<String>, default: &str) -> String {
 
 impl Addresses {
     pub fn from_settings(site: Option<String>, api: Option<String>, mcp: Option<String>) -> Addresses {
+        let site = setting(site, HOSTED_SITE);
+        let usercontent = if site == HOSTED_SITE { HOSTED_USERCONTENT.to_owned() } else { format!("{site}/-/usercontent") };
         Addresses {
-            site: setting(site, HOSTED_SITE),
             api: setting(api, HOSTED_API),
             mcp: setting(mcp, HOSTED_MCP),
+            usercontent,
+            site,
         }
+    }
+
+    /// With USERCONTENT_URL, when it is set: the site's own origin is
+    /// never the usercontent origin, a path on it is.
+    pub fn with_usercontent(mut self, usercontent: Option<String>) -> Addresses {
+        let given = setting(usercontent, "");
+        if !given.is_empty() {
+            self.usercontent = if given == self.site { format!("{}/-/usercontent", self.site) } else { given };
+        }
+        self
     }
 
     pub fn from_env(env: &Env) -> Addresses {
         let var = |name: &str| env.var(name).ok().map(|value| value.to_string());
-        Addresses::from_settings(var("SITE_URL"), var("API_URL"), var("MCP_URL"))
+        Addresses::from_settings(var("SITE_URL"), var("API_URL"), var("MCP_URL")).with_usercontent(var("USERCONTENT_URL"))
     }
 
     /// What a client is told when it must sign in first (RFC 9728).
@@ -107,6 +126,7 @@ mod tests {
             "Bearer resource_metadata=\"https://mcp.g1t.sh/.well-known/oauth-protected-resource\""
         );
         assert_eq!(hosted.git_remote("acme", "rocket"), "https://g1t.sh/acme/rocket.git");
+        assert_eq!(hosted.usercontent, "https://g1tusercontent.com");
         let on_mcp = Url::parse("https://mcp.g1t.sh/").unwrap();
         assert_eq!(hosted.mcp_path(&on_mcp).as_deref(), Some("/"));
         let on_api = Url::parse("https://api.g1t.sh/user").unwrap();
@@ -132,5 +152,11 @@ mod tests {
         assert_eq!(own.mcp_path(&url("http://localhost:8789/user")), None);
         assert_eq!(own.mcp_path(&url("http://127.0.0.1:8789/mcp")).as_deref(), Some("/"), "by path, whatever the host");
         assert_eq!(own.git_remote("acme", "rocket"), "http://localhost:8787/acme/rocket.git");
+        assert_eq!(own.usercontent, "http://localhost:8787/-/usercontent");
+        let files = own.clone().with_usercontent(Some("https://files.example.net/".into()));
+        assert_eq!(files.usercontent, "https://files.example.net");
+        let same = own.clone().with_usercontent(Some("http://localhost:8787".into()));
+        assert_eq!(same.usercontent, "http://localhost:8787/-/usercontent");
+        assert_eq!(own.clone().with_usercontent(Some(" ".into())), own);
     }
 }

@@ -116,6 +116,8 @@ pub fn system_prompt() -> String {
      and it stays open.\n\
      - A push to the default branch of a project with deployments on deploys production. When you push there, watch it with \
      `g1t deploy list` until it is live or failed; if it failed, read why, fix it and push again. Say where it is live in your report.\n\
+     - To show a screenshot in a pull request or a comment, upload it with `g1t attach FILE` and paste the Markdown it prints \
+     (or pass `--attach FILE` to `g1t pr create`, `g1t pr ready` or `g1t pr comment`). Never commit an image to the repository just to link it.\n\
      - Never write `@g1t` in what you post on g1t: that asks g1t for another session.\n\
      - When you finish, say in a few sentences what you did, what is left, and the pull request, if any. That is your report on g1t: it shows on the issue as this session's card, so never post it, \
      or anything else, as a comment."
@@ -1569,6 +1571,7 @@ mod tests {
         assert!(!body.to_string().contains("g1t_"));
         assert!(system_prompt().contains("never in a URL"));
         assert!(system_prompt().contains("g1t pr checks --watch --fail-fast"));
+        assert!(system_prompt().contains("g1t attach FILE"), "screenshots are attached, never committed");
     }
 
     #[test]

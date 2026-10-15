@@ -340,6 +340,28 @@ are in `GET /repos/{owner}/{name}/issues/{number}` and
 `GET /repos/{owner}/{name}/pulls/{number}`: each with its `content`,
 `count` and the `users` who reacted.
 
+## Images
+
+To show an image in a pull request's or an issue's description, or in a
+comment (a screenshot of a preview, say), upload it and paste the Markdown
+you get back. From a shell, `g1t attach preview.png` prints
+`![preview.png](https://g1tusercontent.com/attachments/…)`, and `--attach
+preview.png` on `g1t pr create`, `g1t pr ready`, `g1t pr comment`,
+`g1t issue create` and `g1t issue comment` adds it for you (see the
+[CLI guide](/guides/cli/#images-in-descriptions-and-comments)). Through the API it is
+`POST /repos/{owner}/{name}/attachments` with `name`, the file
+base64-encoded in `data`, and optionally `content_type`; it answers with
+`id`, `url`, `content_type`, `size` and `markdown`. On the MCP server it is
+the `issue` tool's `attach` action.
+
+An attachment is a PNG, JPEG, GIF or WebP image of at most 10 MB, judged by
+its bytes: a larger file is refused with `413` (`too_large`), anything else
+with `415` (`unsupported_type`). Anyone who may comment on the repository
+may upload one, with `issues:write`. It is served from g1t's usercontent
+address, never g1t.sh, and its address is its permission: anyone given the
+link can see the image, even one from a private repository. A purged
+repository's attachments are deleted with it.
+
 ## Commit comments
 
 You can comment on any commit: on the whole commit, under its changes on

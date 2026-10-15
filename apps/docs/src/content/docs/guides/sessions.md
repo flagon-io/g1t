@@ -295,7 +295,11 @@ Give `issue`, or `title` and `body` to open a new issue first, a `mode`
   context`, `g1t work claim`, `g1t pr create`, `g1t pr checks --watch`.
   It works on a branch and a pull request, except in a repository with no
   commits yet, where there is nothing to open one against: it pushes the
-  first version straight to the default branch.
+  first version straight to the default branch. To show a screenshot of its
+  preview in the pull request or a comment, it uploads the image with
+  [`g1t attach`](/guides/cli/#images-in-descriptions-and-comments) (or
+  `--attach` on `g1t pr create`, `g1t pr ready` and `g1t pr comment`) and
+  pastes the Markdown it prints, rather than committing the image.
   g1t's MCP server is attached too, for anything the CLI has no command
   for. Its sandbox reaches the internet as a CI runner does, and it can
   search and read the web (web search and web fetch), for a fact the work

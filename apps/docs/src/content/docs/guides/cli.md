@@ -234,6 +234,27 @@ g1t issue close 12 --reason not_planned
 `@me` is you. At a terminal, `g1t issue create` without `--title` asks for
 one and opens your editor for the body.
 
+### Images in descriptions and comments
+
+`g1t attach` uploads images, such as a screenshot of a preview, and prints the
+Markdown that shows each, to paste into a description or a comment:
+
+```sh
+g1t attach preview.png                  # prints ![preview.png](https://g1tusercontent.com/attachments/…)
+g1t attach before.png after.png --json  # id, name, url, markdown, content_type and size of each
+g1t pr comment 14 -b "The preview, after the fix:" --attach preview.png
+g1t pr ready --summary "Names the caller." --attach preview.png
+```
+
+`--attach FILE` (repeat it for more) on `g1t issue create`, `g1t issue comment`,
+`g1t pr create`, `g1t pr comment` and `g1t pr ready` uploads each file and adds
+its Markdown after the text. An attachment is a PNG, JPEG, GIF or WebP image of
+at most 10 MB, judged by its bytes. It is served from g1t's usercontent address,
+never from g1t.sh, and its address is its permission: anyone given it can see
+the image, even from a private repository. Never commit an image to the
+repository just to link it. Through the API it is
+[`upload_attachment`](/reference/api/issues/upload-attachment/).
+
 ### Pull requests
 
 From a branch with your commits on it:

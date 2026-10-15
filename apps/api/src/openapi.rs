@@ -360,6 +360,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::EditComment,
             Op::DeleteComment,
             Op::React,
+            Op::UploadAttachment,
             Op::ListIssueLabels,
             Op::AddIssueLabels,
             Op::SetIssueLabels,
@@ -738,6 +739,7 @@ fn title(op: Op) -> &'static str {
         Op::EditComment => "Edit a comment",
         Op::DeleteComment => "Delete a comment",
         Op::React => "React with an emoji",
+        Op::UploadAttachment => "Upload an attachment",
         Op::ReviewPullRequest => "Review a pull request",
         Op::ListPullRequests => "List pull requests",
         Op::GetPullRequest => "Get a pull request",
@@ -1107,6 +1109,10 @@ fn operation(route: &Route) -> Value {
     if op != Op::Whoami {
         responses.insert("422".into(), error_response("The input is not valid."));
     }
+    if op == Op::UploadAttachment {
+        responses.insert("413".into(), error_response("The file is over 10 MB (`too_large`)."));
+        responses.insert("415".into(), error_response("The file is not a PNG, JPEG, GIF or WebP image by its bytes, or not the content_type given (`unsupported_type`)."));
+    }
     // Public data can be read without a token; everything else needs one.
     let scope: Vec<&str> = scope_for(op.name()).map(|scope| scope.as_str()).into_iter().collect();
     let security = if op.needs_user() {
@@ -1282,7 +1288,7 @@ pub fn document() -> Value {
             })
         })
         .collect();
-    let codes = ["unauthenticated", "payment_required", "forbidden", "not_found", "conflict", "invalid"];
+    let codes = ["unauthenticated", "payment_required", "forbidden", "not_found", "conflict", "invalid", "too_large", "unsupported_type"];
     json!({
         "openapi": "3.1.0",
         "info": {

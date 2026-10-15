@@ -89,11 +89,11 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "issue create",
-        ops: &["create_issue", "update_issue"],
+        ops: &["create_issue", "update_issue", "upload_attachment"],
     },
     Mapping {
         command: "issue comment",
-        ops: &["add_comment"],
+        ops: &["add_comment", "upload_attachment"],
     },
     Mapping {
         command: "issue close",
@@ -121,6 +121,7 @@ pub static COMMANDS: &[Mapping] = &[
             "create_pull_request",
             "get_repo",
             "convert_pull_request_to_draft",
+            "upload_attachment",
         ],
     },
     Mapping {
@@ -157,11 +158,11 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "pr ready",
-        ops: &["mark_pull_request_ready", "convert_pull_request_to_draft"],
+        ops: &["mark_pull_request_ready", "convert_pull_request_to_draft", "upload_attachment"],
     },
     Mapping {
         command: "pr comment",
-        ops: &["add_comment"],
+        ops: &["add_comment", "upload_attachment"],
     },
     Mapping {
         command: "pr close",
@@ -297,6 +298,7 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "work events", ops: &["list_events"] },
     Mapping { command: "work dispatch", ops: &["start_agent_session"] },
     Mapping { command: "why", ops: &["why"] },
+    Mapping { command: "attach", ops: &["upload_attachment"] },
     // Every operation, by name: the table generated from the OpenAPI document.
     Mapping {
         command: "api",
@@ -422,9 +424,14 @@ mod tests {
             ("session", include_str!("commands/session.rs")),
             ("work", include_str!("commands/work.rs")),
             ("why", include_str!("commands/why.rs")),
+            ("attach", include_str!("commands/attach.rs")),
         ];
-        // What context.rs calls on every command's behalf.
-        let shared: BTreeSet<&str> = named_in(include_str!("context.rs"));
+        // What context.rs calls on every command's behalf, and what
+        // attach.rs uploads for --attach.
+        let shared: BTreeSet<&str> = named_in(include_str!("context.rs"))
+            .union(&named_in(include_str!("commands/attach.rs")))
+            .copied()
+            .collect();
         for (top, source) in sources {
             let named = named_in(source);
             let listed: BTreeSet<&str> = COMMANDS

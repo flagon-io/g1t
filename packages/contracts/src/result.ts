@@ -25,7 +25,11 @@ export type FailureCode =
   /** A sensitive change needs a recent sign-in or the password again. */
   | "reauth_required"
   /** Another host g1t depends on for this did not answer. */
-  | "unavailable";
+  | "unavailable"
+  /** What was sent is larger than this takes, such as an attachment over 10 MB. */
+  | "too_large"
+  /** What was sent is not of a type this takes, such as an attachment that is not an image. */
+  | "unsupported_type";
 
 export type Failure = { code: FailureCode; message: string };
 
@@ -53,6 +57,8 @@ const HTTP_STATUS: Record<FailureCode, number> = {
   oss_pool_empty: 402,
   reauth_required: 403,
   unavailable: 503,
+  too_large: 413,
+  unsupported_type: 415,
 };
 
 export function httpStatus(failure: Failure): number {
