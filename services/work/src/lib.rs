@@ -892,7 +892,7 @@ impl Work {
                 Some(session) => Some(session),
                 None => self.caller_session(&repo.id, a.number, &a.actor).await?,
             };
-            if !self.close_by_commit(&repo, a.number, &commit, &a.actor, session.as_deref()).await? {
+            if !self.close_by_commit(&repo, a.number, &commit, &a.actor, session.as_deref(), false).await? {
                 return Ok(Outcome::fail(FailureCode::Conflict, "This issue is already closed."));
             }
             return Ok(match self.issue(&repo.id, a.number).await? {

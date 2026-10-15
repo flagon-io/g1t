@@ -1901,7 +1901,8 @@ impl<S: GitStore> Repos<S> {
         commits: Option<u32>,
     ) -> Result<()> {
         let caused_by_job = actor.and_then(g1t_contracts::events::job_run_of).map(str::to_owned);
-        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, commits, None)
+        let agent = actor.and_then(acting_agent);
+        self.publish_git_push(repo, git_ref, before, after, actor.map(|user| user.id.clone()), false, caused_by_job, commits, None, agent)
             .await
     }
 
@@ -1927,6 +1928,7 @@ impl<S: GitStore> Repos<S> {
             caused_by_job,
             commits,
             a.pull,
+            acting_agent(&a.actor),
         )
         .await
     }
@@ -1945,6 +1947,7 @@ impl<S: GitStore> Repos<S> {
         caused_by_job: Option<String>,
         commits: Option<u32>,
         landed_pull: Option<u32>,
+        agent: Option<String>,
     ) -> Result<()> {
         self.publish(NewEvent {
             kind: "git.push",
@@ -1962,6 +1965,7 @@ impl<S: GitStore> Repos<S> {
                 caused_by_job,
                 commits,
                 landed_pull,
+                agent,
             },
         })
         .await
@@ -2386,6 +2390,7 @@ impl<S: GitStore> Repos<S> {
                     .as_ref()
                     .filter(|user| user.kind == PrincipalKind::User && g1t_contracts::events::job_run_of(user).is_none())
                     .map(|user| user.id.clone()),
+                agent: viewer.as_ref().and_then(acting_agent),
                 actor: viewer.map(|user: User| user.id),
                 unscanned: forwarded.unscanned,
             });
@@ -2543,6 +2548,7 @@ impl<S: GitStore> Repos<S> {
             unscanned,
             caused_by_job,
             credit,
+            agent,
         } = push;
         // What the push stored, for billing's storage meter. A failure only
         // leaves the count short.
@@ -2616,6 +2622,7 @@ impl<S: GitStore> Repos<S> {
                     caused_by_job.clone(),
                     commits,
                     None,
+                    agent.clone(),
                 )
                 .await?;
             }
@@ -2688,6 +2695,13 @@ struct PushDone {
     /// The person credited with the push's commits on their contribution
     /// calendar: whoever pushed, when that is a person (push_commits.rs).
     credit: Option<String>,
+    /// The agent that pushed for the person, when one did (GitPush::agent).
+    agent: Option<String>,
+}
+
+/// The agent a viewer acts as for a person: g1t, for a session it started.
+fn acting_agent(user: &User) -> Option<String> {
+    user.acting.as_deref().map(|acting| acting.agent.clone())
 }
 
 /// What a git request leaves for after its answer: its audit entry, with
@@ -3431,6 +3445,7 @@ mod push_about_tests {
             unscanned: false,
             caused_by_job: None,
             credit: None,
+            agent: None,
         }
     }
 

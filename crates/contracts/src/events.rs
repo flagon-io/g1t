@@ -138,6 +138,11 @@ pub struct GitPush {
     /// from the one whose merge is recorded by whoever landed it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub landed_pull: Option<u32>,
+    /// Set when an agent pushed on the person's behalf (a session g1t
+    /// started for them): the agent's name. The event's actor is still the
+    /// person; what the push closes is written as the agent's, for them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 /// A branch or tag deleted by a push. `before` is the commit it pointed to.
@@ -1406,6 +1411,7 @@ mod tests {
             caused_by_job: job_run_of(&actor).map(str::to_owned),
             commits: Some(3),
             landed_pull: None,
+            agent: None,
         };
         let push = serde_json::to_value(push).unwrap();
         assert_eq!(caused_by_job(&push), Some("run_9"));
@@ -1425,6 +1431,7 @@ mod tests {
             caused_by_job: None,
             commits: None,
             landed_pull: None,
+            agent: None,
         };
         let quiet = serde_json::to_value(push(false)).unwrap();
         assert!(quiet.get("unscanned").is_none());
