@@ -6,14 +6,16 @@
  * them too. Every notifications form posts here, the panel's included.
  */
 import { Bell, Bookmark, Check } from "lucide-react";
-import { Link, data, useNavigate } from "react-router";
+import { Link, data, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/notifications";
 import { InboxCard, InboxEmpty, InboxTabs, MarkAllRead } from "../components/inbox";
 import { Card } from "../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/cn";
-import { REASON_FILTERS, inboxReason, inboxTab, inboxView, markFromForm, severityOf, tabCount } from "../lib/inbox";
+import { REASON_FILTERS, inboxReason, inboxTab, markFromForm, severityOf, tabCount } from "../lib/inbox";
+import { movedView, notificationView, notificationsAddress } from "../lib/tab-paths";
+import { notFound } from "../lib/not-found.server";
 import { page } from "../lib/meta";
 import { inbox } from "../lib/services.server";
 import { assertSameOrigin, requireUser } from "../lib/session.server";
@@ -24,11 +26,16 @@ export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Notifications · g1t" });
 }
 
-export async function loader({ request, context }: Route.LoaderArgs) {
+export async function loader({ request, context, params }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const url = new URL(request.url);
+  // Saved and Done are paths: `?view=done`, the address before, is `/notifications/done`.
+  const moved = movedView(url);
+  if (moved) throw redirect(moved, 301);
+  const view = notificationView(params.view);
+  if (!view) throw notFound("page");
+  // What narrows a view (the severity tabs, why you were told, a page) stays in the query.
   const tab = inboxTab(url.searchParams.get("tab"));
-  const view = inboxView(url.searchParams.get("view"));
   const reason = inboxReason(url.searchParams.get("reason"));
   const before = url.searchParams.get("before");
   const [list, counts] = await Promise.all([
@@ -60,13 +67,8 @@ const VIEWS = [
 export default function NotificationsPage({ loaderData }: Route.ComponentProps) {
   const { tab, view, reason, before, items, next, counts } = loaderData;
   const navigate = useNavigate();
-  const address = (changes: Record<string, string | null>) => {
-    const params = new URLSearchParams();
-    const merged = { tab: tab === "all" ? null : tab, view: view === "inbox" ? null : view, reason, ...changes };
-    for (const [name, value] of Object.entries(merged)) if (value) params.set(name, value);
-    const query = params.toString();
-    return query ? `/notifications?${query}` : "/notifications";
-  };
+  const address = (changes: { view?: string | null; tab?: string | null; reason?: string | null; before?: string | null }) =>
+    notificationsAddress({ tab, view, reason, ...changes });
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">

@@ -1,5 +1,5 @@
 import { ChartColumn, Plus, Search, ShieldCheck } from "lucide-react";
-import { Form, Link, useSearchParams } from "react-router";
+import { Form, Link, redirect, useSearchParams } from "react-router";
 
 import type { Route } from "./+types/settings-rules";
 import { page } from "../../lib/meta";
@@ -11,6 +11,7 @@ import { Input } from "../../components/ui/input";
 import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { requireInsider } from "../../lib/access.server";
+import { movedTab, rulesAt, rulesPath } from "../../lib/tab-paths";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Rules · ${params.owner}/${params.repo} · g1t` });
@@ -18,10 +19,13 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
+  const url = new URL(request.url);
+  // Insights is a path: `?tab=insights`, the address before, is `/settings/rules/insights`.
+  const moved = movedTab(url, (asked) => rulesPath(`/${params.owner}/${params.repo}/settings/rules`, asked));
+  if (moved) throw redirect(moved, 301);
   // Admin, as for branch protection.
   const { repo, access } = await requireInsider(context, params, "manage_protection");
-  const url = new URL(request.url);
-  const tab = url.searchParams.get("tab") === "insights" ? "insights" : "rulesets";
+  const tab = rulesAt(url.pathname);
   const path = { namespace: params.owner, name: params.repo };
   const tagged = url.searchParams.get("tag");
   const branch = (tagged ?? url.searchParams.get("branch") ?? repo.defaultBranch).trim() || repo.defaultBranch;
@@ -57,10 +61,8 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
   const tabLink = (name: "rulesets" | "insights") => {
     const next = new URLSearchParams(search);
     next.delete("before");
-    if (name === "rulesets") next.delete("tab");
-    else next.set("tab", name);
     const query = next.toString();
-    return `${base}/settings/rules${query ? `?${query}` : ""}`;
+    return `${rulesPath(`${base}/settings/rules`, name)}${query ? `?${query}` : ""}`;
   };
   return (
     <div className="max-w-4xl">
@@ -140,7 +142,7 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
           </section>
         </div>
       ) : evaluations ? (
-        <InsightsView page={evaluations} olderHref={evaluations.next ? `${base}/settings/rules?tab=insights&before=${encodeURIComponent(evaluations.next)}` : null} />
+        <InsightsView page={evaluations} olderHref={evaluations.next ? `${base}/settings/rules/insights?before=${encodeURIComponent(evaluations.next)}` : null} />
       ) : (
         <p className="text-sm text-muted">Insights could not be read just now.</p>
       )}

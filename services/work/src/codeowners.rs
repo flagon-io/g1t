@@ -453,7 +453,7 @@ impl Work {
         // The pull request's own changes: its head may exist only in its fork.
         let target_url = checked
             .as_ref()
-            .map(|_| format!("/{}/{}/pull/{}?tab=changes", repo.namespace, repo.name, pull.number));
+            .map(|_| format!("/{}/{}/pull/{}/files", repo.namespace, repo.name, pull.number));
         self.set_commit_status(SetCommitStatusArgs {
             repo_id: repo.id.clone(),
             sha: head.to_owned(),
