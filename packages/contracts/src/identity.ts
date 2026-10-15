@@ -200,6 +200,24 @@ export type AdminWorkspace = {
   memberCount: number;
 };
 
+/** One count in `AdminGrowth`, with what is new in it. Mirrors `GrowthCount` in `crates/contracts/src/identity.rs`. */
+export type GrowthCount = {
+  total: number;
+  /** Created in the last 24 hours. */
+  day: number;
+  /** Created in the last 7 days. */
+  week: number;
+  /** Created in the 7 days before those. */
+  priorWeek: number;
+  /** The newest one's username or slug. */
+  newest: string | null;
+  /** RFC 3339. */
+  newestAt: string | null;
+};
+
+/** How many people and workspaces there are, and how many are new; deleted ones are not counted. */
+export type AdminGrowth = { people: GrowthCount; workspaces: GrowthCount };
+
 /** A member of a workspace, as staff see them. */
 export type AdminMember = { username: string; email: string | null; role: Role; /** RFC 3339. */ joined: string };
 
@@ -371,6 +389,8 @@ export const ADMIN_INVITES_LIMIT = 500;
  * a customer.
  */
 export interface IdentityAdminApi {
+  /** How many people and workspaces there are, and how many are new. */
+  growth(): Promise<AdminGrowth>;
   /** Every workspace, newest first, at most 500; `query` matches slug, name, or an owner's username or email. */
   workspaces(query?: string): Promise<AdminWorkspace[]>;
   /** One workspace with all its members, or null. */

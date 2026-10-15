@@ -68,6 +68,29 @@ pub(crate) fn like_pattern(query: Option<&str>) -> Option<String> {
     Some(pattern)
 }
 
+/// `admin_growth`'s one statement: for people and for workspaces, the
+/// total, how many are from the last day, week and the week before, and
+/// the newest. Deleted ones are left out.
+fn growth_sql() -> String {
+    const AGO: &str = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ";
+    let part = |prefix: &str, table: &str, name: &str| {
+        let live = format!("FROM {table} WHERE deleted_at IS NULL");
+        format!(
+            "(SELECT count(*) {live}) AS {prefix},
+             (SELECT count(*) {live} AND created_at >= {AGO}'-1 day')) AS {prefix}_day,
+             (SELECT count(*) {live} AND created_at >= {AGO}'-7 days')) AS {prefix}_week,
+             (SELECT count(*) {live} AND created_at >= {AGO}'-14 days') AND created_at < {AGO}'-7 days')) AS {prefix}_prior,
+             (SELECT {name} {live} ORDER BY created_at DESC LIMIT 1) AS {prefix}_newest,
+             (SELECT created_at {live} ORDER BY created_at DESC LIMIT 1) AS {prefix}_newest_at"
+        )
+    };
+    format!(
+        "SELECT {}, {}",
+        part("people", "users", "coalesce(display_username, username)"),
+        part("workspaces", "workspaces", "slug")
+    )
+}
+
 /// The workspaces, in their order, each with its owners.
 fn with_owners(rows: Vec<ListRow>, owners: Vec<OwnerRow>) -> Vec<AdminWorkspace> {
     let mut by_workspace: HashMap<String, Vec<AdminOwner>> = HashMap::new();
@@ -122,6 +145,48 @@ impl Identity {
             }
         }
         Ok(sent)
+    }
+
+    /// How many people and workspaces there are and how many are new, in
+    /// one round trip. Staff only: see the module's note.
+    pub async fn admin_growth(&self) -> Result<AdminGrowth> {
+        #[derive(Deserialize)]
+        struct Row {
+            people: u32,
+            people_day: u32,
+            people_week: u32,
+            people_prior: u32,
+            people_newest: Option<String>,
+            people_newest_at: Option<String>,
+            workspaces: u32,
+            workspaces_day: u32,
+            workspaces_week: u32,
+            workspaces_prior: u32,
+            workspaces_newest: Option<String>,
+            workspaces_newest_at: Option<String>,
+        }
+        // created_at is written as strftime('%Y-%m-%dT%H:%M:%fZ'), so the
+        // same format compares as text.
+        let sql = growth_sql();
+        let row = self.db.prepare(sql).first::<Row>(None).await?;
+        Ok(row.map_or_else(AdminGrowth::default, |r| AdminGrowth {
+            people: GrowthCount {
+                total: r.people,
+                day: r.people_day,
+                week: r.people_week,
+                prior_week: r.people_prior,
+                newest: r.people_newest,
+                newest_at: r.people_newest_at,
+            },
+            workspaces: GrowthCount {
+                total: r.workspaces,
+                day: r.workspaces_day,
+                week: r.workspaces_week,
+                prior_week: r.workspaces_prior,
+                newest: r.workspaces_newest,
+                newest_at: r.workspaces_newest_at,
+            },
+        }))
     }
 
     pub async fn admin_workspaces(&self, a: AdminWorkspacesArgs) -> Result<Vec<AdminWorkspace>> {

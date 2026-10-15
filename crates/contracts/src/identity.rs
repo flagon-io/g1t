@@ -992,6 +992,32 @@ pub struct AdminWorkspacesArgs {
 /// The most workspaces one `admin_workspaces` call returns.
 pub const ADMIN_WORKSPACES_LIMIT: usize = 500;
 
+/// `admin_growth` takes `{}` and returns `AdminGrowth`: how many people
+/// and workspaces there are, and how many are new. Deleted ones are not
+/// counted. Staff only.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AdminGrowth {
+    pub people: GrowthCount,
+    pub workspaces: GrowthCount,
+}
+
+/// One count for [`AdminGrowth`], with what is new in it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrowthCount {
+    pub total: u32,
+    /// Created in the last 24 hours.
+    pub day: u32,
+    /// Created in the last 7 days.
+    pub week: u32,
+    /// Created in the 7 days before those.
+    pub prior_week: u32,
+    /// The newest one's username or slug.
+    pub newest: Option<String>,
+    /// When the newest one was created. RFC 3339.
+    pub newest_at: Option<String>,
+}
+
 /// An owner of a workspace, as staff see them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AdminOwner {

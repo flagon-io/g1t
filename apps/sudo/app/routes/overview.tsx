@@ -1,18 +1,20 @@
-import { Activity, AlertOctagon, ArrowRight, CalendarClock, CreditCard, FileText, Gauge, HandHelping, TrendingUp } from "lucide-react";
+import type { GrowthCount } from "@g1t/contracts";
+import { Activity, AlertOctagon, ArrowRight, Building2, CalendarClock, CreditCard, FileText, Gauge, HandHelping, Minus, TrendingDown, TrendingUp, UserPlus } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, redirect } from "react-router";
 
 import type { Route } from "./+types/overview";
 import { KindBreakdown, MonthsChart } from "~/components/charts";
 import { SignalBadge, StaffName, StageBadge } from "~/components/sales";
-import { Avatar, Notice, PageHeader, Section, Stat } from "~/components/ui";
+import { Avatar, Badge, Notice, PageHeader, Section, Stat } from "~/components/ui";
 import { change, monthLong } from "~/lib/chart";
 import { givenLabel, givenTotal, moneyApart } from "~/lib/pricing";
 import { usd } from "~/lib/money";
-import { admin } from "~/lib/services.server";
+import { admin, identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { bySignalUrgency, reachOutHref } from "~/lib/signals";
 import { requireStaff } from "~/lib/staff";
+import { ago } from "~/lib/time";
 
 export const meta: Route.MetaFunction = () => [{ title: "Overview · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
@@ -22,9 +24,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { search, searchParams } = new URL(request.url);
   if (searchParams.has("q") || searchParams.has("show") || searchParams.has("page")) throw redirect(`/workspaces${search}`);
 
-  const [overview, signals] = await Promise.all([settle(admin.overview()), settle(admin.signals())]);
+  const [overview, signals, growth] = await Promise.all([settle(admin.overview()), settle(admin.signals()), settle(identity.growth())]);
   return {
     me: staff.email,
+    now: Date.now(),
+    growth: growth.ok ? growth.value : null,
+    growthError: growth.ok ? null : growth.error,
     overview: overview.ok ? overview.value : null,
     overviewError: overview.ok ? null : overview.error,
     signals: signals.ok ? bySignalUrgency(signals.value) : [],
@@ -34,7 +39,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export default function Overview({ loaderData }: Route.ComponentProps) {
-  const { me, overview, overviewError, signals, signalCount, signalsError } = loaderData;
+  const { me, now, growth: people, growthError, overview, overviewError, signals, signalCount, signalsError } = loaderData;
   const months = overview?.months ?? [];
   const current = months.find((month) => month.month === overview?.month) ?? months.at(-1) ?? null;
   const previous = current ? months[months.indexOf(current) - 1] ?? null : null;
@@ -52,6 +57,33 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
         title="Overview"
         description={overview ? <>The business in {monthLong(overview.month)}, so far, and who needs a word.</> : "The business at a glance."}
       />
+
+      {growthError ? (
+        <div className="mt-6">
+          <Notice tone="warn">Identity did not answer for sign-ups: {growthError}</Notice>
+        </div>
+      ) : (
+        people && (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <GrowthCard
+              to={people.people.newest ? `/users/${encodeURIComponent(people.people.newest)}` : "/invites"}
+              icon={<UserPlus size={16} />}
+              label="Customers"
+              noun="sign-up"
+              count={people.people}
+              now={now}
+            />
+            <GrowthCard
+              to="/workspaces"
+              icon={<Building2 size={16} />}
+              label="Workspaces"
+              noun="new workspace"
+              count={people.workspaces}
+              now={now}
+            />
+          </div>
+        )
+      )}
 
       {overviewError && (
         <div className="mt-6">
@@ -288,6 +320,50 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
         )}
       </Section>
     </main>
+  );
+}
+
+/**
+ * A headline count: the total, this week's new ones against the week
+ * before, and the newest, so a sign-up is seen the day it happens.
+ */
+function GrowthCard({ to, icon, label, noun, count, now }: { to: string; icon: ReactNode; label: string; noun: string; count: GrowthCount; now: number }) {
+  const delta = count.week - count.priorWeek;
+  const Trend = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus;
+  const trendColor = delta > 0 ? "text-success" : delta < 0 ? "text-warn" : "text-faint";
+  const fresh = count.day > 0;
+  return (
+    <Link to={to} className="group rounded-lg border border-line bg-surface px-5 py-4 transition-colors hover:border-line-strong">
+      <p className="flex items-center gap-1.5 text-sm text-muted">
+        <span className={fresh ? "text-accent" : "text-faint"}>{icon}</span>
+        {label}
+        {fresh && (
+          <span className="ml-1">
+            <Badge tone="lavender">{count.day} new today</Badge>
+          </span>
+        )}
+        <ArrowRight size={14} className="ml-auto text-faint opacity-0 transition-opacity group-hover:opacity-100" />
+      </p>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="tabular text-3xl font-semibold tracking-tight text-fg">{count.total.toLocaleString("en-US")}</span>
+        <span className={`tabular inline-flex items-center gap-1 text-sm font-medium ${trendColor}`}>
+          <Trend size={14} />
+          {count.week > 0 ? `+${count.week}` : "None"} this week
+        </span>
+        <span className="tabular text-xs text-faint">
+          {delta === 0 ? "same as" : `${delta > 0 ? "+" : "−"}${Math.abs(delta)} on`} the week before ({count.priorWeek})
+        </span>
+      </div>
+      <p className="mt-2 truncate text-xs text-faint">
+        {count.newest && count.newestAt ? (
+          <>
+            Newest {noun}: <span className="font-mono text-fg-soft">{count.newest}</span>, {ago(count.newestAt, now)}
+          </>
+        ) : (
+          `No ${noun}s yet`
+        )}
+      </p>
+    </Link>
   );
 }
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { localValue, utc } from "./incidents.ts";
-import { fromLocalInput, readZone, toLocalInput, when, zoneAbbr } from "./time.ts";
+import { ago, fromLocalInput, readZone, toLocalInput, when, zoneAbbr } from "./time.ts";
 
 const AT = new Date("2026-10-06T07:27:54.222Z");
 
@@ -39,4 +39,15 @@ test("form times are read and shown in the zone", () => {
   for (const at of ["2026-03-29T00:30:00.000Z", "2026-03-29T01:30:00.000Z", "2026-10-25T03:30:00.000Z"]) {
     assert.equal(fromLocalInput(toLocalInput(at, "Europe/Berlin"), "Europe/Berlin"), at);
   }
+});
+
+test("how long ago, briefly", () => {
+  const now = Date.parse("2026-10-15T12:00:00Z");
+  assert.equal(ago("2026-10-15T11:59:40Z", now), "just now");
+  assert.equal(ago("2026-10-15T11:48:00Z", now), "12 min ago");
+  assert.equal(ago("2026-10-15T09:00:00Z", now), "3 h ago");
+  assert.equal(ago("2026-10-14T11:00:00Z", now), "1 day ago");
+  assert.equal(ago("2026-10-10T12:00:00Z", now), "5 days ago");
+  assert.equal(ago("2026-08-01T12:00:00Z", now), "Aug 1, 2026");
+  assert.equal(ago("2026-10-15T12:05:00Z", now), "just now", "a clock a little ahead is not the future");
 });
