@@ -63,7 +63,10 @@ pub fn usable(app: &AppHandle) -> bool {
 /// system can close it (not on Windows, whose WebView2 has no way to).
 pub fn setting_changed(app: &AppHandle) {
     let on = on(app);
-    for item in ITEMS.lock().unwrap().iter() {
+    // Out of the lock first, as in tray::runner_changed: off the main thread
+    // set_enabled waits for the main thread.
+    let items = ITEMS.lock().unwrap().clone();
+    for item in &items {
         let _ = item.set_enabled(usable(app));
     }
     allow(app, on);

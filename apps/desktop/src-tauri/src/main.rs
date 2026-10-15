@@ -152,7 +152,7 @@ fn main() {
             tray::install(&handle)?;
             links::install(&handle);
             updates::schedule(handle.clone());
-            // The runner starts on a thread of its own, a few seconds after the window.
+            // The runner starts on a thread of its own, once the site's page is up, apart from the app (runner::supervise).
             runner::install(&handle);
             Ok(())
         })
