@@ -226,7 +226,11 @@ Webhooks get `pull.review_requested` with `data.code_owners` set to `true`.
 A pull request whose target has a CODEOWNERS file shows **Code owners**:
 which rule owns which changed files, each with its section, its owners,
 how many approvals it needs, who has approved, and who has asked for
-changes. A rule that is satisfied, or optional, is marked so.
+changes. A rule that is satisfied, or optional, is marked so. The box's
+badge says **Approval required** or **Approval not required**. Where it is
+not required, a rule nobody has approved yet says **No approval yet**
+rather than how many approvals it waits for, since merging does not wait
+on it; a code owner who asked for changes is still shown.
 
 When the repository requires code owners' approval, the merge box lists
 what is missing:
