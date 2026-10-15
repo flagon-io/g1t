@@ -187,7 +187,7 @@ bundle id `sh.g1t.app`; EAS makes the certificates.
 ### Releasing on g1t.sh/download (until Google Play)
 
 Google Play and the App Store wait on Flagon's D-U-N-S number. Until then
-the `preview` build, `g1t (beta)`, is what people install, from
+the `preview` build, `g1t (experimental)`, is what people install, from
 g1t.sh/download:
 
 ```sh

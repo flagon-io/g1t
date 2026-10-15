@@ -2,7 +2,7 @@
 # code before it is in Google Play. Nothing is published: the run's summary
 # links the build's page on expo.dev, which shows the QR code, and the APK.
 #
-# - `preview` (default): g1t (beta), sh.g1t.app.preview, a standalone signed
+# - `preview` (default): g1t (experimental), sh.g1t.app.preview, a standalone signed
 #   APK that needs no computer: what testers install, from the build page's
 #   QR code. Code changes reach it over the air (`eas update --channel
 #   preview`), so it is built again only when the native side changes; on
