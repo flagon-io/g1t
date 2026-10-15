@@ -122,7 +122,8 @@ pub fn system_prompt() -> String {
      - A push to the default branch of a project with deployments on deploys production. When you push there, watch it with \
      `g1t deploy list` until it is live or failed; if it failed, read why, fix it and push again. Say where it is live in your report.\n\
      - Never write `@g1t` in what you post on g1t: that asks g1t for another session.\n\
-     - When you finish, say in a few sentences what you did, what is left, and the pull request, if any. That is your report on g1t."
+     - When you finish, say in a few sentences what you did, what is left, and the pull request, if any. That is your report on g1t: it shows on the issue as this session's card, so never post it, \
+     or anything else, as a comment. Your token is the person's, and a comment would read as theirs."
         .to_owned()
 }
 
@@ -349,7 +350,7 @@ pub fn kickoff(k: &Kickoff) -> String {
                 "\n@{by} asked you in a comment there ({}):\n\n<comment>\n{}\n</comment>\n\n\
                  Do what they ask. If they are unhappy with what an earlier session did, fix it on the same branch and pull request \
                  rather than starting over: `g1t work context {}` shows the sessions and pull requests so far. \
-                 When you are done, answer them in that thread with what you changed.\n",
+                 Your report is your answer: it shows in that thread as this session's card.\n",
                 asked.url,
                 cut(comment, MAX_INSTRUCTION_CHARS),
                 k.issue
@@ -362,7 +363,7 @@ pub fn kickoff(k: &Kickoff) -> String {
     }
     text.push('\n');
     text.push_str(match (k.mode, &k.pull) {
-        (AgentMode::Plan, _) => "Plan it: work out how it should be done and post the plan as a comment on the issue. Change no code and open no pull request.",
+        (AgentMode::Plan, _) => "Plan it: work out how it should be done and give the plan as your report. Change no code and open no pull request.",
         (AgentMode::Implement, Some(_)) => "Push the change to the pull request's branch, get its checks passing, and keep it a draft until it is ready.",
         (AgentMode::Implement, None) => {
             "Implement it: make the change on a branch, open a draft pull request for the issue early, get its checks passing, and mark it ready. \

@@ -200,7 +200,7 @@ pub fn native() -> Vec<Native> {
                     "issue": { "type": "integer", "description": "The issue the work belongs to." },
                     "title": { "type": "string", "description": "A new issue's title, when there is no issue yet." },
                     "body": { "type": "string", "description": "A new issue's description: what to do and what done means." },
-                    "mode": { "type": "string", "enum": ["plan", "implement", "review"], "description": "plan: work out how and post the plan, no code. implement: make the change and open a pull request. review: review the issue's pull request." },
+                    "mode": { "type": "string", "enum": ["plan", "implement", "review"], "description": "plan: work out how and report the plan, no code. implement: make the change and open a pull request. review: review the issue's pull request." },
                     "instruction": { "type": "string", "description": "Anything the session should know beyond the issue." }
                 },
                 "required": ["repo", "mode"]

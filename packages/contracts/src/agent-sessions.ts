@@ -15,7 +15,7 @@ export type AgentMode = "plan" | "implement" | "review";
 
 export const AGENT_MODES: { mode: AgentMode; label: string; hint: string }[] = [
   { mode: "implement", label: "Implement", hint: "Make the change and open a pull request." },
-  { mode: "plan", label: "Plan", hint: "Work out how, and post the plan on the issue. No code." },
+  { mode: "plan", label: "Plan", hint: "Work out how, and report the plan. No code." },
   { mode: "review", label: "Review", hint: "Review the issue's pull request." },
 ];
 
