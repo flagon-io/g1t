@@ -901,12 +901,18 @@ pub(crate) fn subscription_fields(
         ("subscription_data[metadata][workspace]", workspace.to_owned()),
         ("subscription_data[metadata][feature]", feature.to_owned()),
     ];
-    fields.extend(page_line(monthly_cents, format!("g1t {title} for {workspace}"), None, true));
+    fields.extend(page_line(monthly_cents, plan_line_name(title, workspace), None, true));
     fields.extend(checkout_tax_fields(customer));
     if let Some(customer) = customer {
         fields.push(("customer", customer.to_owned()));
     }
     fields
+}
+
+/// What a plan is called on Stripe's page and the receipts: "g1t plan for
+/// acme", "g1t Deployments plan for acme"; never "g1t g1t".
+pub(crate) fn plan_line_name(title: &str, workspace: &str) -> String {
+    if title == "g1t" { format!("g1t plan for {workspace}") } else { format!("g1t {title} plan for {workspace}") }
 }
 
 /// A card check's page's fields: setup mode, nothing charged, so nothing
@@ -1196,6 +1202,8 @@ mod tax_mode_tests {
     fn untaxed_requests_lose_only_automatic_tax() {
         let body = form(&[("mode", "payment".to_owned()), ("automatic_tax[enabled]", "true".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]);
         assert_eq!(without_automatic_tax(&body), form(&[("mode", "payment".to_owned()), ("tax_id_collection[enabled]", "true".to_owned())]));
+        assert_eq!(plan_line_name("g1t", "acme"), "g1t plan for acme");
+        assert_eq!(plan_line_name("Deployments", "acme"), "g1t Deployments plan for acme");
         assert!(taxed_path("/checkout/sessions") && taxed_path("/invoices") && taxed_path("/subscriptions"));
         // An enrollment converting to the plan turns tax on by updating it.
         assert!(taxed_path("/subscriptions/sub_1") && taxed_path("/subscriptions/sub_1?expand[]=latest_invoice"));
