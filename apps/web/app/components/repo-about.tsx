@@ -27,6 +27,8 @@ import { Await, Link } from "react-router";
 import type { PackageSummary, Repo, RepoAbout } from "@g1t/contracts";
 
 import { compact, count, languageBar, licenseLabel } from "../lib/about";
+import { type Failed, isFailed } from "../lib/partial";
+import { Unavailable } from "./boundary";
 import { contributorPerson, profileHref, shownName } from "../lib/commit-people";
 import { CommitAvatar, CommitName } from "./commit-person";
 import { UserCard } from "./user-card";
@@ -194,7 +196,15 @@ function Releases({ base, about, canPush, tags }: { base: string; about: RepoAbo
   );
 }
 
-function Packages({ packages }: { packages: PackageSummary[] | null }) {
+function Packages({ packages: found }: { packages: PackageSummary[] | Failed | null }) {
+  if (isFailed(found)) {
+    return (
+      <Section title="Packages">
+        <Unavailable compact what={found.what} />
+      </Section>
+    );
+  }
+  const packages = found;
   return (
     <Section title="Packages" count={packages?.length}>
       {packages && packages.length > 0 ? (
@@ -356,7 +366,7 @@ function LoadedSections({
   base: string;
   first: RepoAbout;
   canPush: boolean;
-  packages: Promise<PackageSummary[] | null> | PackageSummary[] | null;
+  packages: Promise<PackageSummary[] | Failed | null> | PackageSummary[] | Failed | null;
   tags: Promise<number | null> | number | null;
   deployments: ReactNode;
 }) {
@@ -369,7 +379,7 @@ function LoadedSections({
         </Await>
       </Suspense>
       <Suspense fallback={<SectionSkeleton title="Packages" />}>
-        <Await resolve={packages} errorElement={<Packages packages={null} />}>
+        <Await resolve={packages} errorElement={<Packages packages={{ failed: true, what: "Packages" }} />}>
           {(found) => <Packages packages={found} />}
         </Await>
       </Suspense>
@@ -379,6 +389,15 @@ function LoadedSections({
         {about.pending ? <Reading /> : about.languages.length > 0 ? <LanguageBar languages={about.languages} /> : <p className="text-sm text-muted">No code to count</p>}
       </Section>
     </>
+  );
+}
+
+/** In place of the sections that come from the About, when it could not be read. */
+function AboutUnavailable({ what }: { what: string }) {
+  return (
+    <div className="border-t border-line pt-4">
+      <Unavailable compact what={what} />
+    </div>
   );
 }
 
@@ -392,12 +411,12 @@ function SectionSkeleton({ title }: { title: string }) {
 }
 
 export type AboutData = {
-  /** What the default branch says, stars and releases; null when it could not be read. */
-  about: Promise<RepoAbout | null> | RepoAbout | null;
+  /** What the default branch says, stars and releases; null when there is none to read, Failed when it could not be read. */
+  about: Promise<RepoAbout | Failed | null> | RepoAbout | Failed | null;
   /** How many watch it; null when it could not be read. */
   watchers: Promise<number | null> | number | null;
-  /** Packages published from it; null when they could not be read. */
-  packages: Promise<PackageSummary[] | null> | PackageSummary[] | null;
+  /** Packages published from it; null when there are none to read, Failed when they could not be read. */
+  packages: Promise<PackageSummary[] | Failed | null> | PackageSummary[] | Failed | null;
   /** How many tags it has; null when they could not be counted. */
   tags?: Promise<number | null> | number | null;
 };
@@ -433,13 +452,18 @@ export function RepoAboutPanel({
           )}
           <Suspense fallback={<FactsSkeleton />}>
             <Await resolve={data.about} errorElement={facts(null, null)}>
-              {(about) => (
-                <Suspense fallback={facts(about, null)}>
-                  <Await resolve={data.watchers} errorElement={facts(about, null)}>
-                    {(watchers) => facts(about, watchers)}
-                  </Await>
-                </Suspense>
-              )}
+              {(found) => {
+                // Without it, the lines it gives (license, stars) are left
+                // out: the sections below say it could not be loaded.
+                const about = isFailed(found) ? null : found;
+                return (
+                  <Suspense fallback={facts(about, null)}>
+                    <Await resolve={data.watchers} errorElement={facts(about, null)}>
+                      {(watchers) => facts(about, watchers)}
+                    </Await>
+                  </Suspense>
+                );
+              }}
             </Await>
           </Suspense>
         </ul>
@@ -458,9 +482,24 @@ export function RepoAboutPanel({
           </>
         }
       >
-        <Await resolve={data.about} errorElement={<>{deployments}</>}>
+        <Await
+          resolve={data.about}
+          errorElement={
+            <>
+              <AboutUnavailable what="Releases, contributors and languages" />
+              {deployments}
+            </>
+          }
+        >
           {(about) =>
-            about ? (
+            isFailed(about) ? (
+              // Releases, contributors and languages all come from it: one
+              // line in their place says so, and the rest still shows.
+              <>
+                <AboutUnavailable what={about.what} />
+                {deployments}
+              </>
+            ) : about ? (
               <LoadedSections base={base} first={about} canPush={canPush} packages={data.packages} tags={data.tags ?? null} deployments={deployments} />
             ) : (
               <>{deployments}</>

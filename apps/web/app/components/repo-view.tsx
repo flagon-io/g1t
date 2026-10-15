@@ -15,6 +15,8 @@ import { DeploymentsPanel } from "./deployments-panel";
 import { CodeLines } from "./code-lines";
 
 import { useAddresses } from "../lib/addresses";
+import { type Failed, isFailed } from "../lib/partial";
+import { Boundary, Unavailable } from "./boundary";
 import { isImagePath } from "../lib/usercontent";
 import { CloneBox } from "./clone-box";
 import { type ChecksSource, CommitChecksBadge } from "./commit-checks";
@@ -131,12 +133,15 @@ function BranchMenu({
   gitRef,
   path,
   branches,
+  failed = null,
   view = "tree",
 }: {
   base: string;
   gitRef: string;
   path: string;
   branches: Branch[];
+  /** The branch list could not be loaded: the menu says so under the one shown. */
+  failed?: Failed | null;
   /** Whether `path` is a folder or a file. */
   view?: "tree" | "blob";
 }) {
@@ -158,6 +163,11 @@ function BranchMenu({
             </Link>
           </DropdownMenuItem>
         ))}
+        {failed && (
+          <div className="px-2 py-1.5">
+            <Unavailable compact what={failed.what} />
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -226,22 +236,24 @@ function CodeBar({
   repo: { namespace: string; name: string };
   gitRef: string;
   path: string;
-  branches: Branch[] | null;
+  branches: Branch[] | Failed | null;
 }) {
   const full = `${repo.namespace}/${repo.name}`;
-  const list = branches && branches.length > 0 ? branches : [{ name: gitRef, hash: "" }];
+  const failed = isFailed(branches) ? branches : null;
+  const known = isFailed(branches) ? null : branches;
+  const list = known && known.length > 0 ? known : [{ name: gitRef, hash: "" }];
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-      <BranchMenu base={base} gitRef={gitRef} path={path} branches={list} />
+      <BranchMenu base={base} gitRef={gitRef} path={path} branches={list} failed={failed} />
       {path ? (
         <Breadcrumbs base={base} repo={repo.name} gitRef={gitRef} path={path} />
       ) : (
         <>
-          {branches && (
+          {known && (
             <Link to={`${base}/branches`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-accent">
               <GitBranch size={14} className="text-faint" />
-              <span className="font-medium text-fg">{branches.length}</span>
-              {branches.length === 1 ? "branch" : "branches"}
+              <span className="font-medium text-fg">{known.length}</span>
+              {known.length === 1 ? "branch" : "branches"}
             </Link>
           )}
           <Link to={`${base}/tags`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-accent">
@@ -341,7 +353,8 @@ export function TreeView({
   tree: Tree;
   /** Above the files of a fork: where it came from, Sync fork and Contribute (components/fork-bar.tsx). */
   fork?: ReactNode;
-  branches?: Branch[] | null;
+  /** For the branch menu; Failed when it could not be loaded. */
+  branches?: Branch[] | Failed | null;
   /** Each entry's last commit, streamed in after the list. */
   lastCommits?: Promise<FileCommits | null> | null;
   /** The latest commit's checks, streamed in. */
@@ -350,8 +363,8 @@ export function TreeView({
   about?: AboutData | null;
   /** Whether the viewer may push, for the About's "Create a new release". */
   canPush?: boolean;
-  /** The repository's environments, for the About's Deployments section. */
-  deployments?: DeploymentEnvironments | null;
+  /** The repository's environments, for the About's Deployments section; Failed when they could not be loaded. */
+  deployments?: DeploymentEnvironments | Failed | null;
 }) {
   const { repo, ref, path, head, entries, readme } = tree;
   const base = `/${repo.namespace}/${repo.name}`;
@@ -394,40 +407,54 @@ export function TreeView({
         </Card>
 
         {readme?.text != null && (
-          <Card asChild tone="plain" className="mt-6 scroll-mt-20 overflow-hidden">
-            <section id="readme">
-              <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
-                <BookOpen size={15} className="text-faint" />
-                {readme.name}
-              </h2>
-              <div className="p-4 sm:p-6">
-                {/\.(md|markdown)$/i.test(readme.name) ? (
-                  <Markdown
-                    source={readme.text}
-                    repo={{ namespace: repo.namespace, name: repo.name }}
-                    // Relative links in a README point into the repository,
-                    // and its pictures at the files of the commit shown.
-                    base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
-                    rawBase={`/${repo.namespace}/${repo.name}/raw/${head.hash}${path ? `/${encodePath(path)}` : ""}`}
-                  />
-                ) : (
-                  <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
-                )}
-              </div>
-            </section>
-          </Card>
+          // A README that fails to draw says so in its place; the files stay.
+          <Boundary what="The README">
+            <Card asChild tone="plain" className="mt-6 scroll-mt-20 overflow-hidden">
+              <section id="readme">
+                <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
+                  <BookOpen size={15} className="text-faint" />
+                  {readme.name}
+                </h2>
+                <div className="p-4 sm:p-6">
+                  {/\.(md|markdown)$/i.test(readme.name) ? (
+                    <Markdown
+                      source={readme.text}
+                      repo={{ namespace: repo.namespace, name: repo.name }}
+                      // Relative links in a README point into the repository,
+                      // and its pictures at the files of the commit shown.
+                      base={`/${repo.namespace}/${repo.name}/blob/${ref}${path ? `/${path}` : ""}`}
+                      rawBase={`/${repo.namespace}/${repo.name}/raw/${head.hash}${path ? `/${encodePath(path)}` : ""}`}
+                    />
+                  ) : (
+                    <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
+                  )}
+                </div>
+              </section>
+            </Card>
+          </Boundary>
         )}
       </div>
 
       {!path && (
-        <RepoAboutPanel
-          repo={repo}
-          gitRef={ref}
-          readme={Boolean(readme)}
-          data={about ?? { about: null, watchers: null, packages: null, tags: null }}
-          canPush={canPush}
-          deployments={<DeploymentsPanel base={base} summary={deployments} className="border-t border-line pt-4" />}
-        />
+        <Boundary what="About" fallback={<Unavailable compact what="About" />}>
+          <RepoAboutPanel
+            repo={repo}
+            gitRef={ref}
+            readme={Boolean(readme)}
+            data={about ?? { about: null, watchers: null, packages: null, tags: null }}
+            canPush={canPush}
+            deployments={
+              isFailed(deployments) ? (
+                <section className="border-t border-line pt-4">
+                  <h2 className="mb-2.5 text-sm font-semibold">Deployments</h2>
+                  <Unavailable compact what={deployments.what} />
+                </section>
+              ) : (
+                <DeploymentsPanel base={base} summary={deployments} className="border-t border-line pt-4" />
+              )
+            }
+          />
+        </Boundary>
       )}
     </div>
   );
@@ -441,8 +468,8 @@ export function BlobView({
   notice,
   marked,
 }: {
-  /** For the branch menu; it shows the current branch alone without them. */
-  branches?: Branch[] | null;
+  /** For the branch menu; it shows the current branch alone without them, and says so when they failed. */
+  branches?: Branch[] | Failed | null;
   /** Said above the file, such as what is wrong with it. */
   notice?: ReactNode;
   /** Lines to mark as having a problem, 1-based. */
@@ -478,7 +505,8 @@ export function BlobView({
           base={base}
           gitRef={ref}
           path={path}
-          branches={branches && branches.length > 0 ? branches : [{ name: ref, hash: "" }]}
+          branches={!isFailed(branches) && branches && branches.length > 0 ? branches : [{ name: ref, hash: "" }]}
+          failed={isFailed(branches) ? branches : null}
           view="blob"
         />
         <Breadcrumbs base={base} repo={repo.name} gitRef={ref} path={path} />

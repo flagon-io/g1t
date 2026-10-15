@@ -12,6 +12,8 @@ import { Card } from "../../components/ui/card";
 import { requireRepo } from "../../lib/access.server";
 import { ACTIVITY_TYPES, type ActivityLine, aboutBranch, activityLine } from "../../lib/about";
 import { page } from "../../lib/meta";
+import { isFailed, part } from "../../lib/partial";
+import { Unavailable } from "../../components/boundary";
 import { events, identity } from "../../lib/services.server";
 import { UserAvatar, UserCard } from "../../components/user-card";
 
@@ -28,9 +30,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // One branch's activity (the Branches page links here): each page of
   // events is read whole and only that branch's lines are kept.
   const only = url.searchParams.get("branch")?.trim() || null;
-  const found = await events
-    .list({ repoId: repo.id, types: [...ACTIVITY_TYPES] as EventType[], before, limit: PAGE })
-    .catch(() => []);
+  // The list says when it could not be loaded, rather than reading as no
+  // activity at all.
+  const read = await part(events.list({ repoId: repo.id, types: [...ACTIVITY_TYPES] as EventType[], before, limit: PAGE }), "Activity");
+  if (isFailed(read)) return { failed: read, lines: [], namesFailed: null, next: null, defaultBranch: repo.defaultBranch, branch: only };
+  const found = read;
   const lines = found.flatMap((event) => {
     const line = activityLine(event);
     return line && (!only || aboutBranch(line, only, repo.defaultBranch)) ? [{ id: event.id, time: event.time, actor: event.actor, line }] : [];
@@ -38,9 +42,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Who: people by their name now; g1t as itself, and as a workspace
   // acting under its own identity (lib/mission.ts), never named after it.
   const ids = [...new Set(lines.map((line) => line.actor).filter((actor): actor is string => !!actor && actor !== "g1t"))];
-  const names = ids.length > 0 ? await identity.usernames(ids.filter((id) => !id.startsWith("wsp_"))).catch(() => ({}) as Record<string, string>) : {};
+  const named = ids.length > 0 ? await part(identity.usernames(ids.filter((id) => !id.startsWith("wsp_"))), "Who did each") : {};
+  // Without them each line still shows, by "Someone", and the list says why.
+  const names: Record<string, string> = isFailed(named) ? {} : named;
   const g1t = (actor: string | null) => actor === "g1t" || !!actor?.startsWith("wsp_");
   return {
+    failed: null,
+    namesFailed: isFailed(named) ? named : null,
     lines: lines.map((line) => ({ ...line, who: g1t(line.actor) ? "g1t" : line.actor ? (names[line.actor] ?? null) : null })),
     next: found.length === PAGE ? found[found.length - 1].id : null,
     defaultBranch: repo.defaultBranch,
@@ -110,7 +118,7 @@ function describe(line: ActivityLine, base: string): { icon: ReactNode; text: Re
 }
 
 export default function ActivityPage({ loaderData, params }: Route.ComponentProps) {
-  const { lines, next, branch } = loaderData;
+  const { lines, next, branch, failed, namesFailed } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="space-y-4">
@@ -131,7 +139,10 @@ export default function ActivityPage({ loaderData, params }: Route.ComponentProp
           )}
         </p>
       </div>
-      {lines.length === 0 ? (
+      {namesFailed && <Unavailable compact what={namesFailed.what} />}
+      {failed ? (
+        <Unavailable what={failed.what} />
+      ) : lines.length === 0 ? (
         <EmptyState title={branch ? (next ? "Nothing on this branch here" : "No activity on this branch") : "No activity yet"}>
           {branch && next ? "Nothing in this stretch of the repository's activity was about it. Look further back." : "Pushes and merges show here as they happen."}
         </EmptyState>

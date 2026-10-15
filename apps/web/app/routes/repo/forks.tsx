@@ -7,6 +7,8 @@ import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
+import { isFailed, part } from "../../lib/partial";
+import { Unavailable } from "../../components/boundary";
 import { projects, repos } from "../../lib/services.server";
 import { unwrap } from "../../lib/session.server";
 
@@ -21,8 +23,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer, repo } = await requireRepo(context, params, "read");
   const found = unwrap(await repos.forks({ namespace: params.owner, name: params.repo }, viewer, LISTED));
   // A repository has no description: its project's is shown.
-  const about = await projects.descriptions(found.map((fork) => fork.id));
+  // The forks show without them, and the list says why they have none.
+  const described = await part(projects.descriptions(found.map((fork) => fork.id)), "Descriptions");
+  const about: Record<string, string> = isFailed(described) ? {} : described;
   return {
+    descriptionsFailed: isFailed(described) ? described : null,
     forks: found.map((fork) => ({
       namespace: fork.namespace,
       name: fork.name,
@@ -37,7 +42,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export default function Forks({ loaderData, params }: Route.ComponentProps) {
-  const { forks, forkable, signedIn } = loaderData;
+  const { forks, forkable, signedIn, descriptionsFailed } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div className="space-y-4">
@@ -56,6 +61,7 @@ export default function Forks({ loaderData, params }: Route.ComponentProps) {
           </ButtonLink>
         )}
       </div>
+      {descriptionsFailed && forks.length > 0 && <Unavailable compact what={descriptionsFailed.what} />}
       {forks.length === 0 ? (
         <EmptyState title="No forks yet">
           {forkable

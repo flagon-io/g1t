@@ -36,6 +36,8 @@ import { type Annotation, type EnvironmentReviewer, type Job, type JobSummary, t
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
+import { isFailed, part } from "../../lib/partial";
+import { Boundary, Unavailable } from "../../components/boundary";
 import { Duration, LogText, Notes, StatusIcon, duration, shortRef, standingWord, useJobLog, useNow } from "../../components/actions";
 import { Markdown } from "../../components/markdown";
 import { RunGraph } from "../../components/run-graph";
@@ -73,17 +75,20 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // An earlier attempt, when one is asked for.
   const asked = Number(new URL(request.url).searchParams.get("attempt") ?? "");
   const attempt = Number.isInteger(asked) && asked > 0 ? asked : undefined;
+  // The run is what the page is about; what it kept and its jobs' summaries
+  // are parts, each said in its own place when it cannot be read.
   const [detail, kept, summaries] = await Promise.all([
     actions.run(repo, viewer, params.id, attempt).then(unwrap),
-    listArtifacts(repo, viewer, params.id).catch(() => []),
-    actions
-      .summaries(repo, viewer, params.id, attempt)
-      .then((found) => (found.ok ? found.value : []))
-      .catch((): JobSummary[] => []),
+    part(listArtifacts(repo, viewer, params.id), "Artifacts"),
+    part(
+      actions.summaries(repo, viewer, params.id, attempt).then((found): JobSummary[] => (found.ok ? found.value : [])),
+      "Job summaries",
+    ),
   ]);
   // Artifacts an older runner kept in KV: asked for only once the service
   // has shown the viewer the run, and never while it is still going.
-  const artifacts = legacyArtifactsWorthAsking(detail.run) ? await withLegacyArtifacts(kept, params.id) : kept;
+  const artifacts =
+    !isFailed(kept) && legacyArtifactsWorthAsking(detail.run) ? await withLegacyArtifacts(kept, params.id) : kept;
   // Cancelling and re-running need Write.
   return {
     detail,
@@ -986,15 +991,19 @@ function RunCard({
           </div>
           <div className="min-w-0 space-y-1.5">
             <p className={label}>Artifacts</p>
-            <p className="font-medium">
-              {artifacts.length > 0 ? (
-                <a href="#artifacts" className="text-accent hover:underline">
-                  {artifacts.length}
-                </a>
-              ) : (
-                "—"
-              )}
-            </p>
+            {isFailed(artifacts) ? (
+              <Unavailable what="Artifacts" compact />
+            ) : (
+              <p className="font-medium">
+                {artifacts.length > 0 ? (
+                  <a href="#artifacts" className="text-accent hover:underline">
+                    {artifacts.length}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -1063,6 +1072,22 @@ function ArtifactsList({
   base: string;
   runId: string;
 }) {
+  if (isFailed(artifacts)) {
+    // Its heading stays, so the run's count links somewhere that says why.
+    return (
+      <Card asChild className="scroll-mt-20 p-4">
+        <section id="artifacts">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <Package size={14} className="text-muted" />
+            Artifacts
+          </h3>
+          <div className="mt-3">
+            <Unavailable what="Artifacts" compact />
+          </div>
+        </section>
+      </Card>
+    );
+  }
   if (artifacts.length === 0) return null;
   return (
     <Card asChild className="scroll-mt-20 p-4">
@@ -1132,7 +1157,7 @@ function RunSummary({
 }: {
   detail: RunData["detail"];
   artifacts: RunData["artifacts"];
-  summaries: JobSummary[];
+  summaries: RunData["summaries"];
   standing: string;
   cancelling: boolean;
   member: boolean;
@@ -1142,12 +1167,23 @@ function RunSummary({
 }) {
   const { run, jobs } = detail;
   const [namespace = "", name = ""] = base.slice(1).split("/");
+  // Each card keeps a failure to itself: the run's card and its logs stay.
   return (
     <section aria-label="Summary" className="min-w-0 space-y-4">
       <RunCard detail={detail} artifacts={artifacts} standing={standing} cancelling={cancelling} base={base} />
-      <RunGraph jobs={jobs} title={run.path.split("/").pop() || run.name} trigger={run.event} href={jobHref} />
-      <AnnotationsPanel jobs={jobs} jobHref={jobHref} />
-      <Summaries summaries={summaries} repo={{ namespace, name }} jobHref={jobHref} />
+      <Boundary what="The jobs' graph">
+        <RunGraph jobs={jobs} title={run.path.split("/").pop() || run.name} trigger={run.event} href={jobHref} />
+      </Boundary>
+      <Boundary what="Annotations">
+        <AnnotationsPanel jobs={jobs} jobHref={jobHref} />
+      </Boundary>
+      {isFailed(summaries) ? (
+        <Unavailable what="Job summaries" />
+      ) : (
+        <Boundary what="Job summaries">
+          <Summaries summaries={summaries} repo={{ namespace, name }} jobHref={jobHref} />
+        </Boundary>
+      )}
       <ArtifactsList artifacts={artifacts} member={member} busy={busy} base={base} runId={run.id} />
     </section>
   );

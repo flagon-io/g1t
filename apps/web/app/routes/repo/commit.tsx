@@ -28,6 +28,8 @@ import { showOneCommit } from "../../lib/commit-people.server";
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { accessTo } from "../../lib/access.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
   return { "Server-Timing": loaderHeaders.get("Server-Timing") ?? "" };
@@ -57,12 +59,15 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   }
   const started = Date.now();
   // Its comments, whether more may be added and the issues it closed: never
-  // cached, read beside the commit.
+  // cached, read beside the commit. Its comments and the issues it closed
+  // are parts of the page that say so when they fail; without the settings
+  // or the viewer's role, comments stay open and nobody moderates, which
+  // the service checks again when one is sent.
   const said = Promise.all([
-    work.commitComments(viewer, path, hash).catch(() => null),
+    part(work.commitComments(viewer, path, hash), "Comments"),
     work.getSettings(path, viewer).catch(() => null),
     accessTo(context, params).catch(() => null),
-    work.closedByCommit(path, hash, viewer).catch(() => null),
+    part(work.closedByCommit(path, hash, viewer), "The issues it closed"),
   ]);
   const found = unwrap(await repos.get(path, viewer));
   // The viewer may read the repository, and a commit never changes: after
@@ -95,14 +100,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       comparison: firstScreens(loaded.comparison),
       commit,
       // Streamed: the page shows the commit while this is worked out.
-      pull: pullForCommit(path, viewer, loaded.commit.hash),
+      pull: part(pullForCommit(path, viewer, loaded.commit.hash), "The pull request it came in"),
       // Never cached: checks report on a commit long after it was made.
       checks: commitChecksFor(path, viewer, [loaded.commit.hash]),
-      comments: comments?.ok ? comments.value : [],
+      comments: isFailed(comments) ? comments : comments.ok ? comments.value : [],
       // Off, the comments made stay readable and no more can be added.
       commentsOn: settings?.ok ? settings.value.allowCommitComments : true,
       // The issues its message closed (`Closes #12`) when it was pushed.
-      closed: closed?.ok ? closed.value : [],
+      closed: isFailed(closed) ? closed : closed.ok ? closed.value : [],
       viewer: viewer ? { username: viewer.username } : null,
       // Maintain and up edit and delete anyone's comments; everyone, their own.
       canModerate: access?.can.manage_settings ?? false,
@@ -200,7 +205,8 @@ function ClosedIssueRow({ base, issue }: { base: string; issue: ClosedIssue }) {
 
 export default function CommitPage({ loaderData, actionData, params }: Route.ComponentProps) {
   const { commit, pull, comparison, checks, comments, commentsOn, closed, viewer, canModerate } = loaderData;
-  const said = asComments(comments);
+  // Comments that could not be read count as none; the list says so in its place.
+  const said = asComments(isFailed(comments) ? [] : comments);
   const general = said.filter((comment) => !comment.path);
   const base = `/${params.owner}/${params.repo}`;
   const { subject, body, trailers } = parseCommitMessage(commit.message);
@@ -281,11 +287,25 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
               </div>
             }
           >
-            <Await resolve={pull}>{(pull) => (pull ? <MergedIn base={base} pull={pull} /> : null)}</Await>
+            <Await resolve={pull}>
+              {(pull) =>
+                isFailed(pull) ? (
+                  <div className="border-t border-line px-5 py-3">
+                    <Unavailable what={pull.what} compact />
+                  </div>
+                ) : pull ? (
+                  <MergedIn base={base} pull={pull} />
+                ) : null
+              }
+            </Await>
           </Suspense>
-          {closed.map((issue) => (
-            <ClosedIssueRow key={issue.number} base={base} issue={issue} />
-          ))}
+          {isFailed(closed) ? (
+            <div className="border-t border-line px-5 py-3">
+              <Unavailable what={closed.what} compact />
+            </div>
+          ) : (
+            closed.map((issue) => <ClosedIssueRow key={issue.number} base={base} issue={issue} />)
+          )}
         </section>
       </Card>
       <div className="mt-6">
@@ -307,6 +327,7 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
             </span>
           )}
         </h3>
+        {isFailed(comments) && <Unavailable what={comments.what} />}
         <CommentList
           comments={general}
           base={base}

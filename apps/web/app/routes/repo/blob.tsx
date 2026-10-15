@@ -10,6 +10,8 @@ import { highlightLines } from "../../lib/highlight.server";
 import { repos, work } from "../../lib/services.server";
 import { redirectIfBranchRenamed } from "../../lib/branch-redirect.server";
 import { getViewer, unwrap } from "../../lib/session.server";
+import { isFailed, part } from "../../lib/partial";
+import { Unavailable } from "../../components/boundary";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const tags = page(args, { title: `${params["*"]} · ${params.owner}/${params.repo} · g1t` });
@@ -25,13 +27,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const wantsBlame = new URL(request.url).searchParams.has("blame");
   const [found, list, checked] = await Promise.all([
     repos.blob(path, viewer, params.ref, file),
-    // For the branch menu; the page still shows without it.
-    repos.branches(path, viewer).catch(() => null),
-    // A CODEOWNERS file is checked as it is shown; the file shows without it.
-    isCodeownersPath(file) ? work.codeownersErrors(path, viewer, params.ref).catch(() => null) : null,
+    // For the branch menu; the page still shows without it, and the menu
+    // says when it could not be loaded.
+    part(repos.branches(path, viewer), "Branches"),
+    // A CODEOWNERS file is checked as it is shown; the file shows without
+    // it, saying it could not be checked rather than looking clean.
+    isCodeownersPath(file) ? part(work.codeownersErrors(path, viewer, params.ref), "This file's check") : null,
   ]);
-  const codeowners = checked?.ok ? checked.value : null;
-  const branches = list?.ok ? list.value : null;
+  const codeowners = isFailed(checked) ? checked : checked?.ok ? checked.value : null;
+  const branches = isFailed(list) ? list : list.ok ? list.value : null;
   // A branch that was renamed: the same file on its new name.
   if (!found.ok && found.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
   const blob = unwrap(found);
@@ -45,7 +49,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export default function Blob({ loaderData, params }: Route.ComponentProps) {
   const { codeowners, blob, html, wantsBlame } = loaderData;
   // Its errors' lines are marked, when they are this file's.
-  const own = codeowners != null && codeowners.path === blob.path;
+  const own = codeowners != null && !isFailed(codeowners) && codeowners.path === blob.path;
   const blame = useBlame(wantsBlame ? `/${params.owner}/${params.repo}/blame/${encodeURIComponent(blob.ref)}/${encodePath(blob.path)}` : null);
   return (
     <BlobView
@@ -54,8 +58,12 @@ export default function Blob({ loaderData, params }: Route.ComponentProps) {
       blame={blame === null ? null : typeof blame === "string" ? blame : { blame, lines: html }}
       branches={loaderData.branches}
       notice={
-        codeowners && (
-          <CodeownersFileErrors report={codeowners} path={blob.path} base={`/${params.owner}/${params.repo}`} />
+        isFailed(codeowners) ? (
+          <div className="mb-4">
+            <Unavailable compact what={codeowners.what} />
+          </div>
+        ) : (
+          codeowners && <CodeownersFileErrors report={codeowners} path={blob.path} base={`/${params.owner}/${params.repo}`} />
         )
       }
       marked={own ? codeowners.errors.map((error) => error.line).filter((line) => line > 0) : undefined}

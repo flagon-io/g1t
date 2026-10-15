@@ -19,6 +19,8 @@ import { useAddresses } from "../../lib/addresses";
 import { badgeMarkdown, badgeUrl } from "../../lib/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { computeNoteFor } from "../../lib/compute.server";
+import { isFailed, part } from "../../lib/partial";
+import { Unavailable } from "../../components/boundary";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { accessFor, refusal, repoFor } from "../../lib/access.server";
@@ -40,18 +42,21 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const member = can?.run ?? false;
   // Who may open the pull request that adds a starter workflow.
   const canPush = can?.push ?? false;
+  // The runs are what the page is about; the list of workflows beside them
+  // is a part, which says so in its place when it cannot be read.
   const [workflows, runs, computeNote] = await Promise.all([
-    actions.workflows(repo, viewer),
+    part(actions.workflows(repo, viewer), "Workflows"),
     actions.runs(repo, viewer, { workflow: selected, limit: 50 }),
     // Jobs run on g1t's machines as the workspace's plan allows, or from
     // the open-source pool on a public repository; members are told
-    // before a run is refused for it.
+    // before a run is refused for it. A note that cannot be read is left
+    // out: it only warns ahead of a refusal that says the same itself.
     member && found.ok
       ? computeNoteFor(params.owner, "workflow", !found.value.isPrivate).catch(() => null)
       : Promise.resolve(null),
   ]);
   return {
-    workflows: unwrap(workflows),
+    workflows: isFailed(workflows) ? workflows : unwrap(workflows),
     runs: runs.ok ? runs.value : [],
     member,
     canPush,
@@ -386,9 +391,12 @@ jobs:
       - run: npm test`;
 
 export default function Actions({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { workflows, runs, member, canPush, manage, computeNote, selected } = loaderData;
+  const { runs, member, canPush, manage, computeNote, selected } = loaderData;
   const [search] = useSearchParams();
   const base = `/${params.owner}/${params.repo}`;
+  // Workflows that could not be read leave the runs, with a note in the list's place.
+  const workflowsFailed = isFailed(loaderData.workflows);
+  const workflows = isFailed(loaderData.workflows) ? [] : loaderData.workflows;
   const workflow = workflows.find((w) => w.id === selected || w.path.endsWith(`/${selected}`)) ?? null;
   useLiveWhile(runs.some((run) => run.status !== "completed"));
   const started = actionData && "started" in actionData ? actionData.started : null;
@@ -417,7 +425,7 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
         </div>
       )}
 
-      {workflows.length === 0 ? (
+      {!workflowsFailed && workflows.length === 0 ? (
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="lg:col-span-2">
             <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canPush} />
@@ -442,6 +450,11 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
             >
               All workflows
             </Link>
+            {workflowsFailed && (
+              <div className="px-2.5 py-1.5">
+                <Unavailable what="Workflows" compact />
+              </div>
+            )}
             {workflows.map((w) => (
               <Link
                 key={w.id}

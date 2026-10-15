@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, ChevronRight, GitBranch, GitCommitHorizontal, Sparkles, Square } from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Sparkles, Square } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 
@@ -46,24 +46,38 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
-  const read = () => work.getWorkSession(path, params.id, viewer).catch(() => null);
+  const read = () => work.getWorkSession(path, params.id, viewer);
+  // The session is what the page is about: a service that fails fails the
+  // page (in the repository's frame), rather than calling it not found.
   let found = await read();
-  if (!found?.ok) throw notFound("page");
+  if (!found.ok) throw notFound("page");
   // A session on the workspace's Anthropic account is followed every
   // minute; while it goes, it is read now, through the top of its tree.
   const top = found.value.root ?? found.value.session;
   if (top.harness === MANAGED && top.state !== "ended") {
+    // Reading it fresh is a nicety: without it, the page shows it as last recorded.
     const synced = await agentSessions.sync(path, top.id, viewer).catch(() => null);
     if (synced?.ok) {
-      const again = await read();
+      const again = await read().catch(() => null);
       if (again?.ok) found = again;
     }
   }
   const { session } = found.value;
+  // Where it opens on the Claude Console, which shows everything it was
+  // asked and every tool's output: told to whoever started it, nobody else
+  // (the integrations service checks that too). Without it, the page does without the link.
+  const consoleUrl =
+    viewer && viewer.id === top.actor.id && top.harness === MANAGED
+      ? await agentSessions
+          .link(viewer, path, top.id)
+          .then((linked) => (linked.ok ? linked.value : null))
+          .catch(() => null)
+      : null;
   return {
     ...found.value,
     // Only whoever started it stops it, and only the top of the tree.
     canStop: viewer?.id === session.actor.id && session.harness === MANAGED && session.state !== "ended" && !session.parentId,
+    consoleUrl,
   };
 }
 
@@ -253,7 +267,7 @@ function SubagentTree({ nodes, base, touched, now }: { nodes: SessionNode[]; bas
 
 /** One harness session: who ran it, where, what it worked on, its subagents, what it touched and what it recorded. */
 export default function WorkSessionPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop } = loaderData;
+  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop, consoleUrl, limited } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const now = Date.now();
   // Any session, claim or overlap in the repository: a change names no session.
@@ -320,6 +334,14 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
               Stop
             </SubmitButton>
           </Form>
+        )}
+        {consoleUrl && (
+          <Button asChild variant="outline" size="xs">
+            <a href={consoleUrl} target="_blank" rel="noreferrer">
+              <ExternalLink size={12} />
+              Open in Claude Console
+            </a>
+          </Button>
         )}
       </div>
 
@@ -462,8 +484,12 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
           <CoordinationFeed lines={pendingLines(updates)} base={base} />
         </Section>
       )}
-      <Section title="What it recorded" aside={`${entries.length} entries, ${tools} tool calls`}>
-        {entries.length === 0 ? (
+      <Section title="What it recorded" aside={limited ? undefined : `${entries.length} entries, ${tools} tool calls`}>
+        {limited ? (
+          <EmptyState title="Shown to the workspace's members">
+            What a session records is the work of whoever runs it, as it happens. Members of {params.owner} see it; anyone else sees that it runs, who runs it and what it is tied to.
+          </EmptyState>
+        ) : entries.length === 0 ? (
           <EmptyState title="Nothing recorded yet">Prompts, messages, tool calls, skills and notes show here as the session records them.</EmptyState>
         ) : (
           <SessionEntries entries={entries} base={base} />

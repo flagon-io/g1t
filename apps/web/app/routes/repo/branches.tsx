@@ -26,6 +26,8 @@ import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { page } from "../../lib/meta";
+import { isFailed, orElse, part } from "../../lib/partial";
+import { Unavailable } from "../../components/boundary";
 import { deployments, repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 
@@ -49,17 +51,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { viewer, repo, access } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
   const query = url.searchParams.get("q")?.trim().toLowerCase() || null;
-  const soft = <T,>(promise: Promise<T>): Promise<T | null> => promise.catch(() => null);
   // Admins are told when the default branch has no rules at all.
   const canProtect = access.can.manage_protection && !repo.archivedAt;
   const [list, open, closed, deploys, rules] = await Promise.all([
     repos.branches(path, viewer),
-    soft(work.listPulls(path, viewer, "open")),
+    part(work.listPulls(path, viewer, "open"), "Open pull requests"),
     // Merged and closed ones, for branches with none open.
-    soft(work.listPulls(path, viewer, "closed")),
+    part(work.listPulls(path, viewer, "closed"), "Merged and closed pull requests"),
     // Previews are for people with a role here; everyone else sees none.
-    soft(deployments.list({ workspace: params.owner, slug: params.repo }, viewer)),
-    canProtect && !repo.protected ? soft(work.effectiveRules(path, repo.defaultBranch, viewer)) : Promise.resolve(null),
+    part(deployments.list({ workspace: params.owner, slug: params.repo }, viewer), "Previews"),
+    // Only a hint for admins: without the rules, it is not given.
+    canProtect && !repo.protected ? part(work.effectiveRules(path, repo.defaultBranch, viewer), "Rules").then((found) => orElse(found, null)) : Promise.resolve(null),
   ]);
   // The merge queue's own branches (g1t-queue/<entry>) are its working
   // copies, not anyone's branch to look at.
@@ -71,8 +73,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     {
       defaultBranch: repo.defaultBranch,
       branches: matching,
-      pulls: [...(open?.ok ? open.value : []), ...(closed?.ok ? closed.value : [])],
-      previews: deploys?.ok ? deploys.value.live.filter((app) => app.kind === "preview") : [],
+      pulls: [...(!isFailed(open) && open.ok ? open.value : []), ...(!isFailed(closed) && closed.ok ? closed.value : [])],
+      previews: !isFailed(deploys) && deploys.ok ? deploys.value.live.filter((app) => app.kind === "preview") : [],
     },
     BRANCHES_READ,
   );
@@ -101,6 +103,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     },
     // No rules hold for it, and it is not protected the older way.
     unprotected: rules?.ok === true && rules.value.rulesets.length === 0,
+    // What each row would show beside its branch but could not be loaded.
+    missing: [open, closed, deploys].filter(isFailed).map((failed) => failed.what),
   };
 }
 
@@ -137,7 +141,7 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
 }
 
 export default function Branches({ loaderData, params }: Route.ComponentProps) {
-  const { tab, query, main, branches, total, matched, unread, names, checks, username, now, can, unprotected } = loaderData;
+  const { tab, query, main, branches, total, matched, unread, names, checks, username, now, can, unprotected, missing } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const navigate = useNavigate();
   // New, moved and deleted branches show as they happen (lib/use-repo-live.ts).
@@ -228,6 +232,15 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
             Clear
           </Link>
         </p>
+      )}
+
+      {/* The branches show without them; each row's pull request or preview would be missing without a word. */}
+      {missing.length > 0 && (
+        <div className="space-y-1">
+          {missing.map((what) => (
+            <Unavailable key={what} compact what={what} />
+          ))}
+        </div>
       )}
 
       {tab === "overview" && (

@@ -41,6 +41,8 @@ import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 import { DecisionList, IntegrationFailure, IssueWorkPanel, StartSessionDialog, TimelineSession } from "../../components/coordination";
 import { Reactions } from "../../components/reactions";
+import { Boundary, Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 import { parseBlockedBy, resolutionOf } from "../../lib/coordination";
 
 
@@ -65,36 +67,42 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const number = Number(params.number);
   const access = accessTo(context, params);
+  // The issue and who may do what stay strict: without them there is no
+  // page. Everything beside it is a part (lib/partial.ts), which says it
+  // could not be loaded in its own place when its service fails.
   const [{ can }, found, labels, milestones, members, links, subscription, teams, coordination, ended, sessionTrees, agentSetup] = await Promise.all([
     access,
     work.getIssue(path, number, viewer),
-    work.listLabels(path, viewer),
+    part(work.listLabels(path, viewer), "Labels"),
     // Open ones to choose from, and the one it is in, with its progress.
-    work.listMilestones(path, viewer),
+    part(work.listMilestones(path, viewer), "Milestones"),
     // A member picks assignees from the workspace's people.
-    roleIn(viewer, params.owner) ? identity.listMembers(params.owner, viewer) : null,
+    roleIn(viewer, params.owner) ? part(identity.listMembers(params.owner, viewer), "The workspace's people") : null,
     // What it is tied to outside g1t. Shown only once the issue is known visible.
-    integrations.links(path, number).catch(() => []),
+    part(integrations.links(path, number), "Links from outside g1t"),
     // Whether the viewer hears of it, for the sidebar's Notifications.
     viewer
       ? repoFor(context, params).then((repo) =>
-          repo.ok ? inbox.subscription(viewer, { repoId: repo.value.id, number }).catch(() => null) : null,
+          repo.ok ? part(inbox.subscription(viewer, { repoId: repo.value.id, number }), "Notifications") : null,
         )
       : null,
-    // The teams a member can mention, for the comment box.
+    // The teams a member can mention, for the comment box: only a
+    // suggestion, so the box quietly does without them.
     roleIn(viewer, params.owner) ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
     // Who is on it, its sessions, what it waits on and its decisions
     // (services/work/src/coordination): the Work panel.
-    work.getWork(path, number, viewer).catch(() => null),
-    // Its claims that ended, shown muted under the active ones.
+    part(work.getWork(path, number, viewer), "Work"),
+    // Its claims that ended, shown muted under the active ones: history
+    // the panel can do without when it cannot be read.
     Promise.all(
       (["released", "expired", "handed_off"] as const).map((state) =>
         work.listClaims(path, viewer, { state, issue: number }).catch(() => null),
       ),
     ),
     // Every session tied to it in any way, with their subagents, for the Work panel's trees.
-    work.listWorkSessions(path, viewer, { issue: number, subagents: true }).catch(() => null),
-    // Whether a member can start a session on the workspace's Anthropic account.
+    part(work.listWorkSessions(path, viewer, { issue: number, subagents: true }), "Sessions"),
+    // Whether a member can start a session on the workspace's Anthropic
+    // account: the button is simply not offered when this cannot be read.
     roleIn(viewer, params.owner) ? agentSessions.setup(params.owner, viewer).catch(() => null) : null,
   ]);
   if (!found.ok) {
@@ -107,18 +115,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     ...found.value,
     viewer,
-    labels: labels.ok ? labels.value : [],
-    milestones: milestones.ok ? milestones.value : [],
+    labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
+    milestones: isFailed(milestones) ? milestones : milestones.ok ? milestones.value : [],
     links,
     subscription,
-    coordination: coordination?.ok ? coordination.value : null,
-    sessionTrees: sessionTrees?.ok ? sessionTrees.value : null,
+    coordination: isFailed(coordination) ? coordination : coordination.ok ? coordination.value : null,
+    sessionTrees: isFailed(sessionTrees) ? sessionTrees : sessionTrees.ok ? sessionTrees.value : null,
     // Only when it can start: the button is not shown otherwise.
     agentSetup: agentSetup?.ok && agentSetup.value.available ? agentSetup.value : null,
     endedClaims: ended
       .flatMap((claims) => (claims?.ok ? claims.value : []))
       .sort((a, b) => Date.parse(b.endedAt ?? b.createdAt) - Date.parse(a.endedAt ?? a.createdAt)),
-    members: members?.ok ? members.value.map((member) => member.username) : [],
+    members: isFailed(members) ? members : members?.ok ? members.value.map((member) => member.username) : [],
     handles: teams?.ok ? teams.value.map((team) => `@${team.workspace}/${team.slug}`) : [],
     // The author can close and reopen their own issue, and whoever g1t's
     // agent filed one for, that one; Triage and up, anyone's.
@@ -313,7 +321,10 @@ function PullRow({ pull, base }: { pull: Pull; base: string }) {
 }
 
 export default function IssuePage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { issue, pulls, comments, viewer, labels, members, canManage, can, coordination } = loaderData;
+  const { issue, pulls, comments, viewer, labels, members, canManage, can } = loaderData;
+  // Its Work, when it could be read; a failure says so in the Work panel's place.
+  const coordination = isFailed(loaderData.coordination) ? null : loaderData.coordination;
+  const sessionTrees = isFailed(loaderData.sessionTrees) ? null : loaderData.sessionTrees;
   // Follow pull requests at work without a manual reload.
   const running = pulls.some(
     (pull) =>
@@ -370,7 +381,8 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
             </span>
           </span>
           {issue.labels.map((name) => (
-            <LabelChip key={name} name={name} color={labels.find((label) => label.name === name)?.color} />
+            // Without the repository's labels, a chip still names its label, in the plain color.
+            <LabelChip key={name} name={name} color={isFailed(labels) ? undefined : labels.find((label) => label.name === name)?.color} />
           ))}
           {open && issue.agent && <Assignee agent={issue.agent} />}
         </div>
@@ -462,7 +474,14 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           <IntegrationFailure className="mt-4" failure={failure} base={base} fixed={resolution?.passed ?? resolution?.fix} />
         )}
 
-        {decisions.length > 0 && (
+        {isFailed(loaderData.coordination) ? (
+          <>
+            <h3 className="mt-10 font-semibold tracking-tight">Decisions</h3>
+            <div className="mt-3">
+              <Unavailable what="Its decisions" />
+            </div>
+          </>
+        ) : decisions.length > 0 && (
           <>
             <div className="mt-10 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <h3 className="font-semibold tracking-tight">Decisions</h3>
@@ -477,12 +496,13 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
         <h3 className="mt-10 font-semibold tracking-tight">Discussion</h3>
         <div className="mt-3">
           <div className="space-y-4">
+            {isFailed(loaderData.sessionTrees) && <Unavailable what="Its sessions" compact />}
             <CommentList
               comments={comments}
               base={base}
               viewerId={viewer?.id ?? null}
               viewerName={viewer?.username ?? null}
-              extra={(loaderData.sessionTrees ?? [])
+              extra={(sessionTrees ?? [])
                 .filter((session) => !session.parentId)
                 .map((session) => ({ id: session.id, at: session.startedAt, node: <TimelineSession session={session} base={base} /> }))}
               canModerate={loaderData.canModerate}
@@ -526,26 +546,42 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           [issue.milestone ? 1 : 0, "milestone", "milestones"],
         ])}
       >
-        {coordination && (
-          <IssueWorkPanel
-            work={coordination}
-            ended={loaderData.endedClaims}
-            base={base}
-            now={now}
-            canEdit={canManage}
-            error={actionData && "action" in actionData && actionData.action === "blocked-by" ? actionData.error : null}
-            sessions={loaderData.sessionTrees}
-            start={
-              loaderData.agentSetup && open ? (
-                <StartSessionDialog
-                  setup={loaderData.agentSetup}
-                  error={actionData && "action" in actionData && actionData.action === "start-session" ? actionData.error : null}
-                />
-              ) : undefined
-            }
-          />
+        {isFailed(loaderData.coordination) ? (
+          <section>
+            <h3 className="text-sm font-medium">Work</h3>
+            <div className="mt-2">
+              <Unavailable what="Who is on it" compact />
+            </div>
+          </section>
+        ) : coordination && (
+          <Boundary what="Work" fallback={<Unavailable what="Who is on it" compact />}>
+            <IssueWorkPanel
+              work={coordination}
+              ended={loaderData.endedClaims}
+              base={base}
+              now={now}
+              canEdit={canManage}
+              error={actionData && "action" in actionData && actionData.action === "blocked-by" ? actionData.error : null}
+              sessions={sessionTrees}
+              start={
+                loaderData.agentSetup && open ? (
+                  <StartSessionDialog
+                    setup={loaderData.agentSetup}
+                    error={actionData && "action" in actionData && actionData.action === "start-session" ? actionData.error : null}
+                  />
+                ) : undefined
+              }
+            />
+          </Boundary>
         )}
-        {loaderData.links.length > 0 && (
+        {isFailed(loaderData.links) ? (
+          <section>
+            <h3 className="text-sm font-medium">From outside g1t</h3>
+            <div className="mt-2">
+              <Unavailable what="Its links" compact />
+            </div>
+          </section>
+        ) : loaderData.links.length > 0 && (
           <section>
             <h3 className="text-sm font-medium">From outside g1t</h3>
             <ul className="mt-2 space-y-1.5 text-sm">
@@ -641,7 +677,11 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
                 </summary>
                 <Form method="post" className="mt-2 space-y-2" key={issue.assignees.join()}>
                   <input type="hidden" name="action" value="assign" />
-                  <PeoplePicker name="assignee" members={members} chosen={issue.assignees} />
+                  {isFailed(members) ? (
+                    <Unavailable what="The workspace's people" compact />
+                  ) : (
+                    <PeoplePicker name="assignee" members={members} chosen={issue.assignees} />
+                  )}
                   <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
                     Save assignees
                   </SubmitButton>
@@ -697,24 +737,47 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </Card>
         )}
 
-        <LabelsBox
-          labels={labels}
-          chosen={issue.labels}
-          canEdit={loaderData.canManage}
-          canCreate={can.manage_labels}
-          manageUrl={can.manage_labels ? `${base}/labels` : undefined}
-        />
-        <MilestoneBox
-          milestones={loaderData.milestones}
-          current={issue.milestone}
-          canEdit={can.triage}
-          base={base}
-        />
-
-        {viewer && (
-          <SubscriptionBox action={`${base}/notifications`} number={issue.number} kind="issue" subscription={loaderData.subscription} />
+        {isFailed(labels) ? (
+          <SideUnavailable heading="Labels" what="Labels" />
+        ) : (
+          <LabelsBox
+            labels={labels}
+            chosen={issue.labels}
+            canEdit={loaderData.canManage}
+            canCreate={can.manage_labels}
+            manageUrl={can.manage_labels ? `${base}/labels` : undefined}
+          />
         )}
+        {isFailed(loaderData.milestones) ? (
+          <SideUnavailable heading="Milestone" what="Milestones" />
+        ) : (
+          <MilestoneBox
+            milestones={loaderData.milestones}
+            current={issue.milestone}
+            canEdit={can.triage}
+            base={base}
+          />
+        )}
+
+        {viewer &&
+          (isFailed(loaderData.subscription) ? (
+            <SideUnavailable heading="Notifications" what="Your notification settings" />
+          ) : (
+            <SubscriptionBox action={`${base}/notifications`} number={issue.number} kind="issue" subscription={loaderData.subscription} />
+          ))}
       </DetailsDisclosure>
     </div>
+  );
+}
+
+/** A sidebar section, under its usual heading, that could not be loaded. */
+function SideUnavailable({ heading, what }: { heading: string; what: string }) {
+  return (
+    <section>
+      <h3 className="text-sm font-medium">{heading}</h3>
+      <div className="mt-2">
+        <Unavailable what={what} compact />
+      </div>
+    </section>
   );
 }

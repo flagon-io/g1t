@@ -101,6 +101,8 @@ import { DeployLink } from "../../components/deploy";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
+import { Boundary, Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 import { useRefreshWhile } from "../../lib/refresh";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
@@ -166,33 +168,37 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
           .catch(() => null)
       : Promise.resolve(null);
   const milestonesFound = work.listMilestones(path, viewer);
-  labelsFound.catch(() => null);
-  milestonesFound.catch(() => null);
+  // Parts of the sidebar: one that fails says so in its place.
+  const labelsPart = part(labelsFound, "Labels");
+  const milestonesPart = part(milestonesFound, "Milestones");
+  // The pull request, the viewer's role, the repository and its settings
+  // (what a merge asks for) decide the page, so they fail it. Every other
+  // read is a part of it, which says so in its own place when it fails.
   const [{ can }, found, repo, settings, members, session, deployed, subscription, teamList, decisions, harnessSessions] = await Promise.all([
     access,
     pullFound,
     repos.get(path, viewer),
     work.getSettings(path, viewer),
     // A member picks reviewers and assignees from the workspace's people.
-    member ? identity.listMembers(params.owner, viewer) : null,
-    tab === "session" ? work.readSession(path, number, viewer) : null,
+    member ? part(identity.listMembers(params.owner, viewer), "People") : null,
+    tab === "session" ? part(work.readSession(path, number, viewer), "What happened") : null,
     // Its preview, for people with a role here: beside the rest, not after.
-    access.then(({ insider }) => (insider ? deployments.list(ref, viewer).catch(() => null) : null)),
+    access.then(({ insider }) => (insider ? part(deployments.list(ref, viewer), "Its preview") : null)),
     // Whether the viewer hears of it, for the sidebar's Notifications.
     viewer
       ? repoFor(context, params).then((found) =>
-          found.ok ? inbox.subscription(viewer, { repoId: found.value.id, number }).catch(() => null) : null,
+          found.ok ? part(inbox.subscription(viewer, { repoId: found.value.id, number }), "Notifications") : null,
         )
       : null,
     // A member asks the workspace's teams to review, and mentions them.
-    member ? identity.listTeams(viewer, params.owner).catch(() => null) : null,
+    member ? part(identity.listTeams(viewer, params.owner), "Teams") : null,
     // Its decision records: what the merge queue found when it was combined
     // with others, and the reasons kept on it (decisions.rs).
-    tab !== "changes" ? work.listDecisions(path, number, viewer).catch(() => null) : null,
+    tab !== "changes" ? part(work.listDecisions(path, number, viewer), "Decisions") : null,
     // The harness sessions tied to it in any way: with their subagents for
     // the Session tab, and in the conversation where each started.
     tab === "session" || tab === "conversation"
-      ? work.listWorkSessions(path, viewer, { pull: number, subagents: tab === "session" }).catch(() => null)
+      ? part(work.listWorkSessions(path, viewer, { pull: number, subagents: tab === "session" }), "Sessions")
       : null,
   ]);
   if (!found.ok) {
@@ -228,19 +234,23 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Its first screens sent with their lines, and files with comments on
     // their lines; the rest load as the reader reaches them. What is sent is
     // highlighted here, so its colours do not pop in.
+    // The Changes tab's own part: when it fails, the pull request stays.
     tab === "changes"
-      ? repos
-          .compare(range.repoId, viewer, range.base, range.head, range.baseBranch, null, range.targetId)
-          .then(async (compared) =>
-            compared.ok
-              ? {
-                  ok: true as const,
-                  value: await highlightFirstFiles(
-                    firstScreens(compared.value, { eager: found.value.comments.flatMap((comment) => (comment.path ? [comment.path] : [])) }),
-                  ),
-                }
-              : compared,
-          )
+      ? part(
+          repos
+            .compare(range.repoId, viewer, range.base, range.head, range.baseBranch, null, range.targetId)
+            .then(async (compared) =>
+              compared.ok
+                ? {
+                    ok: true as const,
+                    value: await highlightFirstFiles(
+                      firstScreens(compared.value, { eager: found.value.comments.flatMap((comment) => (comment.path ? [comment.path] : [])) }),
+                    ),
+                  }
+                : compared,
+            ),
+          "The changes",
+        )
       : null,
     unchecked
       ? actions
@@ -255,7 +265,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     tab === "conversation" && pull.issue != null && (found.value.issue?.pullCount ?? 0) > 1
       ? attemptsFor(path, viewer, pull, found.value.comments).catch(() => [] as Attempt[])
       : null;
-  const [labels, milestones] = await Promise.all([labelsFound, milestonesFound]);
+  const [labels, milestones] = await Promise.all([labelsPart, milestonesPart]);
   // The merge box opens on what the settings allow, then takes the
   // service's answer, with its messages, when it arrives.
   const settledChoices = mergeChoicesOf(settings.ok ? settings.value : null, found.value.behind);
@@ -270,8 +280,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     ...found.value,
     // Every check on its head, as the commit's own list shows them: streamed.
     headChecks: commitChecksFor(path, viewer, [pull.headCommit]),
-    labels: labels.ok ? labels.value : [],
-    milestones: milestones.ok ? milestones.value : [],
+    labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
+    milestones: isFailed(milestones) ? milestones : milestones.ok ? milestones.value : [],
     // Labelling and milestones: Triage and up; its author, its labels.
     canTriage: can.triage,
     // Making labels needs Write; applying them, Triage.
@@ -281,11 +291,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     workflowJobs,
     attempts,
     tab,
-    session: session?.ok ? session.value : [],
-    decisions: decisions?.ok ? decisions.value : [],
-    harnessSessions: harnessSessions?.ok ? harnessSessions.value : [],
-    // An empty comparison if it could not be made.
-    comparison: comparison && (comparison.ok ? comparison.value : EMPTY_COMPARISON),
+    session: isFailed(session) ? session : session?.ok ? session.value : [],
+    decisions: isFailed(decisions) ? decisions : decisions?.ok ? decisions.value : [],
+    harnessSessions: isFailed(harnessSessions) ? harnessSessions : harnessSessions?.ok ? harnessSessions.value : [],
+    // An empty comparison if it could not be made; Failed if it could not be asked for.
+    comparison: comparison && (isFailed(comparison) ? comparison : comparison.ok ? comparison.value : EMPTY_COMPARISON),
     viewer,
     // Write and up can merge.
     canMerge: can.merge,
@@ -300,9 +310,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // decides), a branch from anyone who can push.
     canUpdate: pull.fork || pull.headRepo ? viewer?.id === workOwner(pull).id : can.push,
     subscription,
-    members: members?.ok ? members.value.map((person) => person.username) : [],
+    members: isFailed(members) ? members : members?.ok ? members.value.map((person) => person.username) : [],
     // `workspace/slug` and name of each team the viewer can see.
-    teams: teamList?.ok ? teamList.value.map((team) => ({ ref: `${team.workspace}/${team.slug}`, name: team.name })) : [],
+    teams: isFailed(teamList)
+      ? teamList
+      : teamList?.ok
+        ? teamList.value.map((team) => ({ ref: `${team.workspace}/${team.slug}`, name: team.name }))
+        : [],
     // What the rules of the branch it merges into ask, as they stack; the
     // default branch's settings where the rules are not known.
     requireUpToDate: found.value.rules ? found.value.rules.strict : protectedBase && settings.ok && settings.value.requireUpToDate,
@@ -330,7 +344,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Its branch, deleted or restored once it merged or closed: anyone who
     // can push to it (its author, for a branch of their fork).
     canChangeBranch: pull.headRepo ? viewerOwns : can.push,
-    ...deploymentOf(deployed?.ok ? deployed.value : null, number),
+    ...deploymentOf(!isFailed(deployed) && deployed?.ok ? deployed.value : null, number),
+    // Its preview could not be read: the conversation says so where it shows.
+    previewFailed: isFailed(deployed) ? deployed : null,
   };
 }
 
@@ -777,15 +793,16 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     requiredApprovals,
     canIgnoreChecks,
     canUpdate,
-    members,
-    teams,
+    members: membersPart,
+    teams: teamsPart,
     codeOwners,
     rules,
     tab,
-    session,
-    decisions,
-    harnessSessions,
+    session: sessionPart,
+    decisions: decisionsPart,
+    harnessSessions: harnessPart,
     comparison,
+    previewFailed,
     viewer,
     canMerge,
     canManage,
@@ -797,6 +814,13 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     canStopAutoMerge,
     canChangeBranch,
   } = loaderData;
+  // Parts that could not be read count as empty below; each place they show
+  // says so itself.
+  const members = isFailed(membersPart) ? [] : membersPart;
+  const teams = isFailed(teamsPart) ? [] : teamsPart;
+  const session = isFailed(sessionPart) ? [] : sessionPart;
+  const decisions = isFailed(decisionsPart) ? [] : decisionsPart;
+  const harnessSessions = isFailed(harnessPart) ? [] : harnessPart;
   // The merge box takes the service's choices in place when they arrive,
   // keeping what the viewer already picked or has open.
   const choices = useArrived(servedChoices, settledChoices);
@@ -968,7 +992,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             </span>
           </span>
           {(pull.labels ?? []).map((name) => (
-            <LabelChip key={name} name={name} color={loaderData.labels.find((label) => label.name === name)?.color} />
+            <LabelChip key={name} name={name} color={isFailed(loaderData.labels) ? undefined : loaderData.labels.find((label) => label.name === name)?.color} />
           ))}
           {opener.requestedBy && (
             <span className="text-xs">
@@ -1121,16 +1145,36 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           )}
           <div className="mt-5">
             {comparison ? (
-              <DiffView
-                comparison={comparison}
-                repo={base}
-                review={{
-                  comments: comments.filter((comment) => comment.path),
-                  canComment: Boolean(viewer),
-                }}
-              />
+              isFailed(comparison) ? (
+                <Unavailable what={comparison.what} />
+              ) : (
+                <DiffView
+                  comparison={comparison}
+                  repo={base}
+                  review={{
+                    comments: comments.filter((comment) => comment.path),
+                    canComment: Boolean(viewer),
+                  }}
+                />
+              )
             ) : tab === "session" ? (
               <div className="space-y-8">
+                {isFailed(harnessPart) && (
+                  <section aria-label="Harness sessions">
+                    <h3 className="text-sm font-medium">Sessions on it</h3>
+                    <div className="mt-3">
+                      <Unavailable what="Its sessions" />
+                    </div>
+                  </section>
+                )}
+                {isFailed(decisionsPart) && (
+                  <section aria-label="Decisions">
+                    <h3 className="text-sm font-medium">Decisions</h3>
+                    <div className="mt-3">
+                      <Unavailable what="Its decisions" />
+                    </div>
+                  </section>
+                )}
                 {harnessSessions.length > 0 && (
                   <section aria-label="Harness sessions">
                     <h3 className="text-sm font-medium">Sessions on it</h3>
@@ -1151,8 +1195,12 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </section>
                 )}
                 <section aria-label="What happened">
-                  {(harnessSessions.length > 0 || decisions.length > 0) && <h3 className="mb-3 text-sm font-medium">What happened</h3>}
-                  {session.length === 0 ? (
+                  {(harnessSessions.length > 0 || decisions.length > 0 || isFailed(harnessPart) || isFailed(decisionsPart)) && (
+                    <h3 className="mb-3 text-sm font-medium">What happened</h3>
+                  )}
+                  {isFailed(sessionPart) ? (
+                    <Unavailable what={sessionPart.what} />
+                  ) : session.length === 0 ? (
                     <EmptyState title="Nothing recorded yet">
                       A coding agent's prompts, reasoning and tool calls appear here once
                       it records them, through the g1t plugin, a harness session or record_session.
@@ -1234,8 +1282,18 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   canModerate={canModerate}
                   failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
                 />
+                {/* The sessions on it go between the comments; when they could not be read, it says so once. */}
+                {isFailed(harnessPart) && <Unavailable what="Its sessions" compact />}
 
-                {(preview || build) && <DeploymentCard preview={preview} build={build} base={base} />}
+                {previewFailed ? (
+                  <Unavailable what={previewFailed.what} />
+                ) : (
+                  (preview || build) && (
+                    <Boundary what="Its preview">
+                      <DeploymentCard preview={preview} build={build} base={base} />
+                    </Boundary>
+                  )
+                )}
 
                 {pull.status === "draft" && (
                   <StatusBox>
@@ -1289,6 +1347,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <div className="flex gap-3">
                     <span className="hidden w-8 shrink-0 sm:block" />
                     <IntegrationFailure className="min-w-0 grow" failure={failure} base={base} branch={defaultBranch} fixed={answered} />
+                  </div>
+                )}
+                {/* Without its decisions, whether the merge queue found it failing with others is not known. */}
+                {active && isFailed(decisionsPart) && (
+                  <div className="flex gap-3">
+                    <span className="hidden w-8 shrink-0 sm:block" />
+                    <div className="min-w-0 grow">
+                      <Unavailable what="What the merge queue found" compact />
+                    </div>
                   </div>
                 )}
 
@@ -1601,6 +1668,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       chosen={pull.reviewers}
                       placeholder="Other usernames or teams (acme/backend)"
                     />
+                    {/* Names can still be typed when the lists to pick from could not be read. */}
+                    {isFailed(membersPart) && <Unavailable what={membersPart.what} compact />}
+                    {isFailed(teamsPart) && <Unavailable what={teamsPart.what} compact />}
                     {teamChoices.length > 0 && (
                       <div className="space-y-1.5 border-t border-line pt-2">
                         <p className="text-xs text-faint">Teams</p>
@@ -1672,6 +1742,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <Form method="post" className="mt-2 space-y-2" key={pull.assignees.join()}>
                     <input type="hidden" name="action" value="assign" />
                     <PeoplePicker name="assignee" members={members} chosen={pull.assignees} />
+                    {isFailed(membersPart) && <Unavailable what={membersPart.what} compact />}
                     <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
                       Save assignees
                     </SubmitButton>
@@ -1682,19 +1753,31 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
             {actionData?.action === "assign" && <ErrorText>{actionData.error}</ErrorText>}
           </section>
 
-          <LabelsBox
-            labels={loaderData.labels}
-            chosen={pull.labels ?? []}
-            canEdit={canManage && active}
-            canCreate={loaderData.canMakeLabels}
-            manageUrl={loaderData.canMakeLabels ? `${base}/labels` : undefined}
-          />
-          <MilestoneBox
-            milestones={loaderData.milestones}
-            current={pull.milestone}
-            canEdit={loaderData.canTriage}
-            base={base}
-          />
+          {isFailed(loaderData.labels) ? (
+            <SidebarUnavailable title="Labels" what={loaderData.labels.what} />
+          ) : (
+            <Boundary what="Labels">
+              <LabelsBox
+                labels={loaderData.labels}
+                chosen={pull.labels ?? []}
+                canEdit={canManage && active}
+                canCreate={loaderData.canMakeLabels}
+                manageUrl={loaderData.canMakeLabels ? `${base}/labels` : undefined}
+              />
+            </Boundary>
+          )}
+          {isFailed(loaderData.milestones) ? (
+            <SidebarUnavailable title="Milestone" what={loaderData.milestones.what} />
+          ) : (
+            <Boundary what="Milestone">
+              <MilestoneBox
+                milestones={loaderData.milestones}
+                current={pull.milestone}
+                canEdit={loaderData.canTriage}
+                base={base}
+              />
+            </Boundary>
+          )}
 
           <section>
             <h3 className="text-sm font-medium">Working copy</h3>
@@ -1741,12 +1824,29 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               {pull.headCommit && <CommitChecksBadge checks={loaderData.headChecks} sha={pull.headCommit} className="size-5" />}
             </p>
           </section>
-          {loaderData.viewer && (
-            <SubscriptionBox action={`${base}/notifications`} number={pull.number} kind="pull" subscription={loaderData.subscription} />
-          )}
+          {loaderData.viewer &&
+            (isFailed(loaderData.subscription) ? (
+              <SidebarUnavailable title="Notifications" what={loaderData.subscription.what} />
+            ) : (
+              <Boundary what="Notifications">
+                <SubscriptionBox action={`${base}/notifications`} number={pull.number} kind="pull" subscription={loaderData.subscription} />
+              </Boundary>
+            ))}
         </DetailsDisclosure>
       </div>
     </div>
+  );
+}
+
+/** A sidebar section that could not be read: its heading, and that it could not. */
+function SidebarUnavailable({ title, what }: { title: string; what: string }) {
+  return (
+    <section>
+      <h3 className="text-sm font-medium">{title}</h3>
+      <div className="mt-2">
+        <Unavailable what={what} compact />
+      </div>
+    </section>
   );
 }
 

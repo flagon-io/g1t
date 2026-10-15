@@ -6,6 +6,7 @@ import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { requireRepo } from "../../lib/access.server";
 import { page } from "../../lib/meta";
+import { orElse, part } from "../../lib/partial";
 import { repos } from "../../lib/services.server";
 import { unwrap } from "../../lib/session.server";
 import { UserCard } from "../../components/user-card";
@@ -18,8 +19,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { viewer } = await requireRepo(context, params, "read");
   const pageNumber = Math.max(1, Number(new URL(request.url).searchParams.get("page")) || 1);
   const path = { namespace: params.owner, name: params.repo };
-  const [stargazers, stars] = await Promise.all([repos.stargazers(path, viewer, pageNumber), repos.stars(path, viewer)]);
-  return { stargazers: unwrap(stargazers), total: stars.ok ? stars.value.stars : null, page: pageNumber };
+  // The count beside the heading only adds to it: without it, the heading
+  // shows alone, as it does when the count is not given.
+  const [stargazers, counted] = await Promise.all([repos.stargazers(path, viewer, pageNumber), part(repos.stars(path, viewer), "Stars")]);
+  const stars = orElse(counted, null);
+  return { stargazers: unwrap(stargazers), total: stars?.ok ? stars.value.stars : null, page: pageNumber };
 }
 
 export default function Stargazers({ loaderData }: Route.ComponentProps) {

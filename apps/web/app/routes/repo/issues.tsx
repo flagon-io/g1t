@@ -18,6 +18,7 @@ import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Issues · ${params.owner}/${params.repo} · g1t` });
@@ -29,13 +30,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // `?label=bug&milestone=3`, or `label:bug milestone:3` written in `q`.
   const { state, label, milestone } = listFilters(new URL(request.url).searchParams);
   const [issues, labels, milestones] = await Promise.all([    work.listIssues(path, viewer, { state, label: label || undefined, milestone: milestone ?? undefined }),
-    work.listLabels(path, viewer),
-    work.listMilestones(path, viewer, "open"),
+    // What the filters offer: each a part, whose menu says so when its service fails.
+    part(work.listLabels(path, viewer), "Labels"),
+    part(work.listMilestones(path, viewer, "open"), "Milestones"),
   ]);
   return {
     issues: unwrap(issues),
-    labels: unwrap(labels),
-    milestones: milestones.ok ? milestones.value : [],
+    labels: isFailed(labels) ? labels : unwrap(labels),
+    milestones: isFailed(milestones) ? milestones : milestones.ok ? milestones.value : [],
     state,
     label,
     milestone,
@@ -43,7 +45,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 }
 
 export default function Issues({ loaderData, params }: Route.ComponentProps) {
-  const { issues, labels, milestones, state, label, milestone } = loaderData;
+  const { issues, state, label, milestone } = loaderData;
+  // A filter whose choices could not be loaded offers none, and its menu says why.
+  const labels = isFailed(loaderData.labels) ? [] : loaderData.labels;
+  const milestones = isFailed(loaderData.milestones) ? [] : loaderData.milestones;
   // Issues opened, commented on and closed show as it happens.
   useRepoLive({ match: repoPages.issues() });
   const repo = `/${params.owner}/${params.repo}`;
@@ -81,7 +86,7 @@ export default function Issues({ loaderData, params }: Route.ComponentProps) {
           active={label || undefined}
           clearTo={label ? withFilter(base, current, "label", null) : undefined}
           searchPlaceholder="Filter labels"
-          emptyText="No label matches."
+          emptyText={isFailed(loaderData.labels) ? "Labels could not be loaded just now." : "No label matches."}
           options={labels.map((each) => ({
             key: each.name,
             to: withFilter(base, current, "label", each.name),
@@ -100,7 +105,7 @@ export default function Issues({ loaderData, params }: Route.ComponentProps) {
           active={milestoneTitle ?? undefined}
           clearTo={milestone ? withFilter(base, current, "milestone", null) : undefined}
           searchPlaceholder="Filter milestones"
-          emptyText="No open milestone matches."
+          emptyText={isFailed(loaderData.milestones) ? "Milestones could not be loaded just now." : "No open milestone matches."}
           options={milestones.map((each) => ({
             key: String(each.number),
             to: withFilter(base, current, "milestone", String(each.number)),
