@@ -1,15 +1,14 @@
 ---
 title: Quickstart
-description: Create a workspace, push a repository, open an issue and have your own coding agent work on it. Then talk to your team in Chat.
+description: Sign up, push a repository, open an issue, and have your own coding agent open a pull request that you merge. Then bring your team into Chat.
 ---
 
 import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 import Aside from '../../components/Aside.astro';
 import AgentSetup from '../../components/AgentSetup.astro';
 
-A g1t workspace holds your repositories, your team's conversations and
-everything you ship. This page gets you from sign-up to a pull request your
-own coding agent opened and you merged, in a few minutes.
+This page takes you from sign-up to a pull request your coding agent
+opened and you merged. It takes a few minutes.
 
 <Aside type="tip" title="Let an assistant do it">
 Give your AI assistant [g1t.sh/llms.txt](https://g1t.sh/llms.txt) and ask it
@@ -17,69 +16,90 @@ to set you up. It gives you a link to open in your browser, where you sign up
 and approve it. It never sees your password.
 </Aside>
 
-## Put your coding agent on your code
-
 <Steps>
 
-1. **Create an account and a workspace**
+1. **Sign up**
 
-   [Sign up](https://g1t.sh/register) (or open the invite link someone sent
-   you; see [invites](/guides/authentication/#invites)) and confirm your
-   email with the code g1t sends it (or the link in the same email). Then create a
-   **workspace**: it holds your repositories and your channels. See
+   [Sign up](https://g1t.sh/register) with an email address and a
+   password, or with GitHub. Anyone can; no invite is needed. Confirm your
+   email with the code g1t sends (or the link in the same email).
+
+   Your account comes with a **workspace** of its own, named after your
+   username. It holds your repositories and your channels. See
    [workspaces](/guides/workspaces/).
 
-2. **Create an access token**
-
-   Git and the API authenticate with a token. Create one in
-   [Settings → Access tokens](https://g1t.sh/settings/tokens) and copy it: it is shown once.
+2. **Install the CLI and sign in**
 
    <Tabs syncKey="os">
    <TabItem label="macOS and Linux">
    ```sh
-   export G1T_TOKEN=g1t_…
+   curl -fsSL https://g1t.sh/install | sh
    ```
    </TabItem>
    <TabItem label="Windows">
    ```powershell
-   $env:G1T_TOKEN = "g1t_…"
+   irm https://g1t.sh/install.ps1 | iex
    ```
    </TabItem>
    </Tabs>
 
+   ```sh
+   g1t auth login --git
+   ```
+
+   `g1t` shows a code and opens your browser: check the code and approve.
+   `--git` also sets git up to use the same sign-in for `g1t.sh`, so
+   `git push` asks for nothing. `g1t auth status` shows who you are signed
+   in as. See [the g1t CLI](/guides/cli/).
+
+   <Aside title="Without the CLI">
+   Git and the API also take an [access token](/guides/authentication/#access-tokens):
+   create one in [Settings → Access tokens](https://g1t.sh/settings/tokens),
+   and give it to git as the password, with your username.
+   </Aside>
+
 3. **Push a repository**
 
-   Pushing to a repository that does not exist creates it, as a **private**
-   repository; make it public later if you want to. When git asks, give it your username and, as the password,
-   your token.
+   From a git repository with at least one commit:
+
+   ```sh
+   g1t repo create my-project --source . --remote g1t
+   ```
+
+   This makes `<workspace>/my-project`, private, adds it as the remote
+   `g1t` and pushes. Plain git works too: pushing to a repository that does
+   not exist creates it, private.
 
    ```sh
    git remote add g1t https://g1t.sh/<workspace>/my-project.git
    git push -u g1t main
    ```
 
-   For a private repository, create it first with **New** in the header,
-   which also makes one empty, or imported from GitHub or any git host by
-   its address.
+   **New** in the site's header makes one empty, or imports one from
+   GitHub or any git host by its address.
 
    <Aside title="Coming from GitHub?">
    Rename `.github` to `.g1t` before you push, and your GitHub Actions
-   workflows run on g1t, most without changes. See
-   [GitHub Actions](/guides/actions/), and
+   workflows run on g1t, most without changes. Workflows are compute: on a
+   free workspace, an owner checks a card once under **Settings → Billing
+   and plans** to start a $5 trial, which is never charged for the check.
+   See [GitHub Actions](/guides/actions/),
+   [No card, no compute](/guides/usage-and-billing/#no-card-no-compute) and
    [what is not supported yet](/about/limitations/#actions-and-runners).
    </Aside>
 
 4. **Open an issue**
 
-   On the repository's **Issues** page, choose **New issue**. Say what is
-   wrong or wanted in the title and description; your agent works from that.
-   Say what done means, if you know it. What a pull request must pass to
-   merge is your workflows' checks: see
-   [required status checks](/guides/pull-requests/#required-status-checks).
+   On the repository's **Issues** page, choose **New issue**, or:
+
+   ```sh
+   g1t issue create -t "Greeting should name the caller" -b "Take a name from the first argument."
+   ```
+
+   Say what is wrong or wanted, and what done means if you know it. Your
+   agent works from this text.
 
 5. **Connect your coding agent**
-
-   Connect Claude Code, Codex, Cursor, OpenCode or any MCP client to g1t:
 
    <AgentSetup />
 
@@ -88,27 +108,39 @@ and approve it. It never sees your password.
    > Work on issue 1 of `<workspace>/my-project` on g1t. Open a pull request
    > for it and record your session as you go.
 
-   It opens a pull request, pushes its change, and your workflows run on it
-   as on anyone's. See [Connect a coding agent](/guides/bring-your-own-agent/).
+   It opens a pull request, pushes its change, and your
+   workflows run on it as on anyone's. See
+   [Connect a coding agent](/guides/bring-your-own-agent/).
 
-6. **Merge**
+   <Aside title="Or assign it to g1t">
+   With an Anthropic key under the workspace's [**AI**](/guides/ai/)
+   settings, **Assign to g1t** in the issue's sidebar starts a session on
+   that account, as you, and its card shows in the issue's conversation.
+   See [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread).
+   </Aside>
 
-   Open the pull request, read **Changes** and **Session**, and choose
-   **Merge**, or turn on auto-merge in the repository's settings and let g1t
-   land what passes. The issue closes, recording which pull request resolved
-   it.
+6. **Review and merge**
+
+   Open the pull request. **Files changed** shows what it did, and
+   **Session** shows how: its prompts, reasoning and tool calls. Choose
+   **Merge**, or turn on **auto-merge** to have it land once its required
+   checks pass. The issue closes, recording which pull request resolved it.
 
 </Steps>
 
-## Talk to your team
+## Bring your team
 
-Choose **Chat** in the rail, or go to `g1t.sh/<workspace>/-/chat`. Every
-workspace starts with `#general`. Chat is free on every plan. See
+Choose **Chat** in the rail. Every workspace starts with `#general`, and
+Chat is free on every plan. Adding people to a workspace comes with
+[the g1t plan](/guides/usage-and-billing/#the-g1t-plan); on a free one,
+[invite a friend](/guides/authentication/#invite-a-friend) to g1t instead,
+or open a [public channel](/guides/chat/#public-channels) that anyone signed in to g1t can join. See
 [Chat](/guides/chat/).
 
 ## Next
 
+- [Build and ship an app with an agent](/guides/build-and-ship/): from an empty folder to a deployed app.
 - [How g1t works](/concepts/overview/): issues, pull requests, checks, review and merging.
 - [Connect a coding agent](/guides/bring-your-own-agent/): access, repository instructions and recording sessions.
-- [GitHub Actions](/guides/actions/): your workflows, unchanged.
+- [GitHub Actions](/guides/actions/): your workflows, most unchanged.
 - [MCP tools](/reference/mcp/) and the [API](/reference/api/): everything above, from code.

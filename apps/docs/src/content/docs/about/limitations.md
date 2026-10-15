@@ -165,15 +165,14 @@ act on all of them yet:
 
 - Version update pull requests are opened for npm, Cargo, Go and pip only.
   Entries for other ecosystems are checked and listed, and open nothing.
-
 - A multi-ecosystem group opens one pull request per ecosystem, not one
   for the group.
 - Registries that sign in with OIDC are not used.
 
-- **Instead.** Keep a separate entry per ecosystem and directory, and
-  check the Security page, which lists what each entry reads but does not
-  act on. See [Dependency updates](/guides/dependency-updates/#options).
-- **Status.** Planned.
+**Instead.** Keep a separate entry per ecosystem and directory, and check
+the Security page, which lists what each entry reads but does not act on.
+See [Dependency updates](/guides/dependency-updates/#options).
+**Status.** Planned.
 
 ### Very large changes are shown in parts
 
@@ -270,22 +269,34 @@ page says so.
   stop it in a later one; write a schedule's `cron` in UTC.
 - **Status.** Not scheduled.
 
-### Self-hosted Windows and macOS jobs run on the host
+### Self-hosted macOS jobs run on the host
 
-On a self-hosted runner, a job native to Windows or macOS runs directly on
-the machine, unsandboxed, in host mode, which is deprecated. Only Linux
-jobs run in a sandbox of their own, a container inside the runner's own
-container under Sysbox.
+On a self-hosted runner, a job native to macOS runs directly on the Mac,
+unsandboxed, in host mode, which is deprecated. Linux jobs run in a
+sandbox of their own on every computer, and Windows jobs in a Windows
+Sandbox per job on Windows 11 Pro, Enterprise and Education. Windows 11
+Home has no Windows Sandbox, so it runs Linux jobs only.
 
-- **Why.** Sandboxes for them are not built yet: Windows containers with
-  Hyper-V isolation, and ephemeral macOS virtual machines (two per Mac at
-  most, by Apple's licence).
+- **Why.** Sandboxed macOS jobs are designed, not built: an ephemeral
+  macOS virtual machine per job, at most two per Mac by Apple's licence.
 - **Instead.** Run Linux jobs in
-  [the runner's container](/guides/self-hosted-runners/#run-it-as-a-container),
-  and keep Windows and macOS runners for repositories whose code you
-  trust. Host mode refuses public repositories' work.
+  [the sandbox on your computer](/guides/self-hosted-runners/#sandbox-on-your-computer),
+  and keep host-mode Mac runners for repositories whose code you trust.
+  Host mode refuses public repositories' work.
 - **Status.** Planned. See
-  [Windows and macOS](/guides/self-hosted-runners/#windows-and-macos).
+  [how each computer runs it](/guides/self-hosted-runners/#how-each-computer-runs-it).
+
+### The runner's sandbox is checked end to end on Windows only
+
+The sandbox for Linux jobs on macOS (a VM under Apple's Virtualization
+framework) and on Linux without Sysbox (a VM under QEMU with KVM) is
+built to the same design as on Windows, but has not yet been run on a
+Mac or on such a Linux machine.
+
+- **Instead.** Run `g1t-runner sandbox status` first: it says what the
+  computer lacks. On Linux, the runner's container under Sysbox needs no
+  VM. See [what it cannot stop](/guides/self-hosted-runners/#what-it-cannot-stop).
+- **Status.** Planned.
 
 ### A self-hosted job's Docker can reach its runner's container
 
@@ -444,11 +455,11 @@ so pages load fast. Repositories are not pinned to a region.
 
 ### Some costs are not fully defined yet
 
-Cloudflare's [Artifacts pricing documentation](https://developers.cloudflare.com/artifacts/platform/pricing/)
-lists October 14, 2026 as the billing start, while its launch announcement
-lists October 15. The pricing documentation identifies repository operations
-such as create, push, pull and clone, and storage measured from daily peaks.
-g1t's measurements still need reconciliation against the upstream bill.
+Cloudflare Artifacts, where every repository is stored, started billing in
+mid-October 2026. Its [pricing](https://developers.cloudflare.com/artifacts/platform/pricing/)
+counts repository operations such as create, push, pull and clone, and
+storage measured from daily peaks. g1t's own counts are still being
+reconciled against that bill.
 
 - **What g1t does.** It counts every clone, fetch and push through its git
   endpoints. Each day it checks what Cloudflare billed it for containers and
@@ -480,7 +491,7 @@ a token for all your workspaces. A workspace's
 cover personal access tokens only, not applications you signed in to with
 OAuth. **Status.** Planned.
 
-### No uptime commitment during the beta
+### No uptime commitment during the alpha
 
 g1t does not promise a particular uptime or offer a service level agreement
 unless you have a written agreement with us. Several of the Cloudflare
@@ -488,7 +499,7 @@ products g1t is built on are in beta and have none either.
 [status.g1t.sh](https://status.g1t.sh/) shows how each part of g1t is doing,
 and every incident. Sandboxes are not checked there yet. See
 [Status and incidents](/guides/status/). **Status.** Not scheduled during
-the beta.
+the alpha.
 
 ### Self-hosting is early
 
@@ -500,7 +511,8 @@ can accept pull requests, but cannot test or land them without g1t's
 runner. Use the hosted service to try that integration loop. Self-hosting
 is not ready for the open internet. **Status.** Planned, in phases.
 
-### Not built yet
+### No wikis
 
-
-- **Wikis.** Not scheduled. Keep docs in the repository.
+A repository has no wiki. **Instead.** Keep docs in the repository, or
+write them together in [Artifacts](/guides/artifacts/). **Status.** Not
+scheduled.
