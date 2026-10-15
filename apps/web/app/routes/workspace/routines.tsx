@@ -17,6 +17,7 @@ import {
   FileText,
   GitPullRequest,
   Hash,
+  Lightbulb,
   type LucideIcon,
   MousePointerClick,
   Plus,
@@ -82,6 +83,30 @@ const STARTERS: { title: string; about: string; items: Starter[] }[] = [
         prompt: "Remind me to write the week's notes, with a first draft from what I did this week.",
         when: { icon: SCHEDULE, text: "Once, Friday at 16:00" },
         lands: { icon: AtSign, text: "Your DM with @g1t" },
+      },
+    ],
+  },
+  {
+    title: "Find work",
+    about: "Proposals, not changes: each issue waits for your yes, then someone (or @g1t) picks it up.",
+    items: [
+      {
+        title: "What people keep asking for",
+        prompt: "Read the week's #support and #feedback, and propose an issue for each thing that keeps coming up, with who asked.",
+        when: { icon: SCHEDULE, text: "Fridays at 14:00" },
+        lands: { icon: Lightbulb, text: "Issues to approve" },
+      },
+      {
+        title: "Worth fixing",
+        prompt: "Look through TODOs, flaky tests, slow pages and errors in production, and propose the few worth doing, each with how big it is.",
+        when: { icon: SCHEDULE, text: "Mondays at 7:00" },
+        lands: { icon: Lightbulb, text: "Issues to approve" },
+      },
+      {
+        title: "Next steps",
+        prompt: "From our plan and what shipped since, propose the next three issues that move it forward, and say why these first.",
+        when: { icon: EVENT, text: "When a milestone closes" },
+        lands: { icon: Lightbulb, text: "Issues to approve" },
       },
     ],
   },
@@ -180,7 +205,7 @@ const PARTS = [
   {
     icon: MousePointerClick,
     title: "Say where it lands",
-    body: "A message, an artifact, a comment, an issue, a draft pull request. What it writes goes through the same review and checks as anyone's.",
+    body: "A message, an artifact, a comment, a draft pull request, or issues it proposes for you to approve. What it writes goes through the same review and checks as anyone's.",
   },
 ];
 
@@ -239,6 +264,7 @@ export default function Routines({ loaderData }: Route.ComponentProps) {
                   <ToggleGroupItem value="dm">Your DM</ToggleGroupItem>
                   <ToggleGroupItem value="channel">A channel</ToggleGroupItem>
                   <ToggleGroupItem value="artifact">An artifact</ToggleGroupItem>
+                  <ToggleGroupItem value="issues">Issues to approve</ToggleGroupItem>
                   <ToggleGroupItem value="pull">A pull request</ToggleGroupItem>
                 </ToggleGroup>
                 <FieldDescription>It writes nowhere else: anything bigger waits for a person to say yes.</FieldDescription>
