@@ -95,8 +95,10 @@ I/O and so can be tested in full. The same rules run in two places:
 and whether the person asking may bypass it. A merge happens only when
 none fails or waits, for people and coding agents alike.
 
-When everything passes, `work` asks `repos` to land the pull request's
-head on the base, and publishes `pull.merged`.
+When everything passes, `work` asks `repos` to land the pull request on
+the base by the merge method asked for: a merge commit, squash, rebase or
+fast-forward (`services/repos/src/merge_methods.rs`). Then it publishes
+`pull.merged`.
 
 ## The merge queue
 
@@ -108,9 +110,9 @@ required checks passed (`services/work/src/queue.rs`).
 <Diagram name="merge-queue" />
 
 1. **Build.** Up to `max_entries_to_build` entries (4 by default) are
-   tested at once. For each, a sandbox merges the default branch with that
-   entry and every entry ahead of it, and pushes the result to
-   `g1t-queue/<entry>` in the repository.
+   tested at once. Each entry is landed by its own merge method on the
+   state of the entry ahead of it (the default branch, for the first), and
+   the result is pushed to `g1t-queue/<entry>` in the repository.
 2. **Test.** Workflows that run on `merge_group` run on each of those
    commits, and the required checks have to pass there.
 3. **Land.** Entries land in order. Once everything ahead of it has landed,
