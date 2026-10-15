@@ -86,6 +86,17 @@ fn reference(value: &str) -> bool {
         || value == "…"
 }
 
+/// `secret: the` in a sentence: after a colon, an unquoted plain word
+/// short of a password's length is the sentence going on, not a value.
+/// `password: hunter2!` (a digit, a symbol) and a long run still count;
+/// after `=` everything does.
+fn prose(head: &str, value: &str) -> bool {
+    head.trim_end().ends_with(':')
+        && !value.starts_with(['"', '\'', '`'])
+        && value.chars().count() < 16
+        && value.chars().all(|c| c.is_alphabetic() || matches!(c, '\'' | '’' | '-'))
+}
+
 fn shannon(text: &str) -> f64 {
     let mut counts = std::collections::HashMap::new();
     for c in text.chars() {
@@ -157,7 +168,7 @@ pub fn redact(text: &str) -> String {
         let value = &c[2];
         // `token: string` in code is a type, not a token.
         let typed = matches!(value, "string" | "String" | "str" | "&str" | "number" | "bool" | "boolean" | "null" | "None" | "undefined" | "true" | "false" | "Option<String>");
-        if reference(value) || typed { c[0].to_owned() } else { format!("{}{REDACTED}", &c[1]) }
+        if reference(value) || typed || prose(&c[1], value) { c[0].to_owned() } else { format!("{}{REDACTED}", &c[1]) }
     });
     let out = LONG.replace_all(&out, |c: &Captures| {
         if random_looking(&c[0]) { REDACTED.to_owned() } else { c[0].to_owned() }
@@ -237,6 +248,21 @@ mod tests {
         hidden("Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz");
         hidden("send it with bearer abcdefgh12345678", "abcdefgh12345678");
         hidden("X-Api-Key: 1234abcd5678", "1234abcd5678");
+    }
+
+    #[test]
+    fn a_sentence_after_a_colon_is_not_a_value() {
+        for ordinary in [
+            "A path is not a secret: the redactor's rule read it as one",
+            "The API key: what it is and where to keep it",
+            "password: the one you set at sign-up",
+        ] {
+            assert_eq!(redact(ordinary), ordinary);
+        }
+        hidden("password: hunter2", "hunter2");
+        hidden("db_password: correcthorsebatterystaple", "correcthorsebatterystaple");
+        hidden("api_key: 'plainword'", "plainword");
+        hidden("SECRET=plainword", "plainword");
     }
 
     #[test]

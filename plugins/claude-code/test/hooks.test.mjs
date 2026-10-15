@@ -330,7 +330,7 @@ describe("summaries", () => {
       assert.ok(!out.includes(secret), `${secret} in ${out}`);
       assert.ok(out.includes("[redacted]"), out);
     }
-    for (const kept of ["TOKEN=$G1T_TOKEN", "token: ${{ secrets.DEPLOY }}", "fn f(token: String)", "npm_config_user_agent", "git show 58def4040e93a1dcda5f388f55360f3cd46cd97e"]) {
+    for (const kept of ["A path is not a secret: the rule read it as one", "password: the one you set", "TOKEN=$G1T_TOKEN", "token: ${{ secrets.DEPLOY }}", "fn f(token: String)", "npm_config_user_agent", "git show 58def4040e93a1dcda5f388f55360f3cd46cd97e"]) {
       assert.equal(redact(kept), kept);
     }
   });

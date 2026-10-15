@@ -150,7 +150,16 @@ export function redact(text) {
     .replace(QUERY, `$1${REDACTED}`)
     .replace(FLAG, keep)
     .replace(/((?:^|\s)(?:-u|--user)\s+[^\s:]+:)\S+/g, `$1${REDACTED}`)
-    .replace(ASSIGNED, (whole, head, value) => (TYPES.has(value) ? whole : keep(whole, head, value)));
+    .replace(ASSIGNED, (whole, head, value) => (TYPES.has(value) || prose(head, value) ? whole : keep(whole, head, value)));
+}
+
+/**
+ * `secret: the` in a sentence: after a colon, an unquoted plain word short
+ * of a password's length is the sentence going on, not a value.
+ * `password: hunter2!` and a long run still count; after `=` everything does.
+ */
+function prose(head, value) {
+  return head.trimEnd().endsWith(":") && !/^["'`]/.test(value) && [...value].length < 16 && /^[\p{L}'’-]+$/u.test(value);
 }
 
 /** Text a person or an agent wrote, as it is sent: credentials out, cut to `limit`. */
