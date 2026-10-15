@@ -287,8 +287,8 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
 
 /**
  * Deleting the account, or, once it is deleted, restoring or purging it
- * and the workspaces deleted with it. Every form is plain HTML: sudo ships
- * no JavaScript.
+ * and the workspaces deleted with it. Every form works as plain HTML,
+ * before any script has loaded.
  */
 function AccountSection({
   user,

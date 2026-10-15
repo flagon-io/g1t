@@ -58,8 +58,8 @@ const LAYOUT = /^(?:[a-z0-9]+:)*(?:w-|min-w-|max-w-|flex-|shrink|grow|basis-|sel
 
 /**
  * A native select drawn as shadcn's NativeSelect: the browser's own arrow
- * hidden, a chevron of ours in its place. Native because sudo ships no
- * JavaScript, so it still opens, types to search and works on phones.
+ * hidden, a chevron of ours in its place. Native, so it opens, types to
+ * search and works on phones before any script has loaded.
  */
 export function Select({ className = "", ...props }: ComponentProps<"select">) {
   const classes = className.split(/\s+/).filter(Boolean);

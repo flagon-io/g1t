@@ -1,7 +1,7 @@
 /**
  * The Incidents pages' small parts: chips, a page's back link, the
- * timers strip and the component impact picker. Forms only: sudo ships
- * no JavaScript.
+ * timers strip and the component impact picker. Forms only, which work
+ * before any script has loaded.
  */
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";

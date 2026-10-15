@@ -246,9 +246,16 @@ nothing but sudo binds to them.
    enterprises, Stripe billing links, invoice emails, invoices and the
    webhook show a confirmation step first; a credit needs the workspace's
    slug typed out.
-5. **The pages ship no JavaScript.** The content security policy forbids
-   every script and inline style; responses are `no-store`, `noindex` and
-   cannot be framed. The worker has no `workers.dev` address or preview URLs.
+5. **The pages run only sudo's own scripts.** Each page is rendered on the
+   server and hydrated in the browser, as apps/web's are. Its content
+   security policy names a nonce made for that page
+   (`script-src 'self' 'nonce-…'`, `app/entry.server.tsx` and
+   `app/lib/guard.ts`): sudo's files and the inline scripts React Router
+   writes carrying the nonce run, and nothing else, no other site's and no
+   other inline script; requests go only back to sudo; no inline style.
+   Every other answer (data, redirects, files) forbids every script.
+   Responses are `no-store`, `noindex` and cannot be framed. The worker has
+   no `workers.dev` address or preview URLs.
 
 ## Setting up Access (once, in the Cloudflare dashboard)
 

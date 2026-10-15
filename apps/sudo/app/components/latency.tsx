@@ -2,7 +2,7 @@
  * An incident's parts, check by check: a latency chart per part, drawn as
  * SVG on the server, with the slow line, slow checks dotted and failures
  * marked along the top, and the latest checks as a table under it. No
- * script and no inline style (sudo ships no JavaScript); the table is the
+ * script and no inline style (sudo's policy allows none); the table is the
  * way to read exact figures.
  */
 import type { CheckHistory } from "@g1t/contracts";

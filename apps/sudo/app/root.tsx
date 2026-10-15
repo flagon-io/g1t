@@ -1,10 +1,11 @@
 import { privacy } from "./lib/services.server";
-import { isRouteErrorResponse, Links, Meta, Outlet, useRouteLoaderData } from "react-router";
+import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteLoaderData } from "react-router";
 
 import type { Route } from "./+types/root";
 import "./app.css";
 import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
+import { Progress, useLeaving, useSettledForms } from "./components/progress";
 import { MobileBar, Sidebar } from "./components/shell";
 import { ButtonLink } from "./components/ui";
 import type { NavCounts } from "./lib/nav";
@@ -54,6 +55,8 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const root = useRouteLoaderData<typeof loader>("root");
+  const leaving = useLeaving();
+  useSettledForms();
   return (
     <html lang="en">
       <head>
@@ -64,6 +67,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="min-h-screen">
+        <Progress />
         <Sidebar email={root?.email} counts={root?.counts} />
         <MobileBar email={root?.email} counts={root?.counts} />
         <div className="lg:pl-60">
@@ -92,9 +96,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </a>
             </div>
           )}
-          {children}
+          <div {...leaving}>{children}</div>
         </div>
-        {/* No <Scripts />: sudo ships no JavaScript, and its policy allows none. */}
+        {/* Each takes the page's nonce from ServerRouter (entry.server.tsx). */}
+        <ScrollRestoration />
+        <Scripts />
       </body>
     </html>
   );

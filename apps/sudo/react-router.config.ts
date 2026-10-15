@@ -1,8 +1,8 @@
 import type { Config } from "@react-router/dev/config";
 
 export default {
-  // Rendered on the server only: the pages ship no JavaScript at all (root
-  // leaves out <Scripts />), so the content security policy can forbid
-  // every script. Forms are plain HTML forms posting to route actions.
+  // Rendered on the server, then hydrated in the browser. The page's policy
+  // lets only sudo's own scripts run, by a nonce made for each page
+  // (entry.server.tsx, lib/guard.ts). Forms post to route actions.
   ssr: true,
 } satisfies Config;
