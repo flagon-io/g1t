@@ -464,9 +464,9 @@ g1t's measurements still need reconciliation against the upstream bill.
 ### Payments in test mode
 
 A g1t whose payments use Stripe's test mode, such as a self-hosted one set
-up with test keys, or g1t.sh before its live payments are switched on,
-charges no real card, so a card check there proves nothing. With live
-payments, the card check and every charge are real. **Status.** By design
+up with test keys, charges no real card, so a card check there proves
+nothing. g1t.sh takes live payments: the card check and every charge are
+real. **Status.** By design
 for test setups.
 
 ## Accounts, status and self-hosting

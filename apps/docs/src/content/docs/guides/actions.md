@@ -572,6 +572,13 @@ g1t's machines are x64. A job whose `runs-on` names an Arm label, such
 as `ubuntu-24.04-arm`, runs on x64, and the workflow's page says so; a
 self-hosted Arm runner runs it on Arm.
 
+A workspace always has room for 4 jobs at once on g1t's machines, and runs
+up to 12 at once while the machines have room to spare; the rest stay queued,
+oldest first, and start as others finish. Some machines are always kept free,
+so another workspace's first jobs start at once. Jobs on
+[self-hosted runners](/guides/self-hosted-runners/) do not count toward
+this.
+
 ### What a job can reach
 
 A job reaches the internet, as on GitHub's machines: package registries,
