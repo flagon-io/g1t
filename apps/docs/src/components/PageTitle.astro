@@ -9,7 +9,9 @@ import { NAV } from '../route-data';
 
 const { entry, id } = Astro.locals.starlightRoute;
 const { title, description } = entry.data;
-const section = NAV.get(Astro.locals.starlightRoute)?.section;
+const nav = NAV.get(Astro.locals.starlightRoute)?.section;
+// No eyebrow that only repeats the title, as on Chat's page in Chat.
+const section = nav && nav.toLowerCase() !== title.toLowerCase() ? nav : undefined;
 const markdown = `/${id === '' || id === 'index' ? 'index' : id}.md`;
 const absolute = new URL(markdown, Astro.site).href;
 const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it.`);
@@ -249,6 +251,12 @@ const ask = encodeURIComponent(`Read ${absolute} so I can ask questions about it
 			min-width: 0;
 			font-size: 2rem;
 			overflow-wrap: anywhere;
+		}
+		/* The lead a step above the body, not a headline of its own. */
+		.g1t-description {
+			margin-top: 0.75rem;
+			font-size: 1.0625rem;
+			line-height: 1.5;
 		}
 		.g1t-copy {
 			height: 2.5rem;

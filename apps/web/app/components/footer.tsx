@@ -78,12 +78,15 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
   {
     title: "Product",
     links: [
-      ["Explore", "/explore"],
-      ["Pricing", "/pricing"],
-      ["Download", "/download"],
+      // Code first, as on the landing page: then Chat, then the agents.
+      ["Pull requests", "https://docs.g1t.sh/guides/pull-requests/"],
+      ["Deployments", "https://docs.g1t.sh/guides/deployments/"],
       ["Chat", "https://docs.g1t.sh/guides/chat/"],
       ["Bring your own agent", "https://docs.g1t.sh/guides/bring-your-own-agent/"],
       ["Integrations", "https://docs.g1t.sh/guides/integrations/"],
+      ["Explore", "/explore"],
+      ["Pricing", "/pricing"],
+      ["Download", "/download"],
     ],
   },
   {
