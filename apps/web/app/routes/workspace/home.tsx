@@ -66,8 +66,8 @@ import {
 import { HOME_WATCH_MAX, type HomeRepo } from "../../lib/home-live";
 import { readCookie } from "../../lib/mission";
 import { useHomeLive } from "../../lib/use-home-live";
-import { loadOnboarding } from "../../lib/onboarding.server";
-import { OnboardingOnPage } from "../../components/onboarding";
+import { guideIsFor, loadOnboarding } from "../../lib/onboarding.server";
+import { GettingStartedButton, OnboardingOnPage } from "../../components/onboarding";
 import { loadMissionControl } from "../../lib/mission-control.server";
 import { page } from "../../lib/meta";
 import { inbox } from "../../lib/services.server";
@@ -208,6 +208,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     watch,
     onboarding,
     setupAsked,
+    /** Whether Getting started is for the viewer (an owner), so Home offers it again once dismissed. */
+    guide: guideIsFor(viewer, slug),
   };
 }
 
@@ -275,6 +277,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
       {/* 0. Ask g1t anything: the answer opens in the top bar's Ask panel. */}
       <header className="space-y-3">
+        {loaderData.guide && (
+          <div className="flex justify-end">
+            <GettingStartedButton slug={slug} variant="soft" />
+          </div>
+        )}
         <HomeAsk span={span} />
         <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">
           <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
@@ -296,7 +303,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         needed, Running now, what happened, then Spent and Settled (the side
         column's cards join it, `contents`, each in its place by `order`).
       */}
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* 1. Where you're needed now, with the one to start with on top: no window. */}
         <div id="needed" className="order-1 scroll-mt-4 lg:col-start-1 lg:row-start-1">
           <Card

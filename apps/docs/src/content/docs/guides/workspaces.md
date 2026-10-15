@@ -81,7 +81,8 @@ puts it away.
 
 Closing the guide puts it away too: it stops opening by itself for you,
 in this workspace, on every device. Nothing else changes. Open it again
-any time from **Settings → General** (**Getting started**), from the
+any time from the **Getting started** button at the top of Home, from
+**Settings → General** (**Getting started**), from the
 workspace's **AI** page, or by typing *Getting started* in the command
 palette, which opens Home with `?setup=1`. Each owner has their own:
 closing it does not close it for anyone else.

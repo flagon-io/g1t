@@ -58,7 +58,7 @@ export function HomeAsk({ span }: { span: AskSpan }) {
       </h1>
       <form onSubmit={submit} className="w-full">
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 pl-4 shadow-sm transition-shadow focus-within:border-accent-dim focus-within:ring-2 focus-within:ring-accent/25">
-          <MarkGlyph className="mb-2.5 h-4 shrink-0" />
+          <MarkGlyph className="mb-2.5 h-4 shrink-0 max-sm:hidden" />
           <label htmlFor="home-ask-box" className="sr-only">
             Ask g1t
           </label>
@@ -70,7 +70,7 @@ export function HomeAsk({ span }: { span: AskSpan }) {
             rows={1}
             maxLength={16_000}
             placeholder="Ask g1t what changed, what's blocked, or what to do next"
-            className="field-sizing-content max-h-40 min-h-10 resize-none border-0 bg-transparent px-1 py-2 text-[0.9375rem] shadow-none focus-visible:ring-0"
+            className="field-sizing-content max-h-40 min-h-10 resize-none border-0 bg-transparent px-1 py-2 text-base shadow-none focus-visible:ring-0 sm:text-[0.9375rem]"
           />
           <Hint label="Ask (Enter)">
             <Button type="submit" variant="accent" size="icon-sm" disabled={!draft.trim()} aria-label="Ask" className="mb-1">
