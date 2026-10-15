@@ -38,12 +38,14 @@ export const DIALOG_PANEL =
  * `split`: a wide panel with no padding of its own, for a dialog in two
  * columns (a rail and a pane, as Getting started is) whose parts scroll on
  * their own. Its height is fixed on a computer so moving between steps
- * does not make it jump; on a phone it is the sheet, as tall as it needs.
+ * does not make it jump. On a phone it is the sheet, of one height for
+ * the same reason (up to 44rem, less while the keyboard is up), and its
+ * pane scrolls inside it.
  */
 const SIZES = {
   default: "",
   split:
-    "max-w-4xl gap-0 p-0 sm:h-[min(42rem,calc(100dvh-4rem))] sm:grid-cols-[16rem_minmax(0,1fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden max-sm:grid-cols-[minmax(0,1fr)] max-sm:pb-[env(safe-area-inset-bottom)]",
+    "max-w-4xl gap-0 p-0 sm:h-[min(42rem,calc(100dvh-4rem))] sm:grid-cols-[16rem_minmax(0,1fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden max-sm:h-[44rem] max-sm:grid-cols-[minmax(0,1fr)] max-sm:grid-rows-[minmax(0,1fr)] max-sm:overflow-hidden max-sm:pb-[env(safe-area-inset-bottom)]",
 } as const;
 
 export function DialogContent({
