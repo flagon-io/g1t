@@ -151,6 +151,9 @@ test("sessions on no issue are grouped by pull request, then by a branch of thei
 
 test("a session is never title-less: its title, its first prompt's intent, its branch, or untitled", () => {
   assert.equal(sessionTitle({ title: "Rewrite the auth flow", branch: "auth", firstPrompt: "fix it" }), "Rewrite the auth flow");
+  // A title that is only a pasted block's tag reads as none: the first prompt's words title it.
+  assert.equal(sessionTitle({ title: '<pasted_content id="5c50">', branch: "main", firstPrompt: '<pasted_content id="5c50">\nlog\n</pasted_content>\nship the runner setup' }), "Ship the runner setup");
+  assert.equal(sessionTitle({ title: '<pasted_content id="5c50">', branch: "main", firstPrompt: null }), "Session on main");
   assert.equal(sessionTitle({ title: null, branch: "auth", firstPrompt: "fix the login redirect. It loops." }), "Fix the login redirect");
   assert.equal(sessionTitle({ title: "  ", branch: "auth", firstPrompt: "/clear" }), "Session on auth");
   assert.equal(sessionTitle({ title: null, branch: null }), "Untitled session");

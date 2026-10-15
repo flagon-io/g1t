@@ -79,8 +79,13 @@ describe("plan", () => {
     assert.ok(long.endsWith("…") && !long.endsWith(" …"), long);
     assert.ok(long.startsWith("[TEST] Tidy up the README"), long);
     assert.ok("[TEST] Tidy up the README and then look at the CI pipeline, which keeps failing on the Windows runners".startsWith(long.slice(0, -1)));
+    // What was pasted or attached is left out: the words typed around it title the session.
+    assert.equal(intentTitle('<pasted_content id="5c50">\nUncaught TypeError: x is undefined\n</pasted_content>\nAlso you broke the buttons'), "Also you broke the buttons");
+    assert.equal(intentTitle("[Image #1] the PR link is missing on Home"), "The PR link is missing on Home");
+    assert.equal(intentTitle("[Image: source: C:\\tmp\\1.png]\nmake it render"), "Make it render");
+    assert.equal(intentTitle('<pasted_content id="1">only a paste'), null);
     // Not intents: slash commands, turns Claude Code starts, nothing to say.
-    for (const prompt of ["/clear", "/compact keep the plan", "/g1t:status 4", "<command-name>/clear</command-name>", "```\ncode only\n```", "?", "", null]) {
+    for (const prompt of ["/clear", "/compact keep the plan", "/g1t:status 4", "<command-name>/clear</command-name>", '<local-command-stdout lang="en">ok</local-command-stdout>', "```\ncode only\n```", "?", "", null]) {
       assert.equal(intentTitle(prompt), null, String(prompt));
     }
   });
