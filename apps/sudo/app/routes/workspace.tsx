@@ -41,6 +41,7 @@ import {
   trustAbout,
 } from "~/components/ui";
 import { type Subject, billingAction } from "~/lib/billing-actions.server";
+import { ComplimentarySection } from "~/components/complimentary";
 import { parseSlug, text } from "~/lib/forms";
 import { usd } from "~/lib/money";
 import { type ActionData, DONE, type SectionError, doneKey } from "~/lib/review";
@@ -93,7 +94,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const figures = billedTo
     ? { charged: share?.chargedMicros ?? 0, cost: share?.costMicros ?? 0, paid: share?.paidMicros ?? 0 }
     : { charged: summary.chargedMicros, cost: summary.costMicros, paid: summary.paidMicros };
-  const [enterprises, sales, invoices, plan, overages, book, credits] = await Promise.all([
+  const [enterprises, sales, invoices, plan, overages, book, credits, complimentary] = await Promise.all([
     billedTo
       ? Promise.resolve([])
       : admin
@@ -109,6 +110,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     settle(admin.overages()),
     settle(priceBook()),
     settle(admin.credits({ workspace: slug })),
+    settle(admin.complimentary(slug)),
   ]);
   const done = doneKey(request.url);
   return {
@@ -135,6 +137,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       ? { grants: credits.value.grants, leftMicros: credits.value.grants.reduce((sum, grant) => sum + grant.leftMicros, 0) }
       : null,
     creditsError: credits.ok ? null : credits.error,
+    complimentary: complimentary.ok ? complimentary.value : null,
+    complimentaryError: complimentary.ok ? null : complimentary.error,
     ledger: billedTo ? detail.ledger.filter((entry) => !entry.workspace || entry.workspace === slug) : detail.ledger,
     audit: billedTo ? detail.audit.filter((entry) => mentions(entry, slug)) : detail.audit,
     done: done && !SALES_DONE.has(done) ? DONE[done] : null,
@@ -187,6 +191,8 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
     forgiveCap,
     credits,
     creditsError,
+    complimentary,
+    complimentaryError,
     ledger,
     audit,
     done,
@@ -355,6 +361,13 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
             </Section>
           ) : (
             <>
+              <ComplimentarySection
+                workspace={slug}
+                standing={complimentary}
+                unavailable={complimentaryError}
+                pathname={pathname}
+                error={error("complimentary")}
+              />
               <TermsForm terms={terms} pathname={pathname} error={error("terms")} />
               <AllowancesForm allowances={allowances} comped={fullDiscount(terms)} pathname={pathname} error={error("allowances")} />
             </>
@@ -523,7 +536,13 @@ function BilledToSection({
   );
 }
 
-const PLAN_LABEL: Record<string, string> = { free: "Free", paid: "The g1t plan", internal: "Internal (100% discount)", enterprise: "Enterprise" };
+const PLAN_LABEL: Record<string, string> = {
+  free: "Free",
+  paid: "The g1t plan",
+  internal: "Internal (100% discount)",
+  enterprise: "Enterprise",
+  complimentary: "Complimentary",
+};
 
 function gigabytes(bytes: number): string {
   return `${Math.round((bytes / 1e9) * 100) / 100} GB`;

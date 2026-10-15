@@ -57,6 +57,7 @@ struct CardRow {
 /// end, else just behind the clock.
 pub(crate) fn next_through(previous: i64, now: i64, first_failed: Option<i64>, complete: bool) -> i64 {
     match first_failed {
+        Some(created) if !complete => previous.min(created),
         Some(created) => created.min(previous.max(created)),
         None if !complete => previous,
         None => previous.max(now - SETTLE_SECONDS),
@@ -170,6 +171,10 @@ impl Billing {
         #[derive(Deserialize)]
         struct Mark {
             through: i64,
+            replay_after: Option<String>,
+            replay_since: Option<i64>,
+            replay_until: Option<i64>,
+            replay_failed: Option<i64>,
         }
         #[derive(Deserialize)]
         struct Page {
@@ -184,21 +189,22 @@ impl Billing {
             .bind(&[rfc3339(now_ms().saturating_sub(STALE_CLAIM_MS)).into()])?
             .run()
             .await?;
-        let previous = self
+        let mark = self
             .db
-            .prepare("SELECT through FROM stripe_sync WHERE mode = ?")
+            .prepare("SELECT through, replay_after, replay_since, replay_until, replay_failed FROM stripe_sync WHERE mode = ?")
             .bind(&[mode.into()])?
             .first::<Mark>(None)
-            .await?
-            .map_or(now - FIRST_LOOK_SECONDS, |mark| mark.through);
-        let since = previous - OVERLAP_SECONDS;
+            .await?;
+        let previous = mark.as_ref().map_or(now - FIRST_LOOK_SECONDS, |mark| mark.through);
+        let since = mark.as_ref().and_then(|m| m.replay_since).unwrap_or(previous - OVERLAP_SECONDS);
+        let until = mark.as_ref().and_then(|m| m.replay_until).unwrap_or(now);
 
         // Stripe lists newest first; read back to `since`.
         let mut listed: Vec<Value> = Vec::new();
         let mut complete = false;
-        let mut after: Option<String> = None;
+        let mut after = mark.as_ref().and_then(|m| m.replay_after.clone());
         for _ in 0..MAX_PAGES {
-            let mut query: Vec<(&str, String)> = vec![("limit", "100".to_owned()), ("created[gte]", since.to_string())];
+            let mut query: Vec<(&str, String)> = vec![("limit", "100".to_owned()), ("created[gte]", since.to_string()), ("created[lte]", until.to_string())];
             query.extend(EVENTS.iter().map(|event| ("types[]", (*event).to_owned())));
             if let Some(after) = &after {
                 query.push(("starting_after", after.clone()));
@@ -212,13 +218,13 @@ impl Billing {
             }
         }
         if !complete {
-            worker::console_error!("Stripe listed more than {} events since {since}; replaying the newest", MAX_PAGES * 100);
+            worker::console_log!("Stripe replay continues from its saved cursor next tick after {} events", MAX_PAGES * 100);
         }
 
         // Oldest first, as they happened.
         listed.sort_by_key(|event| event["created"].as_i64().unwrap_or(0));
         let mut handled = 0;
-        let mut first_failed = None;
+        let mut first_failed = mark.as_ref().and_then(|m| m.replay_failed);
         for event in &listed {
             match self.process_event(event).await {
                 Ok(true) => handled += 1,
@@ -226,17 +232,27 @@ impl Billing {
                 Err(error) => {
                     let id = event["id"].as_str().unwrap_or_default();
                     worker::console_error!("replaying Stripe event {id} failed: {error}");
-                    first_failed = first_failed.or(event["created"].as_i64());
+                    if let Some(created) = event["created"].as_i64() {
+                        first_failed = Some(first_failed.map_or(created, |known| known.min(created)));
+                    }
                 }
             }
         }
-        let through = next_through(previous, now, first_failed, complete);
+        let through = next_through(previous, until, first_failed, complete);
         self.db
             .prepare(
-                "INSERT INTO stripe_sync (mode, through, checked_at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT (mode) DO UPDATE SET through = ?2, checked_at = ?3",
+                "INSERT INTO stripe_sync (mode, through, checked_at, replay_after, replay_since, replay_until, replay_failed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT (mode) DO UPDATE SET through = ?2, checked_at = ?3,
+                   replay_after = ?4, replay_since = ?5, replay_until = ?6, replay_failed = ?7",
             )
-            .bind(&[mode.into(), (through as f64).into(), rfc3339(now_ms()).into()])?
+            .bind(&[
+                mode.into(), (through as f64).into(), rfc3339(now_ms()).into(),
+                crate::optional(if complete { None } else { after.as_deref() }),
+                (!complete).then_some(since as f64).into(),
+                (!complete).then_some(until as f64).into(),
+                if complete { None } else { first_failed.map(|v| v as f64) }.into(),
+            ])?
             .run()
             .await?;
         Ok(format!("{} listed, {handled} not seen before and handled", listed.len()))
@@ -352,6 +368,8 @@ mod tests {
         assert_eq!(next_through(now - 900, now, Some(now - 1200), true), now - 1200);
         // The list not read to its end: stay.
         assert_eq!(next_through(now - 900, now, None, false), now - 900);
+        // A failed event on a partial page must not skip older unread events.
+        assert_eq!(next_through(now - 900, now, Some(now - 100), false), now - 900);
     }
 
     #[test]

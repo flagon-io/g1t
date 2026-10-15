@@ -174,7 +174,7 @@ impl Billing {
                         CASE WHEN credit_kind IN ('promotional', 'goodwill') THEN 1 ELSE 0 END AS goodwill,
                         CASE WHEN workspace IN ({INTERNAL_SQL}) THEN 1 ELSE 0 END AS internal,
                         SUM(amount_micros) AS amount, SUM(cost_micros) AS cost,
-                        SUM(trial_micros + oss_micros + given_micros) AS pools
+                        SUM(trial_micros + oss_micros + given_micros + gift_micros) AS pools
                  FROM ledger WHERE created_at >= '{since}' {filter} GROUP BY 1, 2, 3, 4, 5, 6",
             ))
             .bind(&values)?
@@ -640,7 +640,7 @@ impl Billing {
                             THEN cost_micros END) AS internal_cost,
                    SUM(CASE WHEN kind = 'usage' THEN trial_micros END) AS trial,
                    SUM(CASE WHEN kind = 'usage' THEN oss_micros END) AS oss,
-                   SUM(CASE WHEN kind = 'usage' THEN given_micros END) AS covered,
+                   SUM(CASE WHEN kind = 'usage' THEN given_micros + gift_micros END) AS covered,
                    SUM(CASE WHEN kind = 'top_up' AND credit_kind IN ('promotional', 'goodwill') THEN amount_micros END) AS goodwill
                  FROM ledger WHERE created_at >= ?",
             ))

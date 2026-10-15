@@ -480,6 +480,14 @@ pub(crate) fn comped_meter(mut u: UsageRow) -> UsageRow {
     u
 }
 
+/// A complimentary workspace's month-end meter: its allowance (or g1t,
+/// past it) paid, so it is given away as promotional, never money in.
+pub(crate) fn gifted_meter(mut u: UsageRow) -> UsageRow {
+    u.given = Given { credit_promotional: u.value, ..Given::default() };
+    u.cash = 0;
+    u
+}
+
 /// Margin as a share of what was charged, in percent; None when nothing was.
 pub(crate) fn margin_percent(revenue_micros: i64, cost_micros: i64) -> Option<f64> {
     (revenue_micros > 0).then(|| (revenue_micros - cost_micros) as f64 * 100.0 / revenue_micros as f64)
@@ -1016,6 +1024,7 @@ impl Billing {
             own_provider: i64,
             cash: Option<i64>,
             drawn: Option<i64>,
+            gift: Option<i64>,
             trial: Option<i64>,
             oss: Option<i64>,
             covered: Option<i64>,
@@ -1033,7 +1042,8 @@ impl Billing {
                         CASE WHEN workspace IN ({internal}) THEN 1 ELSE 0 END AS internal,
                         CASE WHEN billed_to = 'workspace' THEN 1 ELSE 0 END AS own_provider,
                         -SUM(amount_micros) AS cash,
-                        SUM(COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0)) AS drawn,
+                        SUM(COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0)) AS drawn,
+                        SUM(COALESCE(gift_micros, 0)) AS gift,
                         SUM(COALESCE(trial_micros, 0)) AS trial,
                         SUM(COALESCE(oss_micros, 0)) AS oss,
                         SUM(COALESCE(given_micros, 0)) AS covered,
@@ -1069,7 +1079,8 @@ impl Billing {
                 } else if paid == 0 && cost > 0 {
                     Given { free: value, ..Given::default() }
                 } else {
-                    Given { free: r.covered.unwrap_or(0), trial: r.trial.unwrap_or(0), pool: r.oss.unwrap_or(0), discount, ..Given::default() }
+                    // A complimentary allowance is promotional: given, never money in.
+                    Given { free: r.covered.unwrap_or(0), trial: r.trial.unwrap_or(0), pool: r.oss.unwrap_or(0), discount, credit_promotional: r.gift.unwrap_or(0), ..Given::default() }
                 };
                 if r.internal == 1 {
                     internal.insert(r.workspace.clone());
@@ -1105,11 +1116,39 @@ impl Billing {
             .filter(|s| crate::storage::CHARGED_HERE.contains(&s.source.as_str()) || s.source == "domains")
             .map(|s| (s.day, s.workspace, s.source, s.cost_micros, s.charge_micros))
             .collect::<Vec<_>>();
+        // Complimentary enrollments' days: their month-end meters were paid
+        // by the allowance (or covered past it), never money in.
+        #[derive(Deserialize)]
+        struct Enrolled {
+            workspace: String,
+            starts_at: String,
+            ends_at: Option<String>,
+        }
+        let enrolled = self
+            .db
+            .prepare("SELECT workspace, starts_at, ends_at FROM complimentary_periods WHERE starts_at <= ?2 AND (ends_at IS NULL OR ends_at >= ?1)")
+            .bind(&[since.into(), end.as_str().into()])?
+            .all()
+            .await?
+            .results::<Enrolled>()?;
+        let gifted_on = |workspace: &str, day: &str| {
+            enrolled.iter().any(|p| {
+                p.workspace == workspace && &p.starts_at[..10.min(p.starts_at.len())] <= day && p.ends_at.as_deref().is_none_or(|e| &e[..10.min(e.len())] >= day)
+            })
+        };
         out.extend(
             pending_deltas(&snaps)
                 .into_iter()
                 .filter(|u| u.day.as_str() >= since)
-                .map(|u| if internal.contains(&u.workspace) { comped_meter(u) } else { u }),
+                .map(|u| {
+                    if internal.contains(&u.workspace) {
+                        comped_meter(u)
+                    } else if gifted_on(&u.workspace, &u.day) {
+                        gifted_meter(u)
+                    } else {
+                        u
+                    }
+                }),
         );
         // The plan's price, spread over the 30 days it pays for, so a month's
         // payment does not read as one very good day and 29 bad ones.

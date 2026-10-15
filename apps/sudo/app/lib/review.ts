@@ -25,6 +25,8 @@ export type SectionError = { error: string; values?: Record<string, string> } | 
 export const DONE: Record<string, string> = {
   terms: "Terms saved. They apply to charges from now on.",
   allowances: "Plan, pools and caps saved. They apply from now on.",
+  complimentary: "Complimentary terms saved. A new enrollment shows to the workspace once Stripe has its subscription, usually within seconds.",
+  "complimentary-ended": "Enrollment ended. The workspace is on Free now; its Stripe subscription is canceled.",
   attach: "Workspace moved onto the enterprise.",
   detach: "Workspace moved off the enterprise. It pays for itself again.",
   credit: "Credit given. It is on the balance and the statement, and the owners were emailed.",

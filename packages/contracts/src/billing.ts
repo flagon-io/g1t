@@ -69,6 +69,8 @@ export type LedgerEntry = {
   ossMicros?: number;
   /** For usage: what g1t covered itself, such as a trial's last run past its credit. */
   givenMicros?: number;
+  /** For usage: what a complimentary allowance from g1t paid of it. */
+  giftMicros?: number;
   /** For usage: what the account's discount took off its price. */
   discountMicros?: number;
   /** For a credit from g1t, and for what of one expired or was revoked: its kind. */
@@ -206,7 +208,7 @@ export const RESERVATION_HOURS = 3;
 export const UNLIMITED_MICROS = 1_000_000_000_000_000;
 
 /** What a workspace pays g1t on, as far as compute is concerned. Mirrors `PlanKind`. */
-export type PlanKind = "free" | "paid" | "internal" | "enterprise";
+export type PlanKind = "free" | "paid" | "internal" | "enterprise" | "complimentary";
 
 // `ComputeKind` (what compute is for), `PaidBy` (who pays first: credit, trial, oss, on_demand) and
 // `Reservation` are in `./compute`, with the gate that calls `reserve` and `settle`.
@@ -292,6 +294,87 @@ export type Entitlements = {
   spike?: Spike | null;
   /** Where usage stands against what is included and the limits, from 50%. */
   alerts?: UsageAlert[];
+  /** A complimentary enrollment's allowance this month. */
+  complimentary?: ComplimentaryMonth | null;
+};
+
+/** A complimentary allowance this calendar month (UTC). Usage counts at its ordinary price. Mirrors `ComplimentaryMonth`. */
+export type ComplimentaryMonth = {
+  /** `YYYY-MM`. */
+  month: string;
+  allowanceMicros: number;
+  unlimited?: boolean;
+  /** Usage this month the allowance paid for. */
+  usedMicros: number;
+  /** Metered this month and not on the ledger yet (storage, git operations), which the allowance will pay for. */
+  pendingMicros?: number;
+  /** What running work holds against it. */
+  heldMicros?: number;
+  /** What is left after all three: at 0, new work that costs money stops. */
+  remainingMicros: number;
+  /** What g1t covered past the allowance this month: never charged. */
+  overrunMicros?: number;
+  /** RFC 3339: when next month's allowance starts. */
+  resetsAt: string;
+  /** The recurring monthly fee, in cents; 0: waived. */
+  feeCents?: number;
+  /** Past the allowance, usage is charged to the workspace's own card under its limits; otherwise new paid work stops. */
+  chargePastAllowance?: boolean;
+  /** A card is on file to charge past the allowance. */
+  hasCard?: boolean;
+};
+
+/** A complimentary enrollment, as sudo shows it. Mirrors `ComplimentaryStanding`. */
+export type ComplimentaryStanding = {
+  workspace: string;
+  grantId: string;
+  /** `pending` (Stripe not confirmed yet), `active` or `ended`. */
+  status: "pending" | "active" | "ended";
+  allowanceMicros: number;
+  unlimited?: boolean;
+  feeCents?: number;
+  chargePastAllowance?: boolean;
+  live?: boolean;
+  customerId?: string | null;
+  subscriptionId?: string | null;
+  stripeStatus?: string | null;
+  /** A Stripe step still owed, tried again every fifteen minutes. */
+  pendingOp?: "create" | "terms" | "cancel" | "convert" | null;
+  lastError?: string | null;
+  note: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+  endedAt?: string | null;
+  endedReason?: "revoked" | "converted" | null;
+  month?: ComplimentaryMonth | null;
+  periods?: ComplimentaryPeriod[];
+  /** Money actually paid to g1t, all time: plan and fee invoices, prepayments, bank transfers. */
+  moneyReceivedMicros?: number;
+  /** Promotional and goodwill credit from g1t, all time: never money. */
+  promotionalCreditMicros?: number;
+  /** Usage complimentary allowances paid for, all time: never money. */
+  giftedMicros?: number;
+};
+
+export type ComplimentaryPeriod = {
+  id: string;
+  startsAt: string;
+  endsAt?: string | null;
+  allowanceMicros: number;
+  unlimited?: boolean;
+  feeCents?: number;
+  chargePastAllowance?: boolean;
+  note: string;
+  createdBy: string;
+};
+
+/** Where an owner's conversion to the plan stands. */
+export type Conversion = {
+  status: "converted" | "needs_card" | "needs_action" | "declined";
+  url?: string | null;
+  message: string;
 };
 
 /** A hold on a start's estimated cost, as billing answers it (`Reservation` in `./compute`, and more). */
@@ -606,6 +689,20 @@ export interface BillingAdminApi {
   setTerms(id: string, terms: Terms, by: string): Promise<Result<PayingAccount>>;
   /** Team on or off without charge, and the account's share of the pools. Needs a note. */
   setAllowances(id: string, allowances: Allowances, note: string, by: string): Promise<Result<PayingAccount>>;
+  /** A workspace's complimentary enrollment, if it ever had one. */
+  complimentary(workspace: string): Promise<ComplimentaryStanding | null>;
+  /**
+   * Enrolls a workspace, or changes its terms from now on (the month's use is kept). Needs a note.
+   * `chargePastAllowance`: past the allowance, its own card is charged (employees, friends); otherwise work stops.
+   */
+  setComplimentary(
+    workspace: string,
+    terms: { allowanceMicros: number; unlimited: boolean; feeCents: number; chargePastAllowance: boolean },
+    note: string,
+    by: string,
+  ): Promise<Result<ComplimentaryStanding>>;
+  /** Ends an enrollment now: back to Free, its Stripe subscription canceled. */
+  endComplimentary(workspace: string, note: string, by: string): Promise<Result<ComplimentaryStanding>>;
   createEnterprise(name: string, workspaces: string[], by: string): Promise<Result<PayingAccount>>;
   attach(workspace: string, account: string | null, by: string): Promise<Result<PayingAccount>>;
   /** Credit for a workspace: promotional, goodwill or a refund; the owners are emailed. */
@@ -967,6 +1064,8 @@ export interface BillingApi {
   confirmSubscription(workspace: string, viewer: Viewer, session: string): Promise<Result<FeatureState>>;
   /** Ends a plan at the end of its period, or (`resume`) takes that back. Owners only. */
   cancelSubscription(actor: User, workspace: string, feature: Feature, resume?: boolean): Promise<Result<FeatureState>>;
+  /** A complimentary workspace starts the plan on its own subscription; nothing changes until the first payment succeeds. Owners and billing managers. */
+  convertToPaid(actor: User, workspace: string, returnUrl: string): Promise<Result<Conversion>>;
   /** Which of the workspaces are free (on no paid plan); none where payments are not set up. */
   freeWorkspaces(workspaces: string[]): Promise<string[]>;
   /** Whether a feature works for a workspace now; a failure with the reason when not. */

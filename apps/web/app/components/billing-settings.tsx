@@ -10,7 +10,7 @@ import { ArrowUpRight, Bell, CreditCard, FileText, Mail, Sparkles } from "lucide
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 
-import type { BillingDetails, FeatureState, Limit, UsageReport } from "@g1t/contracts";
+import type { BillingDetails, ComplimentaryMonth, FeatureState, Limit, UsageReport } from "@g1t/contracts";
 
 import type { PlanStatus } from "../lib/billing";
 import { money, wholeDollars } from "../lib/money";
@@ -21,6 +21,107 @@ import { Skeleton } from "./ui/skeleton";
 
 const FIELD =
   "w-full rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim";
+
+// --- Complimentary ------------------------------------------------------------------------------
+
+/**
+ * A complimentary enrollment's month: the allowance g1t gives, what is used,
+ * metered and held against it, what is left and when it starts again. Past
+ * it, new work that costs money stops: nothing is charged, card or not. An
+ * owner can start the plan on the same billing from here.
+ */
+export function ComplimentaryCard({
+  month,
+  owner,
+  enabled,
+  error,
+}: {
+  month: ComplimentaryMonth;
+  owner: boolean;
+  enabled: boolean;
+  error?: string;
+}) {
+  const taken = month.usedMicros + (month.pendingMicros ?? 0) + (month.heldMicros ?? 0);
+  const resets = new Date(month.resetsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+  const charged = Boolean(month.chargePastAllowance);
+  const used = month.unlimited ? 0 : Math.min(100, (taken / Math.max(1, month.allowanceMicros)) * 100);
+  return (
+    <Card
+      id="complimentary"
+      tone={!month.unlimited && month.remainingMicros <= 0 ? "warn" : "accent"}
+      icon={<Sparkles size={16} />}
+      title="Complimentary allowance"
+      about={
+        charged
+          ? `Usage at its ordinary price, paid by g1t up to the allowance each calendar month (UTC). Past it, usage is charged to this workspace's card at the same prices, up to your spend limit. Unused allowance does not carry over.`
+          : `Usage at its ordinary price, paid by g1t up to the allowance each calendar month (UTC). Past it, new work that costs money stops until ${resets}; nothing is ever charged for it, and unused allowance does not carry over.`
+      }
+      aside={
+        <p className="shrink-0 sm:text-right">
+          <span className="text-2xl font-semibold tabular-nums tracking-tight">{month.unlimited ? "Unlimited" : money(month.allowanceMicros)}</span>
+          {!month.unlimited && <span className="text-sm text-muted"> / month</span>}
+          <span className="block text-xs text-faint">{month.feeCents ? `Fee ${money(month.feeCents * 10_000)} a month, invoiced` : "No monthly fee"}</span>
+        </p>
+      }
+    >
+      {!month.unlimited && (
+        <div className="mt-4">
+          <div className="h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
+            <div className={`h-full rounded-full ${month.remainingMicros <= 0 ? "bg-warn" : "bg-accent"}`} style={{ width: `${used}%` }} />
+          </div>
+        </div>
+      )}
+      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <div>
+          <dt className="text-xs text-faint">Used</dt>
+          <dd className="tabular-nums">{money(month.usedMicros)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-faint">Metered, not billed yet</dt>
+          <dd className="tabular-nums">{money((month.pendingMicros ?? 0) + (month.heldMicros ?? 0))}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-faint">Remaining</dt>
+          <dd className="tabular-nums">{month.unlimited ? "Unlimited" : money(month.remainingMicros)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-faint">Starts again</dt>
+          <dd>{resets}</dd>
+        </div>
+      </dl>
+      {charged && !month.hasCard && (
+        <p className="mt-4 text-sm text-muted">
+          No card yet: past the allowance, work stops until one is added.{" "}
+          {owner && enabled && (
+            <Form method="post" className="inline">
+              <SubmitButton variant="outline" name="intent" value="card-check" pending="Opening Stripe…">
+                <CreditCard size={14} />
+                Add a card
+              </SubmitButton>
+            </Form>
+          )}
+        </p>
+      )}
+      {owner && enabled && !month.unlimited && (
+        <Form method="post" className="mt-4 flex flex-wrap items-center gap-3">
+          <SubmitButton variant="outline" name="intent" value="convert" pending="Starting the plan…">
+            <CreditCard size={14} />
+            Start the g1t plan instead
+          </SubmitButton>
+          <span className="text-xs text-faint">
+            $21 a month with usage past what is included charged, on this workspace's billing. Nothing changes until the first payment
+            goes through.
+          </span>
+        </Form>
+      )}
+      {error && (
+        <div className="mt-2">
+          <ErrorText>{error}</ErrorText>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 // --- The plan ---------------------------------------------------------------------------------
 
@@ -57,7 +158,7 @@ export function PlanSummary({
 }) {
   const plan = state?.plan;
   const subscription = state?.subscription ?? null;
-  const on = ["paid", "canceling", "comped", "enterprise", "past_due"].includes(status.kind);
+  const on = ["paid", "canceling", "comped", "enterprise", "past_due", "complimentary"].includes(status.kind);
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
@@ -86,7 +187,9 @@ export function PlanSummary({
           <span className="text-2xl font-semibold tabular-nums tracking-tight">${((plan?.monthlyCents ?? 2100) / 100).toFixed(0)}</span>
           <span className="text-sm text-muted"> / month</span>
           <span className="block text-xs text-faint">with {wholeDollars(report?.included?.of ?? 10_000_000)} of usage included</span>
-          {status.kind !== "comped" && status.kind !== "enterprise" && <span className="block text-xs text-faint">Plus tax where it applies</span>}
+          {status.kind !== "comped" && status.kind !== "enterprise" && status.kind !== "complimentary" && (
+            <span className="block text-xs text-faint">Plus tax where it applies</span>
+          )}
         </p>
       }
     >

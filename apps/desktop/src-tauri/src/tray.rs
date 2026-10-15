@@ -79,19 +79,33 @@ fn toggle_text(view: &crate::runner::View) -> &'static str {
 }
 
 /// The runner changed: its rows, and the icon's tooltip, say what it is doing now.
+///
+/// The change is handed to the main thread and not waited for: off the
+/// main thread `set_text` waits for the main thread to make it, so the
+/// runner's thread would stall on a busy window, and holding `RUNNER`
+/// across it while the main thread came here too (the site's
+/// `runner_offer`) froze the app, the window marked Not Responding.
 pub fn runner_changed(app: &AppHandle, view: &crate::runner::View) {
-    if let Some((status, toggle)) = RUNNER.lock().unwrap().as_ref() {
-        let _ = status.set_text(crate::runner::headline(view));
-        let _ = toggle.set_text(toggle_text(view));
-    }
-    if let Some(tray) = app.tray_by_id(TRAY) {
-        let _ = tray.set_tooltip(Some(format!("g1t · {}", crate::runner::headline(view))));
-    }
+    let headline = crate::runner::headline(view);
+    let toggle_line = toggle_text(view);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let rows = RUNNER.lock().unwrap().clone();
+        if let Some((status, toggle)) = rows {
+            let _ = status.set_text(&headline);
+            let _ = toggle.set_text(toggle_line);
+        }
+        if let Some(tray) = handle.tray_by_id(TRAY) {
+            let _ = tray.set_tooltip(Some(format!("g1t · {headline}")));
+        }
+    });
 }
 
 /// The update is downloaded: the menus say so, and offer the restart.
 pub fn update_ready(version: &str) {
-    for item in RESTART.lock().unwrap().iter() {
+    // Out of the lock first, as in runner_changed: this runs off the main thread.
+    let items = RESTART.lock().unwrap().clone();
+    for item in &items {
         let _ = item.set_text(format!("Restart to update to {version}"));
         let _ = item.set_enabled(true);
     }

@@ -57,6 +57,7 @@ export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: 
       await clearConversation(db, id);
       await db.batch([
         db.prepare("DELETE FROM channel_members WHERE channel_id = ?").bind(id),
+        db.prepare("DELETE FROM channel_removals WHERE channel_id = ?").bind(id),
         db.prepare("DELETE FROM channels WHERE id = ?").bind(id),
       ]);
     } else {
@@ -75,6 +76,11 @@ export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: 
       db.prepare("DELETE FROM reactions WHERE principal = ?").bind(key),
       db.prepare("DELETE FROM general_joined WHERE principal = ?").bind(key),
       db.prepare("UPDATE custom_emoji SET created_by = ? WHERE created_by = ?").bind(GHOST, key),
+      // Invitations, requests and removals name them; what someone else sent goes with them too.
+      db.prepare("DELETE FROM channel_invitations WHERE invitee = ?1 OR invited_by = ?1").bind(key),
+      db.prepare("UPDATE channel_requests SET answered_by = ?2 WHERE answered_by = ?1").bind(key, GHOST),
+      db.prepare("DELETE FROM channel_requests WHERE requester = ?").bind(key),
+      db.prepare("DELETE FROM channel_removals WHERE principal = ?1 OR removed_by = ?1").bind(key),
     ]);
   } else {
     const files = (await db.prepare("SELECT DISTINCT file FROM custom_emoji WHERE workspace_id = ? AND file IS NOT NULL").bind(args.id).all<{ file: string }>()).results;
@@ -82,7 +88,7 @@ export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: 
       const used = await db.prepare("SELECT 1 FROM custom_emoji WHERE workspace_id != ? AND file = ? LIMIT 1").bind(args.id, file).first();
       if (!used) await env.AVATARS.delete(`emoji/${file}`);
     }
-    await db.batch(["general_joined", "custom_emoji", "chat_settings", "former_agents", "chat_meter"].map(table => db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).bind(args.id)));
+    await db.batch(["general_joined", "custom_emoji", "chat_settings", "former_agents", "chat_meter", "channel_invitations", "channel_requests"].map(table => db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).bind(args.id)));
   }
   return { ok: true };
 }

@@ -110,8 +110,9 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeOf("/acme/-/workspace", "acme"), "workspace");
   assert.equal(modeOf("/acme/web/pulls", "acme"), "code");
   assert.equal(modeOf("/new", "acme"), "code");
-  // Another workspace's chat is not this one's mode; its repositories are Code's.
-  assert.equal(modeOf("/other/-/chat", "acme"), "code");
+  // Another workspace's chat is Chat (a guest in its channels); its repositories are Code's.
+  assert.equal(modeOf("/other/-/chat", "acme"), "chat");
+  assert.equal(modeOf("/other/web", "acme"), "code");
   assert.equal(modeHome("home", "acme"), "/acme/-/home");
   assert.equal(modeHome("notifications", "acme"), "/notifications");
   assert.equal(modeHome("people", "acme"), "/acme/-/people");
@@ -195,5 +196,9 @@ test("g1t beyond your workspaces is browsed, and whose it is", async () => {
   assert.equal(shellMode("/acme/web", viewer), "code");
   assert.equal(shellMode("/friend/notes", viewer), "code");
   assert.equal(shellMode("/acme/-/chat", viewer), "chat");
+  // Another workspace's channels, where you are a guest, are Chat's, not browsed.
+  assert.equal(browsingOf("/flagon-io/-/chat/community-support", viewer), null);
+  assert.equal(shellMode("/flagon-io/-/chat/community-support", viewer), "chat");
+  assert.equal(shellMode("/flagon-io/-/chat", viewer), "chat");
   assert.equal(shellMode("/policies", viewer), "site");
 });

@@ -1,9 +1,7 @@
-import { data } from "react-router";
-
 import type { Route } from "./+types/person";
 import { buildCard } from "../../../lib/hovercard";
 import { identity, repos } from "../../../lib/services.server";
-import { requireUser, roleIn } from "../../../lib/session.server";
+import { requireUser } from "../../../lib/session.server";
 
 /**
  * A person's card in Chat (components/chat/profile-card.tsx): their public
@@ -12,7 +10,7 @@ import { requireUser, roleIn } from "../../../lib/session.server";
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
-  if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
+  // Guests see people's cards too: a card is their public profile, and teams only the viewer may see.
   const [card, teams] = await Promise.all([
     buildCard(
       params.username,

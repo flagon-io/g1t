@@ -18,6 +18,9 @@
 //! the methods and their arguments.
 
 mod accounts;
+mod allocation;
+mod complimentary;
+mod enterprise_attempt;
 mod budget;
 mod charged;
 mod cards;
@@ -37,6 +40,7 @@ mod overages;
 mod requests;
 mod storage;
 mod invoices;
+mod invoice_attempt;
 mod sales;
 mod statement;
 mod webhooks;
@@ -111,6 +115,8 @@ struct LedgerRow {
     #[serde(default)]
     given_micros: Option<i64>,
     #[serde(default)]
+    gift_micros: Option<i64>,
+    #[serde(default)]
     credit_kind: Option<String>,
     #[serde(default)]
     discount_micros: Option<i64>,
@@ -135,6 +141,7 @@ impl From<LedgerRow> for LedgerEntry {
             trial_micros: row.trial_micros.unwrap_or(0),
             oss_micros: row.oss_micros.unwrap_or(0),
             given_micros: row.given_micros.unwrap_or(0),
+            gift_micros: row.gift_micros.unwrap_or(0),
             credit_kind: row.credit_kind.as_deref().and_then(CreditKind::parse),
             discount_micros: row.discount_micros.unwrap_or(0),
         }
@@ -353,13 +360,14 @@ impl Billing {
         created_by: Option<&str>,
         customer: Option<&str>,
     ) -> Result<()> {
-        let statements = self.entry_statements(workspace, kind, amount_micros, description, reference, cost_micros, created_by, customer)?;
+        let mut statements = self.entry_statements(workspace, kind, amount_micros, description, reference, cost_micros, created_by, customer)?;
         let kind = match kind {
             EntryKind::TopUp => "top_up",
             EntryKind::Usage => "usage",
         };
+        statements.extend(self.after_entry_statements(workspace, kind, amount_micros)?);
         self.db.batch(statements).await?;
-        self.after_entry(workspace, kind, amount_micros).await
+        Ok(())
     }
 
     /// The two writes of a ledger entry (the entry, and the balance moved
@@ -421,7 +429,7 @@ impl Billing {
     }
 
     /// What follows an entry entered on its own.
-    async fn after_entry(&self, workspace: &str, kind: &str, amount_micros: i64) -> Result<()> {
+    fn after_entry_statements(&self, workspace: &str, kind: &str, amount_micros: i64) -> Result<Vec<worker::D1PreparedStatement>> {
         // Money in clears a card declined at the limit. A refund or a lost
         // dispute is a top-up of less than nothing: money out, which never
         // clears it. A stop for a dispute lifts only once no dispute is open
@@ -429,8 +437,7 @@ impl Billing {
         // several (`dispute_owed_micros`): a smaller, unrelated payment
         // leaves it.
         if kind == "top_up" && amount_micros > 0 {
-            self.db
-                .batch(vec![
+            return Ok(vec![
                     self.db
                         .prepare(
                             "UPDATE limits SET dispute_owed_micros = MAX(dispute_owed_micros - ?2, 0)
@@ -438,10 +445,9 @@ impl Billing {
                         )
                         .bind(&[workspace.into(), (amount_micros as f64).into()])?,
                     self.db.prepare(CLEAR_STOP).bind(&[workspace.into()])?,
-                ])
-                .await?;
+                ]);
         }
-        Ok(())
+        Ok(vec![])
     }
 
     async fn account(&self, a: AccountArgs) -> Result<Outcome<Account>> {
@@ -532,7 +538,7 @@ impl Billing {
                 .prepare(format!(
                     "SELECT
                        -SUM(CASE WHEN kind = 'usage' THEN amount_micros END) AS spent,
-                       SUM(CASE WHEN kind = 'usage' THEN COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0)
+                       SUM(CASE WHEN kind = 'usage' THEN COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0)
                                 + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0) END) AS covered,
                        SUM(CASE WHEN kind = 'usage' THEN {price} END) AS price,",
                     price = crate::statement::PRICE_SQL
@@ -725,8 +731,8 @@ impl Billing {
         let cents = tax::prepay_credit_cents(session.before_tax_cents(), fee);
         let tax_cents = session.tax_cents();
         let description = format!("Paid in advance{}", tax::paid_with(tax::Extras { tax_cents, fee_cents: fee }));
-        let entered = self
-            .enter(
+        let mut writes = self
+            .entry_statements(
                 workspace,
                 EntryKind::TopUp,
                 cents * MICROS_PER_DOLLAR / 100,
@@ -735,16 +741,15 @@ impl Billing {
                 None,
                 Some(by),
                 session.customer.as_deref(),
-            )
-            .await;
-        match entered {
-            Ok(()) => {}
+            )?;
+        writes.extend(self.after_entry_statements(workspace, "top_up", cents * 10_000)?);
+        writes.extend(self.extras_statements(workspace, &session.id, session.payment_intent.as_deref(), tax::Extras { tax_cents, fee_cents: fee }, None)?);
+        match self.db.batch(writes).await {
+            Ok(_) => {}
             // Credited a moment ago by whoever confirmed it alongside.
             Err(error) if is_duplicate(&error) => return Ok(0),
             Err(error) => return Err(error),
         }
-        self.record_extras(workspace, &session.id, session.payment_intent.as_deref(), tax::Extras { tax_cents, fee_cents: fee }, None)
-            .await?;
         Ok(cents)
     }
 
@@ -845,16 +850,15 @@ impl Billing {
         let (charge, terms_note, discount) = self.charged(&workspace, price).await?;
         let eligible = credits::eligible_for(a.kind, a.repo.as_deref());
         let month = credits::month_of(&timestamp);
-        // The price versions it was charged at (pricing.rs), read before the
-        // draw: nothing between the draw and the entry may fail without
-        // giving it back.
+        // Resolve price versions before the atomic allocation and posting.
         let meters: &[&str] = if parts.is_some() { &["sandbox_base_second", "sandbox_cpu_second"] } else { &["sandbox_second"] };
         let mut versions = Vec::new();
         for meter in meters {
             versions.extend(self.version_now(meter).await?);
         }
         let price_version = versions.join(",");
-        let drawn = self.draw(&workspace, charge, &month, &eligible).await?;
+        let drawn = credits::Drawn::default();
+        let plan = self.has_plan(&workspace).await?;
         let charge = charge - drawn.total();
         let description = format!(
             "{}: {}, {} on the {} machine{terms_note}{}",
@@ -866,11 +870,9 @@ impl Billing {
         );
         // The ledger's unique reference decides between duplicate
         // deliveries: the entry goes in, and the balance moves, only for the
-        // first; a later one gives back what it drew.
+        // first; a later delivery consumes no allowance.
         let id = new_id("led", now);
-        let written = self
-            .db
-            .batch(vec![
+        let mut writes = vec![
                 self.db
                     .prepare(
                         "INSERT INTO ledger
@@ -899,22 +901,14 @@ impl Billing {
                         optional(a.kind.map(ComputeKind::as_str)),
                         instance.machine.into(),
                     ])?,
-                self.balance_if_posted(&workspace, charge, &id)?,
-            ])
-            .await
-            .and_then(|results| storage::posted(&results));
-        let repo = eligible.repo.as_deref();
-        match written {
-            Ok(true) => {}
-            Ok(false) => {
-                self.undraw(&workspace, &month, &drawn, repo).await?;
-                return Ok(Outcome::Ok(false));
-            }
-            Err(error) => {
-                self.undraw(&workspace, &month, &drawn, repo).await?;
-                return Err(error);
-            }
+            ];
+        writes.extend(self.allocation_statements(&id, &workspace, &month, &eligible, plan).await?);
+        writes.push(self.balance_if_posted(&workspace, &id)?);
+        let results = self.db.batch(writes).await?;
+        if !storage::posted(&results)? {
+            return Ok(Outcome::Ok(false));
         }
+        let (charge, drawn) = self.posted_allocation(&a.reference).await?;
         self.record_discount(&a.reference, discount).await?;
         self.count_spend(&workspace, cost, charge, &drawn).await;
         if let Some(reservation) = &a.reservation_id {
@@ -1106,6 +1100,10 @@ async fn tick(billing: &Billing, env: &Env) {
     }
     if let Err(error) = billing.close_months().await {
         worker::console_error!("closing the month failed: {error}");
+    }
+    // Complimentary enrollments' Stripe steps still owed.
+    if let Err(error) = billing.complimentary_tick().await {
+        worker::console_error!("complimentary Stripe steps failed: {error}");
     }
     if let Err(error) = billing.invoice_enterprises().await {
         worker::console_error!("invoicing enterprises failed: {error}");
@@ -1318,6 +1316,10 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_reset_billing" => reply(&billing.admin_reset_billing(&env, args(body)?).await?),
         "admin_detach_test_stripe" => reply(&billing.admin_detach_test_stripe(args(body)?).await?),
         "admin_set_allowances" => reply(&billing.admin_set_allowances(args(body)?).await?),
+        "admin_complimentary" => reply(&billing.admin_complimentary(args(body)?).await?),
+        "admin_set_complimentary" => reply(&billing.admin_set_complimentary(args(body)?).await?),
+        "admin_end_complimentary" => reply(&billing.admin_end_complimentary(args(body)?).await?),
+        "convert_to_paid" => reply(&billing.convert_to_paid(args(body)?).await?),
         "entitlements" => reply(&billing.entitlements(args(body)?).await?),
         "audit_retention" => reply(&billing.audit_retention(args(body)?).await?),
         "reserve" => reply(&billing.reserve(args(body)?).await?),
@@ -1454,6 +1456,16 @@ mod tests {
         include_str!("../migrations/0053_models_at_cost.sql"),
         include_str!("../migrations/0054_agent_attribution.sql"),
         include_str!("../migrations/0055_app_containers.sql"),
+        include_str!("../migrations/0056_sandbox_standard_3.sql"),
+        include_str!("../migrations/0057_runner_minutes.sql"),
+        include_str!("../migrations/0058_payment_safety.sql"),
+        include_str!("../migrations/0059_telemetry_ingest.sql"),
+        include_str!("../migrations/0060_pending_baselines.sql"),
+        include_str!("../migrations/0061_measured_months.sql"),
+        include_str!("../migrations/0062_invoice_attempts.sql"),
+        include_str!("../migrations/0063_enterprise_attempts.sql"),
+        include_str!("../migrations/0064_complimentary.sql"),
+        include_str!("../migrations/0065_free_except_flagon.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an

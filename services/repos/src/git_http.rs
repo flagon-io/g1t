@@ -607,6 +607,7 @@ impl LargePushes {
 /// A push the store could not hold.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SizeViolation {
+    Malformed(String),
     Object { size: u64 },
     Repository { held: u64, incoming: u64, limit: u64 },
     Unscannable { size: u64, cap: usize },
@@ -617,6 +618,10 @@ pub enum SizeViolation {
 pub fn size_refusal(violation: &SizeViolation) -> (String, Vec<String>) {
     use crate::pack_limits::{MAX_OBJECT_BYTES, PLATFORM_BODY_LIMIT_BYTES, megabytes};
     match violation {
+        SizeViolation::Malformed(why) => (
+            "the push could not be checked for storage limits".to_owned(),
+            vec![format!("The push could not be checked: {why}. Retry with a valid Git pack.")],
+        ),
         SizeViolation::Object { size } => (
             format!("a file of {} is over the {} limit", megabytes(*size), megabytes(MAX_OBJECT_BYTES)),
             vec![
@@ -662,10 +667,7 @@ fn check_size(sizer: &mut Option<PackSizer>, chunk: &[u8], limits: &PushLimits) 
         Ok(()) => {}
         Err(Violation::ObjectTooLarge { size }) => return Some(SizeViolation::Object { size }),
         Err(Violation::Malformed(why)) => {
-            // Not for g1t to judge: the store will say.
-            worker::console_error!("push not checked for size: {why}");
-            *sizer = None;
-            return None;
+            return Some(SizeViolation::Malformed(why));
         }
     }
     let incoming = walker.pack_bytes();

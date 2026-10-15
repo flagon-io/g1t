@@ -12,8 +12,9 @@
 //!   mode. Its signing secret is the worker's `STRIPE_WEBHOOK_SECRET`
 //!   environment secret, never kept in the database or shown, and nothing
 //!   can be posted here without it.
-//! - An event whose `livemode` is not the key's mode is ignored (and
-//!   logged): test events never move live balances, nor the reverse.
+//! - An event whose `livemode` is not the key's mode is rejected before
+//!   claiming its ID: an early live delivery must remain retryable after
+//!   cutover, and test events never move live balances.
 //! - Each event is handled once, by id, and recorded with what was done.
 //! - Every handler is safe alongside the paths that ask Stripe directly:
 //!   both claim the same rows.
@@ -42,6 +43,11 @@ use crate::Billing;
 
 /// Where Stripe sends events.
 pub(crate) const WEBHOOK_URL: &str = "https://api.g1t.sh/stripe/webhook";
+
+pub(crate) const ENTERPRISE_STATUS: &str = "UPDATE enterprise_invoices SET status = ? WHERE invoice_id = ? AND status IN ('open', 'overdue') RETURNING invoice_id";
+pub(crate) const ENTERPRISE_OVERDUE_STOP: &str = "INSERT INTO limits (workspace, autopay_failed_at, autopay_error, updated_at)
+    SELECT ?1, ?2, ?3, ?2 WHERE EXISTS (SELECT 1 FROM enterprise_invoices WHERE invoice_id = ?4 AND status = 'overdue')
+    ON CONFLICT (workspace) DO UPDATE SET autopay_failed_at = ?2, autopay_error = ?3, updated_at = ?2";
 
 /// The events billing acts on.
 pub(crate) const EVENTS: &[&str] = &[
@@ -87,6 +93,9 @@ pub(crate) fn wrong_mode(livemode: Option<bool>, mode: &str) -> Option<String> {
 /// as a positive amount: from the plan's payments and from the ledger alike.
 pub(crate) const ALREADY_REFUNDED_SQL: &str = "SELECT -(COALESCE((SELECT SUM(amount_micros) FROM plan_payments WHERE invoice_id LIKE ?1), 0)
           + COALESCE((SELECT SUM(amount_micros) FROM ledger WHERE reference LIKE ?1), 0)) AS micros";
+
+pub(crate) const REFUND_BALANCE: &str = "UPDATE accounts SET balance_micros = balance_micros +
+    (SELECT amount_micros FROM ledger WHERE reference = ?1) WHERE workspace = ?2 AND changes() > 0";
 
 /// Why a workspace's work is stopped while one of its payments is disputed.
 const DISPUTE_STOP: &str = "a payment was disputed with the card's bank";
@@ -159,7 +168,7 @@ pub(crate) fn verify(payload: &str, header: &str, secret: &str, now_seconds: i64
         }
     }
     let Some(timestamp) = timestamp else { return false };
-    if (now_seconds - timestamp).abs() > TOLERANCE_SECONDS {
+    if now_seconds.abs_diff(timestamp) > TOLERANCE_SECONDS as u64 {
         return false;
     }
     let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else { return false };
@@ -210,6 +219,7 @@ struct LineRow {
 
 /// The idempotency key of an enterprise's invoice: the same enterprise,
 /// period and amounts are the same invoice however often it is attempted.
+#[cfg(test)]
 pub(crate) fn enterprise_invoice_key(id: &str, period: &str, lines: &[(&str, i64)]) -> String {
     // FNV-1a over every line, so the key stays short however many there are.
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -334,6 +344,12 @@ impl Billing {
     /// or again from the event list (stripe_sync.rs). False when it was
     /// seen before.
     pub(crate) async fn process_event(&self, event: &Value) -> Result<bool> {
+        // Do not permanently acknowledge an event delivered while the live
+        // webhook and API key are being switched. Recording it as ignored
+        // would prevent both redelivery and event replay after cutover.
+        if let Some(why) = wrong_mode(event["livemode"].as_bool(), self.mode()) {
+            return Err(worker::Error::RustError(format!("Stripe mode mismatch; retry after configuration is corrected: {why}")));
+        }
         let id = event["id"].as_str().unwrap_or_default().to_owned();
         let kind = event["type"].as_str().unwrap_or_default().to_owned();
         // Once each: the first to record it handles it.
@@ -344,6 +360,16 @@ impl Billing {
             .first::<Value>(None)
             .await?;
         if claimed.is_none() {
+            // A concurrent handler has not acknowledged this event yet.
+            // Returning success here could advance replay past work that
+            // subsequently fails (or acknowledge Stripe's last retry).
+            let pending = self.db
+                .prepare("SELECT id FROM stripe_events WHERE id = ? AND outcome = 'handling'")
+                .bind(&[id.as_str().into()])?
+                .first::<Value>(None).await?;
+            if pending.is_some() {
+                return Err(worker::Error::RustError("Stripe event is still being handled; retry it".into()));
+            }
             return Ok(false);
         }
         let outcome = match self.handle(&kind, event).await {
@@ -363,10 +389,6 @@ impl Billing {
     }
 
     async fn handle(&self, kind: &str, event: &Value) -> Result<String> {
-        if let Some(why) = wrong_mode(event["livemode"].as_bool(), self.mode()) {
-            worker::console_error!("Stripe event {} ({kind}) ignored: {why}", event["id"].as_str().unwrap_or_default());
-            return Ok(format!("ignored: {why}"));
-        }
         let object = &event["data"]["object"];
         let text = |key: &str| object[key].as_str().unwrap_or_default().to_owned();
         // The customer whose saved card may have changed. A detached card
@@ -424,7 +446,7 @@ impl Billing {
     }
 
     /// A payment page done, whether or not the person came back to g1t.
-    async fn settle_checkout(&self, session_id: &str) -> Result<String> {
+    pub(crate) async fn settle_checkout(&self, session_id: &str) -> Result<String> {
         #[derive(Deserialize)]
         struct Open {
             workspace: String,
@@ -502,12 +524,15 @@ impl Billing {
     /// The invoice is read again at billing's API version: the event's copy
     /// is at the destination's, where `tax` and `payment_intent` may be
     /// gone.
-    async fn plan_paid(&self, subscription_id: &str, invoice_id: &str) -> Result<()> {
+    pub(crate) async fn plan_paid(&self, subscription_id: &str, invoice_id: &str) -> Result<()> {
         let Some(stripe) = &self.stripe else { return Ok(()) };
         if invoice_id.is_empty() {
             return Ok(());
         }
         let invoice: Value = stripe.get(&format!("/invoices/{invoice_id}")).await?;
+        if invoice["status"].as_str() != Some("paid") {
+            return Ok(());
+        }
         let invoice = &invoice;
         let split = crate::stripe::invoice_split(invoice, invoice["amount_paid"].as_i64().unwrap_or(0));
         let amount_cents = split.net_cents;
@@ -518,27 +543,34 @@ impl Billing {
         struct Owner {
             workspace: String,
         }
-        if let Some(owner) = self
+        // The plan's subscription, or an enrollment's: its custom fee, or
+        // the first plan invoice of a conversion Stripe has not applied yet.
+        // Either is money received.
+        let Some(owner) = self
             .db
-            .prepare("SELECT workspace FROM subscriptions WHERE subscription_id = ?")
+            .prepare(
+                "SELECT workspace FROM subscriptions WHERE subscription_id = ?1
+                 UNION ALL SELECT workspace FROM complimentary WHERE subscription_id = ?1 LIMIT 1",
+            )
             .bind(&[subscription_id.into()])?
             .first::<Owner>(None)
             .await?
-        {
-            let extras = crate::tax::Extras { tax_cents: split.tax_cents, fee_cents: split.fee_cents };
-            self.record_extras(&owner.workspace, invoice_id, invoice["payment_intent"].as_str(), extras, None).await?;
-        }
+        else {
+            return Ok(());
+        };
+        let extras = crate::tax::Extras { tax_cents: split.tax_cents, fee_cents: split.fee_cents };
+        self.record_extras(&owner.workspace, invoice_id, invoice["payment_intent"].as_str(), extras, None).await?;
         self.db
             .prepare(
                 "INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at)
-                 SELECT ?1, workspace, ?2, ?3 FROM subscriptions WHERE subscription_id = ?4
+                 VALUES (?1, ?4, ?2, ?3)
                  ON CONFLICT (invoice_id) DO NOTHING",
             )
             .bind(&[
                 invoice_id.into(),
                 ((amount_cents * 10_000) as f64).into(),
                 rfc3339(now_ms()).into(),
-                subscription_id.into(),
+                owner.workspace.as_str().into(),
             ])?
             .run()
             .await?;
@@ -553,14 +585,16 @@ impl Billing {
             feature: String,
             started_by: String,
         }
-        let Some(plan) = self
+        let plan = self
             .db
             .prepare("SELECT workspace, feature, started_by FROM subscriptions WHERE subscription_id = ?")
             .bind(&[subscription_id.into()])?
             .first::<Plan>(None)
-            .await?
-        else {
-            return Ok("ignored: not a g1t plan".to_owned());
+            .await?;
+        // A complimentary enrollment's subscription (or one converting to
+        // the plan, which has no plan row until Stripe applies it).
+        let Some(plan) = plan else {
+            return Ok(self.settle_complimentary(subscription_id).await?.unwrap_or_else(|| "ignored: not a g1t plan".to_owned()));
         };
         let (Some(stripe), Some(feature)) = (&self.stripe, g1t_contracts::billing::Feature::parse(&plan.feature)) else {
             return Ok("ignored".to_owned());
@@ -629,9 +663,31 @@ impl Billing {
         if refunded <= 0 {
             return Ok("ignored: nothing refunded".to_owned());
         }
-        let plan_invoice = match charge["invoice"].as_str() {
-            Some(invoice) => self.plan_payment_of(invoice).await?,
-            None => false,
+        // Refunds can precede payment webhooks. Establish the original
+        // payment and tax split first instead of treating tax as credit.
+        let mut invoice_extras = None;
+        let plan_invoice = if let Some(id) = charge["invoice"].as_str() {
+            let invoice: Value = stripe.get(&format!("/invoices/{id}")).await?;
+            let split = crate::stripe::invoice_split(&invoice, invoice["amount_paid"].as_i64().unwrap_or(0));
+            invoice_extras = Some(crate::tax::Extras { tax_cents: split.tax_cents, fee_cents: split.fee_cents });
+            if invoice_subscription(&invoice).is_some() {
+                true
+            } else {
+                self.workspace_invoice_paid(id).await?;
+                false
+            }
+        } else {
+            if let Some(intent) = charge["payment_intent"].as_str() {
+                let sessions: Value = stripe.get(&format!("/checkout/sessions?{}", crate::stripe::form(&[
+                    ("payment_intent", intent.to_owned()), ("limit", "100".to_owned()),
+                ]))).await?;
+                for session in sessions["data"].as_array().into_iter().flatten() {
+                    if let Some(id) = session["id"].as_str() {
+                        self.settle_checkout(id).await?;
+                    }
+                }
+            }
+            false
         };
         // Each refund total once, so partial refunds add up correctly: what
         // earlier refunds of the charge took back, wherever they were kept.
@@ -652,6 +708,7 @@ impl Billing {
         // A refund gives back the payment's tax and card fee in proportion:
         // only the rest comes off the balance, which never held them.
         let (extras, transaction) = self.extras_of(charge["payment_intent"].as_str(), charge["invoice"].as_str()).await?;
+        let extras = invoice_extras.unwrap_or(extras);
         let paid = charge["amount"].as_i64().unwrap_or(refunded);
         let (balance_cents, tax_cents, fee_cents) = crate::tax::refund_split(refunded, paid, extras.tax_cents, extras.fee_cents);
         let (given_tax, given_fee) = self.refunded_extras(charge_id).await?;
@@ -661,20 +718,31 @@ impl Billing {
             return Ok("ignored: refund already recorded".to_owned());
         }
         let reference = format!("refund/{charge_id}/{refunded}");
-        if new > 0 && plan_invoice {
-            // The plan's revenue is less; nothing was ever on the balance.
-            self.db
-                .prepare(
-                    "INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at) VALUES (?, ?, ?, ?)
-                     ON CONFLICT (invoice_id) DO NOTHING",
-                )
-                .bind(&[reference.as_str().into(), workspace.as_str().into(), ((-new) as f64).into(), rfc3339(now_ms()).into()])?
-                .run()
-                .await?;
-        } else if new > 0 {
-            self.enter(&workspace, EntryKind::TopUp, -new, "Refunded to the card", &reference, None, None, None).await?;
+        // Compute each delta inside the transaction, not from the earlier
+        // read: distinct partial-refund events can execute concurrently.
+        let now = rfc3339(now_ms());
+        let pattern = format!("refund/{charge_id}/%");
+        let mut writes = vec![self.db.prepare(if plan_invoice {
+            include_str!("refund_plan.sql")
+        } else {
+            include_str!("refund_ledger.sql")
+        }).bind(&[
+            g1t_contracts::new_id("led", now_ms()).into(), workspace.as_str().into(),
+            ((balance_cents * 10_000) as f64).into(), reference.as_str().into(), now.as_str().into(), pattern.as_str().into(),
+        ])?];
+        if !plan_invoice {
+            // changes() is the preceding insert's count: replaying a
+            // cumulative refund never moves the balance a second time.
+            writes.push(self.db.prepare(REFUND_BALANCE).bind(&[reference.as_str().into(), workspace.as_str().into()])?);
         }
-        self.record_extras(&workspace, &reference, charge["payment_intent"].as_str(), new_extras, None).await?;
+        for (kind, total) in [("tax", tax_cents), ("card_fee", fee_cents)] {
+            writes.push(self.db.prepare(include_str!("refund_extras.sql")).bind(&[
+                format!("{reference}/{kind}").into(), workspace.as_str().into(), kind.into(),
+                ((total * 10_000) as f64).into(), reference.as_str().into(),
+                crate::optional(charge["payment_intent"].as_str()), now.as_str().into(), pattern.as_str().into(),
+            ])?);
+        }
+        self.db.batch(writes).await?;
         // An off-session charge's tax was recorded by g1t (auto-reload):
         // reverse what this refund gave back. Checkout's and invoices' tax
         // Stripe Tax keeps itself.
@@ -1062,9 +1130,14 @@ impl Billing {
         if a.by.trim().is_empty() {
             return Ok(Outcome::fail(FailureCode::Invalid, "Say who is sending it."));
         }
-        match self.invoice_enterprise(&a.id, "now", &a.by).await? {
-            Ok(invoice) => Ok(Outcome::Ok(invoice)),
-            Err(why) => Ok(Outcome::fail(FailureCode::Conflict, why)),
+        match self.invoice_enterprise(&a.id, "now", &a.by).await {
+            Ok(Ok(invoice)) => Ok(Outcome::Ok(invoice)),
+            Ok(Err(why)) => Ok(Outcome::fail(FailureCode::Conflict, why)),
+            Err(error) => {
+                worker::console_error!("enterprise invoice {} could not complete: {error}", a.id);
+                Ok(Outcome::fail(FailureCode::Conflict,
+                    "The invoice has not completed. Retry to resume the same invoice; if this continues, contact support."))
+            }
         }
     }
 
@@ -1101,8 +1174,12 @@ impl Billing {
 
     /// One invoice for what each of the enterprise's workspaces owes now.
     async fn invoice_enterprise(&self, id: &str, period: &str, by: &str) -> Result<std::result::Result<EnterpriseInvoice, String>> {
-        let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
+        if self.stripe.is_none() { return Ok(Err("Payments are not set up.".into())); }
         let Some(account) = self.enterprise(id).await? else { return Ok(Err("No such enterprise.".into())) };
+        self.db.prepare(crate::enterprise_attempt::RETIRE).bind(&[id.into()])?.run().await?;
+        if let Some(attempt) = self.enterprise_attempt(id).await? {
+            return self.finish_enterprise_attempt(id, attempt).await;
+        }
         #[derive(Deserialize)]
         struct Customer {
             customer_id: Option<String>,
@@ -1120,6 +1197,7 @@ impl Billing {
         // What each workspace owes: its charges less what it has paid, and
         // less what is on invoices still open.
         let mut lines = vec![];
+        let mut snapshots = vec![];
         for workspace in &account.workspaces {
             let balance = self.row(workspace).await?.map_or(0, |row| row.balance_micros);
             #[derive(Deserialize)]
@@ -1138,14 +1216,31 @@ impl Billing {
                 .await?
                 .and_then(|s| s.micros)
                 .unwrap_or(0);
+            snapshots.push(crate::enterprise_attempt::Snapshot { workspace: workspace.clone(), balance, invoiced });
             let owed = (-balance).max(0) - invoiced;
             if owed >= 10_000 {
-                lines.push(InvoiceLine { workspace: workspace.clone(), amount_micros: owed });
+                // Store precisely what Stripe bills, including cent rounding.
+                lines.push(InvoiceLine { workspace: workspace.clone(), amount_micros: ((owed + 9_999) / 10_000) * 10_000 });
             }
         }
         if lines.is_empty() {
             return Ok(Err("Its workspaces owe nothing to invoice.".into()));
         }
+        let attempt = self.begin_enterprise_attempt(id, crate::enterprise_attempt::Request {
+            customer, name: account.name, period: period.to_owned(), by: by.to_owned(), lines,
+        }, snapshots).await?;
+        self.finish_enterprise_attempt(id, attempt).await
+    }
+
+    async fn finish_enterprise_attempt(&self, id: &str, attempt: crate::enterprise_attempt::Attempt) -> Result<std::result::Result<EnterpriseInvoice, String>> {
+        let Some(stripe) = &self.stripe else { return Ok(Err("Payments are not set up.".into())) };
+        let request: crate::enterprise_attempt::Request = serde_json::from_str(&attempt.payload)
+            .map_err(|e| worker::Error::RustError(e.to_string()))?;
+        let customer = request.customer;
+        let name = request.name;
+        let period = request.period.as_str();
+        let by = request.by.as_str();
+        let lines = request.lines;
         // Stripe Tax places the customer by its address; without one the
         // invoice could not be finalized, so it is not started.
         match stripe.customer_placed(&customer).await {
@@ -1153,7 +1248,7 @@ impl Billing {
             Ok(false) => {
                 return Ok(Err(format!(
                     "Add {}'s billing address first (Invoices → Billing address): Stripe needs it to work out tax.",
-                    account.name
+                    name
                 )));
             }
             Err(error) => return Ok(Err(crate::stripe::friendly(&error))),
@@ -1161,17 +1256,20 @@ impl Billing {
         // Invoiced, never by card: no card fee. Tax on top, by Stripe Tax.
         let mut fields = vec![
             ("customer", customer.clone()),
+            ("auto_advance", "false".to_owned()),
             ("collection_method", "send_invoice".to_owned()),
             ("days_until_due", "30".to_owned()),
             ("pending_invoice_items_behavior", "exclude".to_owned()),
-            ("description", format!("g1t usage for the {} enterprise", account.name)),
+            ("description", format!("g1t usage for the {} enterprise", name)),
             ("metadata[g1t_enterprise]", id.to_owned()),
+            ("metadata[g1t_attempt]", attempt.id.clone()),
             ("metadata[period]", period.to_owned()),
         ];
         fields.extend(crate::stripe::invoice_tax_fields());
         #[derive(Deserialize)]
         struct Invoice {
             id: String,
+            status: String,
             #[serde(default)]
             hosted_invoice_url: Option<String>,
             #[serde(default)]
@@ -1184,29 +1282,39 @@ impl Billing {
         // an attempt that failed half way is found again, never billed again
         // by an invoice sweeping its pending lines in.
         let cents: Vec<i64> = lines.iter().map(|line| (line.amount_micros + 9_999) / 10_000).collect();
-        let keyed: Vec<(&str, i64)> = lines.iter().zip(&cents).map(|(line, cents)| (line.workspace.as_str(), *cents)).collect();
-        let key = enterprise_invoice_key(id, period, &keyed);
-        let draft: Invoice = stripe.post_idempotent("/invoices", &fields, &key).await?;
-        for (line, cents) in lines.iter().zip(&cents) {
-            let mut fields = vec![
-                ("customer", customer.clone()),
-                ("invoice", draft.id.clone()),
-                ("amount", cents.to_string()),
-                ("currency", "usd".to_owned()),
-                ("description", format!("{}: g1t usage", line.workspace)),
-                ("metadata[workspace]", line.workspace.clone()),
-            ];
-            fields.extend(crate::stripe::item_tax_fields());
-            let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{}", line.workspace)).await?;
-        }
-        // A retry finds it finalized already; that is fine.
-        let _ = stripe.post::<Value>(&format!("/invoices/{}/finalize", draft.id), &[]).await;
-        let sent: Invoice = match stripe.post(&format!("/invoices/{}/send", draft.id), &[]).await {
-            Ok(sent) => sent,
-            Err(error) if crate::stripe::is_tax_location_error(&error) => {
-                return Ok(Err(format!("Stripe could not work out tax for {}: add its billing address, then send it again.", account.name)));
+        let key = attempt.id;
+        let too_old = !crate::invoice_attempt::safe_to_build(attempt.created_ms, now_ms());
+        let draft: Invoice = if let Some(invoice_id) = attempt.invoice_id {
+            stripe.get(&format!("/invoices/{invoice_id}")).await?
+        } else {
+            if too_old { return Ok(Err(format!("Invoice attempt {key} needs reconciliation before retrying an expired Stripe idempotency key."))); }
+            let invoice: Invoice = stripe.post_idempotent("/invoices", &fields, &key).await?;
+            self.db.prepare("UPDATE enterprise_invoice_attempts SET invoice_id=? WHERE id=?")
+                .bind(&[invoice.id.as_str().into(), key.as_str().into()])?.run().await?;
+            invoice
+        };
+        if draft.status == "draft" {
+            if too_old { return Ok(Err(format!("Draft {} needs reconciliation before rebuilding old invoice items.", draft.id))); }
+            for (line, cents) in lines.iter().zip(&cents) {
+                let mut fields = vec![
+                    ("customer", customer.clone()),
+                    ("invoice", draft.id.clone()),
+                    ("amount", cents.to_string()),
+                    ("currency", "usd".to_owned()),
+                    ("description", format!("{}: g1t usage", line.workspace)),
+                    ("metadata[workspace]", line.workspace.clone()),
+                ("metadata[g1t_attempt]", key.clone()),
+                ];
+                fields.extend(crate::stripe::item_tax_fields());
+                let _: Value = stripe.post_idempotent("/invoiceitems", &fields, &format!("{key}/item/{}", line.workspace)).await?;
             }
-            Err(error) => return Err(error),
+            let _: Invoice = stripe.post_idempotent(&format!("/invoices/{}/finalize", draft.id), &[], &format!("{key}/finalize")).await?;
+        }
+        let current: Invoice = stripe.get(&format!("/invoices/{}", draft.id)).await?;
+        let sent: Invoice = match current.status.as_str() {
+            "open" => stripe.post_idempotent(&format!("/invoices/{}/send", draft.id), &[], &format!("{key}/send")).await?,
+            "paid" | "void" | "uncollectible" => current,
+            _ => return Ok(Err(format!("Invoice {} is not ready to send ({}).", current.id, current.status))),
         };
         let now = rfc3339(now_ms());
         // What the workspaces owe, before tax: the tax is the enterprise's
@@ -1217,7 +1325,9 @@ impl Billing {
             .db
             .prepare(
                 "INSERT INTO enterprise_invoices (invoice_id, account_id, period, amount_micros, status, hosted_url, created_by, created_at)
-                 VALUES (?, ?, ?, ?, 'open', ?, ?, ?)",
+                 SELECT ?, ?, ?, ?, 'open', ?, ?, ?
+                 WHERE EXISTS (SELECT 1 FROM enterprise_invoice_attempts WHERE id=? AND completed=0)
+                 ON CONFLICT (invoice_id) DO NOTHING",
             )
             .bind(&[
                 sent.id.as_str().into(),
@@ -1227,22 +1337,32 @@ impl Billing {
                 crate::optional(sent.hosted_invoice_url.as_deref()),
                 by.into(),
                 now.as_str().into(),
+                key.as_str().into(),
             ])?];
         for line in &lines {
             writes.push(
                 self.db
-                    .prepare("INSERT INTO enterprise_invoice_lines (invoice_id, workspace, amount_micros) VALUES (?, ?, ?)")
-                    .bind(&[sent.id.as_str().into(), line.workspace.as_str().into(), (line.amount_micros as f64).into()])?,
+                    .prepare("INSERT INTO enterprise_invoice_lines (invoice_id, workspace, amount_micros)
+                        SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM enterprise_invoice_attempts WHERE id=? AND completed=0)
+                        ON CONFLICT (invoice_id, workspace) DO NOTHING")
+                    .bind(&[sent.id.as_str().into(), line.workspace.as_str().into(), (line.amount_micros as f64).into(), key.as_str().into()])?,
             );
         }
+        writes.push(self.db.prepare("UPDATE enterprise_invoice_attempts SET completed=1 WHERE id=?")
+            .bind(&[key.as_str().into()])?);
         self.db.batch(writes).await?;
+        if sent.status == "paid" {
+            self.enterprise_invoice_paid(&sent.id).await?;
+        } else if matches!(sent.status.as_str(), "void" | "uncollectible") {
+            self.enterprise_invoice_status(&sent.id, &sent.status).await?;
+        }
         self.audit(id, "invoice", &format!("Invoice {} for {} sent ({period})", sent.id, crate::features::dollars(total)), by)
             .await?;
         Ok(Ok(EnterpriseInvoice {
             invoice_id: sent.id,
             hosted_url: sent.hosted_invoice_url,
             amount_micros: total,
-            status: "open".to_owned(),
+            status: sent.status,
             period: period.to_owned(),
             lines,
             created_at: now,
@@ -1271,6 +1391,9 @@ impl Billing {
             Some(stripe) => Some(stripe.get(&format!("/invoices/{invoice_id}")).await?),
             None => None,
         };
+        if fetched.as_ref().and_then(|i| i["status"].as_str()) != Some("paid") {
+            return Ok("ignored: enterprise invoice is not paid".to_owned());
+        }
         let lines = self.invoice_lines(invoice_id).await?;
         for line in &lines {
             let reference = format!("inv/{invoice_id}/{}", line.workspace);
@@ -1296,11 +1419,6 @@ impl Billing {
                 Err(error) => return Err(error),
             }
         }
-        self.db
-            .prepare("UPDATE enterprise_invoices SET status = 'paid', paid_at = ? WHERE invoice_id = ? AND status <> 'paid'")
-            .bind(&[rfc3339(now_ms()).into(), invoice_id.into()])?
-            .run()
-            .await?;
         // Its tax is the enterprise's, paid on top of what its workspaces
         // owed, and never credited to them.
         #[derive(Deserialize)]
@@ -1318,15 +1436,34 @@ impl Billing {
             let extras = crate::tax::Extras { tax_cents: invoice["tax"].as_i64().unwrap_or(0).max(0), fee_cents: 0 };
             self.record_extras(&account.account_id, invoice_id, invoice["payment_intent"].as_str(), extras, None).await?;
         }
+        // Complete only after all retryable accounting work succeeded.
+        let mut completed = vec![self.db
+            .prepare("UPDATE enterprise_invoices SET status = 'paid', paid_at = ? WHERE invoice_id = ? AND status <> 'paid'")
+            .bind(&[rfc3339(now_ms()).into(), invoice_id.into()])?];
+        // Clear a concurrent overdue stop in the same transaction that makes
+        // the invoice terminal. A late stop checks this state atomically.
+        for line in &lines {
+            completed.push(self.db.prepare(crate::CLEAR_STOP).bind(&[line.workspace.as_str().into()])?);
+        }
+        self.db.batch(completed).await?;
         Ok(format!("invoice {invoice_id} paid; {} workspaces credited", lines.len()))
     }
 
     /// An enterprise invoice that went overdue stops its workspaces' work;
     /// one voided is simply closed.
     async fn enterprise_invoice_status(&self, invoice_id: &str, status: &str) -> Result<String> {
+        let Some(stripe) = &self.stripe else { return Ok("ignored: payments off".into()) };
+        let invoice: Value = stripe.get(&format!("/invoices/{invoice_id}")).await?;
+        let status = match invoice["status"].as_str() {
+            Some("paid") => return self.enterprise_invoice_paid(invoice_id).await,
+            Some("void") => "void",
+            Some("open") if status == "overdue"
+                && invoice["due_date"].as_i64().is_some_and(|due| due < (now_ms() / 1000) as i64) => "overdue",
+            _ => return Ok("ignored: invoice is no longer in the event's state".into()),
+        };
         let updated = self
             .db
-            .prepare("UPDATE enterprise_invoices SET status = ? WHERE invoice_id = ? AND status <> 'paid' RETURNING invoice_id")
+            .prepare(ENTERPRISE_STATUS)
             .bind(&[status.into(), invoice_id.into()])?
             .first::<Value>(None)
             .await?;
@@ -1337,11 +1474,8 @@ impl Billing {
             let now = rfc3339(now_ms());
             for line in self.invoice_lines(invoice_id).await? {
                 self.db
-                    .prepare(
-                        "INSERT INTO limits (workspace, autopay_failed_at, autopay_error, updated_at) VALUES (?1, ?2, ?3, ?2)
-                         ON CONFLICT (workspace) DO UPDATE SET autopay_failed_at = ?2, autopay_error = ?3, updated_at = ?2",
-                    )
-                    .bind(&[line.workspace.as_str().into(), now.as_str().into(), format!("the enterprise's invoice {invoice_id} is overdue").into()])?
+                    .prepare(ENTERPRISE_OVERDUE_STOP)
+                    .bind(&[line.workspace.as_str().into(), now.as_str().into(), format!("the enterprise's invoice {invoice_id} is overdue").into(), invoice_id.into()])?
                     .run()
                     .await?;
             }
@@ -1494,6 +1628,8 @@ mod tests {
         assert!(!verify(&payload.replace("paid", "voided"), &header, "whsec_test", 1_000_010));
         assert!(!verify(payload, &header, "whsec_test", 1_000_000 + 301));
         assert!(!verify(payload, "v1=abc", "whsec_test", 1_000_000));
+        assert!(!verify(payload, &format!("t={},v1=00", i64::MIN), "whsec_test", i64::MAX));
+        assert!(!verify(payload, &format!("t={},v1=00", i64::MAX), "whsec_test", i64::MIN));
         // Stripe may sign with more than one secret while one is rolled.
         let both = format!("{},v1=00ff", sign(payload, "whsec_test", 1_000_000));
         assert!(verify(payload, &both, "whsec_test", 1_000_000));

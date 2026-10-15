@@ -212,12 +212,9 @@ pub(crate) async fn push_ref(
 /// Moves `branch` on `target` from `old` to `new`, a commit that exists in
 /// `source`. The caller must have checked that `new` descends from `old`.
 /// The pack goes from the source's answer into the push as it arrives.
-pub async fn fast_forward(
-    source: &GitAccess,
-    target: &GitAccess,
-    branch: &str,
-    old: Option<&str>,
-    new: &str,
+pub(crate) async fn fast_forward(
+    source: &GitAccess, target: &GitAccess, branch: &str, old: Option<&str>, new: &str,
+    quota: Option<Rc<crate::public_storage::StreamQuota>>,
 ) -> Result<std::result::Result<(), String>> {
     let request = want_request(new, old);
     let sent = request.len() as u64;
@@ -228,12 +225,26 @@ pub async fn fast_forward(
     let pack = {
         let failure = failure.clone();
         let demux = demux.clone();
-        fetched.stream()?.map(move |chunk| {
+        let quota = quota.clone();
+        fetched.stream()?.then(move |chunk| {
+            let failure = failure.clone();
+            let demux = demux.clone();
+            let quota = quota.clone();
+            async move {
             let chunk = chunk?;
-            demux.borrow_mut().feed(&chunk).map_err(|why| {
+            let pack = demux.borrow_mut().feed(&chunk).map_err(|why| {
                 *failure.borrow_mut() = Some(why.clone());
                 Error::RustError(why)
-            })
+            })?;
+            if let Some(quota) = quota {
+                if !quota.registry.reserve_public(&quota.repo, pack.len() as u64, quota.cap).await? {
+                    let why = "Public repository storage is full. Make room before adding more data.".to_owned();
+                    *failure.borrow_mut() = Some(why.clone());
+                    return Err(Error::RustError(why));
+                }
+            }
+            Ok(pack)
+            }
         })
     };
     // The source said all it had: a pack must have come.
@@ -258,6 +269,9 @@ pub async fn fast_forward(
     }
     let report = pushed?.bytes().await?;
     let moved = demux.borrow().pack_bytes;
+    if let Some(quota) = quota {
+        quota.registry.finish_public(&quota.repo, moved, moved).await?;
+    }
     if let (Some(from), Some(to)) = (crate::store::key_from_remote(&source.remote), crate::store::key_from_remote(&target.remote)) {
         meters::record_bytes("internal.git.fetch", &from, 0, moved);
         meters::record_bytes("internal.git.receive_pack", &to, moved, 0);

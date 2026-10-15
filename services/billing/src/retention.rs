@@ -19,7 +19,7 @@ use crate::credits::Config;
 pub(crate) fn effective_days(plans: &Config, plan: PlanKind, custom: Option<u32>) -> u32 {
     custom.unwrap_or(match plan {
         PlanKind::Free => plans.free_audit_days,
-        PlanKind::Paid | PlanKind::Internal | PlanKind::Enterprise => plans.audit_days,
+        PlanKind::Paid | PlanKind::Internal | PlanKind::Enterprise | PlanKind::Complimentary => plans.audit_days,
     })
 }
 

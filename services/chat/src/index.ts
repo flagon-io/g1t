@@ -26,7 +26,9 @@ import {
   parsePrincipalKey,
   principalKey,
   type Channel,
+  type ChannelAccessRequest,
   type ChannelChange,
+  type ChannelInvitation,
   type ChannelDetail,
   type ChannelMember,
   type ChatLiveEvent,
@@ -41,6 +43,8 @@ import {
   type ChatActivity,
   type ChatSidebar,
   type ChatSidebarEntry,
+  type ChatWorkspace,
+  type GuestChannel,
   type Member,
   type MemberProfile,
   type MessageCard,
@@ -56,6 +60,8 @@ import {
 } from "@g1t/contracts";
 
 import { type ActivityRow, activitySpan, chatActivity } from "./activity.ts";
+// Who may open a conversation, and who is a guest (src/access.ts).
+import { type Standing, mayAdmit, mayInviteGuests, mayJoin, mayRead, mayVisit, requestNote, visibilityOf } from "./access.ts";
 import {
   MAX_REACTIONS_PER_MESSAGE,
   emojiImage,
@@ -139,6 +145,8 @@ type ChannelRow = {
   name: string | null;
   topic: string | null;
   private: number;
+  /** Open to anyone signed in to g1t (migration 0007). */
+  public: number;
   dm_key: string | null;
   created_by: string;
   created_at: string;
@@ -181,8 +189,11 @@ type MessageRow = {
  */
 type FormerAgentRow = { agent_id: string; workspace_id: string; handle: string; display_name: string; avatar_seed: string | null; look: string | null; deleted_at: string };
 
-/** What a method found out about the channel it was asked about. */
-type Place = { slug: string; workspace: Workspace; channel: ChannelRow; member: MemberRow | null };
+/** What a method found out about the channel it was asked about; `role` null for a guest. */
+type Place = { slug: string; workspace: Workspace; channel: ChannelRow; member: MemberRow | null; role: Standing };
+
+type InvitationRow = { id: string; channel_id: string; workspace_id: string; invitee: string; invited_by: string; created_at: string };
+type RequestRow = { id: string; channel_id: string; workspace_id: string; requester: string; note: string | null; created_at: string };
 
 /** The most unread messages one sidebar reads to count; past it, counts are "at least". */
 const MAX_UNREAD_ROWS = 5_000;
@@ -213,6 +224,7 @@ function toChannel(row: ChannelRow): Channel {
     name: row.kind === "dm" ? null : row.name,
     topic: row.topic,
     private: row.kind === "dm" || !!row.private,
+    visibility: visibilityOf(row),
     created_by: parsePrincipalKey(row.created_by) ?? { kind: "user", id: row.created_by },
     created_at: row.created_at,
     archived_at: row.archived_at,
@@ -231,6 +243,8 @@ class Chat {
   /** Agents deleted for good, by id, from `former_agents`; null for one chat never heard of. */
   private readonly former = new Map<string, FormerAgentRow | null>();
   private readonly settingsRows = new Map<string, Promise<SettingsRow | null>>();
+  /** Guests' accounts by id, for their avatars; null for an id with none. */
+  private readonly accountRows = new Map<string, { avatar: string | null } | null>();
 
   /** `defer` runs work after the answer is sent: the request's waitUntil. */
   constructor(
@@ -318,6 +332,15 @@ class Chat {
       agentIds.length ? this.formerAgents(agentIds) : new Map<string, FormerAgentRow>(),
     ]);
     for (const [id, username] of Object.entries(named)) this.usernames.set(id, username);
+    // People not in the workspace: guests, named and pictured from their accounts.
+    // Only when the members were read, so a failed read marks no one.
+    const outside = people.size
+      ? userIds.filter((id) => {
+          const username = this.usernames.get(id);
+          return !!username && !people.has(username);
+        })
+      : [];
+    const accounts = await this.accounts(outside);
     const out = new Map<string, MemberProfile>();
     for (const p of principals) {
       if (p.kind === "system") {
@@ -326,6 +349,7 @@ class Chat {
       } else if (p.kind === "user") {
         const username = this.usernames.get(p.id) ?? null;
         const person = username ? people.get(username) : undefined;
+        const guest = outside.includes(p.id);
         out.set(principalKey(p), {
           ...p,
           name: username ?? "ghost",
@@ -333,10 +357,11 @@ class Chat {
           // Their display name, else their username as they wrote it
           // (`memberName` reads this the same way).
           display_name: person?.name?.trim() || person?.display_username || username || "Former member",
-          avatar: person?.avatar ?? null,
+          avatar: person?.avatar ?? accounts.get(p.id)?.avatar ?? null,
           role: null,
           title: null,
           avatar_seed: null,
+          ...(guest ? { guest: true } : {}),
         });
       } else {
         const was = former.get(p.id) ?? null;
@@ -356,6 +381,31 @@ class Chat {
       }
     }
     return out;
+  }
+
+  /** Accounts of people outside the workspace, for their avatars; asked once per request. */
+  private async accounts(ids: string[]): Promise<Map<string, { avatar: string | null }>> {
+    const wanted = ids.filter((id) => !this.accountRows.has(id));
+    if (wanted.length) {
+      const found = await identityClient(this.env.IDENTITY)
+        .accounts(wanted.slice(0, 200))
+        .catch((error: unknown) => {
+          console.error("chat could not read accounts", error);
+          return {} as Record<string, { avatar: string | null }>;
+        });
+      for (const id of wanted) this.accountRows.set(id, found[id] ? { avatar: found[id].avatar ?? null } : null);
+    }
+    const out = new Map<string, { avatar: string | null }>();
+    for (const id of ids) {
+      const row = this.accountRows.get(id);
+      if (row) out.set(id, row);
+    }
+    return out;
+  }
+
+  /** A workspace as chat names it to someone who may not be in it. */
+  private chatWorkspace(workspace: Workspace): ChatWorkspace {
+    return { slug: workspace.slug.toLowerCase(), name: workspace.name, avatar: workspace.avatar };
   }
 
   private async profile(slug: string, workspace: Workspace, key: string): Promise<MemberProfile> {
@@ -385,10 +435,25 @@ class Chat {
   }
 
   /**
-   * A channel the viewer may read (`read`: any public one in their
-   * workspace, or one they are in) or write in (`member`: one they are in).
-   * A private channel or direct message they are not in is not found, so
-   * its existence does not leak.
+   * The workspace for someone who may be a guest in it: anyone signed in
+   * who may visit other workspaces' chat (src/access.ts `mayVisit`), with
+   * their role there, null when they are not a member.
+   */
+  private async visitWorkspace(slug: string, viewer: Viewer): Promise<Result<{ workspace: Workspace; role: Standing }>> {
+    const role = slug ? roleOf(viewer, slug) : null;
+    if (!role) {
+      const refused = mayVisit(viewer);
+      if (refused) return fail(viewer ? "forbidden" : "unauthenticated", refused);
+    }
+    const workspace = slug ? await this.workspace(slug) : null;
+    return workspace ? ok({ workspace, role }) : fail("not_found", "No such workspace.");
+  }
+
+  /**
+   * A channel the viewer may read (`read`: one they are in, or one whose
+   * visibility lets them: kept to the workspace for its members, public
+   * for anyone) or write in (`member`: one they are in). One they may not
+   * read is not found, so its existence does not leak.
    */
   private async place(
     slug: string,
@@ -396,9 +461,9 @@ class Chat {
     viewer: Viewer,
     need: "read" | "member",
   ): Promise<Result<Place>> {
-    const found = await this.viewerWorkspace(slug, viewer);
+    const found = await this.visitWorkspace(slug, viewer);
     if (!found.ok) return found;
-    const workspace = found.value;
+    const { workspace, role } = found.value;
     const [channel, member] = await Promise.all([
       this.db
         .prepare("SELECT * FROM channels WHERE id = ? AND workspace_id = ?")
@@ -410,10 +475,16 @@ class Chat {
         .first<MemberRow>(),
     ]);
     if (!channel) return fail("not_found", "No such channel.");
-    const open = channel.kind === "channel" && !channel.private;
-    if (!member && !open) return fail("not_found", "No such channel.");
+    // A guest is never in a direct message (`openDm` is for members), so none is ever theirs.
+    if (!role && channel.kind === "dm") return fail("not_found", "No such channel.");
+    if (!mayRead(visibilityOf(channel), role, !!member)) return fail("not_found", "No such channel.");
     if (!member && need === "member") return fail("forbidden", `Join #${channel.name} first.`);
-    return ok({ slug: slug.toLowerCase(), workspace, channel, member });
+    return ok({ slug: slug.toLowerCase(), workspace, channel, member, role });
+  }
+
+  /** Whether `key` (`user:<id>`) was taken out of this channel by its owners. */
+  private async removed(channelId: string, key: string): Promise<boolean> {
+    return !!(await this.db.prepare("SELECT 1 FROM channel_removals WHERE channel_id = ? AND principal = ?").bind(channelId, key).first());
   }
 
   private room(channelId: string) {
@@ -559,15 +630,22 @@ class Chat {
       .bind(channelId, principal, role, at);
   }
 
+  /**
+   * The sidebar. A member's lists every conversation they are in; a
+   * guest's, only the channels of this workspace they are in, with the
+   * public ones they have not joined counted. Both carry the channels of
+   * other workspaces the viewer is a guest in, and their invitations.
+   */
   async sidebar(a: { workspace: string; viewer: Viewer }): Promise<Result<ChatSidebar>> {
-    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    const found = await this.visitWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
-    const workspace = found.value;
+    const { workspace, role } = found.value;
     const slug = a.workspace.toLowerCase();
     const me = userKey(a.viewer!);
-    await this.ensureGeneral(workspace, me);
+    // #general is for the workspace's own people.
+    if (role) await this.ensureGeneral(workspace, me);
 
-    const [joined, unread, dmOthers, browsable] = await Promise.all([
+    const [joined, unread, dmOthers, browsable, elsewhere, invitations] = await Promise.all([
       this.db
         .prepare(
           `SELECT c.*, m.starred, m.muted, m.last_read_id
@@ -603,10 +681,13 @@ class Chat {
         .prepare(
           `SELECT COUNT(*) AS n FROM channels c
            WHERE c.workspace_id = ? AND c.kind = 'channel' AND c.private = 0 AND c.archived_at IS NULL
+             AND (? = 1 OR c.public = 1)
              AND NOT EXISTS (SELECT 1 FROM channel_members m WHERE m.channel_id = c.id AND m.principal = ?)`,
         )
-        .bind(workspace.id, me)
+        .bind(workspace.id, role ? 1 : 0, me)
         .first<{ n: number }>(),
+      this.elsewhere(a.viewer!, workspace.id),
+      this.invitationsFor(a.viewer!),
     ]);
 
     const others = new Map<string, string[]>();
@@ -634,7 +715,103 @@ class Chat {
       };
     });
     const settings = await this.settings(workspace);
-    return ok({ entries: sidebarOrder(entries), browsable: browsable?.n ?? 0, can: permissionsFor(settings, roleOf(a.viewer, slug)) });
+    return ok({
+      entries: sidebarOrder(entries),
+      browsable: browsable?.n ?? 0,
+      can: { ...permissionsFor(settings, role), make_public: role === "owner", invite_guests: mayInviteGuests(a.viewer, slug) },
+      ...(role ? {} : { guest: true }),
+      workspace: this.chatWorkspace(workspace),
+      elsewhere,
+      invitations,
+    });
+  }
+
+  /**
+   * The channels of other workspaces the viewer is in as a guest, with
+   * their counts: ones of workspaces they are members of are left out,
+   * their own sidebars have those. Empty, not an error, when the names of
+   * those workspaces cannot be read.
+   */
+  private async elsewhere(viewer: User, here: string): Promise<GuestChannel[]> {
+    const me = userKey(viewer);
+    const rows = await this.db
+      .prepare(
+        `SELECT c.*, m.last_read_id FROM channel_members m JOIN channels c ON c.id = m.channel_id
+         WHERE m.principal = ? AND c.workspace_id != ? AND c.kind = 'channel' AND c.archived_at IS NULL
+         ORDER BY c.last_message_at DESC LIMIT 100`,
+      )
+      .bind(me, here)
+      .all<ChannelRow & { last_read_id: string | null }>();
+    if (!rows.results.length) return [];
+    const workspaces = await this.workspacesById(rows.results.map((row) => row.workspace_id));
+    const mine = new Set((viewer.workspaces ?? []).map((m) => m.slug.toLowerCase()));
+    const theirs = rows.results.filter((row) => {
+      const w = workspaces.get(row.workspace_id);
+      return !!w && !mine.has(w.slug.toLowerCase());
+    });
+    if (!theirs.length) return [];
+    const unread = await this.db
+      .prepare(
+        `SELECT msg.channel_id, msg.id, msg.author, msg.mentions
+         FROM channel_members m
+         JOIN messages msg ON msg.channel_id = m.channel_id AND msg.id > COALESCE(m.last_read_id, '')
+         WHERE m.principal = ?1 AND m.channel_id IN (SELECT value FROM json_each(?2))
+           AND msg.deleted_at IS NULL AND msg.author != ?1
+         LIMIT ${MAX_UNREAD_ROWS}`,
+      )
+      .bind(me, JSON.stringify(theirs.map((row) => row.id)))
+      .all<UnreadRow>();
+    const counts = tally(unread.results, me, viewer.username, new Map(theirs.map((row) => [row.id, row.last_read_id])));
+    return theirs.map((row) => ({
+      workspace: this.chatWorkspace(workspaces.get(row.workspace_id)!),
+      channel: toChannel(row),
+      unread: counts.get(row.id)?.unread ?? 0,
+      mentions: counts.get(row.id)?.mentions ?? 0,
+    }));
+  }
+
+  /** Workspaces by id: identity names the ids, then each is read by its slug. */
+  private async workspacesById(ids: string[]): Promise<Map<string, Workspace>> {
+    const unique = [...new Set(ids)];
+    const named = await identityClient(this.env.IDENTITY)
+      .usernames(unique)
+      .catch((error: unknown) => {
+        console.error("chat could not name workspaces", error);
+        return {} as Record<string, string>;
+      });
+    const found = await Promise.all(unique.map(async (id) => [id, named[id] ? await this.workspace(named[id]).catch(() => null) : null] as const));
+    return new Map(found.filter((entry): entry is readonly [string, Workspace] => !!entry[1] && entry[1].id === entry[0]));
+  }
+
+  /** The viewer's open invitations into channels of workspaces they are not in. */
+  private async invitationsFor(viewer: User): Promise<ChannelInvitation[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT c.*, i.id AS invitation_id, i.invitee, i.invited_by, i.created_at AS invited_at
+         FROM channel_invitations i JOIN channels c ON c.id = i.channel_id
+         WHERE i.invitee = ? AND i.answered_at IS NULL AND c.archived_at IS NULL
+         ORDER BY i.created_at DESC LIMIT 50`,
+      )
+      .bind(userKey(viewer))
+      .all<ChannelRow & { invitation_id: string; invitee: string; invited_by: string; invited_at: string }>();
+    if (!rows.results.length) return [];
+    const workspaces = await this.workspacesById(rows.results.map((row) => row.workspace_id));
+    const out: ChannelInvitation[] = [];
+    for (const row of rows.results) {
+      const workspace = workspaces.get(row.workspace_id);
+      if (!workspace) continue;
+      const slug = workspace.slug.toLowerCase();
+      const profiles = await this.profiles(slug, workspace, [row.invitee, row.invited_by]);
+      out.push({
+        id: row.invitation_id,
+        workspace: this.chatWorkspace(workspace),
+        channel: toChannel(row),
+        invitee: profiles.get(row.invitee)!,
+        invited_by: profiles.get(row.invited_by)!,
+        created_at: row.invited_at,
+      });
+    }
+    return out;
   }
 
   /**
@@ -675,18 +852,61 @@ class Chat {
   async channel(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<ChannelDetail>> {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
     if (!found.ok) return found;
-    const { slug, workspace, channel, member } = found.value;
-    const [rows, settings] = await Promise.all([
+    const { slug, workspace, channel, member, role } = found.value;
+    const isChannel = channel.kind === "channel";
+    // Those who may add people see who is asked in and who asks to come in.
+    const admits = isChannel && !!member && !!role;
+    const [rows, settings, invited, requests] = await Promise.all([
       this.db
         .prepare("SELECT * FROM channel_members WHERE channel_id = ? ORDER BY joined_at, principal")
         .bind(channel.id)
         .all<MemberRow>(),
       this.settings(workspace),
+      admits
+        ? this.db
+            .prepare("SELECT * FROM channel_invitations WHERE channel_id = ? AND answered_at IS NULL ORDER BY created_at")
+            .bind(channel.id)
+            .all<InvitationRow>()
+        : { results: [] as InvitationRow[] },
+      admits
+        ? this.db
+            .prepare("SELECT * FROM channel_requests WHERE channel_id = ? AND answered_at IS NULL ORDER BY created_at")
+            .bind(channel.id)
+            .all<RequestRow>()
+        : { results: [] as RequestRow[] },
     ]);
-    const profiles = await this.profiles(slug, workspace, rows.results.map((r) => r.principal));
+    const profiles = await this.profiles(slug, workspace, [
+      ...rows.results.map((r) => r.principal),
+      ...invited.results.flatMap((r) => [r.invitee, r.invited_by]),
+      ...requests.results.map((r) => r.requester),
+    ]);
+    const canManage = isChannel && mayManageChannel(settings, role, member?.role ?? null);
+    const mayGuests = mayInviteGuests(a.viewer, slug);
+    // Someone outside the workspace is let in only by those who may invite guests.
+    const shownRequests = requests.results.filter((r) => mayAdmit(!profiles.get(r.requester)?.guest, !!member, mayGuests));
     return ok({
       channel: toChannel(channel),
-      can_manage: channel.kind === "channel" && mayManageChannel(settings, roleOf(a.viewer, slug), member?.role ?? null),
+      can_manage: canManage,
+      can_make_public: isChannel && !channel.private && role === "owner",
+      can_invite_guests: isChannel && !!member && mayGuests,
+      can_remove_members: canManage,
+      ...(role ? {} : { guest: true }),
+      workspace: this.chatWorkspace(workspace),
+      invited: invited.results.map((row) => ({
+        id: row.id,
+        workspace: this.chatWorkspace(workspace),
+        channel: toChannel(channel),
+        invitee: profiles.get(row.invitee)!,
+        invited_by: profiles.get(row.invited_by)!,
+        created_at: row.created_at,
+      })),
+      requests: shownRequests.map((row) => ({
+        id: row.id,
+        channel_id: row.channel_id,
+        requester: profiles.get(row.requester)!,
+        note: row.note,
+        created_at: row.created_at,
+      })),
       members: rows.results.map((row) => ({
         channel_id: row.channel_id,
         member: profiles.get(row.principal)!,
@@ -701,13 +921,13 @@ class Chat {
 
   /** A channel by its name, as the site's URLs name them; read like `channel`. */
   async channelByName(a: { workspace: string; name: string; viewer: Viewer }): Promise<Result<ChannelDetail>> {
-    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    const found = await this.visitWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     const named = channelName(a.name ?? "");
     if (!named.ok) return fail("not_found", "No such channel.");
     const row = await this.db
       .prepare("SELECT id FROM channels WHERE workspace_id = ? AND name = ?")
-      .bind(found.value.id, named.name)
+      .bind(found.value.workspace.id, named.name)
       .first<{ id: string }>();
     if (!row) return fail("not_found", "No such channel.");
     // A private channel the viewer is not in stays not found there.
@@ -715,21 +935,24 @@ class Chat {
   }
 
   /**
-   * Every public channel, and the private ones the viewer is in; a private
-   * one they are not in stays unseen. With `archived`, the archived ones.
+   * Every channel the viewer may read: for a member, those kept to the
+   * workspace and the public ones; for a guest, the public ones only; and
+   * the private ones they are in. A private one they are not in stays
+   * unseen. With `archived`, the archived ones.
    */
   async browse(a: { workspace: string; viewer: Viewer; archived?: boolean }): Promise<Result<Channel[]>> {
-    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    const found = await this.visitWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     const rows = await this.db
       .prepare(
         `SELECT * FROM channels c
          WHERE c.workspace_id = ?1 AND c.kind = 'channel'
            AND (c.archived_at IS NULL) = (?3 = 0)
-           AND (c.private = 0 OR EXISTS (SELECT 1 FROM channel_members m WHERE m.channel_id = c.id AND m.principal = ?2))
+           AND ((c.private = 0 AND (?4 = 1 OR c.public = 1))
+             OR EXISTS (SELECT 1 FROM channel_members m WHERE m.channel_id = c.id AND m.principal = ?2))
          ORDER BY c.name`,
       )
-      .bind(found.value.id, userKey(a.viewer!), a.archived === true ? 1 : 0)
+      .bind(found.value.workspace.id, userKey(a.viewer!), a.archived === true ? 1 : 0, found.value.role ? 1 : 0)
       .all<ChannelRow>();
     return ok(rows.results.map(toChannel));
   }
@@ -742,10 +965,18 @@ class Chat {
     if (!named.ok) return fail("invalid", named.message);
     const topic = typeof a.input?.topic === "string" ? a.input.topic.trim() : "";
     if (topic.length > MAX_TOPIC) return fail("invalid", `A topic is at most ${MAX_TOPIC} characters.`);
-    const isPrivate = !!a.input?.private;
-    if (!mayCreateChannel(await this.settings(workspace), roleOf(a.viewer, a.workspace), isPrivate)) {
-      return fail("forbidden", `Only owners can create ${isPrivate ? "private" : "public"} channels in this workspace.`);
+    const asked = a.input?.visibility;
+    if (asked !== undefined && asked !== "private" && asked !== "workspace" && asked !== "public") {
+      return fail("invalid", "A channel is private, kept to the workspace, or public.");
     }
+    const visibility = asked ?? (a.input?.private ? "private" : "workspace");
+    const isPrivate = visibility === "private";
+    const role = roleOf(a.viewer, a.workspace);
+    if (!mayCreateChannel(await this.settings(workspace), role, isPrivate)) {
+      return fail("forbidden", `Only owners can create ${isPrivate ? "private" : "workspace"} channels in this workspace.`);
+    }
+    // Open to anyone on g1t: the workspace's owners decide that.
+    if (visibility === "public" && role !== "owner") return fail("forbidden", "Only workspace owners can make a channel public.");
     const taken = await this.db
       .prepare("SELECT 1 FROM channels WHERE workspace_id = ? AND name = ?")
       .bind(workspace.id, named.name)
@@ -759,6 +990,7 @@ class Chat {
       name: named.name,
       topic: topic || null,
       private: isPrivate ? 1 : 0,
+      public: visibility === "public" ? 1 : 0,
       dm_key: null,
       created_by: me,
       created_at: now(),
@@ -769,9 +1001,9 @@ class Chat {
       await this.db.batch([
         this.db
           .prepare(
-            "INSERT INTO channels (id, workspace_id, kind, name, topic, private, created_by, created_at) VALUES (?, ?, 'channel', ?, ?, ?, ?, ?)",
+            "INSERT INTO channels (id, workspace_id, kind, name, topic, private, public, created_by, created_at) VALUES (?, ?, 'channel', ?, ?, ?, ?, ?, ?)",
           )
-          .bind(row.id, row.workspace_id, row.name, row.topic, row.private, me, row.created_at),
+          .bind(row.id, row.workspace_id, row.name, row.topic, row.private, row.public, me, row.created_at),
         this.joinStatement(row.id, me, "owner", row.created_at),
       ]);
     } catch (error) {
@@ -837,10 +1069,14 @@ class Chat {
   async join(a: { workspace: string; channel_id: string; viewer: Viewer }): Promise<Result<null>> {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
     if (!found.ok) return found;
-    const { channel, member } = found.value;
+    const { channel, member, role } = found.value;
     if (member) return ok(null);
     if (channel.archived_at) return fail("invalid", "This channel is archived.");
-    await this.joinStatement(channel.id, userKey(a.viewer!), "member", now()).run();
+    const me = userKey(a.viewer!);
+    if (!mayJoin(visibilityOf(channel), role, !role && (await this.removed(channel.id, me)), false)) {
+      return fail("forbidden", `You were taken out of #${channel.name}. Ask to be let back in.`);
+    }
+    await this.joinStatement(channel.id, me, "member", now()).run();
     return ok(null);
   }
 
@@ -859,16 +1095,193 @@ class Chat {
     return ok(null);
   }
 
-  async invite(a: { workspace: string; channel_id: string; viewer: Viewer; member: Principal }): Promise<Result<null>> {
+  /**
+   * Adds someone to a channel. A member of the workspace joins at once.
+   * Anyone else is sent an invitation, which they accept to join as a
+   * guest; only those who may invite guests may send one (src/access.ts).
+   * Guests themselves add no one.
+   */
+  async invite(a: { workspace: string; channel_id: string; viewer: Viewer; member: Principal }): Promise<Result<{ invited: boolean }>> {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "member");
     if (!found.ok) return found;
-    const { slug, workspace, channel } = found.value;
+    const { slug, workspace, channel, role } = found.value;
     if (channel.kind === "dm") return fail("invalid", "People can't be added to a direct message. Start a new one with everyone in it.");
     if (channel.archived_at) return fail("invalid", "This channel is archived.");
+    if (!role) return fail("forbidden", "Guests can't add people to a channel.");
     const p = a.member && parsePrincipalKey(`${a.member.kind}:${a.member.id}`);
-    if (!p || p.kind !== "user") return fail("invalid", "Invite a person of the workspace, by id.");
-    if (!(await this.belongs(slug, workspace, p))) return fail("not_found", "That person is not in this workspace.");
-    await this.joinStatement(channel.id, principalKey(p), "member", now()).run();
+    if (!p || p.kind !== "user") return fail("invalid", "Invite a person, by id.");
+    const key = principalKey(p);
+    const at = now();
+    if (await this.belongs(slug, workspace, p)) {
+      await this.joinStatement(channel.id, key, "member", at).run();
+      return ok({ invited: false });
+    }
+    if (!mayInviteGuests(a.viewer, slug)) {
+      return fail("forbidden", "Only workspace owners can ask people outside the workspace into its channels here.");
+    }
+    if (!this.usernames.has(p.id)) return fail("not_found", "There is no such person on g1t.");
+    if (await this.db.prepare("SELECT 1 FROM channel_members WHERE channel_id = ? AND principal = ?").bind(channel.id, key).first()) {
+      return ok({ invited: false });
+    }
+    // Asking them in again lifts a removal.
+    await this.db.batch([
+      this.db
+        .prepare(
+          "INSERT OR IGNORE INTO channel_invitations (id, channel_id, workspace_id, invitee, invited_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(newId("civ"), channel.id, workspace.id, key, userKey(a.viewer!), at),
+      this.db.prepare("DELETE FROM channel_removals WHERE channel_id = ? AND principal = ?").bind(channel.id, key),
+    ]);
+    return ok({ invited: true });
+  }
+
+  /**
+   * Takes someone out of a channel, and takes back any invitation of
+   * theirs still open: whoever may manage the channel. Not yourself (that
+   * is leaving), never #general's members, never in a direct message.
+   * Someone outside the workspace taken out stays out of a public channel
+   * until they are asked in again.
+   */
+  async removeMember(a: { workspace: string; channel_id: string; viewer: Viewer; member: Principal }): Promise<Result<null>> {
+    const found = await this.place(a.workspace, a.channel_id, a.viewer, "member");
+    if (!found.ok) return found;
+    const { slug, workspace, channel, member, role } = found.value;
+    if (channel.kind === "dm") return fail("invalid", "No one can be taken out of a direct message.");
+    if (!mayManageChannel(await this.settings(workspace), role, member?.role ?? null)) {
+      return fail("forbidden", "Only this channel's owners and workspace owners can take people out of it.");
+    }
+    const p = a.member && parsePrincipalKey(`${a.member.kind}:${a.member.id}`);
+    if (!p || p.kind !== "user") return fail("invalid", "Choose a person to take out.");
+    const key = principalKey(p);
+    if (key === userKey(a.viewer!)) return fail("invalid", "Leave the channel instead.");
+    const inside = await this.belongs(slug, workspace, p);
+    if (channel.name === GENERAL && inside) return fail("invalid", "#general is where everyone in the workspace is.");
+    const at = now();
+    const statements = [
+      this.db.prepare("DELETE FROM channel_members WHERE channel_id = ? AND principal = ?").bind(channel.id, key),
+      this.db
+        .prepare("UPDATE channel_invitations SET answered_at = ?, accepted = 0 WHERE channel_id = ? AND invitee = ? AND answered_at IS NULL")
+        .bind(at, channel.id, key),
+    ];
+    if (!inside) {
+      statements.push(
+        this.db
+          .prepare("INSERT OR REPLACE INTO channel_removals (channel_id, principal, removed_by, removed_at) VALUES (?, ?, ?, ?)")
+          .bind(channel.id, key, userKey(a.viewer!), at),
+      );
+    }
+    await this.db.batch(statements);
+    // Out of it, they read it live no longer, unless anyone may.
+    if (channel.private || !inside) {
+      this.defer(this.room(channel.id).drop(key).catch((error: unknown) => console.error("chat could not drop", key, error)));
+    }
+    return ok(null);
+  }
+
+  /** The viewer's open invitations into other workspaces' channels. */
+  async channelInvitations(a: { viewer: Viewer }): Promise<Result<ChannelInvitation[]>> {
+    if (!a.viewer) return fail("unauthenticated", "Sign in to see your invitations.");
+    return ok(await this.invitationsFor(a.viewer));
+  }
+
+  /** Accepts (joining the channel as a guest) or declines an invitation of the viewer's. */
+  async answerChannelInvitation(a: { viewer: Viewer; id: string; accept: boolean }): Promise<Result<{ to: string | null }>> {
+    const refused = mayVisit(a.viewer);
+    if (refused) return fail(a.viewer ? "forbidden" : "unauthenticated", refused);
+    const me = userKey(a.viewer!);
+    const row = await this.db
+      .prepare("SELECT * FROM channel_invitations WHERE id = ? AND invitee = ? AND answered_at IS NULL")
+      .bind(String(a.id ?? ""), me)
+      .first<InvitationRow>();
+    if (!row) return fail("not_found", "That invitation isn't open any more.");
+    const channel = await this.db.prepare("SELECT * FROM channels WHERE id = ?").bind(row.channel_id).first<ChannelRow>();
+    const at = now();
+    const answer = this.db
+      .prepare("UPDATE channel_invitations SET answered_at = ?, accepted = ? WHERE id = ? AND answered_at IS NULL")
+      .bind(at, a.accept ? 1 : 0, row.id);
+    if (!a.accept || !channel || channel.archived_at) {
+      await answer.run();
+      return a.accept ? fail("invalid", "That channel is archived.") : ok({ to: null });
+    }
+    await this.db.batch([answer, this.joinStatement(channel.id, me, "member", at)]);
+    const [workspace] = (await this.workspacesById([channel.workspace_id])).values();
+    return ok({ to: workspace ? `/${workspace.slug.toLowerCase()}/-/chat/${channel.name}` : null });
+  }
+
+  /**
+   * Asks to be let into a channel by the name in its link. The answer is
+   * the same whatever there is, so asking tells no one that a channel they
+   * may not see exists; a request is kept only for a channel the viewer
+   * cannot read now, of a workspace that exists.
+   */
+  async requestAccess(a: { workspace: string; name: string; viewer: Viewer; note?: string | null }): Promise<Result<{ requested: true }>> {
+    const found = await this.visitWorkspace(a.workspace, a.viewer);
+    if (!found.ok) return found;
+    const { workspace, role } = found.value;
+    const named = channelName(a.name ?? "");
+    if (!named.ok) return ok({ requested: true });
+    const me = userKey(a.viewer!);
+    const channel = await this.db
+      .prepare("SELECT * FROM channels WHERE workspace_id = ? AND name = ? AND kind = 'channel' AND archived_at IS NULL")
+      .bind(workspace.id, named.name)
+      .first<ChannelRow>();
+    if (channel) {
+      const inIt = !!(await this.db.prepare("SELECT 1 FROM channel_members WHERE channel_id = ? AND principal = ?").bind(channel.id, me).first());
+      if (!mayRead(visibilityOf(channel), role, inIt)) {
+        await this.db
+          .prepare(
+            "INSERT OR IGNORE INTO channel_requests (id, channel_id, workspace_id, requester, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+          )
+          .bind(newId("crq"), channel.id, workspace.id, me, requestNote(a.note), now())
+          .run();
+      }
+    }
+    return ok({ requested: true });
+  }
+
+  /**
+   * Lets someone in on their request, or turns it down: anyone in the
+   * channel for a member of the workspace; only those who may invite
+   * guests for someone outside it, who joins as a guest.
+   */
+  async answerAccessRequest(a: { workspace: string; channel_id: string; viewer: Viewer; id: string; approve: boolean }): Promise<Result<null>> {
+    const found = await this.place(a.workspace, a.channel_id, a.viewer, "member");
+    if (!found.ok) return found;
+    const { slug, workspace, channel, member, role } = found.value;
+    if (!role) return fail("forbidden", "Guests can't let people in.");
+    const row = await this.db
+      .prepare("SELECT * FROM channel_requests WHERE id = ? AND channel_id = ? AND answered_at IS NULL")
+      .bind(String(a.id ?? ""), channel.id)
+      .first<RequestRow>();
+    if (!row) return fail("not_found", "That request has been answered.");
+    const requester = parsePrincipalKey(row.requester);
+    if (!requester || requester.kind !== "user") return fail("not_found", "That request has been answered.");
+    const inside = await this.belongs(slug, workspace, requester);
+    if (!mayAdmit(inside, !!member, mayInviteGuests(a.viewer, slug))) {
+      return fail("forbidden", "Only workspace owners can let people outside the workspace in here.");
+    }
+    const at = now();
+    const statements = [
+      this.db
+        .prepare("UPDATE channel_requests SET answered_at = ?, answered_by = ?, approved = ? WHERE id = ? AND answered_at IS NULL")
+        .bind(at, userKey(a.viewer!), a.approve ? 1 : 0, row.id),
+    ];
+    if (a.approve) {
+      if (channel.archived_at) return fail("invalid", "This channel is archived.");
+      statements.push(this.joinStatement(channel.id, row.requester, "member", at));
+      statements.push(this.db.prepare("DELETE FROM channel_removals WHERE channel_id = ? AND principal = ?").bind(channel.id, row.requester));
+      // Kept as an accepted invitation, so making the channel workspace-only again keeps them as a guest.
+      if (!inside) {
+        statements.push(
+          this.db
+            .prepare(
+              "INSERT INTO channel_invitations (id, channel_id, workspace_id, invitee, invited_by, created_at, answered_at, accepted) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+            )
+            .bind(newId("civ"), channel.id, workspace.id, row.requester, userKey(a.viewer!), at, at),
+        );
+      }
+    }
+    await this.db.batch(statements);
     return ok(null);
   }
 
@@ -985,10 +1398,23 @@ class Chat {
     // Archived or not, a channel is found the same way; a private one only by its members.
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
     if (!found.ok) return found;
-    const { slug, workspace, channel, member } = found.value;
+    const { slug, workspace, channel, member, role } = found.value;
     if (channel.kind === "dm") return fail("invalid", "A direct message has no name or topic to change.");
+    if (!role) return fail("forbidden", "Guests can't change a channel.");
     const change = a.change ?? {};
     const next: ChannelRow = { ...channel };
+    // Only the workspace's owners open a channel to anyone on g1t, or keep it to the workspace again.
+    let closing = false;
+    if (change.visibility !== undefined) {
+      if (change.visibility !== "workspace" && change.visibility !== "public") {
+        return fail("invalid", "A channel is made public, or kept to the workspace. A private channel stays private.");
+      }
+      if (role !== "owner") return fail("forbidden", "Only workspace owners can make a channel public, or keep it to the workspace.");
+      if (channel.private) return fail("invalid", "A private channel stays private. Make a public one instead.");
+      if (channel.archived_at) return fail("invalid", "This channel is archived. Unarchive it first.");
+      next.public = change.visibility === "public" ? 1 : 0;
+      closing = !!channel.public && !next.public;
+    }
     if (change.name !== undefined || change.archived !== undefined) {
       const settings = await this.settings(workspace);
       if (!mayManageChannel(settings, roleOf(a.viewer, slug), member?.role ?? null)) {
@@ -1026,16 +1452,44 @@ class Chat {
     }
     try {
       await this.db
-        .prepare("UPDATE channels SET name = ?, topic = ?, archived_at = ? WHERE id = ?")
-        .bind(next.name, next.topic, next.archived_at, channel.id)
+        .prepare("UPDATE channels SET name = ?, topic = ?, archived_at = ?, public = ? WHERE id = ?")
+        .bind(next.name, next.topic, next.archived_at, next.public, channel.id)
         .run();
     } catch (error) {
       if (String(error).includes("UNIQUE")) return fail("conflict", `#${next.name} already exists.`);
       throw error;
     }
+    if (closing) await this.dropVisitors(slug, workspace, channel.id);
     const updated = toChannel(next);
     this.broadcast(channel.id, { type: "channel.updated", channel: updated });
     return ok(updated);
+  }
+
+  /**
+   * A channel kept to the workspace again: everyone outside it who came in
+   * on their own while it was public goes, and reads it live no longer.
+   * Guests asked in (or let in on a request) stay.
+   */
+  private async dropVisitors(slug: string, workspace: Workspace, channelId: string): Promise<void> {
+    const [rows, asked] = await Promise.all([
+      this.db.prepare("SELECT principal FROM channel_members WHERE channel_id = ? AND principal LIKE 'user:%'").bind(channelId).all<{ principal: string }>(),
+      this.db.prepare("SELECT invitee FROM channel_invitations WHERE channel_id = ? AND accepted = 1").bind(channelId).all<{ invitee: string }>(),
+    ]);
+    const kept = new Set(asked.results.map((r) => r.invitee));
+    const visitors: string[] = [];
+    for (const { principal } of rows.results) {
+      if (kept.has(principal)) continue;
+      const p = parsePrincipalKey(principal);
+      if (p && !(await this.belongs(slug, workspace, p))) visitors.push(principal);
+    }
+    if (!visitors.length) return;
+    await this.db
+      .prepare("DELETE FROM channel_members WHERE channel_id = ? AND principal IN (SELECT value FROM json_each(?))")
+      .bind(channelId, JSON.stringify(visitors))
+      .run();
+    for (const key of visitors) {
+      this.defer(this.room(channelId).drop(key).catch((error: unknown) => console.error("chat could not drop", key, error)));
+    }
   }
 
   // ── Messages ────────────────────────────────────────────────────────────
@@ -1199,14 +1653,21 @@ class Chat {
     const me = userKey(a.viewer!);
     let place = found.value;
     if (!place.member) {
-      // Saying something in a public channel joins it, as reading does not.
+      // Saying something in a channel anyone may join joins it, as reading does not.
       if (place.channel.archived_at) return fail("invalid", "This channel is archived.");
+      if (!place.role && (await this.removed(place.channel.id, me))) {
+        return fail("forbidden", `You were taken out of #${place.channel.name}. Ask to be let back in.`);
+      }
       await this.joinStatement(place.channel.id, me, "member", now()).run();
       place = { ...place, member: { channel_id: place.channel.id, principal: me } as MemberRow };
     }
     const input = { body: body.body, card: null, thread_root: a.message?.thread_root ?? null };
     const members = place.channel.kind === "dm" ? await this.memberKeys(place.channel.id) : [];
-    if (!startsAnswer({ channelKind: place.channel.kind, members, author: me, threadRoot: input.thread_root, card: false, body: input.body })) {
+    // @g1t works for the workspace's members alone: a guest never starts an answer, wherever they are.
+    if (
+      !place.role ||
+      !startsAnswer({ channelKind: place.channel.kind, members, author: me, threadRoot: input.thread_root, card: false, body: input.body })
+    ) {
       return this.write(place, me, input);
     }
     // A question for @g1t: kept with the page it was asked from, then answered.
@@ -1375,7 +1836,7 @@ class Chat {
       .bind(String(channelId ?? ""), workspace.id)
       .first<ChannelRow>();
     if (!channel || channel.kind !== "dm" || !g1tDmPerson(await this.memberKeys(channel.id))) return fail("not_found", "No such direct message with g1t.");
-    return ok({ slug: workspace.slug.toLowerCase(), workspace, channel, member: null });
+    return ok({ slug: workspace.slug.toLowerCase(), workspace, channel, member: null, role: null });
   }
 
   async edit(a: { workspace: string; channel_id: string; viewer: Viewer; id: string; body: string }): Promise<Result<ChatMessage>> {
@@ -1555,10 +2016,11 @@ class Chat {
       .first<EmojiRow>();
   }
 
+  /** The workspace's own emoji: guests read them too, so what members react with draws for them; only members add. */
   async listEmoji(a: { workspace: string; viewer: Viewer }): Promise<Result<EmojiList>> {
-    const found = await this.viewerWorkspace(a.workspace, a.viewer);
+    const found = await this.visitWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
-    const workspace = found.value;
+    const { workspace } = found.value;
     const [rows, setting] = await Promise.all([
       this.db
         .prepare("SELECT * FROM custom_emoji WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name")
@@ -1760,6 +2222,16 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.leave(args));
     case "invite":
       return Response.json(await service.invite(args));
+    case "remove_member":
+      return Response.json(await service.removeMember(args));
+    case "channel_invitations":
+      return Response.json(await service.channelInvitations(args));
+    case "answer_channel_invitation":
+      return Response.json(await service.answerChannelInvitation(args));
+    case "request_access":
+      return Response.json(await service.requestAccess(args));
+    case "answer_access_request":
+      return Response.json(await service.answerAccessRequest(args));
     case "messages":
       return Response.json(await service.messages(args));
     case "post":

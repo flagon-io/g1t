@@ -162,6 +162,8 @@ pub(crate) struct Eligible {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Drawn {
     pub credit: i64,
+    /// What a complimentary allowance paid.
+    pub gift: i64,
     pub trial: i64,
     pub oss: i64,
     /// What g1t covered itself.
@@ -170,7 +172,7 @@ pub(crate) struct Drawn {
 
 impl Drawn {
     pub fn total(&self) -> i64 {
-        self.credit + self.trial + self.oss + self.given
+        self.credit + self.gift + self.trial + self.oss + self.given
     }
 
     /// For the statement: what paid for the entry, e.g. ` ($0.12 paid by
@@ -178,6 +180,7 @@ impl Drawn {
     pub fn note(&self) -> String {
         let parts: Vec<String> = [
             (self.credit, "paid by your plan's included usage"),
+            (self.gift, "paid by your complimentary allowance"),
             (self.trial, "paid by your trial credit"),
             (self.oss, "paid by g1t's open-source pool"),
             (self.given, "covered by g1t"),
@@ -193,6 +196,7 @@ impl Drawn {
 /// Draw from each source using what the preceding source actually gave,
 /// not a balance read before concurrent charges consumed it. On failure,
 /// return the partial allocation so the caller can return it.
+#[cfg(test)]
 async fn draw_in_order<F, Fut>(gross: i64, mut take: F) -> std::result::Result<Drawn, (worker::Error, Drawn)>
 where
     F: FnMut(usize, i64) -> Fut,
@@ -300,7 +304,14 @@ impl Billing {
         if account.kind == g1t_contracts::billing::AccountKind::Enterprise {
             return Ok(PlanKind::Enterprise);
         }
-        if !self.charging || account.allowances.plan {
+        if !self.charging {
+            return Ok(PlanKind::Paid);
+        }
+        // Enrolled by staff, once Stripe has its subscription.
+        if self.complimentary_active(workspace).await?.is_some() {
+            return Ok(PlanKind::Complimentary);
+        }
+        if account.allowances.plan {
             return Ok(PlanKind::Paid);
         }
         // Both subscriptions are asked for at once; either one is the plan.
@@ -368,51 +379,6 @@ impl Billing {
         Ok(())
     }
 
-    /// Takes up to `want` from a monthly allowance with `cap`, as one
-    /// transaction. Returns what it took.
-    pub(crate) async fn draw_allowance(&self, kind: &str, scope: &str, month: &str, want: i64, cap: i64) -> Result<i64> {
-        if want <= 0 || cap <= 0 {
-            return Ok(0);
-        }
-        let key = [kind.into(), scope.into(), month.into()];
-        let results = self
-            .db
-            .batch(vec![
-                self.db
-                    .prepare("INSERT OR IGNORE INTO allowance_use (kind, scope, month, used) VALUES (?1, ?2, ?3, 0)")
-                    .bind(&key)?,
-                self.db
-                    .prepare("SELECT used FROM allowance_use WHERE kind = ?1 AND scope = ?2 AND month = ?3")
-                    .bind(&key)?,
-                self.db
-                    .prepare(
-                        "UPDATE allowance_use SET used = MIN(?4, used + ?5)
-                         WHERE kind = ?1 AND scope = ?2 AND month = ?3 AND used < ?4",
-                    )
-                    .bind(&[kind.into(), scope.into(), month.into(), (cap as f64).into(), (want as f64).into()])?,
-                self.db
-                    .prepare("SELECT used FROM allowance_use WHERE kind = ?1 AND scope = ?2 AND month = ?3")
-                    .bind(&key)?,
-            ])
-            .await?;
-        let read = |i: usize| -> Result<i64> {
-            Ok(results[i].results::<Used>()?.first().and_then(|u| u.used).unwrap_or(0))
-        };
-        Ok((read(3)? - read(1)?).max(0))
-    }
-
-    /// Gives back what was drawn and not used.
-    async fn return_allowance(&self, kind: &str, scope: &str, month: &str, amount: i64) -> Result<()> {
-        if amount > 0 {
-            self.db
-                .prepare("UPDATE allowance_use SET used = MAX(0, used - ?4) WHERE kind = ?1 AND scope = ?2 AND month = ?3")
-                .bind(&[kind.into(), scope.into(), month.into(), (amount as f64).into()])?
-                .run()
-                .await?;
-        }
-        Ok(())
-    }
-
     // --- Trials -----------------------------------------------------------
 
     pub(crate) async fn grant_of(&self, workspace: &str) -> Result<Option<Grant>> {
@@ -460,11 +426,12 @@ impl Billing {
         // One statement: the pool is checked and the grant made together.
         self.db
             .prepare(
-                "INSERT INTO trial_grants (workspace, month, granted_micros, used_micros, created_at)
-                 SELECT ?1, ?2, ?3, 0, ?4
-                 WHERE ?2 = 'staff'
-                    OR (SELECT COALESCE(SUM(granted_micros), 0) FROM trial_grants WHERE month = ?2) + ?3 <= ?5
-                 ON CONFLICT (workspace) DO NOTHING",
+                "INSERT INTO trial_grants (workspace, month, granted_micros, used_micros, created_at, fingerprint)
+                 SELECT ?1, ?2, ?3, 0, ?4, c.fingerprint FROM card_checks c
+                 WHERE c.workspace = ?1 AND c.fingerprint IS NOT NULL AND c.funding IN ('credit', 'debit')
+                   AND (?2 = 'staff'
+                    OR (SELECT COALESCE(SUM(granted_micros), 0) FROM trial_grants WHERE month = ?2) + ?3 <= ?5)
+                 ON CONFLICT DO NOTHING",
             )
             .bind(&[
                 workspace.into(),
@@ -476,33 +443,6 @@ impl Billing {
             .run()
             .await?;
         self.grant_of(workspace).await
-    }
-
-    /// Takes up to `want` from the workspace's trial credit, if it has a
-    /// grant.
-    async fn draw_trial(&self, workspace: &str, want: i64) -> Result<i64> {
-        if want <= 0 || self.grant_of(workspace).await?.is_none() {
-            return Ok(0);
-        }
-        #[derive(Deserialize)]
-        struct Row {
-            used_micros: i64,
-        }
-        let results = self
-            .db
-            .batch(vec![
-                self.db.prepare("SELECT used_micros FROM trial_grants WHERE workspace = ?1").bind(&[workspace.into()])?,
-                self.db
-                    .prepare(
-                        "UPDATE trial_grants SET used_micros = MIN(granted_micros, used_micros + ?2)
-                         WHERE workspace = ?1 AND used_micros < granted_micros",
-                    )
-                    .bind(&[workspace.into(), (want as f64).into()])?,
-                self.db.prepare("SELECT used_micros FROM trial_grants WHERE workspace = ?1").bind(&[workspace.into()])?,
-            ])
-            .await?;
-        let read = |i: usize| -> Result<i64> { Ok(results[i].results::<Row>()?.first().map_or(0, |r| r.used_micros)) };
-        Ok((read(2)? - read(0)?).max(0))
     }
 
     /// `trial`: where the workspace's trial credit stands. Not granted yet,
@@ -587,93 +527,6 @@ impl Billing {
         let pool = left(self.plans.oss_pool_micros, self.allowance_used("oss_pool", "", month).await?);
         let share = left(self.oss_repo_cap(workspace).await?, self.allowance_used("oss_repo", &repo.to_lowercase(), month).await?);
         Ok(pool.min(share))
-    }
-
-    /// Takes up to `want` from the open-source pool for `repo`, within the
-    /// pool's cap and the repository's.
-    async fn draw_oss(&self, workspace: &str, repo: &str, month: &str, want: i64) -> Result<i64> {
-        let repo = repo.to_lowercase();
-        let cap = self.oss_repo_cap(workspace).await?;
-        let room = left(cap, self.allowance_used("oss_repo", &repo, month).await?);
-        let from_pool = self.draw_allowance("oss_pool", "", month, want.min(room), self.plans.oss_pool_micros).await?;
-        // The repository's share failing to draw gives the pool back what it
-        // gave: the caller only knows to return what this hands back.
-        let for_repo = match self.draw_allowance("oss_repo", &repo, month, from_pool, cap).await {
-            Ok(for_repo) => for_repo,
-            Err(error) => {
-                if let Err(undo) = self.return_allowance("oss_pool", "", month, from_pool).await {
-                    worker::console_error!("{workspace}: {from_pool} drawn from the open-source pool for {repo} was not given back: {undo}");
-                }
-                return Err(error);
-            }
-        };
-        // The repository's cap filled up meanwhile: give the pool back the rest.
-        self.return_allowance("oss_pool", "", month, from_pool - for_repo).await?;
-        Ok(for_repo)
-    }
-
-    // --- Drawing down -----------------------------------------------------
-
-    /// Pays for a `gross` charge from the plan's included usage, the trial
-    /// credit and the open-source pool, in that order, for usage in
-    /// `month`; then, for a free workspace's compute, g1t covers the rest.
-    /// Returns what each paid; the rest is the workspace's to pay.
-    pub(crate) async fn draw(&self, workspace: &str, gross: i64, month: &str, eligible: &Eligible) -> Result<Drawn> {
-        if gross <= 0 {
-            return Ok(Drawn::default());
-        }
-        let plan = self.has_plan(workspace).await?;
-        self.draw_as(workspace, gross, month, eligible, plan).await
-    }
-
-    /// `draw`, for a workspace that had the plan (`plan`) or not in
-    /// `month`: a month that is over is paid for as it was then.
-    pub(crate) async fn draw_as(&self, workspace: &str, gross: i64, month: &str, eligible: &Eligible, plan: bool) -> Result<Drawn> {
-        if gross <= 0 {
-            return Ok(Drawn::default());
-        }
-        let allocation = draw_in_order(gross, |source, want| async move {
-            match source {
-                0 if plan => self.draw_allowance("plan_credit", workspace, month, want, self.plans.plan_included_micros).await,
-                1 if eligible.trial => self.draw_trial(workspace, want).await,
-                2 => match &eligible.repo {
-                    Some(repo) if self.is_public(repo).await => self.draw_oss(workspace, repo, month, want).await,
-                    _ => Ok(0),
-                },
-                _ => Ok(0),
-            }
-        }).await;
-        let mut drawn = match allocation {
-            Ok(drawn) => drawn,
-            Err((error, partial)) => {
-                self.undraw(workspace, month, &partial, eligible.repo.as_deref()).await?;
-                return Err(error);
-            }
-        };
-        if eligible.cover_rest && !plan {
-            drawn.given = (gross - drawn.credit - drawn.trial - drawn.oss).max(0);
-        }
-        Ok(drawn)
-    }
-
-    /// Gives back what `draw` took for an entry that was not written: a
-    /// duplicate delivery of usage already on the ledger, or a write that
-    /// failed. `repo` is the eligible repository the open-source pool paid
-    /// for, if any. What g1t covered was never taken from anything.
-    pub(crate) async fn undraw(&self, workspace: &str, month: &str, drawn: &Drawn, repo: Option<&str>) -> Result<()> {
-        self.return_allowance("plan_credit", workspace, month, drawn.credit).await?;
-        if drawn.trial > 0 {
-            self.db
-                .prepare("UPDATE trial_grants SET used_micros = MAX(0, used_micros - ?2) WHERE workspace = ?1")
-                .bind(&[workspace.into(), (drawn.trial as f64).into()])?
-                .run()
-                .await?;
-        }
-        if let (true, Some(repo)) = (drawn.oss > 0, repo) {
-            self.return_allowance("oss_pool", "", month, drawn.oss).await?;
-            self.return_allowance("oss_repo", &repo.to_lowercase(), month, drawn.oss).await?;
-        }
-        Ok(())
     }
 
     /// g1t's pools this month, for sudo.

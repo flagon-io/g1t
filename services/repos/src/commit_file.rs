@@ -161,7 +161,13 @@ impl<S: GitStore> Repos<S> {
         objects.push((ObjectKind::Commit, commit));
         let access = git.access(Scope::Write).await?;
         // Only if the branch is still not there.
-        let pushed = land::push_pack(&access, &a.branch, None, &commit_id, write_pack(&objects)).await?;
+        let pack = write_pack(&objects);
+        if !self.registry.reserve_public(&repo, pack.len() as u64, self.free_public_bytes).await? {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
+        }
+        let bytes = pack.len() as u64;
+        let pushed = land::push_pack(&access, &a.branch, None, &commit_id, pack).await?;
+        self.registry.finish_public(&repo, bytes, bytes).await?;
         self.refs_moved(&repo.id).await;
 
         let git_ref = format!("refs/heads/{}", a.branch);

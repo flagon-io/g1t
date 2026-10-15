@@ -305,7 +305,7 @@ impl Billing {
                     "SELECT substr(created_at, 1, 10) AS day, {meter} AS meter, COALESCE(repo, '') AS project,
                             SUM({measure}) AS price, SUM(COALESCE(quantity, 0)) AS quantity, COUNT(*) AS entries,
                             SUM(COALESCE(discount_micros, 0)) AS discount,
-                            SUM(COALESCE(credit_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0)) AS covered,
+                            SUM(COALESCE(credit_micros, 0) + COALESCE(gift_micros, 0) + COALESCE(trial_micros, 0) + COALESCE(oss_micros, 0) + COALESCE(given_micros, 0)) AS covered,
                             SUM(COALESCE(cost_micros, 0)) AS cost
                      FROM ledger WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2 AND created_at < ?3
                      GROUP BY 1, 2, 3 LIMIT 20000",

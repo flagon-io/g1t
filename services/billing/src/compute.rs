@@ -211,7 +211,7 @@ impl Billing {
         let hour_ago = rfc3339(now - 60 * 60 * 1000);
         let day_ago = rfc3339(now - 24 * 60 * 60 * 1000);
         let week_ago = rfc3339(now - 7 * 24 * 60 * 60 * 1000);
-        let gross = "(-amount_micros + credit_micros + trial_micros + oss_micros + given_micros)";
+        let gross = "(-amount_micros + credit_micros + gift_micros + trial_micros + oss_micros + given_micros)";
         let row = self
             .db
             .prepare(format!(
@@ -424,7 +424,10 @@ impl Billing {
             return Ok((Some(why), Some(spike.clone()), Some(FailureCode::Paused)));
         }
         let latest = self.latest_spike(workspace).await?;
-        if plan != PlanKind::Internal && self.charging {
+        // A complimentary workspace that stops at its allowance has no
+        // on-demand usage to limit: the allowance is the bound (`reserve`,
+        // which passes no limit for it). One charged past it has the plan's.
+        if plan != PlanKind::Internal && (plan != PlanKind::Complimentary || limit.is_some()) && self.charging {
             let worked_out;
             let limit = match limit {
                 Some(limit) => limit,
@@ -453,7 +456,13 @@ impl Billing {
         // trial, and the month's counts.
         let standing = async {
             let limit = self.limit_with(&workspace, &account, plan).await?;
-            let pause = self.pause_reason(&workspace, &account, plan, Some(&limit)).await?;
+            // An enrollment has the plan's limit only when its own card is
+            // charged past the allowance, as `reserve` decides it.
+            let limited = plan != PlanKind::Complimentary || match self.complimentary_active(&workspace).await? {
+                Some(row) if row.charges_past() => self.has_card(&workspace).await?,
+                _ => false,
+            };
+            let pause = self.pause_reason(&workspace, &account, plan, limited.then_some(&limit)).await?;
             Ok::<_, worker::Error>((limit, pause))
         };
         let trial = async {
@@ -490,7 +499,50 @@ impl Billing {
             PlanKind::Internal => UNLIMITED_MICROS,
             _ => limit.ceiling_micros.unwrap_or(UNLIMITED_MICROS),
         };
-        let alerts = alerts_from(&workspace, &limit, has_plan, included_used, self.plans.plan_included_micros);
+        // A complimentary enrollment's month (g1t's own may have one too).
+        let complimentary = match plan {
+            PlanKind::Complimentary | PlanKind::Internal => match self.complimentary_active(&workspace).await? {
+                Some(row) => Some(self.complimentary_month(&row, Some(held)).await?),
+                None => None,
+            },
+            _ => None,
+        };
+        let enrolled = complimentary.as_ref().filter(|_| plan == PlanKind::Complimentary);
+        // Past its allowance, nothing more that costs money starts (no
+        // compute; storage and caches past the free amounts refused), unless
+        // the workspace's own card is charged past it, under its limits.
+        let charged_past = enrolled.is_some_and(|m| m.charge_past_allowance && m.has_card);
+        let room = enrolled.is_none_or(|m| m.unlimited || m.remaining_micros > 0) || charged_past;
+        let alerts = match enrolled {
+            Some(month) => {
+                let mut alerts: Vec<UsageAlert> = crate::complimentary::alert(&workspace, month).into_iter().collect();
+                if charged_past {
+                    alerts.extend(alerts_from(&workspace, &limit, false, 0, 0));
+                }
+                alerts
+            }
+            None => alerts_from(&workspace, &limit, has_plan, included_used, self.plans.plan_included_micros),
+        };
+        let paused = paused.or_else(|| {
+            enrolled.filter(|_| !room).map(|m| {
+                if m.charge_past_allowance {
+                    "This month's complimentary allowance is used up. Add a card on Billing to keep going: usage past it is charged to the card at the usual prices.".to_owned()
+                } else {
+                    format!("This month's complimentary allowance is used up. New work that costs money starts again on {}.", &m.resets_at[..10])
+                }
+            })
+        });
+        let ceiling = match enrolled {
+            Some(m) if m.unlimited => UNLIMITED_MICROS,
+            Some(_) if charged_past => limit.ceiling_micros.unwrap_or(UNLIMITED_MICROS),
+            Some(_) => 0,
+            None => ceiling,
+        };
+        let (included_micros, included_used) = match enrolled {
+            Some(m) => (if m.unlimited { UNLIMITED_MICROS } else { m.allowance_micros }, m.used_micros),
+            None => (if has_plan { self.plans.plan_included_micros } else { 0 }, included_used),
+        };
+        let has_plan = has_plan && room;
         Ok(Entitlements {
             plan,
             compute: has_plan || trial_left > 0,
@@ -505,7 +557,7 @@ impl Billing {
             held: account.allowances.hold.as_deref().is_some_and(|hold| !hold.trim().is_empty()),
             held_micros: held,
             prepaid_micros: limit.prepaid_micros,
-            included_micros: if has_plan { self.plans.plan_included_micros } else { 0 },
+            included_micros,
             included_used_micros: included_used,
             audit_retention_days: crate::retention::effective_days(&self.plans, plan, account.allowances.audit_retention_days),
             audit_retention_custom: account.allowances.audit_retention_days.is_some(),
@@ -523,6 +575,7 @@ impl Billing {
             min_charge_micros: self.plans.min_charge_micros,
             spike,
             alerts,
+            complimentary,
             workspace,
         })
     }
@@ -552,32 +605,57 @@ impl Billing {
         if let Some(why) = self.breaker_refuses(plan, &account, a.kind).await? {
             return Ok(Outcome::fail(FailureCode::Paused, why));
         }
-        let limit = if plan == PlanKind::Internal { None } else { Some(self.limit_with(&workspace, &account, plan).await?) };
+        // An enrollment: what pays first, and whether its own card is charged
+        // past it (`charge`), with a card to charge.
+        let enrollment = if plan == PlanKind::Complimentary { self.complimentary_active(&workspace).await? } else { None };
+        let charges_past = match &enrollment {
+            Some(row) if row.charges_past() => self.has_card(&workspace).await?,
+            _ => false,
+        };
+        let limit = if plan == PlanKind::Internal || (plan == PlanKind::Complimentary && !charges_past) {
+            None
+        } else {
+            Some(self.limit_with(&workspace, &account, plan).await?)
+        };
         let (paused, _, code) = self.pause_reason(&workspace, &account, plan, limit.as_ref()).await?;
         if let (Some(why), Some(code)) = (paused, code) {
             return Ok(refusal(code, &workspace, a.kind, &why));
         }
         let month = credits::month_of(&rfc3339(now));
         let estimate = credits::with_margin(a.estimate_micros, self.margin_percent);
-        let verified = matches!(plan, PlanKind::Internal | PlanKind::Enterprise | PlanKind::Paid) || self.card_checked(&workspace).await?;
+        let verified = matches!(plan, PlanKind::Internal | PlanKind::Enterprise | PlanKind::Paid | PlanKind::Complimentary)
+            || self.card_checked(&workspace).await?;
         let has_plan = plan != PlanKind::Free;
-        let credit = if has_plan {
+        // A complimentary allowance is the only thing that pays: what is
+        // left after this month's use and its metered usage not on the
+        // ledger yet; `place` takes off what running work holds.
+        let enrolled = match &enrollment {
+            Some(row) => Some(self.complimentary_month(row, Some(0)).await?),
+            None => None,
+        };
+        let credit = if let Some(month) = &enrolled {
+            if month.unlimited { 0 } else { month.remaining_micros }
+        } else if has_plan {
             left(self.plans.plan_included_micros, self.allowance_used("plan_credit", &workspace, &month).await?)
         } else {
             0
         };
-        let trial = if a.kind == ComputeKind::Deploy || !verified {
+        let trial = if enrolled.is_some() || a.kind == ComputeKind::Deploy || !verified {
             0
         } else {
             self.grant_of(&workspace).await?.map_or(0, |g| left(g.granted_micros, g.used_micros))
         };
-        let oss_eligible = a.public && a.kind.open_source_pool() && verified;
+        let oss_eligible = enrolled.is_none() && a.public && a.kind.open_source_pool() && verified;
         let oss = if oss_eligible { self.oss_left(&workspace, &repo, &month).await? } else { 0 };
         let on_demand = match plan {
             PlanKind::Free => Some(0),
             PlanKind::Internal => None,
+            // Unlimited is unbounded; one that stops has nothing past the
+            // allowance; one charged past it has the plan's limits.
+            PlanKind::Complimentary if enrolled.as_ref().is_some_and(|m| m.unlimited) => None,
+            PlanKind::Complimentary if !charges_past => Some(0),
             _ => {
-                let Some(limit) = &limit else { unreachable!("only g1t's own workspaces skip the limit") };
+                let Some(limit) = &limit else { unreachable!("only g1t's own and complimentary workspaces skip the limit") };
                 let under_ceiling = limit.ceiling_micros.map(|c| (c - limit.exposure_micros).max(0));
                 let under_spend = limit.spend_limit_micros.map(|s| (s - limit.spent_micros).max(0));
                 match (under_ceiling, under_spend) {
@@ -645,6 +723,40 @@ impl Billing {
         room: &Room,
         short: Short,
     ) -> Result<Outcome<Reservation>> {
+        let enrollment = if plan == PlanKind::Complimentary { self.complimentary_active(workspace).await? } else { None };
+        if enrollment.as_ref().is_some_and(|row| row.charges_past()) && self.has_card(workspace).await? {
+            // Past the allowance on its own card: the plan's limit refuses.
+            let limit = self.limit_of(workspace).await?;
+            let detail = limit.message.unwrap_or_else(|| "The workspace reached its spend limit for this month.".to_owned());
+            return Ok(refusal(FailureCode::Limit, workspace, a.kind, &format!("Its complimentary allowance is used up and {detail}")));
+        }
+        if enrollment.as_ref().is_some_and(|row| row.charges_past()) {
+            return Ok(refusal(
+                FailureCode::Limit,
+                workspace,
+                a.kind,
+                "This month's complimentary allowance is used up. Add a card on Billing to keep going: usage past the allowance is charged to it at the usual prices, up to your spend limit.",
+            ));
+        }
+        if plan == PlanKind::Complimentary {
+            let month = credits::month_of(&rfc3339(now_ms()));
+            let detail = match short {
+                Short::TooSmall => format!(
+                    "About {} of this month's complimentary allowance is left after running work, less than this would cost.",
+                    dollars(room.credit)
+                ),
+                Short::Empty => "This month's complimentary allowance is used up.".to_owned(),
+            };
+            return Ok(refusal(
+                FailureCode::Limit,
+                workspace,
+                a.kind,
+                &format!(
+                    "{detail} It starts again on {}. An owner can start the g1t plan from Billing to keep going now.",
+                    &credits::next_month_start(&month)[..10]
+                ),
+            ));
+        }
         if plan != PlanKind::Free {
             let limit = self.limit_of(workspace).await?;
             let detail = match short {
