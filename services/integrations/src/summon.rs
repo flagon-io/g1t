@@ -295,7 +295,7 @@ impl Integrations {
         let Some(row) = self.ai_row(&running.connection_id).await? else { return Ok(false) };
         let key = self.ai_secret(&row).unwrap_or_default();
         let message = format!(
-            "@{} said, in a comment on g1t ({url}):\n\n<comment>\n{}\n</comment>\n\nTake it into account, and answer them in that thread.",
+            "@{} said, in a comment on g1t ({url}):\n\n<comment>\n{}\n</comment>\n\nTake it into account; your report answers them, on this session's card in that thread.",
             actor.username,
             text.trim()
         );
