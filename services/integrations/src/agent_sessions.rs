@@ -471,7 +471,13 @@ pub fn branch_in(command: &str) -> Option<String> {
                 return next(1).map(str::to_owned);
             }
             "push" if at > 0 && words[at - 1] == "git" || at > 1 && words[at - 2] == "git" => {
-                let rest: Vec<&str> = words[at + 1..].iter().copied().filter(|w| !w.starts_with('-')).collect();
+                // Its own words only: a pipe, a redirect or the next command is not a branch.
+                let rest: Vec<&str> = words[at + 1..]
+                    .iter()
+                    .copied()
+                    .take_while(|w| !w.contains(['|', '>', '<']) && !matches!(*w, "&&" | ";" | "&"))
+                    .filter(|w| !w.starts_with('-'))
+                    .collect();
                 if let Some(branch) = rest.get(1) {
                     let branch = branch.trim_matches(|c| c == ';' || c == '&');
                     let branch = branch.rsplit(':').next().unwrap_or(branch).trim_start_matches("refs/heads/");
@@ -1745,6 +1751,10 @@ mod tests {
         assert_eq!(branch_in("git checkout -b 4-greet"), Some("4-greet".into()));
         assert_eq!(branch_in("cd web && git push origin HEAD:4-greet"), Some("4-greet".into()));
         assert_eq!(branch_in("git status"), None);
+        // A pipe or a redirect is not a branch.
+        assert_eq!(branch_in("git push -u origin 2-age 2>&1 | tail -3"), Some("2-age".into()));
+        assert_eq!(branch_in("git push origin | tail -1"), None);
+        assert_eq!(branch_in("git push origin && g1t pr checks"), None);
         assert_eq!(summarize("bash", &json!({ "command": "curl -H x token=abc" })), "bash: curl -H x …");
     }
 
