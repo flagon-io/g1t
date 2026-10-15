@@ -20,6 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { accessFor } from "../../lib/access.server";
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { type Failed, isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New pull request · ${params.owner}/${params.repo} · g1t` });
@@ -41,35 +43,44 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const query = new URL(request.url).searchParams;
   const head = parseHead(query.get("head") ?? "");
+  // The repository and its branches are the form. The rest are parts of it:
+  // the open pull requests only take branches that have one off the list
+  // (opening another is refused anyway), and the forks say so when they fail.
   const [repo, branches, open, forks] = await Promise.all([
     repos.get(path, user),
     repos.branches(path, user),
-    work.listPulls(path, user, "open"),
+    part(work.listPulls(path, user, "open"), "Open pull requests"),
     // Forks of it the viewer can push to: pull requests can come from their branches.
-    repos.forks(path, user, 100).then((found) => (found.ok ? found.value : [])).catch(() => []),
+    part(repos.forks(path, user, 100).then((found) => (found.ok ? found.value : [])), "Your forks"),
   ]);
   const { defaultBranch } = unwrap(repo);
   const all = unwrap(branches).filter((branch) => !branch.name.startsWith("g1t-queue/"));
-  const theirs = forks.filter((fork) => accessFor(user, fork).can.push);
+  const theirs = isFailed(forks) ? [] : forks.filter((fork) => accessFor(user, fork).can.push);
   const self = `${params.owner}/${params.repo}`.toLowerCase();
   // From a fork when one of theirs is asked for; this repository otherwise.
   // One asked for by name is read itself, so an older fork, or a fork of a
   // fork, is found too; opening the pull request checks it is one of this.
   const listed = head.repo && head.repo !== self ? (theirs.find((f) => `${f.namespace}/${f.name}`.toLowerCase() === head.repo) ?? null) : null;
   const [askedNamespace, askedName] = (head.repo ?? "").split("/");
-  const fork =
-    listed ??
-    (head.repo && head.repo !== self && askedNamespace && askedName
-      ? await repos
-          .get({ namespace: askedNamespace, name: askedName }, user)
-          .then((found) => (found.ok && found.value.parentId && accessFor(user, found.value).can.push ? found.value : null))
-          .catch(() => null)
-      : null);
+  const lookedUp =
+    listed == null && head.repo && head.repo !== self && askedNamespace && askedName
+      ? await part(
+          repos
+            .get({ namespace: askedNamespace, name: askedName }, user)
+            .then((found) => (found.ok && found.value.parentId && accessFor(user, found.value).can.push ? found.value : null)),
+          "The fork",
+        )
+      : null;
+  const fork = listed ?? (isFailed(lookedUp) ? null : lookedUp);
   if (fork && !theirs.some((f) => f.id === fork.id)) theirs.unshift(fork);
   const headRepo = fork ? { namespace: fork.namespace, name: fork.name } : null;
-  const headBranches = headRepo
-    ? await repos.branches(headRepo, user).then((found) => (found.ok ? found.value : [])).catch(() => [])
+  const headFound = headRepo
+    ? await part(repos.branches(headRepo, user).then((found) => (found.ok ? found.value : [])), "The fork's branches")
     : all;
+  // A fork asked for whose branches could not be read: the form says so,
+  // rather than offering this repository's branches or none.
+  const headFailed: Failed | null = isFailed(lookedUp) ? lookedUp : isFailed(headFound) ? headFound : null;
+  const headBranches = isFailed(headFound) ? [] : headFound;
   // Into the default branch unless another is asked for (Compare's base).
   const asked = query.get("base") ?? "";
   const base = all.some((branch) => branch.name === asked) ? asked : defaultBranch;
@@ -78,7 +89,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   // have another: from the same repository, this one or the fork.
   const key = (p: { namespace: string; name: string } | null | undefined) => (p ? `${p.namespace}/${p.name}`.toLowerCase() : "");
   const taken = new Set(
-    open.ok
+    !isFailed(open) && open.ok
       ? open.value.filter((pull) => (pull.base ?? defaultBranch) === base && key(pull.headRepo) === key(headRepo)).map((pull) => pull.branch)
       : [],
   );
@@ -93,7 +104,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       .map((branch) => branch.name)
       .filter((name) => !taken.has(name)),
     headRepo,
+    headFailed,
     forks: theirs.map((f) => ({ namespace: f.namespace, name: f.name })),
+    forksFailed: isFailed(forks) ? forks : null,
     selected: query.get("branch") ?? head.branch,
     issue: query.get("issue") ?? "",
   };
@@ -126,7 +139,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function NewPull({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { defaultBranch, base, bases, branches, selected, issue, headRepo, forks } = loaderData;
+  const { defaultBranch, base, bases, branches, selected, issue, headRepo, headFailed, forks, forksFailed } = loaderData;
   const navigate = useNavigate();
   const self = `${params.owner}/${params.repo}`;
   const from = headRepo ? `${headRepo.namespace}/${headRepo.name}` : self;
@@ -157,6 +170,23 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
       </Select>
     ) : null;
 
+  // Forks that could not be read: it says so under the repository the change is in.
+  const forksNote = forksFailed ? <Unavailable what={forksFailed.what} compact /> : null;
+
+  if (headFailed) {
+    return (
+      <div className="max-w-2xl space-y-4">
+        {picker && (
+          <Card className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
+            <span className="text-muted">From</span>
+            {picker}
+          </Card>
+        )}
+        <Unavailable what={headFailed.what} />
+      </div>
+    );
+  }
+
   if (branches.length === 0) {
     return (
       <div className="max-w-2xl">
@@ -166,6 +196,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
             {picker}
           </Card>
         )}
+        {forksNote && <div className="mb-4">{forksNote}</div>}
         <EmptyState title="No branch to open a pull request from">
           {headRepo ? `Push a branch with your change to ${from}, then come back.` : "Push a branch to this repository, then come back."}
         </EmptyState>
@@ -214,6 +245,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
           className="h-8 w-auto max-w-full min-w-32 font-mono"
         />
       </Card>
+      {forksNote}
       <Field label="Title">
         <Input name="title" required autoFocus maxLength={200} />
       </Field>

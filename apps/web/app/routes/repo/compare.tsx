@@ -15,6 +15,8 @@ import { page } from "../../lib/meta";
 import { showCommits } from "../../lib/commit-people.server";
 import { repos } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { type Failed, isFailed, part } from "../../lib/partial";
 
 /** How far back each side's history is read to find what head has that base does not. */
 const HEAD_DEPTH = 100;
@@ -42,11 +44,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     const head = url.searchParams.get("head") ?? "";
     return Response.redirect(new URL(`/${params.owner}/${params.repo}/compare/${base}...${head}`, url).toString(), 302);
   }
-  const [repo, list] = await Promise.all([repos.get(path, viewer), repos.branches(path, viewer)]);
+  // The branches to pick from are a part: without them, the pickers offer
+  // the two being compared and say the rest could not be read.
+  const [repo, list] = await Promise.all([repos.get(path, viewer), part(repos.branches(path, viewer), "Branches")]);
   const found = unwrap(repo);
-  const branches = unwrap(list)
-    .map((branch) => branch.name)
-    .filter((name) => !name.startsWith("g1t-queue/"));
+  const branches: string[] | Failed = isFailed(list)
+    ? list
+    : unwrap(list)
+        .map((branch) => branch.name)
+        .filter((name) => !name.startsWith("g1t-queue/"));
   const asked = sides(params["*"] ?? "");
   const base = asked.base ?? found.defaultBranch;
   const head = asked.head;
@@ -68,9 +74,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // bring them: what base gained since is not head taking it away. When
   // that point is past what was read, the two tips are compared.
   const mergeBase = shared === -1 ? base : headLog.value[shared]!.hash;
-  const compared = await repos.compare(found.id, viewer, mergeBase, head);
+  // The changes are a part: the commits above them stay when they fail.
+  const compared = await part(repos.compare(found.id, viewer, mergeBase, head), "The changes");
   // Its first screens with their lines; the rest load as they are reached.
-  const comparison: HighlightedComparison | null = compared.ok ? firstScreens(compared.value) : null;
+  const comparison: HighlightedComparison | Failed | null = isFailed(compared)
+    ? compared
+    : compared.ok
+      ? firstScreens(compared.value)
+      : null;
   return { base, head, branches, comparison, commits, same: false };
 }
 
@@ -98,7 +109,8 @@ function RefPicker({ name, label, value, branches }: { name: string; label: stri
 }
 
 export default function Compare({ loaderData, params }: Route.ComponentProps) {
-  const { base, head, branches, comparison, commits, same } = loaderData;
+  const { base, head, comparison, commits, same } = loaderData;
+  const branches = isFailed(loaderData.branches) ? [] : loaderData.branches;
   const repoBase = `/${params.owner}/${params.repo}`;
   return (
     <div className="space-y-5">
@@ -129,6 +141,7 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
           )}
         </Form>
       </Card>
+      {isFailed(loaderData.branches) && <Unavailable what={loaderData.branches.what} compact />}
 
       {!head ? (
         <EmptyState title="Pick a branch to compare">Its commits and changes against {base} show here.</EmptyState>
@@ -167,7 +180,9 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
               </ul>
             </Card>
           </section>
-          {comparison ? (
+          {isFailed(comparison) ? (
+            <Unavailable what={comparison.what} />
+          ) : comparison ? (
             <DiffView comparison={comparison} repo={repoBase} fileBase={`${repoBase}/blob/${encodeURIComponent(head)}`} empty="The two sides have the same files." />
           ) : (
             <p className="text-sm text-muted">The changes could not be read just now. The commits above are what {head} adds.</p>

@@ -17,6 +17,7 @@ import { work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Pull requests · ${params.owner}/${params.repo} · g1t` });
@@ -33,8 +34,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       milestone: milestone ?? undefined,
       base: base || undefined,
     }),
-    work.listLabels(path, viewer),
-    work.listMilestones(path, viewer, "open"),
+    // What the filters offer: each a part, whose menu says so when its service fails.
+    part(work.listLabels(path, viewer), "Labels"),
+    part(work.listMilestones(path, viewer, "open"), "Milestones"),
     // The layout looks it up in this request too.
     repoFor(context, params),
   ]);
@@ -44,14 +46,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     label,
     milestone,
     base,
-    labels: labels.ok ? labels.value : [],
-    milestones: milestones.ok ? milestones.value : [],
+    labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
+    milestones: isFailed(milestones) ? milestones : milestones.ok ? milestones.value : [],
     defaultBranch: repo.ok ? repo.value.defaultBranch : null,
   } as const;
 }
 
 export default function Pulls({ loaderData, params }: Route.ComponentProps) {
-  const { pulls, state, labels, milestones, label, milestone, defaultBranch } = loaderData;
+  const { pulls, state, label, milestone, defaultBranch } = loaderData;
+  // A filter whose choices could not be loaded offers none, and its menu says why.
+  const labels = isFailed(loaderData.labels) ? [] : loaderData.labels;
+  const milestones = isFailed(loaderData.milestones) ? [] : loaderData.milestones;
   // Pull requests opened, updated, reviewed, checked, merged and closed show as it happens.
   useRepoLive({ match: repoPages.pulls() });
   const base = `/${params.owner}/${params.repo}`;
@@ -82,7 +87,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
           active={label || undefined}
           clearTo={label ? withFilter(list, current, "label", null) : undefined}
           searchPlaceholder="Filter labels"
-          emptyText="No label matches."
+          emptyText={isFailed(loaderData.labels) ? "Labels could not be loaded just now." : "No label matches."}
           options={labels.map((each) => ({
             key: each.name,
             to: withFilter(list, current, "label", each.name),
@@ -101,7 +106,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
           active={milestoneTitle ?? undefined}
           clearTo={milestone ? withFilter(list, current, "milestone", null) : undefined}
           searchPlaceholder="Filter milestones"
-          emptyText="No open milestone matches."
+          emptyText={isFailed(loaderData.milestones) ? "Milestones could not be loaded just now." : "No open milestone matches."}
           options={milestones.map((each) => ({
             key: String(each.number),
             to: withFilter(list, current, "milestone", String(each.number)),

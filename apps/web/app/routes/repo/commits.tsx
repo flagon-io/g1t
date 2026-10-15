@@ -22,6 +22,8 @@ import { isPushTo, newCommits, repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { useProject } from "./layout";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 const PAGE_SIZE = 50;
 
@@ -37,11 +39,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const checks = commitChecksFor(path, viewer, log.map((commit) => commit.hash));
   // Who wrote each commit, as their account where there is one.
   const commits = await showCommits(log);
-  // How many comments each has, from the repository's latest: streamed.
-  const comments = work
-    .commitComments(viewer, path, null)
-    .then((found) => (found.ok ? countByCommit(found.value) : {}))
-    .catch(() => ({}) as Record<string, number>);
+  // How many comments each has, from the repository's latest: streamed, and
+  // a part, so counts that could not be read are not shown as none.
+  const comments = part(
+    work.commitComments(viewer, path, null).then((found): Record<string, number> => (found.ok ? countByCommit(found.value) : {})),
+    "Comment counts",
+  );
   return { commits, checks, comments };
 }
 
@@ -98,6 +101,11 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
   return (
     <>
     <NewItemsBar held={held.length > 0} count={newCommits(held, branch)} noun={["commit", "commits"]} onShow={show} />
+    <Suspense fallback={null}>
+      <Await resolve={comments}>
+        {(counts) => (isFailed(counts) ? <div className="mb-4"><Unavailable what={counts.what} compact /></div> : null)}
+      </Await>
+    </Suspense>
     <div className="relative space-y-8 before:absolute before:top-3 before:bottom-3 before:left-1.75 before:w-px before:bg-line">
       {byDay(commits).map(([day, list]) => (
         <section key={day} className="relative pl-7">
@@ -124,7 +132,7 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
                         <CommitChecksBadge checks={checks} sha={commit.hash} />
                         <Suspense fallback={null}>
                           <Await resolve={comments}>
-                            {(counts) => <CommentCount count={counts[commit.hash] ?? 0} to={`${to}#commit-comments`} />}
+                            {(counts) => (isFailed(counts) ? null : <CommentCount count={counts[commit.hash] ?? 0} to={`${to}#commit-comments`} />)}
                           </Await>
                         </Suspense>
                       </div>

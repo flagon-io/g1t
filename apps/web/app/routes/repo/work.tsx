@@ -18,6 +18,8 @@ import { useRefreshWhile } from "../../lib/refresh";
 import { repoPages } from "../../lib/repo-live";
 import { events, work } from "../../lib/services.server";
 import { useRepoLive } from "../../lib/use-repo-live";
+import { Unavailable } from "../../components/boundary";
+import { type Failed, isFailed, part } from "../../lib/partial";
 
 /** How many coordination events the feed shows. */
 const FEED = 30;
@@ -32,37 +34,46 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer, repo } = await requireRepo(context, params, "read");
   const path = { namespace: params.owner, name: params.repo };
   // One round: who is on what, the queue, what happened, what landed.
+  // Each section is a part of its own (lib/partial.ts): one whose service
+  // fails says so in its place, and the others stay.
   const [claims, active, idle, queue, recent, open, closed, openPulls] = await Promise.all([
-    work.listClaims(path, viewer).catch(() => null),
-    work.listWorkSessions(path, viewer, { state: "active" }).catch(() => null),
-    work.listWorkSessions(path, viewer, { state: "idle" }).catch(() => null),
-    work.queue(path, viewer).catch(() => null),
-    events
-      .list({
+    part(work.listClaims(path, viewer), "Who is working"),
+    part(work.listWorkSessions(path, viewer, { state: "active" }), "Who is working"),
+    part(work.listWorkSessions(path, viewer, { state: "idle" }), "Who is working"),
+    part(work.queue(path, viewer), "The merge queue"),
+    part(
+      events.list({
         repoId: repo.id,
         types: [...COORDINATION_TYPES] as EventType[],
         limit: FEED,
-      })
-      .catch(() => []),
-    // The titles of the issues being worked on.
+      }),
+      "What happened",
+    ),
+    // The titles of the issues being worked on: only labels for Live now's
+    // rows, which still name each by its number without them.
     work.listIssues(path, viewer, { state: "open" }).catch(() => null),
-    work.listPulls(path, viewer, "closed").catch(() => null),
-    // The titles of the pull requests sessions with no issue are on.
+    part(work.listPulls(path, viewer, "closed"), "Just landed"),
+    // The titles of the pull requests sessions with no issue are on; the same.
     work.listPulls(path, viewer, "open").catch(() => null),
   ]);
   const titles: Record<number, string> = {};
   for (const issue of open?.ok ? open.value : []) titles[issue.number] = issue.title;
   const pulls: Record<number, LivePull> = {};
   for (const pull of openPulls?.ok ? openPulls.value : []) pulls[pull.number] = { title: pull.title, status: pull.status };
-  const landed = (closed?.ok ? closed.value : [])
-    .filter((pull) => pull.status === "merged" && pull.mergedAt)
-    .sort((a, b) => Date.parse(b.mergedAt!) - Date.parse(a.mergedAt!))
-    .slice(0, LANDED);
+  const landed = isFailed(closed)
+    ? closed
+    : (closed.ok ? closed.value : [])
+        .filter((pull) => pull.status === "merged" && pull.mergedAt)
+        .sort((a, b) => Date.parse(b.mergedAt!) - Date.parse(a.mergedAt!))
+        .slice(0, LANDED);
+  // Live now is one list of claims and sessions: it is whole or it is unavailable.
+  const live: Failed | null = [claims, active, idle].find(isFailed) ?? null;
   return {
-    claims: claims?.ok ? claims.value : [],
-    sessions: [...(active?.ok ? active.value : []), ...(idle?.ok ? idle.value : [])],
-    queue: queue?.ok ? queue.value : null,
-    feed: recent.flatMap((event) => feedLine(event) ?? []),
+    live,
+    claims: isFailed(claims) || !claims.ok ? [] : claims.value,
+    sessions: [...(isFailed(active) || !active.ok ? [] : active.value), ...(isFailed(idle) || !idle.ok ? [] : idle.value)],
+    queue: isFailed(queue) ? queue : queue.ok ? queue.value : null,
+    feed: isFailed(recent) ? recent : recent.flatMap((event) => feedLine(event) ?? []),
     titles,
     pulls,
     landed,
@@ -118,7 +129,8 @@ function LandedRow({ pull, base }: { pull: Pull; base: string }) {
 }
 
 export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
-  const { claims, sessions, queue, feed, titles, pulls, landed, defaultBranch } = loaderData;
+  const { live, claims, sessions, feed, titles, pulls, landed, defaultBranch } = loaderData;
+  const queue = isFailed(loaderData.queue) ? null : loaderData.queue;
   const base = `/${params.owner}/${params.repo}`;
   const now = Date.now();
   // Idle sessions fold under the list (LiveNowList); the counts are of the rest.
@@ -145,18 +157,25 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
         icon={<Radio size={15} className={busy ? "text-success" : "text-faint"} />}
         title="Live now"
         aside={
-          working
+          working && !live
             ? `${claims.length} ${claims.length === 1 ? "claim" : "claims"}, ${awake.length} ${awake.length === 1 ? "session" : "sessions"}${idle.length > 0 ? `, ${idle.length} idle` : ""}`
             : undefined
         }
       >
-        {!working ? (
+        {live ? (
+          <Unavailable what={live.what} />
+        ) : !working ? (
           <StartHere title="Nobody is working on this repository right now" />
         ) : (
           <LiveNowList claims={claims} sessions={sessions} titles={titles} pulls={pulls} defaultBranch={defaultBranch} base={base} now={now} />
         )}
       </Section>
 
+      {isFailed(loaderData.queue) && (
+        <Section icon={<Layers size={15} className="text-accent" />} title="Merge queue">
+          <Unavailable what={loaderData.queue.what} />
+        </Section>
+      )}
       {queue && (queue.enabled || queue.active.length > 0) && (
         <Section
           icon={<Layers size={15} className="text-accent" />}
@@ -172,7 +191,9 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
       )}
 
       <Section icon={<History size={15} className="text-accent" />} title="What happened">
-        {feed.length === 0 ? (
+        {isFailed(feed) ? (
+          <Unavailable what={feed.what} />
+        ) : feed.length === 0 ? (
           <EmptyState title="Nothing yet">
             Claims, sessions, overlapping changes, dependencies and what the merge queue finds when it combines changes are listed here as
             they happen.
@@ -186,14 +207,16 @@ export default function WorkPage({ loaderData, params }: Route.ComponentProps) {
         icon={<GitMerge size={15} className="text-merged" />}
         title="Just landed"
         aside={
-          landed.length > 0 ? (
+          !isFailed(landed) && landed.length > 0 ? (
             <Link to={`${base}/pulls?state=closed`} className="hover:text-fg">
               All merged pull requests
             </Link>
           ) : undefined
         }
       >
-        {landed.length === 0 ? (
+        {isFailed(landed) ? (
+          <Unavailable what={landed.what} />
+        ) : landed.length === 0 ? (
           <EmptyState title="Nothing merged yet">Merged pull requests show here, each with the session behind it.</EmptyState>
         ) : (
           <Card asChild divided>

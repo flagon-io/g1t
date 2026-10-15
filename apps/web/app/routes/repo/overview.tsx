@@ -312,6 +312,12 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     claims: ok(claims) ?? [],
     sessions: [...(ok(active) ?? []), ...(ok(idle) ?? [])],
     liveLoaded: claims?.ok === true || active?.ok === true,
+    // Sections that could not be read say so in their place, rather than
+    // reading as empty: what needs someone signed in (their open pull
+    // requests), the deployments panel, and a member's observability.
+    needsLoaded: viewer == null || open != null,
+    environmentsLoaded: environments != null,
+    telemetryLoaded: observed == null || observed.overview != null,
     titles,
     livePulls,
     defaultBranch,
@@ -887,7 +893,12 @@ function Overview({
 
       <div className="grid gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-8">
-          {needs.length > 0 && (
+          {!loaderData.needsLoaded && (
+            <Panel title="Needs you" icon={<Hand size={14} className="text-warn" />}>
+              <Unavailable what="What needs you" />
+            </Panel>
+          )}
+          {loaderData.needsLoaded && needs.length > 0 && (
             <Panel title="Needs you" icon={<Hand size={14} className="text-warn" />} count={needs.length}>
               <NeedsList needs={needs} limit={5} />
             </Panel>
@@ -970,7 +981,12 @@ function Overview({
 
         <aside className="space-y-4 text-sm">
           {/* Deployments panel (deployments-panel.tsx): each environment's latest deployment. */}
-          <DeploymentsPanel base={base} summary={loaderData.environments} className="rounded-xl border border-line bg-surface p-5" />
+          {loaderData.environmentsLoaded ? (
+            <DeploymentsPanel base={base} summary={loaderData.environments} className="rounded-xl border border-line bg-surface p-5" />
+          ) : (
+            <Unavailable what="Deployments" compact />
+          )}
+          {!loaderData.telemetryLoaded && <Unavailable what="Observability" compact />}
           {loaderData.telemetry && <ObservabilityCard overview={loaderData.telemetry.overview} errors={loaderData.telemetry.errors} base={base} />}
           {project && <AboutCard project={project} canChange={canChange} base={base} release={loaderData.release} />}
           <HealthCard loaderData={loaderData} base={base} plan={plan} />

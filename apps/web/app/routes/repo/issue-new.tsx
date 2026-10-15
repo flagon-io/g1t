@@ -13,6 +13,8 @@ import { LabelChip } from "../../components/labels";
 import { integrations, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 import { accessTo } from "../../lib/access.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New issue · ${params.owner}/${params.repo} · g1t` });
@@ -22,18 +24,21 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const path = { namespace: params.owner, name: params.repo };
   const { can } = await accessTo(context, params);
+  // The form is what this page is about; what fills its choices is a part
+  // each, which says so in its own place when its service fails.
   const [labels, milestones, connections] = await Promise.all([
-    work.listLabels(path, user),
-    can.triage ? work.listMilestones(path, user, "open") : null,
-    integrations.list(params.owner.toLowerCase(), user),
+    part(work.listLabels(path, user), "Labels"),
+    can.triage ? part(work.listMilestones(path, user, "open"), "Milestones") : null,
+    // Only a hint at what can be imported: the page does without it.
+    integrations.list(params.owner.toLowerCase(), user).catch(() => null),
   ]);
   // Systems a ticket can be imported from.
-  const sources = connections.ok
+  const sources = connections?.ok
     ? [...new Set(connections.value.filter((c) => c.kind === "tracker" || c.provider === "sentry").map((c) => c.provider))]
     : [];
   return {
-    labels: unwrap(labels),
-    milestones: milestones?.ok ? milestones.value : [],
+    labels: isFailed(labels) ? labels : unwrap(labels),
+    milestones: isFailed(milestones) ? milestones : milestones?.ok ? milestones.value : [],
     // Making labels, and choosing a milestone, need Triage.
     canTriage: can.triage,
     // Making labels needs Write; choosing them and a milestone, Triage.
@@ -123,17 +128,21 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
         </Field>
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium text-muted">Labels</legend>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {loaderData.labels.map((label) => (
-              <CheckboxOption
-                key={label.name}
-                name="label"
-                value={label.name}
-                label={<LabelChip name={label.name} color={label.color} />}
-                className="items-center gap-1.5"
-              />
-            ))}
-          </div>
+          {isFailed(loaderData.labels) ? (
+            <Unavailable what="The repository's labels" compact />
+          ) : (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {loaderData.labels.map((label) => (
+                <CheckboxOption
+                  key={label.name}
+                  name="label"
+                  value={label.name}
+                  label={<LabelChip name={label.name} color={label.color} />}
+                  className="items-center gap-1.5"
+                />
+              ))}
+            </div>
+          )}
           {loaderData.canMakeLabels && (
             <div className="mt-2">
               <Input
@@ -144,7 +153,12 @@ export default function NewIssue({ loaderData, actionData }: Route.ComponentProp
             </div>
           )}
         </fieldset>
-        {loaderData.canTriage && loaderData.milestones.length > 0 && (
+        {loaderData.canTriage && isFailed(loaderData.milestones) && (
+          <Field label="Milestone">
+            <Unavailable what="Milestones" compact />
+          </Field>
+        )}
+        {loaderData.canTriage && !isFailed(loaderData.milestones) && loaderData.milestones.length > 0 && (
           <Field label="Milestone">
             <SelectField
               name="milestone"

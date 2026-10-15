@@ -6,6 +6,8 @@ import type { Deployment, DeploymentDetail, DeploymentStatus } from "@g1t/contra
 
 import type { Route } from "./+types/deployment";
 import { page } from "../../lib/meta";
+import { isFailed, part } from "../../lib/partial";
+import { Boundary, Unavailable } from "../../components/boundary";
 import { TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
@@ -24,17 +26,28 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const { repo } = await requireRepo(context, params, "read");
   const path = { namespace: repo.namespace, name: repo.name };
-  const soft = <T,>(promise: Promise<T>): Promise<T | null> =>
-    promise.catch((error) => (console.warn("deployment:", error), null));
   // A g1t.page build also has its build log and warnings, for the workspace's members.
   const [found, build] = await Promise.all([
-    soft(deployments.repoDeployment(path, params.id, viewer)),
-    isPageBuild(params.id) ? soft(deployments.get({ workspace: params.owner, slug: params.repo }, params.id, viewer)) : null,
+    part(deployments.repoDeployment(path, params.id, viewer), "Its deployment record"),
+    isPageBuild(params.id) ? part(deployments.get({ workspace: params.owner, slug: params.repo }, params.id, viewer), "The build") : null,
   ]);
-  const deployment = found?.ok ? found.value : null;
-  const pageBuild = build?.ok ? build.value : null;
-  if (!deployment && !pageBuild) throw data(null, { status: 404 });
-  return { deployment, build: pageBuild };
+  const deployment = !isFailed(found) && found.ok ? found.value : null;
+  const pageBuild = build && !isFailed(build) && build.ok ? build.value : null;
+  if (!deployment && !pageBuild) {
+    // Either one heads the page. With neither, a read that failed is not
+    // the deployment missing: say it could not be loaded rather than 404.
+    if (isFailed(found) || isFailed(build)) {
+      throw data("The deployment could not be loaded just now. Try again in a moment.", { status: 503 });
+    }
+    throw data(null, { status: 404 });
+  }
+  return {
+    deployment,
+    // A failed record under a build is said beside the build's heading; a
+    // failed build under a record, in its details' place.
+    recordFailed: isFailed(found),
+    build: isFailed(build) ? build : pageBuild,
+  };
 }
 
 /** A g1t.page build's status in words. */
@@ -49,7 +62,8 @@ const BUILD_WORDS = {
 } as const;
 
 export default function DeploymentPage({ loaderData, params }: Route.ComponentProps) {
-  const { deployment, build } = loaderData;
+  const { deployment, recordFailed } = loaderData;
+  const build = isFailed(loaderData.build) ? null : loaderData.build;
   const base = `/${params.owner}/${params.repo}`;
   return (
     <div>
@@ -58,7 +72,25 @@ export default function DeploymentPage({ loaderData, params }: Route.ComponentPr
         Deployments
       </Link>
       {deployment ? <Reported deployment={deployment} base={base} /> : build && <BuildHeading build={build} base={base} />}
-      {build && <BuildDetails build={build} />}
+      {!deployment && recordFailed && (
+        <div className="mt-3">
+          <Unavailable what="Its deployment record" compact />
+        </div>
+      )}
+      {isFailed(loaderData.build) ? (
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold">Build on g1t.page</h2>
+          <div className="mt-3">
+            <Unavailable what="The build and its log" />
+          </div>
+        </section>
+      ) : (
+        build && (
+          <Boundary what="The build">
+            <BuildDetails build={build} />
+          </Boundary>
+        )
+      )}
     </div>
   );
 }

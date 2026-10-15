@@ -21,6 +21,7 @@ import { Card } from "../../components/ui/card";
 import { IssueIcon, PullIcon } from "../../components/work";
 import { requireRepo } from "../../lib/access.server";
 import { colorsOf } from "../../lib/labels";
+import { orElse, part } from "../../lib/partial";
 import { page } from "../../lib/meta";
 import { milestoneAction } from "../../lib/milestones.server";
 import { openedBy } from "../../lib/opened-by";
@@ -37,12 +38,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const state = new URL(request.url).searchParams.get("state") === "closed" ? "closed" : "open";
   const [found, labels] = await Promise.all([
     work.getMilestone(path, Number(params.number), viewer),
-    work.listLabels(path, viewer),
+    // Only its chips' colors: without them a chip still names its label.
+    part(work.listLabels(path, viewer), "Labels").then((labels) => orElse(labels, null)),
   ]);
   if (!found.ok) throw new Response("Milestone not found.", { status: 404 });
   return {
     detail: found.value,
-    labels: labels.ok ? labels.value : [],
+    labels: labels?.ok ? labels.value : [],
     state,
     canEdit: access.can.manage_labels,
     today: new Date().toISOString(),

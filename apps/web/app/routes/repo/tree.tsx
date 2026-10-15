@@ -14,6 +14,8 @@ import { ForkBar } from "../../components/fork-bar";
 import { forkSourceFor } from "../../lib/forks.server";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
+import { isFailed, part } from "../../lib/partial";
+import { Unavailable } from "../../components/boundary";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   const path = params["*"] ? `${params["*"]} · ` : "";
@@ -25,12 +27,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const [tree, branches, environments, fork] = await Promise.all([
     repos.tree(path, viewer, params.ref, params["*"] ?? ""),
-    // For the branch menu; the page still shows without it.
-    repos.branches(path, viewer).catch(() => null),
+    // For the branch menu; the page still shows without it, and the menu
+    // says when it could not be loaded.
+    part(repos.branches(path, viewer), "Branches"),
     // For the About sidebar's Deployments panel, shown at the root only.
-    params["*"] ? null : environmentsFor(path, viewer),
+    params["*"] ? null : part(environmentsFor(path, viewer), "Deployments"),
     // A fork's parent, for the bar above its files, at the root only.
-    params["*"] ? null : forkSourceFor(context, params, viewer),
+    params["*"] ? null : part(forkSourceFor(context, params, viewer), "Where this fork came from"),
   ]);
   // A branch that was renamed: the same folder on its new name.
   if (!tree.ok && tree.error.code === "not_found") await redirectIfBranchRenamed(request, path, viewer, params.ref);
@@ -43,14 +46,24 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const about = value.head && !value.path ? aboutFor(path, viewer, value.repo.id) : null;
   // The latest commit's checks: streamed in beside it.
   const checks = commitChecksFor(path, viewer, [value.head?.hash]);
-  return { tree: value, branches: branches?.ok ? branches.value : null, lastCommits, about, deployments: environments, checks, fork };
+  return {
+    tree: value,
+    branches: isFailed(branches) ? branches : branches.ok ? branches.value : null,
+    lastCommits,
+    about,
+    deployments: environments,
+    checks,
+    fork,
+  };
 }
 
 export default function Tree({ loaderData }: Route.ComponentProps) {
   const project = useProject();
   // The files and latest commit follow pushes to the branch (none for a
   // tag or a commit); the latest commit's checks update as they report.
-  const { tree, branches } = loaderData;
+  const { tree, fork } = loaderData;
+  // Without the branch list, the page follows its branch as if it were one.
+  const branches = isFailed(loaderData.branches) ? null : loaderData.branches;
   const names = branches?.map((branch) => branch.name);
   useRepoLive({ match: repoPages.files({ branch: !names || names.includes(tree.ref) ? tree.ref : null, branches: names, sha: tree.head?.hash }) });
   return (
@@ -63,11 +76,15 @@ export default function Tree({ loaderData }: Route.ComponentProps) {
       canPush={Boolean(project?.access.can.push)}
       deployments={loaderData.deployments}
       fork={
-        loaderData.fork && project && branches?.some((branch) => branch.name === tree.ref) ? (
+        isFailed(fork) ? (
+          <div className="mb-4">
+            <Unavailable compact what={fork.what} />
+          </div>
+        ) : fork && project && branches?.some((branch) => branch.name === tree.ref) ? (
           <ForkBar
             base={`/${tree.repo.namespace}/${tree.repo.name}`}
             branch={tree.ref}
-            parent={loaderData.fork}
+            parent={fork}
             canPush={Boolean(project.access.can.push)}
           />
         ) : null

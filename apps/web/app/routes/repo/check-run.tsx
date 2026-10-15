@@ -5,6 +5,7 @@ import { Form, Link, redirect } from "react-router";
 import type { AnnotationLevel, CheckAnnotation, CommitCheckRun } from "@g1t/contracts";
 
 import type { Route } from "./+types/check-run";
+import { Boundary, Unavailable } from "../../components/boundary";
 import { CheckStateIcon } from "../../components/commit-checks";
 import { Markdown } from "../../components/markdown";
 import { EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
@@ -14,6 +15,7 @@ import { accessTo, refusal } from "../../lib/access.server";
 import { checkDetail, took } from "../../lib/commit-checks";
 import { formatLineHash } from "../../lib/line-anchor";
 import { page } from "../../lib/meta";
+import { isFailed, part } from "../../lib/partial";
 import { work } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 
@@ -27,7 +29,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const [run, annotations, access] = await Promise.all([
     work.getCheckRun(path, params.id, viewer),
-    work.checkRunAnnotations(path, params.id, viewer),
+    // The check run is what the page is about; its annotations are a part.
+    part(work.checkRunAnnotations(path, params.id, viewer), "Annotations"),
     accessTo(context, params),
   ]);
   const found = unwrap(run);
@@ -35,7 +38,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (found.workflow) throw redirect(found.htmlUrl);
   return {
     run: found,
-    annotations: annotations.ok ? annotations.value : [],
+    annotations: isFailed(annotations) ? annotations : annotations.ok ? annotations.value : [],
     // Pressing its buttons and asking for it again: Write and up.
     canReport: access.can.push,
   };
@@ -234,24 +237,38 @@ export default function CheckRunPage({ loaderData, actionData, params }: Route.C
       </Card>
 
       {title || summary || text ? (
-        <Card asChild tone="plain" className="p-4 sm:p-6">
-          <section>
-            {title && <h3 className="mb-3 text-lg font-semibold">{title}</h3>}
-            {summary && <Markdown source={summary} repo={{ namespace: params.owner, name: params.repo }} />}
-            {text && (
-              <div className={summary ? "mt-6 border-t border-line pt-6" : ""}>
-                <Markdown source={text} repo={{ namespace: params.owner, name: params.repo }} />
-              </div>
-            )}
-          </section>
-        </Card>
+        // The report is whatever the app wrote: one that will not draw leaves the run.
+        <Boundary what="The report">
+          <Card asChild tone="plain" className="p-4 sm:p-6">
+            <section>
+              {title && <h3 className="mb-3 text-lg font-semibold">{title}</h3>}
+              {summary && <Markdown source={summary} repo={{ namespace: params.owner, name: params.repo }} />}
+              {text && (
+                <div className={summary ? "mt-6 border-t border-line pt-6" : ""}>
+                  <Markdown source={text} repo={{ namespace: params.owner, name: params.repo }} />
+                </div>
+              )}
+            </section>
+          </Card>
+        </Boundary>
       ) : (
         <EmptyState title={run.status === "completed" ? "No report" : "No report yet"}>
           {run.app.name} {run.status === "completed" ? "said nothing more about this run." : "has not said anything more yet."}
         </EmptyState>
       )}
 
-      {annotations.length > 0 && <Annotations run={run} annotations={annotations} base={base} />}
+      {isFailed(annotations) ? (
+        <section className="space-y-3">
+          <h3 className="text-base font-semibold">Annotations</h3>
+          <Unavailable what="Annotations" />
+        </section>
+      ) : (
+        annotations.length > 0 && (
+          <Boundary what="Annotations">
+            <Annotations run={run} annotations={annotations} base={base} />
+          </Boundary>
+        )
+      )}
     </div>
   );
 }

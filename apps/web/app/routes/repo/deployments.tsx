@@ -19,6 +19,7 @@ import type { DeploymentEnvironment, FeatureState, RepoDeployment } from "@g1t/c
 import { DeployLink, host } from "../../components/deploy";
 import { DeploymentStateBadge, DeploymentStateIcon, sourceLabel } from "../../components/deployments-panel";
 import { FilterMenu } from "../../components/labels";
+import { Boundary, Unavailable } from "../../components/boundary";
 
 import type { Route } from "./+types/deployments";
 import { page } from "../../lib/meta";
@@ -27,6 +28,7 @@ import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { computeNoteFor } from "../../lib/compute.server";
+import { type Failed, isFailed, orElse, part } from "../../lib/partial";
 import { neverDeploys } from "../../lib/project-kind";
 import { billing, deployments, projects } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
@@ -62,39 +64,53 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: repo.namespace, name: repo.name };
   const ref = { workspace: params.owner, slug: params.repo };
   const filter = parseFilter(new URL(request.url).searchParams);
-  // A part whose service fails shows as missing; the page stays up.
-  const soft = <T,>(promise: Promise<T>): Promise<T | null> =>
-    promise.catch((error) => (console.warn("deployments:", error), null));
+  // Each part loads on its own, and one whose service fails says so in its
+  // place while the rest of the page stays up.
   // g1t.page's settings and builds are the workspace's members' alone.
   const insider = access.insider;
   const [environments, list, settings, builds, features, computeNote, project] = await Promise.all([
-    soft(deployments.environments(path, viewer)),
-    soft(deployments.repoDeployments(path, viewer, filter)),
-    insider ? soft(deployments.settings(ref, viewer)) : null,
-    insider ? soft(deployments.list(ref, viewer)) : null,
-    insider ? soft(billing.features(params.owner, viewer)) : null,
+    part(deployments.environments(path, viewer), "Environments"),
+    part(deployments.repoDeployments(path, viewer, filter), "Deployment history"),
+    insider ? part(deployments.settings(ref, viewer), "g1t.page hosting") : null,
+    insider ? part(deployments.list(ref, viewer), "g1t.page hosting") : null,
+    insider ? part(billing.features(params.owner, viewer), "The plan") : null,
     // Builds are compute: said before a deploy is refused for it.
-    insider ? soft(computeNoteFor(params.owner, "deploy")) : null,
-    soft(projects.get(params.owner, params.repo, viewer)),
+    insider ? part(computeNoteFor(params.owner, "deploy"), "Compute") : null,
+    part(projects.get(params.owner, params.repo, viewer), "The project"),
   ]);
-  // Set not to deploy, in General settings: turning them on waits for that to change.
-  const notDeploying = project?.ok ? neverDeploys(project.value) : false;
+  // Set not to deploy, in General settings: turning them on waits for that
+  // to change. Unread, it is left out: the deployments service refuses to
+  // turn on what the project says never deploys.
+  const known = orElse(project, null);
+  const notDeploying = known?.ok ? neverDeploys(known.value) : false;
   // Deployments come with the g1t plan. Someone outside the workspace does
-  // not see its plans; the page works without, and the deployments service
-  // refuses a deploy the plan does not cover.
-  const plan = features?.ok
-    ? (features.value.find((state) => state.plan.feature === "plan" || state.plan.feature === "deployments") ?? null)
+  // not see its plans; the page works without (as it does when the plans
+  // cannot be read), and the deployments service refuses a deploy the plan
+  // does not cover.
+  const plans = orElse(features, null);
+  const plan = plans?.ok
+    ? (plans.value.find((state) => state.plan.feature === "plan" || state.plan.feature === "deployments") ?? null)
     : null;
+  // g1t.page hosting, for the workspace's members: null when it is not
+  // theirs to see, Failed when it could not be read.
+  const pages = isFailed(settings)
+    ? settings
+    : isFailed(builds)
+      ? builds
+      : settings?.ok && builds?.ok
+        ? // A note that cannot be read is left out, as on Workflows: the refusal says the same.
+          { settings: settings.value, live: builds.value.live, plan, computeNote: orElse(computeNote, null), notDeploying }
+        : null;
   return {
     can: access.can,
     filter,
-    environments: environments?.ok ? { ...environments.value, environments: orderEnvironments(environments.value.environments) } : null,
-    list: list?.ok ? list.value : null,
-    // g1t.page hosting, for the workspace's members: null when it could not be read.
-    pages:
-      settings?.ok && builds?.ok
-        ? { settings: settings.value, live: builds.value.live, plan, computeNote: computeNote ?? null, notDeploying }
+    environments: isFailed(environments)
+      ? environments
+      : environments.ok
+        ? { ...environments.value, environments: orderEnvironments(environments.value.environments) }
         : null,
+    list: isFailed(list) ? list : list.ok ? list.value : null,
+    pages,
   };
 }
 
@@ -126,16 +142,25 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 type Loaded = Route.ComponentProps["loaderData"];
-type Pages = NonNullable<Loaded["pages"]>;
+type Pages = Exclude<NonNullable<Loaded["pages"]>, Failed>;
 
 export default function RepoDeployments({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { environments, list, pages, filter, can } = loaderData;
+  const { filter, can } = loaderData;
+  // A part that could not be read says so in its place; the rest reads it as absent.
+  const environmentsFailed = isFailed(loaderData.environments);
+  const listFailed = isFailed(loaderData.list);
+  const pagesFailed = isFailed(loaderData.pages);
+  const environments = orElse(loaderData.environments, null);
+  const list = orElse(loaderData.list, null);
+  const pages = orElse(loaderData.pages, null);
   const base = `/${params.owner}/${params.repo}`;
   const total = environments?.total_count ?? list?.total_count ?? 0;
   const envs = environments?.environments ?? [];
   const pagesOn = pages?.settings.enabled ?? false;
-  // Anything to show besides how to start: deployments, or g1t.page hosting turned on.
-  const any = total > 0 || envs.length > 0 || pagesOn || (pages?.live.length ?? 0) > 0;
+  // Anything to show besides how to start: deployments, or g1t.page hosting
+  // turned on. What could not be read may be there: never say there is
+  // nothing because of it.
+  const any = total > 0 || envs.length > 0 || pagesOn || (pages?.live.length ?? 0) > 0 || environmentsFailed || listFailed || pagesFailed;
   const production = envs.find((env) => env.production_environment && environmentUrl(env));
   const productionUrl = production ? environmentUrl(production) : null;
   const planNeeded = pages?.plan != null && !pages.plan.on && !pages.plan.included && pages.live.length === 0;
@@ -173,7 +198,9 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
         {!actionData && pages && <ComputeNote note={pages.computeNote} />}
       </div>
 
-      {!environments && !list ? (
+      {environmentsFailed && listFailed ? (
+        <Unavailable what="Deployments" />
+      ) : !environments && !list && !environmentsFailed && !listFailed ? (
         <Card asChild className="p-6 text-sm text-muted">
           <p>
             Deployments could not be loaded just now. Reload the page to try again.
@@ -183,24 +210,61 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
         <Start base={base} pages={pages} can={can} owner={params.owner} planNeeded={planNeeded} />
       ) : (
         <>
-          {envs.length > 0 && (
+          {environmentsFailed ? (
             <section aria-labelledby="environments">
               <h2 id="environments" className="text-sm font-semibold">
-                Environments <span className="font-normal text-faint">{envs.length}</span>
+                Environments
               </h2>
-              <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {envs.map((env) => (
-                  <EnvironmentCard key={env.name} env={env} base={base} />
-                ))}
-              </ul>
+              <div className="mt-3">
+                <Unavailable what="Environments" />
+              </div>
             </section>
+          ) : (
+            envs.length > 0 && (
+              <Boundary what="Environments">
+                <section aria-labelledby="environments">
+                  <h2 id="environments" className="text-sm font-semibold">
+                    Environments <span className="font-normal text-faint">{envs.length}</span>
+                  </h2>
+                  <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {envs.map((env) => (
+                      <EnvironmentCard key={env.name} env={env} base={base} />
+                    ))}
+                  </ul>
+                </section>
+              </Boundary>
+            )
           )}
 
-          <History base={base} list={list} filter={filter} environments={envs} />
+          {listFailed ? (
+            <section id="history" aria-labelledby="history-heading" className="mt-10 scroll-mt-20">
+              <h2 id="history-heading" className="text-sm font-semibold">
+                History
+              </h2>
+              <div className="mt-3">
+                <Unavailable what="Deployment history" />
+              </div>
+            </section>
+          ) : (
+            <Boundary what="Deployment history">
+              <History base={base} list={list} filter={filter} environments={envs} />
+            </Boundary>
+          )}
         </>
       )}
 
       {/* g1t.page hosting: its own section once there is anything else to show. */}
+      {any && pagesFailed && (
+        <section aria-labelledby="g1t-page" className="mt-12 border-t border-line pt-8">
+          <h2 id="g1t-page" className="flex items-center gap-2 text-sm font-semibold">
+            <Globe size={14} className="text-faint" />
+            On g1t.page
+          </h2>
+          <div className="mt-3">
+            <Unavailable what="g1t.page hosting" />
+          </div>
+        </section>
+      )}
       {any && pages && (
         <section aria-labelledby="g1t-page" className="mt-12 border-t border-line pt-8">
           <h2 id="g1t-page" className="flex items-center gap-2 text-sm font-semibold">
@@ -391,7 +455,7 @@ function History({
   environments,
 }: {
   base: string;
-  list: Loaded["list"];
+  list: Exclude<Loaded["list"], Failed>;
   filter: ListFilter;
   environments: DeploymentEnvironment[];
 }) {

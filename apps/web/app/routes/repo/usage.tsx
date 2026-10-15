@@ -9,6 +9,7 @@ import { page } from "../../lib/meta";
 import { billing } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { USAGE_API, UsageView, readFilters } from "../workspace/usage";
+import { Unavailable } from "../../components/boundary";
 
 // A project's usage: the workspace's Usage page, held to this one project.
 // Its members only, as the workspace's page is.
@@ -43,7 +44,8 @@ export default function ProjectUsage({ loaderData }: Route.ComponentProps) {
           </UsageSkeleton>
         }
       >
-        <Await resolve={report}>
+        {/* A report that never arrives says so below the page's heading. */}
+        <Await resolve={report} errorElement={<Unavailable what="Usage" />}>
           {(loaded) => (
             <UsageView slug={slug} owner={owner} filters={filters} url={url} report={loaded.report} error={loaded.error} fixedProject={project} />
           )}
