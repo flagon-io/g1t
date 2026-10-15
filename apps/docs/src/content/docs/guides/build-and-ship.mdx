@@ -79,9 +79,9 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    its own name.
 
    Through MCP, the same is the `repository` tool's `create` action with
-   `workspace`, `name`, `description` and `private: true`. There a
-   repository is public unless `private` is true. The agent then pushes
-   with git.
+   `workspace`, `name` and `description`. There too a repository is
+   private unless `private: false` is given. The agent then pushes with
+   git.
 
    <Aside title="Record the session from here">
    The plugin records a session only when it starts in a working copy

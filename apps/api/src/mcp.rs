@@ -93,6 +93,7 @@ async fn answer(services: &Services, viewer: &Viewer, request: &Value) -> Result
                     None => return Ok(Some(error(id, -32602, "Unknown tool."))),
                 },
             };
+            let arguments = &crate::tools::with_defaults(op, arguments);
             let outcome = crate::audit::run(op, services, viewer, arguments).await?;
             // A failed operation is a tool result the model can read and
             // act on, not a protocol error.

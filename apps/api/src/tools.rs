@@ -85,7 +85,7 @@ pub const TOOLS: &[Tool] = &[
             a("contents", Op::GetContents, "A file's text, or a directory's entries and README, at a branch, tag or commit"),
             a("tarball", Op::Archives(ArchiveOp::DownloadTarball), "A 10-minute link to a branch, tag or commit as a .tar.gz"),
             a("zipball", Op::Archives(ArchiveOp::DownloadZipball), "A 10-minute link to a branch, tag or commit as a .zip"),
-            a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL"),
+            a("create", Op::CreateRepo, "Create one, empty or copied from a public git URL; private unless private is false"),
             a("update", Op::UpdateRepo, "Change description (its project's), website, topics, default branch, protection, forking"),
             a("get_settings", Op::GetRepoSettings, "How pull requests merge, and the default branch's protection as its rules stack"),
             a("update_settings", Op::UpdateRepoSettings, "Change how pull requests merge and the default branch protection ruleset"),
@@ -848,6 +848,22 @@ fn merge_property(properties: &mut Map<String, Value>, name: String, schema: Val
     }
 }
 
+/// A call's arguments with the MCP server's own defaults, where they differ
+/// from the REST API's: a repository an agent creates is private unless it
+/// says otherwise (`private: false`, or `visibility: "public"`), so nothing
+/// it starts is public by accident. REST keeps its default, public.
+pub fn with_defaults(op: Op, arguments: &Value) -> Value {
+    let mut arguments = arguments.clone();
+    if op == Op::CreateRepo
+        && let Some(fields) = arguments.as_object_mut()
+        && !fields.get("private").is_some_and(Value::is_boolean)
+    {
+        let public = fields.get("visibility").and_then(Value::as_str).is_some_and(|v| v.eq_ignore_ascii_case("public"));
+        fields.insert("private".to_owned(), Value::Bool(!public));
+    }
+    arguments
+}
+
 /// What a call to a tool runs: the operation its action names, or why not.
 pub fn resolve(tool: &Tool, arguments: &Value) -> Result<Op, String> {
     let names = || {
@@ -892,6 +908,21 @@ mod tests {
             name: None,
             ..TokenAccess::default()
         }
+    }
+
+    #[test]
+    fn a_repository_created_over_mcp_is_private_unless_it_says_public() {
+        let made = |arguments: Value| with_defaults(Op::CreateRepo, &arguments)["private"].clone();
+        assert_eq!(made(json!({ "name": "web" })), json!(true));
+        assert_eq!(made(json!({ "name": "web", "private": null })), json!(true));
+        assert_eq!(made(json!({ "name": "web", "private": true })), json!(true));
+        assert_eq!(made(json!({ "name": "web", "private": false })), json!(false));
+        assert_eq!(made(json!({ "name": "web", "visibility": "public" })), json!(false));
+        assert_eq!(made(json!({ "name": "web", "visibility": "private" })), json!(true));
+        // Other operations' arguments are left as given.
+        assert_eq!(with_defaults(Op::UpdateRepo, &json!({ "repo": "acme/web" })), json!({ "repo": "acme/web" }));
+        let repository = Tool::by_name("repository").unwrap();
+        assert!(repository.action("create").unwrap().summary.contains("private unless private is false"));
     }
 
     #[test]
