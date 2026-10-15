@@ -1,6 +1,6 @@
 [package]
 name = "g1t"
-version = "0.3.4"
+version = "0.3.5"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -28,5 +28,8 @@ serde_json = { workspace = true }
 sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 terminal_size = "0.4"
-ureq = { version = "2", default-features = false, features = ["tls"] }
+# native-certs: sandboxes that re-sign HTTPS (Claude Managed Agents, guarded
+# runners) add their proxy's certificate to the system store, which the
+# webpki-roots bundle never sees.
+ureq = { version = "2", default-features = false, features = ["tls", "native-certs"] }
 
