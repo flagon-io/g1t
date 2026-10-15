@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Await, data } from "react-router";
 
 import { hasCodeAccess } from "@g1t/contracts";
@@ -65,7 +65,9 @@ import {
   reachFor,
   repoRefs,
 } from "../../lib/home.server";
+import { HOME_WATCH_MAX, type HomeRepo } from "../../lib/home-live";
 import { readCookie } from "../../lib/mission";
+import { useHomeLive } from "../../lib/use-home-live";
 import { loadOnboarding } from "../../lib/onboarding.server";
 import { OnboardingOnPage } from "../../components/onboarding";
 import { loadMissionControl } from "../../lib/mission-control.server";
@@ -93,6 +95,8 @@ const NOTIFICATIONS_READ = 50;
  * at (routes/workspace/home-seen.ts), so a refresh never wipes it. Only
  * the last visit (for the span) is waited for; every section streams in
  * on its own, and one whose service does not answer says so.
+ * The page refreshes itself as the workspace moves (lib/home-live.ts),
+ * and what arrived since it last drew comes in rather than appears.
  * Definitions: lib/home.ts and the Home guide.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -184,6 +188,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     }))
     .catch(() => ({ rows: [], missing: ["Workflows", "Deployments"] }));
   const spend = loadSpend(viewer, slug, span).catch(() => null);
+  // The projects the page watches, so it refreshes as they move (lib/home-live.ts).
+  const watch: Promise<HomeRepo[]> = reposP
+    .then((owned) => (owned ?? []).slice(0, HOME_WATCH_MAX).map((repo) => ({ id: repo.id, path: `${repo.namespace}/${repo.name}`, defaultBranch: repo.defaultBranch || null })))
+    .catch(() => []);
 
   return {
     slug,
@@ -199,9 +207,30 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     /** The sentence under the heading needs the digest, what landed and what waits. */
     head: Promise.all([digest, happened, waiting]),
     spend,
+    watch,
     onboarding,
     setupAsked,
   };
+}
+
+/** The projects the page watches, once the loader has read them. */
+function useWatched(watch: Promise<HomeRepo[]>): HomeRepo[] {
+  const [repos, setRepos] = useState<HomeRepo[]>([]);
+  useEffect(() => {
+    let current = true;
+    void watch.then((list) => {
+      // A refresh reads them again: keep the same list while it is the same.
+      if (current) setRepos((before) => (sameRepos(before, list) ? before : list));
+    });
+    return () => {
+      current = false;
+    };
+  }, [watch]);
+  return repos;
+}
+
+function sameRepos(a: HomeRepo[], b: HomeRepo[]): boolean {
+  return a.length === b.length && a.every((repo, i) => repo.id === b[i]?.id && repo.defaultBranch === b[i]?.defaultBranch);
 }
 
 /** How long the page must have been in view before it counts as a visit. */
@@ -242,6 +271,7 @@ function useMarkSeen(slug: string, loadedAt: number) {
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, head, spend } = loaderData;
   useMarkSeen(slug, now);
+  useHomeLive(slug, useWatched(loaderData.watch));
   return (
     <div className="mx-auto w-full max-w-260 space-y-5 px-4 py-5 md:px-10 md:py-8">
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
@@ -325,12 +355,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               }
             >
               <Await resolve={happened}>
-                {(value) => <LandedCard landed={value?.landed ?? null} missing={value?.landedMissing ?? []} code={loaderData.code} now={now} tz={tz} byDay={span.key === "7d"} />}
+                {(value) => <LandedCard landed={value?.landed ?? null} missing={value?.landedMissing ?? []} code={loaderData.code} now={now} tz={tz} byDay={span.key === "7d"} scope={span.key} />}
               </Await>
             </Suspense>
             <Suspense fallback={null}>
               <Await resolve={happened}>
-                {(value) => <DeploysCard deploys={value?.deploys ?? null} complete={value?.deploysComplete ?? true} code={loaderData.code} now={now} tz={tz} />}
+                {(value) => <DeploysCard deploys={value?.deploys ?? null} complete={value?.deploysComplete ?? true} code={loaderData.code} now={now} tz={tz} scope={span.key} />}
               </Await>
             </Suspense>
           </div>

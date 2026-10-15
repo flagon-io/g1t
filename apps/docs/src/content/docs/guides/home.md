@@ -314,6 +314,32 @@ What is going right now, longest-going first:
 | Workflow run | A [workflow](/guides/actions/) run that is queued, waiting, running, or waiting for approval, in the ten projects pushed to most in the span (their newest 20 runs each) |
 | Build | A project's newest build, queued or building |
 
+## While the page is open
+
+Home keeps up with the workspace without a reload. What lands, starts
+running, finishes or comes to need you while you are on the page joins its
+list, sliding in at its place and lit for a moment; counts and the
+sentence under the heading update with it. Runs that finish leave Running
+now.
+
+| Home updates when | From |
+| --- | --- |
+| Commits are pushed to a project's default branch, or a tag is pushed | The workspace's projects (the first 25) |
+| A pull request is opened, reviewed, merged or closed, or an issue or comment changes | The same projects |
+| A workflow run or a job in it starts or finishes, a build or deployment moves, or a release or package is published | The same projects |
+| A [session](/guides/sessions/) starts or ends | The same projects |
+| Something comes to need you, or you deal with it elsewhere | Your notifications |
+
+A busy workspace sends changes all the time, so Home refreshes a second
+after the last one and at most every five seconds. It works like the
+[pages that update live](/guides/notifications/#pages-that-update-live):
+never while you are typing in Ask or have a dialog open, and a tab out of
+view catches up when you come back to it. Pushes to other branches and a
+commit's checks don't refresh Home, because it doesn't show them. Spend
+updates with the rest but changes only as usage is metered.
+
+Refreshing in place keeps the same span: it is the same visit.
+
 ## Without Code access
 
 A member whose membership does not include Code sees Home without anything
