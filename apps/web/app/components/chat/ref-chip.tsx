@@ -24,30 +24,34 @@ const CHIP =
 
 const PULL_STATUSES: PullStatus[] = ["draft", "open", "merged", "closed"];
 
-/** Cards already asked for in this tab, by `repo#number`: a chip seen twice asks once. */
+/** Cards already asked for in this tab, by where they come from: a chip seen twice asks once. */
 const cards = new Map<string, Promise<RefCard | null>>();
 
-function cardFor(slug: string, repo: string, number: number): Promise<RefCard | null> {
-  const key = `${slug}:${repo}#${number}`;
-  let found = cards.get(key);
+function cardAt(url: string): Promise<RefCard | null> {
+  let found = cards.get(url);
   if (!found) {
-    found = fetch(`/${slug}/-/chat/ref?repo=${encodeURIComponent(repo)}&number=${number}`, { headers: { accept: "application/json" } })
+    found = fetch(url, { headers: { accept: "application/json" } })
       .then((response) => (response.ok ? (response.json() as Promise<RefCard>) : null))
       .catch(() => null);
-    cards.set(key, found);
+    cards.set(url, found);
   }
   return found;
 }
 
-function RefCardBody({ slug, repo, number }: { slug: string; repo: string; number: number }) {
+/**
+ * The card itself, asked for from `url` once it opens: chat's
+ * (routes/workspace/chat/ref.ts) for chips there, a repository's
+ * (routes/repo/ref-card.ts) for references in its commits and timelines.
+ */
+export function RefCardBody({ url, repo, number }: { url: string; repo: string; number: number }) {
   const [card, setCard] = useState<RefCard | null | "loading">("loading");
   useEffect(() => {
     let live = true;
-    void cardFor(slug, repo, number).then((found) => live && setCard(found));
+    void cardAt(url).then((found) => live && setCard(found));
     return () => {
       live = false;
     };
-  }, [slug, repo, number]);
+  }, [url]);
   if (card === "loading") {
     return (
       <div className="space-y-2">
@@ -89,7 +93,7 @@ export function IssueChip({ slug, repo, number, label, to, kind }: { slug: strin
         </Link>
       </HoverCardTrigger>
       <HoverCardContent className="w-80">
-        <RefCardBody slug={slug} repo={repo} number={number} />
+        <RefCardBody url={`/${slug}/-/chat/ref?repo=${encodeURIComponent(repo)}&number=${number}`} repo={repo} number={number} />
       </HoverCardContent>
     </HoverCard>
   );

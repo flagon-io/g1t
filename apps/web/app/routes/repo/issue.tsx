@@ -332,6 +332,10 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
   const open = issue.state === "open";
   const reference = `${params.owner}/${params.repo}#${issue.number}`;
   const resolver = pulls.find((pull) => pull.number === issue.resolvedBy);
+  // A commit's `Closes #12` closed it, pushed straight to the default branch.
+  const closingCommit = issue.resolvedBy == null ? (issue.resolvedCommit ?? null) : null;
+  const pushedBy = issue.resolvedPushedBy ?? null;
+  const resolved = issue.resolvedBy != null || closingCommit != null;
   // The merged pull request first, then the ones still in play, then the rest.
   const rank = { merged: 0, open: 1, draft: 2, closed: 3 } as const;
   const ordered = [...pulls].sort(
@@ -395,8 +399,31 @@ export default function IssuePage({ loaderData, actionData, params }: Route.Comp
           </Link>
         )}
 
+        {closingCommit && (
+          <div className="flex lg:mt-5 items-center gap-3 rounded-xl border border-merged/40 bg-merged/5 px-4 py-3 text-sm">
+            <GitCommitHorizontal size={18} className="shrink-0 text-merged" />
+            <span>
+              Closed by commit{" "}
+              <Link to={`${base}/commit/${closingCommit}`} className="font-mono font-medium hover:underline">
+                {closingCommit.slice(0, 7)}
+              </Link>
+              {pushedBy && (
+                <span className="text-muted">
+                  , pushed by <PersonLink name={pushedBy} className="text-fg-soft hover:underline" />
+                  {issue.closedAt && (
+                    <>
+                      {" "}
+                      <TimeAgo at={issue.closedAt} />
+                    </>
+                  )}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
         {issue.body ? (
-          <div className={`${issue.resolvedBy != null ? "mt-5" : "lg:mt-5"} rounded-xl border border-line bg-surface p-4 sm:p-5`}>
+          <div className={`${resolved ? "mt-5" : "lg:mt-5"} rounded-xl border border-line bg-surface p-4 sm:p-5`}>
             <Markdown source={issue.body} repo={{ namespace: params.owner, name: params.repo }} />
             <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-4" />
           </div>

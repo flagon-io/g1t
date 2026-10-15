@@ -326,6 +326,13 @@ pub struct Issue {
     pub reason: Option<IssueReason>,
     /// The number of the pull request whose merge closed this issue.
     pub resolved_by: Option<u32>,
+    /// The commit pushed to the default branch whose message closed this
+    /// issue (`Closes #12`), when a commit rather than a pull request did.
+    #[serde(default)]
+    pub resolved_commit: Option<String>,
+    /// Who pushed that commit, by username.
+    #[serde(default)]
+    pub resolved_pushed_by: Option<String>,
     /// Who opened it: a person, an integration, or g1t (`kind` `agent`)
     /// for one its agent filed while at work.
     pub author: User,
@@ -1619,6 +1626,23 @@ pub struct CommitCommentsArgs {
     pub commit: Option<String>,
     #[serde(default)]
     pub page: Option<u32>,
+}
+
+/// `closed_by_commit`: the issues of a repository that a commit pushed to
+/// its default branch closed by naming them in its message, for anyone who
+/// may read the repository. Returns `Outcome<Vec<ClosedIssue>>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClosedByCommitArgs {
+    pub viewer: Viewer,
+    pub repo: RepoPath,
+    pub commit: String,
+}
+
+/// An issue a commit closed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClosedIssue {
+    pub number: u32,
+    pub title: String,
 }
 
 /// `add_commit_comment`: needs Read (refused where the repository turned

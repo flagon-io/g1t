@@ -27,6 +27,7 @@ mod mergeability;
 mod merging;
 mod milestones;
 mod prefetch;
+mod pushed;
 mod queue;
 mod reactions;
 mod retired;
@@ -915,8 +916,8 @@ impl Work {
         self.db
             .prepare(
                 "UPDATE issues
-                 SET state = 'open', reason = NULL, resolved_by = NULL, closed_at = NULL,
-                     updated_at = ?
+                 SET state = 'open', reason = NULL, resolved_by = NULL, resolved_commit = NULL,
+                     resolved_pushed_by = NULL, closed_at = NULL, updated_at = ?
                  WHERE id = ?",
             )
             .bind(&[now.as_str().into(), issue.id.as_str().into()])?
@@ -939,6 +940,8 @@ impl Work {
         issue.state = State::Open;
         issue.reason = None;
         issue.resolved_by = None;
+        issue.resolved_commit = None;
+        issue.resolved_pushed_by = None;
         issue.closed_at = None;
         issue.updated_at = now;
         Ok(Outcome::Ok(issue))
@@ -2402,13 +2405,14 @@ impl Work {
                 message,
                 author: merging::squash_author(&pull, method),
                 sign_off: settings.require_web_commit_sign_off,
+                pull: Some(pull.number),
             },
             lifecycle::REPOS_WRITE_WITHIN,
         )
         .await?;
         let landed = check!(landed.unwrap_or_else(lifecycle::repository_unreachable));
         self.record_merge_evaluations(&repo, &pull, &gate).await;
-        let merged = self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed).await?;
+        let merged = self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed, None).await?;
         // Its branch, where the merger or the repository says it goes.
         if merged.status == PullStatus::Merged {
             self.delete_branch_after_merge(&repo, &merged, &a.actor, a.delete_branch, head).await?;
@@ -2418,6 +2422,8 @@ impl Work {
 
     /// Records a pull request as merged once the default branch holds it:
     /// closes its issue, supersedes the others for it, and says so.
+    /// `pushed` names the branch when a push brought its head in, rather
+    /// than a merge from the site or the queue (pushed.rs).
     pub(crate) async fn record_merge(
         &self,
         repo: &Repo,
@@ -2425,6 +2431,7 @@ impl Work {
         actor: &User,
         keep_issue_open: bool,
         landed: Landed,
+        pushed: Option<&str>,
     ) -> Result<Pull> {
         // Only a merge into the default branch resolves issues: into
         // another branch, the work has not landed yet. Its own issue and
@@ -2554,7 +2561,11 @@ impl Work {
         }
 
         let who = (actor.id.as_str(), actor.username.as_str());
-        self.note(&repo.id, pull.number, who, merging::merged_note(landed.method)).await?;
+        let note = match pushed {
+            Some(branch) => format!("merged this by pushing {} to {branch}", landed.commit),
+            None => merging::merged_note(landed.method).to_owned(),
+        };
+        self.note(&repo.id, pull.number, who, &note).await?;
         for issue in issue.iter().chain(&named) {
             self.note(
                 &repo.id,
@@ -2574,16 +2585,17 @@ impl Work {
                 actor: (!decisions::is_g1t(actor)).then_some(actor),
                 kind: g1t_contracts::decisions::DecisionKind::Merge,
                 confidence: decisions::merge_confidence(through_queue, actor),
-                summary: if through_queue {
-                    format!("#{} landed through the merge queue.", pull.number)
-                } else {
-                    format!("{} merged #{}.", actor.username, pull.number)
+                summary: match pushed {
+                    _ if through_queue => format!("#{} landed through the merge queue.", pull.number),
+                    Some(branch) => format!("{} merged #{} by pushing to {branch}.", actor.username, pull.number),
+                    None => format!("{} merged #{}.", actor.username, pull.number),
                 },
                 evidence: serde_json::json!({
                     "commit": landed.commit,
                     "previous": landed.previous,
                     "method": landed.method,
                     "merge_queue": through_queue,
+                    "pushed": pushed.is_some(),
                 }),
             },
         )
@@ -2884,6 +2896,11 @@ impl Work {
         for moved in &pulls {
             self.land_if_requested(&moved.id).await?;
         }
+        // The pull requests into the branch whose heads it brought in are
+        // merged, and the issues its commits name closed (pushed.rs).
+        if let Some(branch) = git_ref.strip_prefix("refs/heads/") {
+            self.after_branch_push(event, repo_id, branch, after).await;
+        }
         // Whether each still merges cleanly, and, when a default branch
         // moved, every open pull request into it.
         let moved_ids: Vec<String> = pulls.iter().map(|pull| pull.id.clone()).collect();
@@ -2981,6 +2998,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "delete_comment" => reply(&work.delete_comment(args(body)?).await?),
         "react" => reply(&work.react(args(body)?).await?),
         "commit_comments" => reply(&work.commit_comments(args(body)?).await?),
+        "closed_by_commit" => reply(&work.closed_by_commit(args(body)?).await?),
         "add_commit_comment" => reply(&work.add_commit_comment(args(body)?).await?),
         "edit_commit_comment" => reply(&work.edit_commit_comment(args(body)?).await?),
         "delete_commit_comment" => reply(&work.delete_commit_comment(args(body)?).await?),

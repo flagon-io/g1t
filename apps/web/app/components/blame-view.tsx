@@ -16,6 +16,7 @@ import type { ShownBlame, ShownCommit } from "../lib/commit-people";
 
 import type { loader as whyLoader } from "../routes/repo/why";
 import { repoAt } from "../lib/markdown-plugins";
+import { CommitText } from "./commit-message";
 import { CommitAvatars, CommitNames } from "./commit-person";
 import { DecisionLine, IntegrationFailure } from "./coordination";
 import { resolutionOf } from "../lib/coordination";
@@ -128,7 +129,7 @@ export function BlameView({
                         <span className="flex items-center gap-2 py-0.5 text-xs">
                           <CommitAvatars commit={commit} size={16} max={2} />
                           <span className={`min-w-0 grow truncate ${selected ? "text-fg" : "text-muted"}`}>
-                            {commit.message.split("\n")[0]}
+                            <CommitText text={commit.message.split("\n")[0] ?? ""} base={base} refClassName="hover:text-accent hover:underline" />
                           </span>
                           <span className="shrink-0 text-faint">
                             <TimeAgo at={commit.authoredAt} />
@@ -232,12 +233,14 @@ function WhyPanel({
               <GitCommitHorizontal size={13} />
               Last changed in
             </p>
-            <Link
-              to={`${base}/commit/${current.commit.hash}`}
-              className="mt-1.5 block font-medium hover:text-accent"
-            >
-              {current.commit.message.split("\n")[0]}
-            </Link>
+            <p className="mt-1.5 font-medium">
+              <CommitText
+                text={current.commit.message.split("\n")[0] ?? ""}
+                base={base}
+                to={`${base}/commit/${current.commit.hash}`}
+                linkClassName="hover:text-accent"
+              />
+            </p>
             <p className="mt-1.5 flex items-center gap-2 text-xs text-muted">
               <CommitAvatars commit={current.commit} size={14} />
               <CommitNames commit={current.commit} className="text-fg" /> · <TimeAgo at={current.commit.authoredAt} /> ·{" "}

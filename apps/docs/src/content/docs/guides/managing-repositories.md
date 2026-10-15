@@ -176,7 +176,7 @@ can narrow the methods for a branch, with `allowed_merge_methods` and
 | Setting | Field | Default | What it does |
 | --- | --- | --- | --- |
 | Issues | `has_issues` | On; off for a [fork](/concepts/forks/) | Whether issues can be opened. Off keeps existing issues readable. `null` goes back to the default. `issues_enabled` says whether they can be opened now. |
-| Close issues when pull requests merge | `auto_close_issues` | On | A pull request that merges into the default branch closes its issue and those it names after a [closing keyword](/guides/pull-requests/#closing-issues). |
+| Close issues when pull requests merge | `auto_close_issues` | On | A pull request that merges into the default branch closes its issue and those it names after a [closing keyword](/guides/pull-requests/#closing-issues), and so does a commit pushed to the default branch whose message names them. |
 
 ```sh
 curl -X PATCH https://api.g1t.sh/repos/acme/rocket/settings \

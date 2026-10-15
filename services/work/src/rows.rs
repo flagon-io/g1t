@@ -45,6 +45,10 @@ pub struct IssueRow {
     pub state: State,
     pub reason: Option<IssueReason>,
     pub resolved_by: Option<u32>,
+    #[serde(default)]
+    pub resolved_commit: Option<String>,
+    #[serde(default)]
+    pub resolved_pushed_by: Option<String>,
     pub author_id: String,
     pub author_name: String,
     #[serde(default)]
@@ -86,6 +90,8 @@ impl From<IssueRow> for Issue {
             state: row.state,
             reason: row.reason,
             resolved_by: row.resolved_by,
+            resolved_commit: row.resolved_commit,
+            resolved_pushed_by: row.resolved_pushed_by,
             author: user(row.author_id, row.author_name),
             requested_by: requester(row.requested_by_id, row.requested_by_name),
             created_at: row.created_at,
