@@ -178,7 +178,7 @@ images to g1t's registry, uses the same signed-in token.
 Commands about a repository work on the one the current directory is a
 clone of, found from its git remotes: `upstream` if it is on g1t, then
 `origin`, then the first one that is. In a pull request's own [working
-copy](/guides/pull-requests/), they work on the repository the pull request
+copy](/concepts/forks/#working-copies-for-pull-requests), they work on the repository the pull request
 is for.
 
 Anywhere else, or to choose another, pass `--repo` (`-R`), or set
@@ -190,6 +190,25 @@ g1t pr view 14 -R git.example.com/acme/web
 ```
 
 ## Everyday work
+
+### Repositories
+
+```sh
+g1t repo create my-project --source . --remote g1t   # make it, add it as a remote, push
+g1t repo create acme/web --public --clone
+g1t repo list acme
+g1t repo view acme/web --web
+g1t repo clone acme/web
+g1t repo fork acme/web --clone
+g1t repo sync                 # bring your fork's default branch up to date
+```
+
+A repository is private unless `--public` says otherwise, and is made in
+your own workspace unless its name says `WORKSPACE/NAME`. `--source`
+adds it as a remote of a local repository (`origin` unless `--remote`
+names another) and pushes its current branch. `g1t repo fork` forks into
+your own workspace, or `--workspace`; see
+[forking a repository](/guides/forking-repositories/).
 
 ### Issues
 
@@ -221,9 +240,9 @@ default branch (`--base` for another). `--fill` takes the title and body from
 the branch's commits; `--issue` says which issue it is for; `--draft` opens
 it as a draft.
 
-To start a pull request for an issue without a branch of your own, as g1t's
-agents do, run it with `--issue` from the default branch. g1t opens a draft
-with a [working copy](/guides/pull-requests/) of its own and prints the
+To start a pull request for an issue without a branch of your own, as
+coding agents usually do, run it with `--issue` from the default branch. g1t opens a draft
+with a [working copy](/concepts/forks/#working-copies-for-pull-requests) of its own and prints the
 copy's git remote. Push your commits there, then mark it ready with a
 summary of what changed and why:
 
@@ -368,7 +387,7 @@ g1t session end --reason done
 
 | Command | What it does |
 | --- | --- |
-| `g1t session start` | Starts a session and prints its id. `--harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`; `claude-code` works too; `claude_managed_agents` is only for the sessions g1t starts itself, with `g1t work dispatch`), `--harness-session-id`, `--issue`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
+| `g1t session start` | Starts a session and prints its id. `--harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`; `claude-code` works too), `--harness-session-id`, `--issue`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
 | `g1t session heartbeat` | Says the session is still working, and renews its claims. A session with no heartbeat for 15 minutes reads as idle, and after 2 hours as ended. |
 | `g1t session log TEXT` | Records a note. `--kind` takes `note`, `prompt`, `message`, `tool_call` (or `tool-call`) or `skill` (a skill's name), `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash. |
 | `g1t session attach` | Points the session at an `--issue`, a `--pull`, a `--branch` or its latest `--head-commit`, or gives it a `--title`: what it is for, which replaces the title it had. |
@@ -432,6 +451,11 @@ one, or with `--handoff`, the `claude` command line to run in your working
 copy with g1t's [Claude Code plugin](/guides/claude-code-plugin/).
 `--managed` fails rather than hand off. `--mode` is `plan`, `implement` or
 `review`. See [Start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).
+
+`g1t issue edit 12 --add-assignee g1t` does the same as **Assign to g1t**
+on the site: g1t starts a session on the issue on the workspace's
+Anthropic account, as you. See
+[Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread).
 
 ### Dependencies
 
