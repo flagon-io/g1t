@@ -272,7 +272,7 @@ which you have. A CLI that refuses a command the hooks send is taken as
 out of date, and said the same way.
 
 A CLI older than 0.3.3 records sessions but cannot acknowledge
-[coordination updates](#working-on-g1t). The hooks then show
+[coordination updates](/guides/sessions/#pending-coordination-updates). The hooks then show
 pending updates only when they change, not before every prompt, and ask
 Claude to tell you once to update the CLI.
 

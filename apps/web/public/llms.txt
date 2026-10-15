@@ -3,7 +3,7 @@
 > g1t (https://g1t.sh) is one open-source workspace where a team writes,
 > reviews and ships code with the coding agents it already uses. Code is
 > ordinary git over HTTPS, with issues, pull requests and reviews. Coding
-> agents such as Claude Code, Codex, Cursor and Copilot connect over MCP or
+> agents such as Claude Code, Codex, Cursor and OpenCode connect over MCP or
 > the API and work as the person they act for
 > (https://docs.g1t.sh/guides/bring-your-own-agent/). People talk in Chat:
 > channels, direct messages and threads (https://docs.g1t.sh/guides/chat/).
@@ -116,7 +116,7 @@ are created and approved only in their browser.
    GitHub) copies its default branch.
 
 7. **Push a repository.** Pushing to a repository that does not exist, in a
-   workspace the person belongs to, creates it, public by default.
+   workspace the person belongs to, creates it, private by default.
 
    ```sh
    git remote add g1t https://g1t.sh/WORKSPACE/REPO.git
@@ -295,11 +295,12 @@ for `/repos/{owner}/{name}`.
 ## Where work runs
 
 Your coding agent runs where the person runs it: on their machine, in
-their CI, or anywhere else; g1t does not run it. Workflows and the merge
-queue run on g1t's machines, so they need a paid workspace, or the
-one-time $5 trial after a card check. Deployments need the plan; the trial
-never covers them. Workflows and the merge queue on public repositories
-can also run from g1t's open-source pool, after the same card check.
+their CI, or anywhere else; g1t does not run it. Workflows, including the
+merge queue's `merge_group` runs, run on g1t's machines, so they need a
+paid workspace, or the one-time $5 trial after a card check. Deployments
+need the plan; the trial never covers them. Workflows on public
+repositories can also run from g1t's open-source pool, after the same card
+check.
 Workflow jobs with `runs-on: self-hosted` run on the workspace's own
 machines (`g1t-runner` on any OS, or the g1t desktop app's runner) at $0,
 on every plan. When the plan refuses a start, the call answers with a
@@ -450,13 +451,16 @@ and owners of its workspace delete it (`DELETE {repo}` with its full name
 in `confirm`). A deleted
 repository can be restored for 30 days (`POST {repo}/restore`, listed by
 `GET /workspaces/{workspace}/repos/deleted`) and is then purged; its name
-stays taken until then, or until `POST {repo}/purge`. Maintain changes the
-description, `website` and `topics` with `PATCH {repo}`, admin the
+stays taken until then, or until `POST {repo}/purge`. Maintain changes
+`website` and `topics` with `PATCH {repo}`, admin the
 `default_branch`, and write renames branches with
 `POST {repo}/branches/{branch}/rename` and `new_name` (slashes in the
 branch URL-encoded); only admin renames the default branch. An archived
 repository is read-only: pushes and merges are refused, issues and pull
-requests are locked, and workflows do not run on it.
+requests are locked, and workflows do not run on it. A repository has no
+description of its own: its project's shows, changed with
+`PATCH /workspaces/{workspace}/projects/{project}` (MCP: `workspace`
+`update_project`).
 
 ## Integrations
 
@@ -585,9 +589,12 @@ superseded. When the version cannot be raised, the update is marked
 failed, the alert says why, and g1t tries again a day later; when the pull
 request's required checks fail, it stays open for someone to push the code
 changes it needs or close it. With no fix published, the alert links the
-advisory and is checked again daily. `.g1t/dependencies.yml` (version
-updates) is read and validated, but no version update pull requests are
-opened yet. `g1t` is not an account and cannot be signed in to.
+advisory and is checked again daily. Version updates: a `dependabot.yml`
+file (version 2) at `.g1t/dependabot.yml` or `.github/dependabot.yml` on
+the default branch has g1t open pull requests that raise dependencies on
+the schedule it sets (guide:
+https://docs.g1t.sh/guides/dependency-updates/). `g1t` is not an account
+and cannot be signed in to.
 Guide: https://docs.g1t.sh/guides/security/
 
 The security suite (scopes `security:read`, `security:write`; MCP tool
@@ -732,32 +739,95 @@ https://docs.g1t.sh/guides/search/
 
 ## More
 
+Get started:
+
 - [Quickstart](https://docs.g1t.sh/quickstart/)
 - [How g1t works](https://docs.g1t.sh/concepts/overview/)
+- [The g1t CLI](https://docs.g1t.sh/guides/cli/)
+- [Home](https://docs.g1t.sh/guides/home/)
+- [Ask g1t](https://docs.g1t.sh/guides/ask/)
+- [AI providers](https://docs.g1t.sh/guides/ai/)
+- [Notifications](https://docs.g1t.sh/guides/notifications/)
+- [Desktop app](https://docs.g1t.sh/guides/desktop/)
+- [Phone app](https://docs.g1t.sh/guides/mobile/)
 - [Search and Explore](https://docs.g1t.sh/guides/search/)
+- [Status and incidents](https://docs.g1t.sh/guides/status/)
+
+Coding agents:
+
 - [Connect a coding agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
-- [Pull requests](https://docs.g1t.sh/guides/pull-requests/)
+- [Claude Code plugin](https://docs.g1t.sh/guides/claude-code-plugin/)
+- [Sessions, claims and dependencies](https://docs.g1t.sh/guides/sessions/)
+- [Sessions and why-blame](https://docs.g1t.sh/guides/why-blame/)
+
+Chat and projects:
+
 - [Chat](https://docs.g1t.sh/guides/chat/)
 - [Artifacts](https://docs.g1t.sh/guides/artifacts/)
+- [Projects](https://docs.g1t.sh/guides/projects/)
+- [Deployments](https://docs.g1t.sh/guides/deployments/)
+- [Deployments API](https://docs.g1t.sh/guides/deployments-api/)
+- [Observability](https://docs.g1t.sh/guides/observability/)
+- [Packages](https://docs.g1t.sh/guides/packages/)
+- [Secrets and variables](https://docs.g1t.sh/guides/secrets-and-variables/)
+
+Landing changes:
+
+- [Pull requests](https://docs.g1t.sh/guides/pull-requests/)
+- [Checks](https://docs.g1t.sh/guides/checks/)
+- [Pull requests into other branches](https://docs.g1t.sh/guides/base-branches/)
+- [Labels](https://docs.g1t.sh/guides/labels/)
+- [Milestones](https://docs.g1t.sh/guides/milestones/)
 - [The merge queue](https://docs.g1t.sh/guides/merge-queue/)
-- [Sessions and why-blame](https://docs.g1t.sh/guides/why-blame/)
-- [Forks and branches](https://docs.g1t.sh/concepts/forks/)
-- [Accounts and sign-in](https://docs.g1t.sh/guides/authentication/)
-- [Workspaces and tokens](https://docs.g1t.sh/guides/workspaces/)
-- [Access and roles](https://docs.g1t.sh/guides/access-and-roles/)
-- [Teams](https://docs.g1t.sh/guides/teams/)
-- [People and teams](https://docs.g1t.sh/guides/people-and-teams/)
+- [Rules](https://docs.g1t.sh/guides/rules/)
 - [CODEOWNERS](https://docs.g1t.sh/guides/codeowners/)
-- [Managing a repository](https://docs.g1t.sh/guides/managing-repositories/)
+- [Forks and working copies](https://docs.g1t.sh/concepts/forks/)
+
+Security:
+
+- [Security](https://docs.g1t.sh/guides/security/)
+- [Dependency updates](https://docs.g1t.sh/guides/dependency-updates/)
+- [Secret protection](https://docs.g1t.sh/guides/security/secret-protection/)
+- [Code scanning](https://docs.g1t.sh/guides/security/code-scanning/)
+- [Supply chain](https://docs.g1t.sh/guides/security/supply-chain/)
+- [Advisories and reporting](https://docs.g1t.sh/guides/security/advisories/)
+
+Connect your tools:
+
 - [Integrations](https://docs.g1t.sh/guides/integrations/)
 - [Webhooks](https://docs.g1t.sh/guides/webhooks/)
 - [GitHub Actions](https://docs.g1t.sh/guides/actions/)
 - [Self-hosted runners](https://docs.g1t.sh/guides/self-hosted-runners/)
-- [Desktop app](https://docs.g1t.sh/guides/desktop/)
+- [Guardrails](https://docs.g1t.sh/guides/guardrails/)
+
+Workspaces:
+
+- [Accounts and sign-in](https://docs.g1t.sh/guides/authentication/)
+- [GitHub](https://docs.g1t.sh/guides/github/)
+- [Workspaces and tokens](https://docs.g1t.sh/guides/workspaces/)
+- [Access and roles](https://docs.g1t.sh/guides/access-and-roles/)
+- [Permissions](https://docs.g1t.sh/guides/permissions/)
+- [Teams](https://docs.g1t.sh/guides/teams/)
+- [People and teams](https://docs.g1t.sh/guides/people-and-teams/)
+- [Managing a repository](https://docs.g1t.sh/guides/managing-repositories/)
+- [Releases](https://docs.g1t.sh/guides/releases/)
+- [Forking a repository](https://docs.g1t.sh/guides/forking-repositories/)
+- [Transferring a repository](https://docs.g1t.sh/guides/transferring-repositories/)
+- [Audit log](https://docs.g1t.sh/guides/audit-log/)
 - [Usage and billing](https://docs.g1t.sh/guides/usage-and-billing/)
 - [Git](https://docs.g1t.sh/guides/git/)
+
+Run g1t yourself, and how it is built:
+
+- [With Docker Compose](https://docs.g1t.sh/guides/self-hosting/)
+- [Deploy to Cloudflare](https://docs.g1t.sh/guides/deploy-to-cloudflare/)
+- [Architecture](https://docs.g1t.sh/architecture/overview/)
+
+Reference:
+
 - [MCP tools](https://docs.g1t.sh/reference/mcp/)
 - [API reference](https://docs.g1t.sh/reference/api/)
+- [CLI commands](https://docs.g1t.sh/reference/cli/)
 - [Rate limits](https://docs.g1t.sh/reference/rate-limits/)
 - [What g1t can't do yet](https://docs.g1t.sh/about/limitations/)
 - [An open letter to Cloudflare](https://docs.g1t.sh/about/open-letter-to-cloudflare/)
