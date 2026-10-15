@@ -54,6 +54,20 @@ function tabOf(group: Entry): Tab {
 	return slug.startsWith('reference/') ? TABS[TABS.length - 1] : tabForGroup(group.label ?? '');
 }
 
+/**
+ * A tab's groups in the tab's own order (`groups` in tabs.ts), so a tab
+ * opens on, and its sidebar starts with, the group it is named for: Code
+ * on Landing changes, not on Security, which comes first in the sidebar.
+ * The API reference tab names no groups and keeps the sidebar's order.
+ */
+function inTabOrder(groups: Entry[], tab: Tab): Entry[] {
+	const rank = (group: Entry) => {
+		const index = tab.groups.indexOf(group.label ?? '');
+		return index === -1 ? tab.groups.length : index;
+	};
+	return groups.filter((group) => tabOf(group) === tab).sort((a, b) => rank(a) - rank(b));
+}
+
 /** Whether the current page is in these entries, at any depth. */
 function holdsCurrent(entries: Entry[]): boolean {
 	return entries.some((entry) => entry.isCurrent || holdsCurrent(entry.entries ?? []));
@@ -74,12 +88,12 @@ export const onRequest = defineRouteMiddleware((context) => {
 	const tab = holder ? tabOf(holder) : TABS[0];
 	// A tab opens on the first page of its first group; the first tab, on the home page.
 	const tabs = TABS.map((each) => {
-		const group = each === TABS[0] ? undefined : groups.find((entry) => tabOf(entry) === each);
+		const group = each === TABS[0] ? undefined : inTabOrder(groups, each)[0];
 		const slug = group ? firstSlug(group.entries ?? []) : undefined;
 		return { label: each.label, href: slug === undefined ? '/' : `/${slug}/`, current: each === tab };
 	});
 	NAV.set(route, { tabs, section: section ?? (route.id === '' ? undefined : tab.label) });
-	route.sidebar = route.sidebar.filter((entry) => entry.type === 'group' && tabOf(entry as Entry) === tab);
+	route.sidebar = inTabOrder(groups, tab) as typeof route.sidebar;
 
 	const { title, description } = route.entry.data;
 	const card = new URL('/docs', OG);

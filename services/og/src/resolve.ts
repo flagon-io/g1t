@@ -187,7 +187,7 @@ const PAGES: Record<string, Card> = {
     address: "g1t.sh/register",
     eyebrow: "Get started",
     title: "Build and ship software, with the agents you already use.",
-    description: "Create an account on g1t, where people and agents ship software together.",
+    description: "Create an account, then bring your code and the coding agents you already use.",
   },
 };
 
