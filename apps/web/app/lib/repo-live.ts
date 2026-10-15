@@ -229,6 +229,8 @@ export type GateInput = {
   busy: boolean;
   /** A navigation or a submission is under way: the router reloads the page itself. */
   navigating: boolean;
+  /** The page refreshes at most this often; LIVE_MIN_GAP_MS unless a page's loader is heavier (Home's). */
+  gap?: number;
 };
 
 /**
@@ -251,7 +253,7 @@ export function gate(state: GateState, input: GateInput): GateDecision {
   const quiet = input.now - (state.lastChangeAt ?? state.pendingSince);
   const waited = input.now - state.pendingSince;
   const since = state.lastRunAt == null ? Infinity : input.now - state.lastRunAt;
-  const ms = Math.max(quiet < LIVE_DEBOUNCE_MS && waited < LIVE_MAX_WAIT_MS ? Math.min(LIVE_DEBOUNCE_MS - quiet, LIVE_MAX_WAIT_MS - waited) : 0, LIVE_MIN_GAP_MS - since);
+  const ms = Math.max(quiet < LIVE_DEBOUNCE_MS && waited < LIVE_MAX_WAIT_MS ? Math.min(LIVE_DEBOUNCE_MS - quiet, LIVE_MAX_WAIT_MS - waited) : 0, (input.gap ?? LIVE_MIN_GAP_MS) - since);
   return ms > 0 ? { action: "wait", ms } : { action: "run" };
 }
 

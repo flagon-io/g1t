@@ -24,7 +24,8 @@ function client() {
  * the account by identity), or `watch_repo`, for a repository page that
  * updates live: its tabs then hear what changes there (`repo`, its
  * `owner/name`), once the person is found to be able to read it
- * (lib/repo-live.ts).
+ * (lib/repo-live.ts); `watch_repos` the same for several at once (`repos`,
+ * at most WATCH_REPOS_MAX: Home watches its workspace's).
  *
  * The phone app calls this with its access token and no `Origin`, which
  * the same-origin check lets through (lib/same-origin.ts).
@@ -45,7 +46,23 @@ type Sent = {
   preferences?: NotifyPreferencesChange;
   change?: PresenceChange | SoundSettingsChange;
   repo?: string;
+  repos?: unknown;
 };
+
+/** The most repositories one `watch_repos` asks for (notify keeps 50 per person). */
+const WATCH_REPOS_MAX = 25;
+
+/** Watches `path` (`owner/name`) for `user` when they can read it; the repository's id, or null. */
+async function watchOne(context: Route.ActionArgs["context"], notify: ReturnType<typeof client>, user: ReturnType<typeof requireUser>, path: string) {
+  // Only a repository they can read: the same lookup its pages make.
+  const [owner, name, ...rest] = path.split("/");
+  if (!owner || !name || rest.length) return null;
+  const found = await repoFor(context, { owner, repo: name });
+  if (!found.ok) return null;
+  const repo = found.value;
+  const watched = await notify.watchRepo(user, repo.id, `${repo.namespace}/${repo.name}`);
+  return { ...watched, repo_id: repo.id };
+}
 
 export async function action({ context, request }: Route.ActionArgs) {
   assertSameOrigin(request);
@@ -87,14 +104,16 @@ export async function action({ context, request }: Route.ActionArgs) {
       return Response.json(await notify.setPresence(user, { ...change, ...("status" in change ? { status } : {}) }));
     }
     case "watch_repo": {
-      // Only a repository they can read: the same lookup its pages make.
-      const [owner, name, ...rest] = String(sent.repo ?? "").split("/");
-      if (!owner || !name || rest.length) return Response.json({ ok: false }, { status: 400 });
-      const found = await repoFor(context, { owner, repo: name });
-      if (!found.ok) return Response.json({ ok: false }, { status: 404 });
-      const repo = found.value;
-      const watched = await notify.watchRepo(user, repo.id, `${repo.namespace}/${repo.name}`);
-      return Response.json({ ...watched, repo_id: repo.id });
+      const path = String(sent.repo ?? "");
+      if (path.split("/").length !== 2) return Response.json({ ok: false }, { status: 400 });
+      const watched = await watchOne(context, notify, user, path);
+      return watched ? Response.json(watched) : Response.json({ ok: false }, { status: 404 });
+    }
+    case "watch_repos": {
+      const paths = Array.isArray(sent.repos) ? [...new Set(sent.repos.filter((path): path is string => typeof path === "string"))] : [];
+      if (paths.length === 0 || paths.length > WATCH_REPOS_MAX) return Response.json({ ok: false }, { status: 400 });
+      const watched = (await Promise.all(paths.map((path) => watchOne(context, notify, user, path).catch(() => null)))).filter((one) => one?.ok);
+      return Response.json({ ok: watched.length > 0, repo_ids: watched.map((one) => one!.repo_id) });
     }
     default:
       return Response.json({ ok: false }, { status: 400 });

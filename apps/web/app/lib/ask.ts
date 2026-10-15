@@ -70,8 +70,20 @@ export type Step = {
 /** A session g1t proposed in an answer: the person starts it, or copies its command. */
 export type Proposal = Extract<AskEvent, { type: "proposal" }>;
 
+/** What starting a proposal does, in a line, under its title. */
+export function proposalSteps(proposal: Proposal): string {
+  if (proposal.new_repository) {
+    const made = `Creates ${proposal.private ? "the private" : "the public"} repository`;
+    return proposal.deploy
+      ? `${made}, turns on its deployments, then runs in your own harness and pushes the first version, which goes live on g1t.page.`
+      : `${made}, then runs in your own harness and pushes the first version.`;
+  }
+  return proposal.issue ? "Runs in your own harness, with your skills, tied to the issue." : "Opens the issue, then runs in your own harness, tied to it.";
+}
+
 /** What a proposal asks the session to do, in a line: "Implement #12 in acme/web". */
 export function proposalTitle(proposal: Proposal): string {
+  if (proposal.new_repository) return `Build “${proposal.title}” in ${proposal.repo}`;
   const verb = { plan: "Plan", implement: "Implement", review: "Review" }[proposal.mode] ?? "Work on";
   return proposal.issue ? `${verb} #${proposal.issue} in ${proposal.repo}` : `${verb} “${proposal.title}” in ${proposal.repo}`;
 }

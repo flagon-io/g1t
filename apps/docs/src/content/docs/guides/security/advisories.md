@@ -69,9 +69,9 @@ again.
 ## Private vulnerability reporting
 
 A repository takes private reports when **Private vulnerability reporting**
-is on: a switch on the Security overview's Reporting rows and in
-[Security settings](/guides/security/#settings), for Admins and security
-managers. Off by default.
+is on: a switch on the [Security overview](/guides/security/#the-overview)'s
+Reporting rows and on the Security section's **Settings** page, for Admins
+and security managers. Off by default.
 
 With it on, **Report a vulnerability** is on the repository's Security tab
 for anyone who can see it. Someone signed in reports under their name; on a

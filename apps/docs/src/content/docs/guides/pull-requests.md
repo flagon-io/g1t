@@ -599,7 +599,7 @@ resolve them:
   git push origin my-branch
   ```
 
-  For a pull request in its own fork, clone the fork and pull `main` into
+  For a pull request in its own [working copy](/concepts/forks/#working-copies-for-pull-requests), clone the working copy and pull `main` into
   it instead:
 
   ```sh
@@ -633,7 +633,7 @@ that requires pull requests to be up to date shows it whenever the branch
 is behind; otherwise it shows it when the repository suggests updating
 branches (on by default), and merging brings the branch up to date by
 itself. Whoever can push to the pull request (whoever opened it, for one
-in its own fork; anyone with the Write [role](/guides/access-and-roles/)
+in its own working copy; anyone with the Write [role](/guides/access-and-roles/)
 or higher, for a branch of the repository; whoever can push to the fork,
 for a branch of a fork) can update it, two ways:
 

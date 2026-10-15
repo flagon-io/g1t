@@ -1,7 +1,7 @@
 {
   "name": "g1t docs",
   "short_name": "g1t",
-  "description": "How to use g1t: chat, agents, docs and code in one workspace.",
+  "description": "How to use g1t, the code platform for your team and its coding agents.",
   "start_url": "/",
   "scope": "/",
   "display": "minimal-ui",

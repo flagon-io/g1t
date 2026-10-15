@@ -10,14 +10,19 @@
  * `POST -/ask` starts a session g1t proposed in an answer (the proposal
  * card in components/ask-steps): the person's click is the confirmation.
  * `handoff` asks for the Claude Code command instead of starting one on
- * the workspace's Anthropic account.
+ * the workspace's Anthropic account. A proposal with `new_repository`
+ * first creates the repository as the person (its project described with
+ * the issue's title), turns on its deployments when `deploy`, and tells
+ * the session to push the first version to the default branch, which
+ * deploys it. Sent again (a retry, or Copy after Start), a repository
+ * already made is used as it is.
  */
 import { data } from "react-router";
 
-import { AGENT_MODES } from "@g1t/contracts";
+import { AGENT_MODES, type User } from "@g1t/contracts";
 
 import type { Route } from "./+types/ask";
-import { agentSessions, ai } from "../../lib/services.server";
+import { agentSessions, ai, deployments, projects, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -49,11 +54,19 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const title = issue ? undefined : text("title");
   if (!issue && !title) return Response.json({ error: "The proposal names no issue." }, { status: 400 });
   const mode = AGENT_MODES.find((one) => one.mode === input?.mode)?.mode ?? "implement";
+  let instruction = text("instruction");
+  let built: Built | null = null;
+  if (input?.new_repository === true) {
+    const made = await newRepository(user, namespace, name, { title: title ?? name, isPrivate: input.private === true, deploy: input.deploy !== false });
+    if ("error" in made) return Response.json({ error: made.error }, { status: 400 });
+    built = made;
+    instruction = [firstPush(made), instruction].filter(Boolean).join("\n\n");
+  }
   const result = await agentSessions
-    .start(user, { namespace, name }, { issue, title, body: issue ? undefined : text("body"), instruction: text("instruction"), mode, handoff: input?.handoff === true })
+    .start(user, { namespace, name }, { issue, title, body: issue ? undefined : text("body"), instruction, mode, handoff: input?.handoff === true })
     .catch(() => null);
-  if (!result) return Response.json({ error: "The session could not be started. Try again in a moment." }, { status: 502 });
-  if (!result.ok) return Response.json({ error: result.error.message }, { status: 400 });
+  if (!result) return Response.json({ error: "The session could not be started. Try again in a moment.", ...built }, { status: 502 });
+  if (!result.ok) return Response.json({ error: result.error.message, ...built }, { status: 400 });
   const started = result.value;
   return Response.json({
     issue: started.issue,
@@ -62,5 +75,52 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     handoff: started.handoff,
     command: started.command,
     prompt: started.prompt,
+    ...built,
   });
+}
+
+/** What the card made before the session: the repository, and where it deploys or why it can't. */
+type Built = { repo_url: string; default_branch: string; production_url: string | null; deploy_error: string | null };
+
+/**
+ * The repository a new-repository proposal names, made as the person, or
+ * the one already made by an earlier click; its project described; its
+ * deployments on when asked. A deploy that can't be turned on (no plan, no
+ * Admin role) is said, not fatal: the session still builds it.
+ */
+async function newRepository(
+  user: User,
+  namespace: string,
+  name: string,
+  wanted: { title: string; isPrivate: boolean; deploy: boolean },
+): Promise<Built | { error: string }> {
+  const created = await repos.create(user, { namespace, name, isPrivate: wanted.isPrivate }).catch(() => null);
+  let repo = created?.ok ? created.value : null;
+  if (!repo) {
+    // Already made: a second click, or Copy after Start. Anything else is the reason it wasn't.
+    const found = await repos.get({ namespace, name }, user).catch(() => null);
+    if (!found?.ok) return { error: created && !created.ok ? created.error.message : "The repository could not be created. Try again in a moment." };
+    repo = found.value;
+  } else {
+    const described = await projects.describe(user, repo.id, wanted.title).catch((error: unknown) => String(error));
+    if (typeof described === "string" || !described.ok) console.error("ask: new repository without its description", repo.id, described);
+  }
+  const built: Built = { repo_url: `/${repo.namespace}/${repo.name}`, default_branch: repo.defaultBranch, production_url: null, deploy_error: null };
+  if (!wanted.deploy) return built;
+  const saved = await deployments.updateSettings(user, { workspace: repo.namespace, slug: repo.name }, { enabled: true }).catch(() => null);
+  if (saved?.ok) built.production_url = saved.value.productionUrl;
+  else built.deploy_error = saved ? saved.error.message : "Deployments could not be turned on. Try again from the project's Settings → Deployments.";
+  return built;
+}
+
+/** What the session is told about a repository the card just made. */
+function firstPush(built: Built): string {
+  const live = built.production_url
+    ? `Its deployments are on: that push deploys production to ${built.production_url}. Watch it with \`g1t deploy list\` until it is live; if it fails, read why (\`g1t deploy view ID\`), fix it and push again. End your report with the address.`
+    : "Its deployments are off, so nothing deploys yet; say so in your report.";
+  return (
+    `The repository was just created for this and is empty. Build the first working version and push it straight to the default branch ` +
+    `(\`git push origin HEAD:${built.default_branch}\`): there is nothing to open a pull request against yet, so open none. ` +
+    `Keep it small and make it build and serve from the repository's root. Put \`Closes #\` and the issue's number in the commit message, so the push closes it. ${live}`
+  );
 }

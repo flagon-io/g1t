@@ -188,12 +188,15 @@ pub fn native() -> Vec<Native> {
     vec![Native {
         spec: ToolSpec {
             name: PROPOSE_SESSION.to_owned(),
-            description: "Propose handing work to a coding session in the person's own harness (their Claude, with                 their skills and subagents), tied to an issue. Use it when they ask for work to be done: planning,                 implementing, fixing or reviewing. It starts nothing: the person sees a card to start the session                 on their workspace's Anthropic account, or to copy a Claude Code command to run it themselves. Give                 `issue` when the work has one (read it first), else `title` and `body` for a new issue. Propose one                 session per piece of work."
+            description: "Propose handing work to a coding session in the person's own harness (their Claude, with                 their skills and subagents), tied to an issue. Use it when they ask for work to be done: planning,                 implementing, fixing or reviewing. It starts nothing: the person sees a card to start the session                 on their workspace's Anthropic account, or to copy a Claude Code command to run it themselves. Give                 `issue` when the work has one (read it first), else `title` and `body` for a new issue. Propose one                 session per piece of work. To build something new from nothing (an app, a site, a service), set                 `new_repository` with a `repo` in the workspace that does not exist yet: the card creates it, turns on                 its deployments (unless `deploy` is false), opens the issue and starts the session, which pushes the                 first version to the default branch, and that deploys it."
                 .to_owned(),
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "repo": { "type": "string", "description": "The repository, owner/name." },
+                    "repo": { "type": "string", "description": "The repository, owner/name. With new_repository, a new name in the workspace: short, lowercase, words joined by -." },
+                    "new_repository": { "type": "boolean", "description": "The repository does not exist yet: the card creates it first. Needs title, body and mode implement." },
+                    "private": { "type": "boolean", "description": "With new_repository: make it private. Public unless they ask." },
+                    "deploy": { "type": "boolean", "description": "With new_repository: turn on its deployments, so the first push goes live on g1t.page. Default true." },
                     "issue": { "type": "integer", "description": "The issue the work belongs to." },
                     "title": { "type": "string", "description": "A new issue's title, when there is no issue yet." },
                     "body": { "type": "string", "description": "A new issue's description: what to do and what done means." },
@@ -220,6 +223,16 @@ pub fn proposal(id: &str, arguments: &Value) -> Result<AskEvent, String> {
         Some(mode @ ("plan" | "implement" | "review")) => mode.to_owned(),
         _ => return Err("Give a mode: plan, implement or review.".to_owned()),
     };
+    let new_repository = arguments["new_repository"].as_bool() == Some(true);
+    if new_repository {
+        let name = repo.split('/').nth(1).unwrap_or_default();
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+            return Err("A new repository's name is letters, digits, - _ and . only, such as hello-world.".to_owned());
+        }
+        if issue.is_some() || mode != "implement" {
+            return Err("A new repository has no issues yet: give a title and body for its first, and mode implement.".to_owned());
+        }
+    }
     let clip = |value: Option<String>, max: usize| value.map(|value| value.chars().take(max).collect::<String>());
     Ok(AskEvent::Proposal {
         id: id.to_owned(),
@@ -229,6 +242,9 @@ pub fn proposal(id: &str, arguments: &Value) -> Result<AskEvent, String> {
         body: if issue.is_some() { None } else { clip(text("body"), 8_000) },
         mode,
         instruction: clip(text("instruction"), 4_000),
+        new_repository,
+        private: new_repository && arguments["private"].as_bool() == Some(true),
+        deploy: new_repository && arguments["deploy"].as_bool() != Some(false),
     })
 }
 
@@ -340,6 +356,10 @@ pub fn label(tool: &str, arguments: &Value) -> String {
         return format!("Searched g1t for \u{201c}{query}\u{201d}");
     }
     if tool == PROPOSE_SESSION {
+        if arguments["new_repository"].as_bool() == Some(true) {
+            let repo = arguments["repo"].as_str().unwrap_or("a new repository");
+            return format!("Proposed building {repo}, a new repository");
+        }
         let what = arguments["issue"].as_u64().map(|number| format!("issue #{number}")).unwrap_or_else(|| "a new issue".to_owned());
         let repo = arguments["repo"].as_str().unwrap_or("the repository");
         return format!("Proposed a session on {what} in {repo}");
@@ -725,11 +745,14 @@ mod tests {
         assert!(toolbox.is_native(PROPOSE_SESSION));
         let on_issue = json!({ "repo": "acme/web", "issue": 12, "mode": "implement", "title": "ignored", "instruction": " use the new name " });
         assert_eq!(toolbox.decide(PROPOSE_SESSION, &on_issue), Decision::Confirm);
-        let AskEvent::Proposal { id, repo, issue, title, body, mode, instruction } = proposal("proposal_0_0", &on_issue).unwrap() else {
+        let AskEvent::Proposal { id, repo, issue, title, body, mode, instruction, new_repository, deploy, .. } =
+            proposal("proposal_0_0", &on_issue).unwrap()
+        else {
             panic!()
         };
         assert_eq!((id.as_str(), repo.as_str(), issue, mode.as_str()), ("proposal_0_0", "acme/web", Some(12), "implement"));
         assert_eq!((title, body, instruction.as_deref()), (None, None, Some("use the new name")));
+        assert!(!new_repository && !deploy, "an existing repository is left as it is");
         let new_issue = json!({ "repo": "acme/web", "title": "Add a collaborators route", "body": "List them.", "mode": "plan" });
         let AskEvent::Proposal { issue, title, .. } = proposal("p", &new_issue).unwrap() else { panic!() };
         assert_eq!((issue, title.as_deref()), (None, Some("Add a collaborators route")));
@@ -737,6 +760,21 @@ mod tests {
         assert!(proposal("p", &json!({ "repo": "acme", "issue": 1, "mode": "plan" })).is_err(), "not owner/name");
         assert!(proposal("p", &json!({ "repo": "acme/web", "issue": 1, "mode": "ship" })).is_err(), "no such mode");
         assert_eq!(label(PROPOSE_SESSION, &on_issue), "Proposed a session on issue #12 in acme/web");
+    }
+
+    #[test]
+    fn a_new_repository_is_created_deployed_and_built_from_one_card() {
+        let build = json!({ "repo": "acme/hello-world", "new_repository": true, "title": "Hello world", "body": "A page that says hello.", "mode": "implement" });
+        let AskEvent::Proposal { repo, issue, title, new_repository, private, deploy, .. } = proposal("p", &build).unwrap() else { panic!() };
+        assert_eq!((repo.as_str(), issue, title.as_deref()), ("acme/hello-world", None, Some("Hello world")));
+        assert!(new_repository && deploy && !private, "public and deployed unless asked otherwise");
+        let quiet = json!({ "repo": "acme/notes", "new_repository": true, "private": true, "deploy": false, "title": "Notes", "mode": "implement" });
+        let AskEvent::Proposal { private, deploy, .. } = proposal("p", &quiet).unwrap() else { panic!() };
+        assert!(private && !deploy);
+        assert!(proposal("p", &json!({ "repo": "acme/hello world", "new_repository": true, "title": "x", "mode": "implement" })).is_err());
+        assert!(proposal("p", &json!({ "repo": "acme/hello", "new_repository": true, "title": "x", "mode": "plan" })).is_err());
+        assert!(proposal("p", &json!({ "repo": "acme/hello", "new_repository": true, "issue": 1, "mode": "implement" })).is_err());
+        assert_eq!(label(PROPOSE_SESSION, &build), "Proposed building acme/hello-world, a new repository");
     }
 
     #[test]

@@ -2,7 +2,8 @@
  * Home's parts (routes/workspace/home.tsx): Where you're needed, Start
  * here, what happened in the span (what people did, what landed, builds,
  * spend) and Running now. Each takes what
- * lib/home.ts worked out and only draws it.
+ * lib/home.ts worked out and only draws it; a row that arrived while the
+ * page was open comes in (`animate-arrive`, lib/use-home-live.ts).
  */
 import {
   AlertTriangle,
@@ -53,6 +54,7 @@ import {
   whenShort,
 } from "../lib/home";
 import { askG1t } from "../lib/ask";
+import { useArrived } from "../lib/use-home-live";
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
 import { CommitText } from "./commit-message";
@@ -165,9 +167,12 @@ function StakeText({ stake }: { stake: Stake }) {
 /** Rows shown before the rest fold away. */
 const ROWS = 8;
 
-function NeedItem({ row, now }: { row: AttentionRow; now: number }) {
+/** A row that arrived while the page was open: in from above, lit for a moment. */
+const ARRIVED = "animate-arrive motion-reduce:animate-none";
+
+function NeedItem({ row, now, arrived }: { row: AttentionRow; now: number; arrived?: boolean }) {
   return (
-    <li className="flex items-start gap-3 border-t border-line px-5 py-3 first:border-t-0">
+    <li className={cn("flex items-start gap-3 border-t border-line px-5 py-3 first:border-t-0", arrived && ARRIVED)}>
       <span className="mt-0.5 shrink-0">{ICON[row.kind]}</span>
       <div className="min-w-0 grow">
         <Link to={row.action.to} className="line-clamp-2 text-sm font-semibold text-fg hover:underline sm:block sm:truncate">
@@ -202,6 +207,7 @@ function NeedItem({ row, now }: { row: AttentionRow; now: number }) {
 /** Everything waiting on you, most pressing and longest waiting first; past the first few, the rest fold away. */
 export function NeedsList({ attention, now }: { attention: Attention; now: number }) {
   const { rows, missing } = attention;
+  const arrived = useArrived(rows.map((row) => row.key));
   return (
     <>
       {rows.length === 0 ? (
@@ -209,7 +215,7 @@ export function NeedsList({ attention, now }: { attention: Attention; now: numbe
       ) : (
         <ul>
           {rows.slice(0, ROWS).map((row) => (
-            <NeedItem key={row.key} row={row} now={now} />
+            <NeedItem key={row.key} row={row} now={now} arrived={arrived.has(row.key)} />
           ))}
         </ul>
       )}
@@ -221,7 +227,7 @@ export function NeedsList({ attention, now }: { attention: Attention; now: numbe
           </summary>
           <ul className="border-t border-line">
             {rows.slice(ROWS).map((row) => (
-              <NeedItem key={row.key} row={row} now={now} />
+              <NeedItem key={row.key} row={row} now={now} arrived={arrived.has(row.key)} />
             ))}
           </ul>
         </details>
@@ -565,9 +571,9 @@ function ExplainButton({ change }: { change: LandedChange }) {
   );
 }
 
-function LandedItem({ change, now, tz, timeOnly }: { change: LandedChange; now: number; tz: string | null; timeOnly?: boolean }) {
+function LandedItem({ change, now, tz, timeOnly, arrived }: { change: LandedChange; now: number; tz: string | null; timeOnly?: boolean; arrived?: boolean }) {
   return (
-    <li className={cn(rowClass, "items-start")}>
+    <li className={cn(rowClass, "items-start", arrived && ARRIVED)}>
       <span className="mt-0.5 shrink-0">{LANDED_ICON[change.kind]}</span>
       <div className="min-w-0 grow">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -608,6 +614,7 @@ export function LandedCard({
   now,
   tz,
   byDay = false,
+  scope,
 }: {
   landed: LandedChange[] | null;
   missing: string[];
@@ -615,9 +622,12 @@ export function LandedCard({
   now: number;
   tz: string | null;
   byDay?: boolean;
+  /** The span: switching it lists other things, which are not arrivals. */
+  scope?: string;
 }) {
+  const arrived = useArrived(landed?.map((change) => change.key) ?? [], scope);
   if (!code) return null;
-  const render = (change: LandedChange) => <LandedItem key={change.key} change={change} now={now} tz={tz} timeOnly={byDay} />;
+  const render = (change: LandedChange) => <LandedItem key={change.key} change={change} now={now} tz={tz} timeOnly={byDay} arrived={arrived.has(change.key)} />;
   return (
     <Card title="Landed" hint={landed && landed.length > 0 ? landedHint(landed) : undefined}>
       {!landed ? (
@@ -713,7 +723,22 @@ export function AwayCard({ away, span, now }: { away: Away | null; span: Pick<Sp
   );
 }
 
-export function DeploysCard({ deploys, complete, code, now, tz }: { deploys: DeployRow[] | null; complete: boolean; code: boolean; now: number; tz: string | null }) {
+export function DeploysCard({
+  deploys,
+  complete,
+  code,
+  now,
+  tz,
+  scope,
+}: {
+  deploys: DeployRow[] | null;
+  complete: boolean;
+  code: boolean;
+  now: number;
+  tz: string | null;
+  scope?: string;
+}) {
+  const arrived = useArrived(deploys?.map((row) => row.key) ?? [], scope);
   // A workspace that doesn't deploy has nothing to say here.
   if (!code || (deploys && deploys.length === 0)) return null;
   const failed = deploys?.filter((row) => row.outcome === "failed").length ?? 0;
@@ -725,7 +750,7 @@ export function DeploysCard({ deploys, complete, code, now, tz }: { deploys: Dep
         <Folded
           items={deploys}
           render={(row) => (
-            <li key={row.key} className={rowClass}>
+            <li key={row.key} className={cn(rowClass, arrived.has(row.key) && ARRIVED)}>
               <Rocket size={15} className={cn("shrink-0", row.outcome === "failed" ? "text-danger" : "text-success")} />
               <div className="min-w-0 grow">
                 <Link to={row.to} className="block truncate text-sm text-fg hover:underline">
@@ -823,6 +848,7 @@ const RUNNING_ICON: Record<RunningRow["kind"], ReactNode> = {
 };
 
 export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missing: string[]; now: number }) {
+  const arrived = useArrived(rows.map((row) => row.key));
   return (
     <>
       {rows.length === 0 ? (
@@ -831,7 +857,7 @@ export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missin
         <Folded
           items={rows}
           render={(row) => (
-            <li key={row.key} className={rowClass}>
+            <li key={row.key} className={cn(rowClass, arrived.has(row.key) && ARRIVED)}>
               <span className="shrink-0">{RUNNING_ICON[row.kind]}</span>
               <div className="min-w-0 grow">
                 <Link to={row.to} className="block truncate text-sm text-fg hover:underline">

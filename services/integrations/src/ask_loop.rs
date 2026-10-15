@@ -33,6 +33,9 @@ const SPENT: &str = "Not run: this answer has used the tool calls it may make. A
 /// What the model is told once a session is proposed.
 const PROPOSED: &str = "Proposed. The person now sees a card under your answer to start this session on their workspace's Anthropic account or copy a Claude Code command for it; nothing has started. Don't ask them to confirm in words: say in a sentence what the session will do.";
 
+/// What the model is told once it proposes building a new repository.
+const PROPOSED_NEW: &str = "Proposed. The person now sees a card under your answer; nothing has happened yet. Starting it creates the repository, turns on its deployments if you asked, opens the issue and starts the session, which pushes the first version to the default branch; that push deploys it, and the card then shows the address where it will be live on g1t.page. Don't ask them to confirm in words: say in a sentence or two what will be built, that it goes live on its own once the session pushes it, and that they can ask you how it is going.";
+
 /// The most sessions one answer proposes.
 const MAX_PROPOSALS: usize = 5;
 
@@ -287,8 +290,12 @@ impl Answering {
                         match ask_tools::proposal(&id, &call.input) {
                             Ok(proposal) => {
                                 self.proposals += 1;
+                                let told = match &proposal {
+                                    AskEvent::Proposal { new_repository: true, .. } => PROPOSED_NEW,
+                                    _ => PROPOSED,
+                                };
                                 self.out.push_back(ask::line(&proposal));
-                                Plan::Skip(PROPOSED.to_owned(), AskToolStatus::Done)
+                                Plan::Skip(told.to_owned(), AskToolStatus::Done)
                             }
                             Err(why) => Plan::Skip(why, AskToolStatus::Failed),
                         }

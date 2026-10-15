@@ -7,8 +7,8 @@ import Aside from '../../../components/Aside.astro';
 import Diagram from '../../../components/Diagram.astro';
 
 Everything that runs code you did not write runs in a sandbox: workflow
-jobs, merge queue builds, deployments, dependency updates, backups. Three
-pieces share the work.
+jobs, merge checks, deployments, dependency updates, backups. Three pieces
+share the work.
 
 | Piece | Is | Does |
 | --- | --- | --- |
@@ -26,9 +26,11 @@ differently.
 <Diagram name="actions-job" />
 
 1. **Trigger.** `actions` reads its event queue, `g1t-events-actions`, ten
-   at a time (step 1), and matches each event to the workflows read from
-   the default branch's `.g1t/workflows` (or `.github/workflows`). The
-   files are GitHub Actions syntax, unchanged; [GitHub
+   at a time (step 1), and matches each event to the workflows in
+   `.g1t/workflows` at the commit the event is about (the default branch
+   for schedules, issues and manual runs; `services/actions/src/sync.rs`).
+   g1t never reads `.github/workflows`. The files are GitHub Actions
+   syntax, unchanged; [GitHub
    Actions](/guides/actions/) lists what is supported.
 2. **Plan.** It expands matrices, orders jobs by `needs`, and reports the
    run as pending on the commit (steps 2 and 3).
@@ -148,11 +150,15 @@ open; Docker or direct execution happen only if you choose them.
 | Mode | Started by | Does |
 | --- | --- | --- |
 | `actions` | `actions` | A workflow job |
-| `queue` | `runner`, when the queue changes | Builds a merge queue candidate |
 | `mergecheck` | `runner`, when a pull request changes | Checks whether a pull request merges cleanly |
 | `deploy` | `deployments` | Builds an app ([Deployments](/architecture/deployments/)) |
 | `bump` | `security` | Makes a dependency update |
 | `backup` | `runner`'s sweep, every 5 minutes | Cuts a repository backup ([Git](/architecture/git/#backups)) |
+
+The merge queue needs no sandbox of its own: `work` builds each queued
+state in the repository itself ([Work](/architecture/work/#the-merge-queue)),
+and only the workflows that run on `merge_group` run in sandboxes, as
+workflow jobs.
 
 Compute is admitted through billing: a sandbox starts only after
 `billing` holds its estimated cost (`reserve`), and the hold is settled
