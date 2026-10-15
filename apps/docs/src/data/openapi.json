@@ -27005,11 +27005,11 @@
         "x-operation": "create_repo",
         "x-mcp-tool": "repository",
         "x-mcp-action": "create",
-        "x-scope": "repo:write",
+        "x-scope": "repo:create",
         "security": [
           {
             "token": [
-              "repo:write"
+              "repo:create"
             ]
           }
         ],

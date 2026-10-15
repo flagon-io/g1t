@@ -35,11 +35,12 @@ export type ScopeResource =
   | "models"
   | "artifacts";
 
-export type ScopeLevel = "read" | "write" | "run" | "delete" | "admin";
+export type ScopeLevel = "read" | "create" | "write" | "run" | "delete" | "admin";
 
 /** Every scope, grouped by resource, least first. */
 export const SCOPES = [
   { scope: "repo:read", description: "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search" },
+  { scope: "repo:create", description: "Create repositories, and nothing that changes or deletes one" },
   { scope: "repo:write", description: "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases" },
   { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts" },
   { scope: "code:read", description: "Clone and fetch private repositories with git" },
@@ -152,7 +153,7 @@ export const RETIRED_RESOURCES: { resource: ScopeResource; label: string; group:
   { resource: "models", label: "AI Gateway", group: "workspace" },
 ];
 
-const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, write: 1, run: 2, delete: 3, admin: 4 };
+const LEVEL_ORDER: Record<ScopeLevel, number> = { read: 0, create: 1, write: 2, run: 3, delete: 4, admin: 5 };
 
 export function scopeResource(scope: Scope): ScopeResource {
   return scope.split(":")[0] as ScopeResource;
@@ -254,7 +255,7 @@ export const PRESET_SCOPES = {
     "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "artifacts:read",
   ] as const,
   agent: [
-    "repo:read", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
+    "repo:read", "repo:create", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
@@ -266,7 +267,7 @@ export const PRESET_SCOPES = {
 
 export const PRESETS: { id: PresetId; label: string; description: string }[] = [
   { id: "read_only", label: "Read only", description: "Read everything you can read; change nothing." },
-  { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, and push code." },
+  { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, push code, and create repositories." },
   { id: "ci", label: "CI", description: "Clone and push code, push and pull packages, run workflows, and report checks and deployments." },
   { id: "full", label: "Full access", description: "Everything you can do, including deleting repositories and changing who has access." },
 ];
@@ -416,7 +417,7 @@ export const OPERATION_SCOPES = [
   ["list_deleted_repos", "repo:read"],
   ["list_security_alerts", "repo:read"],
   ["get_codeowners_errors", "repo:read"],
-  ["create_repo", "repo:write"],
+  ["create_repo", "repo:create"],
   ["update_repo", "repo:write"],
   ["update_project", "repo:write"],
   ["update_repo_settings", "repo:write"],
@@ -732,7 +733,7 @@ export type TokenScopes = {
  * own (see `DANGEROUS_SCOPES`). Every other scope is in exactly one group.
  */
 export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
-  { id: "code", label: "Repositories & code", scopes: ["repo:read", "repo:write", "code:read", "code:write"] },
+  { id: "code", label: "Repositories & code", scopes: ["repo:read", "repo:create", "repo:write", "code:read", "code:write"] },
   { id: "security", label: "Security", scopes: ["security:read", "security:write"] },
   { id: "packages", label: "Packages", scopes: ["packages:read", "packages:write"] },
   { id: "work", label: "Issues & pull requests", scopes: ["issues:read", "issues:write", "pull_requests:read", "pull_requests:write"] },

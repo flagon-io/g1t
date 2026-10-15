@@ -41,14 +41,15 @@ The agent acts as you, in one of two ways, and they carry different access:
 | | The g1t CLI | g1t's MCP tools |
 | --- | --- | --- |
 | Signed in by | `g1t auth login` | `/mcp`, **plugin:g1t:g1t** |
-| What it may do | Everything you can: the sign-in carries every scope, bounded by your roles | The [Agent preset](/guides/authentication/#presets), unless you change it: reading across g1t, and writing code, issues, pull requests and notifications |
-| Creates a repository | Yes | Only once you add `repo:write` |
+| What it may do | Everything you can: the sign-in carries every scope, bounded by your roles | The [Agent preset](/guides/authentication/#presets), unless you change it: reading across g1t, creating repositories, and writing code, issues, pull requests and notifications |
+| Creates a repository | Yes | Yes, with `repo:create` |
 
 The plugin's skills and hooks use the CLI, so Claude reaches for `g1t`
-commands first. To let the MCP tools create repositories too, open
+commands first. A plugin signed in before the Agent preset gave
+`repo:create` keeps the scopes it had: open
 [Settings → Connected applications](https://g1t.sh/settings/applications),
-choose **Change access** on Claude Code, tick `repo:write` and choose
-**Save access**.
+choose **Change access** on Claude Code, tick `repo:create` and choose
+**Save access**, or sign it in again with `/mcp`.
 
 ## Build and ship the first version
 
@@ -199,7 +200,7 @@ to yourself, say so in the repository's `CLAUDE.md`, and leave
 
 | | The agent | How | Needs |
 | --- | --- | --- | --- |
-| Create a repository | Yes | `g1t repo create`, or `repository` `create` | `repo:write`, which the Agent preset leaves out |
+| Create a repository | Yes | `g1t repo create`, or `repository` `create` | `repo:create`, which the Agent preset gives |
 | Push code | Yes | git, with the CLI's credentials (`g1t auth setup-git`) or an [access token](/guides/authentication/#access-tokens) | `code:write`; a workflow file also needs `workflow_files:write` |
 | Open and claim an issue | Yes | `g1t work claim`, or `issue` `claim` | `issues:write` |
 | Open a pull request and mark it ready | Yes | `g1t pr create` and `g1t pr ready`, or `pull_request` `create` and `ready` | `pull_requests:write` |
