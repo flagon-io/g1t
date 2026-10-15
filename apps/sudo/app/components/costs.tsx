@@ -8,9 +8,9 @@ import { axisDollars, barPath, niceCeiling, ticks } from "~/lib/chart";
 import { type DayFigures, marginPercent, percentLabel } from "~/lib/costs";
 import { usd } from "~/lib/money";
 
-const CHARGED = "var(--g1t-accent)";
+const CHARGED = "var(--color-accent)";
 const COST = "#7a7a84";
-const LOSS = "var(--g1t-danger)";
+const LOSS = "var(--color-danger)";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -65,7 +65,7 @@ function DaysSvg({ days, width, height, floor, label }: { days: DayFigures[]; wi
         const y = baseline - (value / top) * plot.height;
         return (
           <g key={value}>
-            <line x1={plot.x} x2={plot.x + plot.width} y1={y} y2={y} stroke="var(--g1t-line)" strokeWidth="1" strokeDasharray={value === 0 ? undefined : "2 4"} />
+            <line x1={plot.x} x2={plot.x + plot.width} y1={y} y2={y} stroke="var(--color-line)" strokeWidth="1" strokeDasharray={value === 0 ? undefined : "2 4"} />
             <text x={plot.x - 8} y={y + 3.5} textAnchor="end" fontSize="11" className="fill-faint tabular">
               {axisDollars(value)}
             </text>

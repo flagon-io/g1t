@@ -9,7 +9,7 @@ import { axisDollars, barPath, marginOf, monthBars, monthLong, shares } from "~/
 import { usd } from "~/lib/money";
 
 /** The two series: what was charged (lavender) beside what it cost g1t (gray). */
-const CHARGED = "var(--g1t-accent)";
+const CHARGED = "var(--color-accent)";
 const COST = "#7a7a84";
 
 function Legend() {
@@ -43,7 +43,7 @@ function BarsSvg({ months, width, height, label }: { months: MonthFigures[]; wid
             x2={plot.x + plot.width}
             y1={tick.y}
             y2={tick.y}
-            stroke="var(--g1t-line)"
+            stroke="var(--color-line)"
             strokeWidth="1"
             strokeDasharray={tick.value === 0 ? undefined : "2 4"}
           />
@@ -153,7 +153,7 @@ export function ShareBar({ share, label }: { share: number; label: string }) {
   const width = Math.max(0, Math.min(1, share)) * 100;
   return (
     <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="block h-1.5 w-full" role="img" aria-label={label}>
-      <rect x="0" y="0" width="100" height="4" rx="2" fill="var(--g1t-raised)" />
+      <rect x="0" y="0" width="100" height="4" rx="2" fill="var(--color-raised)" />
       {width > 0 && <rect x="0" y="0" width={Math.max(1.5, width)} height="4" rx="2" fill={CHARGED} />}
     </svg>
   );
