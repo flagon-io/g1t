@@ -155,7 +155,7 @@ people did couldn't be read" rather than reading as quiet.
 
 ### What changed
 
-**What changed**, under People in the span's card, has g1t tell you what happened in the
+**What changed**, at the top of the span's card, has g1t tell you what happened in the
 span in plain English: what changed, why, and what is live. It is not
 written until you ask, since each summary is a call to your workspace's
 AI provider:
@@ -182,7 +182,7 @@ owner.
 
 ### People
 
-The span's card opens with **People**: what people did in the span, one line
+Under What changed, **People** shows what people did in the span, one line
 per kind of thing with its count, and each line opens the place that lists
 them: a project's Activity tab for pushes, its pull requests or issues,
 Artifacts, Chat. Beside the heading are the faces of the five most active,
