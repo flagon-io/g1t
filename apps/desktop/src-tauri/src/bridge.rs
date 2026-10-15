@@ -227,9 +227,10 @@ pub fn restart(app: AppHandle, webview: Webview) -> Result<(), String> {
     from_settings(&webview).or_else(|_| from_site_page(&app, &webview))?;
     if updates::ready(&app).is_some() {
         updates::restart(&app);
+    } else {
+        updates::leave(&app, |app| app.restart());
     }
-    runner::shutdown(&app);
-    app.restart()
+    Ok(())
 }
 
 /// The settings window's "Restart now": installs the downloaded update and starts it.

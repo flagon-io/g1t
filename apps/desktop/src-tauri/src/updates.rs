@@ -156,15 +156,37 @@ pub fn restart(app: &AppHandle) {
     if ready(app).is_none() {
         return;
     }
-    crate::runner::shutdown(app);
-    if install(app) {
-        app.restart();
-    }
+    leave(app, |app| {
+        if install(app) {
+            app.restart();
+        }
+    });
 }
 
 /// Quit, stopping the runner and installing a downloaded update on the way out.
 pub fn quit(app: &AppHandle) {
-    crate::runner::shutdown(app);
-    install(app);
-    app.exit(0);
+    leave(app, |app| {
+        install(app);
+        app.exit(0);
+    });
+}
+
+/// Stops the runner, then `then`, on a thread of its own. Restart and quit
+/// are asked on the main thread (menus, and the settings' commands, which
+/// Windows runs there), and the runner, stopping, updates the tray, which
+/// waits for the main thread: waiting on the runner there froze g1t until
+/// its 30 seconds ran out.
+pub fn leave(app: &AppHandle, then: impl FnOnce(&AppHandle) + Send + 'static) {
+    let app = app.clone();
+    let spawned = std::thread::Builder::new().name("g1t-leave".into()).spawn({
+        let app = app.clone();
+        move || {
+            crate::runner::shutdown(&app);
+            then(&app);
+        }
+    });
+    if spawned.is_err() {
+        crate::runner::shutdown(&app);
+        app.exit(0);
+    }
 }
