@@ -8,6 +8,12 @@ you do away from a desk: talking with your team in Chat, with
 notifications on your phone, and reviewing pull requests in Code.
 Everything else opens on the site, in your phone's browser.
 
+:::caution[Highly experimental]
+The phone app is early and barely works yet: expect missing screens,
+rough edges and things that break. For real work, use
+[the desktop app](/guides/desktop/) or g1t in your phone's browser.
+:::
+
 ## Install it
 
 Android comes first. Get it from [g1t.sh/download](https://g1t.sh/download):

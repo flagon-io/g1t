@@ -519,7 +519,7 @@ function AndroidPanel({ data, device }: { data: Data; device: Device }) {
       <Panel platform="android" title="g1t for Android" yours={onPhone} badge={hosted ? <Badge size="sm">Coming</Badge> : undefined}>
         {hosted ? (
           <div className="space-y-2 text-sm text-muted">
-            <p className="text-base text-fg-soft">The first Android build is on its way.</p>
+            <p className="text-base text-fg-soft">The first Android build is on its way. It starts out highly experimental.</p>
             <p>It will be here to download as soon as it is published.</p>
           </div>
         ) : (
@@ -548,7 +548,7 @@ function AndroidPanel({ data, device }: { data: Data; device: Device }) {
       platform="android"
       title="g1t for Android"
       yours={onPhone}
-      badge={<Badge size="sm">Beta</Badge>}
+      badge={<Badge size="sm">Experimental</Badge>}
       meta={`Version ${mobile.version}${released ? `, released ${released}` : ""}`}
       aside={
         !onPhone && (
@@ -562,7 +562,13 @@ function AndroidPanel({ data, device }: { data: Data; device: Device }) {
       }
       asideClassName="max-sm:hidden"
     >
-      <p className="mb-6 max-w-md text-sm text-muted">Chat with your team, with notifications on your phone, and review pull requests on the way.</p>
+      <Alert tone="warn" className="mb-6 max-w-md px-4 py-3">
+        <AlertTitle>Highly experimental</AlertTitle>
+        <AlertDescription>
+          The phone app is early and barely works yet: expect missing screens, rough edges and things that break. For real work, use the desktop app or
+          g1t in your phone's browser.
+        </AlertDescription>
+      </Alert>
       <DownloadButtons
         main={{ href: apkUrl, label: "Download for Android", detail: ["APK", size(apk.size)].filter(Boolean).join(" · ") }}
         alternates={[]}
