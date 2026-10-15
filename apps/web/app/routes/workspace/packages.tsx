@@ -25,6 +25,8 @@ import {
 } from "../../lib/packages";
 import { packages } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, orElse, part } from "../../lib/partial";
 
 const DOCS = "https://docs.g1t.sh";
 
@@ -50,13 +52,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // then is there a Deleted packages view.
   const [found, deletedFound] = await Promise.all([
     packages.list(params.owner, viewer, { ecosystem, query }),
-    member ? packages.deleted(params.owner, viewer) : null,
+    // Beside the list: when they cannot be read, their view says so.
+    member ? part(packages.deleted(params.owner, viewer), "Deleted packages") : null,
   ]);
   const listed = unwrap(found);
-  const deleted = deletedFound?.ok ? deletedFound.value : [];
+  const deleted = isFailed(deletedFound) ? deletedFound : deletedFound?.ok ? deletedFound.value : [];
   // Whether the workspace has any at all decides between a filtered-out
   // list and the first-package page.
-  const any = listed.length > 0 || deleted.length > 0 || ecosystem != null || query != null;
+  const any = listed.length > 0 || orElse(deleted, []).length > 0 || ecosystem != null || query != null;
   return {
     member,
     list: arrange(listed, visibility, sort),
@@ -104,7 +107,10 @@ function hrefWith(workspace: string, current: Filters, change: Partial<Filters>)
 export default function Packages({ loaderData, actionData }: Route.ComponentProps) {
   const { list, deleted, view, any, ecosystem, query, visibility, sort, workspace } = loaderData;
   if (!any) return loaderData.member ? <ChooseRegistry workspace={workspace} /> : <EmptyState title="No public packages">This workspace has no packages you can view yet.</EmptyState>;
-  if (view === "deleted") return <DeletedPackages workspace={workspace} deleted={deleted} outcome={actionData as Outcome | undefined} />;
+  if (view === "deleted") {
+    if (isFailed(deleted)) return <Unavailable what={deleted.what} />;
+    return <DeletedPackages workspace={workspace} deleted={deleted} outcome={actionData as Outcome | undefined} />;
+  }
   const filters: Filters = { type: ecosystem, q: query, visibility, sort };
   const filtered = ecosystem != null || query != null || visibility !== "all";
   return (
@@ -167,7 +173,7 @@ export default function Packages({ loaderData, actionData }: Route.ComponentProp
               )}
             </span>
             <span className="flex items-center gap-4">
-              {deleted.length > 0 && (
+              {!isFailed(deleted) && deleted.length > 0 && (
                 <Link to={`/${workspace}/-/packages?view=deleted`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
                   <Trash2 size={12} />
                   Deleted packages <span className="rounded-full bg-raised px-1.5 text-faint tabular-nums">{deleted.length}</span>

@@ -16,6 +16,7 @@ import { shortcutOf, workspaceProjects } from "../../lib/workspace-projects.serv
 import { WorkspacePageSkeleton } from "../../components/workspace-skeletons";
 import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaderData?.workspace.name ?? params.owner} · g1t` });
@@ -37,8 +38,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const role = roleIn(viewer, workspace.slug);
   // Opening one of your workspaces makes it the one you are in.
   if (!role) {
-    const listed = await workspaceProjects(workspace.slug, viewer);
-    return { workspace, role, welcome: false, projects: listed.ok ? listed.value.map(shortcutOf) : [] };
+    // The workspace is what the frame is about; its projects only fill the
+    // sidebar, which goes without them rather than take every page down.
+    const listed = await part(workspaceProjects(workspace.slug, viewer), "Projects");
+    return { workspace, role, welcome: false, projects: !isFailed(listed) && listed.ok ? listed.value.map(shortcutOf) : [] };
   }
   const secure = new URL(request.url).protocol === "https:";
   const headers = new Headers({ "Set-Cookie": rememberWorkspace(workspace.slug, secure) });

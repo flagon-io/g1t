@@ -34,6 +34,8 @@ import { billing } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, managesBilling, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { Card } from "../../components/ui/card";
 import { SubmitButton } from "../../components/ui";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, orElse, part } from "../../lib/partial";
 
 /** The trial and pools as published, when the price book cannot be read. */
 const DEFAULT_TRIAL_MICROS = 5_000_000;
@@ -100,29 +102,36 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const manages = managesBilling(viewer, params.owner);
   // Stripe's own (the saved card, the upcoming invoice, whether Stripe Tax
   // needs an address) is streamed: the page does not wait on Stripe, and
-  // its sections hold their place.
-  const details = billing
-    .billingDetails(slug, viewer)
-    .then((result) => (result.ok ? result.value : null))
-    .catch(() => null);
-  const [account, statement, features, limit, entitlements, requests, book, credits, report] = await Promise.all([
+  // its sections hold their place. When Stripe's side does not answer, the
+  // card that shows it says so; the plan's summary does without it.
+  const details = part(
+    billing.billingDetails(slug, viewer).then((result) => (result.ok ? result.value : null)),
+    "Billing on Stripe",
+  );
+  const [account, statement, features, limit, entitled, requests, book, credits, report] = await Promise.all([
     billing.account(slug, viewer),
     billing.statement(slug, viewer, url.searchParams.get("month"), group),
     billing.features(slug, viewer),
-    billing.limit(slug, viewer).catch(() => null),
-    billing.entitlements(slug).catch(() => null),
-    billing.limitRequests(slug, viewer).catch(() => null),
+    // The account, its statement and the plan are what the page is about.
+    // Each of these is a card beside them, which says so in its place when
+    // billing does not answer for it.
+    part(billing.limit(slug, viewer), "Your spend limit"),
+    part(billing.entitlements(slug), "Your allowance and alerts"),
+    part(billing.limitRequests(slug, viewer), "Your limit requests"),
+    // The price book only fills in published defaults, which stand in for it.
     billing.prices().catch(() => null),
-    billing.credits(slug, viewer).catch(() => null),
+    part(billing.credits(slug, viewer), "Credit from g1t"),
+    // This month's usage so far: the plan's summary shows "—" without it.
     billing.usageReport(slug, viewer, { from: monthStart, until: today }).catch(() => null),
   ]);
+  const entitlements = orElse(entitled, null);
   const featureStates = unwrap(features);
   const trialMicros = book?.free?.trialWorkspaceMicros ?? DEFAULT_TRIAL_MICROS;
   const done = url.searchParams.get("done");
   const plan = featureStates.find((state) => state.plan.feature === "plan") ?? null;
   const securityPlan = featureStates.find((state) => state.plan.feature === "security") ?? null;
   // Credit from g1t for everything; grants scoped to models belong to usage no longer offered.
-  const general = credits?.ok ? credits.value.grants.filter((grant) => grant.scope !== "models") : [];
+  const general = !isFailed(credits) && credits.ok ? credits.value.grants.filter((grant) => grant.scope !== "models") : [];
   return {
     slug,
     role,
@@ -134,10 +143,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     group,
     plan,
     securityPlan,
-    limit: limit?.ok ? limit.value : null,
+    limit: isFailed(limit) ? limit : limit.ok ? limit.value : null,
     entitlements,
-    requests: requests?.ok ? requests.value : [],
-    credits: general.length > 0 && credits?.ok ? { ...credits.value, grants: general } : null,
+    /** Set when the allowance, alerts and trial could not be read: said once, at the top. */
+    entitlementsFailed: isFailed(entitled) ? entitled : null,
+    requests: isFailed(requests) ? requests : requests.ok ? requests.value : [],
+    credits: isFailed(credits) ? credits : general.length > 0 && credits.ok ? { ...credits.value, grants: general } : null,
     report: report?.ok ? report.value : null,
     details,
     trialMicros,
@@ -251,8 +262,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, staff, account, statement, group, plan, securityPlan, limit, entitlements, requests, credits, report, details, trialMicros, firstMonthMicros, notice, problem } =
+  const { slug, role, staff, account, statement, group, plan, securityPlan, entitlements, entitlementsFailed, credits, report, details, trialMicros, firstMonthMicros, notice, problem } =
     loaderData;
+  const limit = orElse(loaderData.limit, null);
+  const requests = orElse(loaderData.requests, []);
   const { status } = account;
   const owner = role === "owner" || loaderData.managesBilling;
   const error = actionData as SectionError;
@@ -271,7 +284,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
       slug={slug}
       state={plan}
       status={standing}
-      details={loaded}
+      details={orElse(loaded, null)}
       report={report}
       owner={owner}
       enabled={status.enabled}
@@ -300,7 +313,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         <Suspense fallback={null}>
           <Await resolve={details}>
             {(loaded) =>
-              loaded?.taxAddressNeededAt ? (
+              !isFailed(loaded) && loaded?.taxAddressNeededAt ? (
                 <div role="alert" className="mb-6 flex flex-wrap items-start gap-3 rounded-xl border border-warn/40 bg-warn/5 p-4 text-sm">
                   <div className="min-w-0 flex-1 basis-64">
                     <p className="font-medium">Add your billing address in Stripe</p>
@@ -322,6 +335,11 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             }
           </Await>
         </Suspense>
+        {entitlementsFailed && (
+          <div className="mb-6">
+            <Unavailable what={entitlementsFailed.what} />
+          </div>
+        )}
         {entitlements && <SpikeBanner slug={slug} entitlements={entitlements} owner={owner} />}
         {err("spike") && <p className="mb-6 text-sm text-danger">{err("spike")}</p>}
         <Alerts alerts={entitlements?.alerts ?? []} />
@@ -338,6 +356,11 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <TrialCard entitlements={entitlements} trialMicros={trialMicros} owner={owner} enabled={status.enabled} error={err("trial")} />
         )}
 
+        {paying && isFailed(loaderData.limit) && (
+          <div className="mb-6">
+            <Unavailable what={loaderData.limit.what} />
+          </div>
+        )}
         {paying && limit && selfServe && (
           <>
             <SpendLimitCard limit={limit} owner={owner} error={err("limit")} />
@@ -347,8 +370,20 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           </>
         )}
 
-        {credits && <CreditsCard credits={credits} />}
+        {isFailed(credits) ? (
+          <div className="mb-6">
+            <Unavailable what={credits.what} />
+          </div>
+        ) : (
+          credits && <CreditsCard credits={credits} />
+        )}
 
+        {/* Past requests are listed on the limit's cards: without them, say so rather than show none. */}
+        {isFailed(loaderData.requests) && (paying || (limit && selfServe)) && (
+          <div className="mb-6">
+            <Unavailable what={loaderData.requests.what} compact />
+          </div>
+        )}
         {paying && <OverageCard requests={requests} owner={owner} error={err("overage")} />}
 
         <AddOns plan={plan} security={securityPlan} error={err("security")} />
@@ -356,7 +391,15 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
         {status.enabled && owner && (
           <Suspense fallback={<StripeSkeleton />}>
             <Await resolve={details}>
-              {(loaded) => <BillingOnStripeCard details={loaded} enabled={status.enabled} live={status.live} staff={staff} error={err("stripe")} />}
+              {(loaded) =>
+                isFailed(loaded) ? (
+                  <div className="mb-6">
+                    <Unavailable what={loaded.what} />
+                  </div>
+                ) : (
+                  <BillingOnStripeCard details={loaded} enabled={status.enabled} live={status.live} staff={staff} error={err("stripe")} />
+                )
+              }
             </Await>
           </Suspense>
         )}

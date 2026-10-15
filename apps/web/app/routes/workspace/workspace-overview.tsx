@@ -15,6 +15,8 @@ import { page } from "../../lib/meta";
 import { Avatar } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Workspace · ${params.owner} · g1t` });
@@ -37,7 +39,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const setupAsked = new URL(request.url).searchParams.has("setup");
   const onboarding = loadOnboarding(viewer, slug, !setupAsked).catch(() => null);
   const [members, usage, projects] = await Promise.all([
-    identity.listMembers(slug, viewer).catch(() => null),
+    part(identity.listMembers(slug, viewer), "The member list"),
     usageFor(slug, viewer),
     workspaceProjects(slug, viewer).catch(() => null),
   ]);
@@ -46,7 +48,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     role,
     onboarding,
     setupAsked,
-    members: members?.ok ? members.value : null,
+    members: isFailed(members) ? members : members.ok ? members.value : null,
     usage,
     projects: projects?.ok ? projects.value.length : null,
   };
@@ -73,7 +75,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
     <div className="space-y-8">
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Tile icon={<Users size={12} />} label="Members" value={members ? String(members.length) : "—"} to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
+        <Tile icon={<Users size={12} />} label="Members" value={members && !isFailed(members) ? String(members.length) : "—"} to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
         <Tile icon={<Box size={12} />} label="Projects" value={projects == null ? "—" : String(projects)} to={`/${slug}/-/projects`} action="Open Code" />
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -125,7 +127,11 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 {role === "owner" ? "Manage" : "See all"}
               </Link>
             </div>
-            {members ? (
+            {isFailed(members) ? (
+              <div className="mt-3">
+                <Unavailable what={members.what} compact />
+              </div>
+            ) : members ? (
               <>
                 <ul className="mt-3 space-y-2">
                   {members.slice(0, MAX_FACES).map((member) => (

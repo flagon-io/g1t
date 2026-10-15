@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { securitySuite } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Bypass requests · ${params.owner} · g1t` });
@@ -25,9 +26,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const state = new URL(request.url).searchParams.get("state") ?? "pending";
   const [list, pending] = await Promise.all([
     securitySuite.bypassRequests(params.owner, viewer, STATES.has(state) ? state : null),
-    securitySuite.bypassRequests(params.owner, viewer, "pending"),
+    // Only the tabs' badge: without it, the badge goes without a count.
+    part(securitySuite.bypassRequests(params.owner, viewer, "pending"), "Pending bypass requests"),
   ]);
-  return { requests: unwrap(list), pending: pending.ok ? pending.value.length : 0, me: viewer?.username ?? "" };
+  return { requests: unwrap(list), pending: !isFailed(pending) && pending.ok ? pending.value.length : 0, me: viewer?.username ?? "" };
 }
 
 export async function action({ params, context, request }: Route.ActionArgs) {

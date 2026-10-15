@@ -38,6 +38,8 @@ import { accounts, deployments, identity, repos } from "../../lib/services.serve
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { forgetWorkspace } from "../../lib/workspace-choice";
 import { confirmsSlug, deletionRefusal, whatGoes } from "../../lib/workspace-deletion";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part, type Failed } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Settings · ${params.owner} · g1t` });
@@ -67,35 +69,42 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   }
   // What deleting it would take with it, and anything in the way, shown
   // before anyone types. Its apps are counted by deployments.
-  let deletion: WorkspaceDeletion | null = null;
+  // When that cannot be read, Delete says so in its place rather than
+  // offering itself without saying what would go. How many apps go is only
+  // a count in that list, which reads without it.
+  let deletion: WorkspaceDeletion | Failed | null = null;
   let apps: number | null = null;
   if (viewer) {
     const [found, usage] = await Promise.all([
-      identity.checkWorkspaceDeletion(viewer, params.owner).catch(() => null),
+      part(identity.checkWorkspaceDeletion(viewer, params.owner), "What deleting it would take with it"),
       deployments.usage(params.owner, viewer).catch(() => null),
     ]);
-    deletion = found?.ok ? found.value : null;
+    deletion = isFailed(found) ? found : found.ok ? found.value : null;
     apps = usage?.ok ? usage.value.apps : null;
   }
   // Where its repositories are kept: offered once g1t can keep them in the
   // EU, and shown to a workspace that chose it whatever happens since.
+  // Each of these is a section's: one that cannot be read says so in its
+  // place, rather than show a choice that saving would put over the real
+  // one, or say no one would be held out when that is not known.
   const [storage, residency, members, twoFactor] = await Promise.all([
+    // Whether the EU is offered: without it, only a workspace that chose it sees the choice.
     repos.storageOptions().catch(() => ({ euAvailable: false })),
-    identity.workspaceResidency(params.owner).catch(() => null),
+    part(identity.workspaceResidency(params.owner), "Data residency"),
     // Who would be held out by requiring two-factor authentication.
-    viewer ? identity.listMembers(params.owner, viewer).catch(() => null) : null,
-    viewer ? accounts.twoFactorStatus(viewer).catch(() => null) : null,
+    viewer ? part(identity.listMembers(params.owner, viewer), "Two-factor authentication") : null,
+    viewer ? part(accounts.twoFactorStatus(viewer), "Two-factor authentication") : null,
   ]);
-  const without = members?.ok ? members.value.filter((member) => member.two_factor === false).map((member) => member.username) : [];
+  const without = isFailed(members) ? members : members?.ok ? members.value.filter((member) => member.two_factor === false).map((member) => member.username) : [];
   return {
     workspace,
     check,
     deletion,
     apps,
     euAvailable: storage.euAvailable,
-    residency: residency ?? "anywhere",
+    residency: isFailed(residency) ? residency : (residency ?? "anywhere"),
     withoutTwoFactor: without,
-    ownTwoFactor: twoFactor?.ok ? twoFactor.value.enabled : false,
+    ownTwoFactor: isFailed(twoFactor) ? twoFactor : twoFactor?.ok ? twoFactor.value.enabled : false,
   };
 }
 
@@ -209,15 +218,24 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         error={actionData && "renameError" in actionData ? actionData.renameError : undefined}
       />
 
-      <TwoFactorRequirementSection
-        key={String(workspace.twoFactorRequirementEnabled ?? false)}
-        slug={workspace.slug}
-        required={workspace.twoFactorRequirementEnabled ?? false}
-        without={loaderData.withoutTwoFactor}
-        ownTwoFactor={loaderData.ownTwoFactor}
-        saved={Boolean(actionData && "saved" in actionData && actionData.saved === "two-factor-requirement")}
-        error={actionData && "twoFactorError" in actionData ? actionData.twoFactorError : undefined}
-      />
+      {isFailed(loaderData.withoutTwoFactor) || isFailed(loaderData.ownTwoFactor) ? (
+        <section id="two-factor" className="scroll-mt-20">
+          <h2 className="font-medium">Authentication security</h2>
+          <div className="mt-5">
+            <Unavailable what="Two-factor authentication" />
+          </div>
+        </section>
+      ) : (
+        <TwoFactorRequirementSection
+          key={String(workspace.twoFactorRequirementEnabled ?? false)}
+          slug={workspace.slug}
+          required={workspace.twoFactorRequirementEnabled ?? false}
+          without={loaderData.withoutTwoFactor}
+          ownTwoFactor={loaderData.ownTwoFactor}
+          saved={Boolean(actionData && "saved" in actionData && actionData.saved === "two-factor-requirement")}
+          error={actionData && "twoFactorError" in actionData ? actionData.twoFactorError : undefined}
+        />
+      )}
 
       <section>
         <h2 className="font-medium">Permissions</h2>
@@ -231,7 +249,14 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
         </p>
       </section>
 
-      {(loaderData.euAvailable || loaderData.residency === "eu") && (
+      {isFailed(loaderData.residency) ? (
+        <section>
+          <h2 className="font-medium">Data residency</h2>
+          <div className="mt-5">
+            <Unavailable what={loaderData.residency.what} />
+          </div>
+        </section>
+      ) : (loaderData.euAvailable || loaderData.residency === "eu") && (
         <ResidencySection
           // Starts from the saved choice whenever it changes.
           key={loaderData.residency}
@@ -243,12 +268,18 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
       )}
 
       <DangerZone>
-        <DeleteAction
-          workspace={workspace}
-          deletion={loaderData.deletion}
-          apps={loaderData.apps}
-          error={actionData && "deleteError" in actionData ? actionData.deleteError : undefined}
-        />
+        {isFailed(loaderData.deletion) ? (
+          <div className="p-4">
+            <Unavailable what={loaderData.deletion.what} compact />
+          </div>
+        ) : (
+          <DeleteAction
+            workspace={workspace}
+            deletion={loaderData.deletion}
+            apps={loaderData.apps}
+            error={actionData && "deleteError" in actionData ? actionData.deleteError : undefined}
+          />
+        )}
       </DangerZone>
     </div>
   );

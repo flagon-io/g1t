@@ -24,7 +24,9 @@ import { CheckboxOption } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { RadioGroup, RadioOption } from "../../components/ui/radio-group";
 import { SelectField } from "../../components/ui/select";
+import { Unavailable } from "../../components/boundary";
 import { page } from "../../lib/meta";
+import { isFailed, part, type Failed } from "../../lib/partial";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 
@@ -40,7 +42,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const workspace = params.owner.toLowerCase();
   const settings = unwrap(await actions.workspaceActionsSettings(workspace, viewer));
   // The workflows it manages, and their sources, are its owners' to see.
-  const managed = role === "owner" ? unwrap(await actions.workspaceManagedWorkflows(workspace, viewer)) : [];
+  // They are a section beside the policy: when Actions does not answer for
+  // them, that section says so and the policy's form stays.
+  const listed = role === "owner" ? await part(actions.workspaceManagedWorkflows(workspace, viewer), "Managed workflows") : null;
+  const managed = listed === null ? [] : isFailed(listed) ? listed : unwrap(listed);
   return { settings, managed, owner: role === "owner" };
 }
 
@@ -271,7 +276,7 @@ function ManagedWorkflowCard({ workspace, workflow }: { workspace: string; workf
   );
 }
 
-function ManagedWorkflows({ workspace, managed }: { workspace: string; managed: WorkspaceManagedWorkflow[] }) {
+function ManagedWorkflows({ workspace, managed }: { workspace: string; managed: WorkspaceManagedWorkflow[] | Failed }) {
   return (
     <section className="max-w-4xl space-y-4 border-t border-line pt-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -288,7 +293,9 @@ function ManagedWorkflows({ workspace, managed }: { workspace: string; managed: 
         </div>
         <ManagedWorkflowDialog workspace={workspace} />
       </div>
-      {managed.length === 0 ? (
+      {isFailed(managed) ? (
+        <Unavailable what={managed.what} />
+      ) : managed.length === 0 ? (
         <EmptyState title="No managed workflows">
           Add a workflow file from one of the workspace's repositories to run it in all of them, or in those you choose.
         </EmptyState>

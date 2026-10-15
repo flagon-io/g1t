@@ -17,6 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { autoOffered, defaultModel as startingModel, modelLabel, modelOptions } from "../../lib/ask-model";
 import { ai } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `AI · ${params.owner} · g1t` });
@@ -33,14 +35,17 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const role = roleIn(viewer, params.owner);
   if (!role) throw new Response(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [connections, ask] = await Promise.all([ai.list(slug, viewer), ai.askSettings(slug, viewer)]);
+  // The providers are what the page is about. Ask's setting is a section
+  // beside them: when it does not answer, that section says so instead of
+  // offering a form that would save over a choice it could not read.
+  const [connections, ask] = await Promise.all([ai.list(slug, viewer), part(ai.askSettings(slug, viewer), "Ask g1t's provider")]);
   const adding = new URL(request.url).searchParams.get("add");
   return {
     slug,
     owner: role === "owner",
     connections: unwrap(connections),
     adding: adding && isAiProvider(adding) ? adding : null,
-    ask: ask.ok ? ask.value : null,
+    ask: isFailed(ask) ? ask : ask.ok ? ask.value : null,
   };
 }
 
@@ -133,7 +138,16 @@ export default function WorkspaceAi({ loaderData, actionData }: Route.ComponentP
       {justAdded && <Added connection={justAdded} />}
       <ErrorText>{askError || addError ? null : error}</ErrorText>
 
-      <AskSetting connections={connections} setup={ask} owner={owner} saved={asked} error={askError} />
+      {isFailed(ask) ? (
+        <section aria-labelledby="ask-heading" className="mb-8">
+          <h2 id="ask-heading" className="mb-3 text-sm font-medium">
+            Ask g1t
+          </h2>
+          <Unavailable what={ask.what} />
+        </section>
+      ) : (
+        <AskSetting connections={connections} setup={ask} owner={owner} saved={asked} error={askError} />
+      )}
 
       <section aria-labelledby="providers-heading">
         <h2 id="providers-heading" className="mb-3 text-sm font-medium">

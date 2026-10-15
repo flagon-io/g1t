@@ -15,6 +15,8 @@ import { TokenBadges, TokenFacts, TokenMeta } from "../../components/token-list"
 import { identity } from "../../lib/services.server";
 import { currentTokensPath, lifetimeFromForm } from "../../lib/access-tokens";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, orElse, part, type Failed } from "../../lib/partial";
 
 // A workspace's rules for its members' personal access tokens, the tokens
 // that reach it, and approving the ones made for it. Owners only; identity
@@ -31,9 +33,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (moved) throw redirect(moved, 301);
   const viewer = getViewer(context);
   const role = roleIn(viewer, params.owner);
-  if (!viewer || role !== "owner") return { slug, role, policy: null, tokens: [] as MemberToken[] };
-  const [policy, tokens] = await Promise.all([identity.getTokenPolicy(slug, viewer), identity.listMemberTokens(viewer, slug)]);
-  return { slug, role, policy: unwrap(policy), tokens: unwrap(tokens) };
+  if (!viewer || role !== "owner") return { slug, role, policy: null, tokens: [] as MemberToken[] | Failed };
+  // The rules are what the page is about, and their form is never shown
+  // without them. The tokens are listed beside them: when they cannot be
+  // read, their sections say so and the rules can still be changed.
+  const [policy, tokens] = await Promise.all([identity.getTokenPolicy(slug, viewer), part(identity.listMemberTokens(viewer, slug), "Members' tokens")]);
+  return { slug, role, policy: unwrap(policy), tokens: isFailed(tokens) ? tokens : unwrap(tokens) };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -92,8 +97,8 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
       </EmptyState>
     );
   }
-  const pending = tokens.filter((member) => member.token.status === "pending");
-  const listed = tokens.filter((member) => member.token.status !== "pending");
+  const pending = orElse(tokens, []).filter((member) => member.token.status === "pending");
+  const listed = orElse(tokens, []).filter((member) => member.token.status !== "pending");
   const lifetime = policy.maxLifetimeDays == null ? "" : String(policy.maxLifetimeDays);
   return (
     <div className="max-w-3xl space-y-10">
@@ -169,7 +174,11 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
           Waiting for approval
           {pending.length > 0 && <Badge tone="warn">{pending.length}</Badge>}
         </h2>
-        {pending.length === 0 ? (
+        {isFailed(tokens) ? (
+          <div className="mt-2">
+            <Unavailable what={tokens.what} compact />
+          </div>
+        ) : pending.length === 0 ? (
           <p className="mt-2 text-sm text-muted">No token is waiting for approval.</p>
         ) : (
           <Card asChild tone="plain" divided className="mt-3">
@@ -209,7 +218,11 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
           </Link>
           .
         </p>
-        {listed.length === 0 ? (
+        {isFailed(tokens) ? (
+          <div className="mt-3">
+            <Unavailable what={tokens.what} />
+          </div>
+        ) : listed.length === 0 ? (
           <div className="mt-3">
             <EmptyState title="No tokens">No member has a personal access token that can reach {slug}.</EmptyState>
           </div>

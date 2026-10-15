@@ -24,6 +24,8 @@ import {
 } from "../../lib/repo-lifecycle";
 import { projects, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, orElse, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Repositories · ${params.owner} · g1t` });
@@ -37,10 +39,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const owner = role === "owner";
   const [list, deleted] = await Promise.all([
     repos.list(viewer, { namespace: params.owner, memberOnly: true }),
-    owner ? repos.deleted(viewer, params.owner) : Promise.resolve([]),
+    // Beside the list: when it cannot be read, its section says so.
+    owner ? part(repos.deleted(viewer, params.owner), "Recently deleted repositories") : Promise.resolve([]),
   ]);
   // A repository has no description: its project's is shown, and searched.
-  const about = await projects.descriptions(list.map((repo) => repo.id));
+  // Without them each row goes without one, which is how a row without a description reads anyway.
+  const about = orElse(await part(projects.descriptions(list.map((repo) => repo.id)), "Descriptions"), {} as Record<string, string | null>);
   return {
     repos: list.map((repo) => ({ ...repo, description: about[repo.id] ?? null })),
     deleted,
@@ -311,7 +315,9 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
               Their names stay taken until then. Only owners see this list.
             </p>
           </div>
-          {deleted.length === 0 ? (
+          {isFailed(deleted) ? (
+            <Unavailable what={deleted.what} />
+          ) : deleted.length === 0 ? (
             <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-faint">
               <p>
                 Nothing has been deleted in the last {RESTORE_DAYS} days.

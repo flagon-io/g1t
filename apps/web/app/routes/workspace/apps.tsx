@@ -13,13 +13,15 @@ import { data } from "react-router";
 import type { Route } from "./+types/apps";
 import { AppTile, NoApps, useAppPins } from "../../components/apps";
 import { ButtonLink } from "../../components/ui";
-import { DOCK_COOKIE, type InstalledAppData, appData, appPinFromForm, dockCookie, installedApps, pinsToShow, withPin, writeDock } from "../../lib/apps";
+import { DOCK_COOKIE, appData, appPinFromForm, dockCookie, installedApps, pinsToShow, withPin, writeDock } from "../../lib/apps";
 import { connectedStates } from "../../lib/connected.server";
 import { savePins, savedPins } from "../../lib/dock.server";
 import { page } from "../../lib/meta";
 import { readCookie } from "../../lib/mission";
 import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { Card } from "../../components/ui/card";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Apps · ${params.owner} · g1t` });
@@ -30,12 +32,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const slug = params.owner.toLowerCase();
   const membership = viewer?.workspaces?.find((m) => m.slug === slug);
   if (!viewer || !membership) throw data(null, { status: 404 });
-  const [connected, saved] = await Promise.all([connectedStates(slug, viewer).catch(() => null), savedPins(viewer, slug)]);
+  const [connected, saved] = await Promise.all([part(connectedStates(slug, viewer), "What is installed"), savedPins(viewer, slug)]);
   return {
     slug,
     name: membership.name?.trim() || slug,
-    /** Null when what is installed could not be read. */
-    apps: connected ? installedApps(connected).map((app) => appData(app, slug)) : (null as InstalledAppData[] | null),
+    /** Failed when what is installed could not be read. */
+    apps: isFailed(connected) ? connected : installedApps(connected).map((app) => appData(app, slug)),
     pins: pinsToShow(saved, readCookie(request.headers.get("cookie"), DOCK_COOKIE), slug),
   };
 }
@@ -61,7 +63,7 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 export default function Apps({ loaderData }: Route.ComponentProps) {
   const { slug, name, apps } = loaderData;
   const { pins, toggle } = useAppPins(slug, loaderData.pins);
-  const usable = (apps ?? []).filter((app) => app.usable);
+  const usable = (isFailed(apps) ? [] : apps).filter((app) => app.usable);
   const pinned = pins.map((key) => usable.find((app) => app.key === key)).filter((app) => app != null);
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-10">
@@ -78,10 +80,10 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
         </ButtonLink>
       </div>
 
-      {apps == null ? (
-        <Card asChild className="mt-8 px-4 py-6 text-center text-sm text-muted">
-          <p>What is installed can't be read right now. Reload in a minute.</p>
-        </Card>
+      {isFailed(apps) ? (
+        <div className="mt-8">
+          <Unavailable what={apps.what} />
+        </div>
       ) : apps.length === 0 ? (
         <div className="mt-8">
           <NoApps slug={slug} />

@@ -23,8 +23,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const repo = `${params.repoOwner}/${params.repoName}`;
-  const found = await docs.repoPage(params.owner.toLowerCase(), viewer, repo, params["*"] ?? "").catch(() => null);
-  if (!found?.ok) throw data(null, { status: 404 });
+  // The file is what the page is about: when it cannot be read, the page
+  // says so rather than that there is no such file.
+  const found = await docs.repoPage(params.owner.toLowerCase(), viewer, repo, params["*"] ?? "");
+  if (!found.ok) throw data(null, { status: 404 });
   return { found: found.value };
 }
 

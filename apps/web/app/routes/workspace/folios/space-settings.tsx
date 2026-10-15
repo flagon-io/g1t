@@ -18,19 +18,24 @@ import { spacePath } from "../../../lib/folios";
 import { page } from "../../../lib/meta";
 import { docs, identity } from "../../../lib/services.server";
 import { requireUser, roleIn } from "../../../lib/session.server";
+import { Unavailable } from "../../../components/boundary";
+import { isFailed, orElse, part, type Failed } from "../../../lib/partial";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Settings · ${loaded?.space.name ?? "Space"} · Artifacts · ${params.owner} · g1t` });
 }
 
-export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ space: DocSpace; members: DocSpaceMember[]; teams: { slug: string; name: string }[] }> {
+export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ space: DocSpace; members: DocSpaceMember[]; teams: { slug: string; name: string }[] | Failed }> {
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const [found, teams] = await Promise.all([docs.space(slug, params.space, viewer), identity.listTeams(viewer, slug).catch(() => null)]);
+  // The teams it can be for are beside the space: without them its form is
+  // not offered (a space for a team would read as one for nobody), while
+  // sharing and members still are.
+  const [found, teams] = await Promise.all([docs.space(slug, params.space, viewer), part(identity.listTeams(viewer, slug), "This space's settings")]);
   if (!found.ok) throw data(null, { status: 404 });
   if (found.value.space.viewer_role !== "manage") throw data(null, { status: 403 });
-  return { space: found.value.space, members: found.value.members, teams: teams?.ok ? teams.value.map((t) => ({ slug: t.slug, name: t.name })) : [] };
+  return { space: found.value.space, members: found.value.members, teams: isFailed(teams) ? teams : teams.ok ? teams.value.map((t) => ({ slug: t.slug, name: t.name })) : [] };
 }
 
 const ROLE_OPTIONS = DOC_ROLES.map((r) => ({ value: r, label: DOC_ROLE_LABELS[r], description: DOC_ROLE_SUMMARIES[r] }));
@@ -53,7 +58,7 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
   const listed = new Set(members.map((m) => m.key));
   const candidates = [
     ...(layout?.mentionables ?? []).map((m) => ({ value: `username:${m.name}`, label: `${m.display_name} (@${m.name})` })),
-    ...teams.map((t) => ({ value: `team:${t.slug}`, label: `${t.name} (team)` })),
+    ...orElse(teams, []).map((t) => ({ value: `team:${t.slug}`, label: `${t.name} (team)` })),
   ].filter((c) => !listed.has(c.value));
   return (
     <div className="mx-auto max-w-3xl">
@@ -65,18 +70,22 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
       </p>
       <h1 className="mt-1 text-xl font-semibold tracking-tight">Space settings</h1>
       <div className="mt-8">
-        <SpaceForm
-          initial={initialSpace(space)}
-          teams={teams}
-          isDefault={space.is_default}
-          submitLabel="Save"
-          busy={settings.busy}
-          error={settings.error}
-          onSubmit={async (value) => {
-            const saved = await settings.send<DocSpace>("update_space", { space_id: space.id, space_change: spaceInput(value) });
-            if (saved.ok && saved.value.slug !== space.slug) navigate(`${spacePath(slug, saved.value.slug)}/settings`, { replace: true });
-          }}
-        />
+        {isFailed(teams) ? (
+          <Unavailable what={teams.what} />
+        ) : (
+          <SpaceForm
+            initial={initialSpace(space)}
+            teams={teams}
+            isDefault={space.is_default}
+            submitLabel="Save"
+            busy={settings.busy}
+            error={settings.error}
+            onSubmit={async (value) => {
+              const saved = await settings.send<DocSpace>("update_space", { space_id: space.id, space_change: spaceInput(value) });
+              if (saved.ok && saved.value.slug !== space.slug) navigate(`${spacePath(slug, saved.value.slug)}/settings`, { replace: true });
+            }}
+          />
+        )}
       </div>
 
       <section className="mt-12">

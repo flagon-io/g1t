@@ -19,6 +19,8 @@ import { usageFor } from "../../lib/workspace-usage.server";
 import { deployments, identity, packages, projects as projectsApi, work } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { workspaceProjects } from "../../lib/workspace-projects.server";
+import { Unavailable } from "../../components/boundary";
+import { isFailed, part } from "../../lib/partial";
 
 /** Projects whose open issues and pull requests are counted: the most active. */
 const MAX_COUNTED = 30;
@@ -63,17 +65,22 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const pathOf = (project: Project) =>
     project.source.kind === "hosted" ? project.source.repo : { namespace: project.workspace, name: project.slug };
   const counted = [...new Map([...pinned, ...active, ...byActivity].map((project) => [project.id, project])).values()].slice(0, Math.max(MAX_COUNTED, pinned.length + active.length));
-  const counts = await Promise.all(counted.map((project) => work.counts(pathOf(project), viewer)));
+  // The projects are what the page is about. What is open in each, and the
+  // pull requests in progress, are beside them: a project whose counts
+  // could not be read shows none, and the page says the totals are short.
+  const counts = await Promise.all(counted.map((project) => part(work.counts(pathOf(project), viewer), "Open issues and pull requests")));
   const open: Record<string, { issues: number; pulls: number }> = {};
   counted.forEach((project, i) => {
     const result = counts[i];
-    if (result.ok) open[project.id] = result.value;
+    if (!isFailed(result) && result.ok) open[project.id] = result.value;
   });
+  const countsFailed = counts.find(isFailed) ?? null;
 
   const busy = counted.filter((project) => (open[project.id]?.pulls ?? 0) > 0).slice(0, MAX_LISTED);
-  const lists = await Promise.all(busy.map((project) => work.listPulls(pathOf(project), viewer, "open")));
+  const lists = await Promise.all(busy.map((project) => part(work.listPulls(pathOf(project), viewer, "open"), "Pull requests in progress")));
+  const pullsFailed = lists.find(isFailed) ?? null;
   const pulls = lists
-    .flatMap((result, i) => (result.ok ? result.value.map((pull) => ({ pull, project: busy[i] })) : []))
+    .flatMap((result, i) => (!isFailed(result) && result.ok ? result.value.map((pull) => ({ pull, project: busy[i] })) : []))
     .sort((a, b) => b.pull.updatedAt.localeCompare(a.pull.updatedAt))
     .slice(0, MAX_PULLS);
 
@@ -102,6 +109,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     deploys: bySlug,
     packageOf,
     pulls: pulls.map(({ pull, project }) => ({ pull, slug: project.slug, name: project.name })),
+    countsFailed,
+    pullsFailed,
     members: members?.ok ? members.value : null,
     usage,
   };
@@ -277,6 +286,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
               <Stat value={totals.issues} label="Open issues" />
               <Stat value={totals.pulls} label="Pull requests in progress" />
             </div>
+            {loaderData.countsFailed && <Unavailable what={loaderData.countsFailed.what} compact />}
 
             {role && (
               <section aria-labelledby="pinned">
@@ -327,6 +337,14 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
               </span>
             </Link>
 
+            {loaderData.pullsFailed && pulls.length === 0 && (
+              <section>
+                <h2 className="text-sm font-medium text-muted">In progress</h2>
+                <div className="mt-3">
+                  <Unavailable what={loaderData.pullsFailed.what} />
+                </div>
+              </section>
+            )}
             {pulls.length > 0 && (
               <section>
                 <h2 className="text-sm font-medium text-muted">In progress</h2>

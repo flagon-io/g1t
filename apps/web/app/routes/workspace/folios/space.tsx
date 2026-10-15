@@ -23,8 +23,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
-  const found = await docs.space(slug, params.space, viewer).catch(() => null);
-  if (!found?.ok || found.value.space.archived_at) throw data(null, { status: 404 });
+  // The space is what the page is about: when Artifacts does not answer,
+  // the page says so rather than that there is no such space.
+  const found = await docs.space(slug, params.space, viewer);
+  if (!found.ok || found.value.space.archived_at) throw data(null, { status: 404 });
   const list = await folios
     .list(slug, viewer, { tab: "all", space_id: found.value.space.id, limit: 100 })
     .then((r) => (r.ok ? r.value : null))
