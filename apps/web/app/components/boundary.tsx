@@ -4,8 +4,19 @@ import { useLocation, useRevalidator } from "react-router";
 
 import { Card } from "./ui/card";
 
-/** Says a section could not be loaded, without taking the page down. */
-export function Unavailable({ what }: { what: string }) {
+/**
+ * Says a section could not be loaded, without taking the page down.
+ * `compact`: one quiet line, for a sidebar's card or a count's place.
+ */
+export function Unavailable({ what, compact = false }: { what: string; compact?: boolean }) {
+  if (compact) {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        <TriangleAlert size={12} className="shrink-0 text-warn" />
+        {what} could not be loaded just now.
+      </p>
+    );
+  }
   return (
     <Card asChild tone="plain" className="flex items-center gap-2 border-dashed px-4 py-5 text-sm text-muted">
       <p>
@@ -21,7 +32,7 @@ export function Unavailable({ what }: { what: string }) {
  * that `what` could not be loaded, and the rest of the page stays. It tries
  * again on the next refresh or navigation (whatever reloads the page's
  * data). Data a part could not fetch is the loader's to say
- * (lib/partial.server.ts `soft`); this catches what breaks while drawing.
+ * (lib/partial.ts `part`); this catches what breaks while drawing.
  */
 export function Boundary({ what, children, fallback }: { what: string; children: ReactNode; fallback?: ReactNode }) {
   const { key } = useLocation();
