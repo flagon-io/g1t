@@ -21,7 +21,9 @@ A repository has no description of its own: its
 [project](/guides/projects/) has, and search, link previews and lists of
 repositories show that one. Change it in the project's **Settings →
 General**, or with
-[`update_project`](/reference/api/projects/update-project/).
+[`update_project`](/reference/api/projects/update-project/) (or
+`description` on [`update_repo`](/reference/api/repositories/update-repo/),
+which changes the same one).
 
 The **Code** page shows its files with its facts beside them. On a phone
 they come after the files.
