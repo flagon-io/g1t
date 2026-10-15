@@ -363,17 +363,37 @@ on Virtual Machine Platform and Windows Sandbox, for the kinds of job you
 have on, and installs or updates WSL. Windows asks you to allow it, once
 (on a standard account, an administrator types their password). The cards
 say *Setting up* meanwhile, a few minutes. When what it turned on takes a
-restart, they say *Restart needed*, with **Restart now**, which asks first
-(save your work), and **Later**. After the restart g1t opens again by
-itself and carries on: Linux jobs download their image and start. Set up
-is the same as running these in an admin terminal, and its log goes into
-the runner's:
+restart, they say *Restart needed*, with **Restart now** and **Later**.
+**Restart now** asks first, in a Windows dialog of its own (*Restart
+Windows now to finish setting up the runner?*, with No chosen until you
+choose Yes), so save your work before you answer; a page can't restart
+your computer without you. Either way, g1t opens once by itself the next
+time you sign in to Windows, whether or not it opens at sign-in anyway,
+and carries on: Linux jobs download their image and start. Until Windows
+has restarted, the cards keep saying *Restart needed*.
+
+If a step fails after a feature was turned on, the cards still ask for the
+restart, and offer **Set up** again after it for what is left. Set up is
+the same as running these in an admin terminal, and its log goes into the
+runner's (**View log**):
 
 ```powershell
 Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart
 Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All -NoRestart
-wsl --install --no-distribution   # or wsl --update, for an older WSL
+wsl --install --no-distribution --web-download   # or wsl --update --web-download, for an older WSL
 ```
+
+It turns on only the features that are off, for the kinds of job that are
+on. WSL is downloaded directly first (`--web-download`), which needs no
+Microsoft Store; if that fails, the same command runs again without it,
+through the Store.
+
+Set up is for Windows alone. On Linux and macOS nothing the sandbox needs
+can be installed without your password in a terminal, so the card gives
+the command, with **Copy command**, and changes by itself once it has
+run. The sandbox has been checked end to end on Windows; on macOS and on
+Linux without Sysbox, the checks and commands below are what the app does,
+but the VMs themselves [have not yet been run there](/guides/self-hosted-runners/#what-it-cannot-stop).
 
 Whatever is missing, nothing falls back to running jobs in Docker or
 directly on your computer: those are only ever [your choice](#how-jobs-run).
@@ -386,8 +406,8 @@ directly on your computer: those are only ever [your choice](#how-jobs-run).
 | *Needs setting up*: *Windows Sandbox is off* | The Windows Sandbox feature, which each Windows job runs in. | **Set up**, then restart. |
 | *Not available*: *Not in Windows Home* | Windows Sandbox, which Windows Home doesn't have. Linux jobs run all the same. | Nothing, for Linux jobs. For Windows jobs, Windows 11 Pro, Enterprise or Education: **Open Activation** is where Windows upgrades. |
 | *Restart needed*: *Restart to finish setting up* | Set up turned on a Windows feature, which takes effect after a restart. | **Restart now**, or **Later** and restart when it suits you. g1t opens again after and carries on. |
-| *Virtualization is off* | Intel VT-x or AMD-V, turned off in your computer's firmware, where Windows can't turn it on. | [Turn on virtualization](#turning-on-virtualization), then **Check now**. |
-| *This VM can't run the sandbox* | g1t is in a virtual machine whose host doesn't pass virtualization through to it. | [Turn on nested virtualization](#in-a-virtual-machine) on the host. |
+| *Virtualization is off* | Intel VT-x or AMD-V, turned off in your computer's firmware, where Windows can't turn it on. Said on Windows jobs too, when Windows Sandbox is on but could not start. | [Turn on virtualization](#turning-on-virtualization) (**How to turn it on** opens these steps), then **Check now**. |
+| *This VM can't run the sandbox* | g1t is in a virtual machine whose host doesn't pass virtualization through to it. Said once the sandbox's VM has failed to start for that reason, since it can't be known before. | [Turn on nested virtualization](#in-a-virtual-machine) on the host (**How to turn it on**). |
 | *Windows needs an update*, on Linux jobs | Windows older than Windows 10 version 2004, the first with WSL 2. | **Open Windows Update**, update, and restart. |
 | *Windows needs an update*, on Windows jobs | Windows Sandbox's command line, `wsb`, which came with Windows 11 24H2. | **Open Windows Update**, update to 24H2 or later, and restart. |
 | *Set up didn't finish* | You said No to Windows' prompt, or a step failed, with its reason. | **Set up** again; **View log** says what happened. |

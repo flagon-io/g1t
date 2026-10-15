@@ -204,7 +204,7 @@ and needs no token.
 | `g1t-runner sandbox down` | Stops both now. A running job is cut short, and its run says the runner was stopped. `--drain` waits for it to finish instead. `--delete` also removes the VM and everything in it; the runners stay listed on g1t until you remove them there. |
 | `g1t-runner sandbox down --only windows` | Stops Windows jobs alone and keeps them off: Linux jobs carry on, and a later `up` leaves Windows jobs stopped. `--only linux` does the same for Linux jobs, leaving Windows jobs running. Takes `--drain`, not `--delete`. |
 | `g1t-runner sandbox up --only windows` | Turns Windows jobs on again and starts them, leaving Linux jobs as they are. `--only linux,windows` turns on both. |
-| `g1t-runner sandbox status` | Says how each capability is, and what to do about one that is not available. |
+| `g1t-runner sandbox status` | Says how each capability is, what the computer still lacks for one that is not available, and what to do. It downloads nothing, so it is the first thing to run on a new computer. See [what the sandbox needs](#what-the-sandbox-needs). |
 | `g1t-runner sandbox update` | Drains the Linux runner (the job it is running finishes), swaps in the newest release's image, and starts it again. The registration is kept, so it is the same runner on g1t. |
 
 | Option (`up`) | |
@@ -263,6 +263,63 @@ signature and every SHA-256 before using anything, and waits for the
 running job before it swaps the image. The runner's registration lives
 apart from the image (on its own disk on macOS and Linux; on Windows the
 launcher carries it across), so an update does not register again.
+
+### What the sandbox needs
+
+The sandbox is a small VM, so a computer needs what any VM needs. Run
+`g1t-runner sandbox status` first: before anything is downloaded, it says
+for each kind of job what the computer still lacks, what must come first
+first, with why and what to do:
+
+```text
+Sandbox: absent (wsl2)
+  linux    unavailable
+           Virtual Machine Platform, the Windows feature WSL 2 runs on, is turned off.
+           Open a terminal as administrator and run `wsl --install --no-distribution`, which turns it on, then restart Windows.
+  windows  unavailable
+           Windows Sandbox is not turned on, and Windows jobs each run in one.
+           Turn on Windows Sandbox under Settings, System, Optional features, More Windows features, then restart.
+Error: Virtual Machine Platform, the Windows feature WSL 2 runs on, is turned off.
+```
+
+With `--json`, each capability's `needs` lists the same by name. Each is
+named only when the computer says it for certain, from Windows itself,
+`/proc` on Linux or `sw_vers` on macOS, so a computer that can run the
+sandbox is never held back by a guess. One kind of job missing something
+never stops the other: Windows jobs that Windows Home can't run leave
+Linux jobs running.
+
+| Need | Kind of job | What is missing | What to do |
+| --- | --- | --- | --- |
+| `windows_update` | Linux, on Windows | Windows older than Windows 10 version 2004, the first with WSL 2. | Update Windows, then restart. |
+| `windows_update` | Windows | Windows Sandbox's command line, `wsb`, which came with Windows 11 24H2. | Update Windows to 24H2 or later. |
+| `virtualization` | Any | Virtualization (Intel VT-x or AMD-V) off in the firmware, or, on Linux, a processor without it. | Turn it on in the BIOS or UEFI settings ([how](/guides/desktop/#turning-on-virtualization)). On Linux, Sysbox 0.7 or later needs no VM. |
+| `nested_virtualization` | Any | The computer is itself a VM whose host doesn't pass virtualization through. On Windows this is named from the error the VM gives as it fails to start, since it can't be known before. | Turn on nested virtualization for the VM on its host ([how](/guides/desktop/#in-a-virtual-machine)). |
+| `vm_platform` | Linux, on Windows | The Virtual Machine Platform feature. | `wsl --install --no-distribution` in an admin terminal, then restart. |
+| `wsl` | Linux, on Windows | WSL. | `wsl --install --no-distribution` in an admin terminal, then restart. Every edition of Windows 11, Home included, has it. |
+| `wsl_update` | Linux, on Windows | WSL older than 2.0, or the one built into older Windows rather than the Microsoft Store's. | `wsl --update` in an admin terminal. |
+| `windows_edition` | Windows | Windows Home, which has no Windows Sandbox. | Nothing for Linux jobs. Windows jobs need Windows 11 Pro, Enterprise or Education. |
+| `windows_sandbox` | Windows | The Windows Sandbox feature. | Turn it on under Settings, System, Optional features, More Windows features, then restart. |
+| `restart` | Linux, Windows, on Windows | The desktop app's Set up turned on a Windows feature, which takes effect after Windows restarts. | Restart Windows. |
+| `kvm_module` | Linux, on Linux | `/dev/kvm`, though the processor can run VMs: KVM isn't loaded. | `sudo modprobe kvm_intel` (or `kvm_amd`), or install Sysbox. |
+| `kvm_group` | Linux, on Linux | Permission to use `/dev/kvm`. | `sudo usermod -aG kvm $USER`, then log out and in again. |
+| `qemu` | Linux, on Linux | QEMU. | Install it (`qemu-system-x86` on Debian and Ubuntu, `qemu-kvm` on Fedora), or Sysbox. |
+| `macos_update` | Linux, on macOS | macOS older than 13. | Update macOS. |
+| `homebrew` | Linux, on macOS | vfkit, and Homebrew, which installs it. | Install Homebrew from [brew.sh](https://brew.sh), then `brew install vfkit`. |
+| `vfkit` | Linux, on macOS | vfkit. | `brew install vfkit`. |
+
+On Linux with Sysbox 0.7 or later, none of the Linux rows apply: the
+runner's image runs under Sysbox, without a VM. On Windows, what Windows
+says of itself is read once per boot and kept in the state folder
+(`windows-facts.json`), since none of it changes before a restart.
+
+`sandbox up` asks the same first. When Linux jobs lack something, it
+stops before downloading the image, with the first need's words; Windows
+jobs that can't run here are left out, unless you named them with
+`--only windows`, when it says why. [The desktop app](/guides/desktop/#getting-the-runner-running)
+shows each need on its kind of job's card and, on Windows, sets up
+`vm_platform`, `wsl`, `wsl_update` and `windows_sandbox` together with
+one **Set up** button and a single administrator prompt.
 
 ### Windows jobs in Windows Sandbox
 
@@ -400,11 +457,12 @@ the same object with `--json` when they are done, and exit 1 with
   "resources": { "cpus": 4, "memory_mib": 8192, "disk_gib": 64 },
   "capabilities": [
     { "id": "linux", "available": true, "state": "running", "isolation": "nested-container",
-      "runner_version": "0.3.0", "job": null, "cause": null, "fix": null, "turned_off": false },
+      "runner_version": "0.3.0", "job": null, "cause": null, "fix": null, "turned_off": false, "needs": [] },
     { "id": "windows", "available": false, "state": "absent", "isolation": "vm",
       "runner_version": null, "job": null, "turned_off": false,
-      "cause": "Windows Sandbox is not turned on, or this edition of Windows has none (Home does not).",
-      "fix": "On Windows 11 Pro, Enterprise or Education, turn on Windows Sandbox under Settings, System, Optional features, More Windows features, then restart." }
+      "cause": "Windows Sandbox is not turned on, and Windows jobs each run in one.",
+      "fix": "Turn on Windows Sandbox under Settings, System, Optional features, More Windows features, then restart.",
+      "needs": ["windows_sandbox"] }
   ],
   "state_dir": "C:\\Users\\you\\.g1t-runner\\sandbox",
   "warnings": []
@@ -419,6 +477,7 @@ the same object with `--json` when they are done, and exit 1 with
 | `job` | What the Linux runner is running now, or null. |
 | `error` | A sentence for a person when something is wrong, or null. |
 | `capabilities` | Each kind of job the computer can run sandboxed: `linux`, and `windows` or `macos`. `available` says whether it can be had here; when not, `cause` says why and `fix` what to do. Each has its own `state`, `job` and `runner_version`. A native one whose runner didn't start is in `error`, with why in `cause`. |
+| `needs` | On each capability: what the computer still lacks for it, by name, first what must come first; `cause` and `fix` say the first. The names are in [what the sandbox needs](#what-the-sandbox-needs). Empty when nothing is missing; left out by `g1t-runner` before 0.3.5. |
 | `turned_off` | On each capability: someone stopped it (`down --only`, `--no-native`). Its `state` is then `stopped`: stopped by a person, not failing, and nothing in `error`. |
 | `warnings` | Sentences about what on the computer weakens the sandbox ([what your computer can see](#what-your-computer-can-see)): a host-mode runner registered for the same account, or a state folder other users can read. Empty when nothing does; left out by earlier versions of `g1t-runner`. `status` without `--json` prints each as a line starting `Warning:`. |
 
@@ -461,7 +520,11 @@ back to them. Sandboxed, it is [the sandbox](#sandbox-on-your-computer),
 which the app sets up with `g1t-runner sandbox up` and shows with
 `sandbox status --json`: Linux jobs and, on Windows 11 Pro and up,
 Windows jobs, each a runner of its own. Its runners have the label
-`desktop` besides the usual ones.
+`desktop` besides the usual ones. What [the sandbox
+needs](#what-the-sandbox-needs) and the computer lacks, each kind of
+job's card says in plain words, and on Windows **Set up** turns on the
+features and installs or updates WSL behind one administrator prompt:
+see [getting the runner running](/guides/desktop/#getting-the-runner-running).
 
 ## Add a runner
 
@@ -817,11 +880,11 @@ running fails. Runners offline for 14 days are removed by themselves.
 | *the runner's own Docker Engine could not start* | The container is not running under Sysbox. Add `--runtime=sysbox-runc`, and check that Sysbox is installed (`docker info` lists `sysbox-runc` under runtimes). |
 | The job says *Waiting for a sandboxed runner: this repository is public …* | Every online runner with the job's labels is in host mode, which never runs a public repository's jobs. Run a runner's image under Sysbox, or register one without `--no-docker`. |
 | *… is public, and this self-hosted runner runs jobs directly on its machine* | An older runner in host mode refused a public repository's job. Update it, so g1t gives the job to a sandboxed runner instead, and run the runner's image under Sysbox. |
-| `sandbox up` says *WSL is not installed* | Open a terminal as administrator, run `wsl --install --no-distribution`, restart, and run `sandbox up` again. That is the one step that needs an administrator. |
+| `sandbox up` says *WSL is not installed*, or another of [what the sandbox needs](#what-the-sandbox-needs) | Do what it says, which is that need's row there; `wsl --install --no-distribution` in an admin terminal, then a restart, is the one step on Windows that needs an administrator. Then run `sandbox up` again. |
 | `sandbox up` says *WSL is set to mirrored networking* | Remove `networkingMode=mirrored` from `%USERPROFILE%\.wslconfig`, run `wsl --shutdown`, and try again. |
 | `sandbox status` says *this sandbox can reach the computer* | Something of your computer's is mounted in the sandbox's VM, or an engine's socket is there; it lists what. Run `g1t-runner sandbox down --delete` and `up` again, which makes it from the image afresh. |
 | `sandbox status` shows the Linux runner in `error` with *The runner stopped …* | The runner inside could not register or start; the message is its last line. Check the token was still valid (an hour), and that the computer reaches `https://api.g1t.sh`. |
-| The `windows` capability is unavailable | `status` says why: Windows Sandbox is off, this is Windows 11 Home, or Windows is older than 24H2. |
+| The `windows` capability is unavailable | `status` says why, and its `needs` by name: Windows Sandbox is off (`windows_sandbox`), this is Windows Home (`windows_edition`), Windows is older than 24H2 (`windows_update`), or virtualization is off in the firmware (`virtualization`). |
 | A step's `sudo` fails | Job containers have `no-new-privileges`. Steps run as the image's user, root in most CI images, so drop the `sudo`. |
 | *could not run docker* | Install Docker and start it, and give the runner's user access to it. |
 | The runner is offline in the list | It has not polled for 90 seconds. Check its log (`journalctl -u g1t-runner-<name>`, `~/.g1t-runner/runner.log`, or the terminal) and that the machine can reach `https://api.g1t.sh`. |
