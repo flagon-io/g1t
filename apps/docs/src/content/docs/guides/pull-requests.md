@@ -518,7 +518,10 @@ commits per push are read. The issue's timeline says who pushed it and
 **closed this in** that commit, its page shows **Closed by commit**, and
 the commit's page lists the issues it closed. `issue.closed` carries the
 commit as `commit`, and an issue has `resolved_commit` and
-`resolved_pushed_by`; reopening it clears both. Commits pushed to other
+`resolved_pushed_by`; reopening it clears both. A push that makes a new
+branch reads none of its commits, since they were pushed before, except a
+repository's first push, which makes its default branch: `Closes #1` in
+the first version of a new repository closes #1. Commits pushed to other
 branches close nothing until they reach the default branch, and
 `auto_close_issues` turns this off as well.
 

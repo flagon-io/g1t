@@ -82,8 +82,9 @@ pub(crate) async fn brought_in<R: GitRepo>(git: &R, a: PushedArgs) -> Result<Pus
         landed.push(head.clone());
     }
     // A new branch brought nothing to tell anyone about: its commits were
-    // pushed elsewhere first, or are the repository's first.
-    let commits = if a.messages && a.before.is_some() {
+    // pushed elsewhere first. The default branch's first push is the
+    // exception: nothing was pushed before it.
+    let commits = if a.messages && (a.before.is_some() || a.first) {
         new.iter()
             .take(MAX_PUSHED)
             .rev()
@@ -183,6 +184,7 @@ mod tests {
             after: after.into(),
             heads: heads.iter().map(|&h| h.to_owned()).collect(),
             messages: true,
+            first: false,
         }
     }
 
@@ -250,6 +252,14 @@ mod tests {
         let pushed = run(brought_in(&git, args(None, "f2", &["f2"]))).unwrap();
         assert_eq!(pushed.landed, vec!["f2"]);
         assert!(pushed.commits.is_empty());
+    }
+
+    #[test]
+    fn the_default_branchs_first_push_lists_its_messages() {
+        // An empty repository's first push: its `Closes #1` closes #1.
+        let git = Fake::with(vec![commit("m1", &[]), commit("m2", &["m1"])]);
+        let pushed = run(brought_in(&git, PushedArgs { first: true, ..args(None, "m2", &[]) })).unwrap();
+        assert_eq!(hashes(&pushed), vec!["m1", "m2"]);
     }
 
     #[test]

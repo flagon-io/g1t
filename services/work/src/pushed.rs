@@ -113,6 +113,8 @@ impl Work {
                 after: after.to_owned(),
                 heads: candidates.iter().map(|row| row.head_commit.clone()).collect(),
                 messages: closes_issues,
+                // No `before` on the default branch: the repository's first push.
+                first: default && event.data["before"].as_str().is_none(),
             },
         )
         .await?;

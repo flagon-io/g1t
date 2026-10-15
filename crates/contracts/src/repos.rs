@@ -625,6 +625,10 @@ pub struct PushedArgs {
     /// Whether to list the commits brought in, with their messages.
     #[serde(default)]
     pub messages: bool,
+    /// The push made the default branch: the repository's first, whose
+    /// commits were pushed nowhere before, so their messages count too.
+    #[serde(default)]
+    pub first: bool,
 }
 
 /// What `pushed` found.
