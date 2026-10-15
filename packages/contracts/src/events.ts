@@ -248,6 +248,8 @@ export type EventPayloads = {
     number: number;
     reason: "completed" | "not_planned";
     resolvedBy?: number;
+    /** The commit whose message closed it, when one pushed to the default branch did. */
+    commit?: string;
   };
   "issue.reopened": { issueId: string; repoId: string; number: number };
   /**

@@ -1,7 +1,8 @@
 /**
  * What /robots.txt says: everything may be crawled but a file's blame
- * (`?blame=1`, and the `/<owner>/<repo>/blame/…` data it fetches), and
- * where the site's maps are.
+ * (`?blame=1`, and the `/<owner>/<repo>/blame/…` data it fetches) and the
+ * cards over references (`/<owner>/<repo>/ref/…`), and where the site's
+ * maps are.
  *
  * Blame is the costliest file view to work out, one per file per commit a
  * crawler finds, and adds nothing an index needs that the file itself does
@@ -14,7 +15,7 @@
 const DOCS_SITEMAP = "https://docs.g1t.sh/sitemap-index.xml";
 
 /** Paths crawlers are kept from, wherever the query puts `blame`. */
-export const DISALLOWED = ["/*?blame=", "/*&blame=", "/*/*/blame/"];
+export const DISALLOWED = ["/*?blame=", "/*&blame=", "/*/*/blame/", "/*/*/ref/"];
 
 export function robotsTxt(site: string): string {
   const lines = ["User-agent: *", "Allow: /", ...DISALLOWED.map((path) => `Disallow: ${path}`), "", `Sitemap: ${site}/sitemap.xml`];

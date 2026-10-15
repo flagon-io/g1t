@@ -52,6 +52,7 @@ import {
 } from "../lib/home";
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
+import { CommitText } from "./commit-message";
 import { ButtonLink } from "./ui";
 import { AgentMarker, Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
@@ -548,9 +549,16 @@ function LandedItem({ change, now, tz, timeOnly }: { change: LandedChange; now: 
       <span className="mt-0.5 shrink-0">{LANDED_ICON[change.kind]}</span>
       <div className="min-w-0 grow">
         <div className="flex min-w-0 items-center gap-1.5">
-          <Link to={change.to} className="line-clamp-2 text-sm text-fg hover:underline sm:truncate">
-            {change.title}
-          </Link>
+          {change.refsIn ? (
+            // A commit's subject: its `#12`s link to their issues, the rest to the commit.
+            <span className="line-clamp-2 text-sm text-fg sm:truncate">
+              <CommitText text={change.title} base={`/${change.refsIn}`} to={change.to} linkClassName="hover:underline" />
+            </span>
+          ) : (
+            <Link to={change.to} className="line-clamp-2 text-sm text-fg hover:underline sm:truncate">
+              {change.title}
+            </Link>
+          )}
           <Agent change={change} />
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

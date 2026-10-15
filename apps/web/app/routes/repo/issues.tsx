@@ -165,8 +165,15 @@ export default function Issues({ loaderData, params }: Route.ComponentProps) {
                         #{issue.number} opened <TimeAgo at={issue.createdAt} /> by{" "}
                         {issue.author.username}
                         {issue.requestedBy && <> for {issue.requestedBy.username}</>}
-                        {issue.resolvedBy != null && (
+                        {issue.resolvedBy != null ? (
                           <span className="text-merged"> · resolved by #{issue.resolvedBy}</span>
+                        ) : (
+                          issue.resolvedCommit && (
+                            <span className="text-merged">
+                              {" "}
+                              · closed by <span className="font-mono">{issue.resolvedCommit.slice(0, 7)}</span>
+                            </span>
+                          )
                         )}
                         {issue.milestone && (
                           <span className="inline-flex items-center gap-1">

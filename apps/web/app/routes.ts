@@ -224,6 +224,8 @@ export default [
     // What the workspace will have across its projects.
     route("-/soon/:feature", "routes/workspace/soon.tsx"),
   ]),
+  // An issue or pull request's card, over a `#12` in a commit message or on a timeline.
+  route(":owner/:repo/ref/:number", "routes/repo/ref-card.ts"),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
   // Files of a large change with their lines, fetched as the diff view reaches them.

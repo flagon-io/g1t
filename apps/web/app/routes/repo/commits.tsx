@@ -8,6 +8,7 @@ import { parseCommitMessage } from "../../lib/commit-message";
 import type { Route } from "./+types/commits";
 import { page } from "../../lib/meta";
 import { CommitChecksBadge } from "../../components/commit-checks";
+import { CommitText } from "../../components/commit-message";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { NewItemsBar } from "../../components/repo-live";
 import { EmptyState, TimeAgo } from "../../components/ui";
@@ -117,9 +118,9 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
                     </span>
                     <div className="min-w-0 grow">
                       <div className="flex min-w-0 items-start gap-1.5 sm:items-center">
-                        <Link to={to} prefetch="intent" className="line-clamp-2 font-medium wrap-break-word after:absolute after:inset-0 group-hover:text-accent sm:line-clamp-1">
-                          {subject}
-                        </Link>
+                        <span className="line-clamp-2 font-medium wrap-break-word sm:line-clamp-1">
+                          <CommitText text={subject} base={base} to={to} linkClassName="after:absolute after:inset-0 group-hover:text-accent" />
+                        </span>
                         <CommitChecksBadge checks={checks} sha={commit.hash} />
                         <Suspense fallback={null}>
                           <Await resolve={comments}>
@@ -127,7 +128,11 @@ export default function Commits({ loaderData, params }: Route.ComponentProps) {
                           </Await>
                         </Suspense>
                       </div>
-                      {rest && <p className="mt-1 line-clamp-1 text-sm text-muted">{rest}</p>}
+                      {rest && (
+                        <p className="mt-1 line-clamp-1 text-sm text-muted">
+                          <CommitText text={rest} base={base} refClassName="text-fg-soft hover:text-accent hover:underline" />
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-faint">
                         <CommitNames commit={commit} className="text-muted hover:text-fg" />{" "}
                         committed <TimeAgo at={commit.authoredAt} />

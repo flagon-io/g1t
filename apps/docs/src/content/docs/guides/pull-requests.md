@@ -1,6 +1,6 @@
 ---
 title: Pull requests and checks
-description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, how a large change's files load, drafts, closing and reopening, editing and deleting comments, merge methods, commit messages, auto-merge, closing issues, deleting branches, comments on commits, conflicts, and keeping a branch up to date.
+description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, how a large change's files load, drafts, closing and reopening, editing and deleting comments, merge methods, commit messages, auto-merge, merging by pushing, closing issues, deleting branches, comments on commits, conflicts, and keeping a branch up to date.
 ---
 
 At the foot of an open pull request's conversation, the **merge box** says
@@ -453,6 +453,24 @@ merge queue, a pull request auto-merge hands to the queue lands as the
 queue decides; that turns auto-merge off too, but nothing is left for you
 to do, so it tells no one.
 
+### Merging by pushing
+
+A pull request also merges when its head commit reaches the branch it
+merges into some other way: you merge the branch in a clone and push, or
+push its commits straight to the base. When a push to a branch brings in
+the head commit of an open pull request into that branch (a draft too),
+the pull request is marked merged, by whoever pushed, with `merge_commit`
+set to the commit the branch was pushed to. It is the same as any other
+merge: the issues it closes close, the other pull requests for its issue
+close as superseded, it leaves the merge queue, and `pull.merged` is
+published. Its timeline says **merged this by pushing** that commit **to**
+the branch.
+
+Only the head commit counts: a push that brings in some of a pull
+request's commits but not the last leaves it open. A head commit the branch
+already held before the push (a branch opened at a commit of the base, with
+nothing on it yet) does not merge it either. Its branch is not deleted.
+
 ### Closing issues
 
 When a pull request merges into the default branch, it closes the issue it
@@ -469,6 +487,21 @@ when it names this one. The pull request's `closes` lists the issues it
 will close, in the order named. Merging into any other branch closes
 nothing. A repository can turn this off with `auto_close_issues`; the
 issues then stay open after the merge.
+
+Commit messages close issues the same way. When a push to the default
+branch brings in a commit whose message names an issue after a closing
+keyword, that issue closes as completed. This applies to commits pushed
+directly, merged in a clone, or landed by a pull request, and up to 250
+commits per push are read. The issue's timeline says who pushed it and
+**closed this in** that commit, its page shows **Closed by commit**, and
+the commit's page lists the issues it closed. `issue.closed` carries the
+commit as `commit`, and an issue has `resolved_commit` and
+`resolved_pushed_by`; reopening it clears both. Commits pushed to other
+branches close nothing until they reach the default branch, and
+`auto_close_issues` turns this off as well.
+
+Wherever a commit's message shows, `#12` links to that issue or pull
+request, with its title and state when you hover over it.
 
 ### Deleting the branch
 

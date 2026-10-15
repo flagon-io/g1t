@@ -2,7 +2,7 @@ import { Check, Copy, GitCommitHorizontal, GitPullRequest, MessageSquareOff, Mes
 import { Suspense, useState } from "react";
 import { Await, Link, data, redirect } from "react-router";
 
-import type { Comparison, Pull } from "@g1t/contracts";
+import type { ClosedIssue, Comparison, Pull } from "@g1t/contracts";
 
 import { asComments } from "../../lib/commit-comments";
 
@@ -11,10 +11,12 @@ import { firstScreens } from "../../lib/diff";
 import type { Route } from "./+types/commit";
 import { page } from "../../lib/meta";
 import { CommitChecksBadge } from "../../components/commit-checks";
+import { CommitText, RefLink } from "../../components/commit-message";
 import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { ErrorText, TimeAgo } from "../../components/ui";
 import { CommentForm, CommentList } from "../../components/work";
+import { IssueIcon } from "../../components/work-icons";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -54,11 +56,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     throw new Response("Commit not found.", { status: 404 });
   }
   const started = Date.now();
-  // Its comments and whether more may be added: never cached, read beside the commit.
+  // Its comments, whether more may be added and the issues it closed: never
+  // cached, read beside the commit.
   const said = Promise.all([
     work.commitComments(viewer, path, hash).catch(() => null),
     work.getSettings(path, viewer).catch(() => null),
     accessTo(context, params).catch(() => null),
+    work.closedByCommit(path, hash, viewer).catch(() => null),
   ]);
   const found = unwrap(await repos.get(path, viewer));
   // The viewer may read the repository, and a commit never changes: after
@@ -83,7 +87,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Its people, as their accounts where there are any; not kept with the
   // commit, since an address can be confirmed or removed later.
   const commit = (await showOneCommit(loaded.commit))!;
-  const [comments, settings, access] = await said;
+  const [comments, settings, access, closed] = await said;
   return data(
     {
       ...loaded,
@@ -97,6 +101,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       comments: comments?.ok ? comments.value : [],
       // Off, the comments made stay readable and no more can be added.
       commentsOn: settings?.ok ? settings.value.allowCommitComments : true,
+      // The issues its message closed (`Closes #12`) when it was pushed.
+      closed: closed?.ok ? closed.value : [],
       viewer: viewer ? { username: viewer.username } : null,
       // Maintain and up edit and delete anyone's comments; everyone, their own.
       canModerate: access?.can.manage_settings ?? false,
@@ -179,8 +185,21 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
   );
 }
 
+/** An issue the commit's message closed when it was pushed. */
+function ClosedIssueRow({ base, issue }: { base: string; issue: ClosedIssue }) {
+  return (
+    <div className="flex items-center gap-2 border-t border-line px-5 py-3 text-sm">
+      <IssueIcon issue={{ state: "closed", reason: "completed" }} size={15} />
+      <span className="text-muted">Closed</span>
+      <RefLink repo={base.slice(1)} number={issue.number} className="min-w-0 truncate font-medium hover:underline">
+        {issue.title} <span className="font-normal text-faint">#{issue.number}</span>
+      </RefLink>
+    </div>
+  );
+}
+
 export default function CommitPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { commit, pull, comparison, checks, comments, commentsOn, viewer, canModerate } = loaderData;
+  const { commit, pull, comparison, checks, comments, commentsOn, closed, viewer, canModerate } = loaderData;
   const said = asComments(comments);
   const general = said.filter((comment) => !comment.path);
   const base = `/${params.owner}/${params.repo}`;
@@ -196,8 +215,14 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
                 Commit
               </Link>
             </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance">{subject}</h2>
-            {body && <p className="mt-3 max-w-3xl text-sm whitespace-pre-wrap text-muted">{body}</p>}
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance">
+              <CommitText text={subject} base={base} />
+            </h2>
+            {body && (
+              <p className="mt-3 max-w-3xl text-sm whitespace-pre-wrap text-muted">
+                <CommitText text={body} base={base} />
+              </p>
+            )}
             {trailers.length > 0 && (
               <dl className="mt-3 space-y-0.5 font-mono text-xs text-faint">
                 {trailers.map((trailer) => (
@@ -258,6 +283,9 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
           >
             <Await resolve={pull}>{(pull) => (pull ? <MergedIn base={base} pull={pull} /> : null)}</Await>
           </Suspense>
+          {closed.map((issue) => (
+            <ClosedIssueRow key={issue.number} base={base} issue={issue} />
+          ))}
         </section>
       </Card>
       <div className="mt-6">

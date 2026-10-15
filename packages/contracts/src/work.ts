@@ -38,6 +38,10 @@ export type Issue = {
   reason: IssueReason | null;
   /** The number of the pull request whose merge closed this issue. */
   resolvedBy: number | null;
+  /** The commit pushed to the default branch whose message closed this issue (`Closes #12`), when a commit rather than a pull request closed it. */
+  resolvedCommit: string | null;
+  /** Who pushed that commit, by username. */
+  resolvedPushedBy: string | null;
   /** Who opened it: a person, an integration, or g1t (`kind` `agent`) for one its agent filed while at work. */
   author: User;
   /**
@@ -83,6 +87,9 @@ export type Label = {
 };
 
 /** A milestone, as an issue or pull request names it. */
+/** An issue a commit closed, as the commit page lists it. */
+export type ClosedIssue = { number: number; title: string };
+
 export type MilestoneRef = { number: number; title: string };
 
 /**
@@ -836,6 +843,8 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
     filter?: { state?: State; label?: string; milestone?: number },
   ): Promise<Result<Issue[]>>;
   getIssue(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<IssueDetail>>;
+  /** The issues of the repository, of those the viewer may read, that this commit's message closed when it was pushed to the default branch. */
+  closedByCommit(repo: RepoPath, commit: string, viewer: Viewer): Promise<Result<ClosedIssue[]>>;
   /** The author or a member of the workspace may. */
   updateIssue(actor: User, repo: RepoPath, number: number, input: UpdateIssueInput): Promise<Result<Issue>>;
   closeIssue(actor: User, repo: RepoPath, number: number, reason?: IssueReason): Promise<Result<Issue>>;

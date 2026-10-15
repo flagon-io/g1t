@@ -1289,6 +1289,8 @@
         "state": "closed",
         "reason": "completed",
         "resolved_by": 14,
+        "resolved_commit": null,
+        "resolved_pushed_by": null,
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
@@ -1418,7 +1420,7 @@
         }
       ]
     },
-    "notes": "A closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set."
+    "notes": "A closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it, or `resolved_commit` the commit pushed to the default branch whose message closed it (`Fixes #12`), with `resolved_pushed_by` saying who pushed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set."
   },
   "update_issue": {
     "request": {

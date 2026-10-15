@@ -5,8 +5,11 @@ import { Form, Link } from "react-router";
 import type { AgentRef, Comment, Issue, Pull, State } from "@g1t/contracts";
 
 import { mayChangeComment } from "../lib/comments";
+import { messageParts } from "../lib/commit-message";
 import { chipStyle } from "../lib/labels";
 import { repoAt } from "../lib/markdown-plugins";
+import { CommitChip } from "./chat/ref-chip";
+import { RefLink } from "./commit-message";
 import { Markdown } from "./markdown";
 import { Reactions } from "./reactions";
 import { IssueIcon, PullIcon } from "./work-icons";
@@ -371,40 +374,46 @@ function AdvisoryChip() {
 type Review = { changesUrl: string; canJudge: boolean };
 
 /**
- * Text with each `#12` linked to the issue or pull request of that number,
- * and each file named in backticks shown as code, linked to its diff when
+ * Text with each `#12` linked to the issue or pull request of that number
+ * (its card on hover), each full commit hash linked to its commit, and
+ * each file named in backticks shown as code, linked to its diff when
  * `filesUrl` says where the changes are.
  */
 function WithReferences({ text, base, filesUrl }: { text: string; base?: string; filesUrl?: string }) {
   if (!base) return <>{text}</>;
+  const repo = base.slice(1);
   return (
     <>
-      {text.split(/(#\d+|`[^`\n]+`)/).map((part, index) =>
-        /^`[^`]+`$/.test(part) ? (
+      {text.split(/(`[^`\n]+`)/).map((chunk, index) =>
+        /^`[^`]+`$/.test(chunk) ? (
           filesUrl ? (
             <Link
               key={index}
-              to={`${filesUrl}#file-${part.slice(1, -1)}`}
+              to={`${filesUrl}#file-${chunk.slice(1, -1)}`}
               className="font-mono text-xs text-fg hover:underline"
             >
-              {part.slice(1, -1)}
+              {chunk.slice(1, -1)}
             </Link>
           ) : (
             <code key={index} className="font-mono text-xs text-fg">
-              {part.slice(1, -1)}
+              {chunk.slice(1, -1)}
             </code>
           )
-        ) : /^#\d+$/.test(part) ? (
-          // Issues and pull requests share numbers; the issue page forwards.
-          <Link
-            key={index}
-            to={`${base}/issues/${part.slice(1)}`}
-            className="font-medium text-fg hover:underline"
-          >
-            {part}
-          </Link>
         ) : (
-          part
+          <Fragment key={index}>
+            {messageParts(chunk).map((part, at) =>
+              part.kind === "ref" ? (
+                <RefLink key={at} repo={part.repo ?? repo} number={part.number} className="font-medium text-fg hover:underline">
+                  {part.text}
+                </RefLink>
+              ) : part.kind === "commit" ? (
+                // The commit that closed or merged it, by its short hash.
+                <CommitChip key={at} href={`${base}/commit/${part.sha}`} sha={part.sha} />
+              ) : (
+                part.text
+              ),
+            )}
+          </Fragment>
         ),
       )}
     </>
