@@ -14,7 +14,7 @@
  * per step, chosen with the pills.
  *
  * It is an honest miniature of the app: the same rail (the workspace on
- * the top bar's line, then Home, Chat, Code and Artifacts, with names),
+ * the top bar's line, then Home, Explore, Chat, Code and Artifacts, with names),
  * each mode's sidebar with its real sections and words, the same top bar
  * (where you are, Explore, Docs, the inbox and +), which Chat gives up to
  * the conversation's own header as the app does, and the app's own cards.
@@ -272,6 +272,7 @@ function Message({ who, time, children, enter }: { who: string; time: string; ch
 /** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
 const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
   { key: "home", icon: <House size={15} />, label: "Home", scenes: ["home"] },
+  { key: "explore", icon: <Compass size={15} />, label: "Explore" },
   { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scenes: ["chat"], badge: 3 },
   { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scenes: ["code", "session"] },
   { key: "artifacts", icon: <Shapes size={15} />, label: "Artifacts" },
