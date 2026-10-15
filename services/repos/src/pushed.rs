@@ -32,6 +32,37 @@ impl<S: GitStore> Repos<S> {
     }
 }
 
+/// The commit a pushed branch or tag is announced at, once the store has
+/// the push: `None` when the store kept it elsewhere (it can refuse one
+/// ref and accept another).
+///
+/// A branch must be at the commit the push named. A tag reads back as the
+/// commit it leads to, which for an annotated tag is not the tag object
+/// the push named (`cli-v0.3.6`: tag accae3e8, commit 42a29574), so a tag
+/// whose commit differs is taken as pushed unless what the push named is a
+/// commit itself, and is announced at that commit, as `git.push` says its
+/// `after` is. A tag the store cannot read back is taken as pushed.
+pub(crate) async fn pushed_to<R: GitRepo>(git: &R, pushed: &crate::git_http::Pushed) -> Result<Option<String>> {
+    if let Some(branch) = pushed.branch() {
+        let head = git.log(branch, 1).await?;
+        return Ok(head.first().filter(|commit| commit.hash == pushed.after).map(|_| pushed.after.clone()));
+    }
+    let Ok(head) = git.log(&pushed.git_ref, 1).await else {
+        return Ok(Some(pushed.after.clone()));
+    };
+    let Some(commit) = head.into_iter().next() else {
+        return Ok(Some(pushed.after.clone()));
+    };
+    if commit.hash == pushed.after {
+        return Ok(Some(commit.hash));
+    }
+    // A lightweight tag the store left at another commit.
+    if let Ok(Some(_)) = git.parents(&pushed.after).await {
+        return Ok(None);
+    }
+    Ok(Some(commit.hash))
+}
+
 /// [`Repos::pushed`] on one repository's commits.
 pub(crate) async fn brought_in<R: GitRepo>(git: &R, a: PushedArgs) -> Result<Pushed> {
     let before = match &a.before {
@@ -131,6 +162,9 @@ mod tests {
     #[derive(Default)]
     struct Fake {
         commits: HashMap<String, Commit>,
+        /// Branches and tags by name, at the commit each leads to, as the
+        /// store reads them back.
+        refs: HashMap<String, String>,
         logs: RefCell<u32>,
     }
 
@@ -150,6 +184,7 @@ mod tests {
         async fn log(&self, git_ref: &str, limit: u32) -> Result<Vec<Commit>> {
             *self.logs.borrow_mut() += 1;
             let mut out = Vec::new();
+            let git_ref = self.refs.get(git_ref).map_or(git_ref, String::as_str);
             let mut at = self.commits.get(git_ref);
             while let Some(commit) = at {
                 if out.len() as u32 >= limit {
@@ -276,5 +311,43 @@ mod tests {
         let pushed = run(brought_in(&git, args(Some("m2"), "x", &[]))).unwrap();
         assert_eq!(pushed.commits.len(), 21);
         assert_eq!(*git.logs.borrow(), 3);
+    }
+
+    fn push(git_ref: &str, before: Option<&str>, after: &str) -> crate::git_http::Pushed {
+        crate::git_http::Pushed { git_ref: git_ref.into(), before: before.map(str::to_owned), after: after.into() }
+    }
+
+    fn with_refs(refs: &[(&str, &str)]) -> Fake {
+        Fake { refs: refs.iter().map(|&(name, at)| (name.to_owned(), at.to_owned())).collect(), ..Fake::with(history()) }
+    }
+
+    #[test]
+    fn an_annotated_tag_is_announced_at_its_commit() {
+        // `git push g1t cli-v0.3.6`: the push names the tag object, and the
+        // store reads the tag back as the commit it leads to, main's head.
+        let git = with_refs(&[("main", "m2"), ("refs/tags/cli-v0.3.6", "m2")]);
+        let tag = push("refs/tags/cli-v0.3.6", None, "accae3e8");
+        assert_eq!(run(pushed_to(&git, &tag)).unwrap().as_deref(), Some("m2"));
+        // Moved by a new tag object.
+        let moved = push("refs/tags/cli-v0.3.6", Some("accae3e8"), "b0b0b0b0");
+        assert_eq!(run(pushed_to(&git, &moved)).unwrap().as_deref(), Some("m2"));
+    }
+
+    #[test]
+    fn a_lightweight_tag_is_announced_where_the_store_has_it() {
+        let git = with_refs(&[("refs/tags/v1", "f2")]);
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", None, "f2"))).unwrap().as_deref(), Some("f2"));
+        // The push named a commit the store did not move the tag to.
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v1", Some("f2"), "m1"))).unwrap(), None);
+        // A tag the store cannot read back is taken as pushed.
+        assert_eq!(run(pushed_to(&git, &push("refs/tags/v2", None, "m1"))).unwrap().as_deref(), Some("m1"));
+    }
+
+    #[test]
+    fn a_branch_is_announced_only_at_the_commit_pushed() {
+        let git = with_refs(&[("main", "m2")]);
+        assert_eq!(run(pushed_to(&git, &push("refs/heads/main", Some("m1"), "m2"))).unwrap().as_deref(), Some("m2"));
+        assert_eq!(run(pushed_to(&git, &push("refs/heads/main", Some("m2"), "f2"))).unwrap(), None);
+        assert_eq!(run(pushed_to(&git, &push("refs/heads/gone", None, "f2"))).unwrap(), None);
     }
 }
