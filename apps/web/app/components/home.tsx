@@ -53,6 +53,7 @@ import {
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
 import { CommitText } from "./commit-message";
+import { ExplainButton } from "./home-ask";
 import { ButtonLink } from "./ui";
 import { AgentMarker, Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
@@ -545,7 +546,7 @@ function Agent({ change }: { change: LandedChange }) {
 
 function LandedItem({ change, now, tz, timeOnly }: { change: LandedChange; now: number; tz: string | null; timeOnly?: boolean }) {
   return (
-    <li className={cn(rowClass, "items-start")}>
+    <li className={cn(rowClass, "group items-start")}>
       <span className="mt-0.5 shrink-0">{LANDED_ICON[change.kind]}</span>
       <div className="min-w-0 grow">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -566,6 +567,7 @@ function LandedItem({ change, now, tz, timeOnly }: { change: LandedChange; now: 
           <Shipped change={change} />
         </div>
       </div>
+      <ExplainButton change={change} />
       <When at={change.at} now={now} tz={tz} timeOnly={timeOnly} />
     </li>
   );

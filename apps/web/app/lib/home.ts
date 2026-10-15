@@ -1352,3 +1352,40 @@ export function whenShort(at: number, now: number, timeZone: string | null): str
   if (dayIn(at, timeZone) === dayIn(now, timeZone)) return formatIn(at, timeZone, { hour: "numeric", minute: "2-digit" });
   return now - at < 6 * DAY ? formatIn(at, timeZone, { weekday: "short", hour: "numeric" }) : shortDate(at, timeZone);
 }
+
+// --- Asking g1t from Home ------------------------------------------------------------
+
+type AskedSpan = Pick<Span, "key" | "note" | "words" | "from">;
+
+/** The span as part of a question, with its start in the viewer's zone (g1t is told the zone): "since I was last here (Oct 14, 2:10 PM)". */
+function spanAsked(span: AskedSpan, timeZone: string | null): string {
+  const since = formatIn(span.from, timeZone, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  if (span.key === "last" && span.note == null) return `since I was last here (${since})`;
+  return `${span.words.charAt(0).toLowerCase()}${span.words.slice(1)} (since ${since})`;
+}
+
+/**
+ * Home's Summarize: what changed in the span, in plain English, asked of
+ * g1t with the span's start, so the answer covers what the page shows.
+ */
+export function summarizeQuestion(span: AskedSpan, timeZone: string | null): string {
+  return `Summarize what changed ${spanAsked(span, timeZone)} in plain English: what shipped, what's still deploying or failed, what's in flight, and what needs me.`;
+}
+
+/** A Landed row's Explain: what one change did and why, in plain English. */
+export function explainQuestion(change: Pick<LandedChange, "kind" | "title" | "to">): string {
+  if (change.kind === "deploy") return `What went out in this deployment (${change.to}), in plain English?`;
+  if (change.kind === "release" || change.kind === "package") return `What's new in ${change.title} (${change.to}), in plain English?`;
+  return `Explain "${change.title}" (${change.to}) in plain English: what changed, why, and is it live?`;
+}
+
+/** What Home's Ask box offers to ask first: a label, and the question it asks. */
+export function homeStarters(span: AskedSpan, timeZone: string | null): { label: string; question: string }[] {
+  const changed = span.key === "last" && span.note == null ? "since I was last here" : `${span.words.charAt(0).toLowerCase()}${span.words.slice(1)}`;
+  return [
+    { label: `What changed ${changed}?`, question: summarizeQuestion(span, timeZone) },
+    { label: "What needs me first?", question: "What needs me first? Most urgent first, one line each on what to do." },
+    { label: "What shipped today?", question: "What shipped today? What's live, what's still deploying, and what failed." },
+    { label: "Who's working on what?", question: "Who's working on what right now, and is anything stuck?" },
+  ];
+}

@@ -26,6 +26,20 @@ export function askPage(pathname: string): AskPage {
   return page;
 }
 
+/** The window event a page sends to have the top bar's Ask open and ask a question (components/ask-button.tsx). */
+export const ASK_EVENT = "g1t:ask";
+
+/**
+ * Opens the top bar's Ask panel and asks g1t this, as if it were typed
+ * there: Home's box, its Summarize and Explain buttons. Where Ask is not
+ * set up, the panel opens with the question in its box.
+ */
+export function askG1t(text: string) {
+  const question = text.trim();
+  if (!question) return;
+  window.dispatchEvent(new CustomEvent<{ text: string }>(ASK_EVENT, { detail: { text: question } }));
+}
+
 /** What the composer says about where the question is asked from. */
 export function askWhere(page: AskPage): string | null {
   if (page.issue) return `On issue #${page.issue}`;

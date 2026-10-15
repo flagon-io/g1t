@@ -223,12 +223,15 @@ function useG1tConversation(slug: string, open: boolean) {
 
 type G1tConversation = ReturnType<typeof useG1tConversation>;
 
+/** A question another page asked (lib/ask.ts askG1t), waiting for the panel to send it. */
+type Queued = { text: string; at: number };
+
 /**
  * The Ask panel's sheet (components/ask-button.tsx loads it the first time
  * the top bar's Ask opens, so pages don't carry it until then): the
  * conversation, kept while the panel is closed.
  */
-export function AskSheet({ slug, open }: { slug: string; open: boolean }) {
+export function AskSheet({ slug, open, queued = null, onQueuedTaken }: { slug: string; open: boolean; queued?: Queued | null; onQueuedTaken?: () => void }) {
   const conversation = useG1tConversation(slug, open);
   const busy = anyAnswering(conversation.messages);
   return (
@@ -242,7 +245,7 @@ export function AskSheet({ slug, open }: { slug: string; open: boolean }) {
         void conversation.act("g1t_stop");
       }}
     >
-      <AskPanel slug={slug} open={open} conversation={conversation} />
+      <AskPanel slug={slug} open={open} conversation={conversation} queued={queued} onQueuedTaken={onQueuedTaken} />
     </SheetContent>
   );
 }
@@ -253,7 +256,19 @@ function LiveSocket({ slug, channelId, onEvent, onReconnect }: { slug: string; c
   return null;
 }
 
-function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; conversation: G1tConversation }) {
+function AskPanel({
+  slug,
+  open,
+  conversation,
+  queued,
+  onQueuedTaken,
+}: {
+  slug: string;
+  open: boolean;
+  conversation: G1tConversation;
+  queued: Queued | null;
+  onQueuedTaken?: () => void;
+}) {
   const { pathname } = useLocation();
   const { channelId, messages, loaded, problem, ask, act, clear, load, onEvent } = conversation;
   const [clearing, setClearing] = useState(false);
@@ -335,6 +350,17 @@ function AskPanel({ slug, open, conversation }: { slug: string; open: boolean; c
       send(draft);
     }
   };
+  // A question asked from a page (Home's box, Summarize, Explain): sent once
+  // Ask is ready and the conversation has loaded; left in the box when Ask is
+  // not set up or an answer is still coming, so nothing is lost.
+  useEffect(() => {
+    if (!queued || !open || !loaded || (setup == null && !setupError)) return;
+    if (ready && !busy) void ask(queued.text, pathname);
+    else setDraft(queued.text);
+    onQueuedTaken?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per queued question
+  }, [queued?.at, open, loaded, setup, setupError]);
+
   const fresh = () => {
     void act("g1t_reset");
     input.current?.focus();
