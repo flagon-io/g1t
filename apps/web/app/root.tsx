@@ -97,6 +97,7 @@ import {
 } from "./lib/developer-mode";
 import { RouteError } from "./components/route-error";
 import { ConnectionToast } from "./components/connection-toast";
+import { NavigationRecovery } from "./components/navigation-recovery";
 import { isNetworkFailure } from "./lib/resilient-fetch";
 import { useReconnect } from "./lib/reconnect";
 
@@ -618,6 +619,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
         {/* A page that cannot reach g1t says so, and keeps what it shows (lib/resilient-fetch.ts). */}
         <ConnectionToast />
+        <NavigationRecovery />
         {/* Live notifications for the signed-in: the feed socket, toasts, the tab's count (components/notifications). */}
         {user && !awaitsConfirmation(user) && (
           <LiveNotifications

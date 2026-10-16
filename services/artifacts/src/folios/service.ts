@@ -575,7 +575,8 @@ export class Folios {
     ]);
     const parents = above.map((id) => aboveRows.get(id)).filter((r): r is FolioRow => !!r);
     const others = [...parents, ...childRows.results, ...linkRows.results.filter((r) => r.id !== row.id)];
-    const [{ roles }, state] = await Promise.all([this.roles(ctx, others), this.stateFor(ctx.workspace, row)]);
+    const state = this.stateFor(ctx.workspace, row);
+    const { roles } = await this.roles(ctx, others);
     const readable = (list: FolioRow[]) => list.filter((r) => roles.get(r.id)).map((r) => this.ref(ctx.workspace.slug, r));
     return ok({
       folio: folio!,
@@ -591,23 +592,25 @@ export class Folios {
   /**
    * The document the page carries, so the editor opens on it before the
    * room answers. A folio saved before its state was kept (or whose last
-   * save was too large for a row) has none in D1: its room is asked once,
-   * the state goes out with this page, and it is written back so the next
-   * open reads it from the row like any other. A room that cannot answer
-   * costs the page nothing: the editor waits for the room as before.
+   * save was too large for a row) has none in D1: warm it in the background
+   * so the next open can read it from the row. Never hold the HTML response
+   * on a cold live room; this open shows saved text and syncs via the socket.
    */
-  private async stateFor(workspace: Workspace, row: FolioRow): Promise<string | null> {
+  private stateFor(workspace: Workspace, row: FolioRow): string | null {
     const saved = pageState(row.state);
     if (saved || row.trashed_at) return saved;
+    this.defer(this.warmPageState(workspace, row));
+    return null;
+  }
+
+  private async warmPageState(workspace: Workspace, row: FolioRow): Promise<void> {
     try {
       const room = await this.ready(workspace, row);
       const state = await room.state();
-      if (!state.byteLength || state.byteLength > MAX_PAGE_STATE) return null;
-      this.defer(this.db.prepare("UPDATE folios SET state = ? WHERE id = ? AND state IS NULL").bind(state, row.id).run());
-      return pageState(state);
+      if (!state.byteLength || state.byteLength > MAX_PAGE_STATE) return;
+      await this.db.prepare("UPDATE folios SET state = ? WHERE id = ? AND state IS NULL").bind(state, row.id).run();
     } catch (error) {
       console.warn("artifacts: a page opens without its state", row.id, error instanceof Error ? error.message : String(error));
-      return null;
     }
   }
 
