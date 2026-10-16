@@ -2,7 +2,7 @@ import type { Route } from "./+types/secrets";
 import { page } from "../../lib/meta";
 import { SecretsPanel } from "../../components/secrets";
 import { actOnSecrets, loadSecrets } from "../../lib/secrets.server";
-import { assertSameOrigin, requireUser } from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { requireCapability, requireInsider } from "../../lib/access.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -14,7 +14,10 @@ const ownerOf = (params: { owner: string; repo: string }) => ({ repo: { namespac
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Admins; to anyone without a role here the page does not exist.
   await requireInsider(context, params, "manage_integrations");
-  return loadSecrets(ownerOf(params), requireUser(context, request));
+  return {
+    ...(await loadSecrets(ownerOf(params), requireUser(context, request))),
+    workspacePath: roleIn(getViewer(context), params.owner) ? `/${params.owner}/-/secrets` : undefined,
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -27,8 +30,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function RepoSecrets({ loaderData, actionData }: Route.ComponentProps) {
   return (
-    <div>
-      <SecretsPanel data={loaderData} action={actionData} scope="project" manage />
+    <div className="min-w-0">
+      <SecretsPanel data={loaderData} action={actionData} scope="project" manage workspacePath={loaderData.workspacePath} />
     </div>
   );
 }

@@ -316,12 +316,11 @@ impl Actions {
         let kind = check!(Self::kind(&a.kind));
         let place = check!(self.place(&a.actor, &a.owner, false).await?);
         let mut out: Vec<Setting> = Vec::new();
-        // A project's list shows the workspace's rows that reach it, but for
-        // keys it sets itself.
+        // Keep inherited rows, including overrides: the UI needs both scopes
+        // to explain precedence per environment and reader.
         if place.scope == "project" {
-            let own: Vec<String> = self.rows(&place.owner).await?.into_iter().map(|row| row.name).collect();
             for row in self.rows(&place.namespace.to_lowercase()).await? {
-                if row.reaches(&place.slug) && !own.contains(&row.name) {
+                if row.reaches(&place.slug) {
                     out.push(row.describe());
                 }
             }
