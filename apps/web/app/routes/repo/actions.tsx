@@ -1,10 +1,11 @@
-import { AlertTriangle, BadgeCheck, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
+import { Archive, ChevronRight, AlertTriangle, BadgeCheck, FileCode2, GitBranch, Play, PlayCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, useSearchParams } from "react-router";
 
 import { type DispatchInput, type Workflow, type WorkflowRun, isManagedWorkflow } from "@g1t/contracts";
 
 import type { Route } from "./+types/actions";
+import { groupWorkflows, isArchivedWorkflow } from "../../lib/workflow-history";
 import { page } from "../../lib/meta";
 import { Duration, Notes, StatusIcon, shortRef } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
@@ -306,12 +307,15 @@ function StatusBadge({ workflow, repo }: { workflow: Workflow; repo: string }) {
 }
 
 function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow; base: string; member: boolean; manage: boolean }) {
+  const archived = isArchivedWorkflow(workflow);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold tracking-tight">{workflow.name}</h3>
-          {isManagedWorkflow(workflow.path) ? (
+          {archived ? (
+            <span className="inline-flex items-center gap-1 font-mono text-xs text-faint"><FileCode2 size={12} />{workflow.path}</span>
+          ) : isManagedWorkflow(workflow.path) ? (
             <ManagedLine workflow={workflow} />
           ) : (
             <Link to={`${base}/blob/HEAD/${workflow.path}`} className="inline-flex items-center gap-1 font-mono text-xs text-faint hover:text-fg">
@@ -342,11 +346,16 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
           </div>
         )}
       </div>
-      {workflow.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{workflow.error}</p>}
-      {workflow.state === "disabled" && (
+      {archived ? (
+        <p className="flex items-start gap-2 rounded-lg border border-line bg-surface px-3 py-3 text-sm text-muted">
+          <Archive size={16} className="mt-0.5 shrink-0" />
+          <span><strong className="font-medium text-fg">Archived workflow.</strong> Its file was removed from the default branch. Past runs remain available below. Restore the file on the default branch to return it to the workflow list.</span>
+        </p>
+      ) : workflow.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{workflow.error}</p>}
+      {!archived && workflow.state === "disabled" && (
         <p className="rounded-lg bg-raised px-3 py-2 text-sm text-muted">Turned off: nothing starts it until someone with the Maintain role turns it on.</p>
       )}
-      <Notes notes={workflow.notes} />
+      {!archived && <Notes notes={workflow.notes} />}
     </div>
   );
 }
@@ -398,6 +407,8 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
   const workflowsFailed = isFailed(loaderData.workflows);
   const workflows = isFailed(loaderData.workflows) ? [] : loaderData.workflows;
   const workflow = workflows.find((w) => w.id === selected || w.path.endsWith(`/${selected}`)) ?? null;
+  const { current, archived } = groupWorkflows(workflows);
+  const archiveSelected = workflow != null && isArchivedWorkflow(workflow);
   useLiveWhile(runs.some((run) => run.status !== "completed"));
   const started = actionData && "started" in actionData ? actionData.started : null;
   return (
@@ -425,7 +436,7 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
         </div>
       )}
 
-      {!workflowsFailed && workflows.length === 0 ? (
+      {!workflowsFailed && workflows.length === 0 && runs.length === 0 ? (
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="lg:col-span-2">
             <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canPush} />
@@ -455,7 +466,7 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
                 <Unavailable what="Workflows" compact />
               </div>
             )}
-            {workflows.map((w) => (
+            {current.map((w) => (
               <Link
                 key={w.id}
                 to={`?workflow=${w.id}`}
@@ -479,6 +490,24 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
                 {w.state === "disabled" && <span className="ml-auto shrink-0 text-xs text-faint">off</span>}
               </Link>
             ))}
+            {archived.length > 0 && (
+              <details key={archiveSelected ? "selected-archive" : "archive"} open={archiveSelected || undefined} className="group mt-3 border-t border-line pt-3">
+                <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md px-2.5 py-2 text-muted hover:bg-raised/60 hover:text-fg [&::-webkit-details-marker]:hidden">
+                  <ChevronRight size={14} className="shrink-0 transition-transform group-open:rotate-90" />
+                  <span className="grow">Archived workflows</span>
+                  <span className="text-xs tabular-nums text-faint">{archived.length}</span>
+                </summary>
+                <div className="mt-1 space-y-0.5">
+                  {archived.map((w) => (
+                    <Link key={w.id} to={`?workflow=${w.id}`} aria-current={w.id === workflow?.id ? "page" : undefined}
+                      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 ${w.id === workflow?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}>
+                      <Archive size={13} className="shrink-0 text-faint" />
+                      <span className="min-w-0 truncate">{w.name}<span className="block truncate font-mono text-[0.6875rem] text-faint">{w.path}</span></span>
+                    </Link>
+                  ))}
+                </div>
+              </details>
+            )}
           </nav>
           <div className="min-w-0 space-y-6">
             {workflow && <WorkflowHeader workflow={workflow} base={base} member={member} manage={manage} />}
@@ -493,8 +522,8 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
             )}
             <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
             {runs.length === 0 ? (
-              <EmptyState title="No runs yet">
-                {workflow?.dispatch ? "Run it by hand, or wait for what starts it." : "Runs appear here when something starts one."}
+              <EmptyState title={archiveSelected ? "No retained runs" : "No runs yet"}>
+                {archiveSelected ? "This archived workflow has no runs to display." : workflow?.dispatch ? "Run it by hand, or wait for what starts it." : "Runs appear here when something starts one."}
               </EmptyState>
             ) : (
               <Card asChild className="overflow-hidden">
