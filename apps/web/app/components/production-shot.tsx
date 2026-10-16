@@ -11,8 +11,8 @@ import { ButtonLink } from "./ui";
  * deploy on g1t.page, or of the address of production deployed
  * elsewhere), else an image someone uploaded (lib/production-image.ts
  * `cardSources`). Each source is tried in turn, the next when one does not
- * load. Until one has loaded, or when there is none, a quiet frame with
- * the address stands in; to someone who may change the project's
+ * load. The browser frame and address stay visible in every state.
+ * Until an image loads, a quiet page stands in; to someone who may change the project's
  * settings it offers to add an image.
  */
 export function ProductionShot({
@@ -72,42 +72,52 @@ export function ProductionShot({
   const frame = (
     <span
       className={cn(
-        "relative block aspect-16/10 w-full overflow-hidden rounded-lg border border-line bg-bg",
+        "block w-full overflow-hidden rounded-lg border border-line bg-bg",
         href && "transition-colors group-hover:border-line-strong",
       )}
     >
-      {!loaded && !under && <Placeholder label={label} waiting={waiting} note={empty && !addImage ? (note ?? null) : null} />}
-      {under && (
-        <img
-          key={under.src}
-          src={under.src}
-          alt=""
-          aria-hidden="true"
-          width={1280}
-          height={800}
-          className="absolute inset-0 size-full object-cover object-top"
-        />
-      )}
-      {source && (
-        <img
-          key={source.src}
-          ref={image}
-          src={source.src}
-          alt={source.kind === "screenshot" ? `Screenshot of ${label}` : `Image of ${label}`}
-          width={1280}
-          height={800}
-          decoding="async"
-          onLoad={() => setLoaded(true)}
-          onError={() => {
-            setLoaded(false);
-            setAt((index) => index + 1);
-          }}
-          className={cn(
-            "absolute inset-0 size-full object-cover object-top transition-opacity duration-300",
-            loaded ? "opacity-100" : "opacity-0",
-          )}
-        />
-      )}
+      <span className="flex h-7 items-center gap-1.5 border-b border-line bg-surface px-2.5">
+        <span aria-hidden="true" className="flex shrink-0 gap-1.5">
+          <span className="size-1.5 rounded-full bg-line-strong" />
+          <span className="size-1.5 rounded-full bg-line-strong" />
+          <span className="size-1.5 rounded-full bg-line-strong" />
+        </span>
+        {label && <span className="ml-1.5 min-w-0 flex-1 truncate rounded bg-bg px-2 py-px font-mono text-[0.625rem] text-muted">{label}</span>}
+      </span>
+      <span className="relative block aspect-16/10 w-full overflow-hidden">
+        {!loaded && !under && <Placeholder waiting={waiting} note={empty && !addImage ? (note ?? null) : null} />}
+        {under && (
+          <img
+            key={under.src}
+            src={under.src}
+            alt=""
+            aria-hidden="true"
+            width={1280}
+            height={800}
+            className="absolute inset-0 size-full object-cover object-top"
+          />
+        )}
+        {source && (
+          <img
+            key={source.src}
+            ref={image}
+            src={source.src}
+            alt={source.kind === "screenshot" ? `Screenshot of ${label}` : `Image of ${label}`}
+            width={1280}
+            height={800}
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+            onError={() => {
+              setLoaded(false);
+              setAt((index) => index + 1);
+            }}
+            className={cn(
+              "absolute inset-0 size-full object-cover object-top transition-opacity duration-300",
+              loaded ? "opacity-100" : "opacity-0",
+            )}
+          />
+        )}
+      </span>
     </span>
   );
 
@@ -134,17 +144,11 @@ export function ProductionShot({
   );
 }
 
-/** The frame without a picture: a browser's bar with the address, and faint lines of a page. */
-function Placeholder({ label, waiting, note }: { label: string; waiting: string | null; note: string | null }) {
+/** Faint page content inside the persistent browser frame while no picture is available. */
+function Placeholder({ waiting, note }: { waiting: string | null; note: string | null }) {
   const line = waiting ?? note;
   return (
     <span className="absolute inset-0 flex flex-col">
-      <span className="flex items-center gap-1.5 border-b border-line bg-surface px-2.5 py-1.5">
-        <span className="size-1.5 rounded-full bg-line-strong" />
-        <span className="size-1.5 rounded-full bg-line-strong" />
-        <span className="size-1.5 rounded-full bg-line-strong" />
-        {label && <span className="ml-1.5 truncate rounded bg-bg px-2 py-px font-mono text-[0.625rem] text-faint">{label}</span>}
-      </span>
       <span className="relative flex grow flex-col gap-2 p-3.5">
         <span className="h-2 w-2/5 rounded-full bg-line/80" />
         <span className="h-1.5 w-4/5 rounded-full bg-line/50" />

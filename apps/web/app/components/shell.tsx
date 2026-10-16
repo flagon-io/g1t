@@ -1,4 +1,4 @@
-import { Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Database, Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -66,7 +66,7 @@ import { BottomBar, isConversation, useVisualViewport } from "./mobile";
 import { useChatSidebar } from "./chat/actions";
 import { unreadTotals } from "../lib/chat";
 import { SETTINGS_CAPABILITY, type ViewerAccess, seesSettings } from "../lib/access";
-import { projectPages } from "../lib/chrome";
+import { PROJECT_OPERATIONS, PROJECT_PAGE_LINKS, projectPageAt, projectPages } from "../lib/chrome";
 import { ACCOUNT_SETTINGS, type AccountSettingsPage, FIRST_SETTINGS_PAGE, accountSettingsPage } from "../lib/account-settings";
 import { type PinnableApp, sidebarCookie } from "../lib/apps";
 import { REASON_FILTERS, inboxReason } from "../lib/inbox";
@@ -848,7 +848,7 @@ function RepoMenu({
       <Rule />
       <NavRows>
         {shows.has("deployments") ? (
-          <SidebarLink to={`${base}/deployments`} also={soonPaths(base, "Deployments")} icon={<Rocket size={15} />}>
+          <SidebarLink to={`${base}/deployments`} also={[`${base}/settings/deployments`, ...soonPaths(base, "Deployments")]} icon={<Rocket size={15} />}>
             Deployments
           </SidebarLink>
         ) : null}
@@ -873,11 +873,24 @@ function RepoMenu({
           Insights
         </SidebarLink>
       </NavRows>
+      {repo.member && (
+        <>
+          <Rule />
+          <NavRows>
+            {PROJECT_OPERATIONS.filter((page) => shows.has(page)).map((page) => {
+              const link = PROJECT_PAGE_LINKS[page];
+              const icons = { secrets: <KeyRound size={15} />, environments: <Layers size={15} />, domains: <Globe size={15} />, runners: <ServerCog size={15} />, webhooks: <Webhook size={15} /> };
+              return <SidebarLink key={page} to={`${base}/${link.path}`} icon={icons[page]}>{link.label}</SidebarLink>;
+            })}
+            <ProjectSoonRow base={base} feature="storage" icon={<Database size={15} />} />
+          </NavRows>
+        </>
+      )}
       {(repo.settings ?? shows.has("settings")) && (
         <>
           <Rule />
           <NavRows>
-            <SidebarLink to={`${base}/settings`} icon={<Settings size={15} />} drill>
+            <SidebarLink to={`${base}/settings`} end icon={<Settings size={15} />} drill>
               Settings
             </SidebarLink>
           </NavRows>
@@ -888,15 +901,13 @@ function RepoMenu({
 }
 
 /**
- * A project's settings, drilled into from its list: what is about running
- * it, then its sandboxes, then its code and who can reach it. The way back
- * leads to the project.
+ * Administrative settings: repository policy, access and workflow permissions.
+ * Day-to-day operations stay in the main project menu.
  */
 function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
   const base = `/${repo.namespace}/${repo.name}`;
   // Each page shows to the roles that can use it, once the role is known.
   const shows = (page: string) => !repo.can || repo.can[SETTINGS_CAPABILITY[page] ?? "administer"];
-  const running = shows("deployments");
   const guarded = shows("guardrails");
   return (
     <nav aria-label={`${repo.namespace}/${repo.name} settings`} className={PANEL}>
@@ -907,19 +918,6 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
             General
           </SidebarLink>
         </NavRows>
-      )}
-      {running && (
-        <>
-          {shows("") && <Rule />}
-          <NavRows className={shows("") ? undefined : "mt-2"}>
-            <SidebarLink to={`${base}/settings/deployments`} icon={<Rocket size={15} />}>
-              Deployments
-            </SidebarLink>
-            <SidebarLink to={`${base}/settings/domains`} icon={<Globe size={15} />}>
-              Domains
-            </SidebarLink>
-          </NavRows>
-        </>
       )}
       {guarded && (
         <>
@@ -960,31 +958,15 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
             Rules
           </SidebarLink>
         )}
-        {shows("secrets") && (
-          <SidebarLink to={`${base}/settings/secrets`} icon={<Lock size={15} />}>
-            Secrets and variables
-          </SidebarLink>
-        )}
+
         {shows("actions") && (
           <SidebarLink to={`${base}/settings/actions`} icon={<PlayCircle size={15} />}>
             Actions
           </SidebarLink>
         )}
-        {shows("environments") && (
-          <SidebarLink to={`${base}/settings/environments`} icon={<Layers size={15} />}>
-            Environments
-          </SidebarLink>
-        )}
-        {shows("runners") && (
-          <SidebarLink to={`${base}/settings/runners`} icon={<ServerCog size={15} />}>
-            Runners
-          </SidebarLink>
-        )}
-        {shows("webhooks") && (
-          <SidebarLink to={`${base}/settings/webhooks`} icon={<Webhook size={15} />}>
-            Webhooks
-          </SidebarLink>
-        )}
+
+
+
       </NavRows>
     </nav>
   );
@@ -1066,7 +1048,7 @@ function CodeSidebar({
     !/^\/[^/]+\/[^/]+\/invitations\/?$/.test(target) &&
     (!lost || sameRepo(active, { namespace: repoPath[1]!, name: repoPath[2]! }));
   // A project's settings, one level further in.
-  const inRepoSettings = inRepo && REPO_SETTINGS_PAGE.test(target);
+  const inRepoSettings = inRepo && REPO_SETTINGS_PAGE.test(target) && projectPageAt(target.split("/").slice(3).join("/")) === "settings";
   // The repository the menu is for: the one loaded if it is the one being
   // gone to, else what the address says, at once.
   const targetRepo = inRepo && repoPath ? { namespace: repoPath[1], name: repoPath[2] } : null;
@@ -1662,6 +1644,10 @@ function Breadcrumbs({
     else if (third === "commit" && fourth) trail.push({ label: fourth.slice(0, 7), to: `${repo}/commit/${fourth}`, mono: true });
     // A Soon page names what is coming.
     else if (third === "soon" && fourth && roadmapItem(fourth)) trail.push({ label: roadmapItem(fourth)!.title, to: `${repo}/soon/${fourth}` });
+    else if (third === "settings" && fourth && projectPageAt(`settings/${fourth}`) !== "settings" && projectPageAt(`settings/${fourth}`) != null) {
+      const page = projectPageAt(`settings/${fourth}`) as keyof typeof PROJECT_PAGE_LINKS;
+      trail.push({ label: fourth === "deployments" ? "Build configuration" : PROJECT_PAGE_LINKS[page].label, to: `${repo}/settings/${fourth}` });
+    }
     else if (third && SECTIONS[third]) {
       trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
       // A settings page names which one: Settings / Secrets and variables.
@@ -1807,7 +1793,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       ...(repo.member
         ? [
             { label: "Deployments", hint: name, to: `${base}/deployments`, icon: <Rocket size={15} /> },
-            { label: "Secrets and variables", hint: name, to: `${base}/settings/secrets`, icon: <Lock size={15} /> },
+            { label: "Environment variables", hint: name, to: `${base}/settings/secrets`, icon: <Lock size={15} /> },
             { label: "Project settings", hint: name, to: `${base}/settings`, icon: <Settings size={15} /> },
             { label: "Repository settings", hint: name, to: `${base}/settings/repository`, icon: <Settings size={15} /> },
           ]

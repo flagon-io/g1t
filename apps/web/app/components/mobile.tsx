@@ -597,6 +597,7 @@ export function ProjectStrip({
             key={page}
             to={link.path ? `${base}/${link.path}` : base}
             current={at === page}
+            soon={page !== "overview" && PROJECT_PAGE_LINKS[page].soon}
             count={page === "issues" ? counts?.issues : page === "pulls" ? counts?.pulls : undefined}
           >
             {link.label}

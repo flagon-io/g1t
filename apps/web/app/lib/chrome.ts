@@ -68,13 +68,25 @@ export type ProjectPage =
   | "observability"
   | "security"
   | "insights"
+  | "secrets"
+  | "environments"
+  | "domains"
+  | "runners"
+  | "webhooks"
+  | "storage"
   | "settings";
 
 /**
  * What a page needs beyond a role on the repository, once what the viewer
  * may do is known: Security's findings are for people who can push.
  */
-export const PAGE_NEEDS: Partial<Record<ProjectPage, Capability>> = { security: "push" };
+export const PROJECT_OPERATIONS = ["secrets", "environments", "domains", "runners", "webhooks"] as const;
+
+export const PAGE_NEEDS: Partial<Record<ProjectPage, Capability>> = {
+  security: "push",
+  secrets: "manage_integrations", environments: "manage_integrations", domains: "manage_integrations",
+  runners: "manage_integrations", webhooks: "manage_integrations",
+};
 
 /**
  * A project's menu, in order. Security and Settings are for people with a
@@ -94,6 +106,8 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
     member && "observability",
     member && "security",
     "insights",
+    ...PROJECT_OPERATIONS.map((page) => member && page),
+    member && "storage",
     member && "settings",
   ];
   return pages.filter(
@@ -112,10 +126,16 @@ export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: stri
   issues: { label: "Issues", path: "issues", also: ["milestones", "labels"] },
   pulls: { label: "Pull requests", path: "pulls", also: ["pull", "work", "queue", "sessions"] },
   actions: { label: "Workflows", path: "actions", also: [] },
-  deployments: { label: "Deployments", path: "deployments", also: [] },
+  deployments: { label: "Deployments", path: "deployments", also: ["settings/deployments"] },
   observability: { label: "Observability", path: "observability", also: [] },
   security: { label: "Security", path: "security", also: [] },
   insights: { label: "Insights", path: "contributors", also: ["activity", "stargazers"] },
+  secrets: { label: "Environment variables", path: "settings/secrets", also: [] },
+  environments: { label: "Environments", path: "settings/environments", also: [] },
+  domains: { label: "Domains", path: "settings/domains", also: [] },
+  runners: { label: "Runners", path: "settings/runners", also: [] },
+  webhooks: { label: "Webhooks", path: "settings/webhooks", also: [] },
+  storage: { label: "Storage", path: "soon/storage", also: [], soon: true },
   settings: { label: "Settings", path: "settings", also: [] },
 };
 

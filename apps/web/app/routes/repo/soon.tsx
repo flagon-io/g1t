@@ -17,7 +17,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 /** Soon pages that have since been built, and where each is now. */
-const BUILT: Record<string, string> = { releases: "releases", logs: "observability/logs", errors: "observability/errors" };
+const BUILT: Record<string, string> = { environments: "settings/environments", releases: "releases", logs: "observability/logs", errors: "observability/errors" };
 
 export function loader({ params }: Route.LoaderArgs) {
   const built = BUILT[params.feature];
