@@ -70,8 +70,30 @@ test("cutover verifies old and new assets and rejects HTML fallback or wrong bui
   const release = { origin: "https://example.com", manifest: "manifest-12345678.js", samples: [["web-assets/assets/app-old12345.css", `"${createHash("md5").update(css).digest("hex")}"`]] };
   const page = '<link href="/assets/app-12345678.css"><script src="/assets/manifest-12345678.js"></script>';
   await verifyWebAssets(release, async (url) => new Response(new URL(url).pathname === "/" ? page : css));
-  await assert.rejects(verifyWebAssets(release, async (url) => new Response(new URL(url).pathname === "/" ? page : "error", { headers: { "content-type": "text/html" } })), /asset check failed/);
-  await assert.rejects(verifyWebAssets(release, async () => new Response(page.replaceAll("12345678", "87654321"))), /expected build/);
+  await assert.rejects(verifyWebAssets(release, async (url) => new Response(new URL(url).pathname === "/" ? page : "error", { headers: { "content-type": "text/html" } }), { retryWaits: [] }), /asset check failed/);
+  await assert.rejects(verifyWebAssets(release, async () => new Response(page.replaceAll("12345678", "87654321")), { retryWaits: [] }), /expected build/);
+});
+
+test("cutover tolerates propagation delay but still requires the expected build and asset bytes", async () => {
+  const css = "body{}";
+  const release = { origin: "https://example.com", manifest: "manifest-12345678.js", samples: [["web-assets/assets/app-old12345.css", `"${createHash("md5").update(css).digest("hex")}"`]] };
+  const page = '/assets/app-12345678.css /assets/manifest-12345678.js';
+  const waits = [];
+  const logs = [];
+  let pages = 0;
+  let assets = 0;
+  await verifyWebAssets(release, async (url) => {
+    if (new URL(url).pathname === "/") return new Response(++pages === 1 ? page.replaceAll("12345678", "87654321") : page);
+    return ++assets === 1 ? new Response("not propagated", { status: 404 }) : new Response(css);
+  }, { retryWaits: [1, 2], wait: async (ms) => { waits.push(ms); }, onLine: (line) => logs.push(line) });
+  assert.deepEqual(waits, [1, 2]);
+  assert.equal(pages, 3);
+  assert.equal(assets, 2);
+  assert.match(logs[0], /expected manifest-12345678.js, observed manifest-87654321.js/);
+  assert.match(logs[1], /asset check failed/);
+  let attempts = 0;
+  await assert.rejects(verifyWebAssets(release, async () => { attempts++; return new Response(page.replaceAll("12345678", "87654321")); }, { retryWaits: [1, 2], wait: async () => {} }), /expected build/);
+  assert.equal(attempts, 3, "a persistently wrong build must fail after bounded retries");
 });
 
 test("1000 successive releases keep old tabs' assets and perform bounded incremental archive work", async () => {

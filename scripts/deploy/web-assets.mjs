@@ -179,14 +179,35 @@ export async function publishWebAssets(cwd, { onLine = console.log, fetchImpl = 
 }
 
 /** Check both sides of cutover, including filenames no longer in the new bundle. */
-export async function verifyWebAssets(release, fetchImpl = fetch) {
+async function verifyWebAssetsOnce(release, fetchImpl) {
   if (!release.origin) return;
   const references = await liveReferences(release.origin, fetchImpl);
-  if (!references.includes(release.manifest)) throw new Error("Web cutover is not serving the expected build");
+  if (!references.includes(release.manifest)) throw new Error(`Web cutover is not serving the expected build (expected ${release.manifest}, observed ${manifestName(references) ?? "no manifest"})`);
   await together(release.samples, async ([key, etag]) => {
     const response = await fetchImpl(new URL(key.replace(/^web-assets/, ""), release.origin), { signal: AbortSignal.timeout(30_000) });
     if (!response.ok || /text\/html/i.test(response.headers.get("content-type") ?? "") || checksum(Buffer.from(await response.arrayBuffer())) !== etag) throw new Error(`Web cutover asset check failed: ${key}`);
   });
+}
+
+/** Wrangler finishing does not mean every edge is already serving the new version. */
+export async function verifyWebAssets(release, fetchImpl = fetch, {
+  retryWaits = [1000, 2000, 4000, 8000, 15000, 30000],
+  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  onLine = () => {},
+} = {}) {
+  const deadline = AbortSignal.timeout(120_000);
+  const boundedFetch = (url, options = {}) => fetchImpl(url, { ...options, signal: options.signal ? AbortSignal.any([deadline, options.signal]) : deadline });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await verifyWebAssetsOnce(release, boundedFetch);
+      return;
+    } catch (error) {
+      if (attempt >= retryWaits.length || deadline.aborted) throw error;
+      onLine(`Waiting for web cutover (${retryWaits[attempt] / 1000}s): ${error.message}`);
+      await wait(retryWaits[attempt]);
+      deadline.throwIfAborted();
+    }
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -194,7 +215,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   if (process.argv.includes("--deploy")) {
     const deployed = await wrangler(["deploy"], { cwd: process.cwd(), onLine: console.log });
     if (deployed.code !== 0) throw new Error("Web deploy failed");
-    await verifyWebAssets(release);
+    await verifyWebAssets(release, fetch, { onLine: console.log });
     console.log("Web cutover verified: current and previous build assets respond");
   }
 }
