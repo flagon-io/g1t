@@ -57,6 +57,11 @@ People with a [role](/guides/access-and-roles/) on its repository see all
 of it; anyone else sees what the project shares publicly: production, its
 checks, who is working on it, its deployments and About.
 
+The production card's header keeps **Visit**, deployment history, and
+deployment settings together, with management controls shown according to
+your permissions. Hosted projects also offer **Redeploy** there. **Instant
+rollback** is marked **Soon** and disabled; it does not change production.
+
 | Part | What it shows |
 | --- | --- |
 | **What it is** | A badge, such as **App, deploys itself** or **Library**, beside its homepage and docs. People who can change its settings open the badge to change [what it is](#what-a-project-is) in one click. |

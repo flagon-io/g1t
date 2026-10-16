@@ -208,14 +208,6 @@ export function ElsewhereHead({
           )}
           <DeployQuietly base={base} canDeploy={canDeploy} what="it" />
         </div>
-        {url && (
-          <div className="flex shrink-0 items-center gap-2">
-            <ButtonLink to={url} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
-              Visit
-              <ArrowUpRight size={14} />
-            </ButtonLink>
-          </div>
-        )}
       </div>
     </div>
   );
