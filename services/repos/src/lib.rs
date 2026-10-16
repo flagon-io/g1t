@@ -951,18 +951,19 @@ impl<S: GitStore> Repos<S> {
         let Some(repo) = self.readable(&a.path, &a.viewer).await? else {
             return Ok(not_found());
         };
+        let git_ref = blob_ref(&a.git_ref, &repo.default_branch).to_owned();
         let bytes = if a.file_path.is_empty() {
             None
         } else {
             let git = self.read_git(&repo).await?;
-            git.read_file(&a.git_ref, &a.file_path).await?
+            git.read_file(&git_ref, &a.file_path).await?
         };
         let Some(bytes) = bytes else {
             return Ok(Outcome::fail(FailureCode::NotFound, "No such file."));
         };
         Ok(Outcome::Ok(BlobView {
             repo,
-            git_ref: a.git_ref,
+            git_ref,
             path: a.file_path,
             size: bytes.len() as u64,
             text: text_of(bytes),
@@ -3578,5 +3579,24 @@ mod deploy_key_git_tests {
     fn a_deploy_key_never_creates_a_repository() {
         let why = refusal(&key(false), "acme/rocket", true, false).unwrap();
         assert!(why.contains("not there"), "{why}");
+    }
+}
+
+/// Blob callers may omit a ref to read the configured default branch.
+fn blob_ref<'a>(asked: &'a str, default_branch: &'a str) -> &'a str {
+    if asked.is_empty() { default_branch } else { asked }
+}
+
+#[cfg(test)]
+mod blob_ref_tests {
+    use super::blob_ref;
+
+    #[test]
+    fn omitted_blob_ref_uses_the_repository_default_and_preserves_explicit_refs() {
+        assert_eq!(blob_ref("", "main"), "main");
+        assert_eq!(blob_ref("", "release/current"), "release/current");
+        for explicit in ["HEAD", "feature/dependencies", "refs/tags/v1", "0123456789abcdef0123456789abcdef01234567"] {
+            assert_eq!(blob_ref(explicit, "main"), explicit);
+        }
     }
 }

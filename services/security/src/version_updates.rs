@@ -437,7 +437,7 @@ impl Security {
                 None => (None, None, None),
             },
             Ok(None) => (None, Some("The dependency update file is missing or has problems.".to_owned()), None),
-            Err(error) => (None, Some(format!("The dependency update file could not be read: {error}")), None),
+            Err(error) => (None, Some(format!("The dependency update file could not be read: {error}")), Some(config_retry_at(now_ms()))),
         };
         self.store.finish_run(&repo.repo_id, entry_id, next.as_deref(), result.as_deref(), error.as_deref()).await
     }
@@ -458,26 +458,27 @@ impl Security {
         if !entry.supported {
             return Ok(Outcome::fail(FailureCode::Invalid, format!("g1t does not open version updates for {} yet.", entry.ecosystem)));
         }
+        // Read the previous schedule before claiming, so a failed read cannot strand the claim.
+        let mut next = self.store.runs(&repo.repo_id).await?.into_iter().find(|run| run.entry == a.entry).and_then(|run| run.next_run_at);
         if !self.store.claim_run(&repo.repo_id, &a.entry).await? {
             return Ok(Outcome::fail(FailureCode::Conflict, "This entry is being checked now."));
         }
         // Claimed: run_claimed would claim again, so run it here.
-        let loaded = self.load_config(&repo).await?;
-        let (result, error) = match loaded.as_ref().and_then(|loaded| loaded.config.updates.iter().find(|entry| entry.id() == a.entry).map(|entry| (loaded, entry))) {
-            Some((loaded, entry)) => match self.run_entry(&repo, loaded, entry).await {
-                Ok(Ok(summary)) => (Some(summary), None),
-                Ok(Err(problem)) => (None, Some(problem)),
-                Err(error) => (None, Some(format!("The check could not finish: {error}"))),
+        let (result, error) = match self.load_config(&repo).await {
+            Ok(loaded) => match loaded.as_ref().and_then(|loaded| loaded.config.updates.iter().find(|entry| entry.id() == a.entry).map(|entry| (loaded, entry))) {
+                Some((loaded, entry)) => match self.run_entry(&repo, loaded, entry).await {
+                    Ok(Ok(summary)) => (Some(summary), None),
+                    Ok(Err(problem)) => (None, Some(problem)),
+                    Err(error) => (None, Some(format!("The check could not finish: {error}"))),
+                },
+                None => (None, Some("The dependency update file is missing or has problems.".to_owned())),
             },
-            None => (None, Some("The dependency update file is missing or has problems.".to_owned())),
+            Err(error) => {
+                // Finish the claim even when the repository service is unavailable.
+                next = Some(config_retry_at(now_ms()));
+                (None, Some(format!("The dependency update file could not be read: {error}")))
+            }
         };
-        let next = self
-            .store
-            .runs(&repo.repo_id)
-            .await?
-            .into_iter()
-            .find(|run| run.entry == a.entry)
-            .and_then(|run| run.next_run_at);
         self.store.finish_run(&repo.repo_id, &a.entry, next.as_deref(), result.as_deref(), error.as_deref()).await?;
         Ok(Outcome::Ok(self.version_updates_view(&repo).await?))
     }
@@ -1665,5 +1666,21 @@ mod tests {
         assert_eq!(target_of(&entry("    directory: /\n"), "main"), None);
         assert_eq!(osv_ecosystem("gomod"), Some("Go"));
         assert_eq!(package_ecosystem("crates.io"), Some("cargo"));
+    }
+}
+
+/// A transient repository read failure retries soon instead of losing its schedule.
+fn config_retry_at(now: u64) -> String {
+    rfc3339(now.saturating_add(5 * 60 * 1000))
+}
+
+#[cfg(test)]
+mod config_retry_tests {
+    use super::*;
+
+    #[test]
+    fn failed_config_reads_retry_in_five_minutes() {
+        let now = 1_700_000_000_000;
+        assert_eq!(parse_rfc3339(&config_retry_at(now)), Some(now + 300_000));
     }
 }

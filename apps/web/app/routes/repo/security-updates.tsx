@@ -29,8 +29,13 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   // Checking for updates now takes Write, as pushing does.
   const refused = await refusal(context, params, "push");
   if (refused) return { ok: false, error: refused };
-  const checked = await security.checkUpdates(user, { namespace: params.owner, name: params.repo }, String(form.get("entry") ?? ""));
-  return checked.ok ? { ok: true } : { ok: false, error: checked.error.message };
+  try {
+    const checked = await security.checkUpdates(user, { namespace: params.owner, name: params.repo }, String(form.get("entry") ?? ""));
+    return checked.ok ? { ok: true } : { ok: false, error: checked.error.message };
+  } catch (error) {
+    console.error("dependency update check failed", error);
+    return { ok: false, error: "The dependency update service could not complete this check. Please try again in a few minutes." };
+  }
 }
 
 /** The dependency update file g1t reads, each entry's schedule, and the pull requests it opened. */
