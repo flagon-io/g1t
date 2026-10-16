@@ -18,6 +18,7 @@ import {
   pageRange,
   parseFilter,
   productionEnvironment,
+  nativeProduction,
   shortSha,
   withFilter,
 } from "./deployments.ts";
@@ -211,4 +212,13 @@ test("only a deployment's newest status can still be under way", () => {
   assert.equal(isNewestStatus(tied, 0), false);
   assert.equal(isNewestStatus(tied, 1), true);
   assert.equal(isNewestStatus([], 0), false);
+});
+
+test("native screenshots use the serving app, not a newer attempt or custom domain", () => {
+  const current = { source: "g1t_page", state: "success", environment_url: "https://app-acme.g1t.page", sha: "abcdef1", updated_at: "2026-10-15T01:00:00Z" };
+  const production = { ...env("production", { production_environment: true, latest: deployed }), current, url: "https://custom.example" };
+  assert.deepEqual(nativeProduction([production as never]), { url: current.environment_url, commit: current.sha, deployedAt: current.updated_at });
+  assert.equal(nativeProduction([{ ...production, current: null } as never]), null);
+  assert.equal(nativeProduction([{ ...production, current: { ...current, state: "inactive" } } as never]), null);
+  assert.equal(nativeProduction([{ ...production, current: { ...current, source: "actions" } } as never]), null);
 });

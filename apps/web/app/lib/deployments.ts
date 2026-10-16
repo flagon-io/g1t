@@ -140,6 +140,13 @@ export function productionEnvironment<T extends Ordered & Pick<DeploymentEnviron
   return orderEnvironments(environments).find((env) => env.production_environment && env.latest != null) ?? null;
 }
 
+/** The serving native app, from deployment metadata available to every repository reader. */
+export function nativeProduction(environments: readonly DeploymentEnvironment[]): { url: string; commit: string; deployedAt: string } | null {
+  const current = productionEnvironment(environments)?.current;
+  if (current?.source !== "g1t_page" || current.state !== "success" || !current.environment_url) return null;
+  return { url: current.environment_url, commit: current.sha, deployedAt: current.updated_at };
+}
+
 /**
  * Production deployed somewhere other than g1t.page (by g1t Actions, or
  * reported through the API), as an app that deploys itself shows it: the
