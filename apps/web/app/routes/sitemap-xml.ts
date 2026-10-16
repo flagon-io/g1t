@@ -9,6 +9,7 @@ import { search } from "../lib/services.server";
 const PAGES = [
   "/",
   "/pricing",
+  "/features",
   "/download",
   "/explore",
   "/support",

@@ -1,5 +1,5 @@
 ---
-title: API reference
+title: g1t API reference
 description: The REST API at api.g1t.sh, its authentication, errors and conventions, and a page for every endpoint.
 ---
 
@@ -38,6 +38,9 @@ curl https://api.g1t.sh/
 The response has more entries than shown here.
 
 ## Versioning and deprecation
+
+The [g1t API versioning and deprecation policy](/reference/versioning/) has
+a permanent address for integrations and migration notices.
 
 g1t uses unprefixed URLs, such as `https://api.g1t.sh/repos`, like GitHub.
 The optional `X-G1t-Api-Version: 1` request header selects the current REST

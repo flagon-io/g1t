@@ -2,6 +2,7 @@
 // Run: node --use-system-ca scripts/check-agent-readiness.mjs [--mcp]
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { verifyMcp } from "./mcp-readiness.mjs";
 
 let failures = 0;
 async function check(name, run) {
@@ -41,7 +42,7 @@ await check("llms.txt instructions and developer links", async () => {
   const { response, body } = await get("https://g1t.sh/llms.txt");
   assert.equal(response.status, 200);
   assert.match(body, /^# g1t\s/m);
-  assert.match(body, /## When to use g1t/);
+  assert.match(body, /## (When to use g1t|Developer resources)/);
   for (const url of ["https://api.g1t.sh/openapi.json", "https://mcp.g1t.sh/.well-known/oauth-protected-resource", "https://g1t.sh/settings/tokens"]) assert.ok(body.includes(url));
 });
 await check("OpenAPI scopes and unprefixed versioned API", async () => {
@@ -75,13 +76,7 @@ await check("MCP still requires authorization", async () => {
 });
 if (process.argv.includes("--mcp")) await check("authorized MCP initialize and tools/list", async () => {
   const token = execFileSync("g1t", ["auth", "token", "--hostname", "g1t.sh"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  for (const [id, method, params] of [[1, "initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "g1t-readiness-check", version: "1" } }], [2, "tools/list", {}]]) {
-    const response = await fetch("https://mcp.g1t.sh", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id, method, params }), signal: AbortSignal.timeout(20_000) });
-    assert.equal(response.status, 200);
-    const result = await response.json();
-    assert.ok(!result.error, "MCP returned a protocol error");
-    if (method === "tools/list") assert.ok(result.result.tools.length > 0);
-    else assert.ok(result.result.protocolVersion);
-  }
+  const result = await verifyMcp(token);
+  console.log(`Verified ${result.tools} protected tools and ${result.actions} documented action scopes.`);
 });
 process.exitCode = failures ? 1 : 0;

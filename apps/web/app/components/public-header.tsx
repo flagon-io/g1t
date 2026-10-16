@@ -44,6 +44,7 @@ function HeaderLink({ to, children }: { to: string; children: React.ReactNode })
 
 /** What the palette offers someone without the app's sidebar. */
 const PUBLIC_COMMANDS: PaletteCommand[] = [
+  { label: "Features", to: "/features", icon: <BookOpen size={15} /> },
   { label: "Explore", hint: "Public projects", to: "/explore", icon: <Compass size={15} /> },
   { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
   { label: "Pricing", to: "/pricing", icon: <CreditCard size={15} /> },
@@ -71,7 +72,7 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
         <Link to="/" aria-label="g1t home" className="mr-2 flex">
           <Logo />
         </Link>
-        <Form action="/search" role="search" className="relative hidden grow sm:block sm:max-w-xs">
+        <Form action="/search" role="search" className="relative hidden min-w-0 grow sm:block sm:max-w-xs">
           <Search
             size={14}
             className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
@@ -99,12 +100,13 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
           open={palette}
           onOpenChange={setPalette}
           commands={[
-            ...(user ? PUBLIC_COMMANDS.slice(0, 4) : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))),
+            ...(user ? PUBLIC_COMMANDS.filter((command) => !["/login", "/register"].includes(command.to ?? "")) : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))),
             ...THEME_COMMANDS,
           ]}
           repo={repo}
         />
-        <nav aria-label="Main" className="hidden items-center gap-0.5 sm:flex">
+        <nav aria-label="Main" className="hidden items-center gap-0.5 md:flex">
+          <HeaderLink to="/features">Features</HeaderLink>
           <HeaderLink to="/explore">Explore</HeaderLink>
           <HeaderLink to="/download">Download</HeaderLink>
           <HeaderLink to="https://docs.g1t.sh/">Docs</HeaderLink>
@@ -113,11 +115,14 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
           {/* On a phone the links fold into one menu, so the bar fits. */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-lg" aria-label="Menu" className="sm:hidden">
+              <Button variant="ghost" size="icon-lg" aria-label="Menu" className="md:hidden">
                 <Menu size={18} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem asChild className="min-h-11">
+                <Link to="/features"><BookOpen />Features</Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild className="min-h-11">
                 <Link to="/explore">
                   <Compass />

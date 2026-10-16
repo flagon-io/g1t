@@ -34,7 +34,7 @@ const STANDALONE = new Set([
 ]);
 
 /** Marketing pages: the public header and footer, even for someone signed in. */
-const MARKETING = new Set(["/download"]);
+const MARKETING = new Set(["/download", "/features"]);
 
 /** The page's path without a trailing slash or a click's `.data`. */
 function framePath(pathname: string): string {

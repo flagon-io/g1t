@@ -9,7 +9,7 @@ test("usernames take letters of either case, digits and single hyphens, up to 39
 });
 
 test("reserved names are reserved in any case", () => {
-  for (const name of ["G1T", "G1t-Agent", "Ghost", "Settings", "API"]) {
+  for (const name of ["G1T", "G1t-Agent", "Ghost", "Settings", "API", "Features"]) {
     assert.ok(isReservedName(name), name);
     assert.ok(!isValidUsername(name), name);
   }

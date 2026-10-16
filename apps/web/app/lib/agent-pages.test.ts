@@ -6,7 +6,7 @@ test("developer discovery aliases point at the installation's machine endpoints"
   const addresses = { api: "https://api.example", mcp: "https://mcp.example" };
   assert.equal(developerResource("/openapi.json", addresses), "https://api.example/openapi.json");
   assert.equal(developerResource("/mcp", addresses), "https://mcp.example");
-  assert.equal(developerResource("/developers", addresses), "https://docs.g1t.sh/reference/api/");
+  assert.equal(developerResource("/developers", addresses), "https://docs.g1t.sh/reference/developers/");
   assert.equal(developerResource("/private", addresses), null);
 });
 

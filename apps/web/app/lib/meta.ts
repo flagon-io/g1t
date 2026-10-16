@@ -42,6 +42,8 @@ export type PageMeta = {
    */
   version?: unknown;
   type?: "website" | "article";
+  /** Stable public landing pages may opt into a self-referencing canonical. */
+  canonical?: boolean;
 };
 
 type ProjectData = {
@@ -130,7 +132,7 @@ export function page(args: PageArgs, meta: PageMeta): MetaDescriptor[] {
   const image = og ? cardUrl(pathname, version, og) : null;
   return [
     { title: meta.title },
-    ...(pathname === "/" ? [{ tagName: "link" as const, rel: "canonical", href: `${site}/` }] : []),
+    ...(pathname === "/" || meta.canonical ? [{ tagName: "link" as const, rel: "canonical", href: `${site}${pathname}` }] : []),
     { name: "description", content: description },
     { property: "og:site_name", content: "g1t" },
     { property: "og:type", content: meta.type ?? "website" },

@@ -69,6 +69,7 @@ export default [
   route("-/notify", "routes/notify/api.ts"),
   route("explore", "routes/explore.tsx", { id: "explore" }),
   route("pricing", "routes/pricing.tsx"),
+  route("features", "routes/features.tsx"),
   route("search", "routes/search.tsx"),
   // Each person's notifications, what the panel in the top bar fetches,
   // and the address the page once had. Saved and Done are
