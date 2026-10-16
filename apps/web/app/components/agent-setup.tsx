@@ -1,5 +1,5 @@
 import { Check, Copy, ExternalLink } from "lucide-react";
-import { type KeyboardEvent, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouteLoaderData } from "react-router";
 
 import type { loader as rootLoader } from "../root";
@@ -15,7 +15,7 @@ import {
   subscribeAgentChoice,
 } from "../lib/agent-setup";
 import { useAddresses } from "../lib/addresses";
-import { cn } from "../lib/cn";
+import { SelectField } from "./ui/select";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 
@@ -28,27 +28,16 @@ export function useAgentChoice(): [AgentId, (id: AgentId) => void] {
 }
 
 /**
- * How to connect g1t to a coding agent: a tab per agent, the command or
+ * How to connect g1t to a coding agent: a client picker, the command or
  * config for the one chosen, and a copy button. Choosing an agent switches
  * every block on the page and is remembered.
  */
 export function AgentSetup({ hint = true, className }: { hint?: boolean; className?: string }) {
   const [chosen, choose] = useAgentChoice();
   const [copied, setCopied] = useState(false);
-  const base = useId();
   const { mcp } = useAddresses();
   const agents = useMemo(() => agentsFor(mcp), [mcp]);
   const agent = agents[chosen];
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const edge = event.key === "Home" ? 0 : event.key === "End" ? AGENT_IDS.length - 1 : null;
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!step && edge === null) return;
-    event.preventDefault();
-    const next = AGENT_IDS[edge ?? (AGENT_IDS.indexOf(chosen) + step + AGENT_IDS.length) % AGENT_IDS.length];
-    choose(next);
-    document.getElementById(`${base}-${next}`)?.focus();
-  };
 
   const copy = () => {
     void navigator.clipboard?.writeText(agent.code).then(
@@ -63,35 +52,18 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
   return (
     <div className={className}>
       <Card radius="lg" className="@container overflow-hidden">
-        <div
-          role="tablist"
-          aria-label="AI client"
-          onKeyDown={onKeyDown}
-          className="flex flex-wrap items-center gap-0.5 border-b border-line bg-bg/40 px-1.5 py-1.5"
-        >
-          {AGENT_IDS.map((id) => {
-            const on = id === chosen;
-            return (
-              <button
-                key={id}
-                id={`${base}-${id}`}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                aria-controls={`${base}-panel`}
-                tabIndex={on ? 0 : -1}
-                onClick={() => { setCopied(false); choose(id); }}
-                className={cn(
-                  "shrink-0 rounded-md px-1.5 py-1 text-xs @sm:px-2.5 font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-                  on ? "bg-raised text-fg" : "text-muted hover:text-fg",
-                )}
-              >
-                {agents[id].label}
-              </button>
-            );
-          })}
+        <div className="flex items-center justify-between gap-3 border-b border-line px-3.5 py-2">
+          <span className="text-xs text-muted">Connect with</span>
+          <SelectField
+            aria-label="AI client"
+            value={chosen}
+            onValueChange={(id) => { setCopied(false); choose(id as AgentId); }}
+            options={AGENT_IDS.map((id) => ({ value: id, label: agents[id].label }))}
+            size="sm"
+            className="w-44"
+          />
         </div>
-        <div id={`${base}-panel`} role="tabpanel" aria-labelledby={`${base}-${chosen}`} className="relative">
+        <div className="relative" role="region" aria-label={`${agent.label} setup`}>
           {agent.file && (
             <p className="px-3.5 pt-2.5 font-mono text-[0.6875rem] text-faint">{agent.file}</p>
           )}

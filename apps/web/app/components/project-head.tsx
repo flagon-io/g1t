@@ -157,12 +157,13 @@ export function ElsewhereHead({
                 {deployment ? (
                   <>
                     <StatusDot status={deploymentStatus(deployment.state)} />
+                    {checks}
                     <span className="inline-flex items-center gap-1 font-mono">
                       <GitCommitHorizontal size={13} className="text-faint" />
-                      {deployment.sha.slice(0, 7)}
+                      <Link to={`${base}/commit/${deployment.sha}`} className="hover:text-fg">{deployment.sha.slice(0, 7)}</Link>
                     </span>
                     <span>
-                      deployed <TimeAgo at={deployment.created_at} />
+                      {deployment.state === "success" ? "Deployed" : "Updated"} <TimeAgo at={deployment.created_at} />
                       {deployment.run_url ? (
                         <>
                           {" "}

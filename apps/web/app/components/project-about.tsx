@@ -250,7 +250,7 @@ export function KindMenu({ project, label, canChange }: { project: Pick<Project,
  * The About editor: a project's description and links, from its overview.
  * Posts `intent=about` to the page's action, and closes once saved.
  */
-export function AboutEditor({ project }: { project: Pick<Project, "description" | "links" | "name"> }) {
+export function AboutEditor({ project, action }: { project: Pick<Project, "description" | "links" | "name">; action?: string }) {
   const fetcher = useFetcher<{ error?: string; notice?: string }>();
   const [open, setOpen] = useState(false);
   const saved = fetcher.state === "idle" && fetcher.data != null && !fetcher.data.error;
@@ -260,8 +260,8 @@ export function AboutEditor({ project }: { project: Pick<Project, "description" 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Hint label="Edit the description and links">
-        <DialogTrigger className="rounded-md p-1 text-faint transition-colors hover:bg-raised hover:text-fg" aria-label="Edit About">
-          <Pencil size={14} />
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" aria-label="Edit project details"><Pencil size={14} /> Edit details</Button>
         </DialogTrigger>
       </Hint>
       <DialogContent className="max-w-xl">
@@ -269,7 +269,7 @@ export function AboutEditor({ project }: { project: Pick<Project, "description" 
           <DialogTitle>Edit {project.name}'s About</DialogTitle>
           <DialogDescription>Its description and links show here, on its cards, and in its workspace's Projects.</DialogDescription>
         </DialogHeader>
-        <fetcher.Form method="post" className="space-y-5">
+        <fetcher.Form method="post" action={action} className="space-y-5">
           <input type="hidden" name="intent" value="about" />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-muted">Description</span>

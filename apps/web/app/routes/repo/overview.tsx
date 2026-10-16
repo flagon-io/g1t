@@ -2,11 +2,9 @@ import {
   Activity,
   ArrowRight,
   ArrowUpRight,
-  BookOpen,
   Code2,
   GitBranch,
   GitCommitHorizontal,
-  Globe,
   Hand,
   HeartPulse,
   Lock,
@@ -14,7 +12,6 @@ import {
   Radio,
   Rocket,
   RotateCw,
-  Tag,
 } from "lucide-react";
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
@@ -35,14 +32,12 @@ import { ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui
 import { Card } from "../../components/ui/card";
 import { type LivePull, LiveNowList, StartHere } from "../../components/coordination";
 import { awakeAndIdle, liveByIssue } from "../../lib/coordination";
-import { type Need, ageBuckets, firstPassRate, passRate, rankNeeds, runHealth } from "../../lib/mission";
+import { type Need, ageBuckets, rankNeeds, runHealth } from "../../lib/mission";
 import { count, duration, percent } from "../../lib/observability";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import {
   PUBLISH_GUIDES,
-  bare,
   kindLabel,
-  linksToShow,
   latestTag,
   libraryPackages,
   packageName,
@@ -51,10 +46,10 @@ import {
   projectPlan,
   publishGuide,
 } from "../../lib/project-kind";
-import { AboutEditor, KindMenu, LinkList } from "../../components/project-about";
+import { KindMenu } from "../../components/project-about";
 import { DocsHead, ElsewhereHead, type ExternalDeployment, OtherHead, WhereItRuns, deploymentStatus } from "../../components/project-head";
-import { actions, deployments, events as eventLog, packages, projects, repos, telemetry, work } from "../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
+import { actions, deployments, packages, projects, repos, telemetry, work } from "../../lib/services.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { accessTo, countsFor, projectFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
 import { DeploymentStateIcon, DeploymentsPanel } from "../../components/deployments-panel";
@@ -62,7 +57,10 @@ import { STATE_WORD, environmentUrl, productionEnvironment, reportedProduction }
 import { cardSources, externalTarget, externalVersion, productionImageUrl } from "../../lib/production-image";
 import { useAddresses } from "../../lib/addresses";
 import { commitChecksFor } from "../../lib/commit-checks.server";
-import { CommitChecksBadge } from "../../components/commit-checks";
+import { CommitChecksBadge, CommitChecksSummary } from "../../components/commit-checks";
+import { StatusIcon, Duration, shortRef, standingWord } from "../../components/actions";
+import { resolveRange, rangeLabel } from "../../lib/usage";
+import { deliveryDays, duration as deliveryDuration } from "../../lib/workspace-insights";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 
@@ -115,11 +113,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // A library or a tool shows its packages where an app shows production.
   const libraryRepoP = Promise.all([planP, repoP]).then(([plan, repo]) => (plan === "release" && repo?.ok ? repo.value : null));
   const packagesP = libraryRepoP.then((repo) => (repo ? soft(packages.list(params.owner, viewer, { repoId: repo.id })) : null));
-  // How often checks pass: pull requests' checks when any finished lately,
-  // otherwise the project's workflow runs.
-  const checkEventsP = repoP.then((repo) =>
-    repo?.ok ? soft(eventLog.list({ repoId: repo.value.id, types: ["checks.completed"], limit: 100 })) : null,
-  );
   const workflowRunsP = soft(actions.runs(path, viewer, { limit: 30 }));
   // What waits on someone signed in: their pull requests' lifecycles, and the open ones.
   const minePullsP = repoP.then((repo) =>
@@ -147,13 +140,11 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
           : null,
       )
     : Promise.resolve(null);
-  // An app deployed by its own pipeline that has reported no deployment
-  // shows the default branch's latest commit instead.
-  const commitP = Promise.all([planP, environmentsP]).then(([plan, found]) =>
-    plan === "elsewhere" && !reportedProduction(found?.ok ? found.value.environments : [])
-      ? soft(repos.log(path, viewer, null, 1)).then((log) => (log?.ok ? (log.value[0] ?? null) : null))
-      : null,
-  );
+  const commitP = soft(repos.log(path, viewer, null, 1)).then((log) => log?.ok ? (log.value[0] ?? null) : null);
+  const range = resolveRange("30d", {}, new Date(now));
+  const insightsP = repoP.then((repo) => repo?.ok
+    ? forMembers(() => work.deliveryInsights([repo.value.id], viewer, range.from, range.until))
+    : null);
 
   const [
     { insider: member, can },
@@ -169,7 +160,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     mine,
     packageList,
     tagList,
-    checkEvents,
+    insights,
     workflowRuns,
     observed,
     commit,
@@ -191,7 +182,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     packagesP,
     // The latest release, for About.
     soft(repos.tags(path, viewer)),
-    checkEventsP,
+    insightsP,
     workflowRunsP,
     telemetryP,
     commitP,
@@ -242,9 +233,6 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   }
 
   // --- Health ------------------------------------------------------------------
-  const checkResults = (checkEvents ?? []).flatMap((event) =>
-    event.type === "checks.completed" ? [{ repo: "", number: event.data.number, at: Date.parse(event.time), passed: event.data.status === "passed" }] : [],
-  );
   const openIssues = ok(issues);
 
   // --- Live now ------------------------------------------------------------------
@@ -284,6 +272,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
 
   return {
     member,
+    workspaceMember: roleIn(viewer, params.owner) != null,
     can,
     github,
     project: projectValue,
@@ -291,15 +280,19 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     builds: builds.slice(0, 30),
     previews: live.filter((app) => app.kind === "preview"),
     production,
+    serving: current ? { sha: current.sha, at: current.updated_at } : null,
     // The screenshot of production on g1t.page, for members (like its builds).
     productionShot: member && liveProduction ? shotVersion(liveProduction) : null,
     latestProductionBuild: latestProduction ? { status: latestProduction.status } : null,
     productionLatest: productionLatest
-      ? { id: productionLatest.id, state: productionLatest.state, at: productionLatest.updated_at, environment: productionEnv!.name }
+      ? { id: productionLatest.id, sha: productionLatest.sha, state: productionLatest.state, at: productionLatest.updated_at, environment: productionEnv!.name }
       : null,
     commit: commit ? { hash: commit.hash, authoredAt: commit.authoredAt } : null,
     // The commit's checks, streamed in after the page.
-    checks: commit ? commitChecksFor(path, viewer, [commit.hash]) : Promise.resolve(null),
+    checks: commitChecksFor(path, viewer, [commit?.hash, deployment?.sha, productionLatest?.sha]),
+    workflowRuns: ok(workflowRuns),
+    insights,
+    range,
     release: latestTag(ok(tagList) ?? []),
     // Production as reported from outside g1t, for an app deployed elsewhere.
     deployment,
@@ -324,11 +317,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     livePulls,
     defaultBranch,
     health: {
-      // A pull request's checks when any finished lately; otherwise the
-      // project's workflow runs, for one that ships straight to its branch.
-      ...(checkResults.length > 0 || !workflowRuns?.ok
-        ? { passRate: passRate(checkResults.map((c) => c.passed)), firstPass: firstPassRate(checkResults), checkRuns: checkResults.length }
-        : runHealth(workflowRuns.value)),
+      ...runHealth(ok(workflowRuns) ?? []),
       ages: openIssues ? ageBuckets(openIssues.map((issue) => issue.createdAt), now) : null,
     },
     telemetry: telemetryData ? { overview: telemetryData.overview!, errors: telemetryData.errors ?? [] } : null,
@@ -551,7 +540,7 @@ function plural(n: number, one: string, many = `${one}s`): string {
  * instead, so nothing is said twice.
  */
 function Facts({ loaderData, base, plan }: { loaderData: Loaded; base: string; plan: string }) {
-  const { productionLatest, release, library, telemetry, health, open, environments } = loaderData;
+  const { productionLatest, release, library, telemetry, open, environments } = loaderData;
   const headShowsProduction = !library && (plan === "production" || plan === "elsewhere");
   const releaseFact = release ? (
     <Fact
@@ -592,20 +581,7 @@ function Facts({ loaderData, base, plan }: { loaderData: Loaded; base: string; p
     ) : (
       <Fact label="Latest release" to={`${base}/tags`} value={<span className="font-normal text-muted">None yet</span>} />
     );
-  const checks = (
-    <Fact
-      label="Checks passing"
-      to={`${base}/actions`}
-      hint={health.checkRuns ? `Of the last ${plural(health.checkRuns, "run")}` : "No checks have run recently"}
-      value={
-        health.checkRuns ? (
-          <span className={health.passRate != null && health.passRate < 0.7 ? "text-warn" : undefined}>{share(health.passRate)}</span>
-        ) : (
-          <span className="font-normal text-muted">None lately</span>
-        )
-      }
-    />
-  );
+  const branch = <Fact label="Default branch" to={`${base}/code`} value={loaderData.defaultBranch ?? "Unavailable"} />;
   return (
     <div className="grid grid-cols-2 divide-line border-t border-line text-sm sm:grid-cols-4 sm:divide-x">
       {first}
@@ -623,18 +599,13 @@ function Facts({ loaderData, base, plan }: { loaderData: Loaded; base: string; p
               </span>
             }
           />
-          {checks}
+          {branch}
         </>
       ) : (
         <>
-          {checks}
-          <Fact
-            label="Pass on the first try"
-            to={`${base}/actions`}
-            hint={health.firstPass.of ? `Of ${plural(health.firstPass.of, "change")} checked lately` : undefined}
-            value={health.firstPass.of ? share(health.firstPass.rate) : <span className="font-normal text-muted">—</span>}
-          />
-          <Fact label="Open" to={`${base}/issues`} value={`${plural(open.issues, "issue")} · ${plural(open.pulls, "pull request")}`} />
+          {branch}
+          <Fact label="Open issues" to={`${base}/issues`} value={open.issues} />
+          <Fact label="Open pull requests" to={`${base}/pulls`} value={open.pulls} />
         </>
       )}
     </div>
@@ -799,24 +770,12 @@ function Overview({
   actionData: Route.ComponentProps["actionData"];
   params: Route.ComponentProps["params"];
 }) {
-  const { member, project, settings, production, needs, library, claims, sessions, titles, livePulls, defaultBranch, previews } = loaderData;
+  const { member, project, needs, library, claims, sessions, titles, livePulls, defaultBranch, previews } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const name = project?.name ?? params.repo;
   const plan = project ? projectPlan(project) : "production";
   const canChange = member && loaderData.can.manage_settings;
-  const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
-  // Its homepage and docs beside what it is, unless the card below already links there.
-  const headUrl =
-    plan === "production"
-      ? (productionUrl ?? settings?.productionUrl)
-      : plan === "elsewhere"
-        ? (loaderData.deployment?.url ?? project?.productionUrl)
-        : plan === "docs"
-          ? (project?.links.docs ?? project?.productionUrl ?? project?.links.homepage)
-          : plan === "other"
-            ? (project?.links.homepage ?? project?.links.docs)
-            : null;
-  const stripLinks = project ? linksToShow({ ...project.links, custom: [] }, [headUrl]) : [];
+  const checkSha = loaderData.productionLatest?.sha ?? loaderData.commit?.hash;
   const addresses = useAddresses();
   // The production card's picture: an uploaded image, served from the
   // usercontent origin, and where someone who may change it adds one.
@@ -830,9 +789,9 @@ function Overview({
   const busy = claims.length + awake.length > 0;
   const working = busy || idle.length > 0;
   // Deployments, checks, releases, claims and sessions show as they happen.
-  useRepoLive({ match: repoPages.overview(loaderData.commit?.hash) });
+  useRepoLive({ match: (change) => repoPages.overview()(change) || repoPages.runs()(change) || change.kind === "git.push" });
   // Claims lapse and sessions go idle with no event to say so.
-  useRefreshWhile(working, 15_000);
+  useRefreshWhile(working || (loaderData.workflowRuns ?? []).some((run) => run.status !== "completed"), 15_000);
   const live = liveByIssue(claims, awake);
   const moreIssues = live.issues.length - LIVE_SHOWN;
 
@@ -845,12 +804,7 @@ function Overview({
           {project && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-2.5 text-xs sm:px-6">
               <KindMenu project={project} label={kindLabel(project)} canChange={canChange} />
-              {stripLinks.map((link) => (
-                <DeployLink key={link.key} href={link.url} className="inline-flex min-w-0 items-center gap-1.5 text-muted hover:text-fg">
-                  {link.type === "docs" ? <BookOpen size={12} className="shrink-0 text-faint" /> : <Globe size={12} className="shrink-0 text-faint" />}
-                  <span className="truncate">{link.type === "docs" ? `Docs · ${bare(link.url)}` : link.label}</span>
-                </DeployLink>
-              ))}
+
             </div>
           )}
           {plan === "elsewhere" && project ? (
@@ -861,7 +815,7 @@ function Overview({
               canDeploy={member && loaderData.can.manage_integrations}
               deployment={loaderData.deployment}
               commit={loaderData.commit}
-              checks={loaderData.commit ? <CommitChecksBadge checks={loaderData.checks} sha={loaderData.commit.hash} className="size-5" /> : undefined}
+              checks={(loaderData.deployment?.sha ?? loaderData.commit?.hash) ? <CommitChecksBadge checks={loaderData.checks} sha={(loaderData.deployment?.sha ?? loaderData.commit?.hash)!} /> : undefined}
               shot={
                 <ProductionShot
                   sources={cardSources(loaderData.elsewhereShot, upload)}
@@ -882,6 +836,19 @@ function Overview({
             <LibraryHead library={library} project={project} base={base} workspace={params.owner} />
           ) : (
             <ProductionHead loaderData={loaderData} base={base} name={name} upload={upload} addImage={addImage} />
+          )}
+          {checkSha && (
+            <div className="border-t border-line px-5 py-4 sm:px-6">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                <GitCommitHorizontal size={14} />
+                <span>{loaderData.productionLatest ? "Latest production deployment" : `Latest on ${defaultBranch ?? "default branch"}`}</span>
+                <Link to={`${base}/commit/${checkSha}`} className="font-mono hover:text-fg">{checkSha.slice(0, 7)}</Link>
+              </div>
+              <CommitChecksSummary checks={loaderData.checks} sha={checkSha} />
+              {loaderData.serving && loaderData.serving.sha !== checkSha && (
+                <p className="mt-2 text-xs text-muted">Currently serving <Link to={`${base}/commit/${loaderData.serving.sha}`} className="font-mono text-fg-soft hover:underline">{loaderData.serving.sha.slice(0, 7)}</Link> &middot; deployed <TimeAgo at={loaderData.serving.at} /></p>
+              )}
+            </div>
           )}
           {actionData && (
             <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-success"}`}>
@@ -949,6 +916,9 @@ function Overview({
             )}
           </Panel>
 
+          <DeliveryPanel loaderData={loaderData} base={base} />
+          <WorkflowPanel loaderData={loaderData} base={base} />
+
           {previews.length > 0 && (
             <Panel title="Previews" icon={<GitBranch size={14} />} count={previews.length} all={{ to: `${base}/deployments`, label: "Deployments" }}>
               <Card asChild divided className="overflow-hidden">
@@ -991,7 +961,7 @@ function Overview({
           )}
           {!loaderData.telemetryLoaded && <Unavailable what="Observability" compact />}
           {loaderData.telemetry && <ObservabilityCard overview={loaderData.telemetry.overview} errors={loaderData.telemetry.errors} base={base} />}
-          {project && <AboutCard project={project} canChange={canChange} base={base} release={loaderData.release} />}
+
           <HealthCard loaderData={loaderData} base={base} plan={plan} />
         </aside>
       </div>
@@ -1137,56 +1107,73 @@ function HealthCard({ loaderData, base, plan }: { loaderData: Loaded; base: stri
   );
 }
 
-/** What the project is: its description, links, kind and latest release. */
-function AboutCard({
-  project,
-  canChange,
-  base,
-  release,
-}: {
-  project: NonNullable<Loaded["project"]>;
-  canChange: boolean;
-  base: string;
-  release: Loaded["release"];
-}) {
+/** The same date range and metrics as the project's workspace Insights. */
+function DeliveryPanel({ loaderData: d, base }: { loaderData: Loaded; base: string }) {
+  if (!d.member) return null;
+  const metrics = d.insights?.projects[0];
+  const days = deliveryDays(d.range.from, d.range.until, d.insights?.days ?? []);
+  const peak = Math.max(1, ...days.map((day) => day.merged));
   return (
-    <Card asChild className="p-5">
-      <section>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">About</h2>
-          {canChange && <AboutEditor project={project} />}
-        </div>
-        <p className={`mt-2.5 text-sm ${project.description ? "text-fg-soft" : "text-faint"}`}>{project.description ?? "No description."}</p>
-        <LinkList links={project.links} className="mt-3" />
-        <ul className="mt-4 space-y-2 text-xs text-muted">
-          <li className="flex items-center gap-2">
-            {project.kind === "library" || project.kind === "tool" ? (
-              <PackageGlyph size={13} className="shrink-0 text-faint" />
-            ) : project.kind === "docs" ? (
-              <BookOpen size={13} className="shrink-0 text-faint" />
-            ) : (
-              <Rocket size={13} className="shrink-0 text-faint" />
-            )}
-            <Hint label={project.kindReason.detail}>
-              <span>{kindLabel(project)}</span>
-            </Hint>
-          </li>
-          {release && (
-            <li className="flex items-center gap-2">
-              <Tag size={13} className="shrink-0 text-faint" />
-              <Link to={`${base}/tags`} className="hover:text-fg">
-                <span className="font-mono text-fg-soft">{release.name}</span>
-                {release.at && (
-                  <span className="text-faint">
-                    {" · "}
-                    <TimeAgo at={release.at} />
-                  </span>
-                )}
+    <Panel title="Delivery" icon={<Activity size={14} />} extra={<span className="text-xs text-muted">Last 30 days</span>}
+      all={d.workspaceMember ? { to: `/${base.split("/")[1]}/-/insights?period=30d&project=${encodeURIComponent(base.split("/")[2])}`, label: "Insights" } : undefined}>
+      {!metrics ? <Unavailable what="Delivery insights" /> : (
+        <Card className="overflow-hidden">
+          <dl className="grid grid-cols-1 divide-y divide-line border-b border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {[
+              { label: "Pull requests merged", value: metrics.merged },
+              { label: "Average time to merge", value: deliveryDuration(metrics.merged ? metrics.leadSeconds / metrics.merged : null) },
+              { label: "Average first review", value: deliveryDuration(metrics.reviewed ? metrics.reviewSeconds / metrics.reviewed : null) },
+            ].map((stat) => <div key={stat.label} className="p-4"><dt className="text-xs text-muted">{stat.label}</dt><dd className="mt-2 text-xl font-semibold tabular-nums">{stat.value}</dd></div>)}
+          </dl>
+          <div className="p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted"><span>Merged pull requests per day</span><span>{rangeLabel(d.range.from, d.range.until)} · UTC</span></div>
+            <div className="flex h-16 items-end gap-1" role="img" aria-label={`${metrics.merged} pull requests merged in the last 30 days`}>
+              {days.map((day) => <Hint key={day.day} label={`${day.day}: ${plural(day.merged, "merged pull request")}`}><span className={`min-w-0 flex-1 rounded-sm ${day.merged ? "bg-accent/70" : "bg-line"}`} style={{ height: `${Math.max(4, day.merged / peak * 100)}%` }} /></Hint>)}
+            </div>
+            {metrics.merged === 0 && <p className="mt-3 text-xs text-faint">No pull requests merged in this period. Direct pushes appear in workflows below.</p>}
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line px-4 py-3 text-xs text-muted">
+            <Link to={`${base}/pulls`} className="hover:text-fg">{metrics.active} active pull requests</Link>
+            <Link to={`${base}/pulls`} className="hover:text-fg">{metrics.unreviewed} awaiting first review</Link>
+            <Link to={`${base}/queue`} className="hover:text-fg">{metrics.queued} in merge queue</Link>
+          </div>
+        </Card>
+      )}
+    </Panel>
+  );
+}
+
+/** The latest sample, with real times, outcomes and links to each run. */
+function WorkflowPanel({ loaderData: d, base }: { loaderData: Loaded; base: string }) {
+  const runs = d.workflowRuns;
+  const oldest = runs?.at(-1);
+  return (
+    <Panel title="Recent workflows" icon={<Activity size={14} />} all={{ to: `${base}/actions`, label: "All workflows" }}>
+      {runs == null ? <Unavailable what="Workflows" /> : runs.length === 0 ? <Quiet>No workflows have run yet.</Quiet> : (
+        <Card className="overflow-hidden">
+          <div className="space-y-3 border-b border-line p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+              <span>Latest {plural(runs.length, "run")} · all branches</span>
+              <span>{oldest && <TimeAgo at={oldest.createdAt} />} → latest</span>
+            </div>
+            <div className="flex gap-1" aria-label="Workflow history, oldest first">
+              {[...runs].reverse().map((run) => <Hint key={run.id} label={`${run.name}: ${standingWord(run)} · ${run.createdAt}`}>
+                <Link to={`${base}/actions/runs/${run.id}`} aria-label={`${run.name}: ${standingWord(run)}`} className={`h-6 min-w-0 flex-1 rounded-sm transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-accent ${run.status !== "completed" ? "bg-warn/70 motion-safe:animate-pulse" : run.conclusion === "success" ? "bg-success/70" : run.conclusion === "failure" ? "bg-danger/70" : "bg-line"}`} />
+              </Hint>)}
+            </div>
+            <p className="text-xs text-muted">{d.health.checkRuns ? `${share(d.health.passRate)} succeeded across ${d.health.checkRuns} completed runs. Cancelled and skipped runs excluded.` : "No completed successful or failed runs in this sample."}</p>
+          </div>
+          <ul className="divide-y divide-line">
+            {runs.slice(0, 5).map((run) => <li key={run.id}>
+              <Link to={`${base}/actions/runs/${run.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-raised/40">
+                <StatusIcon status={run.status} conclusion={run.conclusion} />
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{run.title || run.name}</span><span className="block truncate text-xs text-muted">{run.name} · {shortRef(run.ref)} · {standingWord(run)}{run.attempt > 1 ? ` · attempt ${run.attempt}` : ""}</span></span>
+                <span className="shrink-0 text-right text-xs text-muted"><TimeAgo at={run.createdAt} />{run.startedAt && <Duration className="block" start={run.startedAt} end={run.finishedAt} />}</span>
               </Link>
-            </li>
-          )}
-        </ul>
-      </section>
-    </Card>
+            </li>)}
+          </ul>
+        </Card>
+      )}
+    </Panel>
   );
 }

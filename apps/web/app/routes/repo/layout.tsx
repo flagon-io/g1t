@@ -6,6 +6,7 @@ import { Link, Outlet, type ShouldRevalidateFunctionArgs, data, useLocation, use
 import type { Project } from "@g1t/contracts";
 
 import type { Route } from "./+types/layout";
+import { AboutEditor, LinkList } from "../../components/project-about";
 import { Topics } from "../../components/topics";
 import { projectHomepage } from "../../lib/about";
 import { page } from "../../lib/meta";
@@ -219,14 +220,16 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
         <div className={`mx-auto max-w-6xl px-4 pt-4 sm:px-5 ${signedIn ? "pb-4 max-md:pb-0" : ""}`}>
           <Header
             project={project}
+            large={!rest}
             isPrivate={repo.isPrivate}
             archived={Boolean(repo.archivedAt)}
             namespace={repo.namespace}
             name={repo.name}
             parent={repo.parent}
             actions={
-              watching || stars || forking || (project && pinned != null) ? (
+              watching || stars || forking || (project && (pinned != null || access.can.manage_settings)) ? (
                 <>
+                  {project && access.can.manage_settings && <AboutEditor project={project} action={`${base}?index`} />}
                   {project && pinned != null && (
                     <PinButton workspace={project.workspace} slug={project.slug} name={project.name} pinned={pinned} />
                   )}
@@ -238,16 +241,9 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             }
           />
           {/* What it is, where it lives and its topics, the same on every page of it. */}
-          {description && <p className="mt-2 line-clamp-2 max-w-3xl text-sm text-muted">{description}</p>}
-          {site && (
-            <a
-              href={site}
-              rel="noopener nofollow"
-              className="mt-1.5 flex w-fit max-w-full min-w-0 items-center gap-1.5 text-sm font-medium text-accent hover:underline"
-            >
-              <Link2 size={14} className="shrink-0" />
-              <span className="truncate">{site.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
-            </a>
+          {description && <p className="mt-2 max-w-3xl text-sm text-muted">{description}</p>}
+          {project ? <LinkList links={{ ...project.links, homepage: project.links.homepage ?? site }} className="mt-2 flex flex-wrap gap-x-5 gap-y-2 space-y-0" /> : site && (
+            <a href={site} rel="noopener nofollow" className="mt-2 inline-flex items-center gap-1.5 text-sm text-accent hover:underline"><Link2 size={14} />{site.replace(/^https?:\/\//, "")}</a>
           )}
           <Topics topics={repo.topics} className="mt-3" />
           <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>

@@ -69,7 +69,7 @@ import {
   sessionTree,
 } from "../lib/coordination";
 import { AgentSetup } from "./agent-setup";
-import { CopyLine, EmptyState, Input, SubmitButton, TimeAgo } from "./ui";
+import { Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   AlertDialog,
@@ -1173,23 +1173,25 @@ function IdleSessions({ sessions, base, ender }: { sessions: WorkSession[]; base
 /** What to do when nobody is working on a project: bring your own harness. */
 export function StartHere({ title }: { title: string }) {
   return (
-    <EmptyState title={title}>
-      <div className="mx-auto mt-3 max-w-lg space-y-3 text-left">
-        <p>Connect your coding agent to work with this project:</p>
-        <AgentSetup />
-        <p>Ask your agent to claim an issue and record its session, or claim one with the CLI:</p>
-        <CopyLine text="g1t work claim 12" prompt />
-        <p>
-          <a href="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-fg underline underline-offset-4">
-            Connect an AI client
-          </a>{" "}
-          sets up coding agents and chat apps;{" "}
-          <a href="https://docs.g1t.sh/guides/sessions/" className="text-fg underline underline-offset-4">
-            Sessions, claims and dependencies
-          </a>{" "}
-          says how it works.
-        </p>
+    <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
+      <div>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="mt-1 text-xs text-muted">Sessions and claimed issues appear here as work happens.</p>
       </div>
-    </EmptyState>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm"><Bot size={14} /> Connect an agent</Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Connect your agent</DialogTitle>
+            <DialogDescription>Choose your client, connect it to g1t, then ask it to work on this project.</DialogDescription>
+          </DialogHeader>
+          <AgentSetup />
+          <p className="text-xs text-muted">Ask your agent to claim an issue and record its session so the team can follow along.</p>
+          <a href="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-sm text-accent hover:underline">Connection guide &rarr;</a>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }
