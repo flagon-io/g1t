@@ -64,7 +64,7 @@ export function sections(): Section[] {
     },
     {
       key: "Deployments",
-      tabs: [{ label: "Deployments", path: "deployments" }, ...soon("Deployments")],
+      tabs: [{ label: "Deployments", path: "deployments" }, { label: "Build configuration", path: "settings/deployments", members: true, needs: "manage_integrations" }, ...soon("Deployments")],
     },
     {
       key: "Observability",

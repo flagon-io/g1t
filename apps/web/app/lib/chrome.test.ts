@@ -80,3 +80,20 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("observability/logs"), "observability");
   assert.equal(projectPageAt("pulse"), null);
 });
+
+
+test("project operations keep their place in navigation and require integration access", () => {
+  const operations = ["secrets", "environments", "domains", "runners", "webhooks"] as const;
+  for (const operation of operations) {
+    assert.equal(projectPageAt(`settings/${operation}`), operation);
+    assert.equal(projectPageAt(`settings/${operation}/detail`), operation);
+    assert.ok(!projectPages(false).includes(operation));
+    assert.ok(!projectPages(true, { manage_integrations: false }).includes(operation));
+    assert.ok(projectPages(true, { manage_integrations: true }).includes(operation));
+  }
+  assert.equal(projectPageAt("settings/deployments"), "deployments");
+  assert.equal(projectPageAt("settings/access"), "settings");
+  assert.equal(projectPageAt("soon/storage"), "storage");
+  assert.ok(projectPages(true).includes("storage"));
+  assert.ok(!projectPages(false).includes("storage"));
+});

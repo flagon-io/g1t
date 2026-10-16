@@ -32,23 +32,16 @@ export const ROADMAP: RoadmapItem[] = [
   // Nothing: code is not docs. Docs is its own workspace mode, filterable
   // by project there, and a project never gets a Docs tab.
 
-  // --- Deployments ----------------------------------------------------------
-  {
-    key: "environments",
-    title: "Environments",
-    section: "Deployments",
-    summary: "Staging, production and others, with approvers and branch rules.",
-    why: "Production and previews exist today. Environments add the rest: staging, QA, per-customer, each with its own variables, approvers and rules for what may deploy there.",
-    plans: [
-      "Named environments with their own variables and secrets",
-      "Required approvers before a deploy",
-      "Branch rules: what may deploy where",
-      "Promote a deployment from one environment to the next",
-    ],
-    today: { label: "Deployments", path: "deployments" },
-  },
-
   // --- Pages of their own in the project's sidebar ----------------------
+  {
+    key: "storage",
+    title: "Storage",
+    section: "Project",
+    summary: "Configure databases and storage for your project.",
+    why: "Manage the data services your app depends on alongside its deployments, with connections scoped to the right environment.",
+    plans: ["Connect databases and storage to a project", "Configure connections for production and preview environments", "Manage connection credentials alongside environment variables"],
+    today: { label: "Environment variables", path: "settings/secrets" },
+  },
   {
     key: "analytics",
     title: "Analytics",
