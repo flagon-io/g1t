@@ -124,7 +124,7 @@ function DeployQuietly({ base, canDeploy, what }: { base: string; canDeploy: boo
 /**
  * An app that deploys itself (its workflows, or another pipeline): production at the address it was
  * given, with the latest reported deployment, or else the default branch's
- * latest commit and its checks.
+ * latest commit. Branch checks are shown separately below the production status.
  */
 export function ElsewhereHead({
   project,
@@ -133,13 +133,10 @@ export function ElsewhereHead({
   canDeploy,
   deployment,
   commit,
-  checks,
   shot,
 }: Head & {
   deployment?: ExternalDeployment | null;
   commit: { hash: string; authoredAt: string } | null;
-  /** The commit's checks, as a badge; left out until there is one to show. */
-  checks?: ReactNode;
   /** Production's picture, beside the rest, as an app on g1t has (components/production-shot.tsx). */
   shot?: ReactNode;
 }) {
@@ -157,7 +154,6 @@ export function ElsewhereHead({
                 {deployment ? (
                   <>
                     <StatusDot status={deploymentStatus(deployment.state)} />
-                    {checks}
                     <span className="inline-flex items-center gap-1 font-mono">
                       <GitCommitHorizontal size={13} className="text-faint" />
                       <Link to={`${base}/commit/${deployment.sha}`} className="hover:text-fg">{deployment.sha.slice(0, 7)}</Link>
@@ -187,7 +183,6 @@ export function ElsewhereHead({
                           <GitCommitHorizontal size={13} className="text-faint" />
                           {commit.hash.slice(0, 7)}
                         </Link>
-                        {checks}
                         <TimeAgo at={commit.authoredAt} />
                       </span>
                     )}
