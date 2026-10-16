@@ -1,6 +1,6 @@
 /**
- * A project's or a workspace's secrets and variables, as one list in the
- * way Vercel lists environment variables: each row is a key, its type
+ * A project's or a workspace's secrets and variables, separated by scope:
+ * each row is a key, its type
  * (Secret or Config), the environments it applies to and who reads it.
  * Adding and editing happen in a side panel, opened by `?add` or
  * `?edit=<id>` so the page works without scripts.
@@ -10,6 +10,9 @@ import { useMemo, useState } from "react";
 import { Form, Link, useLocation } from "react-router";
 
 import type { Setting } from "@g1t/contracts";
+
+import { settingOverride } from "../lib/setting-overrides";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 import type { SecretsAction, SecretsData } from "../lib/secrets.server";
 import { ButtonLink, EmptyState, ErrorText, SubmitButton, TimeAgo } from "./ui";
@@ -38,11 +41,13 @@ export function SecretsPanel({
   action,
   scope,
   manage,
+  workspacePath,
 }: {
   data: SecretsData;
   action: SecretsAction | undefined;
   scope: "project" | "workspace";
   manage: boolean;
+  workspacePath?: string;
 }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -64,18 +69,15 @@ export function SecretsPanel({
   );
 
   return (
-    <div className="max-w-5xl">
+    <div className="min-w-0 max-w-5xl">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">{scope === "project" ? "Environment variables" : "Secrets and variables"}</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            One list for everything that reads them. Each row says which environments it applies to and whether{" "}
-            <strong className="font-medium text-fg">workflows</strong> (as <code className="text-fg">secrets.KEY</code>{" "}
-            and <code className="text-fg">vars.KEY</code>), <strong className="font-medium text-fg">deployments</strong>{" "}
-            (the build's environment and the running app's <code className="text-fg">env.KEY</code>), or both read it.
+            Secrets and configuration for workflows and deployments, scoped by environment.
             {scope === "workspace"
-              ? " Every project, or the ones you link, reads the workspace's; a project's own row of the same key wins."
-              : " Rows from the workspace are shown too; adding the same key here replaces them for this project."}{" "}
+              ? " Share values with every project or only the projects you choose."
+              : " Project keys override workspace keys of the same type for each shared reader."}{" "}
             <a href="https://docs.g1t.sh/guides/secrets-and-variables/" className="text-fg hover:underline">
               How they are read
             </a>
@@ -138,22 +140,35 @@ export function SecretsPanel({
       <ErrorText>{data.error}</ErrorText>
       {!editing && !adding && <div className="mt-2"><ErrorText>{action?.error}</ErrorText></div>}
 
-      <div className="mt-4">
-        {data.rows.length === 0 ? (
-          <EmptyState title="No secrets or variables yet">
-            Add one, or paste a <code>.env</code> file into Add to bring many at once.
-          </EmptyState>
-        ) : shown.length === 0 ? (
-          <EmptyState title="Nothing matches" />
-        ) : (
-          <Card asChild className="overflow-hidden">
-            <ul>
-              {shown.map((r) => (
-                <Row key={r.id} row={r} inherited={r.scope !== scope} manage={manage} />
-              ))}
-            </ul>
-          </Card>
-        )}
+      <div className="mt-6 space-y-8">
+        {(scope === "project" ? ["project", "workspace"] as const : ["workspace"] as const).map((section) => {
+          const rows = shown.filter((r) => r.scope === section);
+          const total = data.rows.filter((r) => r.scope === section).length;
+          return (
+            <section key={section} aria-label={`${section === "project" ? "Project" : "Workspace"} secrets and variables`}>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold">{section === "project" ? "Project secrets and variables" : "Workspace secrets and variables"}</h2>
+                  {scope === "project" && section === "workspace" && <p className="mt-1 text-xs text-muted">Inherited values shared with this project. A project key replaces the workspace value for its readers, even outside its selected environments.</p>}
+                </div>
+                {scope === "project" && section === "workspace" && workspacePath && <ButtonLink to={workspacePath} variant="outline">View workspace variables</ButtonLink>}
+              </div>
+              {rows.length === 0 ? (
+                <EmptyState title={total > 0 ? "Nothing matches these filters" : section === "project" ? "No project secrets or variables" : "No workspace secrets or variables"} />
+              ) : (
+                <Card className="min-w-0 overflow-hidden">
+                  <Table className="min-w-[850px] table-fixed" frameProps={{ tabIndex: 0, role: "region", "aria-label": `${section} secrets and variables` }}>
+                    <colgroup><col style={{ width: "32%" }} /><col style={{ width: "19%" }} /><col style={{ width: "18%" }} /><col style={{ width: "10%" }} /><col style={{ width: "11%" }} /><col style={{ width: "10%" }} /></colgroup>
+                    <TableHeader><TableRow>
+                      <TableHead>Name / value</TableHead><TableHead>Environments</TableHead><TableHead>Used by</TableHead><TableHead>Type</TableHead><TableHead>Updated</TableHead><TableHead><span className="sr-only">Actions</span></TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>{rows.map((r) => <Row key={r.id} row={r} inherited={r.scope !== scope} manage={manage} override={scope === "project" ? settingOverride(r, data.rows) : null} />)}</TableBody>
+                  </Table>
+                </Card>
+              )}
+            </section>
+          );
+        })}
       </div>
 
       {manage && (adding || row) && (
@@ -164,14 +179,15 @@ export function SecretsPanel({
   );
 }
 
-function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; manage: boolean }) {
+function Row({ row, inherited, manage, override }: { row: Setting; inherited: boolean; manage: boolean; override: string | null }) {
   const secret = row.kind === "secret";
   const hosts = row.brokeredHosts ?? [];
   return (
-    <li className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-sm first:border-t-0 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_6rem_6rem_auto]">
+    <TableRow>
+      <TableCell className="align-middle">
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate font-mono text-[0.8125rem]">{row.name}</p>
+          <p className="min-w-0 break-all font-mono text-[0.8125rem]">{row.name}</p>
           {secret && hosts.length > 0 && (
             <Hint label={`Filled in for ${hosts.join(", ")}`}>
               <Badge tone="accent">
@@ -181,24 +197,19 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
             </Hint>
           )}
         </div>
-        {row.note && <p className="truncate text-xs text-faint">{row.note}</p>}
+        {row.note && <p className="truncate text-xs text-faint" title={row.note}>{row.note}</p>}
+        {override && <p className="mt-1 text-xs text-accent">{override}</p>}
         {!secret && row.value != null && <p className="truncate font-mono text-xs text-muted">{row.value}</p>}
       </div>
-      <span className="truncate text-muted">{environmentsLabel(row.environments)}</span>
-      <span className="hidden truncate text-xs text-muted md:block">
-        {row.availableTo.map((r) => READERS[r] ?? r).join(" · ")}
-      </span>
-      <span className="hidden items-center gap-1.5 text-xs text-muted md:flex">
-        {secret ? <Lock size={13} /> : <SlidersHorizontal size={13} />}
-        {secret ? "Secret" : "Config"}
-      </span>
-      <span className="hidden text-xs text-faint md:block">
-        <TimeAgo at={row.updatedAt} />
-      </span>
-      <span className="flex items-center justify-end gap-1">
-        {inherited ? (
-          <span className="rounded-full px-2 py-px text-xs text-muted ring-1 ring-line">Workspace</span>
-        ) : (
+      </TableCell>
+      <TableCell className="align-middle break-words text-muted">{environmentsLabel(row.environments)}</TableCell>
+      <TableCell className="align-middle text-xs text-muted">{row.availableTo.map((r) => READERS[r] ?? r).join(", ")}</TableCell>
+      <TableCell className="align-middle text-xs text-muted"><span className="flex items-center gap-1.5">
+        {secret ? <Lock size={13} className="shrink-0" /> : <SlidersHorizontal size={13} className="shrink-0" />}{secret ? "Secret" : "Config"}
+      </span></TableCell>
+      <TableCell className="align-middle text-xs text-faint"><TimeAgo at={row.updatedAt} /></TableCell>
+      <TableCell className="align-middle"><div className="flex flex-wrap items-center justify-end gap-1">
+        {!inherited && (
           <>
             {row.projects.length > 0 && (
               <Hint label={row.projects.join(", ")}>
@@ -236,8 +247,8 @@ function Row({ row, inherited, manage }: { row: Setting; inherited: boolean; man
             )}
           </>
         )}
-      </span>
-    </li>
+      </div></TableCell>
+    </TableRow>
   );
 }
 
