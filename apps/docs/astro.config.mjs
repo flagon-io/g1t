@@ -235,6 +235,8 @@ export default defineConfig({
 						{ label: 'API overview', slug: 'reference/api' },
 						{ label: 'MCP tools', slug: 'reference/mcp' },
 						{ label: 'CLI commands', slug: 'reference/cli' },
+						{ label: 'Developer resources', slug: 'reference/developers' },
+						{ label: 'Versioning policy', slug: 'reference/versioning' },
 						{ label: 'Rate limits', slug: 'reference/rate-limits' },
 						{ label: 'Try it in the explorer', link: '/api/reference/', attrs: { target: '_self' } },
 						{ label: 'OpenAPI document', link: 'https://api.g1t.sh/openapi.json' },

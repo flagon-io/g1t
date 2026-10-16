@@ -28,7 +28,7 @@ export function varyAccept(headers: Headers) {
 
 export function developerResource(path: string, addresses: { api: string; mcp: string }): string | null {
   const resources: Record<string, string> = {
-    "/developers": "https://docs.g1t.sh/reference/api/",
+    "/developers": "https://docs.g1t.sh/reference/developers/",
     "/openapi.json": `${addresses.api}/openapi.json`,
     "/mcp": addresses.mcp,
   };

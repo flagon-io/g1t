@@ -78,6 +78,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
   {
     title: "Product",
     links: [
+      ["Features", "/features"],
       // Code first, as on the landing page: then Chat, then the agents.
       ["Pull requests", "https://docs.g1t.sh/guides/pull-requests/"],
       ["Deployments", "https://docs.g1t.sh/guides/deployments/"],
@@ -92,6 +93,7 @@ const FOOTER_LINKS: { title: string; links: [string, string][] }[] = [
   {
     title: "Developers",
     links: [
+      ["Developer resources", "/developers"],
       ["Documentation", "https://docs.g1t.sh/"],
       ["API reference", "https://docs.g1t.sh/reference/api/"],
       ["MCP tools", "https://docs.g1t.sh/reference/mcp/"],

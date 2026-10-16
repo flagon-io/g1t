@@ -1,5 +1,5 @@
 ---
-title: Accounts and authentication
+title: g1t accounts and authentication
 description: Creating an account, invitations, email addresses, confirming them, two-factor authentication and recovery codes, personal access tokens and their permissions and scopes, a workspace's rules for tokens, OAuth, signing in from a tool, password reset, your security log and deleting your account.
 ---
 

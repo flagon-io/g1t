@@ -97,3 +97,9 @@ test("project operations keep their place in navigation and require integration 
   assert.ok(projectPages(true).includes("storage"));
   assert.ok(!projectPages(false).includes("storage"));
 });
+
+test("features keeps the public topbar for visitors and members", () => {
+  for (const viewer of [visitor, member, newcomer]) {
+    for (const path of ["/features", "/features/", "/features.data"]) assert.equal(frameOf(path, viewer), "public");
+  }
+});

@@ -22,6 +22,7 @@ const ROUTES: &[&str] = &[
     "explore",
     "about",
     "pricing",
+    "features",
     "terms",
     "privacy",
     "policies",
@@ -263,7 +264,7 @@ mod tests {
     fn g1t_can_be_an_alias_but_a_route_cannot() {
         assert_eq!(aliasable_name(" G1T ").as_deref(), Some("g1t"));
         assert_eq!(aliasable_name("acme-corp").as_deref(), Some("acme-corp"));
-        for name in ["settings", "api", "login", "Explore", "-acme", "ac--me", "acme_inc", "", "a.b"] {
+        for name in ["settings", "api", "login", "Explore", "Features", "-acme", "ac--me", "acme_inc", "", "a.b"] {
             assert_eq!(aliasable_name(name), None, "{name}");
         }
         assert_eq!(aliasable_name(&"a".repeat(40)), None);

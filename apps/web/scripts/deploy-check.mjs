@@ -71,7 +71,7 @@ try {
   assert.equal(await screenshot.text(), "production-preview");
   assert.equal((await request("/acme/private/production.jpg")).status, 404, "Unreadable projects never expose screenshots");
   console.log("Public production screenshots: anonymous access, private-project denial, and serving commit selection verified.");
-  for (const [path, destination] of [["/developers", "https://docs.g1t.sh/reference/api/"], ["/openapi.json", "https://api.g1t.sh/openapi.json"], ["/mcp", "https://mcp.g1t.sh"]]) {
+  for (const [path, destination] of [["/developers", "https://docs.g1t.sh/reference/developers/"], ["/openapi.json", "https://api.g1t.sh/openapi.json"], ["/mcp", "https://mcp.g1t.sh"]]) {
     const answer = await request(path, { redirect: "manual" });
     assert.equal(answer.status, 308);
     assert.equal(answer.headers.get("location"), new URL(destination).href);
@@ -95,6 +95,15 @@ try {
     assert.ok(answer.headers.get("content-type")?.startsWith(accept));
     assert.equal(await answer.text(), "");
   }
+  const features = await request("/features", { headers: { accept: "text/html" } });
+  assert.equal(features.status, 200);
+  const featureHtml = await features.text();
+  assert.match(featureHtml, /<h1[^>]*>From the first conversation to shipped code[.]<\/h1>/);
+  assert.match(featureHtml, /<title>g1t features/);
+  assert.match(featureHtml, /href="https:\/\/g1t.sh\/features"/);
+  assert.match(featureHtml, /href="\/features"[^>]*>Features/);
+  assert.match(featureHtml, /href="\/developers"/);
+  console.log("Features: public HTML, branded title, canonical URL and navigation verified.");
   const old = await request("/assets/app-old12345.css");
   assert.equal(old.status, 200);
   assert.equal(old.headers.get("content-type"), "text/css");

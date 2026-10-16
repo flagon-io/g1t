@@ -22,6 +22,21 @@ Every command and flag is listed in the [command reference](/reference/cli/).
 
 ## Install
 
+### Homebrew
+
+On macOS or Linux, add the official tap hosted on g1t, then install:
+
+```sh
+brew tap flagon-io/tap https://g1t.sh/flagon-io/homebrew-tap.git
+brew install flagon-io/tap/g1t
+```
+
+The [tap source](https://g1t.sh/flagon-io/homebrew-tap) pins each platform's
+binary and SHA-256 checksum to a release. Update Homebrew installations with
+`brew update && brew upgrade flagon-io/tap/g1t`.
+
+### Install script
+
 On Linux or macOS:
 
 ```sh

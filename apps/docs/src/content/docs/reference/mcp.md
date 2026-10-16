@@ -1,5 +1,5 @@
 ---
-title: MCP tools
+title: g1t MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
