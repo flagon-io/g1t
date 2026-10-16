@@ -883,6 +883,7 @@ function RepoMenu({
               return <SidebarLink key={page} to={`${base}/${link.path}`} icon={icons[page]}>{link.label}</SidebarLink>;
             })}
             <ProjectSoonRow base={base} feature="storage" icon={<Database size={15} />} />
+            <ProjectSoonRow base={base} feature="daemons" icon={<Repeat size={15} />} />
           </NavRows>
         </>
       )}
