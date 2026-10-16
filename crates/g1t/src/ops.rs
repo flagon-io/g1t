@@ -172,7 +172,7 @@ pub mod generate {
                 writeln!(text, "        scope: {scope},").unwrap();
                 let params: Vec<&Value> = op["parameters"]
                     .as_array()
-                    .map(|l| l.iter().collect())
+                    .map(|l| l.iter().filter(|p| matches!(p["in"].as_str(), Some("path" | "query"))).collect())
                     .unwrap_or_default();
                 if params.is_empty() {
                     writeln!(text, "        params: &[],").unwrap();
@@ -245,6 +245,20 @@ pub mod generate {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn header_metadata_does_not_change_cli_operation_arguments() {
+        let mut doc = generate::openapi();
+        let with_headers = generate::table(&doc);
+        for item in doc["paths"].as_object_mut().unwrap().values_mut() {
+            for operation in item.as_object_mut().unwrap().values_mut() {
+                if let Some(parameters) = operation["parameters"].as_array_mut() {
+                    parameters.retain(|p| matches!(p["in"].as_str(), Some("path" | "query")));
+                }
+            }
+        }
+        assert_eq!(with_headers, generate::table(&doc));
+    }
 
     #[test]
     fn ops_table_is_current() {
