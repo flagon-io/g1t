@@ -11,6 +11,7 @@ import { useReconnect } from "../lib/reconnect";
 import { isNetworkFailure } from "../lib/resilient-fetch";
 import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "../lib/stale-build";
 import { isNeedsSignIn } from "../lib/website-token";
+import { usePageNavigation } from "../lib/use-page-navigation";
 
 /**
  * What a page shows in place of itself when it failed: the root's error
@@ -25,6 +26,7 @@ import { isNeedsSignIn } from "../lib/website-token";
  */
 export function RouteError({ error, contained = false }: { error: unknown; contained?: boolean }) {
   const location = useLocation();
+  const { owns } = usePageNavigation();
   const matches = useMatches();
   const revalidator = useRevalidator();
   const href = location.pathname + location.search + location.hash;
@@ -48,7 +50,7 @@ export function RouteError({ error, contained = false }: { error: unknown; conta
   const offline = !reload && isNetworkFailure(error);
   useReconnect(offline);
   useEffect(() => {
-    if (!reload) return;
+    if (!reload || !owns()) return;
     try {
       sessionStorage.setItem(RELOADED_KEY, href);
     } catch {
@@ -57,7 +59,7 @@ export function RouteError({ error, contained = false }: { error: unknown; conta
     window.location.assign(href);
     const timer = window.setTimeout(() => setGaveUp(href), RELOAD_GIVE_UP_MS);
     return () => window.clearTimeout(timer);
-  }, [reload, href]);
+  }, [reload, href, owns]);
 
   const space = contained ? "py-16" : "py-32";
   if (reload) {

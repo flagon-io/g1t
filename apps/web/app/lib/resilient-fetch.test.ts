@@ -10,7 +10,8 @@ const url = (path: string) => new URL(path, ORIGIN);
 test("only an active navigation carries its build; fetchers, refreshes and writes never force a document switch", async () => {
   const calls: Headers[] = [];
   const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
-  const browser = { location: new URL("https://g1t.sh/edit"), fetch: async (_input: unknown, init?: RequestInit) => { calls.push(new Headers(init?.headers)); return new Response(null); } };
+  let late: Promise<Response> | undefined;
+  const browser = { location: new URL("https://g1t.sh/edit"), fetch: async (_input: unknown, init?: RequestInit) => { calls.push(new Headers(init?.headers)); return late ?? new Response(null); } };
   Object.defineProperty(globalThis, "window", { value: browser, configurable: true });
   let destination: { pathname: string; search: string } | undefined;
   const stop = watchBuildNavigation(() => destination);
@@ -24,6 +25,19 @@ test("only an active navigation carries its build; fetchers, refreshes and write
     await browser.fetch("/edit.data");
     await browser.fetch("https://external.example/next.data?tab=one");
     assert.deepEqual(calls.map((headers) => headers.get("x-g1t-build")), [null, "old-build", null, null, null, null]);
+    for (const path of ["/next.data?tab=one", "/__manifest?paths=/next"]) {
+      let finish!: (response: Response) => void;
+      late = new Promise<Response>((resolve) => { finish = resolve; });
+      const controller = new AbortController();
+      const abandoned = browser.fetch(path, { signal: controller.signal });
+      // A transport can finish after the second click canceled the first.
+      controller.abort();
+      const rejected = assert.rejects(abandoned, { name: "AbortError" });
+      finish(new Response(null, { status: 204, headers: { "X-Remix-Reload-Document": "true" } }));
+      await rejected;
+      late = undefined;
+      assert.equal((await browser.fetch("/newer.data")).status, 200);
+    }
   } finally {
     stop();
     if (previous) Object.defineProperty(globalThis, "window", previous);

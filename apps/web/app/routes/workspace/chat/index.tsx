@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { redirect, useNavigate } from "react-router";
+import { redirect } from "react-router";
+import { usePageNavigation } from "../../../lib/use-page-navigation";
 
 import type { Route } from "./+types/index";
 import { ChatUnavailable, NoChannels } from "../../../components/chat/empty";
@@ -41,7 +42,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 }
 
 export default function ChatIndex({ loaderData, params }: Route.ComponentProps) {
-  const navigate = useNavigate();
+  const { navigate } = usePageNavigation();
   const { to } = loaderData;
   // Told it was a phone, but wider: on to the conversation after all.
   useEffect(() => {

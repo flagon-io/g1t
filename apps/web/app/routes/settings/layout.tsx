@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router";
+import { Outlet, useLocation } from "react-router";
+import { usePageNavigation } from "../../lib/use-page-navigation";
 
 import { ACCOUNT_SETTINGS, accountSettingsPage, settingsPathForHash } from "../../lib/account-settings";
 
@@ -14,7 +15,7 @@ import { ACCOUNT_SETTINGS, accountSettingsPage, settingsPathForHash } from "../.
  */
 export default function SettingsLayout() {
   const { pathname, hash } = useLocation();
-  const navigate = useNavigate();
+  const { navigate } = usePageNavigation();
   useEffect(() => {
     const to = settingsPathForHash(hash);
     if (to && to !== pathname) navigate(to, { replace: true });

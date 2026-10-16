@@ -9,7 +9,8 @@
 import type { FolioSuggestion, FoliosLiveEvent, MemberProfile } from "@g1t/contracts";
 import { AlertTriangle, Check, MessageSquareQuote, SmilePlus, Sparkles } from "lucide-react";
 import { type ComponentType, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useRevalidator, useRouteLoaderData } from "react-router";
+import { Link, useRevalidator, useRouteLoaderData } from "react-router";
+import { usePageNavigation } from "../../../lib/use-page-navigation";
 
 import { usercontentFrom } from "../../../lib/addresses";
 import { canDo, readingTime } from "../../../lib/folios";
@@ -37,7 +38,7 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
   const layout = useFoliosData();
   const root = useRouteLoaderData("root");
   const usercontent = usercontentFrom(root);
-  const navigate = useNavigate();
+  const { navigate } = usePageNavigation();
   const revalidator = useRevalidator();
   const hydrated = useHydrated();
   const editable = canDo(role, "edit");
