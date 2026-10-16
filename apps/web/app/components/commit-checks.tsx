@@ -150,3 +150,28 @@ export function CommitChecksBadge({ checks, sha, className }: { checks: ChecksSo
     </Suspense>
   );
 }
+
+/** A readable summary with the same detailed checks as the repository orb. */
+export function CommitChecksSummary({ checks, sha }: { checks: ChecksSource; sha: string }) {
+  const summary = (found: Record<string, CommitChecks> | null | undefined) => {
+    if (found == null) return <p className="text-xs text-muted">Checks could not be loaded.</p>;
+    const result = found[sha];
+    if (!result || result.total === 0 || result.state === "none") return <p className="text-xs text-muted">No checks reported for this commit.</p>;
+    return (
+      <details className="group rounded-lg border border-line">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs hover:bg-raised/40 [&::-webkit-details-marker]:hidden">
+          <CheckStateIcon state={result.state} />
+          <span className="min-w-0 flex-1"><span className="block font-medium">{checksHeadline(result)}</span><span className="text-muted">{checksTally(result)}</span></span>
+          <span className="text-accent group-open:hidden">Show checks</span>
+          <span className="hidden text-accent group-open:inline">Hide checks</span>
+        </summary>
+        <ChecksList checks={result} className="border-t border-line" />
+      </details>
+    );
+  };
+  return checks instanceof Promise ? (
+    <Suspense fallback={<Skeleton className="h-12 w-full rounded-lg" />}>
+      <Await resolve={checks} errorElement={<p className="text-xs text-muted">Checks could not be loaded.</p>}>{summary}</Await>
+    </Suspense>
+  ) : summary(checks);
+}
