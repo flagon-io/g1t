@@ -12,6 +12,8 @@ import {
   Radio,
   Rocket,
   RotateCw,
+  RotateCcw,
+  Settings2,
 } from "lucide-react";
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
@@ -28,8 +30,9 @@ import { Loading, Skeleton, SkeletonRows } from "../../components/ui/skeleton";
 import { ProductionShot } from "../../components/production-shot";
 import { GithubLinkStrip } from "../../components/github";
 import { githubApp } from "../../lib/github.server";
-import { ButtonLink, CopyLine, SubmitButton, TimeAgo } from "../../components/ui";
+import { ButtonLink, CopyLine, SoonPill, SubmitButton, TimeAgo } from "../../components/ui";
 import { Card } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
 import { type LivePull, LiveNowList, StartHere } from "../../components/coordination";
 import { awakeAndIdle, liveByIssue } from "../../lib/coordination";
 import { type Need, ageBuckets, rankNeeds, runHealth } from "../../lib/mission";
@@ -644,7 +647,7 @@ function CodeLine({ project, base }: { project: Project; base: string }) {
   );
 }
 
-/** Production on g1t.page: its picture, address and state, and for members, Visit and Redeploy. */
+/** Production on g1t.page: its picture, address and state. Actions live in the card header. */
 function ProductionHead({ loaderData, base, name, upload, addImage }: {
   loaderData: Loaded;
   base: string;
@@ -652,7 +655,7 @@ function ProductionHead({ loaderData, base, name, upload, addImage }: {
   upload: { url: string; preferred: boolean } | null;
   addImage: string | null;
 }) {
-  const { member, settings, production, latestProductionBuild, productionLatest, can } = loaderData;
+  const { member, settings, production, latestProductionBuild, productionLatest } = loaderData;
   // The project's own domain, once it is active, is where production is visited.
   const productionUrl = production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
   return (
@@ -723,40 +726,60 @@ function ProductionHead({ loaderData, base, name, upload, addImage }: {
             </>
           )}
         </div>
-        {member && (
-          <div className="flex shrink-0 items-center gap-2">
-            {productionUrl && (
-              <ButtonLink to={productionUrl} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer">
-                Visit
-                <ArrowUpRight size={14} />
-              </ButtonLink>
-            )}
-            {settings?.enabled
-              ? can.run && (
-                  <Form method="post">
-                    <Hint label="Build production again from the default branch">
-                      <SubmitButton variant="outline" name="intent" value="redeploy" pending="Redeploying…">
-                        <RotateCw size={14} />
-                        Redeploy
-                      </SubmitButton>
-                    </Hint>
-                  </Form>
-                )
-              : can.manage_integrations && (
-                  <ButtonLink to={`${base}/settings/deployments`} variant="accent">
-                    <Rocket size={14} />
-                    Turn on deployments
-                  </ButtonLink>
-                )}
-          </div>
-        )}
-        {!member && productionUrl && (
-          <ButtonLink to={productionUrl} variant="accent" reloadDocument target="_blank" rel="noopener noreferrer" className="shrink-0">
-            Visit
-            <ArrowUpRight size={14} />
-          </ButtonLink>
-        )}
       </div>
+    </div>
+  );
+}
+
+/** Production controls share a header, whether g1t or a workflow hosts it. */
+function ProductionActions({ loaderData, base, elsewhere }: { loaderData: Loaded; base: string; elsewhere: boolean }) {
+  const { member, settings, production, project, can } = loaderData;
+  const url = elsewhere
+    ? loaderData.deployment?.url ?? project?.productionUrl
+    : production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {member && (
+        <Hint label="Deployment history">
+          <ButtonLink to={`${base}/deployments`} variant="outline" size="icon-sm" aria-label="Deployment history">
+            <Rocket size={15} />
+          </ButtonLink>
+        </Hint>
+      )}
+      {member && (can.run || can.manage_integrations) && (
+        <Hint disabled label="Instant rollback is coming soon. It is not available yet.">
+          <Button disabled variant="outline" size="sm">
+            <RotateCcw size={14} />
+            Instant rollback <SoonPill />
+          </Button>
+        </Hint>
+      )}
+      {!elsewhere && member && settings?.enabled && can.run && (
+        <Form method="post">
+          <Hint label="Build production again from the default branch">
+            <SubmitButton variant="outline" size="sm" name="intent" value="redeploy" pending="Redeploying…">
+              <RotateCw size={14} /> Redeploy
+            </SubmitButton>
+          </Hint>
+        </Form>
+      )}
+      {!elsewhere && member && !settings?.enabled && can.manage_integrations && (
+        <ButtonLink to={`${base}/settings/deployments`} variant="accent" size="sm">
+          <Rocket size={14} /> Turn on deployments
+        </ButtonLink>
+      )}
+      {member && can.manage_integrations && (
+        <Hint label="Deployment settings">
+          <ButtonLink to={`${base}/settings/deployments`} variant="outline" size="icon-sm" aria-label="Deployment settings">
+            <Settings2 size={15} />
+          </ButtonLink>
+        </Hint>
+      )}
+      {url && (
+        <ButtonLink to={url} variant="accent" size="sm" reloadDocument target="_blank" rel="noopener noreferrer">
+          Visit <ArrowUpRight size={14} />
+        </ButtonLink>
+      )}
     </div>
   );
 }
@@ -801,10 +824,13 @@ function Overview({
       {/* What the project is, whether it is running and healthy, and a line to its code. */}
       <Card asChild className="overflow-hidden rounded-2xl">
         <section aria-label="Production">
-          {project && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-5 py-2.5 text-xs sm:px-6">
-              <KindMenu project={project} label={kindLabel(project)} canChange={canChange} />
-
+          {(project || plan === "production") && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3 text-xs sm:px-6">
+              <div className="flex flex-wrap items-center gap-3">
+                {(plan === "production" || plan === "elsewhere") && <h2 className="text-sm font-semibold">Production deployment</h2>}
+                {project && <KindMenu project={project} label={kindLabel(project)} canChange={canChange} />}
+              </div>
+              {(plan === "production" || plan === "elsewhere") && <ProductionActions loaderData={loaderData} base={base} elsewhere={plan === "elsewhere"} />}
             </div>
           )}
           {plan === "elsewhere" && project ? (
