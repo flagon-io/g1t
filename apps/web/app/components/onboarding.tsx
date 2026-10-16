@@ -801,7 +801,7 @@ function HarnessStep({ view }: { view: OnboardingView }) {
         <Numbered n={3} title="Approve access in your browser">
           <p className="text-sm text-muted">
             Follow your client's sign-in instructions, review the permissions, and approve the access you want it to have.
-            You can change or revoke access in Settings > Connected applications.
+            You can change or revoke access in Settings &gt; Connected applications.
           </p>
         </Numbered>
       </ol>
