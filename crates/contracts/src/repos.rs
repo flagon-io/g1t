@@ -519,6 +519,7 @@ pub struct TreeArgs {
 pub struct BlobArgs {
     pub path: RepoPath,
     pub viewer: Viewer,
+    /// Empty selects the repository's default branch.
     #[serde(rename = "ref")]
     pub git_ref: String,
     pub file_path: String,
