@@ -27,7 +27,6 @@ repositories in Cloudflare Artifacts, and the core runs in Docker.
 # 2. Install the g1t CLI (Windows: irm https://g1t.sh/install.ps1 | iex).
 curl -fsSL https://g1t.sh/install | sh
 g1t auth login
-
 ```
 
 Choose your client in [Connect an AI client](https://docs.g1t.sh/guides/bring-your-own-agent/).
