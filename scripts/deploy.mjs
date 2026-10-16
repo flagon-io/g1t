@@ -376,11 +376,15 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
       deployed = await wrangler(args, { cwd, onLine: out.line });
     }
     if (deployed.code !== 0) throw new Error(`wrangler deploy failed:\n${wranglerError(deployed.out)}`);
+    result.version = dryRun ? "(dry run)" : versionFrom(deployed.out);
     if (webRelease) {
-      await verifyWebAssets(webRelease);
+      try {
+        await verifyWebAssets(webRelease, fetch, { onLine: out.line });
+      } catch (error) {
+        throw new Error(`Worker deployed, but web cutover verification failed: ${error.message}`);
+      }
       out.line("Web cutover verified: current and previous build assets respond");
     }
-    result.version = dryRun ? "(dry run)" : versionFrom(deployed.out);
     result.ok = true;
     if (unit.image && !dryRun) await reportContainers(unit, cwd, out);
   } catch (error) {

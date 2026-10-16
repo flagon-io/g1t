@@ -99,7 +99,10 @@ rollout. Use the deploy tool or the web package's `npm run deploy`; invoking
 
 After cutover, the tool checks the live build identifier and the bytes of
 both old and new stylesheets, client entries and route manifests. A failed
-check marks the deploy failed; it does not automatically roll back service
+check retries during propagation, bounded by seven attempts and a two-minute
+request deadline. It still requires the exact expected build and asset bytes.
+An exhausted check marks verification failed and reports the already-deployed
+Worker version; it does not automatically roll back service
 code or database migrations. The production workflow serializes deploys
 without cancelling an active release. Manual deploys must not race that
 workflow. Roll back only to web versions that include the archive fallback;
