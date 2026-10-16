@@ -2,6 +2,7 @@ import { reactRouter } from "@react-router/dev/vite";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, type Plugin } from "vite";
+import { randomUUID } from "node:crypto";
 
 /**
  * The doc editor's chunk and everything it imports, so a doc's page can
@@ -44,6 +45,7 @@ function editorChunk(): Plugin {
 }
 
 export default defineConfig({
+  define: { "import.meta.env.G1T_BUILD_ID": JSON.stringify(randomUUID()) },
   plugins: [
     cloudflare({ viteEnvironment: { name: "ssr" } }),
     tailwindcss(),

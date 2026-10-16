@@ -7,7 +7,7 @@ import "./lib/analytics.client";
 import { installResilientFetch } from "./lib/resilient-fetch";
 
 // The router's reads outlast a moment offline (lib/resilient-fetch.ts).
-installResilientFetch();
+installResilientFetch(import.meta.env.G1T_BUILD_ID);
 
 startTransition(() => {
   hydrateRoot(

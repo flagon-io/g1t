@@ -1,11 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PATIENCE_MS, REFRESH_PATIENCE_MS, isNetworkFailure, keepTrying, refreshesCurrent, retriable, retryDelay } from "./resilient-fetch.ts";
+import { PATIENCE_MS, REFRESH_PATIENCE_MS, installResilientFetch, isNetworkFailure, keepTrying, refreshesCurrent, retriable, retryDelay, watchBuildNavigation } from "./resilient-fetch.ts";
 import { reconnectDelay } from "./reconnect.ts";
 
 const ORIGIN = "https://g1t.sh";
 const url = (path: string) => new URL(path, ORIGIN);
+
+test("only an active navigation carries its build; fetchers, refreshes and writes never force a document switch", async () => {
+  const calls: Headers[] = [];
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const browser = { location: new URL("https://g1t.sh/edit"), fetch: async (_input: unknown, init?: RequestInit) => { calls.push(new Headers(init?.headers)); return new Response(null); } };
+  Object.defineProperty(globalThis, "window", { value: browser, configurable: true });
+  let destination: { pathname: string; search: string } | undefined;
+  const stop = watchBuildNavigation(() => destination);
+  try {
+    installResilientFetch("old-build");
+    await browser.fetch("/notifications.data");
+    destination = { pathname: "/next", search: "?tab=one" };
+    await browser.fetch("/next.data?tab=one&_routes=root");
+    await browser.fetch("/unrelated.data");
+    await browser.fetch("/next.data?tab=one", { method: "POST" });
+    await browser.fetch("/edit.data");
+    await browser.fetch("https://external.example/next.data?tab=one");
+    assert.deepEqual(calls.map((headers) => headers.get("x-g1t-build")), [null, "old-build", null, null, null, null]);
+  } finally {
+    stop();
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
 
 test("a request that got no answer, in each browser's words, is a network failure", () => {
   assert.equal(isNetworkFailure(new TypeError("Failed to fetch")), true);

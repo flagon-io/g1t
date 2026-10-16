@@ -69,6 +69,43 @@ after it succeeds.
 
 ## The tool
 
+Web releases retain fingerprinted JavaScript, CSS and fonts in the existing
+`DOWNLOADS` R2 bucket under `web-assets/assets/`. Before switching the Worker,
+the deploy tool ensures the currently live site's asset graph and the new
+build's assets are archived. Release manifests under `web-assets/manifests/`
+let later deploys skip unchanged files without scanning deployment history or
+fetching the entire live build again. Provider rate limits retry with a bound;
+an archive failure stops the web cutover. A confirmed first deployment skips
+the live-site copy. The deploy credential needs object read and write access
+to this bucket.
+
+Every web build also runs the compiled Worker locally in workerd. The gate
+checks old CSS through R2, missing assets, and old-client navigation with an
+existing cached response before any backend loaders run. Upload receipts
+must match the local asset checksums before cutover is allowed.
+
+Current files still use Workers Static Assets. Requests for older filenames
+fall back to R2, so an open tab can finish loading after a release. Archived
+files are immutable and retained without automatic deletion; do not apply an
+expiration lifecycle rule to this prefix. Assets already removed before the
+first protected deployment cannot be recovered by this archive.
+
+The public HTML/data cache is separated by build. On navigation, a tab from
+an older build gets a document navigation to its destination before route
+loaders run. Background refreshes do not force a reload, and writes are not
+replayed. Service APIs must remain compatible with existing clients during
+rollout. Use the deploy tool or the web package's `npm run deploy`; invoking
+`wrangler deploy` directly bypasses the asset archive step.
+
+After cutover, the tool checks the live build identifier and the bytes of
+both old and new stylesheets, client entries and route manifests. A failed
+check marks the deploy failed; it does not automatically roll back service
+code or database migrations. The production workflow serializes deploys
+without cancelling an active release. Manual deploys must not race that
+workflow. Roll back only to web versions that include the archive fallback;
+older versions would remove that protection. Database changes must be
+additive during rollout, with removals deferred until old callers are gone.
+
 ```sh
 node scripts/deploy.mjs plan                    # what would deploy, and why (read-only)
 node scripts/deploy.mjs deploy                  # migrations, then every changed unit

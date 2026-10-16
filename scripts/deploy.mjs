@@ -68,6 +68,7 @@ import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { reportDeployment } from "./deploy/report.mjs";
 import { ROOT, byStage, codeStages, containersRollout, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack, waves } from "./deploy/stack.mjs";
 import { withDeployWindow } from "./deploy/status-window.mjs";
+import { publishWebAssets, verifyWebAssets } from "./deploy/web-assets.mjs";
 
 const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
 
@@ -350,6 +351,7 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
       const built = await exec("npm run build", [], { cwd, onLine: out.line, shell: true, env: wranglerEnv() });
       if (built.code !== 0) throw new Error(`npm run build failed:\n${lastLines(built.out)}`);
     }
+    const webRelease = unit.id === "web" && !dryRun ? await publishWebAssets(cwd, { onLine: out.line, seedLive: !decision.missing }) : null;
     const args = ["deploy"];
     if (dryRun) {
       args.push("--dry-run", "--outdir", join(tmpdir(), "g1t-deploy", "dist", unit.id));
@@ -374,6 +376,10 @@ async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebu
       deployed = await wrangler(args, { cwd, onLine: out.line });
     }
     if (deployed.code !== 0) throw new Error(`wrangler deploy failed:\n${wranglerError(deployed.out)}`);
+    if (webRelease) {
+      await verifyWebAssets(webRelease);
+      out.line("Web cutover verified: current and previous build assets respond");
+    }
     result.version = dryRun ? "(dry run)" : versionFrom(deployed.out);
     result.ok = true;
     if (unit.image && !dryRun) await reportContainers(unit, cwd, out);
