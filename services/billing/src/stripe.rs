@@ -305,7 +305,7 @@ const CANCELLATION_REASONS: [&str; 8] =
 /// there: g1t has one.
 pub(crate) fn portal_fields() -> Vec<(&'static str, String)> {
     let mut fields = vec![
-        ("business_profile[headline]", "g1t billing: your card, billing details, tax IDs and invoices".to_owned()),
+        ("business_profile[headline]", "g1t: your card, billing details, tax IDs and invoices".to_owned()),
         ("business_profile[privacy_policy_url]", "https://g1t.sh/policies/privacy".to_owned()),
         ("business_profile[terms_of_service_url]", "https://g1t.sh/policies/terms".to_owned()),
         ("features[customer_update][enabled]", "true".to_owned()),
@@ -1362,7 +1362,9 @@ mod tests {
         ] {
             assert_eq!(has(&fields, name).as_deref(), Some(value), "{name}");
         }
-        assert!(has(&fields, "business_profile[headline]").is_some());
+        let headline = has(&fields, "business_profile[headline]").unwrap();
+        assert!(!headline.is_empty());
+        assert!(headline.chars().count() <= 60, "Stripe limits the portal headline to 60 characters");
         // Stripe wants the reasons whenever it asks for one.
         assert_eq!(has(&fields, "features[subscription_cancel][cancellation_reason][options][7]").as_deref(), Some("other"));
         let mut names: Vec<&str> = fields.iter().map(|(n, _)| *n).collect();
