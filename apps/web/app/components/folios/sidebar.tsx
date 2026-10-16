@@ -1,3 +1,4 @@
+import { useSidebarLocation } from "../../lib/use-sidebar-location";
 /**
  * Artifacts mode's sidebar (beside the rail; docs.g1t.sh/guides/artifacts/,
  * "The sidebar"): search, Home, New and Templates; Favorites; the spaces
@@ -10,7 +11,7 @@
 import { FOLIO_KINDS, folioIdFrom, folioSlug, type DocRepoSpace, type FolioKind, type FolioRef, type FolioTreeNode, type FoliosSidebarSpace } from "@g1t/contracts";
 import { AlertTriangle, ChevronDown, ChevronRight, Compass, FileText, Folder, FolderGit2, Home, LayoutTemplate, Lock, Plus, Search, Settings, Star, Trash2, X } from "lucide-react";
 import { type DragEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { NavLink, useLocation, useNavigate, useParams, useRevalidator } from "react-router";
+import { NavLink, useNavigate, useParams, useRevalidator } from "react-router";
 
 import { buildTree, canDo, pathTo, repoFilePath, repoFolders, spacePath, type RepoFolder, type TreeItem } from "../../lib/folios";
 import { Button } from "../ui/button";
@@ -308,7 +309,7 @@ function RepoFolderRows({ slug, repo, folder, depth, current }: { slug: string; 
 
 /** A project's docs folder: read-only, its files as folders, from the repository's default branch. */
 function RepoTree({ slug, space }: { slug: string; space: DocRepoSpace }) {
-  const { pathname } = useLocation();
+  const { pathname } = useSidebarLocation();
   const base = `/${slug}/-/artifacts/repo/${space.repo}/`;
   const here = decodeURIComponent(pathname).startsWith(base);
   const [collapsed, setCollapsed] = useState(!here);

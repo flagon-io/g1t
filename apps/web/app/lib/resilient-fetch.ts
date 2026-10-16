@@ -198,7 +198,15 @@ export function installResilientFetch(build?: string) {
       for (let attempt = 1; ; attempt++) {
         try {
           // A Request's body is read once; a GET has none, but clone so each try is whole.
-          return await original(request ? (request.clone() as RequestInfo) : input, init);
+          signal?.throwIfAborted();
+          const response = await original(request ? (request.clone() as RequestInfo) : input, init);
+          // A late manifest response can trigger a document redirect before
+          // the router checks cancellation. Never hand it an abandoned read.
+          if (signal?.aborted) {
+            void response.body?.cancel().catch(() => {});
+            signal.throwIfAborted();
+          }
+          return response;
         } catch (error) {
           const wait = retryDelay(attempt);
           if (!isNetworkFailure(error) || signal?.aborted) throw error;

@@ -20,7 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useRouteLoaderData, useSearchParams } from "react-router";
+import { Link, useRouteLoaderData, useSearchParams } from "react-router";
+import { usePageNavigation } from "../../lib/use-page-navigation";
 
 import {
   type Channel,
@@ -185,7 +186,7 @@ export function ChannelView({ data }: { data: Loaded }) {
     return () => clearTimeout(timer);
   }, [view, messages, members, joined, canManage]);
   // Renamed while open, here or by someone else: the address follows the name.
-  const navigate = useNavigate();
+  const { navigate } = usePageNavigation();
   const nameShown = useRef(data.channel.name);
   useEffect(() => {
     if (channel.kind !== "channel" || channel.name === nameShown.current || !slug) return;

@@ -58,6 +58,7 @@ import {
   pagePath,
   workspaceSettingsPage,
 } from "../lib/workspace-nav";
+import { useSidebarLocation } from "../lib/use-sidebar-location";
 import { setupPath } from "../lib/onboarding";
 import { ChatSidebar } from "./chat/sidebar";
 import { FoliosSidebar } from "./folios/sidebar";
@@ -143,8 +144,9 @@ function under(pathname: string, to: string, end = false): boolean {
  * row's, query and all.
  */
 function useRowState(to: string, { end, also, current: lit }: { end?: boolean; also?: string | string[]; current?: boolean }) {
-  const { pathname } = useLocation();
-  const going = useNavigation().location;
+  const { pathname, key } = useLocation();
+  const destination = useSidebarLocation();
+  const going = destination.key !== key ? destination : undefined;
   const current = lit ?? (under(pathname, to, end) || [also ?? []].flat().some((prefix) => under(pathname, prefix)));
   const pending =
     going != null && !current && (lit === undefined ? under(going.pathname, to, end) : `${going.pathname}${going.search}` === to);
@@ -1028,15 +1030,15 @@ function CodeSidebar({
   browsing?: { owner: BrowsedOwner | null } | null;
 }) {
   const ws = shell.workspace;
-  const { pathname } = useLocation();
-  const going = useNavigation().location?.pathname;
+  const location = useLocation();
+  const destination = useSidebarLocation();
   // Where the sidebar is drilled to follows the page being gone to, so it
   // moves as the link is followed, not once the page arrives.
-  const target = going ?? pathname;
+  const target = destination.pathname;
   // On a 404, the address is not a place: no list is drilled into from it,
   // except the project's own when the project is real and visible and only
   // something inside it is missing (a file, a commit, an issue).
-  const lost = missing && going == null;
+  const lost = missing && destination.key === location.key;
   const active = shell.repo;
   // In a repository, or on the way into one, its own list.
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
@@ -1151,10 +1153,9 @@ function useBrowsedOwner(owner: BrowsedOwner | null): { name: string; avatar: st
  * pages. A project of theirs drills into its own list, as in Code.
  */
 function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null }) {
-  const location = useLocation();
-  const going = useNavigation().location;
-  const path = pagePath((going ?? location).pathname);
-  const query = new URLSearchParams((going ?? location).search);
+  const location = useSidebarLocation();
+  const path = pagePath(location.pathname);
+  const query = new URLSearchParams(location.search);
   const atExplore = path === "/explore";
   const fresh = atExplore && query.get("sort") === "new";
   const mine = profilePath(user.username);
@@ -1269,9 +1270,7 @@ export function ModeHeader({ title, action }: { title: ReactNode; action?: React
  * coming. The workspace's people, money and settings are elsewhere.
  */
 function CodeMenu({ shell, slug }: { shell: ShellData; slug: string }) {
-  const { pathname } = useLocation();
-  const going = useNavigation().location?.pathname;
-  const path = going ?? pathname;
+  const { pathname: path } = useSidebarLocation();
   const at = (page: string) => path === `/${slug}/-/${page}` || path.startsWith(`/${slug}/-/${page}/`);
   const shared = shell.shared ?? [];
   return (
@@ -1386,9 +1385,7 @@ function FoldingGroup({ title, current, children }: { title: string; current: bo
  * left out for members, and a group with none left goes with them.
  */
 export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean }) {
-  const { pathname } = useLocation();
-  const going = useNavigation().location?.pathname;
-  const path = going ?? pathname;
+  const { pathname: path } = useSidebarLocation();
   const here = workspaceSettingsPage(path, slug);
   const overview = path === `/${slug}/-/workspace` || path.startsWith(`/${slug}/-/workspace/`);
   const shown = (page: WorkspaceSettingsPage) => owner || !page.owner;
@@ -1428,9 +1425,7 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
  * inviting people, is the workspace's: Workspace mode's Access group.
  */
 function PeopleSidebar({ slug }: { slug: string }) {
-  const { pathname } = useLocation();
-  const going = useNavigation().location?.pathname;
-  const path = going ?? pathname;
+  const { pathname: path } = useSidebarLocation();
   const at = (page: string) => path === `/${slug}/-/${page}` || path.startsWith(`/${slug}/-/${page}/`);
   return (
     <div className="flex h-full flex-col">
@@ -1454,7 +1449,7 @@ function PeopleSidebar({ slug }: { slug: string }) {
  * and what is done; then why you were told, which narrows any of them.
  */
 function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
-  const { pathname, search } = useLocation();
+  const { pathname, search } = useSidebarLocation();
   const params = new URLSearchParams(search);
   // Saved and Done are paths (`/notifications/saved`); the rest narrows them.
   const view = notificationViewAt(pathname);
@@ -2018,17 +2013,17 @@ export function AppShell({
   const titleSearch = useTitleBarSearch(`Search ${shell.workspace?.name ?? shell.workspace?.slug ?? "g1t"}`, () => setPalette(true));
   const leaving = useLeaving();
   useVisualViewport();
-  const going = useNavigation().location?.pathname;
+  const target = useSidebarLocation().pathname;
   const ws = shell.workspace;
   // Beyond your workspaces (Explore, a profile, another workspace's
   // projects), the shell is Explore's; anything of yours is its mode's.
-  const browsing = browsingOf(going ?? pathname, {
+  const browsing = browsingOf(target, {
     slug: ws?.slug ?? null,
     memberships: (user.workspaces ?? []).map((membership) => membership.slug),
     shared: shell.shared,
     username: user.username,
   });
-  const mode: ModeKey = browsing ? "browse" : modeOf(going ?? pathname, ws?.slug ?? null);
+  const mode: ModeKey = browsing ? "browse" : modeOf(target, ws?.slug ?? null);
   const panel = sidebarFor(mode, ws != null);
   const { sidebar: chatSidebar } = useChatSidebar();
   // Notify: the feed socket's live counts (lib/notify-client.ts) once it has them; the page's until then.
@@ -2108,7 +2103,7 @@ export function AppShell({
   );
 
   // On a phone (below 768px): the bottom bar, and a conversation full screen.
-  const conversation = isConversation(going ?? pathname);
+  const conversation = isConversation(target);
   // Where the page panel starts: 8px past the rail (56px), or 8px past the sidebar (56 + 240px) when it is open.
   // The page starts where the rail (3.5rem) and, open, the sidebar (15rem) end.
   const pad = ws ? (inline ? "md:pl-14 lg:pl-74" : "md:pl-14") : inline ? "lg:pl-60" : "";

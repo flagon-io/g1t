@@ -1,5 +1,6 @@
-import { useEffect } from "react";
-import { type Location, createPath, useNavigation } from "react-router";
+import { useContext, useEffect } from "react";
+import { type Location, createPath, useNavigation, UNSAFE_DataRouterContext } from "react-router";
+import { pendingNavigationOwns } from "./navigation-owner.ts";
 
 /**
  * How long a client navigation may load before the page gives up on it and
@@ -29,13 +30,17 @@ export function stuckTarget(navigation: { state: string; location?: Pick<Locatio
  * address, which either arrives or shows the server's error page.
  */
 export function useStuckNavigationRescue(ms = STUCK_NAVIGATION_MS) {
-  const target = stuckTarget(useNavigation());
+  const context = useContext(UNSAFE_DataRouterContext);
+  const navigation = useNavigation();
+  const target = stuckTarget(navigation);
+  const key = navigation.location?.key;
   useEffect(() => {
     if (!target) return;
     const timer = window.setTimeout(() => {
+      if (!context || !pendingNavigationOwns(context.router.state.navigation, key)) return;
       console.warn(`g1t: navigation to ${target} still loading after ${ms}ms; loading it as a whole page`);
       window.location.assign(target);
     }, ms);
     return () => window.clearTimeout(timer);
-  }, [target, ms]);
+  }, [target, key, ms, context?.router]);
 }

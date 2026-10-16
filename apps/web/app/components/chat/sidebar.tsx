@@ -1,7 +1,8 @@
+import { useSidebarLocation } from "../../lib/use-sidebar-location";
 import { ArrowLeft, BellOff, Check, ChevronDown, Compass, Globe, Hash, Lock, Pin, PinOff, Search, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
-import { NavLink, useFetcher, useLocation, useNavigate } from "react-router";
+import { NavLink, useFetcher, useNavigate } from "react-router";
 
 import type { Channel, ChannelInvitation, ChatSidebarEntry, GuestChannel } from "@g1t/contracts";
 
@@ -58,7 +59,7 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
   const [filter, setFilter] = useState<ChatFilter>("all");
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname } = useSidebarLocation();
 
   useEffect(() => {
     if (!data) return;

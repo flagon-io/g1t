@@ -1,6 +1,7 @@
+import { useSidebarLocation } from "../lib/use-sidebar-location";
 import { Check, ChevronDown, CircleUserRound, Compass, LayoutGrid, Plus, Settings } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
-import { Link, useLocation, useNavigation } from "react-router";
+import { Link } from "react-router";
 
 import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
 
@@ -224,9 +225,7 @@ export function Rail({
   unread: { notifications: number; chat: number; mentions: number };
   account: ReactNode;
 }) {
-  const { pathname } = useLocation();
-  const going = useNavigation().location?.pathname;
-  const path = going ?? pathname;
+  const { pathname: path } = useSidebarLocation();
   const here = mode ?? modeOf(path, workspace.slug);
   const slug = workspace.slug;
   const code = hasCodeAccess(workspace);
