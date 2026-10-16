@@ -68,7 +68,7 @@ import {
   sessionTitle,
   sessionTree,
 } from "../lib/coordination";
-import { PLUGIN_INSTALL } from "../lib/agent-setup";
+import { AgentSetup } from "./agent-setup";
 import { CopyLine, EmptyState, Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
@@ -1175,17 +1175,15 @@ export function StartHere({ title }: { title: string }) {
   return (
     <EmptyState title={title}>
       <div className="mx-auto mt-3 max-w-lg space-y-3 text-left">
-        <p>Install the g1t plugin in Claude Code, and each session shows here as it works:</p>
-        {PLUGIN_INSTALL.split("\n").map((line) => (
-          <CopyLine key={line} text={line} prompt />
-        ))}
-        <p>From any other harness, or by hand, claim an issue with the g1t CLI:</p>
+        <p>Connect your coding agent to work with this project:</p>
+        <AgentSetup />
+        <p>Ask your agent to claim an issue and record its session, or claim one with the CLI:</p>
         <CopyLine text="g1t work claim 12" prompt />
         <p>
           <a href="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-fg underline underline-offset-4">
-            Connect a coding agent
+            Connect an AI client
           </a>{" "}
-          sets up Codex, Cursor and any MCP client;{" "}
+          sets up coding agents and chat apps;{" "}
           <a href="https://docs.g1t.sh/guides/sessions/" className="text-fg underline underline-offset-4">
             Sessions, claims and dependencies
           </a>{" "}

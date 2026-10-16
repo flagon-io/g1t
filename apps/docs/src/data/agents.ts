@@ -1,13 +1,6 @@
-/**
- * How each coding agent connects to g1t's MCP server, from each agent's own
- * documentation for adding a remote MCP server. The site's copy is
- * `apps/web/app/lib/agent-setup.ts`; keep the two in step.
- */
-
-export const MCP_URL = 'https://mcp.g1t.sh';
-
-/** Installs g1t's Claude Code plugin, which adds the MCP server (as `plugin:g1t:g1t`) and records sessions. */
-export const PLUGIN_INSTALL = 'claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git\nclaude plugin install g1t@g1t';
+import { AGENTS as SHARED_AGENTS, AGENT_IDS } from "@g1t/contracts/agent-setup";
+import { MCP_URL } from '@g1t/contracts/agent-setup';
+export { MCP_URL, PLUGIN_INSTALL } from '@g1t/contracts/agent-setup';
 
 export type AgentSetup = {
 	label: string;
@@ -21,40 +14,7 @@ export type AgentSetup = {
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 
-export const AGENTS: AgentSetup[] = [
-	{
-		// g1t's plugin adds the MCP server itself, and records sessions.
-		label: 'Claude Code',
-		file: null,
-		lang: 'sh',
-		code: PLUGIN_INSTALL,
-		then: `g1t's Claude Code plugin adds g1t's MCP server, and records your sessions on g1t. Start Claude Code again, run \`/mcp\` and choose \`plugin:g1t:g1t\` to sign in through your browser. With the plugin installed, skip \`claude mcp add\`: adding the server again lists every g1t tool twice. Without the plugin, \`claude mcp add --transport http g1t ${MCP_URL}\` adds the server alone.`,
-	},
-	{
-		label: 'Codex',
-		file: null,
-		lang: 'sh',
-		code: `codex mcp add g1t --url ${MCP_URL}\ncodex mcp login g1t`,
-		then: 'The login opens your browser to sign in to g1t.',
-	},
-	{
-		label: 'OpenCode',
-		file: 'opencode.json',
-		lang: 'json',
-		code: json({
-			$schema: 'https://opencode.ai/config.json',
-			mcp: { g1t: { type: 'remote', url: MCP_URL, enabled: true } },
-		}),
-		then: 'OpenCode signs you in through your browser when it first connects; `opencode mcp auth g1t` starts it by hand.',
-	},
-	{
-		label: 'Cursor',
-		file: '.cursor/mcp.json',
-		lang: 'json',
-		code: json({ mcpServers: { g1t: { url: MCP_URL } } }),
-		then: 'Use `~/.cursor/mcp.json` for every project. Cursor signs you in through your browser when it first connects.',
-	},
-];
+export const AGENTS = AGENT_IDS.map((id) => SHARED_AGENTS[id]);
 
 /** The same, with a bearer token instead of signing in through the browser. */
 export const AGENTS_WITH_TOKEN: AgentSetup[] = [

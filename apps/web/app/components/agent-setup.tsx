@@ -1,5 +1,8 @@
 import { Check, Copy, ExternalLink } from "lucide-react";
 import { type KeyboardEvent, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useRouteLoaderData } from "react-router";
+
+import type { loader as rootLoader } from "../root";
 
 import {
   AGENT_IDS,
@@ -18,7 +21,9 @@ import { Card } from "./ui/card";
 
 /** The agent this browser chose last; every toggle on the page shares it. */
 export function useAgentChoice(): [AgentId, (id: AgentId) => void] {
-  const id = useSyncExternalStore(subscribeAgentChoice, getAgentChoice, () => DEFAULT_AGENT);
+  const root = useRouteLoaderData<typeof rootLoader>("root");
+  const fallback = root?.agentDefault ?? DEFAULT_AGENT;
+  const id = useSyncExternalStore(subscribeAgentChoice, () => getAgentChoice(fallback), () => root?.agentChoice ?? fallback);
   return [id, setAgentChoice];
 }
 
@@ -36,10 +41,11 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
   const agent = agents[chosen];
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const edge = event.key === "Home" ? 0 : event.key === "End" ? AGENT_IDS.length - 1 : null;
     const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
+    if (!step && edge === null) return;
     event.preventDefault();
-    const next = AGENT_IDS[(AGENT_IDS.indexOf(chosen) + step + AGENT_IDS.length) % AGENT_IDS.length];
+    const next = AGENT_IDS[edge ?? (AGENT_IDS.indexOf(chosen) + step + AGENT_IDS.length) % AGENT_IDS.length];
     choose(next);
     document.getElementById(`${base}-${next}`)?.focus();
   };
@@ -59,7 +65,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
       <Card radius="lg" className="@container overflow-hidden">
         <div
           role="tablist"
-          aria-label="Coding agent"
+          aria-label="AI client"
           onKeyDown={onKeyDown}
           className="flex flex-wrap items-center gap-0.5 border-b border-line bg-bg/40 px-1.5 py-1.5"
         >
@@ -74,7 +80,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
                 aria-selected={on}
                 aria-controls={`${base}-panel`}
                 tabIndex={on ? 0 : -1}
-                onClick={() => choose(id)}
+                onClick={() => { setCopied(false); choose(id); }}
                 className={cn(
                   "shrink-0 rounded-md px-1.5 py-1 text-xs @sm:px-2.5 font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
                   on ? "bg-raised text-fg" : "text-muted hover:text-fg",
@@ -103,7 +109,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
           </pre>
           <Button
             type="button"
-            aria-label={copied ? "Copied" : `Copy the ${agent.label} ${agent.file ? "config" : "command"}`}
+            aria-label={copied ? "Copied" : `Copy the ${agent.label} ${agent.file ? "config" : agent.lang === "text" ? "URL" : "command"}`}
             onClick={copy}
             variant="ghost"
             size="inline"
@@ -123,6 +129,9 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
             ) : (
               part
             ),
+          )}
+          {chosen === "codex" && mcp === "https://mcp.g1t.sh" && (
+            <> {" "}<a href="https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace" className="text-fg underline underline-offset-4">Install the Codex plugin</a> for issue and session workflows.</>
           )}
           {chosen === "cursor" && (
             <>

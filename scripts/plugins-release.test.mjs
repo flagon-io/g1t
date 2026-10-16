@@ -21,7 +21,7 @@ after(() => temps.forEach((d) => rmSync(d, { recursive: true, force: true })));
 /** A copy of what the build reads from this repository, to change freely. */
 function source() {
   const root = temp("plugins-src-");
-  for (const path of [".claude-plugin", SOURCE, "LICENSE"]) cpSync(join(ROOT, path), join(root, path), { recursive: true });
+  for (const path of [".claude-plugin", SOURCE, "plugins/codex", "LICENSE"]) cpSync(join(ROOT, path), join(root, path), { recursive: true });
   return root;
 }
 const editJson = (root, file, fn) => {
@@ -128,8 +128,29 @@ test("publishing: the first commit and tag, nothing when unchanged, a new versio
   assert.equal(git(remote, "rev-parse", `g1t--v${version}^{commit}`).stdout.trim(), first.commit);
   assert.equal(git(remote, "rev-parse", "main~1").stdout.trim(), first.commit);
 
+  // Codex releases have their own version gate; a Claude bump is not enough.
+  writeFileSync(join(root, "plugins/codex/skills/work-on-g1t/SKILL.md"), "changed Codex skill\n");
+  assert.throws(() => run("f".repeat(40)), /Codex plugin files changed without a version bump/);
+  editJson(root, "plugins/codex/plugin.json", p => ({ ...p, version: "0.1.1" }));
+  assert.equal(run("1".repeat(40)).changed, true);
+
   // The marketplace's own text may change without a new version.
   editJson(root, ".claude-plugin/marketplace.json", (m) => ({ ...m, description: "g1t's plugins for Claude Code, and more." }));
   const text = run("e".repeat(40));
   assert.deepEqual([text.changed, text.tagged], [true, false]);
+});
+
+test("Codex catalog resolves its packaged skill and OAuth MCP server", () => {
+  const out = join(temp("plugins-codex-"), "tree");
+  build(out);
+  const catalog = JSON.parse(readFileSync(join(out, ".agents/plugins/marketplace.json"), "utf8"));
+  const entry = catalog.plugins[0];
+  assert.equal(entry.source.source, "local");
+  assert.equal(entry.policy.authentication, "ON_INSTALL");
+  const plugin = join(out, entry.source.path);
+  assert.equal(JSON.parse(readFileSync(join(plugin, "plugin.json"), "utf8")).name, entry.name);
+  const mcp = JSON.parse(readFileSync(join(plugin, "mcp.json"), "utf8"));
+  assert.equal(mcp.mcpServers.g1t.type, "streamable-http");
+  assert.equal(mcp.mcpServers.g1t.extensions["com.openai"].auth.client.mode, "dcr");
+  assert.match(readFileSync(join(plugin, "skills/work-on-g1t/SKILL.md"), "utf8"), /harness: codex/);
 });

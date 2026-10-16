@@ -4,6 +4,7 @@ import { Form, redirect } from "react-router";
 import { decodeOAuthClient, isRegisteredRedirect } from "@g1t/contracts";
 
 import type { Route } from "./+types/oauth-authorize";
+import { oauthCallback } from "../lib/oauth-callback";
 import { page } from "../lib/meta";
 import { ErrorText, SubmitButton, usePending } from "../components/ui";
 import { Card } from "../components/ui/card";
@@ -65,15 +66,6 @@ function check(params: URLSearchParams | FormData): Checked {
   };
 }
 
-/** The application's redirect address with the outcome added to it. */
-function callback(redirectUri: string, params: Record<string, string>): string {
-  const url = new URL(redirectUri);
-  for (const [key, value] of Object.entries(params)) {
-    if (value) url.searchParams.set(key, value);
-  }
-  return url.toString();
-}
-
 /** Where an application sends a person to approve its sign-in. */
 export function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
@@ -96,7 +88,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (!checked.ok) return null;
   if (form.get("decision") !== "approve") {
     throw redirect(
-      callback(checked.redirectUri, { error: "access_denied", state: checked.state }),
+      oauthCallback(checked.redirectUri, { error: "access_denied", state: checked.state }, addresses().api),
     );
   }
   // Only what the application asked for, never more, whatever the form says.
@@ -120,7 +112,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
   // `iss` is the API's origin, the issuer its metadata names (RFC 9207).
   throw redirect(
-    callback(checked.redirectUri, { code, state: checked.state, iss: addresses().api }),
+    oauthCallback(checked.redirectUri, { code, state: checked.state }, addresses().api),
   );
 }
 

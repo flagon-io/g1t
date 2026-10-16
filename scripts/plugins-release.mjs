@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Publishes g1t's Claude Code plugin marketplace to its own repository,
+// Publishes g1t's Claude Code and Codex plugin marketplace to its own repository,
 // flagon-io/g1t-plugins on g1t.sh, so adding the marketplace clones a few
 // files rather than this monorepo:
 //
@@ -20,6 +20,8 @@
 //   .claude-plugin/marketplace.json   this repository's, its plugin's source rewritten to ./plugins/g1t
 //   plugins/g1t/                      plugins/claude-code/ without its tests (PLUGIN_FILES)
 //   README.md                         written here (readme())
+//   .agents/plugins/marketplace.json  Codex catalog, generated below
+//   plugins/g1t-codex/                plugins/codex/, with its own version
 //   LICENSE                           this repository's
 //
 // A file added to plugins/claude-code/ that PLUGIN_FILES does not name
@@ -50,6 +52,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const SOURCE = "plugins/claude-code";
+export const CODEX_SOURCE = "plugins/codex";
+export const CODEX_PUBLISHED = "plugins/g1t-codex";
+export const CODEX_FILES = ["plugin.json", "mcp.json", "skills"];
+export const CODEX_INSTALL = "codex plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git";
 export const PUBLISHED = "plugins/g1t";
 export const REMOTE = "https://g1t.sh/flagon-io/g1t-plugins.git";
 export const INSTALL = ["claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git", "claude plugin install g1t@g1t"];
@@ -117,7 +123,11 @@ export function publishedMarketplace(marketplace) {
 export function readme(version) {
   return `# g1t plugins
 
-g1t's plugin marketplace for Claude Code. Its one plugin, \`g1t\` (${version}),
+g1t's plugin marketplace for Claude Code and Codex. Choose your client below.
+
+## Claude Code
+
+The Claude Code plugin, \`g1t\` (${version}),
 records your Claude Code sessions on g1t, gives Claude the issue it is
 working on, claims and hands off work, and adds g1t's MCP server, skills
 and commands.
@@ -137,6 +147,22 @@ This repository is published automatically from
 [flagon-io/g1t](https://g1t.sh/flagon-io/g1t) (\`.claude-plugin/\` and
 \`${SOURCE}/\`). Changes and issues go there.
 `;
+}
+
+/** Codex's catalog uses paths relative to the marketplace root. */
+export function codexMarketplace() {
+  return { name: "g1t", interface: { displayName: "g1t" }, plugins: [{
+    name: "g1t", source: { source: "local", path: `./${CODEX_PUBLISHED}` },
+    policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" }, category: "Developer Tools",
+  }] };
+}
+
+function codexManifest(root) {
+  const plugin = readJson(root, `${CODEX_SOURCE}/plugin.json`);
+  if (plugin.name !== "g1t" || !/^\d+\.\d+\.\d+$/.test(plugin.version ?? "")) throw new Error("Invalid Codex plugin identity or version");
+  const extra = readdirSync(join(root, CODEX_SOURCE)).filter(name => !CODEX_FILES.includes(name));
+  if (extra.length) throw new Error(`Unlisted Codex plugin files: ${extra.join(", ")}`);
+  return plugin;
 }
 
 /** A release's tag: `claude plugin tag`'s {name}--v{version}. */
@@ -164,12 +190,14 @@ export function expectedFiles(root = ROOT) {
     const path = join(root, SOURCE, name);
     return statSync(path).isDirectory() ? walk(path).map((f) => `${PUBLISHED}/${name}/${f}`) : [`${PUBLISHED}/${name}`];
   });
-  return [".claude-plugin/marketplace.json", "LICENSE", "README.md", ...plugin].sort();
+  const codex = walk(join(root, CODEX_SOURCE)).map(f => `${CODEX_PUBLISHED}/${f}`);
+  return [".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "LICENSE", "README.md", ...plugin, ...codex].sort();
 }
 
 /** Writes the published tree to `out`, replacing what was there, and checks it. */
 export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
   const { marketplace, version } = manifests(root);
+  codexManifest(root);
   const extra = unlisted(root);
   if (extra.length) throw new Error(`${SOURCE}/ has ${extra.join(", ")}, which scripts/plugins-release.mjs neither publishes nor keeps back: add each to PLUGIN_FILES or DEV_FILES.`);
   for (const name of PLUGIN_FILES) if (!existsSync(join(root, SOURCE, name))) throw new Error(`${SOURCE}/${name} is missing`);
@@ -178,7 +206,26 @@ export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
   mkdirSync(join(out, ".claude-plugin"), { recursive: true });
   writeFileSync(join(out, ".claude-plugin", "marketplace.json"), `${JSON.stringify(publishedMarketplace(marketplace), null, 2)}\n`);
   for (const name of PLUGIN_FILES) cpSync(join(root, SOURCE, name), join(out, PUBLISHED, name), { recursive: true });
-  writeFileSync(join(out, "README.md"), readme(version));
+  mkdirSync(join(out, ".agents/plugins"), { recursive: true });
+  writeFileSync(join(out, ".agents/plugins/marketplace.json"), JSON.stringify(codexMarketplace(), null, 2) + "\n");
+  for (const name of CODEX_FILES) cpSync(join(root, CODEX_SOURCE, name), join(out, CODEX_PUBLISHED, name), { recursive: true });
+  writeFileSync(join(out, "README.md"), readme(version) + `
+## Codex
+
+Add this marketplace with:
+
+\`\`\`sh
+${CODEX_INSTALL}
+codex plugin add g1t@g1t
+\`\`\`
+
+In the ChatGPT desktop app's Plugins directory, choose the g1t marketplace,
+install g1t and authorize its MCP connection. Restart the app if needed.
+The Codex plugin (${codexManifest(root).version}) bundles the remote MCP server and
+an issue/session workflow skill. It records sessions through MCP calls, not
+Claude Code hooks. Disable a duplicate standalone g1t MCP connection if installed.
+Direct MCP setup and ChatGPT instructions: https://docs.g1t.sh/guides/bring-your-own-agent/
+`);
   cpSync(join(root, "LICENSE"), join(out, "LICENSE"));
   verify(out, root);
   return { out, version };
@@ -201,6 +248,11 @@ export function verify(dir, root = ROOT) {
   if (marketplace.name !== "g1t" || entry.name !== "g1t" || plugin.name !== "g1t") problems.push("the names are not g1t@g1t");
   if (entry.version !== version || plugin.version !== version) problems.push(`versions: marketplace ${entry.version}, plugin ${plugin.version}, source ${version}`);
   for (const file of [`${PUBLISHED}/.mcp.json`, `${PUBLISHED}/hooks/hooks.json`]) readJson(dir, file);
+  const codex = readJson(dir, `${CODEX_PUBLISHED}/plugin.json`);
+  if (codex.name !== "g1t" || codex.version !== codexManifest(root).version) problems.push("Codex plugin identity or version differs from source");
+  if (JSON.stringify(readJson(dir, ".agents/plugins/marketplace.json")) !== JSON.stringify(codexMarketplace())) problems.push("Codex marketplace differs from expected catalog");
+  const mcp = readJson(dir, `${CODEX_PUBLISHED}/mcp.json`);
+  if (mcp.mcpServers?.g1t?.url !== "https://mcp.g1t.sh" || mcp.mcpServers?.g1t?.type !== "streamable-http") problems.push("Invalid Codex MCP server");
   problems.push(...scan(dir));
   if (problems.length) throw new Error(`The published tree is wrong:\n- ${problems.join("\n- ")}`);
 }
@@ -238,6 +290,7 @@ export function publish({ remote = process.env.G1T_PLUGINS_REMOTE || REMOTE, tok
   if (hasMain) git(clone, ["checkout", "--quiet", "-B", "main", "origin/main"]);
   else git(clone, ["checkout", "--quiet", "--orphan", "main"]);
 
+  const codexBefore = hasMain && existsSync(join(clone, CODEX_PUBLISHED, "plugin.json")) ? readJson(clone, `${CODEX_PUBLISHED}/plugin.json`).version : null;
   const before = hasMain && existsSync(join(clone, PUBLISHED, ".claude-plugin", "plugin.json")) ? readJson(clone, `${PUBLISHED}/.claude-plugin/plugin.json`).version : null;
   for (const name of readdirSync(clone)) if (name !== ".git") rmSync(join(clone, name), { recursive: true, force: true });
   cpSync(built, clone, { recursive: true });
@@ -250,6 +303,8 @@ export function publish({ remote = process.env.G1T_PLUGINS_REMOTE || REMOTE, tok
     throw new Error(`The plugin's files changed, but ${version} is already published, and Claude Code updates installed plugins only when the version changes. Bump "version" in ${SOURCE}/.claude-plugin/plugin.json and .claude-plugin/marketplace.json.`);
   }
 
+  const codexChanged = hasMain ? git(clone, ["diff", "--cached", "--quiet", "--", CODEX_PUBLISHED], { allowFail: true }).status !== 0 : true;
+  if (codexChanged && codexBefore === codexManifest(root).version) throw new Error("Codex plugin files changed without a version bump in plugins/codex/plugin.json");
   const tag = tagName(version);
   const remoteTag = git(clone, ["ls-remote", "--tags", "origin", `refs/tags/${tag}`], { env }).stdout.trim();
   let commit = hasMain ? git(clone, ["rev-parse", "HEAD"]).stdout.trim() : null;

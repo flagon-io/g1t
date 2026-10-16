@@ -1,32 +1,62 @@
 ---
-// How to connect a coding agent to g1t: a tab per agent. Every block on
-// the page switches together, and Starlight remembers the choice
-// (`syncKey`). The snippets live in `src/data/agents.ts`.
-import { Code, TabItem, Tabs } from '@astrojs/starlight/components';
-
+import { Code } from '@astrojs/starlight/components';
 import { AGENTS, AGENTS_WITH_TOKEN } from '../data/agents';
-
-interface Props {
-	/** `token` shows each agent with a bearer token instead of signing in through the browser. */
-	variant?: 'browser' | 'token';
-}
-
+interface Props { variant?: 'browser' | 'token'; }
 const { variant = 'browser' } = Astro.props;
 const agents = variant === 'token' ? AGENTS_WITH_TOKEN : AGENTS;
+const base = `agent-${crypto.randomUUID()}`;
 const parts = (text: string) => text.split('`').map((part, index) => ({ part, code: index % 2 === 1 }));
 ---
-
-<Tabs syncKey="agent">
-	{
-		agents.map((agent) => (
-			<TabItem label={agent.label}>
-				<Code code={agent.code} lang={agent.lang} title={agent.file ?? undefined} frame={agent.file ? 'code' : 'none'} />
-				{agent.then && (
-					<p>
-						{parts(agent.then).map(({ part, code }) => (code ? <code>{part}</code> : part))}
-					</p>
-				)}
-			</TabItem>
-		))
-	}
-</Tabs>
+<g1t-agent-setup>
+  <div role="tablist" aria-label="AI client">
+    {agents.map((agent, index) => <button type="button" role="tab" id={`${base}-${index}`} aria-controls={`${base}-panel-${index}`} aria-selected={index === 0 ? 'true' : 'false'} tabindex={index === 0 ? 0 : -1}>{agent.label}</button>)}
+  </div>
+  {agents.map((agent, index) => <section role="tabpanel" id={`${base}-panel-${index}`} aria-labelledby={`${base}-${index}`} hidden={index !== 0}>
+    <Code code={agent.code} lang={agent.lang} title={agent.file ?? undefined} frame={agent.file ? 'code' : 'none'} />
+    {agent.then && <p>{parts(agent.then).map(({ part, code }) => code ? <code>{part}</code> : part)}</p>}
+  </section>)}
+</g1t-agent-setup>
+<style>
+  g1t-agent-setup { display: block; }
+  [role=tablist] { display: flex; flex-wrap: wrap; border-bottom: 2px solid var(--sl-color-gray-5); }
+  [role=tab] { background: transparent; border: 0; color: var(--sl-color-gray-2); padding: .6rem .8rem; font: inherit; font-size: .875rem; cursor: pointer; }
+  [role=tab][aria-selected=true] { color: var(--sl-color-white); box-shadow: 0 2px var(--sl-color-text-accent); font-weight: 600; }
+  [role=tabpanel] { margin-top: 1rem; }
+  [hidden] { display: none; }
+</style>
+<script>
+  import { AGENTS, AGENT_IDS, DEFAULT_AGENT, cookieAgent, getAgentChoice, setAgentChoice, subscribeAgentChoice } from '@g1t/contracts/agent-setup';
+  class AgentSetup extends HTMLElement {
+    stop?: () => void;
+    connectedCallback() {
+      try {
+        // Migrate the docs' previous Starlight choice once, without overriding app choices.
+        if (!cookieAgent('g1t_agent') && !localStorage.getItem('g1t:agent')) {
+          const label = localStorage.getItem('starlight-synced-tabs__agent');
+          const old = AGENT_IDS.find(id => AGENTS[id].label === label);
+          if (old) setAgentChoice(old);
+        }
+      } catch { /* Tabs still work with storage blocked. */ }
+      const tabs = [...this.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+      const panels = [...this.querySelectorAll<HTMLElement>('[role=tabpanel]')];
+      const ids = tabs.map(tab => AGENT_IDS.find(id => AGENTS[id].label === tab.textContent?.trim())!);
+      const update = () => {
+        const selected = getAgentChoice(cookieAgent('g1t_agent_default') ?? DEFAULT_AGENT);
+        const index = Math.max(0, ids.indexOf(selected));
+        tabs.forEach((tab, i) => { tab.setAttribute('aria-selected', String(i === index)); tab.tabIndex = i === index ? 0 : -1; panels[i].hidden = i !== index; });
+      };
+      tabs.forEach((tab, index) => {
+        tab.onclick = () => setAgentChoice(ids[index]);
+        tab.onkeydown = event => {
+          const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+          if (next === null) return;
+          event.preventDefault(); setAgentChoice(ids[next]); tabs[next].focus();
+        };
+      });
+      this.stop = subscribeAgentChoice(update);
+      update();
+    }
+    disconnectedCallback() { this.stop?.(); }
+  }
+  if (!customElements.get('g1t-agent-setup')) customElements.define('g1t-agent-setup', AgentSetup);
+</script>

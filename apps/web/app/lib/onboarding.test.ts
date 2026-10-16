@@ -68,7 +68,7 @@ test("code is brought by a project or a connected GitHub; people by a member or 
 
 test("either the CLI or the plugin signed in connects the harness", () => {
   assert.equal(stepsFrom({ ...nothing, cli: true }, fresh).find((step) => step.key === "harness")?.done, true);
-  assert.equal(stepsFrom({ ...nothing, harnessApp: true }, fresh).find((step) => step.key === "harness")?.summary, "Plugin signed in");
+  assert.equal(stepsFrom({ ...nothing, harnessApp: true }, fresh).find((step) => step.key === "harness")?.summary, "AI client signed in");
 });
 
 test("skipped steps count as settled, but the AI provider cannot be skipped and a done step is not skipped", () => {

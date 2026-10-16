@@ -70,7 +70,7 @@ what you clicked, so a step you did elsewhere is ticked here as well:
 | **Add an AI provider** | The workspace has an [AI provider](/guides/ai/) whose key passed its last check. You can add one in the guide: choose a provider, paste its key, and **Add and check the key** saves it and checks it at once, as the AI page does. **Test** checks one again. |
 | **Choose Ask's model** | [Ask g1t](/guides/ask/) answers with one of the workspace's providers, and has no problem with it. Choose the provider and a model, or Auto, and **Use for Ask**. |
 | **Bring your code** | The workspace has a project, or [GitHub is connected](/guides/github/). **New project** starts one; **Connect GitHub** installs g1t's GitHub App in one step, then you choose the repositories to bring across. |
-| **Connect your harness** | You signed in the [g1t CLI](/guides/cli/) (`g1t auth login`), or signed in an app with g1t, as the [Claude Code plugin](/guides/claude-code-plugin/) does from `/mcp`. The guide shows the install commands for macOS and Linux and for Windows, ready to copy. |
+| **Connect your harness** | You signed in the [g1t CLI](/guides/cli/) (`g1t auth login`), or signed in an [AI client](/guides/bring-your-own-agent/) with g1t through MCP. The guide shows the install commands for macOS and Linux and for Windows, ready to copy. |
 | **Invite your team** | The workspace has another member, or an invitation waiting for an answer. Workspace invites come with the plan: on a free workspace the step says so, links to the plan, and offers [inviting a friend to g1t](/guides/authentication/#invite-a-friend) instead. |
 | **Add a runner** | The workspace has a [self-hosted runner](/guides/self-hosted-runners/), such as [the desktop app](/guides/desktop/). |
 
