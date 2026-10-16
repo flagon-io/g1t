@@ -1,6 +1,6 @@
 /**
- * A screenshot of a project's production, for its overview. Members only,
- * like the deployments it shows. The overview asks with `?v=` naming the
+ * A screenshot of a project's production, for anyone allowed to read it.
+ * The overview asks with `?v=` naming the
  * deploy (its commit and when it went live), so the browser keeps a
  * screenshot of that deploy for good, and a resumed or moved app, deployed
  * again at the same commit, is asked for anew. One taken before the
@@ -11,6 +11,8 @@ import { env } from "cloudflare:workers";
 import type { Route } from "./+types/production-screenshot";
 import { deployments } from "../../lib/services.server";
 import { getViewer } from "../../lib/session.server";
+import { projectFor } from "../../lib/access.server";
+import { nativeProduction } from "../../lib/deployments";
 
 const LONG = "private, max-age=31536000, immutable";
 
@@ -23,9 +25,12 @@ const BRIEF = "private, max-age=60";
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const none = (status: number) => new Response(null, { status, headers: { "cache-control": BRIEF } });
-  if (!viewer || !env.SCREENSHOTS) return none(404);
-  const list = await deployments.list({ workspace: params.owner, slug: params.repo }, viewer).catch(() => null);
-  const production = list?.ok ? list.value.live.find((app) => app.kind === "production") : undefined;
+  if (!env.SCREENSHOTS) return none(404);
+  const project = await projectFor(context, params).catch(() => null);
+  if (!project?.ok) return none(404);
+  const repo = project.value.source.kind === "hosted" ? project.value.source.repo : { namespace: params.owner, name: params.repo };
+  const environments = await deployments.environments(repo, viewer).catch(() => null);
+  const production = nativeProduction(environments?.ok ? environments.value.environments : []);
   if (!production) return none(404);
   const shot = await env.SCREENSHOTS.image({
     host: new URL(production.url).host,

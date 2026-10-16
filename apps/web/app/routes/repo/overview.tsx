@@ -56,7 +56,7 @@ import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/sess
 import { accessTo, countsFor, projectFor, refusal, repoFor } from "../../lib/access.server";
 import { shotVersion } from "./production-screenshot";
 import { DeploymentStateIcon, DeploymentsPanel } from "../../components/deployments-panel";
-import { STATE_WORD, environmentUrl, productionEnvironment, reportedProduction } from "../../lib/deployments";
+import { STATE_WORD, nativeProduction, productionEnvironment, reportedProduction } from "../../lib/deployments";
 import { cardSources, externalTarget, externalVersion, productionImageUrl } from "../../lib/production-image";
 import { useAddresses } from "../../lib/addresses";
 import { commitChecksFor } from "../../lib/commit-checks.server";
@@ -267,11 +267,9 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // anyone else from the production environment, which they may read.
   const liveProduction = live.find((app) => app.kind === "production") ?? null;
   const current = productionEnv?.current ?? null;
-  const production = liveProduction
+  const production = nativeProduction(environmentList?.environments ?? []) ?? (liveProduction
     ? { url: liveProduction.url, commit: liveProduction.commit, deployedAt: liveProduction.deployedAt }
-    : productionEnv && current?.source === "g1t_page" && environmentUrl(productionEnv)
-      ? { url: environmentUrl(productionEnv)!, commit: current.sha, deployedAt: current.updated_at }
-      : null;
+    : null);
   const telemetryData = observed?.overview && (observed.overview.totals.requests > 0 || (observed.errors?.length ?? 0) > 0) ? observed : null;
 
   return {
@@ -285,8 +283,8 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     previews: live.filter((app) => app.kind === "preview"),
     production,
     serving: current ? { id: current.id, sha: current.sha, ref: current.ref, at: current.updated_at, creator: current.creator, runUrl: current.run_url } : null,
-    // The screenshot of production on g1t.page, for members (like its builds).
-    productionShot: member && liveProduction ? shotVersion(liveProduction) : null,
+    // Every reader can see production; administrative builds and settings remain member-only.
+    productionShot: production ? shotVersion(production) : null,
     latestProductionBuild: latestProduction ? { status: latestProduction.status } : null,
     productionLatest: productionLatest
       ? { id: productionLatest.id, sha: productionLatest.sha, state: productionLatest.state, at: productionLatest.updated_at, environment: productionEnv!.name }
@@ -791,7 +789,7 @@ function Overview({
             </p>
           )}
           {productionPlan && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 sm:px-6">
-            <span className="text-xs text-muted">{plan === "elsewhere" ? "Production is deployed by its own pipeline." : !loaderData.settings?.enabled ? "Deployments are not enabled for this project." : <>Push to <span className="font-mono text-fg-soft">{defaultBranch ?? "the default branch"}</span> to update production.</>}</span>
+            <span className="text-xs text-muted">{plan === "elsewhere" ? "Production is deployed by its own pipeline." : loaderData.settings?.enabled === false ? "Deployments are not enabled for this project." : <>Push to <span className="font-mono text-fg-soft">{defaultBranch ?? "the default branch"}</span> to update production.</>}</span>
             <div className="flex flex-wrap items-center gap-2">
               {member && loaderData.can.manage_integrations && <ButtonLink to={`${base}/settings/deployments`} variant="ghost" size="sm"><Settings2 size={14} />Deployment settings</ButtonLink>}
               <ButtonLink to={`${base}/deployments`} variant="outline" size="sm"><Rocket size={14} />Deployments{loaderData.environments && <span className="text-muted">{loaderData.environments.total_count}</span>}</ButtonLink>

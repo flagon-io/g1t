@@ -14,6 +14,13 @@ const css = "body{color:red}";
 // Seed R2 and the page cache through a test-only entry, keeping all R2 I/O
 // inside workerd. The application entry itself is the unmodified build.
 const seed = `import app from './index.js';
+import { WorkerEntrypoint } from 'cloudflare:workers';
+export class ScreenshotStub extends WorkerEntrypoint {
+  async image(input) {
+    if (input.host !== 'public-acme.g1t.page' || input.commit !== 'abcdef1234567') throw new Error('Unexpected screenshot target');
+    return {body:new TextEncoder().encode('production-preview').buffer,contentType:'image/jpeg',commit:input.commit,capturedAt:'2026-10-15T02:00:00Z'};
+  }
+}
 export default { async fetch(request, env, ctx) {
   if (new URL(request.url).pathname === '/__seed') {
     await env.DOWNLOADS.put('web-assets/assets/app-old12345.css', ${JSON.stringify(css)}, {httpMetadata:{contentType:'text/css'}});
@@ -34,13 +41,36 @@ const runtime = new Miniflare(convertV4MiniflareOptions({
   r2Buckets: ["DOWNLOADS"],
   serviceBindings: {
     IDENTITY: async () => Response.json(null),
-    PROJECTS: async () => Response.json({ ok: true, value: [] }),
+    PROJECTS: async (request) => {
+      const method = new URL(request.url).pathname.split("/").pop();
+      const args = await request.json();
+      if (method !== "get") return Response.json({ ok: true, value: [] });
+      if (args.slug !== "public") return Response.json({ ok: false, error: { code: "not_found", message: "Not found" } });
+      return Response.json({ ok: true, value: { source: { kind: "hosted", repo: { namespace: "acme", name: "public" } } } });
+    },
+    DEPLOYMENTS: async (request) => {
+      const method = new URL(request.url).pathname.split("/").pop();
+      const args = await request.json();
+      assert.equal(method, "list_environments", "Public previews must not read member-only deployment lists");
+      assert.equal(args.viewer, null);
+      assert.equal(args.repo.name, "public");
+      const current = { id: "dpl_live", source: "g1t_page", state: "success", sha: "abcdef1234567", environment_url: "https://public-acme.g1t.page", updated_at: "2026-10-15T01:00:00Z" };
+      return Response.json({ ok: true, value: { environments: [{ name: "production", production_environment: true, updated_at: current.updated_at, current, latest: { ...current, id: "dpl_next", sha: "bbbbbbb", state: "in_progress" } }] } });
+    },
+    SCREENSHOTS: { name: "web-deploy-check", entrypoint: "ScreenshotStub" },
   },
 }));
 try {
   const origin = await runtime.ready;
   const request = (path, init) => fetch(new URL(path, origin), { ...init, signal: AbortSignal.timeout(15_000) });
   assert.equal((await request("/__seed")).status, 200);
+  const screenshot = await request("/acme/public/production.jpg?v=abcdef1234567-" + Date.parse("2026-10-15T01:00:00Z"));
+  assert.equal(screenshot.status, 200, "Signed-out readers can see public production screenshots");
+  assert.equal(screenshot.headers.get("content-type"), "image/jpeg");
+  assert.equal(screenshot.headers.get("cache-control"), "private, max-age=31536000, immutable");
+  assert.equal(await screenshot.text(), "production-preview");
+  assert.equal((await request("/acme/private/production.jpg")).status, 404, "Unreadable projects never expose screenshots");
+  console.log("Public production screenshots: anonymous access, private-project denial, and serving commit selection verified.");
   for (const [path, destination] of [["/developers", "https://docs.g1t.sh/reference/api/"], ["/openapi.json", "https://api.g1t.sh/openapi.json"], ["/mcp", "https://mcp.g1t.sh"]]) {
     const answer = await request(path, { redirect: "manual" });
     assert.equal(answer.status, 308);
