@@ -53,6 +53,7 @@ import {
 import { savedPins } from "./lib/dock.server";
 import { StandaloneFrame } from "./components/standalone";
 import {
+  ai,
   billing,
   chat,
   identity,
@@ -61,6 +62,7 @@ import {
 } from "./lib/services.server";
 import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
+import { agentForProviders, DEFAULT_AGENT, parseAgent, rememberAgentDefault } from "./lib/agent-setup";
 import { shortCache } from "./lib/cache.server";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
@@ -160,6 +162,16 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   return {
     user,
     shell,
+    // Cache only the derived UI default, scoped to this viewer and workspace.
+    // shortCache bypasses old answers after settings writes; failures are not cached.
+    agentChoice: parseAgent(readCookie(cookies, "g1t_agent")),
+    agentDefault: user && shell.workspace
+      ? await shortCache(`agent-default:${user.id}:${shell.workspace.slug}`, 300_000, async () => {
+          const result = await ai.list(shell.workspace!.slug, user);
+          if (!result.ok) throw new Error("AI providers unavailable");
+          return agentForProviders(result.value);
+        }).catch(() => DEFAULT_AGENT)
+      : DEFAULT_AGENT,
     // For a page opened with an access token: the feed socket's ticket,
     // minted here so the feed opens without asking for one (lib/live-socket.ts).
     // Without one the feed asks for its own ticket, so a ticket that could
@@ -638,7 +650,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const userId = useRouteLoaderData<typeof loader>("root")?.user?.id ?? null;
+  const root = useRouteLoaderData<typeof loader>("root");
+  const userId = root?.user?.id ?? null;
+  const agentDefault = root?.agentDefault ?? DEFAULT_AGENT;
+  useEffect(() => { rememberAgentDefault(agentDefault); }, [agentDefault]);
   // Tell analytics who is signed in, once per change; signing out forgets them.
   const lastUserId = useRef<string | null>(null);
   useEffect(() => {

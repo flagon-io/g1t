@@ -29,6 +29,18 @@ Adding a provider is the first step of
 new workspace's owners see on Home; owners can add one and choose Ask's
 model right there. **Getting started** on this page opens it again.
 
+## Connect an AI app
+
+Workspace providers power Ask and hosted sessions. To use your own coding
+agent or chat app with g1t, [connect an AI client](/guides/bring-your-own-agent/)
+through MCP instead. This includes Codex, ChatGPT, Claude, Grok, Open WebUI
+and LibreChat; connecting a client does not copy your workspace API keys into it.
+
+Connection guides initially choose a client based on the first configured
+provider. Your explicit tab choice takes precedence and is remembered across
+projects and docs in the same browser. The inferred choice is cached, so
+browsing setup instructions does not fetch provider settings each time.
+
 ## Choose where models come from
 
 **Add a provider** lists them in three groups. A workspace can have any

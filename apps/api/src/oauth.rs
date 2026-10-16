@@ -110,6 +110,9 @@ fn server_metadata(addresses: &Addresses) -> Value {
     let issuer = &addresses.api;
     json!({
         "issuer": issuer,
+        // RFC 9207 binds callbacks to this issuer even though approval is
+        // hosted on SITE_URL. Codex requires this for split-origin OAuth.
+        "authorization_response_iss_parameter_supported": true,
         "authorization_endpoint": format!("{}/oauth/authorize", addresses.site),
         "token_endpoint": format!("{issuer}/oauth/token"),
         "registration_endpoint": format!("{issuer}/oauth/register"),
@@ -263,6 +266,19 @@ pub async fn handle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_origin_authorization_advertises_issuer_bound_callbacks() {
+        for addresses in [
+            Addresses::from_settings(None, None, None),
+            Addresses::from_settings(Some("https://git.example".into()), Some("https://api.example".into()), None),
+        ] {
+            let metadata = server_metadata(&addresses);
+            assert_eq!(metadata["issuer"], addresses.api);
+            assert_eq!(metadata["authorization_endpoint"], format!("{}/oauth/authorize", addresses.site));
+            assert_eq!(metadata["authorization_response_iss_parameter_supported"], true);
+        }
+    }
 
     fn uris(list: &[&str]) -> Vec<String> {
         list.iter().map(|uri| (*uri).to_owned()).collect()

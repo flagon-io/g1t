@@ -51,8 +51,8 @@ Everything here shows on g1t.sh as it happens, without reloading.
   - **Just landed**: the latest merges, each with a link to the session
     behind it.
 
-  With nothing going on, it says how to start: install the
-  [Claude Code plugin](/guides/claude-code-plugin/), or run
+  With nothing going on, choose your client in the
+  [connection instructions](/guides/bring-your-own-agent/), or run
   `g1t work claim <number>` from any harness.
 - **An issue's Work panel**, at the top of its sidebar: its claims (who,
   from which harness, since when and when each lapses; ones released,

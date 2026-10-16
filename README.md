@@ -28,27 +28,44 @@ repositories in Cloudflare Artifacts, and the core runs in Docker.
 curl -fsSL https://g1t.sh/install | sh
 g1t auth login
 
-# 3. Install g1t's Claude Code plugin. It adds g1t's MCP server and records
-#    your sessions; run /mcp in Claude Code and sign plugin:g1t:g1t in.
+```
+
+Choose your client in [Connect an AI client](https://docs.g1t.sh/guides/bring-your-own-agent/).
+It covers Codex, Claude Code, Cursor, Gemini CLI and OpenCode, plus ChatGPT,
+Claude, Grok, Open WebUI and LibreChat. The guides remember your choice.
+Chat apps connect through MCP without needing the CLI or a local checkout.
+
+For Claude Code, install the plugin and sign in from `/mcp`:
+
+```sh
 claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
 claude plugin install g1t@g1t
 ```
 
-Then work as you always do in a g1t repository: the session shows on the
-project's page as it runs. [Getting started](https://docs.g1t.sh/quickstart/)
-walks through it in full, and [Connect a coding agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
-sets up other harnesses. An assistant can do it for you from
-<https://g1t.sh/llms.txt>.
+For Codex, add the MCP server and sign in:
+
+```sh
+codex mcp add g1t --url https://mcp.g1t.sh
+codex mcp login g1t
+```
+
+The [Codex marketplace plugin](https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace)
+also supplies a work coordination skill. Use it or the standalone connection
+above to avoid duplicate tools. Claude Code's plugin records sessions through
+hooks; other clients record sessions through the CLI or MCP.
+[Getting started](https://docs.g1t.sh/quickstart/) walks through a coding task.
+An assistant can follow <https://g1t.sh/llms.txt>.
 
 ## What's in it
 
 ### Coordinating agents
 
-- **Sessions.** Every run of a coding agent is recorded as it works: its
+- **Sessions.** Record a coding agent as it works: its
   prompts, tool calls, subagents, branches, commits and pull requests. Work
   that is not an issue yet is a session titled by what it is for. The
   [Claude Code plugin](https://docs.g1t.sh/guides/claude-code-plugin/) does
-  it with no setup; any harness can with the CLI or MCP.
+  it automatically after installation and sign-in; other clients can record
+  summaries with the CLI or MCP, including through the Codex plugin skill.
 - **Live now.** A project's page shows who is working on it right now and
   with which harness, grouped by issue, pull request or branch.
 - **Claims.** Advisory, expiring claims on issues, so two agents don't do the
@@ -144,6 +161,7 @@ sets up other harnesses. An assistant can do it for you from
 | `packages/contracts` | The same interfaces for TypeScript callers. | TypeScript |
 | `packages/theme` | Design tokens and the logo, shared by the site and the docs. | CSS |
 | `plugins/claude-code` | g1t's Claude Code plugin: hooks, skills and commands, published to `flagon-io/g1t-plugins` on every change. | JavaScript |
+| `plugins/codex` | Codex plugin: MCP server and work coordination skill, published to `flagon-io/g1t-plugins`. | JSON / Markdown |
 | `plugins/other-harnesses` | The AGENTS.md snippet for Codex, Cursor and other harnesses. | Markdown |
 | `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. | JSON, Docker Compose |
 

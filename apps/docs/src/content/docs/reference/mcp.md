@@ -3,8 +3,8 @@ title: MCP tools
 description: The g1t MCP server's resource tools, each action they take with its required inputs and scope, and how to call them.
 ---
 
-The MCP server at `https://mcp.g1t.sh` is how a coding agent, such as
-Claude Code, Codex, Cursor or OpenCode, works on g1t. It exposes 19 tools,
+The MCP server at `https://mcp.g1t.sh` lets coding agents and chat apps
+work on g1t with the access you grant. It exposes 19 tools,
 one per kind of thing on g1t: `search`, `repository`, `issue`,
 `pull_request`, `session`, `workflow`, `observability`, `package`, `secret`,
 `security`, `webhook`, `access`, `team`, `workspace`, `ai`, `billing`,
@@ -14,18 +14,15 @@ with the same inputs, permissions and results, so the two always agree.
 
 ## Connect
 
-To connect Claude Code, Codex, OpenCode, Cursor or another client, see
-[connect a coding agent](/guides/bring-your-own-agent/). With Claude Code,
-install g1t's [plugin](/guides/claude-code-plugin/), which adds the server
-(`plugin:g1t:g1t` in `/mcp`) and records your sessions:
+Choose your client in [Connect an AI client](/guides/bring-your-own-agent/)
+for coding agents, ChatGPT, Claude, Grok, Open WebUI, LibreChat and other
+MCP clients. The guide remembers your choice.
 
-```sh
-claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
-claude plugin install g1t@g1t
-```
-
-Without the plugin, `claude mcp add --transport http g1t https://mcp.g1t.sh`
-adds the server alone. Never both, or every tool is listed twice.
+The [Claude Code plugin](/guides/claude-code-plugin/) adds the server and
+records sessions through hooks. The [Codex plugin](/guides/bring-your-own-agent/#codex-marketplace)
+adds the server and a skill for coordinating work and recording session summaries.
+Use either the plugin or a standalone server connection for a given client
+to avoid duplicate tools.
 
 The server speaks MCP over streamable HTTP, and answers every request with
 JSON. Every call needs to be signed in, in one of two ways:

@@ -391,7 +391,9 @@ the same time; the `g1t` CLI is how you see them and how they see you.
 The same text is in the g1t repository at
 `plugins/other-harnesses/AGENTS.snippet.md`.
 
-To give Codex g1t's MCP tools as well:
+Codex has its own [marketplace plugin](/guides/bring-your-own-agent/#codex-marketplace)
+with MCP tools and a work coordination skill. It does not use Claude Code's hooks.
+For a standalone MCP connection instead:
 
 ```sh
 codex mcp add g1t --url https://mcp.g1t.sh
@@ -407,5 +409,5 @@ url = "https://mcp.g1t.sh"
 bearer_token_env_var = "G1T_TOKEN"
 ```
 
-[Connect a coding agent](/guides/bring-your-own-agent/) covers Cursor,
+[Connect an AI client](/guides/bring-your-own-agent/) covers Cursor,
 OpenCode and other MCP clients.

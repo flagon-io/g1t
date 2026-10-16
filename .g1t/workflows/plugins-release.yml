@@ -1,4 +1,4 @@
-# Publishes g1t's Claude Code plugin marketplace to flagon-io/g1t-plugins
+# Publishes g1t's Claude Code and Codex plugin marketplace to flagon-io/g1t-plugins
 # on g1t.sh, so people add it without cloning this repository:
 #
 #   claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
@@ -13,6 +13,9 @@
 # as `claude plugin tag` would. A change to the plugin's files without a
 # new version stops the run, as Claude Code updates installed plugins only
 # when the version changes.
+#
+# Codex is sourced from plugins/codex/, with its own version guard, and
+# published as plugins/g1t-codex/ with .agents/plugins/marketplace.json.
 #
 # Runs on a push to main that changes the plugin, its manifest or the
 # script, and by hand.
@@ -32,6 +35,7 @@ on:
     paths:
       - .claude-plugin/**
       - plugins/claude-code/**
+      - plugins/codex/**
       - scripts/plugins-release.mjs
       - LICENSE
   workflow_dispatch:

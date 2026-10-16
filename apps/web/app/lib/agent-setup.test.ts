@@ -8,6 +8,7 @@ import {
   DEFAULT_AGENT,
   MCP_URL,
   agentsFor,
+  agentForProviders,
   cursorInstallLink,
   getAgentChoice,
   parseAgent,
@@ -102,4 +103,40 @@ test("the snippets can point at another MCP server", () => {
   }
   const config = new URL(cursorInstallLink(mcp)).searchParams.get("config");
   assert.deepEqual(JSON.parse(atob(config ?? "")), { url: mcp });
+});
+
+test("the first configured provider supplies the default without reordering", () => {
+  assert.equal(agentForProviders([]), DEFAULT_AGENT);
+  assert.equal(agentForProviders([{ provider: "openai" }]), "codex");
+  assert.equal(agentForProviders([{ provider: "anthropic" }]), "claude-code");
+  assert.equal(agentForProviders([{ provider: "gemini" }]), "gemini");
+  assert.equal(agentForProviders([{ provider: "xai" }]), "grok");
+  assert.equal(agentForProviders([{ provider: "openai_endpoint" }]), "open-webui");
+  assert.equal(agentForProviders([{ provider: "openrouter" }, { provider: "openai" }]), "opencode");
+  assert.equal(agentForProviders([{ provider: "openai" }, { provider: "anthropic" }]), "codex");
+  assert.equal(agentForProviders([{ provider: "anthropic_endpoint" }]), "claude-code");
+  assert.equal(agentForProviders([{ provider: "azure_openai" }]), "codex");
+});
+
+test("explicit choices beat provider defaults, and defaults are not saved as choices", () => {
+  const store = memory();
+  assert.equal(readAgentChoice(() => store, "codex"), "codex");
+  assert.equal(readAgentChoice(() => store, "gemini"), "gemini");
+  assert.equal(store.map.size, 0);
+  writeAgentChoice(() => store, "cursor");
+  assert.equal(readAgentChoice(() => store, "codex"), "cursor");
+  assert.equal(readAgentChoice(() => throwing, "gemini"), "gemini");
+});
+
+test("chat clients have distinct setup instructions and LibreChat uses per-user OAuth", () => {
+  for (const id of ["claude-chat", "grok", "open-webui"] as const) {
+    assert.equal(AGENTS[id].lang, "text");
+    assert.equal(AGENTS[id].code, MCP_URL);
+  }
+  assert.match(AGENTS.grok.then, /New Connector > Custom/);
+  assert.match(AGENTS["claude-chat"].then, /Register automatically/);
+  assert.match(AGENTS["open-webui"].then, /OAuth 2.1/);
+  assert.match(AGENTS.librechat.code, /type: streamable-http/);
+  assert.match(AGENTS.librechat.code, /requiresOAuth: true/);
+  assert.ok(!AGENTS.librechat.code.includes("Bearer"));
 });

@@ -1,0 +1,234 @@
+/**
+ * How each coding agent connects to g1t's MCP server, and which one this
+ * browser last chose. Every agent toggle on a page follows the same choice,
+ * and it is remembered for the next visit.
+ *
+ * The commands follow each agent's own documentation for adding a remote
+ * MCP server. Shared by the app and documentation.
+ *
+ * Each snippet is built for an MCP server URL: g1t.sh's by default, or a
+ * self-hosted g1t's own (`useAddresses().mcp`).
+ */
+
+/** g1t.sh's MCP server, the same as HOSTED_ADDRESSES.mcp in ./addresses. */
+export const MCP_URL = "https://mcp.g1t.sh";
+
+/** Installs g1t's Claude Code plugin, which adds g1t.sh's MCP server and records sessions. */
+export const PLUGIN_INSTALL = "claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git\nclaude plugin install g1t@g1t";
+
+export const AGENT_IDS = ["claude-code", "codex", "opencode", "cursor", "gemini", "chatgpt", "claude-chat", "grok", "open-webui", "librechat", "other"] as const;
+export type AgentId = (typeof AGENT_IDS)[number];
+export const DEFAULT_AGENT: AgentId = "claude-code";
+/** Where the choice is kept in `localStorage`. */
+export const AGENT_STORAGE_KEY = "g1t:agent";
+
+export type AgentSetup = {
+  id: AgentId;
+  label: string;
+  /** The file the snippet goes in, or null for a command or server URL. */
+  file: string | null;
+  lang: "sh" | "json" | "yaml" | "text";
+  code: string;
+  /** What to do after, in a sentence or two; `code` in backticks. */
+  then: string;
+  /** The file it reads a repository's instructions from. */
+  instructions: string;
+};
+
+const json = (value: unknown) => JSON.stringify(value, null, 2);
+
+/** How each agent adds the MCP server at `mcp`. */
+export function agentsFor(mcp: string = MCP_URL): Record<AgentId, AgentSetup> {
+  return {
+    // On g1t.sh, g1t's plugin: it adds the MCP server itself (as
+    // plugin:g1t:g1t) and records sessions. A self-hosted g1t's server is
+    // added on its own.
+    "claude-code":
+      mcp === MCP_URL
+        ? {
+            id: "claude-code",
+            label: "Claude Code",
+            file: null,
+            lang: "sh",
+            code: PLUGIN_INSTALL,
+            then: "The plugin adds g1t's MCP server and records your sessions. Start Claude Code again, run `/mcp` and choose `plugin:g1t:g1t` to sign in through your browser. Skip `claude mcp add` with the plugin installed, or every g1t tool is listed twice.",
+            instructions: "CLAUDE.md",
+          }
+        : {
+            id: "claude-code",
+            label: "Claude Code",
+            file: null,
+            lang: "sh",
+            code: `claude mcp add --transport http g1t ${mcp}`,
+            then: "Then run `/mcp` in Claude Code and choose g1t to sign in through your browser.",
+            instructions: "CLAUDE.md",
+          },
+    codex: {
+      id: "codex",
+      label: "Codex",
+      file: null,
+      lang: "sh",
+      code: `codex mcp add g1t --url ${mcp}\ncodex mcp login g1t`,
+      then: "The login opens your browser to sign in to g1t.",
+      instructions: "AGENTS.md",
+    },
+    opencode: {
+      id: "opencode",
+      label: "OpenCode",
+      file: "opencode.json",
+      lang: "json",
+      code: json({
+        $schema: "https://opencode.ai/config.json",
+        mcp: { g1t: { type: "remote", url: mcp, enabled: true } },
+      }),
+      then: "OpenCode signs you in through your browser when it first connects; `opencode mcp auth g1t` starts it by hand.",
+      instructions: "AGENTS.md",
+    },
+    gemini: {
+      id: "gemini", label: "Gemini CLI", file: null, lang: "sh",
+      code: `gemini mcp add --transport http g1t ${mcp}`,
+      then: "Start Gemini CLI and use `/mcp auth g1t` to sign in through your browser.", instructions: "GEMINI.md",
+    },
+    chatgpt: {
+      id: "chatgpt", label: "ChatGPT", file: null, lang: "text", code: mcp,
+      then: "In ChatGPT Plugins, choose Add custom MCP server, enter this URL and choose OAuth. Sign in to g1t and approve access. Availability depends on your plan and workspace settings.", instructions: "AGENTS.md",
+    },
+    "claude-chat": {
+      id: "claude-chat", label: "Claude chat", file: null, lang: "text", code: mcp,
+      then: "In Claude, open Customize > Connectors and add a custom connector with this URL. Choose browser sign-in and Register automatically for the OAuth client. Team administrators may need to add it first. The server must be publicly reachable.", instructions: "",
+    },
+    grok: {
+      id: "grok", label: "Grok", file: null, lang: "text", code: mcp,
+      then: "Open grok.com/connectors, choose New Connector > Custom, enter this URL and sign in to g1t. Business and Enterprise teams may need an administrator to provision it first. The server must be publicly reachable.", instructions: "",
+    },
+    "open-webui": {
+      id: "open-webui", label: "Open WebUI", file: null, lang: "text", code: mcp,
+      then: "An administrator adds this URL under Settings > Admin > Integrations > External Tool Servers. Choose MCP (Streamable HTTP) and OAuth 2.1, then sign in to g1t. Select a model with tool calling, including a local model served by Ollama or an OpenAI-compatible endpoint.", instructions: "",
+    },
+    librechat: {
+      id: "librechat", label: "LibreChat", file: "librechat.yaml", lang: "yaml",
+      code: `mcpServers:\n  g1t:\n    type: streamable-http\n    url: ${JSON.stringify(mcp)}\n    requiresOAuth: true`,
+      then: "Add this to your LibreChat configuration and restart it. Connect g1t from the MCP tools menu and complete browser sign-in. Choose a model that supports tool calling; the model provider and your g1t connection are configured separately.", instructions: "",
+    },
+    other: {
+      id: "other", label: "Other MCP", file: null, lang: "text", code: mcp,
+      then: "Add this URL as a remote Streamable HTTP MCP server in your AI client. Choose OAuth and sign in to g1t. Your client must support remote MCP and browser authentication.", instructions: "AGENTS.md",
+    },
+    cursor: {
+      id: "cursor",
+      label: "Cursor",
+      file: ".cursor/mcp.json",
+      lang: "json",
+      code: json({ mcpServers: { g1t: { url: mcp } } }),
+      then: "Use `~/.cursor/mcp.json` for every project. Cursor signs you in through your browser when it first connects.",
+      instructions: "AGENTS.md",
+    },
+  };
+}
+
+/** The snippets for g1t.sh. */
+export const AGENTS: Record<AgentId, AgentSetup> = agentsFor();
+
+/** Opens Cursor with g1t ready to add, from Cursor's install-link format. */
+export function cursorInstallLink(mcp: string = MCP_URL): string {
+  const config = btoa(JSON.stringify({ url: mcp }));
+  return `cursor://anysphere.cursor-deeplink/mcp/install?name=g1t&config=${encodeURIComponent(config)}`;
+}
+
+export function parseAgent(value: unknown): AgentId | null {
+  return typeof value === "string" && (AGENT_IDS as readonly string[]).includes(value) ? (value as AgentId) : null;
+}
+
+type Store = Pick<Storage, "getItem" | "setItem">;
+
+/**
+ * The remembered choice, or the default. Storage can be missing or throw
+ * (private windows, blocked site data); that is the same as no choice.
+ */
+export function readAgentChoice(storage: () => Store | null | undefined, fallback: AgentId = DEFAULT_AGENT): AgentId {
+  try {
+    return parseAgent(storage()?.getItem(AGENT_STORAGE_KEY)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Remembers the choice; false when it could not be kept. */
+export function writeAgentChoice(storage: () => Store | null | undefined, id: AgentId): boolean {
+  try {
+    const store = storage();
+    if (!store) return false;
+    store.setItem(AGENT_STORAGE_KEY, id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// --- The page's one choice, which every toggle follows ----------------------
+
+const browserStorage = () => (typeof window === "undefined" ? null : window.localStorage);
+let current: AgentId | null = null;
+const listeners = new Set<() => void>();
+
+export function subscribeAgentChoice(listener: () => void): () => void {
+  listeners.add(listener);
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== null && event.key !== AGENT_STORAGE_KEY) return;
+    current = parseAgent(event.newValue);
+    listener();
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", listener);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", listener);
+    }
+  };
+}
+
+export function getAgentChoice(fallback: AgentId = DEFAULT_AGENT): AgentId {
+  return cookieAgent("g1t_agent") ?? current ?? readAgentChoice(browserStorage, fallback);
+}
+
+/** Only a public UI preference crosses subdomains; no account or provider details. */
+export function cookieAgent(name: string): AgentId | null {
+  if (typeof document === "undefined") return null;
+  try { return parseAgent(document.cookie.split(";").map(s => s.trim()).find(s => s.startsWith(name + "="))?.split("=")[1]); }
+  catch { return null; }
+}
+
+export function rememberAgentDefault(id: AgentId): void {
+  agentCookie("g1t_agent_default", id, 3600);
+}
+
+function agentCookie(name: string, id: AgentId, seconds: number): void {
+  if (typeof document === "undefined") return;
+  const domain = location.hostname === "g1t.sh" || location.hostname.endsWith(".g1t.sh") ? "; Domain=g1t.sh" : "";
+  try { document.cookie = `${name}=${id}; Path=/; Max-Age=${seconds}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}${domain}`; }
+  catch { /* Restricted storage must not prevent switching tabs. */ }
+}
+
+/** The first configured provider, in the same order as the workspace AI page. */
+export function agentForProviders(providers: readonly { provider: string }[]): AgentId {
+  switch (providers[0]?.provider) {
+    case "anthropic": case "anthropic_endpoint": return "claude-code";
+    case "openai": case "azure_openai": return "codex";
+    case "gemini": return "gemini";
+    case "xai": return "grok";
+    case "openai_endpoint": return "open-webui";
+    case undefined: return DEFAULT_AGENT;
+    default: return "opencode";
+  }
+}
+
+export function setAgentChoice(id: AgentId, storage: () => Store | null | undefined = browserStorage): void {
+  current = id;
+  agentCookie("g1t_agent", id, 31536000);
+  writeAgentChoice(storage, id);
+  for (const listener of listeners) listener();
+}

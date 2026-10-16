@@ -100,10 +100,10 @@ function judge(key: OnboardingStep, facts: OnboardingFacts): { done: boolean; su
       return { done: false, summary: "New, or from GitHub" };
     }
     case "harness":
-      if (facts.cli && facts.harnessApp) return { done: true, summary: "CLI and plugin signed in" };
+      if (facts.cli && facts.harnessApp) return { done: true, summary: "CLI and AI client signed in" };
       if (facts.cli) return { done: true, summary: "g1t CLI signed in" };
-      if (facts.harnessApp) return { done: true, summary: "Plugin signed in" };
-      return { done: false, summary: "CLI and Claude Code plugin" };
+      if (facts.harnessApp) return { done: true, summary: "AI client signed in" };
+      return { done: false, summary: "Connect a coding agent or chat app" };
     case "people": {
       const people = facts.people;
       if (people && people.others > 0) return { done: true, summary: `${plural(people.others, "other member")}` };

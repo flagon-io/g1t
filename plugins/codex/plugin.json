@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "g1t",
+  "version": "0.1.0",
+  "description": "Work with g1t projects, issues, pull requests and sessions from Codex.",
+  "author": {
+    "name": "Flagon, Inc.",
+    "url": "https://g1t.sh"
+  },
+  "homepage": "https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace",
+  "repository": "https://g1t.sh/flagon-io/g1t",
+  "license": "MIT",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "g1t",
+        "shortDescription": "Projects, issues, pull requests and coordinated sessions",
+        "developerName": "Flagon, Inc.",
+        "category": "Developer Tools",
+        "websiteURL": "https://g1t.sh",
+        "privacyPolicyURL": "https://g1t.sh/policies/privacy",
+        "termsOfServiceURL": "https://g1t.sh/policies/terms"
+      }
+    }
+  }
+}

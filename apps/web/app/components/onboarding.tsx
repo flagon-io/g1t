@@ -45,6 +45,7 @@ import {
   opensByItself,
   progressOf,
 } from "../lib/onboarding";
+import { AgentSetup } from "./agent-setup";
 import { AiProviderMark } from "./connectors";
 import { ModelProviderFields } from "./model-providers";
 import { ButtonLink, CopyLine, ErrorText, Field, Input, SubmitButton } from "./ui";
@@ -78,7 +79,7 @@ const ABOUT: Record<OnboardingStep, { icon: ReactNode; lead: string }> = {
   },
   harness: {
     icon: <Laptop size={16} />,
-    lead: "Your coding agent works through g1t: it claims issues, records its sessions and opens pull requests. Install the g1t CLI and the Claude Code plugin, and sign both in.",
+    lead: "Connect your AI client to work with g1t projects through MCP. Choose a coding agent or chat app and sign in through your browser. For local coding, install the g1t CLI too.",
   },
   people: {
     icon: <Users size={16} />,
@@ -776,10 +777,10 @@ function HarnessStep({ view }: { view: OnboardingView }) {
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2">
         <Signed on={cli}>g1t CLI {cli ? "signed in" : "not signed in yet"}</Signed>
-        <Signed on={harnessApp}>Plugin {harnessApp ? "signed in" : "not signed in yet"}</Signed>
+        <Signed on={harnessApp}>AI client {harnessApp ? "signed in" : "not signed in yet"}</Signed>
       </div>
       <ol className="space-y-5">
-        <Numbered n={1} title="Install the g1t CLI and sign in">
+        <Numbered n={1} title="For local coding: install the g1t CLI and sign in">
           <Tabs defaultValue="unix">
             <TabsList aria-label="Your system">
               <TabsTrigger value="unix">macOS and Linux</TabsTrigger>
@@ -794,19 +795,18 @@ function HarnessStep({ view }: { view: OnboardingView }) {
           </Tabs>
           <CopyLine prompt text="g1t auth login" />
         </Numbered>
-        <Numbered n={2} title="Add the Claude Code plugin">
-          <CopyLine prompt breakAtSlashes text="claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git" />
-          <CopyLine prompt text="claude plugin install g1t@g1t" />
+        <Numbered n={2} title="Connect your AI client">
+          <AgentSetup />
         </Numbered>
-        <Numbered n={3} title="Sign the plugin in">
+        <Numbered n={3} title="Approve access in your browser">
           <p className="text-sm text-muted">
-            Start Claude Code again, run <code className="font-mono text-[0.8125rem] text-fg">/mcp</code> and choose{" "}
-            <code className="font-mono text-[0.8125rem] text-fg">plugin:g1t:g1t</code> to sign in through your browser.
+            Follow your client's sign-in instructions, review the permissions, and approve the access you want it to have.
+            You can change or revoke access in Settings > Connected applications.
           </p>
         </Numbered>
       </ol>
-      <ButtonLink to="https://docs.g1t.sh/guides/claude-code-plugin/" target="_blank" rel="noreferrer" variant="link" size="inline" className="text-sm">
-        The plugin's guide
+      <ButtonLink to="https://docs.g1t.sh/guides/bring-your-own-agent/" target="_blank" rel="noreferrer" variant="link" size="inline" className="text-sm">
+        AI client connection guide
         <ExternalLink size={13} />
       </ButtonLink>
     </div>
