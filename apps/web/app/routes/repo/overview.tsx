@@ -60,7 +60,8 @@ import { STATE_WORD, environmentUrl, productionEnvironment, reportedProduction }
 import { cardSources, externalTarget, externalVersion, productionImageUrl } from "../../lib/production-image";
 import { useAddresses } from "../../lib/addresses";
 import { commitChecksFor } from "../../lib/commit-checks.server";
-import { CommitChecksBadge, CommitChecksSummary } from "../../components/commit-checks";
+import { CommitChecksSummary } from "../../components/commit-checks";
+import { projectCheckSections } from "../../lib/project-checks";
 import { StatusIcon, Duration, shortRef, standingWord } from "../../components/actions";
 import { resolveRange, rangeLabel } from "../../lib/usage";
 import { deliveryDays, duration as deliveryDuration } from "../../lib/workspace-insights";
@@ -292,7 +293,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
       : null,
     commit: commit ? { hash: commit.hash, authoredAt: commit.authoredAt } : null,
     // The commit's checks, streamed in after the page.
-    checks: commitChecksFor(path, viewer, [commit?.hash, deployment?.sha, productionLatest?.sha]),
+    checks: commitChecksFor(path, viewer, [commit?.hash, current?.sha, production?.commit]),
     workflowRuns: ok(workflowRuns),
     insights,
     range,
@@ -798,7 +799,8 @@ function Overview({
   const name = project?.name ?? params.repo;
   const plan = project ? projectPlan(project) : "production";
   const canChange = member && loaderData.can.manage_settings;
-  const checkSha = loaderData.productionLatest?.sha ?? loaderData.commit?.hash;
+  const deployedSha = loaderData.serving?.sha ?? loaderData.production?.commit;
+  const checkSections = projectCheckSections(loaderData.commit?.hash, defaultBranch, deployedSha);
   const addresses = useAddresses();
   // The production card's picture: an uploaded image, served from the
   // usercontent origin, and where someone who may change it adds one.
@@ -841,7 +843,6 @@ function Overview({
               canDeploy={member && loaderData.can.manage_integrations}
               deployment={loaderData.deployment}
               commit={loaderData.commit}
-              checks={(loaderData.deployment?.sha ?? loaderData.commit?.hash) ? <CommitChecksBadge checks={loaderData.checks} sha={(loaderData.deployment?.sha ?? loaderData.commit?.hash)!} /> : undefined}
               shot={
                 <ProductionShot
                   sources={cardSources(loaderData.elsewhereShot, upload)}
@@ -863,17 +864,26 @@ function Overview({
           ) : (
             <ProductionHead loaderData={loaderData} base={base} name={name} upload={upload} addImage={addImage} />
           )}
-          {checkSha && (
+          {checkSections.length > 0 && (
             <div className="border-t border-line px-5 py-4 sm:px-6">
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-                <GitCommitHorizontal size={14} />
-                <span>{loaderData.productionLatest ? "Latest production deployment" : `Latest on ${defaultBranch ?? "default branch"}`}</span>
-                <Link to={`${base}/commit/${checkSha}`} className="font-mono hover:text-fg">{checkSha.slice(0, 7)}</Link>
-              </div>
-              <CommitChecksSummary checks={loaderData.checks} sha={checkSha} />
-              {loaderData.serving && loaderData.serving.sha !== checkSha && (
-                <p className="mt-2 text-xs text-muted">Currently serving <Link to={`${base}/commit/${loaderData.serving.sha}`} className="font-mono text-fg-soft hover:underline">{loaderData.serving.sha.slice(0, 7)}</Link> &middot; deployed <TimeAgo at={loaderData.serving.at} /></p>
-              )}
+              {checkSections.map((section) => section.kind === "branch" ? (
+                <div key={section.kind}>
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <GitCommitHorizontal size={14} />
+                    <span>{section.label}</span>
+                    <Link to={`${base}/commit/${section.sha}`} className="font-mono hover:text-fg">{section.sha.slice(0, 7)}</Link>
+                  </div>
+                  <CommitChecksSummary checks={loaderData.checks} sha={section.sha} />
+                </div>
+              ) : (
+                <details key={section.kind} className="mt-3 text-xs text-muted">
+                  <summary className="cursor-pointer hover:text-fg">{section.label} <span className="font-mono">{section.sha.slice(0, 7)}</span></summary>
+                  <p className="my-2">These checks belong to the code deployed to production. Deployment status is shown above.</p>
+                  <Link to={`${base}/commit/${section.sha}`} className="mb-2 inline-block text-accent hover:underline">View deployed commit</Link>
+                  <CommitChecksSummary checks={loaderData.checks} sha={section.sha} />
+                </details>
+              ))}
+              {deployedSha && <p className="mt-2 text-xs text-muted">Currently serving <Link to={`${base}/commit/${deployedSha}`} className="font-mono text-fg-soft hover:underline">{deployedSha.slice(0, 7)}</Link>{loaderData.serving && <> &middot; deployed <TimeAgo at={loaderData.serving.at} /></>}</p>}
             </div>
           )}
           {actionData && (
