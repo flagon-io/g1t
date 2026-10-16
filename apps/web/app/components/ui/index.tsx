@@ -39,10 +39,10 @@ const CONTROL =
  * guess from names such as "name", "title" and "username" and offer to
  * fill a login into them; these tell 1Password, LastPass, Bitwarden and
  * Dashlane to leave the field alone. A field that states what it takes with
- * `autoComplete` is left to them.
+ * `autoComplete` (other than `off`) is left to them.
  */
 export function notACredential(autoComplete?: string) {
-  if (autoComplete) return {};
+  if (autoComplete && autoComplete.toLowerCase() !== "off") return {};
   return {
     autoComplete: "off",
     "data-1p-ignore": true,
