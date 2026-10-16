@@ -46,6 +46,16 @@ typed clients in `@g1t/contracts`, built in `app/lib/services.server.ts`,
 and pass the viewer in each call's arguments. Nothing waits on a call it
 does not need.
 
+When an in-app navigation takes more than five seconds, **Reload destination**
+opens the requested URL as a full page. It uses the pending destination,
+including its query and fragment, rather than the page still in the address bar.
+It is not offered while a form submission is still being sent.
+
+Artifacts caches completed workspace values across requests for 30 seconds;
+in-flight lookups are shared only within the request that started them. A
+document without a saved editor snapshot renders its saved text while its live
+room warms in the background, instead of holding the page response on that room.
+
 ### Deadlines
 
 Each binding is wrapped by `instrumented()` in `app/lib/perf.server.ts`,

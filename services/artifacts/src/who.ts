@@ -72,7 +72,9 @@ export const now = () => new Date().toISOString();
  * that half minute, which is what the site's own redirect allows.
  */
 const WORKSPACE_TTL_MS = 30_000;
-const workspaces = new Map<string, { at: number; value: Promise<Workspace | null> }>();
+// Only completed values cross requests. In-flight I/O belongs to the
+// request that started it; another request must never await that promise.
+const workspaces = new Map<string, { at: number; value: Workspace }>();
 const defaultsMade = new Set<string>();
 
 /** For tests: forgets everything kept across requests. */
@@ -107,18 +109,17 @@ export class Who {
     let found = this.workspaces.get(key);
     if (!found) {
       const kept = workspaces.get(key);
-      if (kept && Date.now() - kept.at < WORKSPACE_TTL_MS) found = kept.value;
+      if (kept && Date.now() - kept.at < WORKSPACE_TTL_MS) found = Promise.resolve(kept.value);
       else {
         found = identityClient(this.env.IDENTITY)
           .getWorkspace(key)
           .catch(() => null)
           // Its slug, for reporting its embeddings to billing (src/embed-billing.ts).
-          .then(async (w) => (await rememberWorkspace(this.env.DB, w), w));
-        workspaces.set(key, { at: Date.now(), value: found });
-        // Only an answer is kept: a miss or a failure is asked again next time.
-        void found.then((w) => {
-          if (!w) workspaces.delete(key);
-        });
+          .then(async (w) => {
+            await rememberWorkspace(this.env.DB, w);
+            if (w) workspaces.set(key, { at: Date.now(), value: w });
+            return w;
+          });
       }
       this.workspaces.set(key, found);
     }
