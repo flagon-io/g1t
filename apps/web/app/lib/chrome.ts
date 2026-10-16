@@ -74,6 +74,7 @@ export type ProjectPage =
   | "runners"
   | "webhooks"
   | "storage"
+  | "daemons"
   | "settings";
 
 /**
@@ -108,6 +109,7 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
     "insights",
     ...PROJECT_OPERATIONS.map((page) => member && page),
     member && "storage",
+    member && "daemons",
     member && "settings",
   ];
   return pages.filter(
@@ -136,6 +138,7 @@ export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: stri
   runners: { label: "Runners", path: "settings/runners", also: [] },
   webhooks: { label: "Webhooks", path: "settings/webhooks", also: [] },
   storage: { label: "Storage", path: "soon/storage", also: [], soon: true },
+  daemons: { label: "Daemons", path: "soon/daemons", also: [], soon: true },
   settings: { label: "Settings", path: "settings", also: [] },
 };
 

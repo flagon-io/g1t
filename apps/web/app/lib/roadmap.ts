@@ -43,6 +43,14 @@ export const ROADMAP: RoadmapItem[] = [
     today: { label: "Environment variables", path: "settings/secrets" },
   },
   {
+    key: "daemons",
+    title: "Daemons",
+    section: "Project",
+    summary: "Long-running background processes for your project.",
+    why: "Keep queue consumers and background workers running alongside your app, with their configuration and activity in the same project.",
+    plans: ["Run containerized background processes", "Manage instances, restarts and environment variables", "See process health and logs alongside your deployments"],
+  },
+  {
     key: "analytics",
     title: "Analytics",
     section: "Project",
