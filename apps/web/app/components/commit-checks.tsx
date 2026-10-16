@@ -83,10 +83,10 @@ function CheckRow({ item }: { item: CheckItem }) {
 }
 
 /** The list a commit's mark opens. */
-export function ChecksList({ checks, className }: { checks: CommitChecks; className?: string }) {
+export function ChecksList({ checks, className, showHeader = true }: { checks: CommitChecks; className?: string; showHeader?: boolean }) {
   return (
     <div className={className}>
-      <div className="flex items-start gap-3 border-b border-line px-4 py-3">
+      {showHeader && <div className="flex items-start gap-3 border-b border-line px-4 py-3">
         <span className="mt-0.5">
           <CheckStateIcon state={checks.state} size={20} />
         </span>
@@ -94,7 +94,7 @@ export function ChecksList({ checks, className }: { checks: CommitChecks; classN
           <p className="font-semibold text-fg">{checksHeadline(checks)}</p>
           <p className="text-xs text-muted">{checksTally(checks)}</p>
         </div>
-      </div>
+      </div>}
       <ul className="max-h-80 divide-y divide-line overflow-y-auto">
         {checks.checks.map((item) => (
           <CheckRow key={`${item.kind}:${item.id ?? item.name}`} item={item} />
@@ -152,7 +152,7 @@ export function CommitChecksBadge({ checks, sha, className }: { checks: ChecksSo
 }
 
 /** A readable summary with the same detailed checks as the repository orb. */
-export function CommitChecksSummary({ checks, sha }: { checks: ChecksSource; sha: string }) {
+export function CommitChecksSummary({ checks, sha, label }: { checks: ChecksSource; sha: string; label?: string }) {
   const summary = (found: Record<string, CommitChecks> | null | undefined) => {
     if (found == null) return <p className="text-xs text-muted">Checks could not be loaded.</p>;
     const result = found[sha];
@@ -161,11 +161,11 @@ export function CommitChecksSummary({ checks, sha }: { checks: ChecksSource; sha
       <details className="group rounded-lg border border-line">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs hover:bg-raised/40 [&::-webkit-details-marker]:hidden">
           <CheckStateIcon state={result.state} />
-          <span className="min-w-0 flex-1"><span className="block font-medium">{checksHeadline(result)}</span><span className="text-muted">{checksTally(result)}</span></span>
+          <span className="min-w-0 flex-1"><span className="block font-medium">{label ?? checksHeadline(result)}</span><span className="text-muted">{checksTally(result)}</span></span>
           <span className="text-accent group-open:hidden">Show checks</span>
           <span className="hidden text-accent group-open:inline">Hide checks</span>
         </summary>
-        <ChecksList checks={result} className="border-t border-line" />
+        <ChecksList checks={result} className="border-t border-line" showHeader={false} />
       </details>
     );
   };

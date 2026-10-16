@@ -123,20 +123,16 @@ function DeployQuietly({ base, canDeploy, what }: { base: string; canDeploy: boo
 
 /**
  * An app that deploys itself (its workflows, or another pipeline): production at the address it was
- * given, with the latest reported deployment, or else the default branch's
- * latest commit. Branch checks are shown separately below the production status.
+ * given, with the latest reported deployment. Branch checks are shown separately below the production status.
  */
 export function ElsewhereHead({
   project,
   base,
   canChange,
-  canDeploy,
   deployment,
-  commit,
   shot,
-}: Head & {
+}: Omit<Head, "canDeploy"> & {
   deployment?: ExternalDeployment | null;
-  commit: { hash: string; authoredAt: string } | null;
   /** Production's picture, beside the rest, as an app on g1t has (components/production-shot.tsx). */
   shot?: ReactNode;
 }) {
@@ -146,7 +142,6 @@ export function ElsewhereHead({
       {shot}
       <div className="flex min-w-0 grow flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <HeadLabel icon={<Rocket />}>Production</HeadLabel>
           {url ? (
             <>
               <BigLink url={url} />
@@ -174,19 +169,7 @@ export function ElsewhereHead({
                     </span>
                   </>
                 ) : (
-                  <>
-                    <span>Deploys itself</span>
-                    {commit && (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="text-faint">·</span>
-                        <Link to={`${base}/commit/${commit.hash}`} className="inline-flex items-center gap-1 font-mono hover:text-fg">
-                          <GitCommitHorizontal size={13} className="text-faint" />
-                          {commit.hash.slice(0, 7)}
-                        </Link>
-                        <TimeAgo at={commit.authoredAt} />
-                      </span>
-                    )}
-                  </>
+                  <span>Deploys itself</span>
                 )}
               </p>
             </>
@@ -201,7 +184,6 @@ export function ElsewhereHead({
           ) : (
             <p className="mt-2 text-sm text-muted">Deploys itself.</p>
           )}
-          <DeployQuietly base={base} canDeploy={canDeploy} what="it" />
         </div>
       </div>
     </div>

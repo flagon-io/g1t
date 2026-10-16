@@ -82,13 +82,16 @@ export function DeploymentsPanel({
   base,
   summary,
   className,
+  excludeEnvironment,
 }: {
   base: string;
   summary: DeploymentEnvironments | null;
+  excludeEnvironment?: string;
   className?: string;
 }) {
   if (!summary || summary.environments.length === 0) return null;
-  const environments = orderEnvironments(summary.environments);
+  const environments = orderEnvironments(summary.environments).filter((env) => env.name !== excludeEnvironment);
+  if (environments.length === 0) return null;
   const shown = environments.slice(0, SHOWN);
   const more = environments.length - shown.length;
   return (
@@ -96,9 +99,9 @@ export function DeploymentsPanel({
       <h2 id="deployments-panel" className="text-sm font-semibold">
         <Link to={`${base}/deployments`} className="inline-flex items-center gap-2 hover:text-accent">
           <Rocket size={14} className="text-faint" />
-          Deployments
+          {excludeEnvironment ? "Other environments" : "Deployments"}
           <span className="rounded-full bg-line px-1.5 text-[0.6875rem] font-medium tabular-nums text-muted">
-            {summary.total_count.toLocaleString("en-US")}
+            {(excludeEnvironment ? environments.length : summary.total_count).toLocaleString("en-US")}
           </span>
         </Link>
       </h2>
