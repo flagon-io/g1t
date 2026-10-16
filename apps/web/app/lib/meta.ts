@@ -130,6 +130,7 @@ export function page(args: PageArgs, meta: PageMeta): MetaDescriptor[] {
   const image = og ? cardUrl(pathname, version, og) : null;
   return [
     { title: meta.title },
+    ...(pathname === "/" ? [{ tagName: "link" as const, rel: "canonical", href: `${site}/` }] : []),
     { name: "description", content: description },
     { property: "og:site_name", content: "g1t" },
     { property: "og:type", content: meta.type ?? "website" },

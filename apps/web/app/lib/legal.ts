@@ -9,6 +9,7 @@ import { type SimpleIcon, siX } from "simple-icons";
 export const COMPANY = {
   name: "Flagon, Inc.",
   url: "https://www.flagon.io",
+  email: "hey@flagon.io",
   /** Who founded it, for search engines' structured data only (structured-data.ts). */
   founder: "Chase Pierce",
 };

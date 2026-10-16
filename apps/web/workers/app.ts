@@ -18,6 +18,7 @@ import { TOKEN_CHALLENGE } from "../app/lib/website-token";
 import { serveUsercontent } from "./usercontent";
 import { serveArchivedAsset } from "../app/lib/asset-archive";
 import { needsBuildRefresh } from "../app/lib/build-version";
+import { developerResource, pageRepresentation } from "../app/lib/agent-pages";
 
 const loadBuild = () => import("virtual:react-router/server-build");
 
@@ -107,6 +108,8 @@ async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<
     return proxyPackages(env, request);
   }
   // The documentation is its own site.
+  const developer = ["GET", "HEAD"].includes(request.method) ? developerResource(pathname, addressesFor(env)) : null;
+  if (developer) return Response.redirect(developer, 308);
   if (pathname === "/docs" || pathname.startsWith("/docs/")) {
     const page = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
     const target = MOVED_DOCS[page] ?? "/";
@@ -160,6 +163,8 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
   const keyUrl = new URL(request.url);
   // Cached HTML and route data belong to the build that rendered them.
   keyUrl.searchParams.set("_g1t_build", import.meta.env.G1T_BUILD_ID);
+  // Vary alone does not partition the Workers Cache API's explicit key.
+  keyUrl.searchParams.set("_g1t_representation", pageRepresentation(request.headers.get("accept")));
   if (visitorAsksFirst(request)) keyUrl.searchParams.set("_g1t_consent", "1");
   const key = new Request(keyUrl, { method: "GET" });
   const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;

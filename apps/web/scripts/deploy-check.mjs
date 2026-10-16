@@ -19,6 +19,7 @@ export default { async fetch(request, env, ctx) {
     await env.DOWNLOADS.put('web-assets/assets/app-old12345.css', ${JSON.stringify(css)}, {httpMetadata:{contentType:'text/css'}});
     const cache = new URL('/pricing.data', request.url);
     cache.searchParams.set('_g1t_build', ${JSON.stringify(build)});
+    cache.searchParams.set('_g1t_representation', 'html');
     await caches.default.put(new Request(cache), new Response('wrong-build-cache', {headers:{'cache-control':'public, max-age=300','x-g1t-kept-at':String(Date.now())}}));
     return new Response('seeded');
   }
@@ -31,11 +32,39 @@ const runtime = new Miniflare(convertV4MiniflareOptions({
   compatibilityDate: config.compatibility_date,
   compatibilityFlags: config.compatibility_flags,
   r2Buckets: ["DOWNLOADS"],
+  serviceBindings: {
+    IDENTITY: async () => Response.json(null),
+    PROJECTS: async () => Response.json({ ok: true, value: [] }),
+  },
 }));
 try {
   const origin = await runtime.ready;
   const request = (path, init) => fetch(new URL(path, origin), { ...init, signal: AbortSignal.timeout(15_000) });
   assert.equal((await request("/__seed")).status, 200);
+  for (const [path, destination] of [["/developers", "https://docs.g1t.sh/reference/api/"], ["/openapi.json", "https://api.g1t.sh/openapi.json"], ["/mcp", "https://mcp.g1t.sh"]]) {
+    const answer = await request(path, { redirect: "manual" });
+    assert.equal(answer.status, 308);
+    assert.equal(answer.headers.get("location"), new URL(destination).href);
+  }
+  // Run Markdown first, then HTML at the same URL: the cache must not mix them.
+  for (const path of ["/", "/__agent-readiness-missing"]) {
+    for (const accept of ["text/markdown", "text/html", "text/markdown"]) {
+      const answer = await request(path, { headers: { accept } });
+      assert.equal(answer.status, path === "/" ? 200 : 404);
+      assert.ok(answer.headers.get("vary")?.toLowerCase().split(",").map((value) => value.trim()).includes("accept"));
+      assert.ok(answer.headers.get("content-type")?.startsWith(accept));
+      const body = await answer.text();
+      if (accept === "text/markdown") { assert.match(body, /\[.*\]\(.*\/llms.txt\)/); assert.ok(body.length > 20); }
+      else { assert.match(body, /<html/); if (path === "/") assert.match(body, /rel="canonical"/); }
+    }
+  }
+  assert.equal((await request("/", { headers: { accept: "application/json" } })).status, 406);
+  for (const accept of ["text/markdown", "text/html"]) {
+    const answer = await request("/", { method: "HEAD", headers: { accept } });
+    assert.equal(answer.status, 200);
+    assert.ok(answer.headers.get("content-type")?.startsWith(accept));
+    assert.equal(await answer.text(), "");
+  }
   const old = await request("/assets/app-old12345.css");
   assert.equal(old.status, 200);
   assert.equal(old.headers.get("content-type"), "text/css");
@@ -53,6 +82,7 @@ try {
     assert.doesNotMatch(body, /_routes|wrong-build-cache/);
   }
   console.log("Deployment safety: old CSS survives, missing assets stay isolated, old navigations bypass cache and loaders.");
+  console.log("Agent pages: Markdown/HTML negotiation, isolated caches, 404s, HEAD, canonical metadata and discovery redirects verified.");
 } finally {
   await runtime.dispose();
 }

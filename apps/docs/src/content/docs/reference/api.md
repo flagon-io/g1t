@@ -37,6 +37,26 @@ curl https://api.g1t.sh/
 
 The response has more entries than shown here.
 
+## Versioning and deprecation
+
+g1t uses unprefixed URLs, such as `https://api.g1t.sh/repos`, like GitHub.
+The optional `X-G1t-Api-Version: 1` request header selects the current REST
+contract. Omitting it selects version 1 too. REST responses include
+`X-G1t-Api-Version: 1`; unsupported values are rejected with `422` before
+an operation runs. `/v1/` remains a compatibility alias for existing clients,
+not the preferred API base URL. MCP negotiates its own protocol version.
+
+New optional fields and endpoints may be added within a version. Clients
+should ignore fields they do not recognize. Breaking contract changes need
+a new version value and a migration guide. Before retiring a version or
+endpoint, g1t will announce its replacement and retirement date in these
+docs and on affected responses: `Deprecation` uses an RFC 9745 Structured
+Field date, `Sunset` uses an RFC 8594 HTTP date, and a `Link` with
+`rel="deprecation"` points to the migration guide. No version is currently
+deprecated and no retirement date is set; those headers are absent until
+there is an announced deprecation. A fixed minimum notice period has not
+been established.
+
 ## Authentication
 
 A token is needed to change anything, and to see what is private. Send an
