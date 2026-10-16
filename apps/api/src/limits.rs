@@ -21,6 +21,35 @@ use worker::{Env, Request, Response, Result};
 pub const ANONYMOUS: &str = "API_ANONYMOUS_LIMIT";
 pub const TOKEN: &str = "API_TOKEN_LIMIT";
 
+#[derive(Clone, Copy)]
+pub struct Policy { signed_in: bool, limited: bool }
+
+impl Policy {
+    fn name(self) -> &'static str { if self.signed_in { "token" } else { "anonymous" } }
+    fn header(self) -> String {
+        format!("\"{}\";q={};w={PERIOD_SECONDS}", self.name(), if self.signed_in { 1000 } else { 60 })
+    }
+    fn remaining(self) -> Option<String> {
+        self.limited.then(|| format!("\"{}\";r=0;t={PERIOD_SECONDS}", self.name()))
+    }
+    pub fn apply(self, response: &mut Response) -> Result<()> {
+        response.headers_mut().set("ratelimit-policy", &self.header())?;
+        // The binding exposes a verdict, not remaining quota or a reset clock.
+        // Only advertise remaining/reset information when actually limited.
+        if let Some(remaining) = self.remaining() {
+            response.headers_mut().set("ratelimit", &remaining)?;
+        }
+        Ok(())
+    }
+}
+
+fn policy(verdict: limits::Verdict, signed_in: bool) -> Option<Policy> {
+    match verdict {
+        limits::Verdict::Unavailable => None,
+        _ => Some(Policy { signed_in, limited: verdict.limited() }),
+    }
+}
+
 /// Paths a sandbox or runner reports to with its own token in the body:
 /// many sandboxes share an address, and none of them is a person.
 const REPORTS: &[&str] = &[
@@ -81,7 +110,7 @@ pub fn too_many(signed_in: bool) -> Result<Response> {
 }
 
 /// The 429 for a request past its limit, or `None` to go on.
-pub async fn limited(request: &Request, env: &Env, method: &str, path: &str, on_mcp: bool) -> Result<Option<Response>> {
+pub async fn limited(request: &Request, env: &Env, method: &str, path: &str, on_mcp: bool, advertised: &mut Option<Policy>) -> Result<Option<Response>> {
     let header = request.headers().get("authorization")?.unwrap_or_default();
     let token = bearer(&header);
     if !counts(method, path, token.is_some()) {
@@ -89,17 +118,21 @@ pub async fn limited(request: &Request, env: &Env, method: &str, path: &str, on_
     }
     let address = request.headers().get("cf-connecting-ip")?;
     let (binding, key) = key(token, address.as_deref(), on_mcp);
-    if limits::check(env, binding, key).await.limited() {
+    let verdict = limits::check(env, binding, key).await;
+    *advertised = policy(verdict, token.is_some());
+    if verdict.limited() {
         return too_many(token.is_some()).map(Some);
     }
     Ok(None)
 }
 
 /// A request whose token was wrong also counts against its address.
-pub async fn wrong_token(request: &Request, env: &Env, on_mcp: bool) -> Result<Option<Response>> {
+pub async fn wrong_token(request: &Request, env: &Env, on_mcp: bool, advertised: &mut Option<Policy>) -> Result<Option<Response>> {
     let address = request.headers().get("cf-connecting-ip")?;
     let (binding, key) = key(None, address.as_deref(), on_mcp);
-    if limits::check(env, binding, key).await.limited() {
+    let verdict = limits::check(env, binding, key).await;
+    *advertised = policy(verdict, false);
+    if verdict.limited() {
         return too_many(false).map(Some);
     }
     Ok(None)
@@ -108,6 +141,20 @@ pub async fn wrong_token(request: &Request, env: &Env, on_mcp: bool) -> Result<O
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn advertised_limits_match_bindings_without_inventing_remaining_counts() {
+        let config: String = include_str!("../wrangler.jsonc").chars().filter(|c| !c.is_whitespace()).collect();
+        for (signed_in, binding, quota) in [(false, ANONYMOUS, 60), (true, TOKEN, 1000)] {
+            let configured = config.split(&format!("\"name\":\"{binding}\"")).nth(1).unwrap().split('}').next().unwrap();
+            assert!(configured.contains(&format!("\"limit\":{quota},\"period\":{PERIOD_SECONDS}")));
+            let allowed = policy(limits::Verdict::Allowed, signed_in).unwrap();
+            assert!(allowed.header().ends_with(&format!(";q={quota};w=60")));
+            assert_eq!(allowed.remaining(), None);
+            assert!(policy(limits::Verdict::Limited, signed_in).unwrap().remaining().unwrap().ends_with(";r=0;t=60"));
+        }
+        assert!(policy(limits::Verdict::Unavailable, false).is_none());
+    }
 
     #[test]
     fn tokens_are_counted_by_their_hash_and_others_by_address() {

@@ -7,6 +7,13 @@ import { DESCRIPTION, cardUrl, excerpt, fingerprint, page } from "./meta.ts";
 
 type Tag = Record<string, string>;
 
+test("the homepage declares its canonical URL using the installation's origin", () => {
+  for (const site of ["https://g1t.sh", "https://forge.example"]) {
+    const descriptors = page({ location: { pathname: "/" }, matches: [{ id: "root", loaderData: { addresses: { site, og: null } } }] }, { title: "g1t" });
+    assert.deepEqual(descriptors.find((tag) => "rel" in tag && tag.rel === "canonical"), { tagName: "link", rel: "canonical", href: `${site}/` });
+  }
+});
+
 function tags(list: unknown[]): Map<string, string> {
   const found = new Map<string, string>();
   for (const tag of list as Tag[]) {

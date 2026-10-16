@@ -7,6 +7,7 @@ import { addresses } from "./lib/addresses.server";
 import { NonceContext } from "./lib/nonce";
 import { makeNonce, pagePolicy } from "./lib/page-headers";
 import { recordHandler } from "./lib/perf.server";
+import { agentPage } from "./lib/agent-pages";
 
 // React Router's own server entry, plus the timing of every loader and
 // action for the Server-Timing header (lib/perf.server.ts).
@@ -39,8 +40,11 @@ export default async function handleRequest(
   routerContext: EntryContext,
   _loadContext: RouterContextProvider,
 ) {
+  const agent = agentPage(request, responseStatusCode, responseHeaders);
+  if (agent) return agent;
   // https://httpwg.org/specs/rfc9110.html#HEAD
   if (request.method.toUpperCase() === "HEAD") {
+    responseHeaders.set("Content-Type", "text/html");
     return new Response(null, {
       status: responseStatusCode,
       headers: responseHeaders,

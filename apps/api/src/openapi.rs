@@ -1116,9 +1116,9 @@ fn operation(route: &Route) -> Value {
     // Public data can be read without a token; everything else needs one.
     let scope: Vec<&str> = scope_for(op.name()).map(|scope| scope.as_str()).into_iter().collect();
     let security = if op.needs_user() {
-        json!([{ "token": scope }])
+        json!([{ "token": [] }, { "oauth": scope }])
     } else {
-        json!([{ "token": scope }, {}])
+        json!([{ "token": [] }, { "oauth": scope }, {}])
     };
     let (tool, action) = crate::tools::TOOLS
         .iter()
@@ -1277,6 +1277,23 @@ pub fn document() -> Value {
         entry[route.method.to_lowercase()] = operation(route);
     }
     attach_examples(&mut paths);
+    for methods in paths.values_mut() {
+        for operation in methods.as_object_mut().unwrap().values_mut() {
+            let parameters = operation.as_object_mut().unwrap().entry("parameters").or_insert(json!([]));
+            parameters.as_array_mut().unwrap().push(json!({ "$ref": "#/components/parameters/ApiVersion" }));
+            let responses = operation["responses"].as_object_mut().unwrap();
+            responses.entry("422").or_insert_with(|| error_response("Invalid input or unsupported X-G1t-Api-Version."));
+            for response in responses.values_mut() {
+                response["headers"] = json!({
+                    "X-G1t-Api-Version": { "$ref": "#/components/headers/ApiVersion" },
+                    "RateLimit-Policy": { "$ref": "#/components/headers/RateLimitPolicy" }
+                });
+            }
+            responses.insert("429".into(), json!({ "$ref": "#/components/responses/RateLimited" }));
+        }
+    }
+    let scopes: Map<String, Value> = g1t_contracts::scopes::offered_scopes().iter()
+        .map(|scope| (scope.as_str().to_owned(), json!(scope.describe()))).collect();
     let tags: Vec<Value> = SECTIONS
         .iter()
         .map(|(name, description, ops)| {
@@ -1288,7 +1305,7 @@ pub fn document() -> Value {
             })
         })
         .collect();
-    let codes = ["unauthenticated", "payment_required", "forbidden", "not_found", "conflict", "invalid", "too_large", "unsupported_type"];
+    let codes = ["unauthenticated", "payment_required", "forbidden", "not_found", "conflict", "invalid", "too_large", "unsupported_type", "rate_limited"];
     json!({
         "openapi": "3.1.0",
         "info": {
@@ -1302,11 +1319,43 @@ pub fn document() -> Value {
         "tags": tags,
         "paths": paths,
         "components": {
+            "parameters": {
+                "ApiVersion": {
+                    "name": "X-G1t-Api-Version", "in": "header", "required": false,
+                    "description": "REST version; defaults to 1. URLs remain unprefixed. See https://docs.g1t.sh/reference/api/#versioning-and-deprecation.",
+                    "schema": { "type": "string", "enum": [crate::version::CURRENT], "default": crate::version::CURRENT }
+                }
+            },
+            "headers": {
+                "ApiVersion": { "description": "Selected REST version.", "schema": { "type": "string", "example": "1" } },
+                "RateLimitPolicy": { "description": "Applied quota when the limiter is available; the provider does not expose remaining quota.", "schema": { "type": "string", "example": "\"anonymous\";q=60;w=60" } }
+            },
+            "responses": {
+                "RateLimited": {
+                    "description": "Rate limited. Wait Retry-After seconds before trying again.",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                    "headers": {
+                        "X-G1t-Api-Version": { "$ref": "#/components/headers/ApiVersion" },
+                        "RateLimit-Policy": { "$ref": "#/components/headers/RateLimitPolicy" },
+                        "Retry-After": { "description": "Seconds to wait.", "schema": { "type": "integer", "example": 60 } },
+                        "RateLimit": { "description": "Exhausted policy and retry window.", "schema": { "type": "string", "example": "\"anonymous\";r=0;t=60" } }
+                    }
+                }
+            },
             "securitySchemes": {
                 "token": {
                     "type": "http",
                     "scheme": "bearer",
                     "description": "An access token, `g1t_…`. Public data needs none. Each operation names the scope a token needs for it; see https://docs.g1t.sh/guides/authentication/#scopes.",
+                },
+                "oauth": {
+                    "type": "oauth2",
+                    "description": "Authorization code with PKCE (S256). Request only the scopes needed for the task; workspace and repository roles still apply.",
+                    "flows": { "authorizationCode": {
+                        "authorizationUrl": "https://g1t.sh/oauth/authorize",
+                        "tokenUrl": "https://api.g1t.sh/oauth/token",
+                        "scopes": scopes
+                    } }
                 },
             },
             "schemas": {
@@ -1336,6 +1385,27 @@ pub fn document() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oauth_scopes_versions_and_rate_limits_are_machine_readable() {
+        let doc = document();
+        let offered = &doc["components"]["securitySchemes"]["oauth"]["flows"]["authorizationCode"]["scopes"];
+        assert_eq!(offered.as_object().unwrap().len(), g1t_contracts::scopes::offered_scopes().len());
+        for scope in g1t_contracts::scopes::offered_scopes() { assert_eq!(offered[scope.as_str()], scope.describe()); }
+        assert_eq!(doc["servers"][0]["url"], "https://api.g1t.sh");
+        for methods in doc["paths"].as_object().unwrap().values() {
+            for operation in methods.as_object().unwrap().values() {
+                assert!(operation["parameters"].as_array().unwrap().iter().any(|p| p["$ref"] == "#/components/parameters/ApiVersion"));
+                assert_eq!(operation["responses"]["429"]["$ref"], "#/components/responses/RateLimited");
+                for requirement in operation["security"].as_array().unwrap() {
+                    if let Some(scopes) = requirement.get("token") { assert_eq!(scopes, &json!([]), "HTTP bearer schemes cannot declare OAuth scopes"); }
+                    if let Some(scopes) = requirement.get("oauth") {
+                        for scope in scopes.as_array().unwrap() { assert!(offered.get(scope.as_str().unwrap()).is_some(), "undeclared OAuth scope {scope}"); }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn every_route_is_documented_once() {

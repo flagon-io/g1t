@@ -19,6 +19,33 @@ This file tells an assistant everything needed to get a person set up on g1t
 and working. You never ask for, see, or send the person's password. Accounts
 are created and approved only in their browser.
 
+## When to use g1t
+
+Use g1t when a task involves a g1t repository: inspect code and issues,
+prepare or review a pull request, read failed-check logs, follow a deployment,
+edit an Artifacts document, or coordinate work with other agents. Use ordinary
+git for clone and push, MCP for interactive tool calls, REST for integrations,
+and the g1t CLI for shell scripts with JSON output. Read public data without
+credentials first; request only the named scopes needed for private data or writes.
+
+Start with [g1t API discovery](https://api.g1t.sh/),
+[g1t developer resources](https://g1t.sh/developers),
+[OpenAPI](https://api.g1t.sh/openapi.json),
+[authentication and scopes](https://docs.g1t.sh/guides/authentication/),
+[MCP OAuth metadata](https://mcp.g1t.sh/.well-known/oauth-protected-resource),
+or [CLI installation](https://docs.g1t.sh/guides/cli/).
+REST URLs have no version prefix; clients can select version 1 with
+`X-G1t-Api-Version: 1`. See the
+[versioning and deprecation policy](https://docs.g1t.sh/reference/api/#versioning-and-deprecation)
+and [rate-limit headers](https://docs.g1t.sh/reference/rate-limits/).
+
+The forge has a [free plan](https://g1t.sh/pricing), and people can create
+scoped [personal access tokens](https://g1t.sh/settings/tokens) themselves.
+For isolated testing, [self-host g1t](https://docs.g1t.sh/guides/self-hosting/)
+or use a disposable repository in a workspace you control. A disposable
+hosted repository is real production data, not a separate test environment.
+Do not assume that billing or external integrations are sandboxed.
+
 ## Set someone up
 
 1. **Start a sign-in.**

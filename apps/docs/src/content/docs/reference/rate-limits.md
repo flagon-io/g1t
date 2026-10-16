@@ -9,6 +9,32 @@ owner's bill. The limits are well above what a person or an agent working
 normally reaches. Each counts requests over 60 seconds, approximately: a
 client can sometimes get a few more through before it is limited.
 
+## Response headers
+
+REST and MCP responses that pass through an available rate limiter include
+`RateLimit-Policy`. Its Structured Fields syntax follows the IETF HTTPAPI
+[RateLimit draft](https://www.ietf.org/archive/id/draft-ietf-httpapi-ratelimit-headers-10.html),
+which is not yet a published RFC:
+
+```http
+RateLimit-Policy: "anonymous";q=60;w=60
+```
+
+Authenticated requests use `"token";q=1000;w=60`. Quotas are approximate
+per-location limits, not a global accounting balance. Cloudflare's binding
+does not expose a remaining count or reset clock, so successful responses
+do not invent those values. A limited response is HTTP 429 and includes:
+
+```http
+RateLimit-Policy: "anonymous";q=60;w=60
+RateLimit: "anonymous";r=0;t=60
+Retry-After: 60
+```
+
+Wait at least `Retry-After` seconds, then retry with jitter. These headers
+are exposed to browser API clients through CORS. Exempt service callbacks
+and self-hosted installations without a working limiter omit the policy.
+
 ## Limits
 
 | Where | Counted by | Requests a minute |

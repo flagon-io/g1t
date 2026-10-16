@@ -23,6 +23,7 @@ mod deployments;
 mod telemetry;
 mod deploy_keys;
 mod limits;
+mod version;
 mod logs;
 mod mcp;
 mod notifications;
@@ -434,7 +435,7 @@ fn outcome_as_given(answered: Value) -> Result<Response> {
     }
 }
 
-async fn respond(mut request: Request, env: &Env) -> Result<Response> {
+async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limits::Policy>) -> Result<Response> {
     let method = method_name(request.method());
     if method == "OPTIONS" {
         return Ok(Response::empty()?.with_status(204));
@@ -450,6 +451,9 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     // MCP is a host of its own hosted, and may be a path on this one
     // self-hosted (addresses.rs).
     let on_mcp = services.addresses.mcp_path(&url).is_some();
+    if !on_mcp && !version::supported(request.headers().get(version::HEADER)?.as_deref()) {
+        return fail(FailureCode::Invalid, "Unsupported X-G1t-Api-Version. Use 1 or omit the header. See https://docs.g1t.sh/reference/api/#versioning-and-deprecation.");
+    }
 
     // Stripe reporting to billing. Signed with the secret of the endpoint
     // billing registered; the body goes through exactly as received, since
@@ -557,12 +561,12 @@ async fn respond(mut request: Request, env: &Env) -> Result<Response> {
     }
 
     // Per token, or per address without one (limits.rs).
-    if let Some(limited) = limits::limited(&request, env, method, &path, on_mcp).await? {
+    if let Some(limited) = limits::limited(&request, env, method, &path, on_mcp, rate_policy).await? {
         return Ok(limited);
     }
     let viewer = match authenticate(&request, &services).await? {
         Ok(viewer) => viewer,
-        Err(refused) => return Ok(limits::wrong_token(&request, env, on_mcp).await?.unwrap_or(refused)),
+        Err(refused) => return Ok(limits::wrong_token(&request, env, on_mcp, rate_policy).await?.unwrap_or(refused)),
     };
     // A person who has not confirmed their email address: who they are,
     // their addresses, and confirming one, nothing else (REST or MCP).
@@ -884,14 +888,18 @@ async fn fetch(request: Request, env: Env, _ctx: Context) -> Result<Response> {
     if let Some(signal) = otlp_signal(&request.path()) {
         return forward_otlp(request, &env, signal).await;
     }
-    let mut response = respond(request, &env).await?;
+    let on_mcp = addresses::Addresses::from_env(&env).mcp_path(&request.url()?).is_some();
+    let mut rate_policy = None;
+    let mut response = respond(request, &env, &mut rate_policy).await?;
+    if let Some(policy) = rate_policy { policy.apply(&mut response)?; }
     let headers = response.headers_mut();
+    if !on_mcp { headers.set(version::HEADER, version::CURRENT)?; }
     headers.set("access-control-allow-origin", "*")?;
     headers.set(
         "access-control-allow-headers",
-        "authorization, content-type",
+        "authorization, content-type, x-g1t-api-version",
     )?;
     headers.set("access-control-allow-methods", "GET, POST, PATCH, OPTIONS")?;
-    headers.set("access-control-expose-headers", "www-authenticate, retry-after")?;
+    headers.set("access-control-expose-headers", "www-authenticate, retry-after, ratelimit-policy, ratelimit, x-g1t-api-version, deprecation, sunset, link")?;
     Ok(response)
 }
