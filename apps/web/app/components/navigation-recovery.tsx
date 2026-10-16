@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
-import { useNavigation } from "react-router";
+import { useContext, useEffect, useState } from "react";
+import { UNSAFE_DataRouterContext, useNavigation } from "react-router";
 
 import { stuckTarget } from "../lib/stuck";
+import { watchBuildNavigation } from "../lib/resilient-fetch";
 import { Button } from "./ui/button";
 
 /** A document load of the destination, while the router still shows the old page. */
 export function NavigationRecovery() {
+  const context = useContext(UNSAFE_DataRouterContext);
+  useEffect(() => watchBuildNavigation(() => context?.router.state.navigation.location), [context?.router]);
   const navigation = useNavigation();
   const target = stuckTarget(navigation);
   const key = navigation.location?.key;

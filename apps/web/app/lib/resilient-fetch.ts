@@ -22,6 +22,7 @@
  * sending it twice could do it twice.
  */
 import { useSyncExternalStore } from "react";
+import { BUILD_HEADER } from "./build-version.ts";
 
 /** How long a read keeps trying; under lib/stuck.ts's `STUCK_NAVIGATION_MS`, so a click still lands on an error page that recovers rather than a whole-page load that cannot. */
 export const PATIENCE_MS = 45_000;
@@ -156,9 +157,17 @@ function pause(ms: number, signal: AbortSignal | null | undefined): Promise<void
 }
 
 let installed = false;
+type NavigationLocation = { pathname: string; search: string };
+let navigationLocation: () => NavigationLocation | undefined = () => undefined;
+
+/** Read router state synchronously: React effects run after a navigation's fetch starts. */
+export function watchBuildNavigation(read: () => NavigationLocation | undefined) {
+  navigationLocation = read;
+  return () => { if (navigationLocation === read) navigationLocation = () => undefined; };
+}
 
 /** Wraps the browser's `fetch` so the router's reads survive a moment offline. Browser only; once. */
-export function installResilientFetch() {
+export function installResilientFetch(build?: string) {
   if (installed || typeof window === "undefined") return;
   installed = true;
   const original = window.fetch.bind(window);
@@ -172,8 +181,16 @@ export function installResilientFetch() {
     }
     const method = init?.method ?? request?.method ?? "GET";
     if (!retriable(url, method, window.location.origin)) return original(input, init);
-    const signal = init?.signal ?? request?.signal;
     const refresh = refreshesCurrent(url, window.location);
+    // Switch builds only on a navigation, never from a background refresh
+    // that could interrupt someone editing the current page.
+    const destination = navigationLocation();
+    if (build && !refresh && destination && refreshesCurrent(url, destination)) {
+      const headers = new Headers(init?.headers ?? request?.headers);
+      headers.set(BUILD_HEADER, build);
+      init = { ...init, headers };
+    }
+    const signal = init?.signal ?? request?.signal;
     const started = Date.now();
     let onlineMs = 0;
     let counted = false;

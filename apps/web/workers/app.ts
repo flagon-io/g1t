@@ -16,6 +16,8 @@ import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
 import { usercontentPath } from "../app/lib/usercontent";
 import { TOKEN_CHALLENGE } from "../app/lib/website-token";
 import { serveUsercontent } from "./usercontent";
+import { serveArchivedAsset } from "../app/lib/asset-archive";
+import { needsBuildRefresh } from "../app/lib/build-version";
 
 const loadBuild = () => import("virtual:react-router/server-build");
 
@@ -77,6 +79,8 @@ export default {
 
 async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const { pathname } = new URL(request.url);
+  // An old tab's chunk or stylesheet must not turn into an HTML route/404.
+  if (pathname.startsWith("/assets/")) return serveArchivedAsset(request, env.DOWNLOADS);
   // Git over HTTPS shares this hostname but belongs to the repos service.
   // Its answer goes back to the git client as it is: a repository under a
   // renamed workspace's old name answers with a 301, which git follows and
@@ -142,6 +146,8 @@ const CACHE_DEADLINE_MS = 2_000;
 
 function anonymousPage(request: Request, pathname: string): boolean {
   if (request.method !== "GET") return false;
+  // A cached data response must not bypass the build-switch middleware.
+  if (needsBuildRefresh(request, import.meta.env.G1T_BUILD_ID)) return false;
   if (/(?:^|;\s*)g1t_session=/.test(request.headers.get("cookie") ?? "")) return false;
   // A token signs the request in (app/lib/website-token.ts): never kept, never served a kept page.
   if (request.headers.has("authorization")) return false;
@@ -152,6 +158,8 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
   const cache = (caches as unknown as { default: Cache }).default;
   // Visitors asked about analytics first get a page that says so, kept apart.
   const keyUrl = new URL(request.url);
+  // Cached HTML and route data belong to the build that rendered them.
+  keyUrl.searchParams.set("_g1t_build", import.meta.env.G1T_BUILD_ID);
   if (visitorAsksFirst(request)) keyUrl.searchParams.set("_g1t_consent", "1");
   const key = new Request(keyUrl, { method: "GET" });
   const repository = PUBLIC_PROJECT.test(new URL(request.url).pathname) ? repositoryOfPage(new URL(request.url).pathname) : null;

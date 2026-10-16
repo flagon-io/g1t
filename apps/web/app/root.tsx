@@ -100,6 +100,7 @@ import { ConnectionToast } from "./components/connection-toast";
 import { NavigationRecovery } from "./components/navigation-recovery";
 import { isNetworkFailure } from "./lib/resilient-fetch";
 import { useReconnect } from "./lib/reconnect";
+import { buildVersionMiddleware } from "./lib/build-version.server";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
@@ -130,7 +131,7 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
-export const middleware: Route.MiddlewareFunction[] = [viewerMiddleware];
+export const middleware: Route.MiddlewareFunction[] = [buildVersionMiddleware, viewerMiddleware];
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
   const user = getViewer(context);
