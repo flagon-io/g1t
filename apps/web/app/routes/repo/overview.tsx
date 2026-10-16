@@ -61,7 +61,7 @@ import { cardSources, externalTarget, externalVersion, productionImageUrl } from
 import { useAddresses } from "../../lib/addresses";
 import { commitChecksFor } from "../../lib/commit-checks.server";
 import { CommitChecksSummary } from "../../components/commit-checks";
-import { projectCheckSections } from "../../lib/project-checks";
+import { projectCheckSections, hasSeparateAttempt } from "../../lib/project-checks";
 import { StatusIcon, Duration, shortRef, standingWord } from "../../components/actions";
 import { resolveRange, rangeLabel } from "../../lib/usage";
 import { deliveryDays, duration as deliveryDuration } from "../../lib/workspace-insights";
@@ -132,17 +132,17 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const service = telemetry;
   const telemetryP = service
     ? projectP.then((found) =>
-        found?.ok
-          ? forMembers(async () => {
-              const project_id = found.value.id;
-              const [overview, errors] = await Promise.all([
-                soft(service.overview({ project_id, workspace: params.owner, from_us: (now - DAY_MS) * 1000, to_us: now * 1000, step_s: 3600 })),
-                soft(service.errors({ project_id, workspace: params.owner, state: "open" })),
-              ]);
-              return { overview, errors };
-            })
-          : null,
-      )
+      found?.ok
+        ? forMembers(async () => {
+          const project_id = found.value.id;
+          const [overview, errors] = await Promise.all([
+            soft(service.overview({ project_id, workspace: params.owner, from_us: (now - DAY_MS) * 1000, to_us: now * 1000, step_s: 3600 })),
+            soft(service.errors({ project_id, workspace: params.owner, state: "open" })),
+          ]);
+          return { overview, errors };
+        })
+        : null,
+    )
     : Promise.resolve(null);
   const commitP = soft(repos.log(path, viewer, null, 1)).then((log) => log?.ok ? (log.value[0] ?? null) : null);
   const range = resolveRange("30d", {}, new Date(now));
@@ -284,7 +284,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     builds: builds.slice(0, 30),
     previews: live.filter((app) => app.kind === "preview"),
     production,
-    serving: current ? { sha: current.sha, at: current.updated_at } : null,
+    serving: current ? { id: current.id, sha: current.sha, ref: current.ref, at: current.updated_at, creator: current.creator, runUrl: current.run_url } : null,
     // The screenshot of production on g1t.page, for members (like its builds).
     productionShot: member && liveProduction ? shotVersion(liveProduction) : null,
     latestProductionBuild: latestProduction ? { status: latestProduction.status } : null,
@@ -471,40 +471,16 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
 
 /** The overview's sections as they will sit, while they stream in. */
 function OverviewSkeleton() {
-  return (
-    <Loading className="space-y-8" aria-label="Loading the overview">
-      {/* Production: its screenshot beside where it is live, then the facts under them. */}
-      <Card asChild aria-hidden="true" className="overflow-hidden rounded-2xl">
-        <section>
-          <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:p-6">
-            <Skeleton className="aspect-16/10 w-full shrink-0 rounded-lg sm:w-72" />
-            <div className="min-w-0 grow">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="mt-3 h-5 w-72 max-w-full" />
-              <Skeleton className="mt-3 h-3 w-48 max-w-full" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="bg-surface px-5 py-4">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="mt-2.5 h-4 w-28" />
-              </div>
-            ))}
-          </div>
-        </section>
-      </Card>
-      {/* Live now beside the sidebar's cards. */}
-      <div className="grid gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <Card>
-          <SkeletonRows rows={4} />
-        </Card>
-        <Card>
-          <SkeletonRows rows={4} />
-        </Card>
+  return <Loading className="space-y-8" aria-label="Loading the overview">
+    <Card className="overflow-hidden rounded-2xl">
+      <div className="border-b border-line p-5"><Skeleton className="h-5 w-48" /></div>
+      <div className="grid gap-6 p-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <Skeleton className="aspect-16/10 w-full rounded-lg" />
+        <SkeletonRows rows={5} />
       </div>
-    </Loading>
-  );
+    </Card>
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((key) => <Card key={key} className="p-5"><SkeletonRows rows={4} /></Card>)}</div>
+  </Loading>;
 }
 
 function OverviewFailed() {
@@ -515,111 +491,14 @@ function OverviewFailed() {
   );
 }
 
-/** One of the facts under production: what it is, and where to read more. */
-function Fact({ label, value, to, hint }: { label: string; value: ReactNode; to?: string; hint?: string }) {
-  const body = (
-    <>
-      <span className="block text-[0.6875rem] text-faint">{label}</span>
-      <span className="mt-0.5 block text-[0.8125rem] font-medium sm:truncate">{value}</span>
-    </>
-  );
-  const cell = to ? (
-    <Link to={to} prefetch="intent" className="block min-w-0 px-5 py-3 transition-colors hover:bg-raised/50">
-      {body}
-    </Link>
-  ) : (
-    <div className="min-w-0 px-5 py-3">{body}</div>
-  );
-  return hint ? <Hint label={hint}>{cell}</Hint> : cell;
-}
-
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-}
-
-/**
- * The facts under production, about the project rather than its
- * repository: four of them, most telling first. Where the card above
- * already shows production's state, the first is its latest release
- * instead, so nothing is said twice.
- */
-function Facts({ loaderData, base, plan }: { loaderData: Loaded; base: string; plan: string }) {
-  const { productionLatest, release, library, telemetry, open, environments } = loaderData;
-  const headShowsProduction = !library && (plan === "production" || plan === "elsewhere");
-  const releaseFact = release ? (
-    <Fact
-      label="Latest release"
-      to={`${base}/tags`}
-      value={
-        <span className="inline-flex items-center gap-1.5">
-          <span className="truncate font-mono">{release.name}</span>
-          {release.at && (
-            <span className="shrink-0 font-normal text-muted">
-              <TimeAgo at={release.at} />
-            </span>
-          )}
-        </span>
-      }
-    />
-  ) : null;
-  const first =
-    !headShowsProduction && productionLatest ? (
-      <Fact
-        label="Production"
-        to={`${base}/deployments/${productionLatest.id}`}
-        hint={`The newest deployment to ${productionLatest.environment}`}
-        value={
-          <span className="inline-flex items-center gap-1.5">
-            <DeploymentStateIcon state={productionLatest.state} size={14} />
-            {productionLatest.state === "success" ? "Live" : STATE_WORD[productionLatest.state]}
-            <span className="font-normal text-muted">
-              <TimeAgo at={productionLatest.at} />
-            </span>
-          </span>
-        }
-      />
-    ) : releaseFact ? (
-      releaseFact
-    ) : environments && environments.total_count > 0 ? (
-      <Fact label="Deployments" to={`${base}/deployments`} value={<span className="tabular-nums">{environments.total_count.toLocaleString("en-US")}</span>} />
-    ) : (
-      <Fact label="Latest release" to={`${base}/tags`} value={<span className="font-normal text-muted">None yet</span>} />
-    );
-  const branch = <Fact label="Default branch" to={`${base}/code`} value={loaderData.defaultBranch ?? "Unavailable"} />;
-  return (
-    <div className="grid grid-cols-2 divide-line border-t border-line text-sm sm:grid-cols-4 sm:divide-x">
-      {first}
-      {telemetry ? (
-        <>
-          <Fact label="Requests · 24h" to={`${base}/observability`} value={<span className="tabular-nums">{count(telemetry.overview.totals.requests)}</span>} />
-          <Fact
-            label="Errors · 24h"
-            to={`${base}/observability/errors`}
-            hint={`${plural(telemetry.overview.totals.errors, "failed request")} in the last day`}
-            value={
-              <span className="inline-flex items-center gap-1.5 tabular-nums">
-                <span className={telemetry.overview.totals.error_rate >= 0.01 ? "text-danger" : undefined}>{percent(telemetry.overview.totals.error_rate)}</span>
-                <span className="font-normal text-muted">· {telemetry.errors.length.toLocaleString("en-US")} open</span>
-              </span>
-            }
-          />
-          {branch}
-        </>
-      ) : (
-        <>
-          {branch}
-          <Fact label="Open issues" to={`${base}/issues`} value={open.issues} />
-          <Fact label="Open pull requests" to={`${base}/pulls`} value={open.pulls} />
-        </>
-      )}
-    </div>
-  );
 }
 
 /** One line to the repository, where its files, branches and commits are: Code. */
 function CodeLine({ project, base }: { project: Project; base: string }) {
   if (project.source.kind !== "hosted") return null;
-  const { repo, defaultBranch, rootDir } = project.source;
+  const { repo, rootDir } = project.source;
   return (
     <Link
       to={`${base}/code`}
@@ -630,10 +509,6 @@ function CodeLine({ project, base }: { project: Project; base: string }) {
       <span className="min-w-0 truncate font-mono text-fg-soft">
         {repo.namespace}/{repo.name}
         {rootDir ? `/${rootDir}` : ""}
-      </span>
-      <span className="hidden shrink-0 items-center gap-1 font-mono sm:inline-flex">
-        <GitBranch size={12} className="text-faint" />
-        {defaultBranch}
       </span>
       {project.pushedAt && (
         <span className="hidden shrink-0 md:inline">
@@ -732,6 +607,65 @@ function ProductionHead({ loaderData, base, name, upload, addImage }: {
   );
 }
 
+/** The running deployment owns these fields; a newer attempt never changes its status. */
+function ProductionSummary({ loaderData: d, base, upload, addImage, elsewhere }: {
+  loaderData: Loaded; base: string; upload: { url: string; preferred: boolean } | null;
+  addImage: string | null; elsewhere: boolean;
+}) {
+  const current = d.serving;
+  const sha = current?.sha ?? d.production?.commit;
+  const url = elsewhere ? d.deployment?.url ?? d.project?.productionUrl : d.settings?.primaryDomain ? `https://${d.settings.primaryDomain}` : d.production?.url;
+  const at = current?.at ?? d.production?.deployedAt;
+  const latest = d.productionLatest;
+  const newerAttempt = latest && hasSeparateAttempt(current?.id, sha, latest);
+  const screenshot = elsewhere ? d.elsewhereShot : d.productionShot ? `${base}/production.jpg?v=${d.productionShot}` : null;
+  return (
+    <>
+      <div className="grid gap-6 p-5 sm:p-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-8">
+        <ProductionShot sources={cardSources(screenshot, upload)} href={url ?? null} label={url ? host(url) : ""} addImage={addImage} className="w-full self-start" />
+        <dl className="grid min-w-0 content-start grid-cols-2 gap-x-5 gap-y-5 text-sm">
+          <div className="col-span-2 min-w-0">
+            <dt className="text-xs text-muted">Deployment</dt>
+            <dd className="mt-1 break-words font-medium">
+              {current ? <Link to={`${base}/deployments/${current.id}`} className="hover:text-accent">Current production <ArrowUpRight size={14} className="inline text-faint" /></Link> : <span>Production</span>}
+            </dd>
+          </div>
+          <div className="col-span-2 min-w-0">
+            <dt className="text-xs text-muted">Domain</dt>
+            <dd className="mt-1">{url ? <DeployLink href={url} className="inline-flex max-w-full items-center gap-1.5 font-medium hover:text-accent"><span className="truncate">{host(url)}</span><ArrowUpRight size={14} className="shrink-0 text-faint" /></DeployLink> : <span className="text-muted">No address reported</span>}</dd>
+            {!elsewhere && d.settings?.primaryDomain && d.production && <dd className="mt-1 text-xs text-muted"><DeployLink href={d.production.url} className="break-all hover:text-fg">{host(d.production.url)}</DeployLink></dd>}
+          </div>
+          <div><dt className="text-xs text-muted">Status</dt><dd className="mt-1"><StatusDot status="ready" label="Ready" /></dd></div>
+          <div><dt className="text-xs text-muted">Deployed</dt><dd className="mt-1 text-xs">{at && <TimeAgo at={at} />}{current?.creator && <span className="text-muted"> by {current.creator}</span>}</dd></div>
+          <div className="col-span-2 min-w-0">
+            <dt className="text-xs text-muted">Source</dt>
+            <dd className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
+              {current?.ref && current.ref !== sha && <Link to={`${base}/tree/${encodeURIComponent(current.ref)}`} className="inline-flex min-w-0 items-center gap-1.5 hover:text-accent"><GitBranch size={14} className="shrink-0 text-faint" /><span className="truncate">{current.ref}</span></Link>}
+              {sha && <Link to={`${base}/commit/${sha}`} className="inline-flex items-center gap-1.5 font-mono text-xs hover:text-accent"><GitCommitHorizontal size={14} className="text-faint" />{sha.slice(0, 7)}</Link>}
+              {current?.runUrl && <Link to={current.runUrl} className="text-xs text-muted hover:text-fg">View workflow <ArrowUpRight size={12} className="inline" /></Link>}
+            </dd>
+            {sha && sha !== d.commit?.hash && <dd className="mt-3"><CommitChecksSummary checks={d.checks} sha={sha} label="Checks for deployed commit" /></dd>}
+          </div>
+        </dl>
+      </div>
+      {newerAttempt && <Link to={`${base}/deployments/${latest.id}`} className="flex flex-wrap items-center gap-2 border-t border-line bg-raised/30 px-5 py-3 text-xs hover:bg-raised/60 sm:px-6"><DeploymentStateIcon state={latest.state} size={14} /><span>Latest attempt: {STATE_WORD[latest.state]}</span><span className="font-mono text-muted">{latest.sha.slice(0, 7)}</span><span className="text-muted"><TimeAgo at={latest.at} /></span><span className="ml-auto text-muted">View deployment <ArrowRight size={12} className="inline" /></span></Link>}
+    </>
+  );
+}
+
+/** Branch health belongs to the repository head, independently of what is deployed. */
+function BranchCard({ loaderData: d, base }: { loaderData: Loaded; base: string }) {
+  const branch = projectCheckSections(d.commit?.hash, d.defaultBranch, null)[0];
+  return <Card asChild className="min-w-0 p-5"><section aria-labelledby="overview-branch">
+    <h2 id="overview-branch" className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={14} className="text-faint" />Latest on {d.defaultBranch ?? "default branch"}</h2>
+    {branch ? <><div className="my-4 flex flex-wrap items-center gap-2 text-xs"><Link to={`${base}/commit/${branch.sha}`} className="font-mono hover:text-accent">{branch.sha.slice(0, 7)}</Link><span className="text-muted">committed {d.commit && <TimeAgo at={d.commit.authoredAt} />}</span></div><CommitChecksSummary checks={d.checks} sha={branch.sha} /></> : <p className="my-4 text-xs text-muted">The latest commit is unavailable.</p>}
+    <dl className="mt-4 space-y-3 border-t border-line pt-4 text-xs">
+      <div className="flex justify-between gap-3"><dt className="text-muted">Latest release</dt><dd><Link to={`${base}/tags`} className="font-mono hover:text-accent">{d.release?.name ?? "None yet"}</Link>{d.release?.at && <span className="ml-2 text-muted"><TimeAgo at={d.release.at} /></span>}</dd></div>
+      <div className="flex justify-between gap-3"><dt className="text-muted">Open pull requests</dt><dd><Link to={`${base}/pulls`} className="tabular-nums hover:text-accent">{d.open.pulls}</Link></dd></div>
+    </dl>
+  </section></Card>;
+}
+
 /** Production controls share a header, whether g1t or a workflow hosts it. */
 function ProductionActions({ loaderData, base, elsewhere }: { loaderData: Loaded; base: string; elsewhere: boolean }) {
   const { member, settings, production, project, can } = loaderData;
@@ -740,13 +674,6 @@ function ProductionActions({ loaderData, base, elsewhere }: { loaderData: Loaded
     : production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {member && (
-        <Hint label="Deployment history">
-          <ButtonLink to={`${base}/deployments`} variant="outline" size="icon-sm" aria-label="Deployment history">
-            <Rocket size={15} />
-          </ButtonLink>
-        </Hint>
-      )}
       {member && (can.run || can.manage_integrations) && (
         <Hint disabled label="Instant rollback is coming soon. It is not available yet.">
           <Button disabled variant="outline" size="sm">
@@ -768,13 +695,6 @@ function ProductionActions({ loaderData, base, elsewhere }: { loaderData: Loaded
         <ButtonLink to={`${base}/settings/deployments`} variant="accent" size="sm">
           <Rocket size={14} /> Turn on deployments
         </ButtonLink>
-      )}
-      {member && can.manage_integrations && (
-        <Hint label="Deployment settings">
-          <ButtonLink to={`${base}/settings/deployments`} variant="outline" size="icon-sm" aria-label="Deployment settings">
-            <Settings2 size={15} />
-          </ButtonLink>
-        </Hint>
       )}
       {url && (
         <ButtonLink to={url} variant="accent" size="sm" reloadDocument target="_blank" rel="noopener noreferrer">
@@ -800,7 +720,8 @@ function Overview({
   const plan = project ? projectPlan(project) : "production";
   const canChange = member && loaderData.can.manage_settings;
   const deployedSha = loaderData.serving?.sha ?? loaderData.production?.commit;
-  const checkSections = projectCheckSections(loaderData.commit?.hash, defaultBranch, deployedSha);
+  const productionPlan = plan === "production" || plan === "elsewhere";
+  const hasProduction = productionPlan && Boolean(deployedSha);
   const addresses = useAddresses();
   // The production card's picture: an uploaded image, served from the
   // usercontent origin, and where someone who may change it adds one.
@@ -835,14 +756,14 @@ function Overview({
               {(plan === "production" || plan === "elsewhere") && <ProductionActions loaderData={loaderData} base={base} elsewhere={plan === "elsewhere"} />}
             </div>
           )}
-          {plan === "elsewhere" && project ? (
+          {hasProduction ? (
+            <ProductionSummary loaderData={loaderData} base={base} upload={upload} addImage={addImage} elsewhere={plan === "elsewhere"} />
+          ) : plan === "elsewhere" && project ? (
             <ElsewhereHead
               project={project}
               base={base}
               canChange={canChange}
-              canDeploy={member && loaderData.can.manage_integrations}
               deployment={loaderData.deployment}
-              commit={loaderData.commit}
               shot={
                 <ProductionShot
                   sources={cardSources(loaderData.elsewhereShot, upload)}
@@ -864,142 +785,116 @@ function Overview({
           ) : (
             <ProductionHead loaderData={loaderData} base={base} name={name} upload={upload} addImage={addImage} />
           )}
-          {checkSections.length > 0 && (
-            <div className="border-t border-line px-5 py-4 sm:px-6">
-              {checkSections.map((section) => section.kind === "branch" ? (
-                <div key={section.kind}>
-                  <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-                    <GitCommitHorizontal size={14} />
-                    <span>{section.label}</span>
-                    <Link to={`${base}/commit/${section.sha}`} className="font-mono hover:text-fg">{section.sha.slice(0, 7)}</Link>
-                  </div>
-                  <CommitChecksSummary checks={loaderData.checks} sha={section.sha} />
-                </div>
-              ) : (
-                <details key={section.kind} className="mt-3 text-xs text-muted">
-                  <summary className="cursor-pointer hover:text-fg">{section.label} <span className="font-mono">{section.sha.slice(0, 7)}</span></summary>
-                  <p className="my-2">These checks belong to the code deployed to production. Deployment status is shown above.</p>
-                  <Link to={`${base}/commit/${section.sha}`} className="mb-2 inline-block text-accent hover:underline">View deployed commit</Link>
-                  <CommitChecksSummary checks={loaderData.checks} sha={section.sha} />
-                </details>
-              ))}
-              {deployedSha && <p className="mt-2 text-xs text-muted">Currently serving <Link to={`${base}/commit/${deployedSha}`} className="font-mono text-fg-soft hover:underline">{deployedSha.slice(0, 7)}</Link>{loaderData.serving && <> &middot; deployed <TimeAgo at={loaderData.serving.at} /></>}</p>}
-            </div>
-          )}
           {actionData && (
             <p className={`border-t border-line px-6 py-2.5 text-sm ${"error" in actionData ? "text-danger" : "text-success"}`}>
               {"error" in actionData ? actionData.error : actionData.notice}
             </p>
           )}
-          <Facts loaderData={loaderData} base={base} plan={plan} />
+          {productionPlan && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 sm:px-6">
+            <span className="text-xs text-muted">{plan === "elsewhere" ? "Production is deployed by its own pipeline." : !loaderData.settings?.enabled ? "Deployments are not enabled for this project." : <>Push to <span className="font-mono text-fg-soft">{defaultBranch ?? "the default branch"}</span> to update production.</>}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {member && loaderData.can.manage_integrations && <ButtonLink to={`${base}/settings/deployments`} variant="ghost" size="sm"><Settings2 size={14} />Deployment settings</ButtonLink>}
+              <ButtonLink to={`${base}/deployments`} variant="outline" size="sm"><Rocket size={14} />Deployments{loaderData.environments && <span className="text-muted">{loaderData.environments.total_count}</span>}</ButtonLink>
+            </div>
+          </div>}
           {project && <CodeLine project={project} base={base} />}
         </section>
       </Card>
 
-      <div className="grid gap-x-8 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="min-w-0 space-y-8">
-          {!loaderData.needsLoaded && (
-            <Panel title="Needs you" icon={<Hand size={14} className="text-warn" />}>
-              <Unavailable what="What needs you" />
-            </Panel>
-          )}
-          {loaderData.needsLoaded && needs.length > 0 && (
-            <Panel title="Needs you" icon={<Hand size={14} className="text-warn" />} count={needs.length}>
-              <NeedsList needs={needs} limit={5} />
-            </Panel>
-          )}
+      <div className={`grid items-start gap-4 md:grid-cols-2 ${loaderData.telemetry || !loaderData.telemetryLoaded ? "xl:grid-cols-3" : ""}`}>
+        <BranchCard loaderData={loaderData} base={base} />
+        {!loaderData.telemetryLoaded && <Unavailable what="Observability" compact />}
+        {loaderData.telemetry && <ObservabilityCard overview={loaderData.telemetry.overview} errors={loaderData.telemetry.errors} base={base} />}
+        <HealthCard loaderData={loaderData} base={base} plan={plan} />
+      </div>
 
-          <Panel
-            title="Live now"
-            icon={<Radio size={14} className={busy ? "text-success" : undefined} />}
-            extra={
-              working ? (
-                <span className="text-xs text-muted">
-                  {plural(awake.length, "session")} · {plural(claims.length, "claim")}
-                  {idle.length > 0 && ` · ${idle.length} idle`}
-                </span>
-              ) : null
-            }
-            all={{ to: `${base}/work`, label: "Work" }}
-          >
-            {!loaderData.liveLoaded ? (
-              <Unavailable what="Who is working" />
-            ) : working ? (
-              <>
-                <LiveNowList
-                  claims={claims}
-                  sessions={sessions}
-                  titles={titles}
-                  pulls={livePulls}
-                  defaultBranch={defaultBranch}
-                  base={base}
-                  now={Date.now()}
-                  limit={LIVE_SHOWN}
-                  ender={loaderData.ender}
-                />
-                {moreIssues > 0 && (
-                  <Link to={`${base}/work`} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">
-                    {plural(moreIssues, "more issue")} being worked on
-                  </Link>
-                )}
-              </>
-            ) : member ? (
-              <StartHere title={`Nobody is working on ${name} right now`} />
-            ) : (
-              <Quiet>
-                Nobody is working on {name} right now. When people and their coding agents claim an issue or start a session, it shows here.
-              </Quiet>
-            )}
+      {previews.length > 0 && (
+        <Panel title="Preview deployments" icon={<GitBranch size={14} />} count={previews.length}>
+          <Card asChild divided className="overflow-hidden">
+            <ul>
+              {previews.map((app) => (
+                <li key={app.url} className="flex flex-wrap items-center gap-3 px-5 py-4 text-sm">
+                  <GitBranch size={16} className="shrink-0 text-faint" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate font-mono text-[0.8125rem] font-medium">{app.branch}</span>
+                      {app.number != null && <Link to={`${base}/pull/${app.number}`} className="text-xs text-muted hover:text-accent">#{app.number}</Link>}
+                    </div>
+                    <DeployLink href={app.url} className="mt-1 block truncate text-xs text-muted hover:text-accent">{host(app.url)}</DeployLink>
+                  </div>
+                  <span className="shrink-0 text-xs text-faint"><TimeAgo at={app.deployedAt} /></span>
+                  <ButtonLink to={app.url} variant="outline" size="sm" reloadDocument target="_blank" rel="noopener noreferrer">Visit <ArrowUpRight size={14} /></ButtonLink>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </Panel>
+      )}
+
+      {/* Deployments panel (deployments-panel.tsx): each environment's latest deployment. */}
+      {loaderData.environmentsLoaded ? (
+        <DeploymentsPanel base={base} summary={loaderData.environments} excludeEnvironment={productionPlan ? loaderData.productionLatest?.environment : undefined} className="rounded-xl border border-line bg-surface p-5" />
+      ) : (
+        <Unavailable what="Deployments" compact />
+      )}
+
+      <div className="min-w-0 space-y-8">
+        {!loaderData.needsLoaded && (
+          <Panel title="Needs you" icon={<Hand size={14} className="text-warn" />}>
+            <Unavailable what="What needs you" />
           </Panel>
+        )}
+        {loaderData.needsLoaded && needs.length > 0 && (
+          <Panel title="Needs you" icon={<Hand size={14} className="text-warn" />} count={needs.length}>
+            <NeedsList needs={needs} limit={5} />
+          </Panel>
+        )}
 
-          <DeliveryPanel loaderData={loaderData} base={base} />
-          <WorkflowPanel loaderData={loaderData} base={base} />
-
-          {previews.length > 0 && (
-            <Panel title="Previews" icon={<GitBranch size={14} />} count={previews.length} all={{ to: `${base}/deployments`, label: "Deployments" }}>
-              <Card asChild divided className="overflow-hidden">
-                <ul>
-                  {previews.map((app) => (
-                    <li key={app.url} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                      <span className="min-w-0 grow">
-                        <DeployLink href={app.url} className="block truncate font-mono text-[0.8125rem] hover:text-accent">
-                          {host(app.url)}
-                        </DeployLink>
-                        <span className="text-xs text-muted">
-                          {app.branch}
-                          {app.number != null && (
-                            <>
-                              {" · "}
-                              <Link to={`${base}/pull/${app.number}`} className="hover:underline">
-                                #{app.number}
-                              </Link>
-                            </>
-                          )}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-xs text-faint">
-                        <TimeAgo at={app.deployedAt} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </Panel>
-          )}
-        </div>
-
-        <aside className="space-y-4 text-sm">
-          {/* Deployments panel (deployments-panel.tsx): each environment's latest deployment. */}
-          {loaderData.environmentsLoaded ? (
-            <DeploymentsPanel base={base} summary={loaderData.environments} className="rounded-xl border border-line bg-surface p-5" />
+        <Panel
+          title="Live now"
+          icon={<Radio size={14} className={busy ? "text-success" : undefined} />}
+          extra={
+            working ? (
+              <span className="text-xs text-muted">
+                {plural(awake.length, "session")} · {plural(claims.length, "claim")}
+                {idle.length > 0 && ` · ${idle.length} idle`}
+              </span>
+            ) : null
+          }
+          all={{ to: `${base}/work`, label: "Work" }}
+        >
+          {!loaderData.liveLoaded ? (
+            <Unavailable what="Who is working" />
+          ) : working ? (
+            <>
+              <LiveNowList
+                claims={claims}
+                sessions={sessions}
+                titles={titles}
+                pulls={livePulls}
+                defaultBranch={defaultBranch}
+                base={base}
+                now={Date.now()}
+                limit={LIVE_SHOWN}
+                ender={loaderData.ender}
+              />
+              {moreIssues > 0 && (
+                <Link to={`${base}/work`} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">
+                  {plural(moreIssues, "more issue")} being worked on
+                </Link>
+              )}
+            </>
+          ) : member ? (
+            <StartHere title={`Nobody is working on ${name} right now`} />
           ) : (
-            <Unavailable what="Deployments" compact />
+            <Quiet>
+              Nobody is working on {name} right now. When people and their coding agents claim an issue or start a session, it shows here.
+            </Quiet>
           )}
-          {!loaderData.telemetryLoaded && <Unavailable what="Observability" compact />}
-          {loaderData.telemetry && <ObservabilityCard overview={loaderData.telemetry.overview} errors={loaderData.telemetry.errors} base={base} />}
+        </Panel>
 
-          <HealthCard loaderData={loaderData} base={base} plan={plan} />
-        </aside>
+        <div className="grid items-start gap-6 xl:grid-cols-2"><DeliveryPanel loaderData={loaderData} base={base} /><WorkflowPanel loaderData={loaderData} base={base} /></div>
+
       </div>
     </div>
   );
@@ -1045,6 +940,8 @@ function ObservabilityCard({ overview, errors, base }: { overview: TelemetryOver
           <RequestBars points={overview.points} />
         </div>
         <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+          <div><dt className="text-faint">Requests</dt><dd className="mt-0.5 font-medium tabular-nums">{count(overview.totals.requests)}</dd></div>
+          <div><dt className="text-faint">Error rate</dt><dd className="mt-0.5 font-medium tabular-nums"><Link to={`${base}/observability/errors`} className={overview.totals.error_rate >= 0.01 ? "text-danger" : "hover:text-accent"}>{percent(overview.totals.error_rate)}</Link><span className="ml-1 text-muted">({count(overview.totals.errors)})</span></dd></div>
           <div>
             <dt className="text-faint">Latency p50</dt>
             <dd className="mt-0.5 font-medium tabular-nums">{duration(overview.totals.latency.p50)}</dd>

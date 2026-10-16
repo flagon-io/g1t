@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { projectCheckSections } from "./project-checks.ts";
+import { hasSeparateAttempt, projectCheckSections } from "./project-checks.ts";
 
 test("a CLI-only fix keeps latest branch checks separate from the older production commit", () => {
   assert.deepEqual(projectCheckSections("6049e67", "main", "a8f62b9"), [
@@ -18,4 +18,11 @@ test("the same commit is not reported twice, and a project without deployment st
 test("an unavailable branch head never mislabels deployed checks as latest branch checks", () => {
   assert.deepEqual(projectCheckSections(null, "main", "old"), [{ kind: "production", label: "Checks for deployed commit", sha: "old" }]);
   assert.deepEqual(projectCheckSections(null, null, null), []);
+});
+
+test("a failed same-commit retry does not replace the serving deployment", () => {
+  assert.equal(hasSeparateAttempt("dep_live", "abc", { id: "dep_retry", sha: "abc", state: "failure" }), true);
+  assert.equal(hasSeparateAttempt(null, "abc", { id: "dep_retry", sha: "abc", state: "failure" }), true);
+  assert.equal(hasSeparateAttempt("dep_live", "abc", { id: "dep_live", sha: "abc", state: "success" }), false);
+  assert.equal(hasSeparateAttempt(null, null, { id: "dep_first", sha: "abc", state: "in_progress" }), false);
 });
