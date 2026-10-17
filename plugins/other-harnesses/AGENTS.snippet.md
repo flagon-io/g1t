@@ -14,14 +14,14 @@ the same time; the `g1t` CLI is how you see them and how they see you.
   few minutes and `g1t session end` when you stop. Only create subagents
   when the user's task permits delegation; give each its own session with
   `--parent PARENT_ID --no-remember` and its own G1T_SESSION.
-- With no issue, just work: the session shows to the team. When the work
-  becomes a change others should know about (a branch to push, a pull
-  request), look for its issue (`g1t work list`, `g1t issue list`) and
-  claim it; if there is none, open and claim one with
-  `g1t work claim --title "TITLE"`. Never open issues for questions,
-  exploration or trivial fixes.
-- Before working on an issue, load it with `g1t work context N`: its
-  definition of done, who has claimed it, its pull requests, checks and
+- With no work item, just work: the session shows to the team. When the
+  work becomes a change others should know about (a branch to push, a pull
+  request), look for its work item (`g1t work list`) and claim it; if
+  there is none, open and claim one with `g1t work claim --title "TITLE"`.
+  Never open work items for questions, exploration or trivial fixes.
+- Work items belong to the workspace and can span several repositories.
+  Before working on one, load it with `g1t work view N`: its definition of
+  done, the repositories it targets and which have landed, who has claimed it, its pull requests, checks and
   overlaps, and what blocks it. Then claim it with
   `g1t work claim N --note "Scope: ...; Interfaces: ...; Depends on: ...; Checks: ..."`.
   Proceed on complementary scopes. Before editing overlapping files or
@@ -45,22 +45,24 @@ the same time; the `g1t` CLI is how you see them and how they see you.
   `update`, and `end`. Keep the returned ID and pass it explicitly. To read
   pending updates without the transcript, call `get` with `after: 4294967295`.
   `record` accepts `entries` for the decision and `acknowledge: [IDs]`.
-  Use `issue` action `work` to refresh issue context and `claim` with your
+  Use `work_item` action `work` to refresh work item context and `claim` with your
   `session_id` and scope note. The same session ownership rules apply.
-- Work on a branch whose name starts with the issue number
+- Work on a branch whose name starts with the work item's number
   (`42-short-description`), and open a draft pull request early:
-  `g1t pr create --issue N --draft --fill`.
+  `g1t pr create --item N --draft --fill`. When it finishes this
+  repository's part, its description says `Closes #N`; when it does only
+  part, `Part of #N`.
 - Log decisions worth keeping with `g1t session log --kind note "TEXT"`.
   Never log secrets or command output.
 - Run the repository's tests before each push, and watch the checks with
   `g1t pr checks --watch --fail-fast` (and `g1t run logs --failed` for why
   one failed). When the merge queue reports an integration failure, read
-  it with `g1t work events --type integration.failed --issue N`, diff the
+  it with `g1t work events --type integration.failed --item N`, diff the
   other pull requests in the combination (`g1t pr diff OTHER`), fix, push
   and merge again.
-- If you stop before the issue is done, hand it off with the exact commit,
+- If you stop before the work item is done, hand it off with the exact commit,
   completed scope, remaining work, checks actually run and their results,
   blockers, and next action: `g1t work handoff N --note "..."`.
-  A successor reads the issue context and predecessor's session before
+  A successor reads the work item context and predecessor's session before
   editing, verifies the recorded commit and evidence, and logs its plan.
   Recorded claims or decisions are not proof that tests passed.
