@@ -263,6 +263,12 @@ function rows(tier: Required<FreeTier>): Row[] {
       note: "Longer by arrangement. Older entries are deleted each day.",
     },
     {
+      what: "Single sign-on",
+      free: "Not available",
+      plan: "Included, at no extra price",
+      note: "Your identity provider over SAML 2.0, OpenID Connect or OAuth 2.0, and requiring it of members.",
+    },
+    {
       what: "Secret scanning, push protection, vulnerability alerts, security updates",
       free: "Included",
       plan: "Included",

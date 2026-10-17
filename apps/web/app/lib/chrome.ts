@@ -52,8 +52,10 @@ export function frameOf(pathname: string, viewer: { signedIn: boolean; workspace
   if (STANDALONE.has(path)) return "standalone";
   // Marketing pages are the site's front, whoever reads them: never inside the app's rail and sidebar.
   if (MARKETING.has(path)) return "public";
-  // An invite link, and signing in with GitHub, are the front door.
-  if (path.startsWith("/invite/") || path === "/auth/github" || path.startsWith("/auth/github/")) return "standalone";
+  // An invite link, signing in with GitHub, and a workspace's single sign-on are the front door.
+  if (path.startsWith("/invite/") || path === "/auth/github" || path.startsWith("/auth/github/") || path.startsWith("/auth/sso/")) {
+    return "standalone";
+  }
   if (path === "/invitations" && viewer.signedIn && !viewer.workspace) return "standalone";
   return viewer.signedIn ? "app" : "public";
 }

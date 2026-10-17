@@ -16,6 +16,8 @@ import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
 import { usercontentPath } from "../app/lib/usercontent";
 import { TOKEN_CHALLENGE } from "../app/lib/website-token";
 import { serveUsercontent } from "./usercontent";
+import { receiveSaml } from "./sso-saml";
+import { samlPath } from "../app/lib/sso";
 import { serveArchivedAsset } from "../app/lib/asset-archive";
 import { needsBuildRefresh } from "../app/lib/build-version";
 import { developerResource, pageRepresentation } from "../app/lib/agent-pages";
@@ -119,6 +121,10 @@ async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<
   // session signed in (app/lib/front-door-limits.ts).
   const limited = await pageLimited(env, request, pathname);
   if (limited) return limited;
+  // A workspace's identity provider posting a SAML response, from its own
+  // site: React Router refuses cross-site posts (workers/sso-saml.ts).
+  const saml = request.method === "POST" ? samlPath(pathname) : null;
+  if (saml) return receiveSaml(env, request, saml);
   // Every page and data request says where its time went (Server-Timing)
   // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
   const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));

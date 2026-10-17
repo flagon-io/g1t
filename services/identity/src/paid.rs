@@ -86,12 +86,18 @@ impl Identity {
     /// A refusal if `slug` is a free workspace, before anyone is added to
     /// it: as a member, by an invite, or as an outside collaborator.
     pub(crate) async fn free_workspace_refusal<T>(&self, slug: &str) -> Result<Option<Outcome<T>>> {
+        self.plan_refusal(slug, invite_refusal(&slug.trim().to_lowercase())).await
+    }
+
+    /// A refusal saying `why` if `slug` is a free workspace, for what
+    /// comes with any paid plan (single sign-on, sso.rs).
+    pub(crate) async fn plan_refusal<T>(&self, slug: &str, why: String) -> Result<Option<Outcome<T>>> {
         let slug = slug.trim().to_lowercase();
         Ok(match self.free_of(vec![slug.clone()]).await {
-            Ok(free) if free.contains(&slug) => Some(Outcome::fail(FailureCode::PaymentRequired, invite_refusal(&slug))),
+            Ok(free) if free.contains(&slug) => Some(Outcome::fail(FailureCode::PaymentRequired, why)),
             Ok(_) => None,
             Err(error) => {
-                worker::console_error!("the plan of {slug} not checked before adding someone: {error}");
+                worker::console_error!("the plan of {slug} not checked: {error}");
                 Some(Outcome::fail(FailureCode::Conflict, UNCHECKED))
             }
         })

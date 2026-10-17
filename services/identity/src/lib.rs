@@ -33,6 +33,7 @@ mod run_credentials;
 mod security;
 mod shared_invites;
 mod sounds;
+mod sso;
 mod suspension;
 mod teams;
 mod throttle;
@@ -148,6 +149,13 @@ impl Identity {
     /// Attaches the workspaces a user belongs to, so that any service can
     /// authorize them without asking again.
     async fn with_workspaces(&self, user: Viewer) -> Result<Viewer> {
+        self.with_workspaces_via(user, None).await
+    }
+
+    /// The same, for a user resolved from the session whose hash is
+    /// `session`: a workspace that requires single sign-on asks it of the
+    /// session (sso.rs), and of anything else that the person has linked.
+    async fn with_workspaces_via(&self, user: Viewer, session: Option<&str>) -> Result<Viewer> {
         let Some(mut user) = user else {
             return Ok(None);
         };
@@ -156,7 +164,10 @@ impl Identity {
         if self.user_suspension(&user.id).await?.is_some() {
             return Ok(None);
         }
-        let memberships = self.memberships_and_policies(&user.id).await?;
+        let policed = self.memberships_and_policies(&user.id).await?;
+        let sso_required: Vec<(String, g1t_contracts::Role)> =
+            policed.iter().filter(|m| m.require_sso).map(|m| (m.membership.slug.clone(), m.membership.role)).collect();
+        let memberships = policed.into_iter().map(|m| (m.membership, m.require_two_factor)).collect();
         // Roles on single repositories, under the same policy (access.rs).
         let grants = self.grants_of(&user.id).await?;
         // Access to a workspace is used only within its policy; see security.rs.
@@ -164,6 +175,10 @@ impl Identity {
         user.workspaces = within.memberships;
         user.grants = within.grants;
         user.held = within.held;
+        if !sso_required.is_empty() {
+            let held = self.sso_holds(&user, sso_required, session).await?;
+            sso::apply_sso_holds(&mut user, &held);
+        }
         Ok(Some(user))
     }
 
@@ -530,25 +545,25 @@ impl Identity {
     }
 
     async fn sign_out(&self, a: SessionArgs) -> Result<()> {
-        self.db
-            .prepare("DELETE FROM sessions WHERE id = ?")
-            .bind(&[crypto::sha256_hex(&a.session_token).into()])?
-            .run()
-            .await?;
-        Ok(())
+        let session = crypto::sha256_hex(&a.session_token);
+        self.db.prepare("DELETE FROM sessions WHERE id = ?").bind(&[session.as_str().into()])?.run().await?;
+        self.forget_sso_session(&session).await
     }
 
     async fn user_for_session(&self, a: SessionArgs) -> Result<Viewer> {
-        self.find_user(
+        let session = crypto::sha256_hex(&a.session_token);
+        let user = self
+            .find_public_user(
             &format!(
                 "SELECT users.id, users.username, users.display_username, users.email_verified_at IS NOT NULL AS verified,
                    users.avatar
                  FROM sessions JOIN users ON users.id = sessions.user_id
                  WHERE sessions.id = ? AND sessions.expires_at > {SQL_NOW} AND users.deleted_at IS NULL"
             ),
-            &crypto::sha256_hex(&a.session_token),
+            &session,
         )
-        .await
+        .await?;
+        self.with_workspaces_via(user, Some(&session)).await
     }
 
     async fn user_for_git_credentials(&self, a: GitCredentialsArgs) -> Result<Viewer> {
@@ -912,6 +927,17 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "leave_workspace" => reply(&identity.leave_workspace(args(body)?).await?),
         "set_member_privileges" => reply(&identity.set_member_privileges(args(body)?).await?),
         "set_two_factor_requirement" => reply(&identity.set_two_factor_requirement(args(body)?).await?),
+        // Single sign-on through the workspace's own provider (sso.rs).
+        "sso_settings" => reply(&identity.sso_settings(args(body)?).await?),
+        "sso_summary" => reply(&identity.sso_summary(args(body)?).await?),
+        "save_sso" => reply(&identity.save_sso(args(body)?).await?),
+        "set_sso_required" => reply(&identity.set_sso_required(args(body)?).await?),
+        "delete_sso" => reply(&identity.delete_sso(args(body)?).await?),
+        "unlink_sso_identity" => reply(&identity.unlink_sso_identity(args(body)?).await?),
+        "sso_start" => reply(&identity.sso_start(args(body)?).await?),
+        "sso_finish" => reply(&identity.sso_finish(args(body)?).await?),
+        "sso_saml" => reply(&identity.sso_saml(args(body)?).await?),
+        "sso_metadata" => reply(&identity.sso_metadata(args(body)?)),
         "grant_creator" => reply(&identity.grant_creator(args(body)?).await?),
         "update_workspace" => {
             let outcome = identity.update_workspace(args(body)?).await?;

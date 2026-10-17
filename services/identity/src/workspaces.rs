@@ -100,6 +100,15 @@ struct MembershipRow {
     security_manager: u8,
     #[serde(default)]
     require_two_factor: u8,
+    #[serde(default)]
+    require_sso: u8,
+}
+
+/// A membership, with what its workspace requires of its members.
+pub struct Policed {
+    pub membership: Membership,
+    pub require_two_factor: bool,
+    pub require_sso: bool,
 }
 
 impl Identity {
@@ -108,18 +117,18 @@ impl Identity {
     /// members get on its repositories (access.rs), the roles the person
     /// holds besides member (members.rs), and its member privileges.
     pub async fn memberships(&self, user_id: &str) -> Result<Vec<Membership>> {
-        Ok(self.memberships_and_policies(user_id).await?.into_iter().map(|(membership, _)| membership).collect())
+        Ok(self.memberships_and_policies(user_id).await?.into_iter().map(|policed| policed.membership).collect())
     }
 
-    /// The same, each with whether its workspace requires two-factor
-    /// authentication (security.rs).
-    pub async fn memberships_and_policies(&self, user_id: &str) -> Result<Vec<(Membership, bool)>> {
+    /// The same, each with what its workspace requires: two-factor
+    /// authentication (security.rs), single sign-on (sso.rs).
+    pub async fn memberships_and_policies(&self, user_id: &str) -> Result<Vec<Policed>> {
         let rows = self
             .db
             .prepare(
                 "SELECT workspaces.slug, workspace_members.role, workspaces.name,
                    workspaces.avatar, workspaces.base_permission, workspaces.team_creation,
-                   workspaces.member_privileges, workspaces.require_two_factor,
+                   workspaces.member_privileges, workspaces.require_two_factor, workspaces.require_sso,
                    workspace_members.billing_manager, workspace_members.security_manager
                  FROM workspace_members
                  JOIN workspaces ON workspaces.id = workspace_members.workspace_id
@@ -150,7 +159,7 @@ impl Identity {
                     org_roles,
                     privileges: Some(MemberPrivileges::from_stored(row.member_privileges.as_deref())),
                 };
-                (membership, row.require_two_factor != 0)
+                Policed { membership, require_two_factor: row.require_two_factor != 0, require_sso: row.require_sso != 0 }
             })
             .collect())
     }

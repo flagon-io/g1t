@@ -587,6 +587,10 @@ Through the API, `two_factor_requirement_enabled` on
 `PATCH /workspaces/{workspace}`. Recorded as `workspace.two_factor_required`
 and `workspace.two_factor_not_required`.
 
+A workspace on a paid plan can also require
+[single sign-on](/guides/single-sign-on/) through its own identity
+provider.
+
 ## The workspace's page
 
 A workspace's own page, `g1t.sh/<workspace>`, has its icon, name, address
@@ -811,6 +815,7 @@ open is left out for members.
 | **Access** | **Members** | Members | Who is in the workspace and their roles, with search and filters; owners [invite people](#add-people), change roles, and see **Outside collaborators**. `-/members` |
 | | **Invitations** | Owners | Every invitation to join, filtered by where it stands; send one again, revoke it, copy its link. `-/members/invitations` |
 | | [**Permissions**](/guides/permissions/) | Owners | Who may do what, part by part: the base permission, repositories, teams and chat. `-/permissions` |
+| | [**Single sign-on**](/guides/single-sign-on/) | Owners | Your identity provider over SAML 2.0, OpenID Connect or OAuth 2.0, the people linked to it, and requiring it. Every paid plan. `-/sso` |
 | | [**Access tokens**](#workspace-access-tokens) | Members | The workspace's own tokens. Owners create and delete them. `-/tokens` |
 | | **Personal access tokens** | Owners | The workspace's rules for members' tokens, and approving them. `-/personal-access-tokens` |
 | **Money** | [**Usage**](/guides/usage-and-billing/#the-usage-page) | Members | What the workspace used, by product, project and day. `-/usage` |

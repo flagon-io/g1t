@@ -74,6 +74,8 @@ export function workspaceGate(page: string, search: string, viewer: Someone): st
     // An invite to a workspace is how someone without one gets one, and an
     // invitation to a repository is answered before anything else.
     path.startsWith("/invite/") ||
+    // So is joining one through its single sign-on.
+    path.startsWith("/auth/sso/") ||
     /^\/[^/]+\/[^/]+\/invitations$/.test(path)
   ) {
     return null;
