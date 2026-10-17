@@ -3,11 +3,12 @@ import { test } from "node:test";
 
 import { ssoAddresses } from "@g1t/contracts/sso";
 
-import { SSO_ERROR_COOKIE, afterSso, errorCookie, readErrorCookie, samlPath } from "./sso.ts";
+import { SSO_ERROR_COOKIE, afterSso, bindingCookie, errorCookie, readBinding, readErrorCookie, samlPath } from "./sso.ts";
 
 test("only a workspace's SAML address is answered before React Router", () => {
   assert.equal(samlPath("/auth/sso/acme/saml"), "acme");
   assert.equal(samlPath("/auth/sso/Acme-Co/saml/"), "acme-co");
+  assert.equal(samlPath("/auth/sso/wsp_01m54abc/saml"), "wsp_01m54abc");
   assert.equal(samlPath("/auth/sso/acme/callback"), null);
   assert.equal(samlPath("/auth/sso/acme/saml/extra"), null);
   assert.equal(samlPath("/auth/sso/-acme/saml"), null);
@@ -30,11 +31,20 @@ test("why a SAML sign-in failed survives the trip in a cookie", () => {
   assert.equal(readErrorCookie(null), null);
 });
 
-test("a workspace's provider is pointed at its own addresses", () => {
-  assert.deepEqual(ssoAddresses("https://g1t.sh/", "Acme"), {
-    entityId: "https://g1t.sh/auth/sso/acme/metadata",
-    metadataUrl: "https://g1t.sh/auth/sso/acme/metadata",
-    acsUrl: "https://g1t.sh/auth/sso/acme/saml",
-    callbackUrl: "https://g1t.sh/auth/sso/acme/callback",
+test("a workspace's provider is pointed at its id, which a rename never changes", () => {
+  assert.deepEqual(ssoAddresses("https://g1t.sh/", "wsp_1", "Acme"), {
+    entityId: "https://g1t.sh/auth/sso/wsp_1/metadata",
+    metadataUrl: "https://g1t.sh/auth/sso/wsp_1/metadata",
+    acsUrl: "https://g1t.sh/auth/sso/wsp_1/saml",
+    callbackUrl: "https://g1t.sh/auth/sso/wsp_1/callback",
+    signInUrl: "https://g1t.sh/auth/sso/acme",
   });
+});
+
+test("the SAML binding cookie crosses sites to /auth/sso alone", () => {
+  const value = "a".repeat(64);
+  assert.match(bindingCookie(value), /Path=\/auth\/sso; HttpOnly; Secure; SameSite=None; Max-Age=600/);
+  assert.equal(readBinding(`x=1; ${bindingCookie(value).split(";")[0]}`), value);
+  assert.equal(readBinding("g1t_sso_saml=nothex"), null);
+  assert.match(bindingCookie(""), /Max-Age=0/);
 });

@@ -44,6 +44,7 @@ const BEARER: &str = "urn:oasis:names:tc:SAML:2.0:cm:bearer";
 const POST_BINDING: &str = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST";
 const EMAIL_FORMAT: &str = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
 const UNSPECIFIED_FORMAT: &str = "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified";
+const TRANSIENT_FORMAT: &str = "urn:oasis:names:tc:SAML:2.0:nameid-format:transient";
 /// How far apart g1t's clock and the provider's may be.
 const SKEW_MS: u64 = 3 * 60 * 1000;
 /// Bigger than any real response.
@@ -215,6 +216,9 @@ fn check_response(response: Node, assertion: Node, expect: &Expect, response_sig
         ));
     }
     let name_id = child(subject, ASSERTION, "NameID").ok_or("The assertion has no NameID.")?;
+    if name_id.attribute("Format") == Some(TRANSIENT_FORMAT) {
+        return Err("The identity provider sends a transient NameID, which changes every time. Set it to send a persistent one, or the email address.".to_owned());
+    }
     let subject_id = text(name_id);
     if subject_id.is_empty() || subject_id.len() > 512 {
         return Err("The assertion's NameID is empty.".to_owned());
@@ -239,8 +243,15 @@ fn attribute_email(assertion: Node) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+/// A SAML time: UTC, written with `Z`, `+00:00`, or no zone at all.
 fn parse_time(at: &str) -> Option<u64> {
-    parse_rfc3339(at.trim())
+    let at = at.trim();
+    let at = at.strip_suffix("+00:00").or_else(|| at.strip_suffix("-00:00")).unwrap_or(at);
+    if at.ends_with('Z') {
+        parse_rfc3339(at)
+    } else {
+        parse_rfc3339(&format!("{at}Z"))
+    }
 }
 
 fn within(not_before: Option<&str>, not_on_or_after: Option<&str>, now: u64) -> Result<(), String> {

@@ -1,6 +1,6 @@
 import { ssoClient } from "@g1t/contracts";
 
-import { afterSso, errorCookie } from "../app/lib/sso";
+import { afterSso, bindingCookie, errorCookie, readBinding } from "../app/lib/sso";
 
 /**
  * A workspace's identity provider posting its SAML response
@@ -12,11 +12,15 @@ import { afterSso, errorCookie } from "../app/lib/sso";
  * going, or back to the page that says what went wrong.
  */
 export async function receiveSaml(env: Env, request: Request, slug: string): Promise<Response> {
-  const back = (message: string) =>
-    new Response(null, {
-      status: 303,
-      headers: { location: `/auth/sso/${slug}/saml`, "set-cookie": errorCookie(message), "cache-control": "no-store" },
-    });
+  // The binding cookie set when this browser set off: identity accepts the
+  // response only for the trip it binds. Spent either way.
+  const binding = readBinding(request.headers.get("cookie"));
+  const back = (message: string) => {
+    const headers = new Headers({ location: `/auth/sso/${slug}/saml`, "cache-control": "no-store" });
+    headers.append("set-cookie", errorCookie(message));
+    headers.append("set-cookie", bindingCookie(""));
+    return new Response(null, { status: 303, headers });
+  };
   let samlResponse = "";
   try {
     const form = await request.formData();
@@ -26,9 +30,11 @@ export async function receiveSaml(env: Env, request: Request, slug: string): Pro
   }
   if (!samlResponse) return back("The identity provider sent no SAML response.");
   const finished = await ssoClient(env.IDENTITY)
-    .saml(slug, samlResponse)
+    .saml(slug, samlResponse, binding)
     .catch(() => null);
   if (!finished) return back("g1t could not check the identity provider's response just now. Try again in a minute.");
   if (!finished.ok) return back(finished.error.message);
-  return new Response(null, { status: 303, headers: { location: afterSso(finished.value), "cache-control": "no-store" } });
+  const headers = new Headers({ location: afterSso(finished.value), "cache-control": "no-store" });
+  headers.append("set-cookie", bindingCookie(""));
+  return new Response(null, { status: 303, headers });
 }

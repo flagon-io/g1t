@@ -267,6 +267,8 @@ pub fn revoke_statements() -> Vec<(String, usize)> {
         "two_factor_challenges",
         "email_tokens",
         "github_states",
+        "sso_identities",
+        "sso_states",
         "workspace_members",
         "team_members",
     ] {
@@ -275,6 +277,8 @@ pub fn revoke_statements() -> Vec<(String, usize)> {
     sql.extend([
         // Deploy keys it added to repositories.
         ("DELETE FROM deploy_keys WHERE created_by = ?1".to_owned(), 1),
+        // Its SCIM assignments link to nobody; the provider still has them.
+        ("UPDATE scim_users SET user_id = NULL WHERE user_id = ?1".to_owned(), 1),
         // g1t keeps no GitHub token for it any more.
         ("UPDATE github_accounts SET tokens = NULL WHERE user_id = ?1".to_owned(), 1),
         ("DELETE FROM repo_grants WHERE principal_kind = 'user' AND principal_id = ?1".to_owned(), 1),

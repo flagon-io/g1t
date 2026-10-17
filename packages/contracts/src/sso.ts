@@ -54,6 +54,8 @@ export type SsoIdentity = {
 
 export type SsoSettings = {
   slug: string;
+  /** The workspace's id, which never changes: what the provider is pointed at. */
+  workspace_id: string;
   connection: SsoConnection | null;
   required: boolean;
   /** Whether the owner asking has signed in through it, which requiring it needs. */
@@ -83,6 +85,7 @@ export type ProvisionedUser = {
 };
 
 export type SsoSummary = {
+  workspace_id: string;
   enabled: boolean;
   protocol: SsoProtocol | null;
   required: boolean;
@@ -125,10 +128,11 @@ export function ssoClient(identity: ServiceBinding) {
     unlink: (actor: User, slug: string, username: string) =>
       call<Result<boolean>>("unlink_sso_identity", { actor, slug, username, surface: "web" }),
     start: (input: { user: User; session_token: string; slug: string; redirect_uri: string; entity_id?: string | null; next: string }) =>
-      call<Result<{ url: string; state: string | null }>>("sso_start", input),
+      call<Result<{ url: string; state: string | null; binding: string | null }>>("sso_start", input),
     finish: (input: { slug: string; session_token: string; state: string; code: string }) =>
       call<Result<SsoFinished>>("sso_finish", input),
-    saml: (slug: string, samlResponse: string) => call<Result<SsoFinished>>("sso_saml", { slug, saml_response: samlResponse }),
+    saml: (slug: string, samlResponse: string, binding: string | null) =>
+      call<Result<SsoFinished>>("sso_saml", { slug, saml_response: samlResponse, binding }),
     metadata: (entityId: string, acsUrl: string) => call<string>("sso_metadata", { entity_id: entityId, acs_url: acsUrl }),
     enableScim: (actor: User, slug: string) => call<Result<{ token: string; hint: string }>>("enable_scim", { actor, slug, surface: "web" }),
     disableScim: (actor: User, slug: string) => call<Result<boolean>>("disable_scim", { actor, slug, surface: "web" }),
@@ -140,12 +144,19 @@ export function ssoClient(identity: ServiceBinding) {
  * entity id (its metadata's address), the assertion consumer service, and
  * the callback for OpenID Connect and OAuth 2.0.
  */
-/** The SCIM 2.0 base URL for a workspace, on the API. */
-export function scimUrl(api: string, slug: string): string {
-  return `${api.replace(/\/+$/, "")}/scim/v2/${encodeURIComponent(slug.toLowerCase())}`;
+/** The SCIM 2.0 base URL for a workspace, on the API, by its id. */
+export function scimUrl(api: string, workspaceId: string): string {
+  return `${api.replace(/\/+$/, "")}/scim/v2/${encodeURIComponent(workspaceId)}`;
 }
 
-export function ssoAddresses(origin: string, slug: string) {
-  const base = `${origin.replace(/\/+$/, "")}/auth/sso/${encodeURIComponent(slug.toLowerCase())}`;
-  return { entityId: `${base}/metadata`, metadataUrl: `${base}/metadata`, acsUrl: `${base}/saml`, callbackUrl: `${base}/callback` };
+export function ssoAddresses(origin: string, workspaceId: string, slug: string) {
+  const site = origin.replace(/\/+$/, "");
+  const base = `${site}/auth/sso/${encodeURIComponent(workspaceId)}`;
+  return {
+    entityId: `${base}/metadata`,
+    metadataUrl: `${base}/metadata`,
+    acsUrl: `${base}/saml`,
+    callbackUrl: `${base}/callback`,
+    signInUrl: `${site}/auth/sso/${encodeURIComponent(slug.toLowerCase())}`,
+  };
 }

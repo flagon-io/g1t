@@ -84,7 +84,12 @@ fn key_for<'a>(jwks: &'a Value, kid: Option<&str>, alg: Alg, name: &str) -> Resu
         .filter(|key| key["alg"].as_str().is_none_or(|a| a == name))
         .collect();
     let found = match kid {
-        Some(kid) => usable.into_iter().find(|key| key["kid"].as_str() == Some(kid)),
+        Some(kid) => match usable.iter().find(|key| key["kid"].as_str() == Some(kid)) {
+            Some(key) => Some(*key),
+            // Keys published without ids: the only one, if there is one.
+            None if usable.len() == 1 && usable[0]["kid"].is_null() => Some(usable[0]),
+            None => None,
+        },
         None if usable.len() == 1 => usable.into_iter().next(),
         None => None,
     };
@@ -113,7 +118,12 @@ pub fn verify(token: &str, jwks: &Value) -> Result<Value, String> {
             let (Some(n), Some(e)) = (key["n"].as_str(), key["e"].as_str()) else {
                 return Err(BAD_SIGNATURE.to_owned());
             };
-            let public = RsaPublicKey::new(BigUint::from_bytes_be(&decode(n)?), BigUint::from_bytes_be(&decode(e)?)).map_err(|_| BAD_SIGNATURE.to_owned())?;
+            let modulus = decode(n)?;
+            // Under 2048 bits is not a key to trust.
+            if modulus.iter().skip_while(|b| **b == 0).count() < 256 {
+                return Err("The identity provider signs with an RSA key shorter than 2048 bits, which g1t does not accept.".to_owned());
+            }
+            let public = RsaPublicKey::new(BigUint::from_bytes_be(&modulus), BigUint::from_bytes_be(&decode(e)?)).map_err(|_| BAD_SIGNATURE.to_owned())?;
             let hashed = bits.digest(signed.as_bytes());
             match (alg, bits) {
                 (Alg::Rs(_), Bits::B256) => public.verify(Pkcs1v15Sign::new::<Sha256>(), &hashed, &signature),

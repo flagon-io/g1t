@@ -15209,12 +15209,12 @@
         }
       ],
       "service_provider": {
-        "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
-        "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
-        "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
-        "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+        "redirect_uri": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/callback",
+        "entity_id": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
+        "acs_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/saml",
+        "metadata_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
         "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
-        "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+        "scim_url": "https://api.g1t.sh/scim/v2/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0"
       }
     }
   },
@@ -15263,12 +15263,12 @@
         }
       ],
       "service_provider": {
-        "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
-        "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
-        "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
-        "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+        "redirect_uri": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/callback",
+        "entity_id": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
+        "acs_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/saml",
+        "metadata_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
         "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
-        "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+        "scim_url": "https://api.g1t.sh/scim/v2/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0"
       }
     }
   },
@@ -15319,7 +15319,7 @@
     "response": {
       "token": "g1t_scim_4f1c…",
       "hint": "9a2e",
-      "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+      "scim_url": "https://api.g1t.sh/scim/v2/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0"
     }
   },
   "disable_scim": {

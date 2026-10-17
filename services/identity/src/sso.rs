@@ -135,6 +135,8 @@ struct StateRow {
     redirect_uri: String,
     audience: Option<String>,
     next: String,
+    #[serde(default)]
+    browser: Option<String>,
 }
 
 /// Who the provider says signed in.
@@ -165,17 +167,25 @@ impl Said {
     }
 }
 
-/// What an OpenID Connect ID token says: Entra's `oid` and, for its tenant's
-/// own members (never a guest, `#EXT#`), the user principal name are stable
-/// ids SCIM may know them by.
+/// What an OpenID Connect ID token says. For Entra, its `oid` too: the
+/// person's object id in the tenant, the same in every app registration
+/// (`sub` is not), and what SCIM may know them by. Never its
+/// `preferred_username`, which is mutable and, for a guest, their home
+/// address.
 fn said_by_oidc(claims: &Value, issuer: &str) -> Option<Said> {
     let subject = oauth::claim(claims, "sub")?;
-    let mut said = Said::new(subject, oauth::claim(claims, "email"), claims["email_verified"].as_bool() == Some(true));
+    // Some providers send the flag as a string.
+    let verified = claims["email_verified"].as_bool().or_else(|| claims["email_verified"].as_str().map(|v| v.eq_ignore_ascii_case("true"))) == Some(true);
+    let mut said = Said::new(subject, oauth::claim(claims, "email"), verified);
     if issuer.starts_with("https://login.microsoftonline.com/") {
-        said.ids.extend(oauth::claim(claims, "oid"));
-        said.ids.extend(oauth::claim(claims, "preferred_username").filter(|upn| !upn.contains("#EXT#")).map(|upn| upn.to_lowercase()));
+        said.ids.extend(oauth::claim(claims, "oid").filter(|oid| !said.ids.contains(oid)));
     }
     Some(said)
+}
+
+/// Whether two lists of a person's ids share one.
+fn same_person(stored: &[String], said: &[String]) -> bool {
+    stored.iter().any(|id| said.iter().any(|other| other.eq_ignore_ascii_case(id)))
 }
 
 /// Why `said` may not join by its address, when the connection names the
@@ -342,6 +352,28 @@ impl Identity {
         })
     }
 
+    /// The workspace `key` names, as `(id, slug)`: its id (`wsp_…`, what a
+    /// provider is pointed at), its name, or a name it had before a rename.
+    pub(crate) async fn sso_workspace(&self, key: &str) -> Result<Option<(String, String)>> {
+        #[derive(Deserialize)]
+        struct Found {
+            id: String,
+            slug: String,
+        }
+        let key = key.trim();
+        let found = self
+            .db
+            .prepare(
+                "SELECT id, slug FROM workspaces WHERE deleted_at IS NULL AND (id = ?1 OR slug = lower(?1)
+                   OR id = (SELECT workspace_id FROM workspace_redirects WHERE old_slug = lower(?1)))
+                 ORDER BY id = ?1 DESC, slug = lower(?1) DESC LIMIT 1",
+            )
+            .bind(&[key.into()])?
+            .first::<Found>(None)
+            .await?;
+        Ok(found.map(|f| (f.id, f.slug)))
+    }
+
     async fn require_sso_of(&self, workspace_id: &str) -> Result<bool> {
         #[derive(Deserialize)]
         struct Row {
@@ -378,7 +410,11 @@ impl Identity {
 
     async fn settings_of(&self, workspace_id: &str, slug: &str, actor: &User) -> Result<SsoSettings> {
         let row = self.connection_where("workspace_id", workspace_id).await?;
-        let (identities, you_linked) = match &row {
+        let you_linked = match &row {
+            Some(row) => self.sso_linked(&row.id, &actor.id).await?,
+            None => false,
+        };
+        let (identities, _) = match &row {
             Some(row) => {
                 #[derive(Deserialize)]
                 struct Linked {
@@ -419,6 +455,7 @@ impl Identity {
         };
         Ok(SsoSettings {
             slug: slug.to_owned(),
+            workspace_id: workspace_id.to_owned(),
             connection: row.as_ref().map(ConnectionRow::view),
             required: self.require_sso_of(workspace_id).await?,
             you_linked,
@@ -441,13 +478,14 @@ impl Identity {
 
     /// `sso_summary`: whether a workspace has single sign-on, for anyone.
     pub async fn sso_summary(&self, a: SlugArgs) -> Result<SsoSummary> {
-        let Some(workspace_id) = self.workspace_id_of(&a.slug.to_lowercase()).await? else {
+        let Some((workspace_id, _)) = self.sso_workspace(&a.slug).await? else {
             return Ok(SsoSummary::default());
         };
         let Some(row) = self.connection_where("workspace_id", &workspace_id).await? else {
             return Ok(SsoSummary::default());
         };
         Ok(SsoSummary {
+            workspace_id: workspace_id.clone(),
             enabled: true,
             protocol: Some(row.protocol()),
             required: self.require_sso_of(&workspace_id).await?,
@@ -538,7 +576,26 @@ impl Identity {
         let message = match (&before, changed_provider) {
             (None, _) => format!("Set up single sign-on over {}", protocol_name(a.protocol)),
             (Some(_), true) => format!("Moved single sign-on to another identity provider ({}), unlinking everyone", protocol_name(a.protocol)),
-            (Some(_), false) => "Changed single sign-on's settings".to_owned(),
+            (Some(before), false) => {
+                let was = before.config();
+                let mut changes: Vec<String> = Vec::new();
+                if was.certificates != config.certificates {
+                    changes.push("its signing certificates".to_owned());
+                }
+                if was.client_id != config.client_id {
+                    changes.push("its client id".to_owned());
+                }
+                if a.client_secret.as_deref().is_some_and(|s| !s.trim().is_empty()) {
+                    changes.push("its client secret".to_owned());
+                }
+                if (before.allow_join != 0) != a.allow_join {
+                    changes.push(if a.allow_join { "letting its people join".to_owned() } else { "no longer letting its people join".to_owned() });
+                }
+                if was.join_domains != config.join_domains {
+                    changes.push(format!("who may join ({})", if config.join_domains.is_empty() { "anyone".to_owned() } else { config.join_domains.join(", ") }));
+                }
+                if changes.is_empty() { "Changed single sign-on's settings".to_owned() } else { format!("Changed single sign-on: {}", changes.join(", ")) }
+            }
         };
         self.audit_workspace(&a.actor, if before.is_none() { "sso.created" } else { "sso.updated" }, &slug, surface, message).await;
         self.announce_workspace(&workspace_id, &slug, Some(&a.actor.id)).await;
@@ -672,8 +729,7 @@ impl Identity {
         if !a.user.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Confirm your email address first."));
         }
-        let slug = a.slug.trim().to_lowercase();
-        let Some(workspace_id) = self.workspace_id_of(&slug).await? else {
+        let Some((workspace_id, slug)) = self.sso_workspace(&a.slug).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, "There is no workspace with that name."));
         };
         let Some(row) = self.connection_where("workspace_id", &workspace_id).await? else {
@@ -738,11 +794,15 @@ impl Identity {
                 (state.clone(), url, Some(state), Some(verifier), nonce)
             }
         };
+        // SAML's response comes back cross-site, without the session cookie:
+        // a SameSite=None cookie of its own binds it to this browser.
+        let binding = (row.protocol() == SsoProtocol::Saml).then(|| crypto::random_hex(32));
         let optional = |value: Option<&str>| value.map_or(JsValue::NULL, Into::into);
+        let browser = binding.as_deref().map(crypto::sha256_hex);
         self.db
             .prepare(format!(
-                "INSERT INTO sso_states (id, connection_id, session_id, user_id, verifier, nonce, redirect_uri, audience, next, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, {})",
+                "INSERT INTO sso_states (id, connection_id, session_id, user_id, verifier, nonce, redirect_uri, audience, next, browser, expires_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {})",
                 sql_after(STATE_TTL_SECONDS)
             ))
             .bind(&[
@@ -755,6 +815,7 @@ impl Identity {
                 a.redirect_uri.as_str().into(),
                 optional(a.entity_id.as_deref()),
                 a.next.as_str().into(),
+                optional(browser.as_deref()),
             ])?
             .run()
             .await?;
@@ -765,7 +826,7 @@ impl Identity {
                 self.db.prepare(format!("DELETE FROM sso_sessions WHERE expires_at < {SQL_NOW}")),
             ])
             .await?;
-        Ok(Outcome::Ok(SsoStart { url, state }))
+        Ok(Outcome::Ok(SsoStart { url, state, binding }))
     }
 
     async fn endpoints_of(&self, protocol: SsoProtocol, config: &SsoConfig) -> std::result::Result<oauth::Endpoints, String> {
@@ -782,9 +843,10 @@ impl Identity {
         }
     }
 
-    /// Spends a state row, once, and finds its connection, which must be
-    /// `slug`'s.
-    async fn spend_state(&self, key: &str, slug: &str) -> Result<Option<(StateRow, ConnectionRow)>> {
+    /// Spends a state row, once, and finds its connection, which must be the
+    /// workspace's that `workspace` names (by id or name), and that
+    /// workspace's name now.
+    async fn spend_state(&self, key: &str, workspace: &str) -> Result<Option<(StateRow, ConnectionRow, String)>> {
         let state = self
             .db
             .prepare(format!("DELETE FROM sso_states WHERE id = ? AND expires_at > {SQL_NOW} RETURNING *"))
@@ -797,13 +859,15 @@ impl Identity {
         let Some(row) = self.connection_where("id", &state.connection_id).await? else {
             return Ok(None);
         };
-        let workspace = self.workspace_id_of(&slug.trim().to_lowercase()).await?;
-        Ok((workspace.as_deref() == Some(row.workspace_id.as_str())).then_some((state, row)))
+        let Some((workspace_id, slug)) = self.sso_workspace(workspace).await? else {
+            return Ok(None);
+        };
+        Ok((workspace_id == row.workspace_id).then_some((state, row, slug)))
     }
 
     /// `sso_finish`: see [`SsoFinishArgs`].
     pub async fn sso_finish(&self, a: SsoFinishArgs) -> Result<Outcome<SsoFinished>> {
-        let Some((state, row)) = self.spend_state(&a.state, &a.slug).await? else {
+        let Some((state, row, slug)) = self.spend_state(&a.state, &a.slug).await? else {
             return Ok(Outcome::fail(FailureCode::Invalid, EXPIRED));
         };
         if crypto::sha256_hex(&a.session_token) != state.session_id {
@@ -858,7 +922,7 @@ impl Identity {
             }
         };
         match said.await {
-            Ok(said) => self.complete(&row, &state, &a.slug, &said).await,
+            Ok(said) => self.complete(&row, &state, &slug, &said).await,
             Err(why) => Ok(Outcome::fail(FailureCode::Invalid, why)),
         }
     }
@@ -871,9 +935,19 @@ impl Identity {
                 "Start single sign-on from g1t: sign-ins started at the identity provider are not accepted.",
             ));
         };
-        let Some((state, row)) = self.spend_state(&request_id, &a.slug).await? else {
+        let Some((state, row, slug)) = self.spend_state(&request_id, &a.slug).await? else {
             return Ok(Outcome::fail(FailureCode::Invalid, EXPIRED));
         };
+        // Only the browser that set off: its binding cookie came back with
+        // the response. Otherwise someone could send their own request to
+        // another person, whose provider would answer it for them.
+        let bound = match (&state.browser, a.binding.as_deref()) {
+            (Some(expected), Some(binding)) => crypto::sha256_hex(binding) == *expected,
+            _ => false,
+        };
+        if !bound {
+            return Ok(Outcome::fail(FailureCode::Invalid, "This sign-in did not start in this browser. Start again from g1t."));
+        }
         let config = row.config();
         let certificates: Vec<Vec<u8>> = config.certificates.iter().filter_map(|der| STANDARD.decode(der).ok()).collect();
         let expect = saml::Expect {
@@ -886,7 +960,7 @@ impl Identity {
         };
         match saml::verify_response(&a.saml_response, &expect) {
             // The provider signed the assertion, address and all.
-            Ok(asserted) => self.complete(&row, &state, &a.slug, &Said::new(asserted.subject, asserted.email, true)).await,
+            Ok(asserted) => self.complete(&row, &state, &slug, &Said::new(asserted.subject, asserted.email, true)).await,
             Err(why) => Ok(Outcome::fail(FailureCode::Invalid, why)),
         }
     }
@@ -905,10 +979,11 @@ impl Identity {
         struct Linked {
             user_id: String,
             subject: String,
+            ids: String,
         }
         let linked = self
             .db
-            .prepare("SELECT user_id, subject FROM sso_identities WHERE connection_id = ?1 AND (subject = ?2 OR user_id = ?3)")
+            .prepare("SELECT user_id, subject, ids FROM sso_identities WHERE connection_id = ?1 AND (subject = ?2 OR user_id = ?3)")
             .bind(&[row.id.as_str().into(), subject.into(), user_id.into()])?
             .all()
             .await?
@@ -919,11 +994,18 @@ impl Identity {
                 format!("That account at {slug}'s identity provider is linked to another g1t account. An owner of {slug} can unlink it."),
             ));
         }
-        if linked.iter().any(|l| l.user_id == user_id && l.subject != subject) {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                format!("Your g1t account is linked to another account at {slug}'s identity provider. Sign in with that one, or ask an owner of {slug} to unlink it."),
-            ));
+        // Linked under another subject: the same person when another stable
+        // id still matches (Entra's object id, after a new app
+        // registration); otherwise someone else at the provider.
+        if let Some(other) = linked.iter().find(|l| l.user_id == user_id && l.subject != subject) {
+            let mut stored: Vec<String> = serde_json::from_str(&other.ids).unwrap_or_default();
+            stored.push(other.subject.clone());
+            if !same_person(&stored, &said.ids) {
+                return Ok(Outcome::fail(
+                    FailureCode::Conflict,
+                    format!("Your g1t account is linked to another account at {slug}'s identity provider. Sign in with that one, or ask an owner of {slug} to unlink it."),
+                ));
+            }
         }
         // With SCIM on, only someone the provider has assigned, matched
         // without doubt, and not as another g1t account (provisioning.rs).
@@ -974,21 +1056,35 @@ impl Identity {
         // Refusals done: write.
         let now = rfc3339(now_ms());
         let email_value = said.email.as_deref().map_or(JsValue::NULL, Into::into);
+        let ids = serde_json::to_string(&said.ids).unwrap_or_else(|_| "[]".to_owned());
+        let trusted = said.trusted_email().map_or(JsValue::NULL, Into::into);
         if linked.is_empty() {
             self.db
                 .prepare(
-                    "INSERT INTO sso_identities (connection_id, user_id, subject, email, created_at, last_used_at)
-                     VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO sso_identities (connection_id, user_id, subject, email, ids, trusted_email, created_at, last_used_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 )
-                .bind(&[row.id.as_str().into(), user_id.into(), subject.into(), email_value, now.as_str().into(), now.as_str().into()])?
+                .bind(&[
+                    row.id.as_str().into(),
+                    user_id.into(),
+                    subject.into(),
+                    email_value,
+                    ids.as_str().into(),
+                    trusted,
+                    now.as_str().into(),
+                    now.as_str().into(),
+                ])?
                 .run()
                 .await?;
             self.audit_workspace(&person, "sso.identity_linked", &slug, Surface::Web, format!("Linked to {subject} at the single sign-on provider"))
                 .await;
         } else {
             self.db
-                .prepare("UPDATE sso_identities SET last_used_at = ?, email = COALESCE(?, email) WHERE connection_id = ? AND user_id = ?")
-                .bind(&[now.as_str().into(), email_value, row.id.as_str().into(), user_id.into()])?
+                .prepare(
+                    "UPDATE sso_identities SET subject = ?, ids = ?, trusted_email = ?, last_used_at = ?, email = COALESCE(?, email)
+                     WHERE connection_id = ? AND user_id = ?",
+                )
+                .bind(&[subject.into(), ids.as_str().into(), trusted, now.as_str().into(), email_value, row.id.as_str().into(), user_id.into()])?
                 .run()
                 .await?;
         }
@@ -999,15 +1095,19 @@ impl Identity {
                 .run()
                 .await?;
         }
+        // With SCIM, only while the assignment is still active: a
+        // deprovisioning that lands mid-sign-in wins.
+        let still_assigned = "(?4 IS NULL OR EXISTS (SELECT 1 FROM scim_users WHERE id = ?4 AND active = 1))";
+        let assignment = provisioned.as_deref().map_or(JsValue::NULL, Into::into);
         let mut joined = false;
         if !member {
             joined = self
                 .db
-                .prepare(
+                .prepare(format!(
                     "INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, created_at)
-                     VALUES (?, ?, 'member', ?) RETURNING user_id",
-                )
-                .bind(&[row.workspace_id.as_str().into(), user_id.into(), now.as_str().into()])?
+                     SELECT ?1, ?2, 'member', ?3 WHERE {still_assigned} RETURNING user_id"
+                ))
+                .bind(&[row.workspace_id.as_str().into(), user_id.into(), now.as_str().into(), assignment.clone()])?
                 .first::<Value>(None)
                 .await?
                 .is_some();
@@ -1020,11 +1120,11 @@ impl Identity {
         self.db
             .prepare(format!(
                 "INSERT INTO sso_sessions (session_id, workspace_id, expires_at)
-                 SELECT ?1, ?2, {} WHERE EXISTS (SELECT 1 FROM sessions WHERE id = ?1 AND user_id = ?3 AND expires_at > {SQL_NOW})
+                 SELECT ?1, ?2, {} WHERE EXISTS (SELECT 1 FROM sessions WHERE id = ?1 AND user_id = ?3 AND expires_at > {SQL_NOW}) AND {still_assigned}
                  ON CONFLICT (session_id, workspace_id) DO UPDATE SET expires_at = excluded.expires_at",
                 sql_after(SSO_SESSION_SECONDS)
             ))
-            .bind(&[state.session_id.as_str().into(), row.workspace_id.as_str().into(), user_id.into()])?
+            .bind(&[state.session_id.as_str().into(), row.workspace_id.as_str().into(), user_id.into(), assignment])?
             .run()
             .await?;
         let first = self
@@ -1195,11 +1295,15 @@ mod tests {
     fn entra_gives_its_object_id_and_a_members_principal_name() {
         let claims = serde_json::json!({ "sub": "pairwise", "oid": "11111111-2222", "preferred_username": "Ada@Contoso.com", "email": "ada@contoso.com" });
         let said = said_by_oidc(&claims, "https://login.microsoftonline.com/tid/v2.0").unwrap();
-        assert_eq!(said.ids, vec!["pairwise".to_owned(), "11111111-2222".to_owned(), "ada@contoso.com".to_owned()]);
+        // The object id, never the mutable principal name.
+        assert_eq!(said.ids, vec!["pairwise".to_owned(), "11111111-2222".to_owned()]);
         // Entra sends no email_verified: its address is never trusted.
         assert_eq!(said.trusted_email(), None);
-        let guest = serde_json::json!({ "sub": "p", "preferred_username": "eve_gmail.com#EXT#@contoso.onmicrosoft.com" });
-        assert_eq!(said_by_oidc(&guest, "https://login.microsoftonline.com/tid/v2.0").unwrap().ids, vec!["p".to_owned()]);
+        // A new app registration: another pairwise subject, the same object id.
+        assert!(same_person(&["old-pairwise".to_owned(), "11111111-2222".to_owned()], &said.ids));
+        assert!(!same_person(&["old-pairwise".to_owned()], &said.ids));
+        let stringly = serde_json::json!({ "sub": "1", "email": "a@b.co", "email_verified": "true" });
+        assert_eq!(said_by_oidc(&stringly, "https://idp.test").unwrap().trusted_email(), Some("a@b.co"));
         let okta = serde_json::json!({ "sub": "00u1", "oid": "x", "email": "ada@acme.com", "email_verified": true });
         let said = said_by_oidc(&okta, "https://acme.okta.com").unwrap();
         assert_eq!(said.ids, vec!["00u1".to_owned()]);
