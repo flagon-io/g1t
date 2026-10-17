@@ -90,6 +90,20 @@ export function SsoSection({ sso, unavailable }: { sso: SsoSettings | null; unav
               </div>
             )}
           </dl>
+          <p className="text-sm">
+            <span className="text-xs text-faint">SCIM </span>
+            {sso?.scim ? (
+              <>
+                <Badge tone="info">On</Badge>{" "}
+                <span className="text-muted">
+                  {sso.scim.users.filter((user) => user.active).length} active of {sso.scim.users.length} assigned, token ending{" "}
+                  <span className="font-mono">{sso.scim.hint}</span>, last used <When at={sso.scim.last_used_at} />
+                </span>
+              </>
+            ) : (
+              <Badge>Off</Badge>
+            )}
+          </p>
           {sso!.identities.length === 0 ? (
             <p className="text-sm text-muted">No one has signed in through it yet.</p>
           ) : (

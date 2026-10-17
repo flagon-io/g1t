@@ -57,6 +57,27 @@ export type SsoSettings = {
   /** Whether the owner asking has signed in through it, which requiring it needs. */
   you_linked: boolean;
   identities: SsoIdentity[];
+  /** SCIM, when it is on: who the provider has assigned. */
+  scim?: ScimStatus | null;
+};
+
+export type ScimStatus = {
+  /** The token's last four characters. */
+  hint: string;
+  created_at: string;
+  created_by: string | null;
+  last_used_at: string | null;
+  users: ProvisionedUser[];
+};
+
+export type ProvisionedUser = {
+  id: string;
+  user_name: string;
+  display_name: string | null;
+  active: boolean;
+  /** The g1t account they signed in as, once they have. */
+  username: string | null;
+  updated_at: string;
 };
 
 export type SsoSummary = {
@@ -107,6 +128,8 @@ export function ssoClient(identity: ServiceBinding) {
       call<Result<SsoFinished>>("sso_finish", input),
     saml: (slug: string, samlResponse: string) => call<Result<SsoFinished>>("sso_saml", { slug, saml_response: samlResponse }),
     metadata: (entityId: string, acsUrl: string) => call<string>("sso_metadata", { entity_id: entityId, acs_url: acsUrl }),
+    enableScim: (actor: User, slug: string) => call<Result<{ token: string; hint: string }>>("enable_scim", { actor, slug, surface: "web" }),
+    disableScim: (actor: User, slug: string) => call<Result<boolean>>("disable_scim", { actor, slug, surface: "web" }),
   };
 }
 
@@ -115,6 +138,11 @@ export function ssoClient(identity: ServiceBinding) {
  * entity id (its metadata's address), the assertion consumer service, and
  * the callback for OpenID Connect and OAuth 2.0.
  */
+/** The SCIM 2.0 base URL for a workspace, on the API. */
+export function scimUrl(api: string, slug: string): string {
+  return `${api.replace(/\/+$/, "")}/scim/v2/${encodeURIComponent(slug.toLowerCase())}`;
+}
+
 export function ssoAddresses(origin: string, slug: string) {
   const base = `${origin.replace(/\/+$/, "")}/auth/sso/${encodeURIComponent(slug.toLowerCase())}`;
   return { entityId: `${base}/metadata`, metadataUrl: `${base}/metadata`, acsUrl: `${base}/saml`, callbackUrl: `${base}/callback` };

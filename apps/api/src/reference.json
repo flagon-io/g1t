@@ -15213,7 +15213,8 @@
         "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
         "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
         "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
-        "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+        "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
+        "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
       }
     }
   },
@@ -15266,7 +15267,8 @@
         "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
         "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
         "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
-        "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+        "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
+        "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
       }
     }
   },
@@ -15308,6 +15310,24 @@
     },
     "response": {
       "unlinked": true
+    }
+  },
+  "enable_scim": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "token": "g1t_scim_4f1c…",
+      "hint": "9a2e",
+      "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+    }
+  },
+  "disable_scim": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "disabled": true
     }
   }
 }

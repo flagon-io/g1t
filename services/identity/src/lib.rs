@@ -938,6 +938,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "sso_finish" => reply(&identity.sso_finish(args(body)?).await?),
         "sso_saml" => reply(&identity.sso_saml(args(body)?).await?),
         "sso_metadata" => reply(&identity.sso_metadata(args(body)?)),
+        "enable_scim" => reply(&identity.enable_scim(args(body)?).await?),
+        "disable_scim" => reply(&identity.disable_scim(args(body)?).await?),
+        "scim_request" => reply(&identity.scim_request(args(body)?).await?),
         "grant_creator" => reply(&identity.grant_creator(args(body)?).await?),
         "update_workspace" => {
             let outcome = identity.update_workspace(args(body)?).await?;

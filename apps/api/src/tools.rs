@@ -466,6 +466,8 @@ pub const TOOLS: &[Tool] = &[
             a("delete_sso", Op::Sso(SsoOp::DeleteSso), "Remove its single sign-on"),
             a("list_sso_identities", Op::Sso(SsoOp::ListSsoIdentities), "The people linked through single sign-on"),
             a("unlink_sso_identity", Op::Sso(SsoOp::UnlinkSsoIdentity), "Unlink someone from single sign-on"),
+            a("enable_scim", Op::Sso(SsoOp::EnableScim), "Turn on SCIM, or make a new SCIM token"),
+            a("disable_scim", Op::Sso(SsoOp::DisableScim), "Turn off SCIM"),
         ],
     },
     Tool {
@@ -645,7 +647,7 @@ fn destructive(op: Op) -> bool {
             | Op::DeleteWorkspace
             | Op::UpdateWorkspace
             | Op::Tokens(TokenOp::RevokeMemberToken | TokenOp::SetTokenPolicy)
-            | Op::Sso(SsoOp::ConfigureSso | SsoOp::DeleteSso | SsoOp::UnlinkSsoIdentity)
+            | Op::Sso(SsoOp::ConfigureSso | SsoOp::DeleteSso | SsoOp::UnlinkSsoIdentity | SsoOp::EnableScim | SsoOp::DisableScim)
             | Op::RemoveMember
             | Op::TransferOwnership
             | Op::LeaveWorkspace

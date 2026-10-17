@@ -105,14 +105,16 @@
     },
     {
       "name": "Single sign-on",
-      "description": "A workspace's own identity provider over OpenID Connect, OAuth 2.0 or SAML 2.0, on every paid plan: setting it up, requiring it of members, the people linked to it, and unlinking one. People sign in to g1t as themselves and then through the provider to use the workspace; owners are never held out. Owners only, as people.",
+      "description": "A workspace's own identity provider over OpenID Connect, OAuth 2.0 or SAML 2.0, on every paid plan: setting it up, requiring it of members, the people linked to it, unlinking one, and SCIM, through which the provider assigns and unassigns people at /scim/v2/{workspace}. People sign in to g1t as themselves and then through the provider to use the workspace; owners are never held out. Owners only, as people.",
       "x-tools": [
         "get_sso",
         "configure_sso",
         "set_sso_required",
         "delete_sso",
         "list_sso_identities",
-        "unlink_sso_identity"
+        "unlink_sso_identity",
+        "enable_scim",
+        "disable_scim"
       ]
     },
     {
@@ -5726,7 +5728,8 @@
                     "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
                     "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
                     "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
-                    "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+                    "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
+                    "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
                   }
                 }
               }
@@ -5901,7 +5904,8 @@
                     "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
                     "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
                     "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
-                    "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+                    "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
+                    "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
                   }
                 }
               }
@@ -6728,6 +6732,316 @@
         "x-example-params": {
           "workspace": "flagon-io",
           "username": "ada"
+        }
+      }
+    },
+    "/workspaces/{workspace}/sso/scim": {
+      "post": {
+        "operationId": "enable_scim",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Turn on SCIM, or make a new SCIM token",
+        "description": "Turn on SCIM for the workspace's single sign-on, or replace its token: returns token (shown this once; the old one stops working), hint (its last four characters) and scim_url, the SCIM 2.0 base URL to give the identity provider with the token as a bearer token. With SCIM on, only people the provider has assigned (active users) can sign in through single sign-on, and one it deactivates or deletes leaves the workspace at once: membership, roles, link and sessions. Owners are never removed that way. Users only; groups are not kept. Needs single sign-on set up and a paid plan. Recorded as sso.scim_enabled or sso.scim_token_rotated. Owners only, as people.",
+        "x-operation": "enable_scim",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "enable_scim",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "token": "g1t_scim_4f1c…",
+                  "hint": "9a2e",
+                  "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "delete": {
+        "operationId": "disable_scim",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Turn off SCIM",
+        "description": "Turn off SCIM: the token stops working and the provisioned users are forgotten. Nobody is removed from the workspace, and single sign-on lets people in as before. Recorded as sso.scim_disabled. Owners only, as people.",
+        "x-operation": "disable_scim",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "disable_scim",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "disabled": true
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
         }
       }
     },

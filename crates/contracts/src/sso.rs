@@ -23,6 +23,15 @@
 //! - `sso_saml` takes `SsoSamlArgs`, returns `Outcome<SsoFinished>`.
 //! - `sso_summary` takes `SlugArgs`, returns `SsoSummary`.
 //! - `sso_metadata` takes `SsoMetadataArgs`, returns the XML as a string.
+//! - `enable_scim` takes `SsoSettingsArgs`, returns `Outcome<ScimToken>`.
+//! - `disable_scim` takes `SsoSettingsArgs`, returns `Outcome<bool>`.
+//! - `scim_request` takes `ScimRequestArgs`, returns `ScimAnswer`.
+//!
+//! **SCIM.** With a SCIM token, the provider tells g1t who is assigned to
+//! the workspace (`/scim/v2/{workspace}/Users` on the API). Then only an
+//! active provisioned user may sign in through single sign-on, and one
+//! deactivated or deleted leaves the workspace at once: their membership,
+//! roles, link and sessions. Owners are never removed this way.
 
 use serde::{Deserialize, Serialize};
 
@@ -151,6 +160,67 @@ pub struct SsoSettings {
     /// before requiring it.
     pub you_linked: bool,
     pub identities: Vec<SsoIdentity>,
+    /// SCIM, when it is on: the provider says who is assigned.
+    #[serde(default)]
+    pub scim: Option<ScimStatus>,
+}
+
+/// A workspace's SCIM, as its owners see it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScimStatus {
+    /// The token's last four characters.
+    pub hint: String,
+    pub created_at: String,
+    /// The username of whoever made the token.
+    pub created_by: Option<String>,
+    pub last_used_at: Option<String>,
+    /// Who the provider has told g1t of, at most 500.
+    pub users: Vec<ProvisionedUser>,
+}
+
+/// Someone the provider assigned to the workspace.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProvisionedUser {
+    pub id: String,
+    pub user_name: String,
+    pub display_name: Option<String>,
+    pub active: bool,
+    /// The g1t account they signed in as, once they have.
+    pub username: Option<String>,
+    pub updated_at: String,
+}
+
+/// `enable_scim`: a new SCIM token for the workspace, replacing any other.
+/// Shown once.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScimToken {
+    pub token: String,
+    pub hint: String,
+}
+
+/// `scim_request`: one SCIM request, as the API received it at
+/// `/scim/v2/{workspace}/…`. Returns `ScimAnswer`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ScimRequestArgs {
+    pub workspace: String,
+    /// The bearer token sent.
+    pub token: String,
+    pub method: String,
+    /// After the workspace, such as `/Users/scu_…`.
+    pub path: String,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub body: Option<String>,
+    /// `https://api.g1t.sh/scim/v2/{workspace}`, for resources' locations.
+    pub base: String,
+}
+
+/// What to answer a SCIM request with.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ScimAnswer {
+    pub status: u16,
+    pub body: Option<serde_json::Value>,
 }
 
 /// Whether a workspace has single sign-on, for anyone: the sign-in page

@@ -1315,6 +1315,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("delete_sso", Scope::WorkspaceAdmin),
     ("list_sso_identities", Scope::AccessRead),
     ("unlink_sso_identity", Scope::AccessAdmin),
+    ("enable_scim", Scope::WorkspaceAdmin),
+    ("disable_scim", Scope::WorkspaceAdmin),
     // Who has access.
     ("list_collaborators", Scope::AccessRead),
     ("get_collaborator_permission", Scope::AccessRead),

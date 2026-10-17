@@ -266,7 +266,7 @@ function rows(tier: Required<FreeTier>): Row[] {
       what: "Single sign-on",
       free: "Not available",
       plan: "Included, at no extra price",
-      note: "Your identity provider over SAML 2.0, OpenID Connect or OAuth 2.0, and requiring it of members.",
+      note: "Your identity provider over SAML 2.0, OpenID Connect or OAuth 2.0, requiring it of members, and SCIM provisioning.",
     },
     {
       what: "Secret scanning, push protection, vulnerability alerts, security updates",

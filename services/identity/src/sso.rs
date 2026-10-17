@@ -31,6 +31,10 @@
 mod oauth;
 #[path = "sso/saml.rs"]
 mod saml;
+#[path = "sso/scim.rs"]
+mod scim;
+#[path = "sso/provisioning.rs"]
+mod provisioning;
 
 use std::collections::HashSet;
 
@@ -42,7 +46,7 @@ use g1t_contracts::members::PolicyHold;
 use g1t_contracts::sso::*;
 use g1t_contracts::time::{SQL_NOW, rfc3339, sql_after};
 use g1t_contracts::identity::SlugArgs;
-use g1t_contracts::{FailureCode, Membership, Outcome, Role, User, new_id};
+use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::now_ms;
 use g1t_secrets::Sealer;
 use serde::Deserialize;
@@ -328,6 +332,7 @@ impl Identity {
             required: self.require_sso_of(workspace_id).await?,
             you_linked,
             identities,
+            scim: self.scim_status(workspace_id).await?,
         })
     }
 
@@ -509,6 +514,9 @@ impl Identity {
                 self.db.prepare("DELETE FROM sso_connections WHERE id = ?").bind(&[row.id.as_str().into()])?,
                 self.db.prepare("DELETE FROM sso_sessions WHERE workspace_id = ?").bind(&[workspace_id.as_str().into()])?,
                 self.db.prepare("UPDATE workspaces SET require_sso = 0 WHERE id = ?").bind(&[workspace_id.as_str().into()])?,
+                // SCIM is single sign-on's: it goes with it.
+                self.db.prepare("DELETE FROM scim_tokens WHERE workspace_id = ?").bind(&[workspace_id.as_str().into()])?,
+                self.db.prepare("DELETE FROM scim_users WHERE workspace_id = ?").bind(&[workspace_id.as_str().into()])?,
             ])
             .await?;
         self.audit_workspace(&a.actor, "sso.deleted", &slug, a.surface.unwrap_or(Surface::Web), "Removed single sign-on".to_owned())
@@ -804,6 +812,26 @@ impl Identity {
             .results::<Linked>()?;
         let now = rfc3339(now_ms());
         let email_value = email.map_or(JsValue::NULL, Into::into);
+        // With SCIM on, only someone the provider has assigned, and not
+        // as another g1t account (provisioning.rs).
+        let provisioned = match self.scim_on(&row.workspace_id).await? {
+            false => None,
+            true => match self.provisioned_as(&row.workspace_id, subject, email).await? {
+                Some((_, Some(other))) if other != user_id => {
+                    return Ok(Outcome::fail(
+                        FailureCode::Conflict,
+                        format!("That account at {slug}'s identity provider is linked to another g1t account. An owner of {slug} can unlink it."),
+                    ));
+                }
+                Some((id, _)) => Some(id),
+                None => {
+                    return Ok(Outcome::fail(
+                        FailureCode::Forbidden,
+                        format!("Your account at {slug}'s identity provider is not assigned to g1t. Ask whoever runs it for {slug} to assign you."),
+                    ));
+                }
+            },
+        };
         if linked.iter().any(|l| l.subject == subject && l.user_id != user_id) {
             return Ok(Outcome::fail(
                 FailureCode::Conflict,
@@ -831,6 +859,13 @@ impl Identity {
             self.db
                 .prepare("UPDATE sso_identities SET last_used_at = ?, email = COALESCE(?, email) WHERE connection_id = ? AND user_id = ?")
                 .bind(&[now.as_str().into(), email_value, row.id.as_str().into(), user_id.into()])?
+                .run()
+                .await?;
+        }
+        if let Some(id) = &provisioned {
+            self.db
+                .prepare("UPDATE scim_users SET user_id = ? WHERE id = ?")
+                .bind(&[user_id.into(), id.as_str().into()])?
                 .run()
                 .await?;
         }

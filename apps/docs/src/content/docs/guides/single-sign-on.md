@@ -166,9 +166,41 @@ curl -X PUT https://api.g1t.sh/workspaces/acme/sso   -H "Authorization: Bearer $
 Signing in through the provider is a trip in the browser, so it has no
 API: send people to `sign_in_url`.
 
-## Not yet
+## SCIM
 
-Provisioning and deprovisioning with SCIM is not available yet. Until it
-is, someone you remove at your provider keeps their g1t session for up to
-a day and their tokens until an owner removes them from the workspace or
-unlinks them.
+With SCIM, your provider tells g1t who is assigned to the workspace, and
+who is not any more:
+
+- Only people your provider has assigned, and not deactivated, can sign in
+  through it. Someone else is told to ask whoever runs your provider.
+- Someone it unassigns, deactivates or deletes leaves the workspace at
+  once: their membership, their roles on its repositories and teams, their
+  link, and their sessions through it. Their g1t account is theirs and
+  stays. **Owners are never removed this way**; the audit log says so, and
+  you remove one by hand if they should go.
+- People, not groups. Assign a group to the app in your provider and its
+  members are provisioned one by one; turn off pushing groups.
+
+To turn it on, open **Single sign-on → SCIM provisioning** and choose
+**Turn on SCIM**. Give your provider:
+
+| | |
+| --- | --- |
+| SCIM base URL (tenant URL) | `https://api.g1t.sh/scim/v2/<workspace>` |
+| Authentication | Bearer token: the SCIM token, shown once |
+| Unique identifier | `userName` |
+| Supported | Create, update (PUT and PATCH), deactivate and delete users; filtering by `userName`, `externalId`, `id` or `emails.value` |
+
+Whoever signs in through your provider is matched to the person it
+assigned by their id there, their userName, or their address. **Make a new
+token** replaces the old one at once; **Turn off SCIM** forgets who was
+assigned and removes nobody.
+
+Through the API: `POST /workspaces/{workspace}/sso/scim` (`enable_scim`)
+answers with the token and `scim_url`; `DELETE` turns it off
+(`disable_scim`). `get_sso` lists who is assigned under `scim`. Recorded as
+`sso.scim_enabled`, `sso.scim_token_rotated`, `sso.scim_disabled`,
+`sso.scim_user_provisioned`, `sso.scim_user_activated`,
+`sso.scim_user_deactivated`, `sso.scim_user_deleted`,
+`member.removed_by_scim` and `sso.scim_owner_kept`, with `scim` as the
+actor.
