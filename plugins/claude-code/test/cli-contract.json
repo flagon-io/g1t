@@ -1,6 +1,6 @@
 {
   "about": "Every g1t CLI invocation the plugin's hooks (hooks/g1t.mjs) can make: each command, the flags it passes and the values they take. The hook tests' stand-in CLI (test/fake-g1t.mjs) refuses anything not here, and crates/g1t's tests parse every command here, with every value, with the real CLI's parser, so the hooks never send what the CLI rejects. minimum_version is the oldest CLI that accepts all of it: the hooks say so when the installed CLI is older. Types: text, number, switch, json (--json, optionally with fields), or a list of the values accepted.",
-  "minimum_version": "0.3.2",
+  "minimum_version": "0.4.0",
   "commands": [
     { "command": [], "flags": { "--version": "switch" } },
     {
@@ -8,7 +8,7 @@
       "flags": {
         "--harness": ["claude_code"],
         "--harness-session-id": "text",
-        "--issue": "number",
+        "--item": "number",
         "--parent": "text",
         "--no-remember": "switch",
         "--agent-type": "text",
@@ -28,14 +28,14 @@
     },
     {
       "command": ["session", "touch"],
-      "flags": { "--file": "text", "--commit": "text", "--branch": "text", "--issue": "number" },
-      "repeatable": ["--file", "--commit", "--branch", "--issue"],
-      "one_of": ["--file", "--commit", "--branch", "--issue"]
+      "flags": { "--file": "text", "--commit": "text", "--branch": "text", "--item": "number" },
+      "repeatable": ["--file", "--commit", "--branch", "--item"],
+      "one_of": ["--file", "--commit", "--branch", "--item"]
     },
     { "command": ["session", "end"], "flags": { "--reason": "text", "--result": "text" } },
     { "command": ["session", "heartbeat"], "flags": { "--json": "json" } },
     { "command": ["session", "attach"], "flags": { "--title": "text" }, "required": ["--title"] },
-    { "command": ["work", "context"], "flags": {}, "positionals": ["number"] },
+    { "command": ["work", "view"], "flags": {}, "positionals": ["number"] },
     {
       "command": ["api"],
       "flags": { "-f": "text", "--silent": "switch" },

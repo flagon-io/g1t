@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "g1t",
-  "version": "0.1.0",
-  "description": "Work with g1t projects, issues, pull requests and sessions from Codex.",
+  "version": "0.2.0",
+  "description": "Work with g1t projects, work items, pull requests and sessions from Codex.",
   "author": {
     "name": "Flagon, Inc.",
     "url": "https://g1t.sh"
@@ -14,7 +14,7 @@
     "com.openai": {
       "interface": {
         "displayName": "g1t",
-        "shortDescription": "Projects, issues, pull requests and coordinated sessions",
+        "shortDescription": "Projects, work items, pull requests and coordinated sessions",
         "developerName": "Flagon, Inc.",
         "category": "Developer Tools",
         "websiteURL": "https://g1t.sh",

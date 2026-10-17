@@ -29,8 +29,8 @@ import {
   isG1tRemote,
   isGitCommit,
   isGitPush,
-  issueFromBranch,
-  issueFromCommand,
+  itemFromBranch,
+  itemFromCommand,
   mayAddRemote,
   pairSubagent,
   plan,
@@ -143,9 +143,9 @@ describe("plan", () => {
     assert.equal(other.steps.length, 1);
   });
 
-  test("PostToolUse remembers the issue a command claims", () => {
+  test("PostToolUse remembers the work item a command claims", () => {
     const job = plan({ ...base, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "g1t work claim 42 --note x" } }, {});
-    assert.equal(job.issue, 42);
+    assert.equal(job.item, 42);
   });
 
   test("Stop sends a heartbeat and SessionEnd ends the session with its reason", () => {
@@ -218,7 +218,7 @@ const fixtures = {
     tool_input: { file_path: "/work/repo/src/api/routes.ts", old_string: "a", new_string: "b" },
     tool_response: { filePath: "/work/repo/src/api/routes.ts", structuredPatch: "SECRET PATCH" },
   },
-  skill: { ...base, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "work-on-issue", args: "42" }, tool_response: { success: true, commandName: "work-on-issue" } },
+  skill: { ...base, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "work-on-item", args: "42" }, tool_response: { success: true, commandName: "work-on-item" } },
 };
 
 describe("subagents", () => {
@@ -271,25 +271,26 @@ describe("subagents", () => {
   });
 
   test("a skill is its name only", () => {
-    assert.deepEqual(plan(fixtures.skill, {}).steps, [{ args: ["session", "log", "--kind", "skill", "--", "work-on-issue"], skill: "work-on-issue" }]);
+    assert.deepEqual(plan(fixtures.skill, {}).steps, [{ args: ["session", "log", "--kind", "skill", "--", "work-on-item"], skill: "work-on-item" }]);
   });
 
   test("branches made, commits, claims and g1t's MCP tools are touched", () => {
     const bash = (command) => plan({ ...base, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command } }, {});
     assert.deepEqual(bash("git checkout -b 42-fix").steps.at(-1), { args: ["session", "touch", "--branch", "42-fix"] });
     assert.deepEqual(bash('git commit -m "x" --trailer "G1t-Session: $G1T_SESSION"').steps.at(-1), { touchHead: true });
-    assert.deepEqual(bash("g1t work claim 42").steps.at(-1), { args: ["session", "touch", "--issue", "42"] });
-    const mcp = plan({ ...base, hook_event_name: "PostToolUse", tool_name: "mcp__plugin_g1t_g1t__issue", tool_input: { action: "claim", repo: "a/b", number: 7 } }, {});
-    assert.equal(mcp.issue, 7);
+    assert.deepEqual(bash("g1t work claim 42").steps.at(-1), { args: ["session", "touch", "--item", "42"] });
+    const mcp = plan({ ...base, hook_event_name: "PostToolUse", tool_name: "mcp__plugin_g1t_g1t__work_item", tool_input: { action: "claim", workspace: "a", number: 7 } }, {});
+    assert.equal(mcp.item, 7);
     assert.equal(branchFromCommand("git switch -c feat/x && echo"), "feat/x");
     assert.equal(branchFromCommand("git branch -d old"), null);
     assert.equal(isGitCommit("git -C repo commit -am x"), true);
     assert.equal(g1tTool("mcp__g1t__session"), "session");
+    assert.equal(g1tTool("mcp__plugin_g1t_g1t__work_item"), "work_item");
     assert.equal(g1tTool("mcp__github__issue"), null);
   });
 
-  test("a hand-off's issue comes with the session", () => {
-    assert.equal(plan({ ...base, hook_event_name: "SessionStart" }, { G1T_ISSUE: "12" }).issue, 12);
+  test("a hand-off's work item comes with the session", () => {
+    assert.equal(plan({ ...base, hook_event_name: "SessionStart" }, { G1T_ITEM: "12" }).item, 12);
   });
 });
 
@@ -304,7 +305,7 @@ describe("summaries", () => {
     assert.equal(repoPath("/work/repo/src/a.ts", "/work/repo", null), "src/a.ts");
     assert.equal(summarizeTool("WebFetch", { url: "https://example.com", prompt: "p" }), "WebFetch: https://example.com");
     assert.equal(summarizeTool("Bash", { command: "echo one\necho two" }), "Bash: echo one …");
-    assert.equal(summarizeTool("mcp__g1t__issue", { action: "get", number: 4 }), "mcp__g1t__issue: get");
+    assert.equal(summarizeTool("mcp__g1t__work_item", { action: "get", number: 4 }), "mcp__g1t__work_item: get");
     assert.ok(summarizeTool("Bash", { command: "y".repeat(1000) }).length <= 200);
   });
 
@@ -336,15 +337,16 @@ describe("summaries", () => {
     }
   });
 
-  test("find the issue in a branch name", () => {
-    assert.equal(issueFromBranch("42-fix-login"), 42);
-    assert.equal(issueFromBranch("issue-7"), 7);
-    assert.equal(issueFromBranch("fix/123-thing"), 123);
-    assert.equal(issueFromBranch("main"), null);
-    assert.equal(issueFromBranch("release/1.2"), null);
-    assert.equal(issueFromBranch("HEAD"), null);
-    assert.equal(issueFromCommand("g1t session attach --issue 9"), 9);
-    assert.equal(issueFromCommand("g1t pr create --issue=12 --draft"), 12);
+  test("find the work item in a branch name", () => {
+    assert.equal(itemFromBranch("42-fix-login"), 42);
+    assert.equal(itemFromBranch("issue-7"), 7);
+    assert.equal(itemFromBranch("item-8"), 8);
+    assert.equal(itemFromBranch("fix/123-thing"), 123);
+    assert.equal(itemFromBranch("main"), null);
+    assert.equal(itemFromBranch("release/1.2"), null);
+    assert.equal(itemFromBranch("HEAD"), null);
+    assert.equal(itemFromCommand("g1t session attach --item 9"), 9);
+    assert.equal(itemFromCommand("g1t pr create --item=12 --draft"), 12);
     assert.equal(isGitPush("cd x && git -C repo push"), true);
     assert.equal(isGitPush("git pushd"), false);
     assert.equal(isG1tRemote(["remote.origin.url https://g1t.sh/a/b.git"], {}), true);
@@ -401,13 +403,13 @@ describe("with a working copy", () => {
     assert.deepEqual(guessing, [], "these calls let the CLI guess what was touched");
   });
 
-  test("SessionStart gives Claude the branch's issue's work context", () => {
+  test("SessionStart gives Claude the branch's work item's work context", () => {
     const { output, job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart", source: "startup" }, env);
     const context = output.hookSpecificOutput.additionalContext;
     assert.equal(output.hookSpecificOutput.hookEventName, "SessionStart");
-    assert.match(context, /issue #42/);
+    assert.match(context, /work item #42/);
     assert.match(context, /Definition of done: it works/);
-    assert.deepEqual(calls()[0].args, ["work", "context", "42"]);
+    assert.deepEqual(calls()[0].args, ["work", "view", "42"]);
     assert.equal(job.start, true);
   });
 
@@ -450,7 +452,7 @@ describe("with a working copy", () => {
 
   test("background retrieval reaches the next tool without auto-acknowledging", () => {
     // A CLI that acknowledges: an older one is told to update instead (below).
-    env.FAKE_G1T_VERSION = "0.3.3";
+    env.FAKE_G1T_VERSION = "0.4.0";
     env.FAKE_G1T_UPDATES = JSON.stringify([{ id: "upd_real", kind: "overlap.detected", data: { paths: ["src/api.ts"] } }]);
     const event = { ...base, cwd: dir, hook_event_name: "SessionStart" };
     const { job } = hook(event, env);
@@ -498,7 +500,7 @@ describe("with a working copy", () => {
     assert.equal(pre.output, null);
     const started = hook(at(fixtures.subagentStart), env);
     assert.match(started.output.hookSpecificOutput.additionalContext, /session of your own/);
-    assert.match(started.output.hookSpecificOutput.additionalContext, /g1t session list --issue 42 --subagents|g1t session list --subagents/);
+    assert.match(started.output.hookSpecificOutput.additionalContext, /g1t session list --item 42 --subagents|g1t session list --subagents/);
     assert.equal(started.job.pair, true, "paired with its Agent call in the background half");
     work(started.job, env);
     assert.equal(started.job.agent.task, "Find API endpoints", "no files of the subagent's: the oldest call of its type");
@@ -508,7 +510,7 @@ describe("with a working copy", () => {
     // Its g1t commands act as it.
     const bash = hook(at({ ...base, hook_event_name: "PreToolUse", agent_id: "agent-def456", agent_type: "Explore", tool_name: "Bash", tool_input: { command: "g1t work claim 42" } }), env);
     assert.equal(bash.output.hookSpecificOutput.updatedInput.command, "export G1T_SESSION=ses_sub_def456; g1t work claim 42");
-    const mcp = hook(at({ ...base, hook_event_name: "PreToolUse", agent_id: "agent-def456", tool_name: "mcp__plugin_g1t_g1t__issue", tool_input: { action: "claim", repo: "acme/app", number: 42 } }), env);
+    const mcp = hook(at({ ...base, hook_event_name: "PreToolUse", agent_id: "agent-def456", tool_name: "mcp__plugin_g1t_g1t__work_item", tool_input: { action: "claim", workspace: "acme", number: 42 } }), env);
     assert.equal(mcp.output.hookSpecificOutput.updatedInput.session_id, "ses_sub_def456");
     // Outside a subagent, a command is left alone.
     assert.equal(hook(at({ ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "g1t work claim 42" } }), env).output, null);
@@ -614,7 +616,7 @@ describe("with a working copy", () => {
     const { output, job } = hook(bash("g1t repo create acme/app --private && git remote add origin https://g1t.sh/acme/app.git"), env);
     assert.equal(job.start, true);
     assert.equal(output.hookSpecificOutput.hookEventName, "PostToolUse");
-    assert.match(output.hookSpecificOutput.additionalContext, /issue #42/, "told what SessionStart would have told it");
+    assert.match(output.hookSpecificOutput.additionalContext, /work item #42/, "told what SessionStart would have told it");
     assert.deepEqual(job.steps.at(-1), { title: "Build me a todo app" });
     work(job, env);
     const recorded = calls().filter((c) => c.args[0] === "session");
@@ -664,14 +666,14 @@ describe("with a working copy", () => {
     assert.deepEqual(end, { args: ["session", "end", "--reason", "done", "--result=Found 12 endpoints in src/api."], session: "ses_sub_a4d2c8f1e0b3a297" });
   });
 
-  test("a hand-off names its issue at the start", () => {
+  test("a hand-off names its work item at the start", () => {
     git("checkout", "-q", "-b", "main");
-    const { output, job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, { ...env, G1T_ISSUE: "12" });
-    assert.match(output.hookSpecificOutput.additionalContext, /issue #12 \(from the work handed to it\)/);
+    const { output, job } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, { ...env, G1T_ITEM: "12" });
+    assert.match(output.hookSpecificOutput.additionalContext, /work item #12 \(from the work handed to it\)/);
     assert.match(output.hookSpecificOutput.additionalContext, /G1t-Session/);
     work(job, env);
     const start = calls().find((c) => c.args[1] === "start");
-    assert.ok(start.args.includes("--issue") && start.args.includes("12"));
+    assert.ok(start.args.includes("--item") && start.args.includes("12"));
   });
 
   test("a missing CLI records nothing and says so once", () => {
@@ -712,7 +714,7 @@ describe("with a working copy", () => {
     });
     const took = Date.now() - started;
     assert.equal(out.status, 0);
-    assert.match(JSON.parse(out.stdout).hookSpecificOutput.additionalContext, /issue #42/);
+    assert.match(JSON.parse(out.stdout).hookSpecificOutput.additionalContext, /work item #42/);
     assert.ok(took < 3000, `took ${took} ms`);
     // The detached half starts the session after the hook has returned.
     const id = sessionFiles(base.session_id, env).id;
@@ -739,16 +741,17 @@ describe("with a working copy", () => {
     hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, old);
     work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, old);
     work(plan({ ...base, cwd: dir, hook_event_name: "Stop" }, old), old);
-    // SessionStart still asks it for the issue's context, which every CLI gives.
-    assert.deepEqual(calls().map((c) => c.args.join(" ")), ["work context 42"], "nothing is recorded with it");
+    // SessionStart still asks it for the work item's context.
+    assert.deepEqual(calls().map((c) => c.args.join(" ")), ["work view 42"], "nothing is recorded with it");
     assert.equal(allCalls().filter((c) => c.args[0] === "--version").length, 1, "the version is asked once for each build of the CLI");
     const first = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hi" }, old);
-    assert.match(first.output.systemMessage, /g1t CLI is 0\.3\.1, and the plugin needs 0\.3\.2 or later/);
+    assert.match(first.output.systemMessage, /g1t CLI is 0\.3\.1, and the plugin needs 0\.4\.0 or later/);
     assert.match(first.output.systemMessage, /curl -fsSL https:\/\/g1t\.sh\/install \| sh/);
     assert.match(first.output.systemMessage, /irm https:\/\/g1t\.sh\/install\.ps1 \| iex/);
     assert.equal(hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hi" }, old).output, null);
     assert.equal(older("0.3.1", MIN_CLI), true);
-    assert.equal(older("0.3.2", MIN_CLI), false);
+    assert.equal(older("0.3.7", MIN_CLI), true);
+    assert.equal(older("0.4.0", MIN_CLI), false);
     assert.equal(older("0.10.0", MIN_CLI), false);
     assert.equal(older("1.0.0", MIN_CLI), false);
   });
@@ -771,14 +774,14 @@ describe("with a working copy", () => {
     assert.match(refusal(["session", "touch"]), /needs one of/);
     assert.match(refusal(["session", "heartbeat", "--now"]), /takes no --now/);
     assert.match(refusal(["session", "start", "--harness", "claude-managed-agents", "--harness-session-id", "x"]), /takes claude_code/);
-    assert.match(refusal(["work", "context", "abc"]), /not abc/);
+    assert.match(refusal(["work", "view", "abc"]), /not abc/);
     assert.match(refusal(["session", "pause"]), /takes 0 argument/);
     assert.equal(refusal(["api", "update_session", "-f", "id=ses_1", "-f", "head_commit=abc", "--silent"]), null);
   });
 
   test("PowerShell commands are read as Bash ones are, and a subagent's act as its session", () => {
     const ps = (command, extra = {}) => ({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "PowerShell", tool_input: { command }, ...extra });
-    assert.equal(plan(ps("g1t work claim 42"), env).issue, 42);
+    assert.equal(plan(ps("g1t work claim 42"), env).item, 42);
     assert.deepEqual(plan(ps("git checkout -b 42-fix; git status"), env).steps.at(-1), { args: ["session", "touch", "--branch", "42-fix"] });
     assert.deepEqual(plan(ps("git commit -m x"), env).steps.at(-1), { touchHead: true });
     assert.deepEqual(plan(ps("git push origin 42-fix"), env).steps.at(-1), { headCommit: true });
@@ -799,43 +802,43 @@ describe("with a working copy", () => {
   });
 
   test("a skill typed as /plugin:name is recorded once in its turn, however Claude Code then runs it", () => {
-    assert.equal(typedSkill("/g1t:work-on-issue 42"), "g1t:work-on-issue");
+    assert.equal(typedSkill("/g1t:work-on-item 42"), "g1t:work-on-item");
     assert.equal(typedSkill("﻿/g1t:status"), "g1t:status");
     assert.equal(typedSkill("/clear"), null, "Claude Code's own commands are not skills");
     assert.equal(typedSkill("look at /g1t:status"), null);
     hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
     work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
-    const typed = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:work-on-issue 42" }, env).job;
+    const typed = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:work-on-item 42" }, env).job;
     assert.deepEqual(typed.steps.map((s) => s.args.slice(0, 4)), [["session", "log", "--kind", "prompt"], ["session", "log", "--kind", "skill"]]);
     work(typed, env);
-    const tool = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-issue", args: "42" } }, env).job;
+    const tool = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-item", args: "42" } }, env).job;
     work(tool, env);
     const skills = calls().filter((c) => c.args.includes("skill"));
     assert.equal(skills.length, 2);
-    assert.deepEqual(skills[0].args, ["session", "log", "--kind", "skill", "--key=skill:work-on-issue:1", "--", "g1t:work-on-issue"]);
-    assert.equal(skills[1].args[4], "--key=skill:work-on-issue:1", "the same key: g1t keeps the first");
+    assert.deepEqual(skills[0].args, ["session", "log", "--kind", "skill", "--key=skill:work-on-item:1", "--", "g1t:work-on-item"]);
+    assert.equal(skills[1].args[4], "--key=skill:work-on-item:1", "the same key: g1t keeps the first");
     // Another skill in the turn has a key of its own; the next prompt is another turn.
     const next = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:coordinate" } }, env).job;
     assert.equal(next.steps[0].key, "skill:coordinate:1");
     hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "go on" }, { ...env, G1T_RECORD_PROMPTS: "0" });
-    const later = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-issue" } }, env).job;
-    assert.equal(later.steps[0].key, "skill:work-on-issue:2", "a turn whose prompt is not sent is still a turn");
+    const later = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-item" } }, env).job;
+    assert.equal(later.steps[0].key, "skill:work-on-item:2", "a turn whose prompt is not sent is still a turn");
     // Prompts kept back: the typed skill's name is still recorded, the prompt is not.
     const quiet = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:status" }, { ...env, G1T_RECORD_PROMPTS: "0" }).job;
     assert.deepEqual(quiet.steps.map((s) => s.args.at(-1)), ["g1t:status"]);
   });
 
-  test("with no issue in sight, Claude is told the session is recorded and when to open or claim one", () => {
+  test("with no work item in sight, Claude is told the session is recorded and when to open or claim one", () => {
     git("symbolic-ref", "HEAD", "refs/heads/fix-previews");
     const { output } = hook({ ...base, cwd: dir, hook_event_name: "SessionStart", source: "startup" }, env);
     const context = output.hookSpecificOutput.additionalContext;
     assert.match(context, /this session is recorded on g1t and shows to the team/);
     assert.match(context, /Just work/);
     assert.match(context, /`g1t work claim --title "…"`/);
-    assert.match(context, /Never open issues for questions, exploration or trivial fixes/);
+    assert.match(context, /Never open work items for questions, exploration or trivial fixes/);
     assert.match(context, /retitle it in a few words with `g1t session attach --title "…"`/);
     assert.ok(context.length < 1100, `injected every session, so short: ${context.length}`);
-    assert.ok(!calls().some((c) => c.args[0] === "work"), "no issue's context is asked for");
+    assert.ok(!calls().some((c) => c.args[0] === "work"), "no work item's context is asked for");
   });
 
   test("Claude is reminded to retitle the session at its second prompt and every fifth after, no more", () => {
