@@ -1308,6 +1308,13 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("list_token_requests", Scope::AccessRead),
     ("review_token_request", Scope::AccessAdmin),
     ("revoke_member_token", Scope::AccessAdmin),
+    // A workspace's single sign-on: its settings, and who is linked.
+    ("get_sso", Scope::WorkspaceRead),
+    ("configure_sso", Scope::WorkspaceAdmin),
+    ("set_sso_required", Scope::WorkspaceAdmin),
+    ("delete_sso", Scope::WorkspaceAdmin),
+    ("list_sso_identities", Scope::AccessRead),
+    ("unlink_sso_identity", Scope::AccessAdmin),
     // Who has access.
     ("list_collaborators", Scope::AccessRead),
     ("get_collaborator_permission", Scope::AccessRead),

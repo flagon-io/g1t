@@ -19,6 +19,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::sso::SsoOp;
 use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
@@ -84,6 +85,18 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Tokens(TokenOp::ListTokenRequests),
             Op::Tokens(TokenOp::ReviewTokenRequest),
             Op::Tokens(TokenOp::RevokeMemberToken),
+        ],
+    ),
+    (
+        "Single sign-on",
+        "A workspace's own identity provider over OpenID Connect, OAuth 2.0 or SAML 2.0, on every paid plan: setting it up, requiring it of members, the people linked to it, and unlinking one. People sign in to g1t as themselves and then through the provider to use the workspace; owners are never held out. Owners only, as people.",
+        &[
+            Op::Sso(SsoOp::GetSso),
+            Op::Sso(SsoOp::ConfigureSso),
+            Op::Sso(SsoOp::SetSsoRequired),
+            Op::Sso(SsoOp::DeleteSso),
+            Op::Sso(SsoOp::ListSsoIdentities),
+            Op::Sso(SsoOp::UnlinkSsoIdentity),
         ],
     ),
     (
@@ -881,6 +894,7 @@ fn title(op: Op) -> &'static str {
         Op::Telemetry(op) => op.title(),
         Op::Protection(op) => op.title(),
         Op::Tokens(op) => op.title(),
+        Op::Sso(op) => op.title(),
         Op::Onboarding(op) => op.title(),
         Op::Artifacts(op) => op.title(),
         Op::Caches(op) => op.title(),

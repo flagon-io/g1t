@@ -281,3 +281,46 @@ pub struct SsoMetadataArgs {
     pub entity_id: String,
     pub acs_url: String,
 }
+
+/// Where a workspace's provider is pointed, from the site's address: g1t's
+/// entity id (its metadata's address), the assertion consumer service, and
+/// the callback for OpenID Connect and OAuth 2.0. Mirrors `ssoAddresses`
+/// in `packages/contracts/src/sso.ts`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SsoAddresses {
+    pub redirect_uri: String,
+    pub entity_id: String,
+    pub acs_url: String,
+    pub metadata_url: String,
+    /// Where people start signing in through it.
+    pub sign_in_url: String,
+}
+
+pub fn sso_addresses(site: &str, slug: &str) -> SsoAddresses {
+    let start = format!("{}/auth/sso/{}", site.trim_end_matches('/'), slug.trim().to_lowercase());
+    SsoAddresses {
+        redirect_uri: format!("{start}/callback"),
+        entity_id: format!("{start}/metadata"),
+        acs_url: format!("{start}/saml"),
+        metadata_url: format!("{start}/metadata"),
+        sign_in_url: start,
+    }
+}
+
+/// `admin_sso`: a workspace's single sign-on, for staff in sudo: as its
+/// owners see it, or `None` when it has none. Takes `SlugArgs`.
+pub type AdminSso = Option<SsoSettings>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn addresses_are_the_workspaces_own() {
+        let at = sso_addresses("https://g1t.sh/", " Acme ");
+        assert_eq!(at.redirect_uri, "https://g1t.sh/auth/sso/acme/callback");
+        assert_eq!(at.entity_id, "https://g1t.sh/auth/sso/acme/metadata");
+        assert_eq!(at.acs_url, "https://g1t.sh/auth/sso/acme/saml");
+        assert_eq!(at.sign_in_url, "https://g1t.sh/auth/sso/acme");
+    }
+}

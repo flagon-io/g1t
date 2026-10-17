@@ -1152,6 +1152,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_growth" => reply(&identity.admin_growth().await?),
         "admin_workspaces" => reply(&identity.admin_workspaces(args(body)?).await?),
         "admin_workspace" => reply(&identity.admin_workspace(args(body)?).await?),
+        "admin_sso" => reply(&identity.admin_sso(args(body)?).await?),
         "admin_invites" => reply(&identity.admin_invites(args(body)?).await?),
         "admin_revoke_invite" => reply(&identity.admin_revoke_invite(args(body)?).await?),
         "admin_grant_invites" => reply(&identity.admin_grant_invites(args(body)?).await?),

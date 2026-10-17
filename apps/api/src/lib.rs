@@ -48,6 +48,7 @@ mod security;
 mod tools;
 mod why;
 mod token_policy;
+mod sso;
 mod onboarding;
 mod toolkit;
 

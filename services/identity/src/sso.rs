@@ -331,6 +331,18 @@ impl Identity {
         })
     }
 
+    /// `admin_sso`: a workspace's single sign-on, for staff in sudo.
+    pub async fn admin_sso(&self, a: SlugArgs) -> Result<AdminSso> {
+        let slug = a.slug.trim().to_lowercase();
+        let Some(workspace_id) = self.workspace_id_of(&slug).await? else {
+            return Ok(None);
+        };
+        if self.connection_where("workspace_id", &workspace_id).await?.is_none() {
+            return Ok(None);
+        }
+        self.settings_of(&workspace_id, &slug, &User::default()).await.map(Some)
+    }
+
     /// `sso_summary`: whether a workspace has single sign-on, for anyone.
     pub async fn sso_summary(&self, a: SlugArgs) -> Result<SsoSummary> {
         let Some(workspace_id) = self.workspace_id_of(&a.slug.to_lowercase()).await? else {

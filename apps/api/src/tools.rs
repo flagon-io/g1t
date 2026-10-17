@@ -30,6 +30,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::sso::SsoOp;
 use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
@@ -459,6 +460,12 @@ pub const TOOLS: &[Tool] = &[
             a("list_token_requests", Op::Tokens(TokenOp::ListTokenRequests), "Tokens waiting for approval"),
             a("review_token_request", Op::Tokens(TokenOp::ReviewTokenRequest), "Approve or deny one"),
             a("revoke_member_token", Op::Tokens(TokenOp::RevokeMemberToken), "Revoke a member's token in it"),
+            a("get_sso", Op::Sso(SsoOp::GetSso), "Its single sign-on: the provider, whether it is required, who is linked, and where to point the provider"),
+            a("configure_sso", Op::Sso(SsoOp::ConfigureSso), "Set up or change its single sign-on over OpenID Connect, OAuth 2.0 or SAML"),
+            a("set_sso_required", Op::Sso(SsoOp::SetSsoRequired), "Require single sign-on of members, or stop"),
+            a("delete_sso", Op::Sso(SsoOp::DeleteSso), "Remove its single sign-on"),
+            a("list_sso_identities", Op::Sso(SsoOp::ListSsoIdentities), "The people linked through single sign-on"),
+            a("unlink_sso_identity", Op::Sso(SsoOp::UnlinkSsoIdentity), "Unlink someone from single sign-on"),
         ],
     },
     Tool {
@@ -638,6 +645,7 @@ fn destructive(op: Op) -> bool {
             | Op::DeleteWorkspace
             | Op::UpdateWorkspace
             | Op::Tokens(TokenOp::RevokeMemberToken | TokenOp::SetTokenPolicy)
+            | Op::Sso(SsoOp::ConfigureSso | SsoOp::DeleteSso | SsoOp::UnlinkSsoIdentity)
             | Op::RemoveMember
             | Op::TransferOwnership
             | Op::LeaveWorkspace

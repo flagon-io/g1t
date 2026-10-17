@@ -15168,5 +15168,146 @@
       "stored_bytes": 1210443776
     },
     "notes": "This month so far. `ingested_bytes` is what arrived, after decoding: what ingest is metered by. Needs the Admin role."
+  },
+  "get_sso": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "slug": "flagon-io",
+      "connection": {
+        "id": "sso_01m54gq2v0e8e3c5yj6k9t1r2a",
+        "protocol": "saml",
+        "config": {
+          "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
+          "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
+          "certificates": [
+            "MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"
+          ]
+        },
+        "has_client_secret": false,
+        "certificates": [
+          {
+            "fingerprint": "3F:A1:9C:22:7B:E0:44:D1:8A:6F:0B:93:12:C7:5E:AA:41:08:DD:6C:39:F2:B5:7E:90:1A:C3:58:24:EF:6B:0D"
+          }
+        ],
+        "allow_join": true,
+        "tested_at": "2026-10-17T09:12:44.000Z",
+        "tested_by": "syntaqx",
+        "created_at": "2026-10-17T09:05:10.000Z",
+        "updated_at": "2026-10-17T09:05:10.000Z"
+      },
+      "required": true,
+      "you_linked": true,
+      "identities": [
+        {
+          "username": "syntaqx",
+          "subject": "chase@flagon.io",
+          "email": "chase@flagon.io",
+          "linked_at": "2026-10-17T09:12:44.000Z",
+          "last_used_at": "2026-10-17T14:02:31.000Z"
+        }
+      ],
+      "service_provider": {
+        "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
+        "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
+        "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
+        "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+        "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+      }
+    }
+  },
+  "configure_sso": {
+    "params": {
+      "workspace": "flagon-io",
+      "protocol": "saml",
+      "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
+      "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
+      "certificate": "-----BEGIN CERTIFICATE-----\nMIICsDCCAZig…\n-----END CERTIFICATE-----",
+      "allow_join": true
+    },
+    "response": {
+      "slug": "flagon-io",
+      "connection": {
+        "id": "sso_01m54gq2v0e8e3c5yj6k9t1r2a",
+        "protocol": "saml",
+        "config": {
+          "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
+          "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
+          "certificates": [
+            "MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"
+          ]
+        },
+        "has_client_secret": false,
+        "certificates": [
+          {
+            "fingerprint": "3F:A1:9C:22:7B:E0:44:D1:8A:6F:0B:93:12:C7:5E:AA:41:08:DD:6C:39:F2:B5:7E:90:1A:C3:58:24:EF:6B:0D"
+          }
+        ],
+        "allow_join": true,
+        "tested_at": "2026-10-17T09:12:44.000Z",
+        "tested_by": "syntaqx",
+        "created_at": "2026-10-17T09:05:10.000Z",
+        "updated_at": "2026-10-17T09:05:10.000Z"
+      },
+      "required": true,
+      "you_linked": true,
+      "identities": [
+        {
+          "username": "syntaqx",
+          "subject": "chase@flagon.io",
+          "email": "chase@flagon.io",
+          "linked_at": "2026-10-17T09:12:44.000Z",
+          "last_used_at": "2026-10-17T14:02:31.000Z"
+        }
+      ],
+      "service_provider": {
+        "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
+        "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
+        "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
+        "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+        "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+      }
+    }
+  },
+  "set_sso_required": {
+    "params": {
+      "workspace": "flagon-io",
+      "required": true
+    },
+    "response": {
+      "required": true
+    }
+  },
+  "delete_sso": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "deleted": true
+    }
+  },
+  "list_sso_identities": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "username": "syntaqx",
+        "subject": "chase@flagon.io",
+        "email": "chase@flagon.io",
+        "linked_at": "2026-10-17T09:12:44.000Z",
+        "last_used_at": "2026-10-17T14:02:31.000Z"
+      }
+    ]
+  },
+  "unlink_sso_identity": {
+    "params": {
+      "workspace": "flagon-io",
+      "username": "ada"
+    },
+    "response": {
+      "unlinked": true
+    }
   }
 }
